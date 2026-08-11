@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package cerebro.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
+
+import "cerebro/v1/primitives.proto";
+import "google/protobuf/timestamp.proto";
+
+// AIEgressTransport is the protocol identity used for deterministic registry
+// matching. Resolved IP addresses are evidence and never replace this identity.
+enum AIEgressTransport {
+  AI_EGRESS_TRANSPORT_UNSPECIFIED = 0;
+  AI_EGRESS_TRANSPORT_TCP = 1;
+  AI_EGRESS_TRANSPORT_TLS = 2;
+  AI_EGRESS_TRANSPORT_HTTP = 3;
+  AI_EGRESS_TRANSPORT_HTTPS = 4;
+}
+
+enum AIEgressObservationPhase {
+  AI_EGRESS_OBSERVATION_PHASE_UNSPECIFIED = 0;
+  AI_EGRESS_OBSERVATION_PHASE_DNS_QUERY = 1;
+  AI_EGRESS_OBSERVATION_PHASE_PROXY_REQUEST = 2;
+  AI_EGRESS_OBSERVATION_PHASE_CONNECTION_ATTEMPT = 3;
+  AI_EGRESS_OBSERVATION_PHASE_CONNECTION_ESTABLISHED = 4;
+  AI_EGRESS_OBSERVATION_PHASE_CONNECTION_BLOCKED = 5;
+}
+
+enum AIEgressEnforcementLayer {
+  AI_EGRESS_ENFORCEMENT_LAYER_UNSPECIFIED = 0;
+  AI_EGRESS_ENFORCEMENT_LAYER_HOST = 1;
+  AI_EGRESS_ENFORCEMENT_LAYER_NETWORK = 2;
+  AI_EGRESS_ENFORCEMENT_LAYER_CLOUD = 3;
+}
+
+enum AIEgressRegistryMode {
+  AI_EGRESS_REGISTRY_MODE_UNSPECIFIED = 0;
+  AI_EGRESS_REGISTRY_MODE_ENFORCE = 1;
+  AI_EGRESS_REGISTRY_MODE_AUDIT = 2;
+  AI_EGRESS_REGISTRY_MODE_DISABLED = 3;
+}
+
+enum AIEgressAction {
+  AI_EGRESS_ACTION_UNSPECIFIED = 0;
+  AI_EGRESS_ACTION_ALLOW = 1;
+  AI_EGRESS_ACTION_BLOCK = 2;
+  AI_EGRESS_ACTION_AUDIT = 3;
+}
+
+enum AIEgressDecisionReason {
+  AI_EGRESS_DECISION_REASON_UNSPECIFIED = 0;
+  AI_EGRESS_DECISION_REASON_APPROVED_DESTINATION = 1;
+  AI_EGRESS_DECISION_REASON_DESTINATION_NOT_APPROVED = 2;
+  AI_EGRESS_DECISION_REASON_IDENTITY_NOT_APPROVED = 3;
+  AI_EGRESS_DECISION_REASON_PORT_NOT_APPROVED = 4;
+  AI_EGRESS_DECISION_REASON_TRANSPORT_NOT_APPROVED = 5;
+  AI_EGRESS_DECISION_REASON_REGISTRY_UNAVAILABLE = 6;
+  AI_EGRESS_DECISION_REASON_REGISTRY_STALE = 7;
+  AI_EGRESS_DECISION_REASON_REGISTRY_DISABLED = 8;
+  AI_EGRESS_DECISION_REASON_ENFORCEMENT_DISABLED = 9;
+}
+
+message AIEgressDestination {
+  // hostname is matched as a lower-case, trailing-dot-free DNS name. Wildcards
+  // are not part of v1.
+  string hostname = 1;
+  uint32 port = 2;
+  AIEgressTransport transport = 3;
+  // resolved_ip is observation evidence only and is never an authorization key.
+  string resolved_ip = 4;
+}
+
+// AIEgressRegistryEntry approves exact destinations for an optional bounded
+// actor set. Empty actor_urns means the destination is approved for every actor
+// governed by this registry snapshot.
+message AIEgressRegistryEntry {
+  string id = 1;
+  repeated string exact_hostnames = 2;
+  repeated uint32 ports = 3;
+  repeated AIEgressTransport transports = 4;
+  repeated string actor_urns = 5;
+  bool enabled = 6;
+  google.protobuf.Timestamp valid_from = 7;
+  google.protobuf.Timestamp valid_until = 8;
+  string owner_urn = 9;
+  repeated ResourceRef evidence_claim_refs = 10;
+}
+
+// AIEgressRegistrySnapshot is immutable policy input. In enforce mode the only
+// valid default is block. Audit mode records unapproved traffic without
+// representing it as allowed.
+message AIEgressRegistrySnapshot {
+  string registry_id = 1;
+  string revision = 2;
+  AIEgressRegistryMode mode = 3;
+  AIEgressAction default_action = 4;
+  repeated AIEgressRegistryEntry entries = 5;
+  google.protobuf.Timestamp published_at = 6;
+  google.protobuf.Timestamp valid_until = 7;
+  string digest = 8;
+  repeated ResourceRef evidence_claim_refs = 9;
+}
+
+message AIEgressPolicyInput {
+  string tenant_id = 1;
+  ResourceRef subject_ref = 2;
+  ResourceRef actor_ref = 3;
+  ResourceRef workload_ref = 4;
+  AIEgressDestination destination = 5;
+  AIEgressRegistrySnapshot registry = 6;
+  google.protobuf.Timestamp evaluated_at = 7;
+  AIEgressEnforcementLayer enforcement_layer = 8;
+  bool enforcement_enabled = 9;
+}
+
+message AIEgressPolicyDecision {
+  AIEgressAction action = 1;
+  AIEgressDecisionReason reason = 2;
+  string registry_id = 3;
+  string registry_revision = 4;
+  string registry_digest = 5;
+  string matched_entry_id = 6;
+  string canonical_hostname = 7;
+  google.protobuf.Timestamp evaluated_at = 8;
+  bool enforceable = 9;
+  repeated ResourceRef evidence_claim_refs = 10;
+}
+
+// AIEgressCoverage distinguishes an observed control gap from a proven clean
+// population. Partial, truncated, disabled, or stale coverage cannot support a
+// compliant conclusion.
+message AIEgressCoverage {
+  bool complete = 1;
+  bool truncated = 2;
+  bool enforcement_enabled = 3;
+  bool registry_loaded = 4;
+  bool registry_fresh = 5;
+  repeated AIEgressEnforcementLayer observed_layers = 6;
+}
+
+// AIEgressObservation is the provider-neutral ai.egress.observed.v1 payload.
+// It carries routing metadata and references only; prompts, responses, request
+// bodies, credentials, and authorization headers are outside the contract.
+message AIEgressObservation {
+  string observation_id = 1;
+  ResourceRef subject_ref = 2;
+  ResourceRef actor_ref = 3;
+  ResourceRef workload_ref = 4;
+  AIEgressDestination destination = 5;
+  AIEgressObservationPhase phase = 6;
+  AIEgressEnforcementLayer enforcement_layer = 7;
+  AIEgressPolicyDecision decision = 8;
+  AIEgressCoverage coverage = 9;
+  google.protobuf.Timestamp observed_at = 10;
+  string source_runtime_id = 11;
+  string source_collection_id = 12;
+  repeated ResourceRef evidence_claim_refs = 13;
+  map<string, string> attributes = 14;
+}
+
+// AIEgressVerificationBinding requires a later independent observation.
+// Provider execution or policy publication alone cannot verify closure.
+message AIEgressVerificationBinding {
+  ResourceRef finding_ref = 1;
+  ResourceRef observation_event_ref = 2;
+  ResourceRef source_runtime_ref = 3;
+  string result = 4;
+  bool source_complete = 5;
+  bool source_truncated = 6;
+  google.protobuf.Timestamp observed_at = 7;
+  repeated ResourceRef evidence_claim_refs = 8;
+}
