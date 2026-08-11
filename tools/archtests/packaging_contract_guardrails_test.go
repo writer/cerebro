@@ -205,7 +205,7 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"rust-organizational-e2e:",
 		"cerebro.rust-organizational-e2e/v1",
 		"Prove process liveness and backend readiness split",
-		`readiness_code="$(curl --max-time 5`,
+		`readiness_code="$(curl --max-time 15`,
 		`.code == "graph_unavailable"`,
 		"Attach the Rust E2E receipt to the candidate digest",
 		"rust_e2e_receipt_sha256",
