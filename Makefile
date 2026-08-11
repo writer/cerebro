@@ -425,7 +425,8 @@ proto-generate: rust-proto-generate ## Generate protobuf-derived code.
 	$(BUF) generate --template buf.gen.sdk.yaml \
 		--path proto/cerebro/v1/primitives.proto \
 		--path proto/cerebro/v1/security_lifecycle.proto \
-		--path proto/cerebro/graph/v1/organizational_graph.proto
+		--path proto/cerebro/graph/v1/organizational_graph.proto \
+		--path proto/cerebro/v1/ai_egress.proto
 
 proto-generate-check: proto-generate ## Verify protobuf generated files are current.
 	git diff --exit-code -- gen sdk/python/cerebro sdk/go/cerebroapi/genproto \
