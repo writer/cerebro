@@ -205,7 +205,7 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"rust-organizational-e2e:",
 		"cerebro.rust-organizational-e2e/v1",
 		"Prove process liveness and backend readiness split",
-		`readiness_code="$(curl --max-time 15`,
+		`readiness_code="$(curl --max-time 90`,
 		`.code == "graph_unavailable"`,
 		"Attach the Rust E2E receipt to the candidate digest",
 		"rust_e2e_receipt_sha256",
@@ -303,6 +303,17 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	}
 	if !strings.Contains(makefileText, `go build -trimpath -ldflags="-s -w" -o .dist/cerebro`) {
 		t.Fatal("docker-smoke must strip the runtime binary before loading the image")
+	}
+}
+
+func TestRustOnlyCandidateAllowsReadinessDeadlineToExpire(t *testing.T) {
+	root := repoRoot(t)
+	workflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "rust-only-candidate.yml"))
+	if err != nil {
+		t.Fatalf("read Rust-only candidate workflow: %v", err)
+	}
+	if !strings.Contains(string(workflow), `curl --max-time 90`) {
+		t.Fatal("Rust-only candidate readiness client must outlive the 75-second backend deadline")
 	}
 }
 
