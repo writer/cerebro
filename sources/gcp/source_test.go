@@ -236,6 +236,48 @@ func TestGCPProviderUnavailableReturnsError(t *testing.T) {
 	}
 }
 
+func TestGCPRetriesRateLimitedPOSTRequest(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if r.URL.Path != "/v2/entries:list" {
+			http.NotFound(w, r)
+			return
+		}
+		if attempts == 1 {
+			http.Error(w, `{"error":"quota exhausted"}`, http.StatusTooManyRequests)
+			return
+		}
+		writeJSON(t, w, map[string]any{"entries": []map[string]any{{
+			"insertId":     "audit-1",
+			"timestamp":    "2026-04-23T00:00:00Z",
+			"protoPayload": map[string]any{"methodName": "SetIamPolicy"},
+		}}})
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url":   server.URL,
+		"family":     familyAudit,
+		"project_id": "writer-prod",
+		"token":      "test-token",
+	})
+
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(audit) error = %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+}
+
 func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
