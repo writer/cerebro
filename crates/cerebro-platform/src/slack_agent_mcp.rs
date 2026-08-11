@@ -95,7 +95,7 @@ impl McpAgentTools {
         .any(|name| env::var(name).is_ok_and(|value| !value.trim().is_empty()))
     }
 
-    pub async fn from_env() -> Result<Option<Self>, String> {
+    pub async fn from_env(tenant_id: &str) -> Result<Option<Self>, String> {
         let raw_url = env::var(MCP_URL_ENV).unwrap_or_default();
         if raw_url.trim().is_empty() {
             return Ok(None);
@@ -129,7 +129,7 @@ impl McpAgentTools {
             .timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|error| error.to_string())?;
-        let listed = list_tools(&client, &endpoint, &bearer_token, &toolsets).await?;
+        let listed = list_tools(&client, &endpoint, &bearer_token, &toolsets, tenant_id).await?;
         if listed.len() > MAX_MCP_TOOLS {
             return Err("MCP tool catalog exceeds the bounded limit".into());
         }
@@ -533,6 +533,7 @@ async fn list_tools(
     endpoint: &Url,
     bearer_token: &str,
     toolsets: &str,
+    tenant_id: &str,
 ) -> Result<Vec<McpToolWire>, String> {
     let mut cursor = None;
     let mut seen_cursors = BTreeSet::new();
@@ -547,6 +548,7 @@ async fn list_tools(
             .header(AUTHORIZATION, format!("Bearer {bearer_token}"))
             .header("MCP-Protocol-Version", "2025-03-26")
             .header("X-Cerebro-MCP-Toolsets", toolsets)
+            .header("X-Cerebro-Tenant", tenant_id)
             .json(&json!({
                 "jsonrpc": "2.0",
                 "id": format!("slack-agent-tools-list-{}", listed.len()),
@@ -1241,7 +1243,7 @@ mod tests {
         let endpoint = Url::parse(&format!("http://{address}/mcp")).unwrap();
         let client = Client::new();
 
-        let listed = list_tools(&client, &endpoint, "tenant-token", "task")
+        let listed = list_tools(&client, &endpoint, "tenant-token", "task", "tenant-a")
             .await
             .unwrap();
         server.abort();
@@ -1262,6 +1264,7 @@ mod tests {
         assert_eq!(headers.get(AUTHORIZATION).unwrap(), "Bearer tenant-token");
         assert_eq!(headers.get("MCP-Protocol-Version").unwrap(), "2025-03-26");
         assert_eq!(headers.get("X-Cerebro-MCP-Toolsets").unwrap(), "task");
+        assert_eq!(headers.get("X-Cerebro-Tenant").unwrap(), "tenant-a");
         let cursor = request["params"]["cursor"].as_str();
         let (name, next_cursor) = match cursor {
             None => ("cerebro.first", Some("page-2")),

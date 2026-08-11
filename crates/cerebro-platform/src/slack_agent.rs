@@ -215,7 +215,7 @@ impl SlackAgentService {
         let catalog = super::load_catalog()?;
         let mcp_configured = McpAgentTools::is_configured();
         let mcp_authority_policy_configured = McpAgentTools::authority_policy_configured();
-        let mcp = match retry_mcp_startup(McpAgentTools::from_env).await {
+        let mcp = match retry_mcp_startup(|| McpAgentTools::from_env(&tenant_id)).await {
             Ok(mcp) => mcp.map(Arc::new),
             Err(error) if mcp_authority_policy_configured => {
                 return Err(format!(
