@@ -2,7 +2,9 @@ package gcpcloud
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"regexp"
 	"sort"
@@ -102,6 +104,7 @@ func computeAggregatedScopeField(scope string, fallback string) string {
 
 type AuditRecord struct {
 	InsertID     string        `json:"insertId"`
+	LogName      string        `json:"logName"`
 	Timestamp    string        `json:"timestamp"`
 	ProtoPayload AuditProto    `json:"protoPayload"`
 	Resource     AuditResource `json:"resource"`
@@ -135,6 +138,8 @@ func AuditEvent(settings Settings, record AuditRecord) (*primitives.Event, error
 		"event_name":         record.ProtoPayload.MethodName,
 		"event_type":         record.ProtoPayload.MethodName,
 		"family":             "audit",
+		"log_insert_id":      record.InsertID,
+		"log_name":           record.LogName,
 		"resource_id":        resourceID,
 		"resource_name":      resourceID,
 		"resource_type":      firstNonEmpty(record.Resource.Type, record.ProtoPayload.ServiceName, "resource"),
@@ -149,7 +154,19 @@ func AuditEvent(settings Settings, record AuditRecord) (*primitives.Event, error
 			occurredAt = parsed.UTC()
 		}
 	}
-	return sourceEventAt(settings, "gcp-audit-"+firstNonEmpty(record.InsertID, record.ProtoPayload.MethodName), "gcp.audit", "gcp/audit/v1", payload, attributes, occurredAt)
+	return sourceEventAt(settings, auditEventID(settings, record, resourceID), "gcp.audit", "gcp/audit/v1", payload, attributes, occurredAt)
+}
+
+func auditEventID(settings Settings, record AuditRecord, resourceID string) string {
+	identity := strings.Join([]string{
+		settings.ProjectID,
+		record.LogName,
+		firstNonEmpty(record.InsertID, record.ProtoPayload.MethodName),
+		record.Timestamp,
+		resourceID,
+	}, "\x00")
+	digest := sha256.Sum256([]byte(identity))
+	return "gcp-audit-" + fmt.Sprintf("%x", digest[:16])
 }
 
 func publicPrincipal(value string) bool {

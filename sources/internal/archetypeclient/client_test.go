@@ -25,7 +25,7 @@ func TestVulnerabilitiesForScansDefaultsZeroFanoutConcurrency(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	got, err := VulnerabilitiesForScans(ctx, Settings{
+	got, unavailable, err := VulnerabilitiesForScans(ctx, Settings{
 		SourceID:      "archetype",
 		BaseURL:       server.URL,
 		AllowLoopback: true,
@@ -35,5 +35,37 @@ func TestVulnerabilitiesForScansDefaultsZeroFanoutConcurrency(t *testing.T) {
 	}
 	if len(got) != 2 || len(got[0]) != 1 || got[0][0].ID != 10 || len(got[1]) != 1 || got[1][0].ID != 20 {
 		t.Fatalf("VulnerabilitiesForScans() = %#v, want ordered vulnerability batches", got)
+	}
+	if unavailable[0] || unavailable[1] {
+		t.Fatalf("unavailable = %v, want all false", unavailable)
+	}
+}
+
+func TestVulnerabilitiesForScansPreservesUnavailableScan(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/scans/1/vulnerabilities":
+			http.Error(w, "scan result expired", http.StatusBadRequest)
+		case "/scans/2/vulnerabilities":
+			_, _ = w.Write([]byte(`[{"id":20,"scan_id":2,"severity":"critical"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	got, unavailable, err := VulnerabilitiesForScans(context.Background(), Settings{
+		SourceID:      "archetype",
+		BaseURL:       server.URL,
+		AllowLoopback: true,
+	}, []Scan{{ID: 1}, {ID: 2}})
+	if err != nil {
+		t.Fatalf("VulnerabilitiesForScans() error = %v", err)
+	}
+	if len(got) != 2 || len(got[0]) != 0 || len(got[1]) != 1 || got[1][0].ID != 20 {
+		t.Fatalf("VulnerabilitiesForScans() = %#v, want unavailable then complete batch", got)
+	}
+	if !unavailable[0] || unavailable[1] {
+		t.Fatalf("unavailable = %v, want [true false]", unavailable)
 	}
 }

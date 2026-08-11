@@ -75,8 +75,48 @@ func TestSourceReadEmitsScanAndVulnerabilityEvents(t *testing.T) {
 	if got := pull.Events[1].GetAttributes()["repo"]; got != "Archetype" {
 		t.Fatalf("vulnerability repo attr = %q, want Archetype", got)
 	}
+	if got := pull.Events[0].GetAttributes()["vulnerability_collection_state"]; got != "complete" {
+		t.Fatalf("scan vulnerability_collection_state = %q, want complete", got)
+	}
 	if got := pull.Checkpoint.GetCursorOpaque(); got != "1" {
 		t.Fatalf("checkpoint cursor = %q, want 1", got)
+	}
+}
+
+func TestSourceReadMarksUnavailableVulnerabilityCollection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/scans":
+			writeJSON(t, w, []map[string]any{{"id": 6142, "repository_id": 7, "status": "completed"}})
+		case "/api/v1/repositories":
+			writeJSON(t, w, []map[string]any{{"id": 7, "owner": "WriterInternal", "name": "Archetype"}})
+		case "/api/v1/scans/6142/vulnerabilities":
+			http.Error(w, "scan result expired", http.StatusBadRequest)
+		case "/api/v1/repositories/7/knowledge":
+			writeJSON(t, w, map[string]any{"entries": []map[string]any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].GetKind() != "archetype.scan" {
+		t.Fatalf("events = %#v, want one preserved scan event", pull.Events)
+	}
+	if got := pull.Events[0].GetAttributes()["vulnerability_collection_state"]; got != "unavailable" {
+		t.Fatalf("vulnerability_collection_state = %q, want unavailable", got)
 	}
 }
 
