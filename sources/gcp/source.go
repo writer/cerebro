@@ -820,7 +820,7 @@ func getBytes(ctx context.Context, source *Source, settings settings, defaultBas
 	if source != nil && source.client != nil {
 		client = source.client
 	}
-	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{MaxAttempts: 1, MaxBodyBytes: maxBytes})
+	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{MaxBodyBytes: maxBytes})
 	if err != nil {
 		return nil, false, fmt.Errorf("request %s: %w", requestPath, err)
 	}
