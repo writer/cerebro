@@ -372,7 +372,12 @@ func containsUnallowlistedAPOCCall(upper string) bool {
 		"APOC.COLL.PARTITION",
 		"APOC.COLL.SPLIT",
 		"APOC.COLL.ZIPTOROWS",
-		"APOC.CONVERT.TOTREE",
+		"APOC.NEIGHBORS.ATHOP",
+		"APOC.NEIGHBORS.BYHOP",
+		"APOC.NEIGHBORS.TOHOP",
+		"APOC.PATH.EXPANDCONFIG",
+		"APOC.PATH.SUBGRAPHNODES",
+		"APOC.PATHS.TOJSONTREE",
 	} {
 		upper = strings.ReplaceAll(upper, "CALL "+procedure, "ALLOWED "+procedure)
 	}

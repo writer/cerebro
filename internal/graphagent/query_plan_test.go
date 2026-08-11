@@ -1297,7 +1297,7 @@ func TestOntologyMutationDiagnosticsCatchNonCanonicalDrafts(t *testing.T) {
 		},
 		{
 			name:   "unsupported apoc call",
-			cypher: "MATCH (f:Entity) CALL apoc.path.expandConfig(f, {}) YIELD path RETURN path LIMIT 10",
+			cypher: "MATCH (f:Entity) CALL apoc.algo.dijkstra(f, f, 'RELATION', 'weight') YIELD path RETURN path LIMIT 10",
 			want:   "apoc_not_allowed",
 		},
 		{

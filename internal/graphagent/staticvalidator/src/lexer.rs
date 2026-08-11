@@ -2,6 +2,7 @@
 pub(crate) enum TokenKind {
     Identifier,
     EscapedIdentifier,
+    String,
     Number,
     Symbol,
     Parameter,
@@ -80,7 +81,12 @@ pub(crate) fn lex_cypher(query: &str) -> Vec<Token> {
         if is_whitespace(ch) {
             i += 1;
         } else if ch == b'\'' || ch == b'"' {
-            i = skip_quoted_literal(bytes, i, ch) + 1;
+            let (text, end) = quoted_literal_token(bytes, i, ch);
+            tokens.push(Token {
+                kind: TokenKind::String,
+                text,
+            });
+            i = end + 1;
         } else if ch == b'`' {
             let (text, end) = escaped_identifier_token(bytes, i);
             tokens.push(Token {
@@ -136,6 +142,32 @@ pub(crate) fn lex_cypher(query: &str) -> Vec<Token> {
         }
     }
     tokens
+}
+
+fn quoted_literal_token(query: &[u8], start: usize, quote: u8) -> (String, usize) {
+    let mut output = Vec::new();
+    let mut i = start + 1;
+    while i < query.len() {
+        if query[i] == b'\\' && i + 1 < query.len() {
+            output.push(query[i + 1]);
+            i += 2;
+            continue;
+        }
+        if query[i] == quote {
+            if i + 1 < query.len() && query[i + 1] == quote {
+                output.push(quote);
+                i += 2;
+                continue;
+            }
+            return (String::from_utf8_lossy(&output).into_owned(), i);
+        }
+        output.push(query[i]);
+        i += 1;
+    }
+    (
+        String::from_utf8_lossy(&output).into_owned(),
+        query.len().saturating_sub(1),
+    )
 }
 
 pub(crate) fn escaped_identifier_token(query: &[u8], start: usize) -> (String, usize) {

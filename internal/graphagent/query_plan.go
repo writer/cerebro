@@ -107,7 +107,7 @@ type conversionResult struct {
 var (
 	upperRelationPattern        = regexp.MustCompile(`:\s*([A-Z][A-Z0-9_]+)\b`)
 	nonEntityLabelPattern       = regexp.MustCompile(`\([^){}]*:\s*(Finding|FINDING|finding|repo|repository|identity|connector)\b`)
-	unsupportedAPOCUsagePattern = regexp.MustCompile(`(?i)\bapoc\.(?:trigger|periodic|cypher|custom|load|export|import|schema|refactor|create|merge|atomic|lock|jobs|config|warmup|systemdb|path|meta)\.[A-Za-z0-9_.]+\s*\(|\bapoc\.util\.sleep\s*\(`)
+	unsupportedAPOCUsagePattern = regexp.MustCompile(`(?i)\bapoc\.(?:trigger|periodic|cypher|custom|load|export|import|schema|refactor|create|merge|atomic|lock|jobs|config|warmup|systemdb|meta|algo)\.[A-Za-z0-9_.]+\s*\(|\bapoc\.util\.sleep\s*\(`)
 )
 
 func convertDraftToQuery(request AskRequest, draft *DraftResponse) conversionResult {
