@@ -25,12 +25,9 @@ const MCP_TOOLSETS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_TOOLSETS";
 const MCP_OBSERVE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_OBSERVE_TOOLS";
 const MCP_PROPOSE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_PROPOSE_TOOLS";
 const MCP_ACTUATE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS";
-const GRAPH_REASON_TOOL: &str = "cerebro.graph.reason";
 const MAX_MCP_TOOLS: usize = 256;
 const MAX_SCHEMA_BYTES: usize = 8 * 1024;
 const MAX_MCP_RESPONSE_BYTES: usize = 1024 * 1024;
-const MAX_GRAPH_REASON_HISTORY_ITEMS: usize = 12;
-const MAX_GRAPH_REASON_HISTORY_ITEM_BYTES: usize = 4 * 1024;
 const SEMANTIC_EVIDENCE_META_KEY: &str = "cerebro.semantic_evidence";
 const CAPABILITY_SELECTION_PREFIX: &str = "capability-selection-v1";
 
@@ -297,7 +294,7 @@ impl McpAgentTools {
                     "method": "tools/call",
                     "params": {
                         "name": tool.mcp_name,
-                        "arguments": tool_arguments(request, &tool.mcp_name, &call.input),
+                        "arguments": &call.input,
                     },
                 }),
             )
@@ -353,7 +350,7 @@ impl McpAgentTools {
             .get("structuredContent")
             .cloned()
             .unwrap_or_else(|| result.clone());
-        let normalized = normalize_tool_result(&tool.mcp_name, data, is_error);
+        let normalized = normalize_tool_result(data, is_error);
         if tool.descriptor.authority_class == ToolAuthorityClass::Actuate
             && normalized.state != ToolResultState::Succeeded
         {
@@ -437,42 +434,7 @@ struct NormalizedToolResult {
     blocker: Option<String>,
 }
 
-fn tool_arguments(request: &AgentTurnRequest, tool_name: &str, input: &Value) -> Value {
-    let mut arguments = input.clone();
-    if tool_name != GRAPH_REASON_TOOL {
-        return arguments;
-    }
-    let Some(arguments) = arguments.as_object_mut() else {
-        return arguments;
-    };
-    let history = request
-        .history
-        .iter()
-        .rev()
-        .take(MAX_GRAPH_REASON_HISTORY_ITEMS)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .map(|message| {
-            json!({
-                "role": message.role,
-                "content": truncate_utf8(
-                    message.content.trim(),
-                    MAX_GRAPH_REASON_HISTORY_ITEM_BYTES,
-                ),
-            })
-        })
-        .collect::<Vec<_>>();
-    if !history.is_empty() {
-        arguments.insert("history".into(), Value::Array(history));
-    }
-    Value::Object(arguments.clone())
-}
-
-fn normalize_tool_result(tool_name: &str, data: Value, is_error: bool) -> NormalizedToolResult {
-    if tool_name == GRAPH_REASON_TOOL {
-        return normalize_graph_reason_result(data, is_error);
-    }
+fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
     let declared_state = data.get("state").and_then(Value::as_str);
     let state = if is_error || declared_state == Some("blocked") {
         ToolResultState::Failed
@@ -488,94 +450,6 @@ fn normalize_tool_result(tool_name: &str, data: Value, is_error: bool) -> Normal
     }
 }
 
-fn normalize_graph_reason_result(data: Value, is_error: bool) -> NormalizedToolResult {
-    let refusal_code = data
-        .get("unsupported_query")
-        .filter(|value| !value.is_null())
-        .and_then(|value| value.get("code"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if is_error || refusal_code.is_some() {
-        return blocked_graph_reason_result(refusal_code.unwrap_or("unsupported_query"));
-    }
-
-    let validation = data.get("citation_validation");
-    let citations_ok = validation
-        .and_then(|value| value.get("ok"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let row_urn_count = validation
-        .and_then(|value| value.get("row_urn_count"))
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-    let referenced_urn_count = validation
-        .and_then(|value| value.get("referenced_urn_count"))
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-    let answer = data
-        .get("answer_markdown")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if !citations_ok
-        || row_urn_count == 0
-        || referenced_urn_count == 0
-        || referenced_urn_count > row_urn_count
-        || answer.is_none()
-    {
-        return blocked_graph_reason_result("grounding_validation_failed");
-    }
-
-    NormalizedToolResult {
-        state: ToolResultState::Succeeded,
-        data: json!({
-            "state": "complete",
-            "answer_markdown": answer.expect("validated above"),
-            "citation_validation": {
-                "ok": true,
-                "referenced_urn_count": referenced_urn_count,
-                "row_urn_count": row_urn_count,
-            },
-        }),
-        blocker: None,
-    }
-}
-
-fn blocked_graph_reason_result(reason_code: &str) -> NormalizedToolResult {
-    NormalizedToolResult {
-        state: ToolResultState::Failed,
-        data: json!({
-            "state": "blocked",
-            "reason_code": bounded_reason_code(reason_code),
-        }),
-        blocker: Some(
-            "Graph reasoning did not produce a grounded answer. Continue with other bounded evidence capabilities."
-                .into(),
-        ),
-    }
-}
-
-fn bounded_reason_code(value: &str) -> String {
-    value
-        .trim()
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
-        .take(64)
-        .collect()
-}
-
-fn truncate_utf8(value: &str, max_bytes: usize) -> String {
-    if value.len() <= max_bytes {
-        return value.to_owned();
-    }
-    let mut boundary = max_bytes;
-    while boundary > 0 && !value.is_char_boundary(boundary) {
-        boundary -= 1;
-    }
-    value[..boundary].to_owned()
-}
-
 fn bind_tools(
     listed: Vec<McpToolWire>,
     observe_tools: &BTreeSet<String>,
@@ -589,6 +463,11 @@ fn bind_tools(
             || !tool.name.bytes().all(valid_tool_name_byte)
         {
             return Err("MCP tool catalog contains an invalid tool name".into());
+        }
+        // The Rust Slack loop owns reasoning. Binding this tool would create a
+        // second model loop in the Go MCP service and bypass Rust's session plan.
+        if tool.name == "cerebro.graph.reason" {
+            continue;
         }
         let read_only = annotation_bool(&tool.annotations, "readOnlyHint");
         let (authority_class, effect_class) = if actuate_tools.contains(&tool.name) {
@@ -940,12 +819,9 @@ fn hex_digest(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use axum::{Json, Router, http::StatusCode, routing::post};
-    use cerebro_agent_runtime::{
-        ConversationMessage, ConversationRole,
-        session::{
-            AGENT_SEMANTIC_EVIDENCE_V1, AuthorityBindingState, AuthorityDuty, EvidenceAssertion,
-            SemanticEvidenceAssertion,
-        },
+    use cerebro_agent_runtime::session::{
+        AGENT_SEMANTIC_EVIDENCE_V1, AuthorityBindingState, AuthorityDuty, EvidenceAssertion,
+        SemanticEvidenceAssertion,
     };
 
     #[test]
@@ -1286,97 +1162,26 @@ mod tests {
     }
 
     #[test]
-    fn graph_reason_carries_bounded_thread_history_into_the_inner_ask() {
-        let mut request = turn_request();
-        request.history = vec![
-            ConversationMessage {
-                role: ConversationRole::User,
-                content: "Map the control to its expected evidence.".into(),
-            },
-            ConversationMessage {
-                role: ConversationRole::Assistant,
-                content: "I found the current control record.".into(),
-            },
-        ];
+    fn rust_agent_never_binds_the_nested_go_graph_reasoning_agent() {
+        let tools = bind_tools(
+            vec![
+                tool("cerebro.graph.reason", true),
+                tool("cerebro.risk.summary", true),
+                tool("cerebro.findings.search", true),
+            ],
+            &BTreeSet::from([
+                "cerebro.graph.reason".into(),
+                "cerebro.risk.summary".into(),
+                "cerebro.findings.search".into(),
+            ]),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        )
+        .unwrap();
 
-        let arguments = tool_arguments(
-            &request,
-            GRAPH_REASON_TOOL,
-            &json!({"question": "Continue the lineage analysis."}),
-        );
-
-        assert_eq!(arguments["history"].as_array().unwrap().len(), 2);
-        assert_eq!(arguments["history"][0]["role"], "user");
-        assert_eq!(
-            arguments["history"][1]["content"],
-            "I found the current control record."
-        );
-    }
-
-    #[test]
-    fn graph_reason_refusals_are_not_promoted_to_complete_evidence() {
-        let normalized = normalize_tool_result(
-            GRAPH_REASON_TOOL,
-            json!({
-                "answer_markdown": "row-expanding query mechanics were rejected",
-                "unsupported_query": {
-                    "code": "validator_refusal",
-                    "reason": "internal query detail"
-                }
-            }),
-            false,
-        );
-
-        assert_eq!(normalized.state, ToolResultState::Failed);
-        assert_eq!(normalized.data["reason_code"], "validator_refusal");
-        assert!(normalized.data.get("answer_markdown").is_none());
-        assert!(
-            normalized
-                .blocker
-                .as_deref()
-                .unwrap()
-                .contains("other bounded evidence capabilities")
-        );
-    }
-
-    #[test]
-    fn graph_reason_requires_the_same_grounding_contract_as_the_slack_ask_path() {
-        let rejected = normalize_tool_result(
-            GRAPH_REASON_TOOL,
-            json!({
-                "answer_markdown": "An answer without source-backed citations.",
-                "citation_validation": {
-                    "ok": true,
-                    "referenced_urn_count": 0,
-                    "row_urn_count": 0
-                }
-            }),
-            false,
-        );
-        assert_eq!(rejected.state, ToolResultState::Failed);
-        assert_eq!(rejected.data["reason_code"], "grounding_validation_failed");
-
-        let accepted = normalize_tool_result(
-            GRAPH_REASON_TOOL,
-            json!({
-                "answer_markdown": "The current evidence supports the scoped conclusion.",
-                "citation_validation": {
-                    "ok": true,
-                    "referenced_urn_count": 1,
-                    "row_urn_count": 2
-                },
-                "cypher": {"cypher": "internal query"},
-                "rows": [{"tenant_id": "hidden"}]
-            }),
-            false,
-        );
-        assert_eq!(accepted.state, ToolResultState::Succeeded);
-        assert_eq!(
-            accepted.data["answer_markdown"],
-            "The current evidence supports the scoped conclusion."
-        );
-        assert!(accepted.data.get("cypher").is_none());
-        assert!(accepted.data.get("rows").is_none());
+        assert!(!tools.contains_key("mcp.cerebro.graph.reason"));
+        assert!(tools.contains_key("mcp.cerebro.risk.summary"));
+        assert!(tools.contains_key("mcp.cerebro.findings.search"));
     }
 
     #[tokio::test]
