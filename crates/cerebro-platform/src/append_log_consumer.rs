@@ -442,10 +442,14 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
             }
             Err(error) => {
                 if let Some(reason) =
-                    replay_legacy_decode_skip(config.mode, subject_source, subject_family, &error)
+                    legacy_decode_skip(config.mode, subject_source, subject_family, &error)
                 {
+                    let phase = match config.mode {
+                        ConsumerMode::Forward => "forward",
+                        ConsumerMode::Replay => "replay",
+                    };
                     eprintln!(
-                        "organizational append-log replay compatibility skip subject={subject} reason={reason}"
+                        "organizational append-log {phase} compatibility skip subject={subject} reason={reason}"
                     );
                     record_progress(
                         &runtime,
@@ -955,15 +959,12 @@ fn decode_event(
     }
 }
 
-fn replay_legacy_decode_skip(
+fn legacy_decode_skip(
     mode: ConsumerMode,
     source_id: &str,
     family_id: &str,
     error: &EventDecodeError,
 ) -> Option<&'static str> {
-    if mode != ConsumerMode::Replay {
-        return None;
-    }
     match (source_id, family_id, error) {
         (
             "asset",
@@ -971,7 +972,9 @@ fn replay_legacy_decode_skip(
             EventDecodeError::Boundary(AppendLogDecodeError::Missing(
                 "a source-owned kind in source.family form",
             )),
-        ) => Some("legacy_missing_source_owned_kind"),
+        ) if matches!(mode, ConsumerMode::Forward | ConsumerMode::Replay) => {
+            Some("legacy_missing_source_owned_kind")
+        }
         (
             "gcp",
             "iam_role_assignment" | "effective_permission",
@@ -981,12 +984,16 @@ fn replay_legacy_decode_skip(
             "aws",
             "public_endpoint",
             EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(message)),
-        ) if message == "observation id is invalid" => Some("legacy_invalid_observation_id"),
+        ) if mode == ConsumerMode::Replay && message == "observation id is invalid" => {
+            Some("legacy_invalid_observation_id")
+        }
         (
             "cerebro",
             "health.jetstream_canary",
             EventDecodeError::CatalogOwnedWithoutEnvelope { .. },
-        ) => Some("legacy_catalog_canary_without_source_envelope"),
+        ) if matches!(mode, ConsumerMode::Forward | ConsumerMode::Replay) => {
+            Some("legacy_catalog_canary_without_source_envelope")
+        }
         _ => None,
     }
 }
@@ -1227,7 +1234,7 @@ mod tests {
     }
 
     #[test]
-    fn replay_skips_only_observed_legacy_decode_shapes() {
+    fn compatibility_skips_only_observed_legacy_decode_shapes() {
         let cases = [
             (
                 "asset",
@@ -1272,23 +1279,31 @@ mod tests {
         ];
         for (source, family, error, reason) in cases {
             assert_eq!(
-                replay_legacy_decode_skip(ConsumerMode::Replay, source, family, &error),
+                legacy_decode_skip(ConsumerMode::Replay, source, family, &error),
                 Some(reason)
             );
-            assert_eq!(
-                replay_legacy_decode_skip(ConsumerMode::Forward, source, family, &error),
+            let forward_reason = if matches!(
+                (source, family),
+                ("asset", "data_sensitivity") | ("cerebro", "health.jetstream_canary")
+            ) {
+                Some(reason)
+            } else {
                 None
+            };
+            assert_eq!(
+                legacy_decode_skip(ConsumerMode::Forward, source, family, &error),
+                forward_reason
             );
         }
     }
 
     #[test]
-    fn replay_legacy_decode_skip_does_not_widen_the_boundary() {
+    fn legacy_decode_skip_does_not_widen_the_boundary() {
         let invalid_observation = EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
             "observation id is invalid".to_owned(),
         ));
         assert_eq!(
-            replay_legacy_decode_skip(
+            legacy_decode_skip(
                 ConsumerMode::Replay,
                 "gcp",
                 "project_bindings",
@@ -1297,7 +1312,7 @@ mod tests {
             None
         );
         assert_eq!(
-            replay_legacy_decode_skip(
+            legacy_decode_skip(
                 ConsumerMode::Replay,
                 "aws",
                 "public_endpoint",
@@ -1308,7 +1323,7 @@ mod tests {
             None
         );
         assert_eq!(
-            replay_legacy_decode_skip(
+            legacy_decode_skip(
                 ConsumerMode::Replay,
                 "asset",
                 "data_sensitivity",
@@ -1317,7 +1332,7 @@ mod tests {
             None
         );
         assert_eq!(
-            replay_legacy_decode_skip(
+            legacy_decode_skip(
                 ConsumerMode::Replay,
                 "cerebro",
                 "health.jetstream_canary",
