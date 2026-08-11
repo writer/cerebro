@@ -60,7 +60,12 @@ var readOnlyAPOCProcedures = map[string]struct{}{
 	"apoc.coll.partition":      {},
 	"apoc.coll.split":          {},
 	"apoc.coll.ziptorows":      {},
-	"apoc.convert.totree":      {},
+	"apoc.neighbors.athop":     {},
+	"apoc.neighbors.byhop":     {},
+	"apoc.neighbors.tohop":     {},
+	"apoc.path.expandconfig":   {},
+	"apoc.path.subgraphnodes":  {},
+	"apoc.paths.tojsontree":    {},
 }
 
 // Store is a Neo4j/Aura-backed graph projection store implementation.
@@ -2534,6 +2539,9 @@ func validateReadOnlyCypher(query string) error {
 	code := stripCypherNonCode(query)
 	if escapedProcedureCallPattern.MatchString(stripCypherNonCodePreservingIdentifiers(query)) {
 		return errors.New("read cypher must use an unescaped allowlisted procedure name")
+	}
+	if err := validateBoundedAPOCProcedureCalls(query); err != nil {
+		return err
 	}
 	code = maskReadOnlyAPOCProcedureCalls(code)
 	if match := mutatingCypherPattern.FindString(code); match != "" {

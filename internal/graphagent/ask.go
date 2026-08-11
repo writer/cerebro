@@ -1364,5 +1364,6 @@ const graphAgentGuardrail = `Rules:
 - Generate read-only Cypher only.
 - Do not use CREATE, MERGE, DELETE, REMOVE, SET, DROP, FOREACH, LOAD CSV, USING PERIODIC, apoc.trigger, or apoc.periodic.
 - APOC is limited to the runtime's read-only function and bounded transformation-procedure allowlist; do not use APOC for I/O, dynamic Cypher, scheduling, schema changes, or graph mutation.
+- For graph traversal, use apoc.path.expandConfig or apoc.path.subgraphNodes with a literal config: relationshipFilter may contain only RELATION with an optional direction, labelFilter must be '+Entity', minLevel and maxLevel must be literal integers with maxLevel <= 6, bfs and filterStartNode must be true, uniqueness must be 'NODE_GLOBAL', and limit must be a literal <= the query LIMIT. Guard every yielded node and relationship with tenant_id = $tenant_id before WITH or RETURN. Raw apoc.algo shortest-path procedures are not allowed; rank paths from the bounded result set with native Cypher expressions.
 - Always include a numeric LIMIT <= 100.
 - Use $tenant_id and, when relevant, $scope_urn parameters instead of literal tenant or entity values.`

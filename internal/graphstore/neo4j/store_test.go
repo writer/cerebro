@@ -208,6 +208,8 @@ func TestValidateReadOnlyCypherRejectsMutatingClauses(t *testing.T) {
 		"CALL db.labels()",
 		"CALL apoc.periodic.iterate('MATCH (n)', 'RETURN n', {})",
 		"CALL apoc.path.expandConfig(n, {}) YIELD path RETURN path",
+		"CALL apoc.algo.dijkstra(n, m, 'RELATION', 'weight') YIELD path RETURN path",
+		"CALL apoc.convert.toTree([n]) YIELD value RETURN value",
 		"CALL `apoc.coll.elements`([], 1, 0) YIELD value RETURN value",
 	} {
 		if err := validateReadOnlyCypher(query); err == nil {
@@ -223,10 +225,45 @@ func TestValidateReadOnlyCypherRejectsMutatingClauses(t *testing.T) {
 		`MATCH (n) RETURN "DELETE stale permissions" AS remediation`,
 		"MATCH (n) RETURN `CREATE` AS quoted_identifier",
 		"MATCH (n) CALL apoc.coll.elements(n.items, 25, 0) YIELD value RETURN value",
-		"MATCH (n) CALL/* read transform */apoc.convert.toTree([n]) YIELD value RETURN value",
+		"MATCH (n) CALL/* read transform */apoc.paths.toJsonTree([n]) YIELD value RETURN value",
 	} {
 		if err := validateReadOnlyCypher(query); err != nil {
 			t.Fatalf("validateReadOnlyCypher(%q) error = %v, want nil", query, err)
+		}
+	}
+}
+
+func TestValidateReadOnlyCypherAllowsBoundedTenantScopedAPOCTraversal(t *testing.T) {
+	for _, query := range []string{
+		"MATCH (start:Entity {tenant_id: $tenant_id}) CALL apoc.path.expandConfig(start, {relationshipFilter: 'RELATION>', labelFilter: '+Entity', minLevel: 1, maxLevel: 6, bfs: true, uniqueness: 'NODE_GLOBAL', filterStartNode: true, limit: 25}) YIELD path WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id) RETURN path LIMIT 25",
+		"MATCH (start:Entity {tenant_id: $tenant_id}) CALL apoc.path.subgraphNodes(start, {relationshipFilter: 'RELATION', labelFilter: '+Entity', minLevel: 0, maxLevel: 4, bfs: true, uniqueness: 'NODE_GLOBAL', filterStartNode: true, limit: 50}) YIELD node WHERE node.tenant_id = $tenant_id WITH node RETURN node LIMIT 50",
+		"MATCH (start:Entity {tenant_id: $tenant_id}) CALL apoc.neighbors.athop(start, 'RELATION>', 3) YIELD node WHERE node.tenant_id = $tenant_id RETURN node LIMIT 25",
+		"MATCH (start:Entity {tenant_id: $tenant_id}) CALL apoc.neighbors.byhop(start, '<RELATION', 2) YIELD nodes WHERE all(node IN nodes WHERE node.tenant_id = $tenant_id) RETURN nodes LIMIT 25",
+	} {
+		if err := validateReadOnlyCypher(query); err != nil {
+			t.Fatalf("validateReadOnlyCypher(%q) error = %v, want nil", query, err)
+		}
+	}
+}
+
+func TestValidateReadOnlyCypherRejectsUnsafeAPOCTraversalVariants(t *testing.T) {
+	base := "MATCH (start:Entity {tenant_id: $tenant_id}) CALL apoc.path.expandConfig(start, {%s}) YIELD path WHERE %s RETURN path LIMIT 25"
+	guard := "all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id)"
+	validConfig := "relationshipFilter: 'RELATION>', labelFilter: '+Entity', minLevel: 1, maxLevel: 6, bfs: true, uniqueness: 'NODE_GLOBAL', filterStartNode: true, limit: 25"
+	for _, query := range []string{
+		fmt.Sprintf(base, strings.Replace(validConfig, "maxLevel: 6", "maxLevel: 7", 1), guard),
+		fmt.Sprintf(base, strings.Replace(validConfig, "maxLevel: 6", "maxLevel: $hops", 1), guard),
+		fmt.Sprintf(base, strings.Replace(validConfig, "limit: 25", "limit: $row_limit", 1), guard),
+		fmt.Sprintf(base, strings.Replace(validConfig, "RELATION>", "*", 1), guard),
+		fmt.Sprintf(base, strings.Replace(validConfig, "+Entity", "+Finding", 1), guard),
+		fmt.Sprintf(base, strings.Replace(validConfig, "NODE_GLOBAL", "RELATIONSHIP_GLOBAL", 1), guard),
+		fmt.Sprintf(base, validConfig, "all(node IN nodes(path) WHERE node.tenant_id = $tenant_id)"),
+		fmt.Sprintf(base, validConfig, guard+" OR true"),
+		"MATCH (start:Entity {tenant_id: $tenant_id}) CALL apoc.neighbors.athop.count(start, 'RELATION', 2) YIELD value RETURN value LIMIT 25",
+		"MATCH (start:Entity {tenant_id: $tenant_id}) CALL apoc.neighbors.tohop(start, 'RELATION', 7) YIELD node WHERE node.tenant_id = $tenant_id RETURN node LIMIT 25",
+	} {
+		if err := validateReadOnlyCypher(query); err == nil {
+			t.Fatalf("validateReadOnlyCypher(%q) error = nil, want non-nil", query)
 		}
 	}
 }

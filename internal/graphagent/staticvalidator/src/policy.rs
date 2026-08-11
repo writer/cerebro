@@ -1,4 +1,4 @@
-use crate::apoc::{is_safe_function, is_safe_procedure};
+use crate::apoc::{is_safe_function, is_safe_procedure, is_safe_procedure_invocation};
 use crate::lexer::{Token, TokenKind, lex_cypher, scrub_cypher};
 use crate::syntax::{
     all_node_patterns_tenant_scoped, function_name_token, has_variable_length_relationship_pattern,
@@ -29,7 +29,7 @@ pub fn validate(query: &str, max_rows: u64) -> Validation {
     if has_forbidden_apoc_call(&tokens) {
         return Validation::refuse(Decision::UnsafeApoc);
     }
-    if has_unsupported_apoc_invocation(&tokens) {
+    if has_unsupported_apoc_invocation(&tokens, max_rows) {
         return Validation::refuse(Decision::ApocNotAllowed);
     }
     if has_unsupported_procedure_call(&tokens) {
@@ -81,7 +81,7 @@ fn has_forbidden_apoc_call(tokens: &[Token]) -> bool {
     })
 }
 
-fn has_unsupported_apoc_invocation(tokens: &[Token]) -> bool {
+fn has_unsupported_apoc_invocation(tokens: &[Token], max_rows: u64) -> bool {
     tokens.iter().enumerate().any(|(i, token)| {
         if !function_name_token(token)
             || !token.text.to_ascii_lowercase().starts_with("apoc.")
@@ -92,7 +92,7 @@ fn has_unsupported_apoc_invocation(tokens: &[Token]) -> bool {
         if i.checked_sub(1)
             .is_some_and(|previous| keyword_token_at(tokens, previous, "CALL"))
         {
-            !is_safe_procedure(&token.text)
+            !is_safe_procedure_invocation(tokens, i, max_rows)
         } else {
             !is_safe_function(&token.text)
         }
@@ -352,6 +352,10 @@ mod tests {
             "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.text.join(e.tags, ',') AS tags LIMIT 25",
             "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.coll.elements(e.tags, 25, 0) YIELD value RETURN value LIMIT 25",
             "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.node.degree.out(e, 'RELATION>') AS degree LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.path.elements(apoc.path.create(e, [], e)) AS elements LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.paths.toJsonTree([e]) YIELD value RETURN value LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.path.expandConfig(e, {relationshipFilter:'RELATION>', labelFilter:'+Entity', minLevel:1, maxLevel:6, bfs:true, uniqueness:'NODE_GLOBAL', filterStartNode:true, limit:25}) YIELD path WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id) RETURN path LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.neighbors.byhop(e, '<RELATION', 2) YIELD nodes WHERE all(node IN nodes WHERE node.tenant_id = $tenant_id) RETURN nodes LIMIT 25",
         ];
         for query in accepted {
             assert_eq!(validate(query, 100).decision, Decision::Allow, "{query}");
@@ -379,6 +383,22 @@ mod tests {
             ),
             (
                 "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.path.expandConfig(e, {}) YIELD path RETURN path LIMIT 1",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.path.expandConfig(e, {relationshipFilter:'RELATION>', labelFilter:'+Entity', minLevel:1, maxLevel:7, bfs:true, uniqueness:'NODE_GLOBAL', filterStartNode:true, limit:25}) YIELD path WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id) RETURN path LIMIT 25",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.path.expandConfig(e, {relationshipFilter:'RELATION>', labelFilter:'+Entity', minLevel:1, maxLevel:6, bfs:true, uniqueness:'NODE_GLOBAL', filterStartNode:true, limit:25}) YIELD path WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id) OR true RETURN path LIMIT 25",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.algo.dijkstra(e, e, 'RELATION', 'weight') YIELD path RETURN path LIMIT 1",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.convert.toTree([e]) YIELD value RETURN value LIMIT 1",
                 Decision::ApocNotAllowed,
             ),
             (

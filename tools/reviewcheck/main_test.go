@@ -34,7 +34,12 @@ func TestSuspiciousCypherTokenAllowsBoundedAPOCProcedure(t *testing.T) {
 		t.Fatalf("suspiciousCypherToken() = %q, want no finding", got)
 	}
 
-	query = "MATCH (n) CALL apoc.path.expandConfig(n, {}) YIELD path RETURN path LIMIT 25"
+	query = "MATCH (n) CALL apoc.path.expandConfig(n, {relationshipFilter:'RELATION>', labelFilter:'+Entity', minLevel:1, maxLevel:6, bfs:true, uniqueness:'NODE_GLOBAL', filterStartNode:true, limit:25}) YIELD path RETURN path LIMIT 25"
+	if got := suspiciousCypherToken(query); got != "" {
+		t.Fatalf("suspiciousCypherToken() = %q, want no finding", got)
+	}
+
+	query = "MATCH (n) CALL apoc.algo.dijkstra(n, n, 'RELATION', 'weight') YIELD path RETURN path LIMIT 25"
 	if got := suspiciousCypherToken(query); got != "CALL APOC" {
 		t.Fatalf("suspiciousCypherToken() = %q, want CALL APOC", got)
 	}
