@@ -29,12 +29,12 @@ func Evaluate(input *cerebrov1.AIEgressPolicyInput) (*cerebrov1.AIEgressPolicyDe
 		return nil, fmt.Errorf("%w: enforcement_layer is required", ErrInvalidInput)
 	}
 	if err := input.GetEvaluatedAt().CheckValid(); err != nil {
-		return nil, fmt.Errorf("%w: evaluated_at: %v", ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: evaluated_at: %w", ErrInvalidInput, err)
 	}
 	evaluatedAt := input.GetEvaluatedAt().AsTime()
 	hostname, err := canonicalHostname(input.GetDestination().GetHostname())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
 	decision := baseDecision(input, hostname)
 	registry := input.GetRegistry()
@@ -106,10 +106,10 @@ func validateRegistry(registry *cerebrov1.AIEgressRegistrySnapshot) error {
 		return fmt.Errorf("%w: registry published_at and valid_until are required", ErrInvalidInput)
 	}
 	if err := registry.GetPublishedAt().CheckValid(); err != nil {
-		return fmt.Errorf("%w: registry published_at: %v", ErrInvalidInput, err)
+		return fmt.Errorf("%w: registry published_at: %w", ErrInvalidInput, err)
 	}
 	if err := registry.GetValidUntil().CheckValid(); err != nil {
-		return fmt.Errorf("%w: registry valid_until: %v", ErrInvalidInput, err)
+		return fmt.Errorf("%w: registry valid_until: %w", ErrInvalidInput, err)
 	}
 	if !registry.GetValidUntil().AsTime().After(registry.GetPublishedAt().AsTime()) {
 		return fmt.Errorf("%w: registry valid_until must follow published_at", ErrInvalidInput)
@@ -128,7 +128,7 @@ func validateRegistry(registry *cerebrov1.AIEgressRegistrySnapshot) error {
 		}
 		for _, hostname := range entry.GetExactHostnames() {
 			if _, err := canonicalHostname(hostname); err != nil {
-				return fmt.Errorf("%w: registry entry %q: %v", ErrInvalidInput, entry.GetId(), err)
+				return fmt.Errorf("%w: registry entry %q: %w", ErrInvalidInput, entry.GetId(), err)
 			}
 		}
 		for _, port := range entry.GetPorts() {
@@ -143,12 +143,12 @@ func validateRegistry(registry *cerebrov1.AIEgressRegistrySnapshot) error {
 		}
 		if entry.GetValidFrom() != nil {
 			if err := entry.GetValidFrom().CheckValid(); err != nil {
-				return fmt.Errorf("%w: registry entry %q valid_from: %v", ErrInvalidInput, entry.GetId(), err)
+				return fmt.Errorf("%w: registry entry %q valid_from: %w", ErrInvalidInput, entry.GetId(), err)
 			}
 		}
 		if entry.GetValidUntil() != nil {
 			if err := entry.GetValidUntil().CheckValid(); err != nil {
-				return fmt.Errorf("%w: registry entry %q valid_until: %v", ErrInvalidInput, entry.GetId(), err)
+				return fmt.Errorf("%w: registry entry %q valid_until: %w", ErrInvalidInput, entry.GetId(), err)
 			}
 		}
 		if entry.GetValidFrom() != nil && entry.GetValidUntil() != nil && !entry.GetValidUntil().AsTime().After(entry.GetValidFrom().AsTime()) {
