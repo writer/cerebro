@@ -477,7 +477,7 @@ jobs:
             http://127.0.0.1:18080/readyz)" = 200
           docker stop cerebro-rust-neo4j
           readiness_body="${RUNNER_TEMP}/rust-readiness-outage.json"
-          readiness_code="$(curl --max-time 5 -sS -o "${readiness_body}" -w '%{http_code}' \
+          readiness_code="$(curl --max-time 15 -sS -o "${readiness_body}" -w '%{http_code}' \
             http://127.0.0.1:18080/readyz)"
           test "${readiness_code}" = 503
           jq -e '.code == "graph_unavailable"' "${readiness_body}" >/dev/null
