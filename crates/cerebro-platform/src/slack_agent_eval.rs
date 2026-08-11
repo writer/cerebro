@@ -76,7 +76,6 @@ const CODE_OWNED_DOTTED_IDENTIFIERS: &[&str] = &[
     "capability.overview",
     "capability.search",
     "graph.expand",
-    "graph.reason",
     "graph.search",
     "mcp.cerebro.action.plan",
     "mcp.cerebro.assets.search",
@@ -1933,9 +1932,7 @@ impl AgentTools for EvalTools {
         } else {
             autonomy_fixture.as_ref().map_or_else(
                 || {
-                    if call.tool_id == "graph.reason" {
-                        ToolResultState::Failed
-                    } else if retained_context_has_more
+                    if retained_context_has_more
                         || data.get("coverage").and_then(Value::as_str) == Some("partial")
                     {
                         ToolResultState::Partial
@@ -2411,10 +2408,6 @@ fn generic_evaluation_fixture(tool_id: &str) -> EvaluationFixture {
             summary: "The source catalog declares governed read surfaces but does not establish live credentials, provider-side permissions, or current collected coverage.".into(),
             data: json!({"authority": "declared collection contract", "proves_live_access": false}),
         },
-        "graph.reason" => EvaluationFixture {
-            summary: "The broad relationship reasoning operation could not produce a grounded result. Other bounded graph and domain reads remain available.".into(),
-            data: json!({"grounded": false, "operator_facing_gap": "broad relationship reasoning unavailable"}),
-        },
         "graph.search" | "graph.expand" => EvaluationFixture {
             summary: "The bounded tenant graph search returned current governed evidence for the requested scope without crossing the tenant boundary.".into(),
             data: json!({"current": true, "bounded": true, "tenant_isolated": true}),
@@ -2479,10 +2472,6 @@ fn descriptor(
         "graph.expand" => (
             "Inspect governed entity context",
             "Read bounded neighboring entities and assertions for one governed graph entity.",
-        ),
-        "graph.reason" => (
-            "Reason over governed graph evidence",
-            "Attempt bounded relationship reasoning over governed graph evidence after the relevant entities are identified.",
         ),
         "mcp.cerebro.findings.search" => (
             "Search current security findings",
@@ -5176,13 +5165,11 @@ fn conversation_behavior_runtime_passed(
                 ])
         }
         ConversationBehavior::ReasoningFailureRecovery => {
-            observations.iter().any(|observation| {
-                observation.tool_id == "graph.reason"
-                    && observation.state == ToolResultState::Failed
-            }) && observations.iter().any(|observation| {
-                observation.tool_id != "graph.reason"
-                    && observation.state == ToolResultState::Succeeded
-            })
+            succeeded("mcp.cerebro.findings.search")
+                && succeeded_any(&[
+                    "mcp.cerebro.risk.explain",
+                    "mcp.cerebro.investigation.context",
+                ])
         }
         ConversationBehavior::ScopeCorrection => succeeded_any(&[
             "source_runtime.inspect",
