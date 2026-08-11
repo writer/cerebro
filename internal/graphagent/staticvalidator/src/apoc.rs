@@ -457,7 +457,7 @@ fn single_integer(tokens: &[Token]) -> Option<u64> {
         .flatten()
 }
 
-fn call_arguments<'a>(tokens: &'a [Token], name_index: usize) -> Option<(Vec<&'a [Token]>, usize)> {
+fn call_arguments(tokens: &[Token], name_index: usize) -> Option<(Vec<&[Token]>, usize)> {
     if tokens.get(name_index + 1)?.text != "(" {
         return None;
     }
