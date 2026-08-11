@@ -50,6 +50,18 @@ RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`
 var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
 var errProjectionAssertionMigrationScopeRequired = errors.New("tenant_id and relations are required for projected link assertion migration")
 var mutatingCypherPattern = regexp.MustCompile(`(?i)\b(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|LOAD\s+CSV)\b|\bCALL\s+(DB|APOC)\.`)
+var procedureCallPattern = regexp.MustCompile(`(?i)\bCALL\s+([A-Za-z_][A-Za-z0-9_.]*)\s*\(`)
+var escapedProcedureCallPattern = regexp.MustCompile("(?i)\\bCALL\\s+`")
+
+// Keep this list in parity with SAFE_PROCEDURES in the Rust static validator.
+var readOnlyAPOCProcedures = map[string]struct{}{
+	"apoc.coll.elements":       {},
+	"apoc.coll.pairwithoffset": {},
+	"apoc.coll.partition":      {},
+	"apoc.coll.split":          {},
+	"apoc.coll.ziptorows":      {},
+	"apoc.convert.totree":      {},
+}
 
 // Store is a Neo4j/Aura-backed graph projection store implementation.
 type Store struct {
@@ -2519,13 +2531,45 @@ func consume(ctx context.Context, tx neo4jdriver.ManagedTransaction, query strin
 }
 
 func validateReadOnlyCypher(query string) error {
-	if match := mutatingCypherPattern.FindString(stripCypherNonCode(query)); match != "" {
+	code := stripCypherNonCode(query)
+	if escapedProcedureCallPattern.MatchString(stripCypherNonCodePreservingIdentifiers(query)) {
+		return errors.New("read cypher must use an unescaped allowlisted procedure name")
+	}
+	code = maskReadOnlyAPOCProcedureCalls(code)
+	if match := mutatingCypherPattern.FindString(code); match != "" {
 		return fmt.Errorf("read cypher must not contain mutating clause %q", strings.TrimSpace(match))
 	}
 	return nil
 }
 
+func maskReadOnlyAPOCProcedureCalls(query string) string {
+	masked := []byte(query)
+	for _, match := range procedureCallPattern.FindAllStringSubmatchIndex(query, -1) {
+		if len(match) < 4 || match[2] < 0 || match[3] < 0 {
+			continue
+		}
+		name := strings.ToLower(query[match[2]:match[3]])
+		if _, ok := readOnlyAPOCProcedures[name]; !ok {
+			continue
+		}
+		for index := match[0]; index < match[3]; index++ {
+			if masked[index] != '\n' && masked[index] != '\r' {
+				masked[index] = ' '
+			}
+		}
+	}
+	return string(masked)
+}
+
 func stripCypherNonCode(query string) string {
+	return stripCypherNonCodeWithIdentifiers(query, false)
+}
+
+func stripCypherNonCodePreservingIdentifiers(query string) string {
+	return stripCypherNonCodeWithIdentifiers(query, true)
+}
+
+func stripCypherNonCodeWithIdentifiers(query string, preserveIdentifiers bool) string {
 	var out strings.Builder
 	out.Grow(len(query))
 	for i := 0; i < len(query); {
@@ -2538,7 +2582,13 @@ func stripCypherNonCode(query string) string {
 			continue
 		}
 		switch query[i] {
-		case '\'', '"', '`':
+		case '`':
+			if preserveIdentifiers {
+				i = writeCypherQuoted(&out, query, i, query[i])
+			} else {
+				i = writeCypherMaskedQuoted(&out, query, i, query[i])
+			}
+		case '\'', '"':
 			i = writeCypherMaskedQuoted(&out, query, i, query[i])
 		default:
 			out.WriteByte(query[i])
@@ -2546,6 +2596,22 @@ func stripCypherNonCode(query string) string {
 		}
 	}
 	return out.String()
+}
+
+func writeCypherQuoted(out *strings.Builder, query string, start int, quote byte) int {
+	for i := start; i < len(query); i++ {
+		out.WriteByte(query[i])
+		if i == start || query[i] != quote {
+			continue
+		}
+		if i+1 < len(query) && query[i+1] == quote {
+			i++
+			out.WriteByte(query[i])
+			continue
+		}
+		return i + 1
+	}
+	return len(query)
 }
 
 func writeCypherMaskedUntilNewline(out *strings.Builder, query string, start int) int {

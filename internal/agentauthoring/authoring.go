@@ -148,7 +148,7 @@ func (s Service) DraftPolicyBundle(ctx context.Context, request PolicyBundleDraf
 		"graph_query": map[string]any{
 			"tenant_scope":  "every node pattern must use the Entity label and include tenant_id: $tenant_id inline, including later MATCH, UNION, subquery, and comprehension patterns",
 			"runtime_limit": "every LIMIT clause must be exactly LIMIT $row_limit; do not hardcode a numeric limit",
-			"bounded_path":  "use fixed directed relationships; variable-length traversal, APOC, procedures, UNWIND, range, and collect are forbidden",
+			"bounded_path":  "use fixed directed relationships; variable-length traversal, unallowlisted APOC, unallowlisted procedures, UNWIND, range, and collect are forbidden",
 		},
 		"grounding": map[string]any{
 			"input":         "source event attributes and projected entity and relation contracts",

@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 
+mod apoc;
 mod lexer;
 mod policy;
 mod syntax;

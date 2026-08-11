@@ -1363,5 +1363,6 @@ var graphAgentSchemaHint = canonicalGraphOntology.PromptHint()
 const graphAgentGuardrail = `Rules:
 - Generate read-only Cypher only.
 - Do not use CREATE, MERGE, DELETE, REMOVE, SET, DROP, FOREACH, LOAD CSV, USING PERIODIC, apoc.trigger, or apoc.periodic.
+- APOC is limited to the runtime's read-only function and bounded transformation-procedure allowlist; do not use APOC for I/O, dynamic Cypher, scheduling, schema changes, or graph mutation.
 - Always include a numeric LIMIT <= 100.
 - Use $tenant_id and, when relevant, $scope_urn parameters instead of literal tenant or entity values.`

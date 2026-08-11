@@ -45,7 +45,7 @@ fn safe_formatting_cannot_weaken_refusals() {
             Decision::UnsafeApoc,
         ),
         (
-            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.convert.fromJsonMap(e.data) LIMIT 1",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.util.sleep(5000) LIMIT 1",
             Decision::ApocNotAllowed,
         ),
         (
@@ -85,6 +85,8 @@ fn safe_formatting_cannot_weaken_refusals() {
 fn accepted_queries_are_stable_under_safe_formatting() {
     let accepted = [
         "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25",
+        "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.convert.fromJsonMap(e.data) LIMIT 25",
+        "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.coll.elements(e.items, 25, 0) YIELD value RETURN value LIMIT 25",
         "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 1 UNION ALL MATCH (b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 25",
         "MATCH (e:Entity {tenant_id:$tenant_id}) CALL { WITH e MATCH (e)-[:R]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 10 } RETURN b LIMIT 25",
     ];

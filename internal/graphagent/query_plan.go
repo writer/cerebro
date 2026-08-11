@@ -105,9 +105,9 @@ type conversionResult struct {
 }
 
 var (
-	upperRelationPattern  = regexp.MustCompile(`:\s*([A-Z][A-Z0-9_]+)\b`)
-	nonEntityLabelPattern = regexp.MustCompile(`\([^){}]*:\s*(Finding|FINDING|finding|repo|repository|identity|connector)\b`)
-	apocUsagePattern      = regexp.MustCompile(`(?i)\bapoc\.[A-Za-z0-9_.]+\s*\(`)
+	upperRelationPattern        = regexp.MustCompile(`:\s*([A-Z][A-Z0-9_]+)\b`)
+	nonEntityLabelPattern       = regexp.MustCompile(`\([^){}]*:\s*(Finding|FINDING|finding|repo|repository|identity|connector)\b`)
+	unsupportedAPOCUsagePattern = regexp.MustCompile(`(?i)\bapoc\.(?:trigger|periodic|cypher|custom|load|export|import|schema|refactor|create|merge|atomic|lock|jobs|config|warmup|systemdb|path|meta)\.[A-Za-z0-9_.]+\s*\(|\bapoc\.util\.sleep\s*\(`)
 )
 
 func convertDraftToQuery(request AskRequest, draft *DraftResponse) conversionResult {
@@ -1311,11 +1311,11 @@ func ontologyDiagnostics(cypher string) []ConversionDiagnostic {
 			})
 		}
 	}
-	if apocUsagePattern.MatchString(cypher) {
+	if unsupportedAPOCUsagePattern.MatchString(cypher) {
 		diagnostics = append(diagnostics, ConversionDiagnostic{
 			Level:   "warn",
 			Code:    "apoc_not_allowed",
-			Message: "Draft used APOC; Ask Cerebro does not depend on APOC for read-only graph answers.",
+			Message: "Draft used an APOC function or procedure outside the read-only allowlist.",
 		})
 	}
 	return diagnostics

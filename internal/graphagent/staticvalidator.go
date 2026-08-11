@@ -145,7 +145,7 @@ func staticValidationResult(validation staticValidation, maxRows int) (Validator
 	case staticValidatorUnsafeAPOC:
 		return validatorRefusal("unsafe_apoc", "apoc trigger and periodic procedures are forbidden"), 0, nil
 	case staticValidatorAPOCNotAllowed:
-		return validatorRefusal("apoc_not_allowed", "APOC functions and procedures are not available in Ask Cerebro"), 0, nil
+		return validatorRefusal("apoc_not_allowed", "APOC function or procedure is not in the read-only allowlist"), 0, nil
 	case staticValidatorProcedureCallNotAllowed:
 		return validatorRefusal("procedure_call_not_allowed", "procedure CALL clauses are forbidden"), 0, nil
 	case staticValidatorVariableLengthRelationshipNotAllowed:

@@ -354,12 +354,29 @@ func suspiciousCypherToken(value string) string {
 	if !hasCypherSignal {
 		return ""
 	}
-	for _, marker := range []string{"CREATE ", "MERGE ", "DELETE ", "DETACH DELETE", " SET ", "REMOVE ", "LOAD CSV", "CALL DBMS", "CALL APOC"} {
+	for _, marker := range []string{"CREATE ", "MERGE ", "DELETE ", "DETACH DELETE", " SET ", "REMOVE ", "LOAD CSV", "CALL DBMS"} {
 		if strings.Contains(upper, marker) {
 			return strings.TrimSpace(marker)
 		}
 	}
+	if containsUnallowlistedAPOCCall(upper) {
+		return "CALL APOC"
+	}
 	return ""
+}
+
+func containsUnallowlistedAPOCCall(upper string) bool {
+	for _, procedure := range []string{
+		"APOC.COLL.ELEMENTS",
+		"APOC.COLL.PAIRWITHOFFSET",
+		"APOC.COLL.PARTITION",
+		"APOC.COLL.SPLIT",
+		"APOC.COLL.ZIPTOROWS",
+		"APOC.CONVERT.TOTREE",
+	} {
+		upper = strings.ReplaceAll(upper, "CALL "+procedure, "ALLOWED "+procedure)
+	}
+	return strings.Contains(upper, "CALL APOC")
 }
 
 func isCypherSafetyGuidance(value string) bool {
