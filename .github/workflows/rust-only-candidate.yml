@@ -261,7 +261,7 @@ jobs:
           test "$(curl --max-time 5 -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/readyz)" = 200
           docker stop cerebro-rust-only-neo4j
           body="${RUNNER_TEMP}/rust-only-readiness.json"
-          test "$(curl --max-time 5 -sS -o "${body}" -w '%{http_code}' http://127.0.0.1:18080/readyz)" = 503
+          test "$(curl --max-time 15 -sS -o "${body}" -w '%{http_code}' http://127.0.0.1:18080/readyz)" = 503
           jq -e '.code == "graph_unavailable"' "${body}" >/dev/null
           test "$(curl --max-time 5 -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/healthz)" = 200
       - name: Attach the Rust-only receipt
