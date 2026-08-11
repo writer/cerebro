@@ -119,12 +119,23 @@ test("transport replay reuses the metadata-bound Slack message", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-off-slack-replay-"));
   try {
     let candidateCalls = 0;
+    let progressCalls = 0;
     const askClient = new CerebroAskClient({
       agentRuntimeUrl: "http://127.0.0.1:8091",
       answerAuthority: rejectingLegacyAuthority(),
       apiKey: "unused",
       baseUrl: "https://legacy.example.com",
-      fetchImpl: async () => {
+      fetchImpl: async (url, init) => {
+        if (String(url).includes("/v1/turns/progress")) {
+          progressCalls += 1;
+          return Response.json({
+            latest_sequence: 0,
+            request_id: "slack-request-progress",
+            schema_version: "agent-turn-progress/v1",
+            updates: [],
+          });
+        }
+        assert.equal(init?.method, "POST");
         candidateCalls += 1;
         return Response.json({
           evidence_refs: [],
@@ -172,6 +183,7 @@ test("transport replay reuses the metadata-bound Slack message", async () => {
     ]);
     assert.deepEqual(replay.operations.map((operation) => operation.method), ["chat.update"]);
     assert.equal(candidateCalls, 2);
+    assert.equal(progressCalls, 1);
   } finally {
     await rm(root, { force: true, recursive: true });
   }

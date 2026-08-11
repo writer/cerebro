@@ -40,6 +40,7 @@ import {
   approvalCommandCode,
   type CerebroAskHistoryMessage,
   type CerebroAskResult,
+  type RustAgentProgressUpdate,
 } from "./cerebro-ask-client.js";
 import type { FileAgentApprovalStore } from "./agent-approval-store.js";
 import {
@@ -171,6 +172,7 @@ export interface AssistantQuestionInput {
   threadContext?: string | readonly CerebroAskHistoryMessage[];
   text: string;
   threadRef: string;
+  onProgress?: (update: RustAgentProgressUpdate) => Promise<void>;
   workingState?: SlackThreadWorkingStateV1;
 }
 
@@ -315,6 +317,7 @@ export class AssistantQuestionService {
           requestId: turnRequestId,
           signal: this.timeoutSignal(budget.latency_budget_ms),
           threadRef: input.threadRef,
+          ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
           ...(input.workingState === undefined
             ? {}
             : {
@@ -1493,6 +1496,18 @@ export async function handleSlackMention(input: {
       threadContext,
       text: input.event.text,
       threadRef: scratchpadRef,
+      ...(input.priorDeliveryAttempt
+        ? {}
+        : {
+            onProgress: async (update: RustAgentProgressUpdate) => {
+              await input.leaseGuard?.();
+              await input.client.chat.update({
+                channel: input.event.channel,
+                text: formatEnvironmentMessage(input.config, update.status),
+                ts: deliveredMessageTs,
+              });
+            },
+          }),
       ...(scratchpad?.working_state === undefined
         ? {}
         : { workingState: scratchpad.working_state }),

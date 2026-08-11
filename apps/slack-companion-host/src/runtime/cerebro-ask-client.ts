@@ -25,6 +25,13 @@ export interface RustWakeExecutionReceipt {
   state: "awaiting_delivery";
 }
 
+export interface RustAgentProgressUpdate {
+  occurredAt: string;
+  phase: "refining" | "scoping" | "working";
+  sequence: number;
+  status: string;
+}
+
 export interface RustWakeDeliveryLease {
   commitment_ref: string;
   delivery_attempt_ref: string;
@@ -110,6 +117,7 @@ export class CerebroAskClient {
     requestId: string;
     signal: AbortSignal;
     threadRef: string;
+    onProgress?: (update: RustAgentProgressUpdate) => Promise<void>;
     workingState?: {
       active_lane?: CerebroAskResult["executionLane"];
       current_request: string;
@@ -129,7 +137,13 @@ export class CerebroAskClient {
       || message.messageRef !== undefined
       || message.receivedAt !== undefined
     );
-    const response = await this.fetchImpl(`${this.options.agentRuntimeUrl}/v1/turns/run`, {
+    let turnComplete = false;
+    const progressTask = input.onProgress
+      ? this.followAgentTurnProgress(input, () => turnComplete)
+      : undefined;
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.options.agentRuntimeUrl}/v1/turns/run`, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -174,12 +188,16 @@ export class CerebroAskClient {
         working_state: input.workingState ?? null,
       }),
       signal: input.signal,
-    }).catch((error: unknown) => {
-      if (input.signal.aborted) {
-        throw new CerebroAskError("timed_out", "The Rust agent did not finish before the turn deadline.");
-      }
-      throw new CerebroAskError("unavailable", errorMessage(error));
-    });
+      }).catch((error: unknown) => {
+        if (input.signal.aborted) {
+          throw new CerebroAskError("timed_out", "The Rust agent did not finish before the turn deadline.");
+        }
+        throw new CerebroAskError("unavailable", errorMessage(error));
+      });
+    } finally {
+      turnComplete = true;
+      await progressTask;
+    }
     if (!response.ok) {
       throw new CerebroAskError(
         sourceState(response.status),
@@ -254,6 +272,59 @@ export class CerebroAskClient {
       safeRefusal: true,
       traceId: input.requestId,
     };
+  }
+
+  private async followAgentTurnProgress(
+    input: {
+      onProgress?: (update: RustAgentProgressUpdate) => Promise<void>;
+      requestId: string;
+      signal: AbortSignal;
+      threadRef: string;
+    },
+    turnComplete: () => boolean,
+  ): Promise<void> {
+    if (!this.options.agentRuntimeUrl || !input.onProgress) return;
+    let afterSequence = 0;
+    let lastStatus = "";
+    const poll = async (): Promise<void> => {
+      const query = new URLSearchParams({
+        after_sequence: String(afterSequence),
+        request_id: input.requestId,
+        thread_ref: input.threadRef,
+      });
+      const response = await this.fetchImpl(
+        `${this.options.agentRuntimeUrl}/v1/turns/progress?${query}`,
+        { headers: { Accept: "application/json" }, signal: input.signal },
+      );
+      if (!response.ok) return;
+      const progress = parseAgentTurnProgress(await response.json());
+      afterSequence = progress.latestSequence;
+      for (const update of progress.updates) {
+        if (update.status === lastStatus) continue;
+        try {
+          await input.onProgress?.(update);
+          lastStatus = update.status;
+        } catch {
+          // A failed progress edit must not discard the terminal answer.
+        }
+      }
+    };
+    while (!turnComplete() && !input.signal.aborted) {
+      await delay(750);
+      if (turnComplete() || input.signal.aborted) break;
+      try {
+        await poll();
+      } catch {
+        // Progress polling is best-effort; the exact turn remains authoritative.
+      }
+    }
+    if (!input.signal.aborted) {
+      try {
+        await poll();
+      } catch {
+        // The final response can still be delivered when progress is unavailable.
+      }
+    }
   }
 
   async recordAgentTurnDelivery(input: {
@@ -552,6 +623,52 @@ type RustAgentTurnOutcome =
   | {
       outcome: "ignored";
     };
+
+function parseAgentTurnProgress(value: unknown): {
+  latestSequence: number;
+  updates: RustAgentProgressUpdate[];
+} {
+  const progress = objectWithKeys(value, [
+    "latest_sequence",
+    "schema_version",
+    "updates",
+  ], "agent turn progress");
+  if (
+    progress.schema_version !== "agent-turn-progress/v1"
+    || !Number.isSafeInteger(progress.latest_sequence)
+    || Number(progress.latest_sequence) < 0
+    || !Array.isArray(progress.updates)
+  ) {
+    throw new CerebroAskError("unavailable", "The Rust agent progress response is invalid.");
+  }
+  const updates = progress.updates.map((value) => {
+    const update = objectWithKeys(value, [
+      "occurred_at",
+      "phase",
+      "sequence",
+      "status",
+    ], "agent turn progress update");
+    if (
+      !canonicalTimestamp(update.occurred_at)
+      || !["refining", "scoping", "working"].includes(String(update.phase))
+      || !positiveInteger(update.sequence)
+      || !text(update.status)
+    ) {
+      throw new CerebroAskError("unavailable", "A Rust agent progress update is invalid.");
+    }
+    return {
+      occurredAt: String(update.occurred_at),
+      phase: update.phase as RustAgentProgressUpdate["phase"],
+      sequence: Number(update.sequence),
+      status: String(update.status),
+    };
+  });
+  return { latestSequence: Number(progress.latest_sequence), updates };
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 function parseWakeRunResponse(value: unknown): RustWakeExecutionReceipt | undefined {
   const response = objectWithKeys(value, ["wake"], "wake execution response");

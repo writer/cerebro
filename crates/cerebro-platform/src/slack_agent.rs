@@ -94,6 +94,21 @@ pub(super) struct SlackAgentModelAttestation {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+pub struct AgentTurnProgress {
+    pub schema_version: &'static str,
+    pub latest_sequence: u64,
+    pub updates: Vec<AgentTurnProgressUpdate>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct AgentTurnProgressUpdate {
+    pub sequence: u64,
+    pub occurred_at: String,
+    pub phase: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct AgentWakeTurn {
     pub commitment_ref: String,
     pub request_id: String,
@@ -129,6 +144,34 @@ impl SlackAgentService {
 
     pub(super) fn model_attestation(&self) -> SlackAgentModelAttestation {
         self.model.attestation()
+    }
+
+    pub async fn turn_progress(
+        &self,
+        thread_ref: &str,
+        request_id: &str,
+        after_sequence: u64,
+    ) -> Result<AgentTurnProgress, AgentRuntimeError> {
+        if thread_ref.trim().is_empty()
+            || request_id.trim().is_empty()
+            || thread_ref.len() > 8 * 1024
+            || request_id.len() > 8 * 1024
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "turn progress identity is invalid".into(),
+            ));
+        }
+        let store = self.sessions.as_ref().ok_or_else(|| {
+            AgentRuntimeError::ModelUnavailable("durable session store is not configured".into())
+        })?;
+        let Some(session) = store.load_by_thread(&self.tenant_id, thread_ref).await? else {
+            return Ok(AgentTurnProgress {
+                schema_version: "agent-turn-progress/v1",
+                latest_sequence: after_sequence,
+                updates: Vec::new(),
+            });
+        };
+        Ok(project_turn_progress(&session, request_id, after_sequence))
     }
 
     async fn initialize(tenant_id: String) -> Result<Self, Box<dyn Error>> {
@@ -847,6 +890,52 @@ fn validate_delivery_receipt(
         ));
     }
     Ok(())
+}
+
+fn project_turn_progress(
+    session: &AgentSession,
+    request_id: &str,
+    after_sequence: u64,
+) -> AgentTurnProgress {
+    let Some(started_index) = session.events.iter().rposition(|record| {
+        matches!(
+            &record.event,
+            SessionEvent::TurnStarted { request_id: started } if started == request_id
+        )
+    }) else {
+        return AgentTurnProgress {
+            schema_version: "agent-turn-progress/v1",
+            latest_sequence: after_sequence,
+            updates: Vec::new(),
+        };
+    };
+    let updates = session.events[started_index..]
+        .iter()
+        .take_while(|record| {
+            !matches!(
+                &record.event,
+                SessionEvent::TurnStarted { request_id: started } if started != request_id
+            )
+        })
+        .filter(|record| record.sequence > after_sequence)
+        .filter_map(|record| match &record.event {
+            SessionEvent::Progressed { phase, status } => Some(AgentTurnProgressUpdate {
+                sequence: record.sequence,
+                occurred_at: record.occurred_at.clone(),
+                phase: phase.clone(),
+                status: status.clone(),
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let latest_sequence = updates
+        .last()
+        .map_or(after_sequence, |update| update.sequence);
+    AgentTurnProgress {
+        schema_version: "agent-turn-progress/v1",
+        latest_sequence,
+        updates,
+    }
 }
 
 fn is_sha256_digest(value: &str) -> bool {
@@ -2957,7 +3046,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. pl
 - In converse, current-system facts explicitly supplied by the operator may be used as attributed premises for a confidence boundary, implication, or verification plan. Say what follows from the premise without saying Cerebro independently observed it. A green dashboard supplied by the operator can support “given that premise, the service appears up”; it cannot support “I am confident the service is healthy” or “I verified the user path.” One successful run supports only that exact run; it does not establish general route reliability, untouched code, unchanged architecture, or any other change-scope fact the operator did not supply. Do not substitute a coverage-gap refusal when the operator asked only for reasoning from supplied premises.
 - When the operator asks generally what security questions Cerebro is good at, answer with reasoning strengths rather than an operational inventory: separating fact from inference, connecting evidence to risk and decisions, finding the exact missing proof, and defining a bounded owner, trigger, and closure condition. Keep it natural and concise. Do not claim named tools, provider access, live data, scheduling, or execution without a current capability observation. This is a real answer, not a coverage-gap fallback.
 - When the requested lane is converse and the operator is appraising this exchange, answer the human question directly and candidly from the conversation. Do not replace it with a security-graph boundary, a capability inventory, a current-state lookup, or a generic invitation. Describe no release, deployment, integration, tool binding, verified improvement, or completed work without current evidence.
-- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. user_visible_work is authored by you, not by the Rust host. For a broad or ambiguous request, make its first item a concise natural-language scope note that says what slice you chose, why that slice best answers the operator's question, and which material dimension is outside this pass. Do not put tool names, query syntax, row limits, schemas, or internal lifecycle terms in that note. Select at least one available read tool, and give every required claim at least one source_candidate drawn from selected_tools. An Answered operating plan always requires successful, complete, fresh same-turn evidence for every required claim; when that proof is unavailable, use Partial or Blocked. When the accepted semantic route records delegated future observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch. notify_on_change contains exact scalar or string values whose transition materially changes the operator's next safe action and which the operator asked to hear about; it is not routine progress reporting. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
+- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. user_visible_work is authored by you, not by the Rust host. Write two to four concise, chronological Slack updates that communicate the work rather than model or tool mechanics: what you are narrowing to, why that slice is decision-relevant, what evidence dimension you are checking next and why, and what material dimension remains outside the current pass. For a broad or ambiguous request, make the first item a natural-language scope note that states the chosen slice, why it best answers the operator's question, and the excluded material dimension. After the first evidence batch on a broad or ambiguous request, establish one materially revised plan whose first user_visible_work item says whether the evidence confirmed or changed the focus, why, and what you will examine next. Do not put tool names, query syntax, row limits, schemas, internal lifecycle terms, or unsupported findings in any progress update. Select at least one available read tool, and give every required claim at least one source_candidate drawn from selected_tools. An Answered operating plan always requires successful, complete, fresh same-turn evidence for every required claim; when that proof is unavailable, use Partial or Blocked. When the accepted semantic route records delegated future observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch. notify_on_change contains exact scalar or string values whose transition materially changes the operator's next safe action and which the operator asked to hear about; it is not routine progress reporting. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
 - “Set up,” “schedule,” or “arrange” a re-inspection, recheck, or follow-up check is explicit future delegation even when the same sentence also says “keep going” or “take it as far as you can.” Perform the useful baseline read now and persist the bounded follow_through; an immediate read alone does not answer that request.
 - When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. Use capability.describe only when the matching descriptor does not make its input contract clear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. A host-admitted external effect remains visible as its exact MCP tool id and may run only in an Act plan through the ordinary exact-input approval boundary. Never substitute graph.search for a missing or undiscovered provider capability.
 - capability.search, capability.describe, and capability.overview describe the bound catalog and its authority policy. Catalog metadata never establishes a fact about Slack, GitHub, a deployment, a web page, or any other external system. Invoke the discovered provider tool before making a current claim. If no matching tool is bound, state that exact capability gap instead of querying an unrelated source.
@@ -5517,10 +5606,12 @@ mod tests {
         assert!(instructions.contains("do not ask the operator to narrow the question"));
         assert!(instructions.contains("user_visible_work is authored by you"));
         assert!(
-            instructions.contains(
-                "what slice you chose, why that slice best answers the operator's question"
-            )
+            instructions.contains("what you are narrowing to, why that slice is decision-relevant")
         );
+        assert!(instructions.contains("Write two to four concise, chronological Slack updates"));
+        assert!(instructions.contains(
+            "whether the evidence confirmed or changed the focus, why, and what you will examine next"
+        ));
         assert!(instructions.contains("how the evidence changed or confirmed that focus"));
         assert!(instructions.contains("This is useful reasoning transparency"));
         assert!(
@@ -5530,6 +5621,73 @@ mod tests {
             !built_in_capability_catalog()
                 .iter()
                 .any(|tool| tool.tool_id.contains("graph.reason"))
+        );
+    }
+
+    #[test]
+    fn turn_progress_projects_only_new_model_authored_updates_for_the_request() {
+        let request = replay_request();
+        let mut session = new_session(&request).unwrap();
+        session.events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-08-11T07:00:00Z".into(),
+                event: SessionEvent::TurnStarted {
+                    request_id: request.request_id.clone(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-08-11T07:00:01Z".into(),
+                event: SessionEvent::Progressed {
+                    phase: "scoping".into(),
+                    status: "I’m narrowing to the current identity-risk slice because it is decision-relevant."
+                        .into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 3,
+                occurred_at: "2026-08-11T07:00:02Z".into(),
+                event: SessionEvent::Progressed {
+                    phase: "working".into(),
+                    status: "I’m checking current access evidence before expanding the scope."
+                        .into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 4,
+                occurred_at: "2026-08-11T07:01:00Z".into(),
+                event: SessionEvent::TurnStarted {
+                    request_id: "request:later".into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 5,
+                occurred_at: "2026-08-11T07:01:01Z".into(),
+                event: SessionEvent::Progressed {
+                    phase: "scoping".into(),
+                    status: "This belongs to another request.".into(),
+                },
+            },
+        ];
+
+        let progress = project_turn_progress(&session, &request.request_id, 2);
+
+        assert_eq!(progress.latest_sequence, 3);
+        assert_eq!(progress.updates.len(), 1);
+        assert_eq!(
+            progress.updates[0].status,
+            "I’m checking current access evidence before expanding the scope."
         );
     }
 

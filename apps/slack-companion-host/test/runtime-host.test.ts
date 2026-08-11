@@ -596,6 +596,72 @@ test("Slack uses the Rust agent turn endpoint without calling the legacy ask rou
   assert.equal(result.citationValidationPassed, true);
 });
 
+test("Slack delivers model-authored Rust progress while the turn is running", async () => {
+  const requests: Request[] = [];
+  const updates: string[] = [];
+  const client = new CerebroAskClient({
+    agentRuntimeUrl: "http://127.0.0.1:8091",
+    answerAuthority: testAnswerAuthority,
+    apiKey: "unused",
+    baseUrl: "https://legacy.example.com",
+    fetchImpl: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (new URL(request.url).pathname === "/v1/turns/progress") {
+        return Response.json({
+          latest_sequence: 7,
+          schema_version: "agent-turn-progress/v1",
+          updates: [{
+            occurred_at: "2026-08-11T07:00:01Z",
+            phase: "scoping",
+            sequence: 5,
+            status: "I’m narrowing to production identity risk because it best answers the operator’s decision.",
+          }, {
+            occurred_at: "2026-08-11T07:00:02Z",
+            phase: "working",
+            sequence: 7,
+            status: "I’m checking whether current access evidence supports that focus before expanding it.",
+          }],
+        });
+      }
+      return Response.json({
+        evidence_refs: ["evidence://graph/current"],
+        final_state: "answered",
+        lane: "investigate",
+        markdown: "The current identity risk is verified.",
+        outcome: "delivered",
+        schema_version: "agent-turn-result/v1",
+        tool_call_count: 2,
+      });
+    },
+    tenantId: "writer",
+  });
+
+  await client.runAgentTurn({
+    actorRef: "slack-user:U-ONE",
+    assessmentAt: "2026-08-11T07:00:00Z",
+    onProgress: async (update) => {
+      updates.push(update.status);
+    },
+    question: "What is scariest in production?",
+    requestId: "request-progress",
+    signal: new AbortController().signal,
+    threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+  });
+
+  assert.deepEqual(updates, [
+    "I’m narrowing to production identity risk because it best answers the operator’s decision.",
+    "I’m checking whether current access evidence supports that focus before expanding it.",
+  ]);
+  const progressRequest = requests.find((request) =>
+    new URL(request.url).pathname === "/v1/turns/progress"
+  );
+  assert.equal(
+    new URL(progressRequest?.url ?? "").searchParams.get("request_id"),
+    "request-progress",
+  );
+});
+
 test("Slack acknowledges a pending Rust response only after transport delivery", async () => {
   const requests: Request[] = [];
   const client = new CerebroAskClient({

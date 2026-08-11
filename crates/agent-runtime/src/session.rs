@@ -2280,6 +2280,11 @@ pub async fn run_session_turn_recorded(
         .collect::<BTreeMap<_, _>>();
     let prior_commitment_checkpoint = prior_commitment_checkpoint(&session, &trigger);
     let (resumed, mut plan, turn_observations) = resume_turn_state(&session, &input.request_id);
+    let mut plan_progress_index = if resumed {
+        resumed_plan_progress_count(&session, &input.request_id)
+    } else {
+        0
+    };
     if matches!(trigger, SessionTurnTrigger::Operator)
         && plan
             .as_ref()
@@ -2474,6 +2479,24 @@ pub async fn run_session_turn_recorded(
                     journal,
                 )
                 .await?;
+                plan_progress_index = 0;
+                if matches!(trigger, SessionTurnTrigger::Operator) {
+                    let progress_phase = if plan.is_some() {
+                        "refining"
+                    } else {
+                        "scoping"
+                    };
+                    emit_next_plan_progress(
+                        &session,
+                        &input.assessment_at,
+                        &mut events,
+                        &proposed,
+                        &mut plan_progress_index,
+                        progress_phase,
+                        journal,
+                    )
+                    .await?;
+                }
                 plan = Some(proposed);
                 repairs = 0;
                 repair_feedback.clear();
@@ -2612,6 +2635,18 @@ pub async fn run_session_turn_recorded(
                         )
                         .await?;
                     }
+                }
+                if matches!(trigger, SessionTurnTrigger::Operator) {
+                    emit_next_plan_progress(
+                        &session,
+                        &input.assessment_at,
+                        &mut events,
+                        &established,
+                        &mut plan_progress_index,
+                        "working",
+                        journal,
+                    )
+                    .await?;
                 }
                 let results = join_all(
                     calls
@@ -4897,6 +4932,28 @@ fn resume_turn_state(
     (true, plan, observations)
 }
 
+fn resumed_plan_progress_count(session: &AgentSession, request_id: &str) -> usize {
+    let Some(started_index) = session.events.iter().rposition(|event| {
+        matches!(
+            &event.event,
+            SessionEvent::TurnStarted {
+                request_id: started,
+            } if started == request_id
+        )
+    }) else {
+        return 0;
+    };
+    let plan_index = session.events[started_index..]
+        .iter()
+        .rposition(|event| matches!(event.event, SessionEvent::PlanEstablished { .. }))
+        .map_or(started_index, |index| started_index + index);
+    session.events[plan_index + 1..]
+        .iter()
+        .take_while(|event| !matches!(event.event, SessionEvent::PlanEstablished { .. }))
+        .filter(|event| matches!(event.event, SessionEvent::Progressed { .. }))
+        .count()
+}
+
 fn prior_read_observations(
     session: &AgentSession,
     assessment_at: OffsetDateTime,
@@ -5102,6 +5159,33 @@ async fn emit_event(
     journal
         .record(events.last().expect("an emitted event was appended"))
         .await
+}
+
+async fn emit_next_plan_progress(
+    session: &AgentSession,
+    occurred_at: &str,
+    events: &mut Vec<SessionEventRecord>,
+    plan: &ResearchPlan,
+    next_index: &mut usize,
+    phase: &str,
+    journal: &dyn SessionJournal,
+) -> Result<(), AgentRuntimeError> {
+    let Some(status) = plan.user_visible_work.get(*next_index) else {
+        return Ok(());
+    };
+    emit_event(
+        session,
+        occurred_at,
+        events,
+        SessionEvent::Progressed {
+            phase: phase.into(),
+            status: status.trim().into(),
+        },
+        journal,
+    )
+    .await?;
+    *next_index += 1;
+    Ok(())
 }
 
 async fn emit_final_events(
@@ -5834,6 +5918,18 @@ pub fn validate_plan(
     {
         return Err(AgentRuntimeError::InvalidFinal(
             "research plan selected an unavailable tool".into(),
+        ));
+    }
+    if plan.user_visible_work.len() > 4
+        || plan
+            .user_visible_work
+            .iter()
+            .any(|status| status.trim().is_empty() || !bounded(status, MAX_TEXT_BYTES))
+        || plan.user_visible_work.iter().collect::<BTreeSet<_>>().len()
+            != plan.user_visible_work.len()
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "user-visible plan updates must contain at most four unique bounded messages".into(),
         ));
     }
     if let Some(follow_through) = &plan.follow_through {
@@ -12544,10 +12640,22 @@ mod tests {
     async fn one_loop_plans_reads_reviews_and_prepares_delivery() {
         let mut candidate = draft();
         candidate.message = format!("Unreviewed prefix. {}", candidate.message);
+        let mut progress_plan = plan();
+        progress_plan.user_visible_work = vec![
+            "I’m narrowing to connector alpha because it is the decision-relevant source.".into(),
+            "I’m checking its current state before drawing a conclusion.".into(),
+        ];
+        let mut revised_plan = progress_plan.clone();
+        revised_plan.decision =
+            "The current observation confirms connector alpha is the relevant focus.".into();
+        revised_plan.user_visible_work = vec![
+            "The current observation confirms this focus; I’m reconciling it with the requested outcome."
+                .into(),
+        ];
         let model = ScriptedSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlanAndInvoke {
-                    plan: plan(),
+                    plan: progress_plan,
                     calls: vec![ToolCall {
                         call_id: "call:1".into(),
                         tool_id: "connector.read".into(),
@@ -12555,6 +12663,7 @@ mod tests {
                         input: json!({"connector_ref": "connector:alpha"}),
                     }],
                 },
+                SessionModelDecision::EstablishPlan { plan: revised_plan },
                 SessionModelDecision::Finish { draft: candidate },
             ])),
         };
@@ -12593,6 +12702,38 @@ mod tests {
             events
                 .iter()
                 .any(|event| matches!(event.event, SessionEvent::PlanEstablished { .. }))
+        );
+        assert!(events.iter().any(|event| matches!(
+            &event.event,
+            SessionEvent::Progressed { phase, status }
+                if phase == "scoping"
+                    && status == "I’m narrowing to connector alpha because it is the decision-relevant source."
+        )));
+        let progress = events
+            .iter()
+            .filter_map(|event| match &event.event {
+                SessionEvent::Progressed { phase, status } => {
+                    Some((phase.as_str(), status.as_str()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            progress,
+            vec![
+                (
+                    "scoping",
+                    "I’m narrowing to connector alpha because it is the decision-relevant source."
+                ),
+                (
+                    "working",
+                    "I’m checking its current state before drawing a conclusion."
+                ),
+                (
+                    "refining",
+                    "The current observation confirms this focus; I’m reconciling it with the requested outcome."
+                ),
+            ]
         );
         assert!(
             !events

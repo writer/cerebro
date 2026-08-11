@@ -11,7 +11,7 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, State},
+    extract::{DefaultBodyLimit, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -28,7 +28,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     slack_agent::{
-        AgentWakeDeliveryReceipt, AgentWakeTurn, SlackAgentModelAttestation, SlackAgentService,
+        AgentTurnProgress, AgentWakeDeliveryReceipt, AgentWakeTurn, SlackAgentModelAttestation,
+        SlackAgentService,
     },
     slack_agent_session::AgentPendingWakeDelivery,
 };
@@ -56,6 +57,15 @@ struct WakeRunResponse {
 #[derive(Serialize)]
 struct WakeDeliveryClaimResponse {
     delivery: Option<AgentPendingWakeDelivery>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TurnProgressQuery {
+    thread_ref: String,
+    request_id: String,
+    #[serde(default)]
+    after_sequence: u64,
 }
 
 struct AuthorityRuntime {
@@ -226,6 +236,7 @@ fn router(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> 
         .route("/v1/questions/authorize", post(authorize_question_route))
         .route("/v1/answers/validate", post(validate_answer_route))
         .route("/v1/turns/run", post(run_turn_route))
+        .route("/v1/turns/progress", get(turn_progress_route))
         .route("/v1/turns/deliveries", post(record_delivery_route))
         .route("/v1/wakes/run", post(run_due_wake_route))
         .route(
@@ -235,6 +246,26 @@ fn router(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> 
         .route("/v1/wakes/deliveries", post(record_wake_delivery_route))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .with_state(Arc::new(AuthorityRuntime::new(question_policy, agent)))
+}
+
+async fn turn_progress_route(
+    State(runtime): State<Arc<AuthorityRuntime>>,
+    Query(query): Query<TurnProgressQuery>,
+) -> Result<Json<AgentTurnProgress>, (StatusCode, Json<ErrorResponse>)> {
+    let agent = runtime.agent.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                code: "agent_not_configured",
+                message: "The Rust Slack agent runtime is not configured.".into(),
+            }),
+        )
+    })?;
+    agent
+        .turn_progress(&query.thread_ref, &query.request_id, query.after_sequence)
+        .await
+        .map(Json)
+        .map_err(agent_error)
 }
 
 async fn claim_pending_wake_delivery_route(
