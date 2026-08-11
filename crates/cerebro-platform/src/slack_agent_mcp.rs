@@ -129,14 +129,7 @@ impl McpAgentTools {
             .timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|error| error.to_string())?;
-        let listed = list_tools(
-            &client,
-            &endpoint,
-            &bearer_token,
-            &toolsets,
-            tenant_id,
-        )
-        .await?;
+        let listed = list_tools(&client, &endpoint, &bearer_token, &toolsets, tenant_id).await?;
         if listed.len() > MAX_MCP_TOOLS {
             return Err("MCP tool catalog exceeds the bounded limit".into());
         }
