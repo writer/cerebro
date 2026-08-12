@@ -74,6 +74,7 @@ export * from "./regression-replay-evaluator-execution.js";
 export * from "./regression-replay-runtime-evaluation.js";
 export * from "./regression-replay-trial.js";
 export * from "./regression-campaign-plan.js";
+export * from "./regression-campaign-port.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";

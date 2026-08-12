@@ -5,6 +5,7 @@ import { compareAgentGymRegressionReplay } from "../src/agent-gym/regression-rep
 import { evaluateAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-evaluation.js";
 import { sealAgentGymRegressionReplayTrial, validateAgentGymRegressionReplayTrial } from "../src/agent-gym/regression-replay-trial.js";
 import { planAgentGymRegressionCampaign, validateAgentGymRegressionCampaignPlan } from "../src/agent-gym/regression-campaign-plan.js";
+import { invalidAgentGymRegressionCampaignCase, validateAgentGymRegressionCampaignCaseOutput } from "../src/agent-gym/regression-campaign-port.js";
 
 const sha = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
 
@@ -29,7 +30,8 @@ function trialChain() {
   const result = { ...resultBody, result_digest: digestAgentGymJson(resultBody) };
   const bindingBody = { baseline_candidate_ref: result.baseline.candidate_ref,
     binding_ref: "agent-gym-evaluator-binding://campaign/one", bound_at: "2026-08-12T15:02:00.000Z",
-    challenger_candidate_ref: result.challenger.candidate_ref, evaluator_admission_digest: sha("1"),
+    challenger_candidate_ref: result.challenger.candidate_ref,
+    evaluator_admission_digest: evaluatorAdmission().decision_digest,
     evaluator_digests: [sha("2")], replay_result_digest: result.result_digest, rubric_digest: sha("3"),
     schema_version: "agent-gym-regression-replay-evaluator-binding/v1" as const };
   const binding = { ...bindingBody, binding_digest: digestAgentGymJson(bindingBody) };
@@ -52,6 +54,20 @@ function evaluatorAdmission() {
     policy_ref: "agent-gym-evaluator-policy://campaign/one", rubric_digest: sha("3"),
     schema_version: "agent-gym-evaluator-admission-decision/v1" as const };
   return { ...body, decision_digest: digestAgentGymJson(body) };
+}
+
+function campaignBundle() {
+  const chain = trialChain();
+  const campaign = planAgentGymRegressionCampaign([chain.plan], evaluatorAdmission(), {
+    baseline_candidate_ref: chain.result.baseline.candidate_ref,
+    campaign_ref: "agent-gym-regression-campaign://one",
+    challenger_candidate_ref: chain.result.challenger.candidate_ref,
+    maximum_invalid_cases: 0, planned_at: "2026-08-12T15:00:00.000Z",
+  });
+  const trial = sealAgentGymRegressionReplayTrial(chain.plan, chain.result, chain.binding,
+    chain.evaluation, chain.comparison, { completed_at: "2026-08-12T15:05:00.000Z",
+      trial_ref: "agent-gym-regression-trial://campaign/one" });
+  return { campaign, chain, trial };
 }
 
 test("seals one complete runtime chain without model output text", () => {
@@ -86,6 +102,29 @@ test("rejects campaign plans that tolerate every case being invalid", () => {
     challenger_candidate_ref: chain.result.challenger.candidate_ref,
     maximum_invalid_cases: 1, planned_at: "2026-08-12T15:00:00.000Z",
   }));
+});
+
+test("accepts only complete trials bound to the campaign identities", () => {
+  const { campaign, trial } = campaignBundle();
+  const replay = campaign.cases[0]!;
+  const output = validateAgentGymRegressionCampaignCaseOutput(campaign, replay, {
+    case_digest: replay.case_digest, case_ref: replay.case_ref,
+    schema_version: "agent-gym-regression-campaign-case-output/v1", status: "completed", trial,
+  });
+  assert.equal(output.status, "completed");
+  assert.throws(() => validateAgentGymRegressionCampaignCaseOutput(campaign, replay, {
+    case_digest: replay.case_digest, case_ref: replay.case_ref,
+    schema_version: "agent-gym-regression-campaign-case-output/v1", status: "completed",
+    trial: { ...trial, challenger_candidate_ref: "agent-gym-candidate://challenger/other" },
+  }));
+});
+
+test("records stable invalid case output without provider error text", () => {
+  const { campaign } = campaignBundle();
+  const replay = campaign.cases[0]!;
+  const output = invalidAgentGymRegressionCampaignCase(replay, "evaluator_output_invalid");
+  assert.equal(validateAgentGymRegressionCampaignCaseOutput(campaign, replay, output).status, "invalid");
+  assert.equal("message" in output, false);
 });
 
 test("rejects a runtime chain whose evaluator binding targets another result", () => {
