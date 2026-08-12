@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   agentGymModelRequestDigest,
   AgentGymModelInvocationError,
+  createAgentGymModelInvocationLedger,
   decideAgentGymModelRetry,
   invokeAgentGymModelWithRetry,
   evaluateAgentGymModelBudget,
@@ -13,6 +14,34 @@ import {
   validateAgentGymModelFailure,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+test("model invocation ledgers aggregate replay cost and blockers", async () => {
+  const modelRequest = request();
+  const result = await invokeAgentGymModel(
+    modelRequest,
+    modelBudget(),
+    new RecordedAgentGymModel([recordedResponse(modelRequest)]),
+    "2026-08-12T09:45:00.000Z",
+  );
+  const ledger = createAgentGymModelInvocationLedger([result.receipt]);
+  assert.equal(ledger.invocation_count, 1);
+  assert.equal(ledger.recorded_invocation_count, 1);
+  assert.equal(ledger.blocked_invocation_count, 0);
+  assert.equal(ledger.total_tokens, 25);
+});
+
+test("model invocation ledgers reject duplicate invocation identities", async () => {
+  const modelRequest = request();
+  const result = await invokeAgentGymModel(
+    modelRequest,
+    modelBudget(),
+    new RecordedAgentGymModel([recordedResponse(modelRequest)]),
+    "2026-08-12T09:45:00.000Z",
+  );
+  assert.throws(() => createAgentGymModelInvocationLedger([
+    result.receipt, result.receipt,
+  ]), /invocation ledger is invalid/u);
+});
 
 test("model retry execution advances virtual time without sleeping", async () => {
   let invocationCount = 0;

@@ -17,6 +17,7 @@ export * from "./model-budget.js";
 export * from "./model-failure.js";
 export * from "./model-retry.js";
 export * from "./model-invocation.js";
+export * from "./model-ledger.js";
 export * from "./recorded-model.js";
 export * from "./artifact.js";
 export * from "./candidate-manifest.js";
