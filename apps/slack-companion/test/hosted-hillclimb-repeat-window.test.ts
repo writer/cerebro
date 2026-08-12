@@ -86,6 +86,7 @@ test("seals a contiguous repeat comparison window", () => {
       maximum_window_span_ms: 86_400_000,
       minimum_comparison_count: 2,
     },
+    promotion_flip_count: 0,
     quality_instability_count: 0,
     schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1",
     stability: { blockers: [], stable: true },
@@ -106,6 +107,16 @@ test("holds stability until repeats are sufficient and quality remains stable", 
     stable: false,
   });
   assert.equal(window.quality_instability_count, 1);
+});
+
+test("counts every repeat promotion state change", () => {
+  const first = comparison("2026-08-12T16:00:00.000Z", "2026-08-12T17:00:00.000Z");
+  const second = comparison("2026-08-12T17:00:00.000Z", "2026-08-12T18:00:00.000Z");
+  const window = buildHostedHillclimbRepeatWindow([
+    { ...first, promotion_stable: false },
+    { ...second, promotion_stable: false },
+  ]);
+  assert.equal(window.promotion_flip_count, 2);
 });
 
 test("applies an explicit bounded repeat sample policy", () => {

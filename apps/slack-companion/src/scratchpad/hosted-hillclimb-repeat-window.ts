@@ -32,6 +32,7 @@ export interface HostedHillclimbRepeatWindowV1 {
   readonly maximum_absolute_model_token_count_delta: number;
   readonly maximum_evaluation_gap_ms: number;
   readonly policy: HostedHillclimbRepeatPolicyV1;
+  readonly promotion_flip_count: number;
   readonly quality_instability_count: number;
   readonly schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1";
   readonly stability: {
@@ -132,6 +133,9 @@ export function buildHostedHillclimbRepeatWindow(
         - Date.parse(comparison.previous_evaluated_at),
     )),
     policy: Object.freeze({ ...policy }),
+    promotion_flip_count: comparisons.filter(
+      (comparison) => !comparison.promotion_stable,
+    ).length,
     quality_instability_count: comparisons.filter(
       (comparison) => !comparison.quality_stable,
     ).length,
