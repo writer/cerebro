@@ -56,6 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-error-rate", type=non_negative_float, default=float(os.environ.get("CEREBRO_LOAD_SMOKE_MAX_ERROR_RATE", "0.01")), help="Fail when non-success or transport errors exceed this fraction")
     parser.add_argument("--max-5xx-rate", type=non_negative_float, default=float(os.environ.get("CEREBRO_LOAD_SMOKE_MAX_5XX_RATE", "0")), help="Fail when 5xx responses exceed this fraction")
     parser.add_argument("--min-requests", type=positive_int, default=1, help="Fail when fewer requests completed")
+    parser.add_argument("--min-requests-per-path", type=positive_int, default=1, help="Fail when any configured path completes fewer requests")
     parser.add_argument("--header", action="append", default=[], help="Extra HTTP header as 'Name: value'; repeatable")
     parser.add_argument("--bearer-token", default=first_env("CEREBRO_LOAD_SMOKE_BEARER_TOKEN", "CEREBRO_MCP_BEARER_TOKEN"), help="Optional bearer/API token; never printed")
     parser.add_argument("--max-read-bytes", type=positive_int, default=65536, help="Maximum response bytes read per request")
@@ -179,34 +180,19 @@ def fetch_once(base_url: str, path: str, headers: dict[str, str], timeout_second
 
 
 def summarize(*, base_url: str, paths: list[str], results: list[RequestResult], args: argparse.Namespace, started_at: float, finished_at: float) -> dict:
-    total = len(results)
-    status_counts: Counter[str] = Counter()
-    path_counts: Counter[str] = Counter()
-    error_kind_counts: Counter[str] = Counter()
-    success_count = 0
-    http_5xx_count = 0
-    transport_error_count = 0
-    latencies = sorted(result.latency_ms for result in results)
-    for result in results:
-        path_counts[result.path] += 1
-        if result.status_code is None:
-            status_counts["transport_error"] += 1
-            transport_error_count += 1
-            error_kind_counts[result.error_kind or "transport_error"] += 1
-            continue
-        status_counts[str(result.status_code)] += 1
-        if 500 <= result.status_code <= 599:
-            http_5xx_count += 1
-        if args.success_status_min <= result.status_code <= args.success_status_max:
-            success_count += 1
-    error_count = total - success_count
-    failures = evaluate_failures(
-        total=total,
-        p95_ms=percentile(latencies, 95),
-        error_rate=rate(error_count, total),
-        http_5xx_rate=rate(http_5xx_count, total),
-        args=args,
-    )
+    aggregate = summarize_results(results, args=args, min_requests=args.min_requests)
+    path_summaries: dict[str, dict] = {}
+    path_failures: list[str] = []
+    for path in paths:
+        path_summary = summarize_results(
+            [result for result in results if result.path == path],
+            args=args,
+            min_requests=args.min_requests_per_path,
+        )
+        path_summaries[path] = path_summary
+        path_failures.extend(f"{path}: {failure}" for failure in path_summary["failures"])
+
+    failures = [*aggregate["failures"], *path_failures]
     return {
         "kind": "cerebro_load_smoke",
         "healthy": not failures,
@@ -226,10 +212,50 @@ def summarize(*, base_url: str, paths: list[str], results: list[RequestResult], 
         },
         "thresholds": {
             "min_requests": args.min_requests,
+            "min_requests_per_path": args.min_requests_per_path,
             "max_p95_ms": args.max_p95_ms,
             "max_error_rate": args.max_error_rate,
             "max_5xx_rate": args.max_5xx_rate,
         },
+        **{key: value for key, value in aggregate.items() if key != "failures"},
+        "path_counts": {
+            path: path_summary["request_count"]
+            for path, path_summary in path_summaries.items()
+        },
+        "path_summaries": path_summaries,
+    }
+
+
+def summarize_results(results: list[RequestResult], *, args: argparse.Namespace, min_requests: int) -> dict:
+    total = len(results)
+    status_counts: Counter[str] = Counter()
+    error_kind_counts: Counter[str] = Counter()
+    success_count = 0
+    http_5xx_count = 0
+    transport_error_count = 0
+    latencies = sorted(result.latency_ms for result in results)
+    for result in results:
+        if result.status_code is None:
+            status_counts["transport_error"] += 1
+            transport_error_count += 1
+            error_kind_counts[result.error_kind or "transport_error"] += 1
+            continue
+        status_counts[str(result.status_code)] += 1
+        if 500 <= result.status_code <= 599:
+            http_5xx_count += 1
+        if args.success_status_min <= result.status_code <= args.success_status_max:
+            success_count += 1
+    error_count = total - success_count
+    failures = evaluate_failures(
+        total=total,
+        p95_ms=percentile(latencies, 95),
+        error_rate=rate(error_count, total),
+        http_5xx_rate=rate(http_5xx_count, total),
+        min_requests=min_requests,
+        args=args,
+    )
+    return {
+        "failures": failures,
         "request_count": total,
         "success_count": success_count,
         "error_count": error_count,
@@ -238,7 +264,6 @@ def summarize(*, base_url: str, paths: list[str], results: list[RequestResult], 
         "http_5xx_rate": rate(http_5xx_count, total),
         "transport_error_count": transport_error_count,
         "status_counts": dict(sorted(status_counts.items())),
-        "path_counts": dict(sorted(path_counts.items())),
         "error_kind_counts": dict(sorted(error_kind_counts.items())),
         "latency_ms": {
             "min": round(latencies[0], 3) if latencies else None,
@@ -250,10 +275,10 @@ def summarize(*, base_url: str, paths: list[str], results: list[RequestResult], 
     }
 
 
-def evaluate_failures(*, total: int, p95_ms: float | None, error_rate: float, http_5xx_rate: float, args: argparse.Namespace) -> list[str]:
+def evaluate_failures(*, total: int, p95_ms: float | None, error_rate: float, http_5xx_rate: float, min_requests: int, args: argparse.Namespace) -> list[str]:
     failures: list[str] = []
-    if total < args.min_requests:
-        failures.append(f"completed {total} requests, below minimum {args.min_requests}")
+    if total < min_requests:
+        failures.append(f"completed {total} requests, below minimum {min_requests}")
     if p95_ms is None:
         failures.append("no latency samples recorded")
     elif p95_ms > args.max_p95_ms:
@@ -308,6 +333,20 @@ def render_markdown(summary: dict) -> str:
         "",
     ]
     lines.extend(f"- {failure}" for failure in failures)
+    lines.extend([
+        "",
+        "## Paths",
+        "",
+        "| Path | Requests | Error rate | 5xx rate | p50 ms | p95 ms | p99 ms |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ])
+    for path, path_summary in summary["path_summaries"].items():
+        path_latency = path_summary["latency_ms"]
+        lines.append(
+            f"| `{path}` | {path_summary['request_count']} | {path_summary['error_rate']:.4f} | "
+            f"{path_summary['http_5xx_rate']:.4f} | {path_latency['p50']} | "
+            f"{path_latency['p95']} | {path_latency['p99']} |"
+        )
     lines.extend([
         "",
         "## Status Counts",

@@ -79,6 +79,41 @@ class LoadSmokeTests(unittest.TestCase):
 
             self.assertEqual(code, 1)
 
+    def test_reports_and_gates_each_path_independently(self):
+        with load_smoke_server() as base_url, tempfile.TemporaryDirectory() as tmp:
+            json_out = Path(tmp) / "summary.json"
+            markdown_out = Path(tmp) / "summary.md"
+
+            code = load_smoke.main([
+                "--base-url",
+                base_url,
+                "--path",
+                "/health",
+                "--path",
+                "/slow",
+                "--duration",
+                "0.8",
+                "--rps",
+                "12",
+                "--concurrency",
+                "4",
+                "--max-p95-ms",
+                "20",
+                "--json-out",
+                str(json_out),
+                "--markdown-out",
+                str(markdown_out),
+            ])
+
+            self.assertEqual(code, 1)
+            summary = json.loads(json_out.read_text(encoding="utf-8"))
+            self.assertIn("/health", summary["path_summaries"])
+            self.assertIn("/slow", summary["path_summaries"])
+            self.assertLess(summary["path_summaries"]["/health"]["latency_ms"]["p95"], 20)
+            self.assertGreater(summary["path_summaries"]["/slow"]["latency_ms"]["p95"], 20)
+            self.assertTrue(any(failure.startswith("/slow: p95 latency") for failure in summary["failures"]))
+            self.assertIn("| `/slow` |", markdown_out.read_text(encoding="utf-8"))
+
     def test_rejects_full_url_path(self):
         code = load_smoke.main([
             "--base-url",
