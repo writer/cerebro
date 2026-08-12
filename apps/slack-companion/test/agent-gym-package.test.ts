@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   AgentGymContractError,
   CEREBRO_AGENT_GYM,
+  identifyAgentGymArtifact,
   validateAgentGymCandidateManifest,
   validateAgentGymComparison,
   validateAgentGymPromotionDecision,
@@ -19,6 +20,14 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("artifact identities are portable content addresses", () => {
+  const first = identifyAgentGymArtifact(Buffer.from("{\"ok\":true}\n"), "application/json");
+  const second = identifyAgentGymArtifact(Buffer.from("{\"ok\":true}\n"), "application/json");
+  assert.deepEqual(first, second);
+  assert.match(first.content_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.throws(() => identifyAgentGymArtifact(new Uint8Array(), "text/plain"), /artifact is invalid/u);
 });
 
 test("promotion decisions require held-out evidence and no safety blockers", () => {
