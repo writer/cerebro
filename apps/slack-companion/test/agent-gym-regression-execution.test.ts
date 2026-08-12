@@ -3,6 +3,7 @@ import test from "node:test";
 import { digestAgentGymJson } from "../src/agent-gym/canonical-json.js";
 import { planAgentGymRegressionReplay, validateAgentGymRegressionReplayPlan } from "../src/agent-gym/regression-replay-plan.js";
 import { recordAgentGymRegressionReplayResult, validateAgentGymRegressionReplayResult } from "../src/agent-gym/regression-replay-result.js";
+import { evaluateAgentGymRegressionReplay, validateAgentGymRegressionReplayEvaluation } from "../src/agent-gym/regression-replay-evaluation.js";
 import type { AgentGymRegressionReplayRequestV1 } from "../src/agent-gym/regression-replay-request.js";
 
 const sha = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
@@ -17,6 +18,15 @@ function request(): AgentGymRegressionReplayRequestV1 {
     schema_version: "agent-gym-regression-replay-request/v1" as const,
   };
   return { ...body, request_digest: digestAgentGymJson(body) };
+}
+
+function replayResult() {
+  const plan = planAgentGymRegressionReplay(request(), { baseline_invocation_ref: "agent-gym-invocation://baseline/one", challenger_invocation_ref: "agent-gym-invocation://challenger/one", plan_ref: "agent-gym-replay-plan://regression/one", planned_at: "2026-08-12T13:01:00.000Z" });
+  return recordAgentGymRegressionReplayResult(plan, {
+    baseline: { candidate_ref: "agent-gym-candidate://baseline/one", invocation_receipt_digest: sha("d"), invocation_ref: plan.baseline_invocation_ref, latency_ms: 120, response_digest: sha("e"), total_tokens: 80 },
+    challenger: { candidate_ref: "agent-gym-candidate://challenger/one", invocation_receipt_digest: sha("f"), invocation_ref: plan.challenger_invocation_ref, latency_ms: 100, response_digest: sha("1"), total_tokens: 72 },
+    completed_at: "2026-08-12T13:02:00.000Z", result_ref: "agent-gym-replay-result://regression/one",
+  });
 }
 
 test("seals an exact paired regression replay plan", () => {
@@ -41,4 +51,15 @@ test("records paired replay evidence without retaining model output", () => {
   });
   assert.equal(validateAgentGymRegressionReplayResult(result).challenger.total_tokens, 72);
   assert.throws(() => recordAgentGymRegressionReplayResult(plan, { ...result, challenger: { ...result.challenger, invocation_ref: plan.baseline_invocation_ref } }));
+});
+
+test("binds independent scores to both replay candidates", () => {
+  const result = replayResult();
+  const evaluation = evaluateAgentGymRegressionReplay(result, {
+    baseline: { blocker_codes: [], candidate_ref: result.baseline.candidate_ref, evidence_digest: sha("2"), safety_passed: true, score: 0.72 },
+    challenger: { blocker_codes: [], candidate_ref: result.challenger.candidate_ref, evidence_digest: sha("3"), safety_passed: true, score: 0.86 },
+    evaluated_at: "2026-08-12T13:03:00.000Z", evaluation_ref: "agent-gym-replay-evaluation://regression/one",
+  });
+  assert.equal(validateAgentGymRegressionReplayEvaluation(evaluation).challenger.score, 0.86);
+  assert.throws(() => evaluateAgentGymRegressionReplay(result, { ...evaluation, challenger: { ...evaluation.challenger, safety_passed: true, blocker_codes: ["unsafe"] } }));
 });

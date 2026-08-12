@@ -60,6 +60,7 @@ export * from "./regression-corpus-augmentation.js";
 export * from "./regression-replay-request.js";
 export * from "./regression-replay-plan.js";
 export * from "./regression-replay-result.js";
+export * from "./regression-replay-evaluation.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
