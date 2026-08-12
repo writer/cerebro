@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   agentGymFixtureCaseDigest,
+  buildAgentGymCorpus,
   canonicalAgentGymJson,
   createAgentGymCorpusInventory,
   createAgentGymCorpusManifest,
@@ -78,6 +79,25 @@ test("corpus inventories bind the manifest digest", () => {
     createAgentGymCorpusInventory(fixtures).corpus_digest,
     createAgentGymCorpusManifest(fixtures).corpus_digest,
   );
+});
+
+test("corpus build receipts bind source, membership, and inventory", () => {
+  const receipt = buildAgentGymCorpus([fixtureCase()], {
+    build_ref: "agent-gym-corpus-build://nightly/one",
+    built_at: "2026-08-12T10:15:00.000Z",
+    source_revision: "source-revision://cerebro/one",
+  });
+  assert.match(receipt.corpus_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.match(receipt.inventory_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.match(receipt.receipt_digest, /^sha256:[0-9a-f]{64}$/u);
+});
+
+test("corpus builds reject ambiguous source revisions", () => {
+  assert.throws(() => buildAgentGymCorpus([fixtureCase()], {
+    build_ref: "agent-gym-corpus-build://nightly/one",
+    built_at: "2026-08-12T10:15:00.000Z",
+    source_revision: "moving-main",
+  }), /source revision is invalid/u);
 });
 
 function fixtureCase(
