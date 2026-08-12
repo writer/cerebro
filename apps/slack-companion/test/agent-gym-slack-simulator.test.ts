@@ -6,8 +6,44 @@ import {
   simulateSlackButtonAction,
   simulateSlackDirectMessage,
   simulateSlackMention,
+  simulateSlackReactionAdded,
   simulateSlackThreadReply,
 } from "../src/index.js";
+
+test("reaction simulation records exact message feedback without Slack", () => {
+  const invocation = simulateSlackReactionAdded({
+    event_ref: "slack-event://reaction/one",
+    kind: "reaction_added",
+    occurred_at: "2026-08-12T08:35:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      item_ts: "1786523640.000001",
+      reaction: "thumbsup",
+      team_id: "T_ONE",
+      user_id: "U_ONE",
+    },
+  });
+  assert.deepEqual(invocation.action, {
+    action_id: "reaction.added",
+    value: "thumbsup",
+  });
+  assert.match(invocation.conversation_ref, /^slack-message:\/\/sha256\/[0-9a-f]{64}$/u);
+});
+
+test("reaction simulation rejects display emoji instead of stable names", () => {
+  assert.throws(() => simulateSlackReactionAdded({
+    event_ref: "slack-event://reaction/emoji",
+    kind: "reaction_added",
+    occurred_at: "2026-08-12T08:35:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      item_ts: "1786523640.000001",
+      reaction: "👍",
+      team_id: "T_ONE",
+      user_id: "U_ONE",
+    },
+  }), /reaction name is invalid/u);
+});
 
 test("button simulation binds the exact action to its actor and thread", () => {
   const invocation = simulateSlackButtonAction({
