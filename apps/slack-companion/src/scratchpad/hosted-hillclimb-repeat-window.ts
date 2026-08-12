@@ -1,5 +1,13 @@
 import type { HostedHillclimbComparisonV1 } from "./hosted-hillclimb-comparison.js";
 
+export interface HostedHillclimbRepeatPolicyV1 {
+  readonly minimum_comparison_count: number;
+}
+
+const DEFAULT_REPEAT_POLICY: HostedHillclimbRepeatPolicyV1 = Object.freeze({
+  minimum_comparison_count: 2,
+});
+
 export interface HostedHillclimbRepeatWindowV1 {
   readonly candidate_max_absolute_delta: {
     readonly authority_boundary_rate: number;
@@ -32,7 +40,13 @@ export interface HostedHillclimbRepeatWindowV1 {
 /** Seals a contiguous chronological sequence of content-free repeat comparisons. */
 export function buildHostedHillclimbRepeatWindow(
   comparisons: readonly HostedHillclimbComparisonV1[],
+  policy: HostedHillclimbRepeatPolicyV1 = DEFAULT_REPEAT_POLICY,
 ): HostedHillclimbRepeatWindowV1 {
+  if (!Number.isSafeInteger(policy.minimum_comparison_count)
+    || policy.minimum_comparison_count < 1
+    || policy.minimum_comparison_count > 100) {
+    throw new Error("Hosted hillclimb repeat policy requires a bounded sample minimum.");
+  }
   if (comparisons.length === 0) {
     throw new Error("Hosted hillclimb repeat window requires at least one comparison.");
   }
@@ -55,7 +69,8 @@ export function buildHostedHillclimbRepeatWindow(
     }
   }
   const stabilityBlockers = [
-    ...(comparisons.length < 2 ? ["insufficient_repeat_comparisons"] : []),
+    ...(comparisons.length < policy.minimum_comparison_count
+      ? ["insufficient_repeat_comparisons"] : []),
     ...(comparisons.some((comparison) => !comparison.promotion_stable)
       ? ["promotion_state_changed"] : []),
     ...(comparisons.some((comparison) => !comparison.quality_stable)

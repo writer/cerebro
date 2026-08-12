@@ -104,6 +104,24 @@ test("holds stability until repeats are sufficient and quality remains stable", 
   assert.equal(window.quality_instability_count, 1);
 });
 
+test("applies an explicit bounded repeat sample policy", () => {
+  const oneComparison = comparison(
+    "2026-08-12T16:00:00.000Z",
+    "2026-08-12T17:00:00.000Z",
+  );
+  assert.equal(buildHostedHillclimbRepeatWindow(
+    [oneComparison],
+    { minimum_comparison_count: 1 },
+  ).stability.stable, true);
+  assert.throws(
+    () => buildHostedHillclimbRepeatWindow(
+      [oneComparison],
+      { minimum_comparison_count: 0 },
+    ),
+    /bounded sample minimum/u,
+  );
+});
+
 test("rejects an empty or discontinuous repeat window", () => {
   assert.throws(() => buildHostedHillclimbRepeatWindow([]), /at least one/u);
   assert.throws(
