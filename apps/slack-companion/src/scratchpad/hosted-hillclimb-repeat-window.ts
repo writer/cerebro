@@ -38,6 +38,9 @@ export function buildHostedHillclimbRepeatWindow(
       && comparisons[index - 1]?.current_evaluated_at !== comparison.previous_evaluated_at) {
       throw new Error("Hosted hillclimb repeat window requires a contiguous evaluation chain.");
     }
+    if (!sameComparisonBoundary(comparisons[0]!, comparison)) {
+      throw new Error("Hosted hillclimb repeat window requires one corpus and execution boundary.");
+    }
   }
   const stabilityBlockers = [
     ...(comparisons.length < 2 ? ["insufficient_repeat_comparisons"] : []),
@@ -88,6 +91,26 @@ export function buildHostedHillclimbRepeatWindow(
       stable: stabilityBlockers.length === 0,
     }),
   });
+}
+
+function sameComparisonBoundary(
+  first: HostedHillclimbComparisonV1,
+  current: HostedHillclimbComparisonV1,
+): boolean {
+  return first.corpus_digest === current.corpus_digest
+    && first.generator_model_id === current.generator_model_id
+    && first.judge_model_id === current.judge_model_id
+    && first.execution_boundary.distinct_model_id === current.execution_boundary.distinct_model_id
+    && first.execution_boundary.generator_provider === current.execution_boundary.generator_provider
+    && first.execution_boundary.generator_region === current.execution_boundary.generator_region
+    && first.execution_boundary.generator_sampling_parameters
+      === current.execution_boundary.generator_sampling_parameters
+    && first.execution_boundary.judge_provider === current.execution_boundary.judge_provider
+    && first.execution_boundary.judge_region === current.execution_boundary.judge_region
+    && first.execution_boundary.judge_sampling_parameters
+      === current.execution_boundary.judge_sampling_parameters
+    && first.execution_boundary.separate_model_ports
+      === current.execution_boundary.separate_model_ports;
 }
 
 function maximumAbsolute(values: readonly number[]): number {

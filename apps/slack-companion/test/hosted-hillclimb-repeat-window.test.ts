@@ -99,3 +99,22 @@ test("rejects an empty or discontinuous repeat window", () => {
     /contiguous evaluation chain/u,
   );
 });
+
+test("rejects repeat comparisons from another corpus or model boundary", () => {
+  const first = comparison("2026-08-12T16:00:00.000Z", "2026-08-12T17:00:00.000Z");
+  const second = comparison("2026-08-12T17:00:00.000Z", "2026-08-12T18:00:00.000Z");
+  assert.throws(
+    () => buildHostedHillclimbRepeatWindow([
+      first,
+      { ...second, corpus_digest: `sha256:${"b".repeat(64)}` },
+    ]),
+    /one corpus and execution boundary/u,
+  );
+  assert.throws(
+    () => buildHostedHillclimbRepeatWindow([
+      first,
+      { ...second, judge_model_id: "us.anthropic.claude-opus-5-1" },
+    ]),
+    /one corpus and execution boundary/u,
+  );
+});
