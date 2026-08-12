@@ -23,6 +23,30 @@ export interface AgentGymRecordedToolResultV1 {
   readonly tool_id: string;
 }
 
+export interface AgentGymToolErrorFixtureV1 {
+  readonly call_ref: string;
+  readonly error_code: string;
+  readonly message: string;
+  readonly retryable: boolean;
+  readonly schema_version: "agent-gym-tool-error-fixture/v1";
+  readonly tool_id: string;
+}
+
+/** Creates a bounded provider-error fixture without a thrown live error. */
+export function injectAgentGymToolError(
+  input: Omit<AgentGymToolErrorFixtureV1, "schema_version">,
+): AgentGymToolErrorFixtureV1 {
+  reference(input.call_ref);
+  bounded(input.tool_id, 160);
+  bounded(input.error_code, 120);
+  bounded(input.message, 1_000);
+  if (!/^[a-z0-9][a-z0-9._-]*$/u.test(input.error_code)) invalidError();
+  return Object.freeze({
+    ...input,
+    schema_version: "agent-gym-tool-error-fixture/v1",
+  });
+}
+
 export interface RecordAgentGymToolResult {
   readonly call_ref: string;
   readonly input: Readonly<Record<string, AgentGymJson>>;
@@ -94,4 +118,7 @@ function invalid(): never {
 }
 function invalidResult(): never {
   throw new AgentGymContractError("Agent gym recorded tool result is invalid.");
+}
+function invalidError(): never {
+  throw new AgentGymContractError("Agent gym tool error fixture is invalid.");
 }

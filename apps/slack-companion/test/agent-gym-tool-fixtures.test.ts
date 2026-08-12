@@ -1,7 +1,38 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createAgentGymToolRegistry, recordAgentGymToolResult } from "../src/index.js";
+import {
+  createAgentGymToolRegistry,
+  injectAgentGymToolError,
+  recordAgentGymToolResult,
+} from "../src/index.js";
+
+test("tool error injection preserves retryability as fixture data", () => {
+  assert.deepEqual(injectAgentGymToolError({
+    call_ref: "tool-call://one",
+    error_code: "source.unavailable",
+    message: "The evidence source is unavailable.",
+    retryable: true,
+    tool_id: "cerebro.search",
+  }), {
+    call_ref: "tool-call://one",
+    error_code: "source.unavailable",
+    message: "The evidence source is unavailable.",
+    retryable: true,
+    schema_version: "agent-gym-tool-error-fixture/v1",
+    tool_id: "cerebro.search",
+  });
+});
+
+test("tool error injection rejects display text as an error code", () => {
+  assert.throws(() => injectAgentGymToolError({
+    call_ref: "tool-call://one",
+    error_code: "Source Unavailable",
+    message: "The evidence source is unavailable.",
+    retryable: true,
+    tool_id: "cerebro.search",
+  }), /error fixture is invalid/u);
+});
 
 test("recorded tool results bind output to exact input", () => {
   const result = recordAgentGymToolResult({
