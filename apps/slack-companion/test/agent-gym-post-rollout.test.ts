@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   digestAgentGymJson,
   openAgentGymRollbackReserve,
+  recordAgentGymPostRolloutObservation,
   validateAgentGymRollbackReserve,
+  validateAgentGymPostRolloutObservation,
   type AgentGymRolloutSummaryV1,
 } from "../src/index.js";
 
@@ -28,6 +30,34 @@ test("rollback reserves reject the active candidate as its own fallback", () => 
     opened_at: "2026-08-12T11:27:00.000Z",
     reserve_ref: "agent-gym-rollback-reserve://nightly/invalid",
   }), /rollback reserve is invalid/u);
+});
+
+test("post-rollout observations bind live evidence to the completed candidate", () => {
+  const observation = recordAgentGymPostRolloutObservation(completedRollout(), {
+    blocker_codes: [],
+    evidence_refs: ["agent-gym-evidence://post-rollout/one"],
+    latency_ms: 900,
+    observation_ref: "agent-gym-post-rollout-observation://nightly/one",
+    observed_at: "2026-08-12T11:28:00.000Z",
+    outcome: "passed",
+    quality_score: 0.91,
+    sample_ref: "agent-gym-live-sample://nightly/one",
+  });
+  assert.equal(observation.candidate_ref, completedRollout().candidate_ref);
+  assert.deepEqual(validateAgentGymPostRolloutObservation(observation), observation);
+});
+
+test("post-rollout failures require explicit blocker codes", () => {
+  assert.throws(() => recordAgentGymPostRolloutObservation(completedRollout(), {
+    blocker_codes: [],
+    evidence_refs: [],
+    latency_ms: 900,
+    observation_ref: "agent-gym-post-rollout-observation://nightly/invalid",
+    observed_at: "2026-08-12T11:28:00.000Z",
+    outcome: "failed",
+    quality_score: 0.4,
+    sample_ref: "agent-gym-live-sample://nightly/invalid",
+  }), /post-rollout observation is invalid/u);
 });
 
 function completedRollout(): AgentGymRolloutSummaryV1 {
