@@ -4,10 +4,43 @@ import test from "node:test";
 import {
   agentGymModelRequestDigest,
   evaluateAgentGymModelBudget,
+  invokeAgentGymModel,
   RecordedAgentGymModel,
   validateAgentGymRecordedModelResponse,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+test("model invocation receipts bind request, response, and budget", async () => {
+  const modelRequest = request();
+  const model = new RecordedAgentGymModel([recordedResponse(modelRequest)]);
+  const result = await invokeAgentGymModel(
+    modelRequest,
+    modelBudget(),
+    model,
+    "2026-08-12T09:30:00.000Z",
+  );
+  assert.equal(result.receipt.budget.allowed, true);
+  assert.equal(result.receipt.request_digest, agentGymModelRequestDigest(modelRequest));
+  assert.match(result.receipt.response_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.equal(result.receipt.response_source, "recorded");
+});
+
+test("model invocation receipts reject a response for another request", async () => {
+  const modelRequest = request();
+  await assert.rejects(invokeAgentGymModel(
+    modelRequest,
+    modelBudget(),
+    {
+      async invoke() {
+        return {
+          ...modelResponse(),
+          invocation_ref: "model-invocation://other",
+        };
+      },
+    },
+    "2026-08-12T09:30:00.000Z",
+  ), /model invocation binding is invalid/u);
+});
 
 function modelResponse() {
   return {
