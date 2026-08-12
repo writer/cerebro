@@ -30,6 +30,7 @@ export * from "./paired-slices.js";
 export * from "./promotion-input.js";
 export * from "./promotion-verdict.js";
 export * from "./promotion-authorization.js";
+export * from "./activation-plan.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";

@@ -5,6 +5,8 @@ import {
   decideAgentGymPromotionVerdict,
   digestAgentGymJson,
   issueAgentGymPromotionAuthorization,
+  planAgentGymCandidateActivation,
+  validateAgentGymActivationPlan,
   validateAgentGymPromotionAuthorization,
   validateAgentGymPromotionVerdict,
   type AgentGymPromotionInputReceiptV1,
@@ -70,6 +72,59 @@ test("blocked verdicts cannot receive activation authority", () => {
     reason_codes: ["release.policy_satisfied"],
   }), /promotion authorization is invalid/u);
 });
+
+test("activation plans bind exact candidates, authority, and canary scope", () => {
+  const plan = planAgentGymCandidateActivation(promotionAuthorization(), candidateManifest(), {
+    activation_ref: "agent-gym-activation://nightly/one",
+    baseline_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    initial_traffic_percent: 10,
+    mode: "canary",
+    planned_at: "2026-08-12T11:12:00.000Z",
+    target_ref: "agent-gym-target://slack-companion/default",
+  });
+  assert.equal(plan.initial_traffic_percent, 10);
+  assert.match(plan.idempotency_key, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(validateAgentGymActivationPlan(plan), plan);
+});
+
+test("expired authority cannot produce an activation plan", () => {
+  assert.throws(() => planAgentGymCandidateActivation(promotionAuthorization(), candidateManifest(), {
+    activation_ref: "agent-gym-activation://nightly/expired",
+    baseline_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    initial_traffic_percent: 100,
+    mode: "direct",
+    planned_at: "2026-08-12T12:11:00.000Z",
+    target_ref: "agent-gym-target://slack-companion/default",
+  }), /activation plan is invalid/u);
+});
+
+function promotionAuthorization() {
+  return issueAgentGymPromotionAuthorization(promotionVerdict(), {
+    authorization_ref: "agent-gym-promotion-authorization://nightly/one",
+    authority_ref: "agent-gym-authority://release/default",
+    expires_at: "2026-08-12T12:11:00.000Z",
+    issued_at: "2026-08-12T11:11:00.000Z",
+    issued_by_ref: "agent-gym-actor://release/controller",
+    outcome: "authorized",
+    reason_codes: ["release.policy_satisfied"],
+  });
+}
+
+function candidateManifest() {
+  return {
+    candidate_ref: "agent-gym-candidate://nightly/challenger",
+    max_output_tokens: 1_024,
+    model_id: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+    policy_digest: digest("1") as `sha256:${string}`,
+    prompt_digest: digest("2") as `sha256:${string}`,
+    provider: "aws_bedrock" as const,
+    region: "us-east-1",
+    schema_version: "agent-gym-candidate-manifest/v1" as const,
+    source_revision: "3".repeat(40),
+    tool_catalog_digest: digest("4") as `sha256:${string}`,
+    tool_ids: ["cerebro.search"],
+  };
+}
 
 function promotionVerdict() {
   return decideAgentGymPromotionVerdict(promotionInput(), {
