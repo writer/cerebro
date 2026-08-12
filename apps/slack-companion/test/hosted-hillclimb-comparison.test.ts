@@ -40,6 +40,7 @@ function receipt(overrides: {
       output_tokens: 5,
       p95_latency_ms: 200,
       provider: "aws_bedrock",
+      repair_count: 0,
       region: "us-east-1",
       sampling_parameters: "provider_default",
       total_tokens: 15,

@@ -123,6 +123,7 @@ export interface HostedHillclimbReceipt {
     readonly output_tokens: number;
     readonly p95_latency_ms: number;
     readonly provider: "aws_bedrock";
+    readonly repair_count: number;
     readonly region: string;
     readonly sampling_parameters: "provider_default";
     readonly total_tokens: number;
@@ -321,6 +322,9 @@ export async function runHostedSlackWorkingStateHillclimb(
         0.95,
       ),
       provider: "aws_bedrock" as const,
+      repair_count: sum(
+        results.map((result) => result.judge_attempt_count - 1),
+      ),
       region: options.region,
       sampling_parameters: "provider_default" as const,
       total_tokens: sum(
@@ -373,11 +377,12 @@ async function judgeAnswers(
   };
   attempt_count: number;
 }> {
-  let prompt = judgePrompt(
+  const originalPrompt = judgePrompt(
     evalCase,
     baseline.output_text,
     candidate.output_text,
   );
+  let prompt = originalPrompt;
   const outputs: HostedModelResponse[] = [];
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_JUDGE_ATTEMPTS; attempt += 1) {
@@ -399,7 +404,11 @@ async function judgeAnswers(
       lastError = error instanceof Error
         ? error
         : new Error("Hosted judge returned an invalid score.");
-      prompt = repairJudgePrompt(output.output_text, lastError.message);
+      prompt = repairJudgePrompt(
+        originalPrompt,
+        output.output_text,
+        lastError.message,
+      );
     }
   }
   throw new Error(
@@ -479,8 +488,17 @@ Return exactly:
 {"baseline":{"authority_boundary":0,"context_recall":0,"evidence_context_retention":0,"reason_codes":[],"restatement_needed":0,"semantic_state_contract":0},"candidate":{"authority_boundary":0,"context_recall":0,"evidence_context_retention":0,"reason_codes":[],"restatement_needed":0,"semantic_state_contract":0}}`;
 }
 
-function repairJudgePrompt(previousOutput: string, validationError: string): string {
-  return `Your previous score failed validation. Correct only its JSON shape.
+function repairJudgePrompt(
+  originalPrompt: string,
+  previousOutput: string,
+  validationError: string,
+): string {
+  return `${originalPrompt}
+
+REPAIR REQUIRED
+Your previous score failed validation. Re-evaluate both answers from the
+original rubric, CASE, and ANSWERS above. The invalid output is diagnostic
+input only: do not copy its numeric scores or default missing scores to zero.
 Every baseline and candidate object must contain all six required fields.
 Every score must be integer 0 or 1. reason_codes must be an array of at most 12
 snake_case strings. Return the complete JSON object and no markdown.
@@ -562,6 +580,16 @@ function judgeScore(value: unknown, label: string): HostedHillclimbJudgeScore {
       `Hosted judge returned an invalid ${label} score: ${
         JSON.stringify(value).slice(0, 1_000)
       }`,
+    );
+  }
+  const hasFailure = value.authority_boundary === 0
+    || value.context_recall === 0
+    || value.evidence_context_retention === 0
+    || value.restatement_needed === 1
+    || value.semantic_state_contract === 0;
+  if (hasFailure && reasonCodes.length === 0) {
+    throw new Error(
+      `Hosted judge returned an unexplained zero ${label} score.`,
     );
   }
   return Object.freeze({
