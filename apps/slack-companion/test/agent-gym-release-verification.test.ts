@@ -6,6 +6,8 @@ import {
   recordAgentGymCanaryAction,
   recordAgentGymCanaryStateObservation,
   verifyAgentGymCanaryAction,
+  advanceAgentGymRolloutState,
+  validateAgentGymRolloutState,
   validateAgentGymCanaryActionVerification,
   validateAgentGymCanaryStateObservation,
   type AgentGymCanaryActionPlanV1,
@@ -63,6 +65,45 @@ test("an action executor cannot independently verify its own state", () => {
   assert.equal(verification.verified, false);
   assert.deepEqual(verification.blocker_codes, ["verification.non_independent_observer"]);
 });
+
+test("rollout state advances only from verified observed actions", () => {
+  const state = advanceAgentGymRolloutState(
+    actionPlan(), actionReceipt(), independentVerification(), undefined, {
+      effective_at: "2026-08-12T11:25:00.000Z",
+      state_ref: "agent-gym-rollout-state://nightly/one",
+    },
+  );
+  assert.equal(state.phase, "canary");
+  assert.equal(state.candidate_traffic_percent, 20);
+  assert.equal(state.sequence, 1);
+  assert.deepEqual(validateAgentGymRolloutState(state), state);
+});
+
+test("unverified actions cannot advance rollout state", () => {
+  const selfVerification = verifyAgentGymCanaryAction(
+    actionPlan(), actionReceipt(), stateObservation("agent-gym-executor://canary/default"), {
+      verification_ref: "agent-gym-action-verification://nightly/self-state",
+      verified_at: "2026-08-12T11:24:00.000Z",
+      verifier_ref: "agent-gym-executor://canary/default",
+    },
+  );
+  assert.throws(() => advanceAgentGymRolloutState(
+    actionPlan(), actionReceipt(), selfVerification, undefined, {
+      effective_at: "2026-08-12T11:25:00.000Z",
+      state_ref: "agent-gym-rollout-state://nightly/unverified",
+    },
+  ), /rollout state is invalid/u);
+});
+
+function independentVerification() {
+  return verifyAgentGymCanaryAction(
+    actionPlan(), actionReceipt(), stateObservation("agent-gym-observer://verification/one"), {
+      verification_ref: "agent-gym-action-verification://nightly/one",
+      verified_at: "2026-08-12T11:24:00.000Z",
+      verifier_ref: "agent-gym-observer://verification/one",
+    },
+  );
+}
 
 function actionReceipt() {
   return recordAgentGymCanaryAction(actionPlan(), {
