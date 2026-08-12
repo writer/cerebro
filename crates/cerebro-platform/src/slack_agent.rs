@@ -3654,8 +3654,27 @@ fn capability_terms(value: &str) -> BTreeSet<String> {
         .split(|character: char| !character.is_ascii_alphanumeric())
         .filter(|term| term.len() >= 2)
         .filter(|term| !STOP_WORDS.contains(term))
-        .map(str::to_owned)
+        .map(normalize_capability_term)
         .collect()
+}
+
+fn normalize_capability_term(term: &str) -> String {
+    match term {
+        "deployed" | "deploying" | "deployment" | "deployments" => "deploy",
+        "pull" => "pr",
+        "repos" | "repositories" | "repository" => "repo",
+        "assets" => "asset",
+        "checks" => "check",
+        "findings" => "finding",
+        "messages" => "message",
+        "records" => "record",
+        "requests" => "request",
+        "sources" => "source",
+        "threads" => "thread",
+        "tools" => "tool",
+        _ => term,
+    }
+    .to_owned()
 }
 
 fn capability_search_summary(summary: &str) -> &str {
@@ -5633,6 +5652,40 @@ mod tests {
         };
 
         assert!(search_capability_catalog(&catalog, &input).is_empty());
+    }
+
+    #[test]
+    fn capability_search_normalizes_bounded_operator_vocabulary() {
+        let catalog = vec![
+            discovered_tool(
+                "mcp.github.deploy.read",
+                "Read repository deploy state",
+                "Read one deploy and its check state.",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            discovered_tool(
+                "mcp.policy.search",
+                "Search policies",
+                "Find one policy record.",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+        ];
+        let input = |query: &str| CapabilitySearchInput {
+            query: query.into(),
+            namespaces: Vec::new(),
+            authority_classes: Vec::new(),
+            effect_classes: Vec::new(),
+            limit: 8,
+            offset: 0,
+        };
+
+        for query in ["deployments", "deployed repos", "repository checks"] {
+            let matches = search_capability_catalog(&catalog, &input(query));
+            assert_eq!(matches[0].1.tool_id, "mcp.github.deploy.read", "{query}");
+        }
+        assert!(search_capability_catalog(&catalog, &input("police")).is_empty());
     }
 
     #[test]
