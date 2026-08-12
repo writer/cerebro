@@ -7,10 +7,12 @@ import {
   augmentAgentGymRegressionCorpus,
   buildAgentGymRegressionFixture,
   inspectAgentGymRegressionDuplicates,
+  requestAgentGymRegressionReplay,
   validateAgentGymRegressionSanitization,
   validateAgentGymRegressionDuplicateReport,
   validateAgentGymRegressionFixtureReceipt,
   validateAgentGymRegressionCorpusAugmentation,
+  validateAgentGymRegressionReplayRequest,
   type AgentGymFixtureCaseV1,
   verifyAgentGymRegressionSanitization,
   type AgentGymRegressionLearningCandidateV1,
@@ -91,6 +93,38 @@ test("regression corpus augmentation rejects scenario duplicates", () => {
     augmented_at: "2026-08-12T11:39:00.000Z",
     augmentation_ref: "agent-gym-regression-corpus-augmentation://nightly/invalid",
   }), /corpus augmentation is invalid/u);
+});
+
+test("regression replay requests compare fallback and challenger on the appended case", () => {
+  const fixture = fixtureCase("agent-gym-case://regression/new", ["live_sample_failed"]);
+  const receipt = regressionFixtureReceipt(fixture);
+  const augmentation = augmentAgentGymRegressionCorpus([fixtureCase()], receipt, {
+    augmented_at: "2026-08-12T11:39:00.000Z",
+    augmentation_ref: "agent-gym-regression-corpus-augmentation://nightly/one",
+  });
+  const request = requestAgentGymRegressionReplay(learningCandidate(), receipt, augmentation, {
+    challenger_candidate_ref: "agent-gym-candidate://nightly/next",
+    maximum_model_calls: 4,
+    planned_at: "2026-08-12T11:40:00.000Z",
+    request_ref: "agent-gym-regression-replay-request://nightly/one",
+  });
+  assert.equal(request.baseline_candidate_ref, "agent-gym-candidate://nightly/baseline");
+  assert.deepEqual(validateAgentGymRegressionReplayRequest(request), request);
+});
+
+test("regression replay requests reject the fallback as its own challenger", () => {
+  const fixture = fixtureCase("agent-gym-case://regression/new", ["live_sample_failed"]);
+  const receipt = regressionFixtureReceipt(fixture);
+  const augmentation = augmentAgentGymRegressionCorpus([fixtureCase()], receipt, {
+    augmented_at: "2026-08-12T11:39:00.000Z",
+    augmentation_ref: "agent-gym-regression-corpus-augmentation://nightly/one",
+  });
+  assert.throws(() => requestAgentGymRegressionReplay(learningCandidate(), receipt, augmentation, {
+    challenger_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    maximum_model_calls: 4,
+    planned_at: "2026-08-12T11:40:00.000Z",
+    request_ref: "agent-gym-regression-replay-request://nightly/invalid",
+  }), /regression replay request is invalid/u);
 });
 
 function regressionFixtureReceipt(fixture: AgentGymFixtureCaseV1) {
