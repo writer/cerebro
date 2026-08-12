@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   calibrateAgentGymEvaluator,
+  decideAgentGymEvaluatorAdmission,
   defineAgentGymEvaluatorManifest,
   defineAgentGymEvaluatorRubric,
   recordAgentGymCaseEvaluation,
@@ -93,6 +94,62 @@ test("model judge calibration fails closed on too few labeled samples", () => {
   assert.equal(calibration.passed, false);
 });
 
+test("evaluator admission requires current passing calibration", () => {
+  const rubric = defineAgentGymEvaluatorRubric(rubricInput());
+  const modelJudge = defineAgentGymEvaluatorManifest(modelJudgeManifestInput());
+  const deterministic = defineAgentGymEvaluatorManifest(deterministicManifestInput());
+  const decision = decideAgentGymEvaluatorAdmission(
+    rubric,
+    [modelJudge, deterministic],
+    [passingCalibration(modelJudge)],
+    admissionPolicy(),
+    "2026-08-12T10:50:00.000Z",
+  );
+  assert.equal(decision.admitted, true);
+  assert.deepEqual(decision.blocker_codes, []);
+  assert.match(decision.decision_digest, /^sha256:[0-9a-f]{64}$/u);
+});
+
+test("evaluator admission blocks stale calibration", () => {
+  const rubric = defineAgentGymEvaluatorRubric(rubricInput());
+  const modelJudge = defineAgentGymEvaluatorManifest(modelJudgeManifestInput());
+  const decision = decideAgentGymEvaluatorAdmission(
+    rubric,
+    [modelJudge, defineAgentGymEvaluatorManifest(deterministicManifestInput())],
+    [passingCalibration(modelJudge, "2026-08-10T10:50:00.000Z")],
+    admissionPolicy(),
+    "2026-08-12T10:50:00.000Z",
+  );
+  assert.equal(decision.admitted, false);
+  assert.deepEqual(decision.blocker_codes, ["evaluator.calibration_stale"]);
+});
+
+test("evaluator admission rejects calibration performed under another policy", () => {
+  const rubric = defineAgentGymEvaluatorRubric(rubricInput());
+  const modelJudge = defineAgentGymEvaluatorManifest(modelJudgeManifestInput());
+  const laxPolicy = {
+    ...calibrationPolicy(),
+    maximum_mean_absolute_error: 1,
+    maximum_sample_absolute_error: 1,
+    minimum_sample_count: 1,
+    policy_ref: "agent-gym-calibration-policy://model-judge/lax",
+  };
+  const calibration = calibrateAgentGymEvaluator(modelJudge, laxPolicy, {
+    calibrated_at: "2026-08-12T10:48:00.000Z",
+    calibration_dataset_digest: digest("f"),
+    samples: [{ expected_score: 1, observed_score: 0, sample_ref: "agent-gym-calibration-sample://lax" }],
+  });
+  const decision = decideAgentGymEvaluatorAdmission(
+    rubric,
+    [modelJudge, defineAgentGymEvaluatorManifest(deterministicManifestInput())],
+    [calibration],
+    admissionPolicy(),
+    "2026-08-12T10:50:00.000Z",
+  );
+  assert.equal(decision.admitted, false);
+  assert.deepEqual(decision.blocker_codes, ["evaluator.calibration_policy_mismatch"]);
+});
+
 function rubricInput() {
   return {
     metrics: [
@@ -164,6 +221,43 @@ function calibrationPolicy() {
     policy_ref: "agent-gym-calibration-policy://model-judge/default-v1",
     schema_version: "agent-gym-calibration-policy/v1" as const,
   };
+}
+
+function admissionPolicy() {
+  const calibration = calibrationPolicy();
+  return {
+    maximum_calibration_age_ms: 24 * 60 * 60 * 1_000,
+    policy_ref: "agent-gym-evaluator-admission-policy://default/v1",
+    required_calibration_dataset_digest: digest("f"),
+    required_calibration_policy_digest: passingCalibrationPolicyDigest(calibration),
+    schema_version: "agent-gym-evaluator-admission-policy/v1" as const,
+  };
+}
+
+function passingCalibrationPolicyDigest(policy: ReturnType<typeof calibrationPolicy>): string {
+  const evaluator = defineAgentGymEvaluatorManifest(modelJudgeManifestInput());
+  return calibrateAgentGymEvaluator(evaluator, policy, {
+    calibrated_at: "2026-08-12T10:48:00.000Z",
+    calibration_dataset_digest: digest("f"),
+    samples: [
+      { expected_score: 0.9, observed_score: 0.85, sample_ref: "agent-gym-calibration-sample://one" },
+      { expected_score: 0.5, observed_score: 0.55, sample_ref: "agent-gym-calibration-sample://two" },
+    ],
+  }).policy_digest;
+}
+
+function passingCalibration(
+  evaluator: ReturnType<typeof defineAgentGymEvaluatorManifest>,
+  calibratedAt = "2026-08-12T10:48:00.000Z",
+) {
+  return calibrateAgentGymEvaluator(evaluator, calibrationPolicy(), {
+    calibrated_at: calibratedAt,
+    calibration_dataset_digest: digest("f"),
+    samples: [
+      { expected_score: 0.9, observed_score: 0.85, sample_ref: "agent-gym-calibration-sample://one" },
+      { expected_score: 0.5, observed_score: 0.55, sample_ref: "agent-gym-calibration-sample://two" },
+    ],
+  });
 }
 
 function digest(character: string): string {

@@ -17,6 +17,7 @@ export * from "./evaluator-rubric.js";
 export * from "./evaluator-manifest.js";
 export * from "./case-evaluation.js";
 export * from "./evaluator-calibration.js";
+export * from "./evaluator-admission.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";

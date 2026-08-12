@@ -27,6 +27,7 @@ export interface AgentGymEvaluatorCalibrationV1 {
   readonly maximum_absolute_error: number;
   readonly mean_absolute_error: number;
   readonly passed: boolean;
+  readonly policy_digest: string;
   readonly policy_ref: string;
   readonly sample_count: number;
   readonly schema_version: "agent-gym-evaluator-calibration/v1";
@@ -45,6 +46,13 @@ export function calibrateAgentGymEvaluator(
   validateEvaluator(evaluator);
   if (evaluator.evaluator_kind !== "model_judge") invalid();
   validatePolicy(policy);
+  const policyDigest = digestAgentGymJson({
+    maximum_mean_absolute_error: policy.maximum_mean_absolute_error,
+    maximum_sample_absolute_error: policy.maximum_sample_absolute_error,
+    minimum_sample_count: policy.minimum_sample_count,
+    policy_ref: policy.policy_ref,
+    schema_version: policy.schema_version,
+  });
   timestamp(input.calibrated_at);
   digest(input.calibration_dataset_digest);
   if (!Array.isArray(input.samples) || input.samples.length > 10_000) invalid();
@@ -70,6 +78,7 @@ export function calibrateAgentGymEvaluator(
     passed: errors.length >= policy.minimum_sample_count
       && meanAbsoluteError <= policy.maximum_mean_absolute_error
       && maximumAbsoluteError <= policy.maximum_sample_absolute_error,
+    policy_digest: policyDigest,
     policy_ref: policy.policy_ref,
     sample_count: errors.length,
     schema_version: "agent-gym-evaluator-calibration/v1" as const,
