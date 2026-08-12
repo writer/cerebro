@@ -22,6 +22,26 @@ export interface AgentGymSlackInvocationV1 {
   readonly text?: string;
 }
 
+/** Simulates normalization of one direct message without contacting Slack. */
+export function simulateSlackDirectMessage(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "direct_message") invalid("direct-message event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const channelId = field(payload, "channel_id");
+  if (!/^D[A-Z0-9]+$/u.test(channelId)) invalid("direct-message channel");
+  const userId = field(payload, "user_id");
+  const messageTs = timestampField(payload, "ts");
+  const text = field(payload, "text", 12_000).trim();
+  return invocation(event, {
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-dm", teamId, channelId, messageTs),
+    route: "assistant_turn",
+    text,
+  });
+}
+
 /** Simulates normalization of one Slack app mention without Slack network access. */
 export function simulateSlackMention(
   event: AgentGymSlackEventV1,
