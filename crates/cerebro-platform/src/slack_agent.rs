@@ -3176,7 +3176,7 @@ An operator asking only for the generic configured authority boundary may use co
 An informal question about what kinds of security reasoning Cerebro is good at is non-operational self-description and uses converse unless it asks which tools, providers, or live records are currently available. Answer with reasoning strengths, not claims about current integrations.
 An appraisal of the conversation itself is converse when the operator asks whether Cerebro understood them, is being useful, is responding better, or can talk like a teammate without asking for a deployment, release, configuration, tool, or provider fact. The current exchange is the subject; do not reinterpret a human check-in as an operational status request merely because it appears in a work channel.
 Route an appraisal to lookup or investigate only when the operator asks for a concrete current-system claim, such as which release is deployed, whether a named capability is bound, or what a live record says. Frustration, brevity, or words such as "now" do not by themselves create an evidence requirement.
-Treat a short operational check-in in the agent's work channel as a request for current status synthesis, even when it uses informal language and does not name a source. Route it to investigate so the agent can inspect bounded operational evidence.
+Distinguish an interpersonal check-in from an operational check-in by its intended subject, using the newest request and thread context. A greeting or question about Cerebro as a conversational participant is converse when it does not ask about work, systems, risk, evidence, outcomes, or a retained mission. Channel placement alone never makes a social message operational. A short operational check-in asks how the work, system, risk, or outcome is going; route that to investigate even when it uses informal language and does not name a source.
 Treat questions about which capabilities are currently connected, enabled, available, or authorized, or about a named source's current records, collection health, or present evidence, as lookup unless the user asks for diagnosis, comparison, broad discovery, or synthesis across observations. General explanations and the generic provider-administration boundary may use converse only when they make no claim about named tools, sources, providers, or current access. A request is act only when the user explicitly asks for an external change.
 When the operator asks to reconcile, interpret, or correct a named current field from an earlier read, use lookup and obtain a fresh same-subject observation. Operator text and stale thread history cannot replace or contradict the authoritative field receipt.
 
@@ -6671,6 +6671,8 @@ mod tests {
         assert!(
             route.contains("do not reinterpret a human check-in as an operational status request")
         );
+        assert!(route.contains("Channel placement alone never makes a social message operational"));
+        assert!(route.contains("by its intended subject"));
         assert!(route.contains(
             "Frustration, brevity, or words such as \"now\" do not by themselves create an evidence requirement"
         ));

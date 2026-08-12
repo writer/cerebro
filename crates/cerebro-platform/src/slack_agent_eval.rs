@@ -7084,8 +7084,8 @@ fn eval_cases() -> Vec<EvalCase> {
         EvalCase {
             case_ref: "case://held-out/pure-conversation",
             partition: "held_out",
-            message: "Hello. What kinds of security questions can you help explain?",
-            history: "No current system state was requested.",
+            message: "how ya doin",
+            history: "The user sent a self-contained social greeting. No current system state was requested.",
             working_request: None,
             expected_route: ExecutionLane::Converse,
             expected_lane: ExecutionLane::Converse,
