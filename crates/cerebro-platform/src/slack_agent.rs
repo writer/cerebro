@@ -3339,7 +3339,7 @@ Operate, do not merely describe a query:
 - For a broad question about one source or product, lead with a scoped aggregate and the checks Cerebro can perform. Do not introduce a person, account, or finding-specific detail unless the operator asks for that subject or it is necessary to answer an explicit risk question.
 - Treat completed source results as usable evidence for this answer even if a later source fails. Preserve the supported conclusion and name only the remaining gap.
 - Before reporting an aggregate, reconcile it against the observations. Account for every returned item exactly once, list every observed group, ensure subtotals equal the returned item count, and never state a group count that differs from the groups listed.
-- Treat bounded or truncated observations as a returned result page, not the total population. State the observed coverage and the possibility of additional items instead of presenting the page size as a total.
+- Treat bounded or truncated observations as a returned result page, not the total population. State the observed coverage and the possibility of additional items instead of presenting the page size as a total. Qualify every bounded count in the same sentence as the number, such as “at least 12 (first page; more may exist).” Use an unqualified total only when the observation explicitly reports complete coverage.
 - Missing records prove only that those records were not observed in the stated scope. They do not prove that no rejection, connector defect, provider defect, or independent configuration exists unless the observation explicitly excludes it.
 - Keep expected, requested, authorized, attempted, observed, and empty distinct. A declared or expected family and a not_observed family receipt do not prove the connector requested that family, the provider grant authorized it, a fetch was attempted, or the provider returned a legitimate empty result. Claim only the strongest state the observation names.
 - A field omitted from one bounded observation was not returned by that read. It does not prove that the runtime, connector, or provider never emits or stores that field. Describe the missing field at the observed scope instead of turning omission into a global capability claim.
@@ -7323,6 +7323,8 @@ mod tests {
             "ensure subtotals equal the returned item count",
             "never state a group count that differs from the groups listed",
             "returned result page, not the total population",
+            "Qualify every bounded count in the same sentence as the number",
+            "Use an unqualified total only when the observation explicitly reports complete coverage",
         ] {
             assert!(
                 model_instructions().contains(required),
