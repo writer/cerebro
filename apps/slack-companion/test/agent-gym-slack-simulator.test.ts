@@ -1,7 +1,51 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { simulateSlackDirectMessage, simulateSlackMention } from "../src/index.js";
+import {
+  simulateSlackDirectMessage,
+  simulateSlackMention,
+  simulateSlackThreadReply,
+} from "../src/index.js";
+
+test("thread-reply simulation preserves the root conversation identity", () => {
+  const base = {
+    event_ref: "slack-event://reply/one",
+    kind: "thread_reply" as const,
+    occurred_at: "2026-08-12T08:32:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      team_id: "T_ONE",
+      text: "Use the second option.",
+      thread_ts: "1786523400.000001",
+      ts: "1786523520.000001",
+      user_id: "U_ONE",
+    },
+  };
+  const invocation = simulateSlackThreadReply(base);
+  const anotherReply = simulateSlackThreadReply({
+    ...base,
+    event_ref: "slack-event://reply/two",
+    payload: { ...base.payload, ts: "1786523521.000001" },
+  });
+  assert.equal(invocation.conversation_ref, anotherReply.conversation_ref);
+  assert.equal(invocation.text, "Use the second option.");
+});
+
+test("thread-reply simulation rejects a root message posing as a reply", () => {
+  assert.throws(() => simulateSlackThreadReply({
+    event_ref: "slack-event://reply/root",
+    kind: "thread_reply",
+    occurred_at: "2026-08-12T08:32:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      team_id: "T_ONE",
+      text: "Use the second option.",
+      thread_ts: "1786523520.000001",
+      ts: "1786523520.000001",
+      user_id: "U_ONE",
+    },
+  }), /thread-reply timestamp is invalid/u);
+});
 
 test("direct-message simulation routes one bounded private request", () => {
   const invocation = simulateSlackDirectMessage({
