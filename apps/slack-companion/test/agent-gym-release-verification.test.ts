@@ -8,8 +8,10 @@ import {
   verifyAgentGymCanaryAction,
   advanceAgentGymRolloutState,
   decideAgentGymRolloutCompletion,
+  summarizeAgentGymRollout,
   validateAgentGymRolloutState,
   validateAgentGymRolloutCompletion,
+  validateAgentGymRolloutSummary,
   validateAgentGymCanaryActionVerification,
   validateAgentGymCanaryStateObservation,
   type AgentGymCanaryActionPlanV1,
@@ -115,6 +117,32 @@ test("rollout completion accepts independently verified full traffic", () => {
   assert.equal(decision.outcome, "completed");
   assert.equal(decision.terminal, true);
   assert.deepEqual(validateAgentGymRolloutCompletion(decision), decision);
+});
+
+test("rollout summaries seal the verified state chain and closure", () => {
+  const state = canaryRolloutState();
+  const completion = decideAgentGymRolloutCompletion(state, {
+    decided_at: "2026-08-12T11:26:00.000Z",
+    decision_ref: "agent-gym-rollout-completion://nightly/incomplete",
+  });
+  const summary = summarizeAgentGymRollout(
+    [state], completion, "agent-gym-rollout-summary://nightly/one",
+  );
+  assert.equal(summary.state_count, 1);
+  assert.equal(summary.outcome, "incomplete");
+  assert.equal(summary.terminal, false);
+  assert.deepEqual(validateAgentGymRolloutSummary(summary), summary);
+});
+
+test("rollout summaries reject a completion for another state", () => {
+  const state = canaryRolloutState();
+  const completion = decideAgentGymRolloutCompletion(activeRolloutState(), {
+    decided_at: "2026-08-12T11:26:00.000Z",
+    decision_ref: "agent-gym-rollout-completion://nightly/other",
+  });
+  assert.throws(() => summarizeAgentGymRollout(
+    [state], completion, "agent-gym-rollout-summary://nightly/mismatch",
+  ), /rollout summary is invalid/u);
 });
 
 function canaryRolloutState() {
