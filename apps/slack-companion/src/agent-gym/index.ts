@@ -53,6 +53,7 @@ export * from "./rollback-state-observation.js";
 export * from "./rollback-verification.js";
 export * from "./rollback-incident.js";
 export * from "./regression-learning-candidate.js";
+export * from "./regression-sanitization.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
