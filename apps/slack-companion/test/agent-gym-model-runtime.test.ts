@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   agentGymModelRequestDigest,
   AgentGymModelInvocationError,
+  decideAgentGymModelRetry,
   evaluateAgentGymModelBudget,
   invokeAgentGymModel,
   RecordedAgentGymModel,
@@ -11,6 +12,43 @@ import {
   validateAgentGymModelFailure,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+function retryPolicy() {
+  return {
+    backoff_ms: [100, 250],
+    max_attempts: 3,
+    max_elapsed_ms: 1_000,
+    retryable_error_codes: ["provider.throttled"],
+    schema_version: "agent-gym-model-retry-policy/v1" as const,
+  };
+}
+
+function retryableFailure() {
+  return {
+    error_code: "provider.throttled",
+    invocation_ref: "model-invocation://one",
+    message: "The model provider throttled the request.",
+    model_id: "recorded.model-v1",
+    retryable: true,
+    schema_version: "agent-gym-model-failure/v1" as const,
+  };
+}
+
+test("model retry decisions use deterministic backoff", () => {
+  assert.deepEqual(decideAgentGymModelRetry(retryPolicy(), retryableFailure(), 1, 20), {
+    attempt: 1,
+    delay_ms: 100,
+    reason_code: "retry.scheduled",
+    retry: true,
+    schema_version: "agent-gym-model-retry-decision/v1",
+  });
+});
+
+test("model retry decisions stop at the attempt boundary", () => {
+  const decision = decideAgentGymModelRetry(retryPolicy(), retryableFailure(), 3, 500);
+  assert.equal(decision.retry, false);
+  assert.equal(decision.reason_code, "retry.attempts_exhausted");
+});
 
 test("model failures retain retry and provider correlation", () => {
   const failure = validateAgentGymModelFailure({

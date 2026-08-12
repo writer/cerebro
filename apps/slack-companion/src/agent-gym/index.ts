@@ -15,6 +15,7 @@ export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
 export * from "./model-failure.js";
+export * from "./model-retry.js";
 export * from "./model-invocation.js";
 export * from "./recorded-model.js";
 export * from "./artifact.js";
