@@ -179,6 +179,7 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(receipt.candidate.expected_restatement_turns_per_case, 0);
   assert.equal(receipt.candidate.p95_inference_latency_ms, 100);
   assert.equal(receipt.judge.p95_latency_ms, 200);
+  assert.equal(receipt.judge.repair_count, 0);
   assert.equal(receipt.promotion.context_recall_gain, 1);
   assert.equal(receipt.promotion.regression_count, 0);
   assert.deepEqual(receipt.promotion.blockers, []);
@@ -246,6 +247,7 @@ test("hosted hillclimb repairs an expired standalone case from original context"
   );
 
   assert.equal(judgeModel.judgeCalls, 23);
+  assert.equal(receipt.judge.repair_count, 1);
   assert.match(
     judgeModel.repairPrompt,
     /"current_request":"Start a separate assessment\."/u,

@@ -123,6 +123,7 @@ export interface HostedHillclimbReceipt {
     readonly output_tokens: number;
     readonly p95_latency_ms: number;
     readonly provider: "aws_bedrock";
+    readonly repair_count: number;
     readonly region: string;
     readonly sampling_parameters: "provider_default";
     readonly total_tokens: number;
@@ -321,6 +322,9 @@ export async function runHostedSlackWorkingStateHillclimb(
         0.95,
       ),
       provider: "aws_bedrock" as const,
+      repair_count: sum(
+        results.map((result) => result.judge_attempt_count - 1),
+      ),
       region: options.region,
       sampling_parameters: "provider_default" as const,
       total_tokens: sum(
