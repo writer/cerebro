@@ -4,6 +4,7 @@ import { digestAgentGymJson } from "../src/agent-gym/canonical-json.js";
 import { planAgentGymRegressionReplay, validateAgentGymRegressionReplayPlan } from "../src/agent-gym/regression-replay-plan.js";
 import { recordAgentGymRegressionReplayResult, validateAgentGymRegressionReplayResult } from "../src/agent-gym/regression-replay-result.js";
 import { evaluateAgentGymRegressionReplay, validateAgentGymRegressionReplayEvaluation } from "../src/agent-gym/regression-replay-evaluation.js";
+import { compareAgentGymRegressionReplay, validateAgentGymRegressionReplayComparison } from "../src/agent-gym/regression-replay-comparison.js";
 import type { AgentGymRegressionReplayRequestV1 } from "../src/agent-gym/regression-replay-request.js";
 
 const sha = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
@@ -27,6 +28,16 @@ function replayResult() {
     challenger: { candidate_ref: "agent-gym-candidate://challenger/one", invocation_receipt_digest: sha("f"), invocation_ref: plan.challenger_invocation_ref, latency_ms: 100, response_digest: sha("1"), total_tokens: 72 },
     completed_at: "2026-08-12T13:02:00.000Z", result_ref: "agent-gym-replay-result://regression/one",
   });
+}
+
+function replayEvaluation() {
+  const result = replayResult();
+  const evaluation = evaluateAgentGymRegressionReplay(result, {
+    baseline: { blocker_codes: [], candidate_ref: result.baseline.candidate_ref, evidence_digest: sha("2"), safety_passed: true, score: 0.72 },
+    challenger: { blocker_codes: [], candidate_ref: result.challenger.candidate_ref, evidence_digest: sha("3"), safety_passed: true, score: 0.86 },
+    evaluated_at: "2026-08-12T13:03:00.000Z", evaluation_ref: "agent-gym-replay-evaluation://regression/one",
+  });
+  return { evaluation, result };
 }
 
 test("seals an exact paired regression replay plan", () => {
@@ -62,4 +73,14 @@ test("binds independent scores to both replay candidates", () => {
   });
   assert.equal(validateAgentGymRegressionReplayEvaluation(evaluation).challenger.score, 0.86);
   assert.throws(() => evaluateAgentGymRegressionReplay(result, { ...evaluation, challenger: { ...evaluation.challenger, safety_passed: true, blocker_codes: ["unsafe"] } }));
+});
+
+test("compares paired replay scores and latency deterministically", () => {
+  const { evaluation, result } = replayEvaluation();
+  const comparison = compareAgentGymRegressionReplay(result, evaluation, {
+    compared_at: "2026-08-12T13:04:00.000Z", comparison_ref: "agent-gym-replay-comparison://regression/one",
+  });
+  assert.equal(comparison.outcome, "improved");
+  assert.equal(comparison.latency_delta_ms, -20);
+  assert.equal(validateAgentGymRegressionReplayComparison(comparison).score_delta, 0.14);
 });
