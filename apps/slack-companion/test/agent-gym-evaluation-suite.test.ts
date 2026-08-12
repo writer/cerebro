@@ -7,6 +7,7 @@ import {
   completeAgentGymEvaluationRun,
   decideAgentGymCorpusAdmission,
   decideAgentGymEvaluatorAdmission,
+  decideAgentGymEvaluationReadiness,
   defineAgentGymEvaluationSuite,
   defineAgentGymEvaluatorManifest,
   defineAgentGymEvaluatorRubric,
@@ -16,6 +17,7 @@ import {
   summarizeAgentGymEvaluationSlices,
   validateAgentGymEvaluationRunPlan,
   validateAgentGymEvaluationRunResult,
+  validateAgentGymEvaluationReadinessDecision,
   validateAgentGymEvaluationSliceReport,
 } from "../src/index.js";
 
@@ -96,6 +98,65 @@ test("evaluation slices retain partition and label evidence", () => {
   assert.equal(report.slices.find((entry) => entry.slice_id === "label:safety")?.case_count, 1);
   assert.equal(report.slices.find((entry) => entry.slice_id === "partition:shadow")?.valid_case_count, 1);
   assert.deepEqual(validateAgentGymEvaluationSliceReport(report), report);
+});
+
+test("evaluation readiness admits complete valid comparison evidence", () => {
+  const setup = evaluationSetup();
+  const suite = suiteFrom(setup);
+  const result = completedRun(setup, suite);
+  const report = summarizeAgentGymEvaluationSlices(suite, result);
+  const decision = decideAgentGymEvaluationReadiness(
+    suite,
+    result,
+    report,
+    readinessPolicy(),
+    "2026-08-12T11:07:00.000Z",
+  );
+  assert.equal(decision.ready, true);
+  assert.deepEqual(decision.blocker_codes, []);
+  assert.match(decision.decision_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(validateAgentGymEvaluationReadinessDecision(decision), decision);
+});
+
+test("evaluation readiness preserves invalid judge output as a blocker", () => {
+  const setup = evaluationSetup();
+  const suite = suiteFrom(setup);
+  const plan = planAgentGymEvaluationRun(suite, runPlanInput());
+  const evaluations = caseEvaluations(setup, suite);
+  const invalid = recordAgentGymCaseEvaluation(
+    setup.rubric,
+    [setup.modelJudge, setup.deterministic],
+    {
+      candidate_ref: runPlanInput().candidate_ref,
+      case_ref: suite.cases[0]!.case_ref,
+      evaluated_at: "2026-08-12T11:05:30.000Z",
+      evaluation_ref: "agent-gym-evaluation://nightly/invalid-case",
+      invalid_reason_codes: ["judge.output_schema_mismatch"],
+      metrics: [],
+      replay_ref: "agent-gym-replay://nightly/invalid-case",
+      schema_version: "agent-gym-case-evaluation/v1",
+      valid: false,
+    },
+  );
+  const result = completeAgentGymEvaluationRun(
+    suite,
+    plan,
+    [invalid, ...evaluations.slice(1)],
+    { completed_at: "2026-08-12T11:06:00.000Z", started_at: "2026-08-12T11:05:00.000Z" },
+  );
+  const decision = decideAgentGymEvaluationReadiness(
+    suite,
+    result,
+    summarizeAgentGymEvaluationSlices(suite, result),
+    readinessPolicy(),
+    "2026-08-12T11:07:00.000Z",
+  );
+  assert.equal(decision.ready, false);
+  assert.deepEqual(decision.blocker_codes, [
+    "evaluation.case_count_below_minimum",
+    "evaluation.invalid_cases",
+    "evaluation.required_slice_underfilled",
+  ]);
 });
 
 function evaluationSetup() {
@@ -202,6 +263,18 @@ function completedRun(
     caseEvaluations(setup, suite),
     { completed_at: "2026-08-12T11:06:00.000Z", started_at: "2026-08-12T11:05:00.000Z" },
   );
+}
+
+function readinessPolicy() {
+  return {
+    minimum_case_count: 2,
+    policy_ref: "agent-gym-evaluation-readiness-policy://default/v1",
+    required_slices: [
+      { minimum_valid_case_count: 1, slice_id: "partition:held_out" },
+      { minimum_valid_case_count: 1, slice_id: "partition:shadow" },
+    ],
+    schema_version: "agent-gym-evaluation-readiness-policy/v1" as const,
+  };
 }
 
 function runPlanInput() {
