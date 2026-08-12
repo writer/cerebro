@@ -34,6 +34,7 @@ export interface HostedHillclimbRepeatWindowV1 {
   readonly policy: HostedHillclimbRepeatPolicyV1;
   readonly promotion_flip_count: number;
   readonly quality_instability_count: number;
+  readonly regression_increase_count: number;
   readonly schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1";
   readonly stability: {
     readonly blockers: readonly string[];
@@ -138,6 +139,9 @@ export function buildHostedHillclimbRepeatWindow(
     ).length,
     quality_instability_count: comparisons.filter(
       (comparison) => !comparison.quality_stable,
+    ).length,
+    regression_increase_count: comparisons.filter(
+      (comparison) => comparison.regression_count_delta > 0,
     ).length,
     schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1",
     stability: Object.freeze({
