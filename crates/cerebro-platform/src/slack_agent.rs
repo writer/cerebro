@@ -3540,6 +3540,7 @@ fn search_capability_catalog<'a>(
         .collect::<BTreeSet<_>>();
     let mut matches = catalog
         .iter()
+        .filter(|descriptor| capability_search_selectable(&descriptor.tool_id))
         .filter(|descriptor| {
             namespaces.is_empty()
                 || namespaces
@@ -3573,6 +3574,17 @@ fn search_capability_catalog<'a>(
             .then_with(|| left.tool_id.cmp(&right.tool_id))
     });
     matches
+}
+
+fn capability_search_selectable(tool_id: &str) -> bool {
+    !matches!(
+        tool_id,
+        "capability.search"
+            | "capability.describe"
+            | "capability.overview"
+            | CAPABILITY_EXECUTE_READ
+            | CAPABILITY_EXECUTE_PROPOSAL
+    )
 }
 
 fn capability_match_score(
@@ -5484,6 +5496,66 @@ mod tests {
                 .iter()
                 .all(|(_, tool)| tool.tool_id != "graph.search")
         );
+    }
+
+    #[test]
+    fn capability_search_never_returns_its_own_discovery_plumbing() {
+        let mut catalog = built_in_capability_catalog();
+        catalog.push(discovered_tool(
+            "mcp.github.pull_request.read",
+            "Read a GitHub pull request",
+            "Read pull request state and checks.",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        ));
+        let input = CapabilitySearchInput {
+            query: "read tools and pull request state".into(),
+            namespaces: Vec::new(),
+            authority_classes: Vec::new(),
+            effect_classes: Vec::new(),
+            limit: 8,
+            offset: 0,
+        };
+
+        let matches = search_capability_catalog(&catalog, &input);
+
+        assert!(
+            matches
+                .iter()
+                .any(|(_, descriptor)| { descriptor.tool_id == "mcp.github.pull_request.read" })
+        );
+        assert!(
+            matches
+                .iter()
+                .all(|(_, descriptor)| { capability_search_selectable(&descriptor.tool_id) })
+        );
+        let built_ins = built_in_capability_catalog();
+        for tool_id in [
+            "capability.search",
+            "capability.describe",
+            "capability.overview",
+            CAPABILITY_EXECUTE_READ,
+            CAPABILITY_EXECUTE_PROPOSAL,
+        ] {
+            let descriptor = built_ins
+                .iter()
+                .find(|descriptor| descriptor.tool_id == tool_id)
+                .unwrap();
+            assert!(
+                !capability_search_selectable(&descriptor.tool_id),
+                "{tool_id}"
+            );
+        }
+        assert!(built_ins.iter().all(|descriptor| {
+            matches!(
+                descriptor.tool_id.as_str(),
+                "capability.search"
+                    | "capability.describe"
+                    | "capability.overview"
+                    | CAPABILITY_EXECUTE_READ
+                    | CAPABILITY_EXECUTE_PROPOSAL
+            ) || capability_search_selectable(&descriptor.tool_id)
+        }));
     }
 
     #[test]
