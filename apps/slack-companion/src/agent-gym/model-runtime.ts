@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 
 export interface AgentGymModelTextMessageV1 {
   readonly role: "assistant" | "user";

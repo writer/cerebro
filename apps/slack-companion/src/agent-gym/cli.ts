@@ -1,4 +1,5 @@
-import { AgentGymContractError, CEREBRO_AGENT_GYM } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
+import { CEREBRO_AGENT_GYM } from "./index.js";
 
 export interface AgentGymCliCommandV1 {
   readonly command: "compare" | "replay" | "validate" | "version";

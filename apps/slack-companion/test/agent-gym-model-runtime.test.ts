@@ -10,10 +10,46 @@ import {
   evaluateAgentGymModelBudget,
   invokeAgentGymModel,
   RecordedAgentGymModel,
+  runAgentGymModelBatch,
   validateAgentGymRecordedModelResponse,
   validateAgentGymModelFailure,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+test("model batches replay requests in declared order", async () => {
+  const first = request();
+  const second = {
+    ...request(),
+    invocation_ref: "model-invocation://case-two/one",
+    messages: [{ role: "user" as const, text: "Summarize the second case." }],
+  };
+  const model = new RecordedAgentGymModel([
+    recordedResponse(first),
+    recordedResponse(second),
+  ]);
+  const batch = await runAgentGymModelBatch(
+    "model-batch://one",
+    [first, second],
+    modelBudget(),
+    model,
+    "2026-08-12T09:45:00.000Z",
+  );
+  assert.deepEqual(batch.results.map((result) => result.receipt.invocation_ref), [
+    first.invocation_ref,
+    second.invocation_ref,
+  ]);
+  assert.equal(batch.ledger.invocation_count, 2);
+});
+
+test("model batches reject duplicate invocation identities", async () => {
+  await assert.rejects(runAgentGymModelBatch(
+    "model-batch://one",
+    [request(), request()],
+    modelBudget(),
+    new RecordedAgentGymModel([recordedResponse()]),
+    "2026-08-12T09:45:00.000Z",
+  ), /model batch is invalid/u);
+});
 
 test("model invocation ledgers aggregate replay cost and blockers", async () => {
   const modelRequest = request();

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AgentGymJson } from "./fixture-case.js";
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 
 export interface AgentGymToolDefinitionV1 {
   readonly description: string;

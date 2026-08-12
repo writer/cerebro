@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 
 export interface AgentGymMetricScoreV1 {
   readonly evaluator: "deterministic" | "model_judge";

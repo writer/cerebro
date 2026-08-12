@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 import type { AgentGymModelFailureV1 } from "./model-failure.js";
 import { AgentGymModelInvocationError } from "./model-failure.js";
 import type {

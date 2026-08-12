@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 import type { AgentGymModelInvocationReceiptV1 } from "./model-invocation.js";
 
 export interface AgentGymModelInvocationLedgerV1 {

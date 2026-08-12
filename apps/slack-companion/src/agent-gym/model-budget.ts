@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 import {
   type AgentGymModelResponseV1,
   validateAgentGymModelResponse,

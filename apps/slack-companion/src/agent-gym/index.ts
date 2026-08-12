@@ -4,16 +4,11 @@ export const CEREBRO_AGENT_GYM = Object.freeze({
   schema_version: "cerebro-agent-gym/v1",
 });
 
-export class AgentGymContractError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AgentGymContractError";
-  }
-}
-
+export * from "./contract-error.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
+export * from "./model-batch.js";
 export * from "./model-failure.js";
 export * from "./model-retry.js";
 export * from "./model-invocation.js";
