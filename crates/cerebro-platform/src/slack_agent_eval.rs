@@ -47,7 +47,7 @@ use super::slack_agent_session::{
 };
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-conversation-harness/v2";
-const EXPECTED_CASES_PER_PARTITION: usize = 17;
+const EXPECTED_CASES_PER_PARTITION: usize = 18;
 const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 const QUALITY_JUDGE_MAX_TOKENS: i32 = 2_048;
 const QUALITY_JUDGMENT_TOOL: &str = "submit_conversation_quality_judgment";
@@ -6851,6 +6851,8 @@ fn quality_contract(case_ref: &str) -> &'static str {
         "Identify the supported cursor-format mismatch after the configuration revision as the cause, preserve that authentication and prior evidence remain healthy, and own the bounded corrective next step without claiming it was executed."
     } else if case_ref.contains("finding") || case_ref.contains("asset") {
         "Synthesize the single high-risk finding, exposed production asset, complete evidence chain, remediation owner, and bounded restrict-then-reobserve recommendation. A row list or generic risk description fails."
+    } else if case_ref.contains("behavior-change-boundary") {
+        "Separate the evaluated result from an operative change. A higher or steadier score proves only the measured candidate and run. Do not say the deployed prompt, tools, planner, runtime, or user-visible behavior improved without current evidence identifying the changed artifact and its deployed state."
     } else if case_ref.contains("conversation-appraisal") {
         "Answer in one short conversational paragraph. Name the exact prior miss or correction from the invented thread, answer the appraisal directly, and add one useful implication. Advertising, capability disclaimers, asking for another task as proof, making the operator repeat context, or ending with a generic offer fails."
     } else if case_ref.contains("pure-conversation") || case_ref.contains("concept-chat") {
@@ -7112,6 +7114,16 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: false,
         },
         EvalCase {
+            case_ref: "case://held-out/behavior-change-boundary",
+            partition: "held_out",
+            message: "Assume none of the candidate artifacts shipped. What does a higher benchmark score actually prove?",
+            history: "Several repeated evaluation runs scored one candidate above a baseline.",
+            working_request: None,
+            expected_route: ExecutionLane::Converse,
+            expected_lane: ExecutionLane::Converse,
+            false_converse: false,
+        },
+        EvalCase {
             case_ref: "case://shadow/verified-day-log",
             partition: "shadow",
             message: "Describe your role, then list only the work from today you can verify.",
@@ -7281,6 +7293,16 @@ fn eval_cases() -> Vec<EvalCase> {
             expected_lane: ExecutionLane::Converse,
             false_converse: false,
         },
+        EvalCase {
+            case_ref: "case://shadow/behavior-change-boundary",
+            partition: "shadow",
+            message: "The trials are more repeatable now. Did the user-facing agent change too?",
+            history: "The thread contains repeated trial receipts but no current observation of the operative deployment.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
+        },
     ]
 }
 
@@ -7417,6 +7439,21 @@ mod tests {
         assert!(appraisal.history.contains("one useful implication"));
         assert!(quality_contract(appraisal.case_ref).contains("exact prior miss"));
         assert!(quality_contract(appraisal.case_ref).contains("another task as proof"));
+        let behavior_change_cases = cases
+            .iter()
+            .filter(|case| case.case_ref.contains("behavior-change-boundary"))
+            .collect::<Vec<_>>();
+        assert_eq!(behavior_change_cases.len(), 2);
+        assert!(behavior_change_cases.iter().any(|case| {
+            case.expected_route == ExecutionLane::Converse && !case.false_converse
+        }));
+        assert!(behavior_change_cases.iter().any(|case| {
+            case.expected_route == ExecutionLane::Investigate && case.false_converse
+        }));
+        assert!(
+            quality_contract(behavior_change_cases[0].case_ref)
+                .contains("higher or steadier score proves only the measured candidate")
+        );
         validate_candidate_payload(&eval_request(0, appraisal, "2026-08-03T03:00:00Z"))
             .expect("embedded regression requests remain production-shaped");
         assert!(
