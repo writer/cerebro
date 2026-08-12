@@ -10,10 +10,13 @@ export interface HostedHillclimbRepeatWindowV1 {
     readonly semantic_state_contract_rate: number;
   };
   readonly comparison_count: number;
+  readonly corpus_digest: string;
   readonly efficiency_regression_count: number;
   readonly evaluation_span_ms: number;
+  readonly generator_model_id: string;
   readonly first_evaluated_at: string;
   readonly last_evaluated_at: string;
+  readonly judge_model_id: string;
   readonly maximum_absolute_judge_p95_latency_ms_delta: number;
   readonly maximum_absolute_model_token_count_delta: number;
   readonly maximum_evaluation_gap_ms: number;
@@ -79,14 +82,17 @@ export function buildHostedHillclimbRepeatWindow(
       )),
     }),
     comparison_count: comparisons.length,
+    corpus_digest: comparisons[0]!.corpus_digest,
     efficiency_regression_count: comparisons.filter(
       (comparison) => !comparison.efficiency_stable,
     ).length,
     evaluation_span_ms:
       Date.parse(comparisons[comparisons.length - 1]!.current_evaluated_at)
       - Date.parse(comparisons[0]!.previous_evaluated_at),
+    generator_model_id: comparisons[0]!.generator_model_id,
     first_evaluated_at: comparisons[0]!.previous_evaluated_at,
     last_evaluated_at: comparisons[comparisons.length - 1]!.current_evaluated_at,
+    judge_model_id: comparisons[0]!.judge_model_id,
     maximum_absolute_judge_p95_latency_ms_delta: maximumAbsolute(comparisons.map(
       (comparison) => comparison.judge_p95_latency_ms_delta,
     )),
