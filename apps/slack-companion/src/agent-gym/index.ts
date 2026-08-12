@@ -9,6 +9,7 @@ export * from "./canonical-json.js";
 export * from "./corpus-manifest.js";
 export * from "./corpus-inventory.js";
 export * from "./corpus-build.js";
+export * from "./corpus-leakage.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
