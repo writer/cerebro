@@ -171,8 +171,10 @@ func (s *recordingProjectionGraphStore) UpsertProjectedLink(_ context.Context, l
 
 type batchRecordingProjectionGraphStore struct {
 	recordingProjectionGraphStore
-	batchEntityCalls int
-	batchLinkCalls   int
+	batchEntityCalls       int
+	batchLinkCalls         int
+	batchEntityDeleteCalls int
+	batchLinkDeleteCalls   int
 }
 
 func (s *batchRecordingProjectionGraphStore) UpsertProjectedEntities(ctx context.Context, entities []*ports.ProjectedEntity) error {
@@ -195,7 +197,29 @@ func (s *batchRecordingProjectionGraphStore) UpsertProjectedLinks(ctx context.Co
 	return nil
 }
 
+func (s *batchRecordingProjectionGraphStore) DeleteProjectedEntities(ctx context.Context, urns []string) error {
+	s.batchEntityDeleteCalls++
+	for _, urn := range urns {
+		if err := s.DeleteProjectedEntity(ctx, urn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *batchRecordingProjectionGraphStore) DeleteProjectedLinks(ctx context.Context, links []*ports.ProjectedLink) error {
+	s.batchLinkDeleteCalls++
+	for _, link := range links {
+		if err := s.DeleteProjectedLink(ctx, link); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 var _ ports.ProjectionGraphBatchStore = (*batchRecordingProjectionGraphStore)(nil)
+var _ ports.ProjectionEntityBatchDeleter = (*batchRecordingProjectionGraphStore)(nil)
+var _ ports.ProjectionLinkBatchDeleter = (*batchRecordingProjectionGraphStore)(nil)
 
 type checkpointProjectionGraphStore struct {
 	recordingProjectionGraphStore
@@ -1192,6 +1216,59 @@ func TestProjectResponseCoalescedDeletesProjectedRetractions(t *testing.T) {
 	if _, ok := store.links[key]; ok {
 		t.Fatalf("stale link remains after deletion")
 	}
+}
+
+func TestProjectResponseCoalescedUsesBatchDeleters(t *testing.T) {
+	staleURN := "urn:cerebro:writer:device:stale"
+	staleLink := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "endpoint", RuntimeID: "endpoint-runtime",
+		FromURN: "urn:cerebro:writer:device:active", Relation: "owned_by", ToURN: "urn:cerebro:writer:identity:user-1",
+	}
+	store := &batchRecordingProjectionGraphStore{recordingProjectionGraphStore: recordingProjectionGraphStore{
+		entities: map[string]*ports.ProjectedEntity{staleURN: {URN: staleURN}},
+		links:    map[string]*ports.ProjectedLink{staleLink.FromURN + "|" + staleLink.Relation + "|" + staleLink.ToURN: staleLink},
+	}}
+	projector := struct {
+		cleanupRecordProjector
+		retractionProjector
+	}{
+		cleanupRecordProjector: cleanupRecordProjector{
+			records: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+				return nil, nil, nil
+			},
+			cleanup: func(*cerebrov1.EventEnvelope) ([]string, error) { return []string{staleURN}, nil },
+		},
+		retractionProjector: retractionProjector{retractions: []*ports.ProjectedLink{staleLink}},
+	}
+	// Compose the optional cleanup and retraction capabilities explicitly because
+	// both must be visible on the same projector value.
+	combined := batchCleanupRetractionProjector{cleanup: projector.cleanupRecordProjector, retractions: projector.retractionProjector}
+	service := &Service{graphStore: store}
+	if _, err := service.projectResponseCoalesced(context.Background(), sourceRequest{TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1", SourceId: "endpoint"}},
+	}, combined, nil); err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if store.batchEntityDeleteCalls != 1 || store.batchLinkDeleteCalls != 1 {
+		t.Fatalf("batch delete calls = entities %d links %d, want 1 and 1", store.batchEntityDeleteCalls, store.batchLinkDeleteCalls)
+	}
+}
+
+type batchCleanupRetractionProjector struct {
+	cleanup     cleanupRecordProjector
+	retractions retractionProjector
+}
+
+func (p batchCleanupRetractionProjector) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return p.cleanup.ProjectRecords(event)
+}
+
+func (p batchCleanupRetractionProjector) ProjectCleanupRecords(event *cerebrov1.EventEnvelope) ([]string, error) {
+	return p.cleanup.ProjectCleanupRecords(event)
+}
+
+func (p batchCleanupRetractionProjector) ProjectRetractions(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLink, error) {
+	return p.retractions.ProjectRetractions(event)
 }
 
 func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing.T) {

@@ -238,9 +238,19 @@ type ProjectionLinkDeleter interface {
 	DeleteProjectedLink(context.Context, *ProjectedLink) error
 }
 
+// ProjectionLinkBatchDeleter retracts normalized links in one bounded store operation.
+type ProjectionLinkBatchDeleter interface {
+	DeleteProjectedLinks(context.Context, []*ProjectedLink) error
+}
+
 // ProjectionEntityDeleter removes normalized entities from projection stores that support deletion.
 type ProjectionEntityDeleter interface {
 	DeleteProjectedEntity(context.Context, string) error
+}
+
+// ProjectionEntityBatchDeleter removes isolated normalized entities in one bounded store operation.
+type ProjectionEntityBatchDeleter interface {
+	DeleteProjectedEntities(context.Context, []string) error
 }
 
 // ProjectionCleaner removes stale or orphaned projection artifacts in scoped batches.
