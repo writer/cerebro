@@ -9,20 +9,22 @@ import (
 )
 
 type awsExposureStubStore struct {
-	requests  []ports.CypherQueryRequest
-	responses [][]ports.CypherRow
-	err       error
+	requests         []ports.CypherQueryRequest
+	responses        [][]ports.CypherRow
+	exposureRequests []ports.ExposureCoverageRequest
+	result           *ports.ExposureCoverageResult
+	err              error
+	rawReads         int
 }
 
-func (s *awsExposureStubStore) Ping(context.Context) error {
-	return s.err
-}
+func (s *awsExposureStubStore) Ping(context.Context) error { return s.err }
 
 func (s *awsExposureStubStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return nil, nil
 }
 
 func (s *awsExposureStubStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	s.rawReads++
 	s.requests = append(s.requests, request)
 	if s.err != nil {
 		return nil, s.err
@@ -35,6 +37,11 @@ func (s *awsExposureStubStore) ExecuteReadCypher(_ context.Context, request port
 	return rows, nil
 }
 
+func (s *awsExposureStubStore) CompareExposureCoverage(_ context.Context, request ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
+	s.exposureRequests = append(s.exposureRequests, request)
+	return s.result, s.err
+}
+
 func TestGetAWSPublicEndpointInsightsRequiresTenant(t *testing.T) {
 	_, err := New(&awsExposureStubStore{}).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{})
 	if !errors.Is(err, ErrInvalidRequest) {
@@ -42,101 +49,66 @@ func TestGetAWSPublicEndpointInsightsRequiresTenant(t *testing.T) {
 	}
 }
 
-func TestGetAWSPublicEndpointInsightsQueriesAndParsesRows(t *testing.T) {
-	store := &awsExposureStubStore{responses: [][]ports.CypherRow{
-		{{Values: map[string]any{
-			"aws_endpoint_count":                   int64(7),
-			"internet_indicator_count":             int64(8),
-			"internet_host_count":                  int64(6),
-			"internet_ip_count":                    int64(2),
-			"overlapping_aws_endpoint_count":       int64(3),
-			"overlapping_internet_indicator_count": int64(4),
-			"overlapping_vulnview_asset_count":     int64(5),
-		}}},
-		{{Values: map[string]any{"entity_type": "aws.application.load.balancer", "count": int64(4)}}},
-		{{Values: map[string]any{
-			"aws_urn":               "urn:cerebro:writer:aws_application_load_balancer:alb",
-			"aws_entity_type":       "aws.application.load.balancer",
-			"aws_label":             "alb",
-			"indicator_urn":         "urn:cerebro:writer:internet_host:app.example.com",
-			"indicator_entity_type": "internet.host",
-			"indicator_label":       "app.example.com",
-			"vulnview_urn":          "urn:cerebro:writer:external_asset:app.example.com",
-			"vulnview_entity_type":  "external.asset",
-			"vulnview_label":        "app.example.com",
-		}}},
-		{{Values: map[string]any{
-			"aws_urn":               "urn:cerebro:writer:aws_elastic_ip:eipalloc-1",
-			"aws_entity_type":       "aws.elastic.ip",
-			"aws_label":             "eipalloc-1",
-			"indicator_urn":         "urn:cerebro:writer:internet_ip:192.0.2.10",
-			"indicator_entity_type": "internet.ip",
-			"indicator_label":       "192.0.2.10",
-		}}},
-		{{Values: map[string]any{
-			"vulnview_urn":          "urn:cerebro:writer:external_asset:missing.example.com",
-			"vulnview_entity_type":  "external.asset",
-			"vulnview_label":        "missing.example.com",
-			"indicator_urn":         "urn:cerebro:writer:internet_host:missing.example.com",
-			"indicator_entity_type": "internet.host",
-			"indicator_label":       "missing.example.com",
-		}}},
-		{{Values: map[string]any{
-			"account_urn":         "urn:cerebro:writer:cloud_account:account-a",
-			"account_entity_type": "cloud.account",
-			"account_label":       "account-a",
-			"aws_endpoint_count":  int64(9),
-			"vulnview_scan_count": int64(2),
-		}}},
+func TestGetAWSPublicEndpointInsightsUsesOneTypedBoundedRead(t *testing.T) {
+	entity := func(kind, id string) ports.ExposureCoverageEntity {
+		return ports.ExposureCoverageEntity{URN: "urn:cerebro:writer:" + kind + ":" + id, EntityType: kind, Label: id}
+	}
+	store := &awsExposureStubStore{result: &ports.ExposureCoverageResult{
+		TenantID:      "writer",
+		GraphRevision: 42,
+		Counts: ports.ExposureCoverageCounts{
+			PrimaryEntities: 7, Indicators: 8, HostIndicators: 6, IPIndicators: 2,
+			OverlappingPrimaryEntities: 3, OverlappingIndicators: 4, OverlappingCorroboratingEntities: 5,
+		},
+		TypeCounts: []ports.ExposureCoverageKindCount{{EntityKind: "aws.application.load.balancer", Count: 4}},
+		Overlaps: []ports.ExposureCoverageOverlap{{
+			Primary: entity("aws.application.load.balancer", "alb"), Indicator: entity("internet.host", "app.example.com"), Corroborating: entity("external.asset", "app.example.com"),
+		}},
+		PrimaryOnly:       []ports.ExposureCoveragePair{{Primary: entity("aws.elastic.ip", "eipalloc-1"), Indicator: entity("internet.ip", "192.0.2.10")}},
+		CorroboratingOnly: []ports.ExposureCoverageCorroboratingOnly{{Corroborating: entity("external.asset", "missing.example.com"), Indicator: entity("internet.host", "missing.example.com")}},
+		Accounts:          []ports.ExposureCoverageAccount{{Account: entity("cloud.account", "account-a"), PrimaryEntities: 9, CorroboratingObservations: 2}},
+		Completeness:      ports.ExposureCoverageCompleteness{PrimaryOnlyTruncated: true},
 	}}
 
 	result, err := New(store).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{
-		TenantID:  "writer",
-		AccountID: "account-a",
-		Region:    "us-east-1",
-		Search:    "App",
-		Limit:     250,
+		TenantID: "writer", AccountID: " account-a ", Region: " us-east-1 ", Search: " App ", Limit: 250,
 	})
 	if err != nil {
 		t.Fatalf("GetAWSPublicEndpointInsights() error = %v", err)
 	}
-	if len(store.requests) != 6 {
-		t.Fatalf("query count = %d, want 6", len(store.requests))
+	if len(store.exposureRequests) != 1 || store.rawReads != 0 {
+		t.Fatalf("typed requests = %d, raw reads = %d; want 1, 0", len(store.exposureRequests), store.rawReads)
 	}
-	if got := store.requests[0].Params["tenant_id"]; got != "writer" {
-		t.Fatalf("tenant_id param = %v, want writer", got)
+	request := store.exposureRequests[0]
+	if request.TenantID != "writer" || request.AccountID != "account-a" || request.Region != "us-east-1" || request.Query != "App" || request.Limit != maxAWSExposureLimit {
+		t.Fatalf("typed request = %#v", request)
 	}
-	if got := store.requests[0].Params["account_id"]; got != "account-a" {
-		t.Fatalf("account_id param = %v, want account-a", got)
+	if request.Profile.PrimarySourceID != "aws" || request.Profile.CorroboratingSourceID != "vulnview" || len(request.Profile.IndicatorKinds) != 2 {
+		t.Fatalf("typed profile = %#v", request.Profile)
 	}
-	if got := store.requests[0].Params["region"]; got != "us-east-1" {
-		t.Fatalf("region param = %v, want us-east-1", got)
+	if result.GraphRevision != 42 || result.Counts.AWSEndpoints != 7 || result.Counts.OverlappingVulnViewAssets != 5 {
+		t.Fatalf("result counts/revision = %#v", result)
 	}
-	if got := store.requests[0].Params["search"]; got != "app" {
-		t.Fatalf("search param = %v, want app", got)
+	if len(result.Overlaps) != 1 || result.NeighborhoodURN != "urn:cerebro:writer:internet.host:app.example.com" {
+		t.Fatalf("overlaps/neighborhood = %#v, %q", result.Overlaps, result.NeighborhoodURN)
 	}
-	if got := store.requests[2].RowLimit; got != maxAWSExposureLimit {
-		t.Fatalf("sample row limit = %d, want %d", got, maxAWSExposureLimit)
+	if !result.Completeness.AWSOnlyTruncated || len(result.CloudAccounts) != 1 || result.CloudAccounts[0].VulnViewScans != 2 {
+		t.Fatalf("completeness/accounts = %#v, %#v", result.Completeness, result.CloudAccounts)
 	}
-	if result.Counts.AWSEndpoints != 7 || result.Counts.OverlappingVulnViewAssets != 5 {
-		t.Fatalf("counts = %#v", result.Counts)
+}
+
+func TestGetAWSPublicEndpointInsightsFailsClosedWithoutTypedStore(t *testing.T) {
+	store := struct{ ports.GraphQueryStore }{}
+	_, err := New(store).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{TenantID: "writer"})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("GetAWSPublicEndpointInsights() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
-	if len(result.TypeCounts) != 1 || result.TypeCounts[0].EntityType != "aws.application.load.balancer" {
-		t.Fatalf("type counts = %#v", result.TypeCounts)
-	}
-	if len(result.Overlaps) != 1 || result.Overlaps[0].InternetIndicator.Label != "app.example.com" {
-		t.Fatalf("overlaps = %#v", result.Overlaps)
-	}
-	if len(result.AWSOnly) != 1 || result.AWSOnly[0].InternetIndicator.EntityType != "internet.ip" {
-		t.Fatalf("aws_only = %#v", result.AWSOnly)
-	}
-	if len(result.VulnViewOnly) != 1 || result.VulnViewOnly[0].VulnViewAsset.Label != "missing.example.com" {
-		t.Fatalf("vulnview_only = %#v", result.VulnViewOnly)
-	}
-	if len(result.CloudAccounts) != 1 || result.CloudAccounts[0].VulnViewScans != 2 {
-		t.Fatalf("cloud_accounts = %#v", result.CloudAccounts)
-	}
-	if result.NeighborhoodURN != "urn:cerebro:writer:internet_host:app.example.com" {
-		t.Fatalf("neighborhood hint = %q", result.NeighborhoodURN)
+}
+
+func TestGetAWSPublicEndpointInsightsRejectsWrongTenant(t *testing.T) {
+	store := &awsExposureStubStore{result: &ports.ExposureCoverageResult{TenantID: "other"}}
+	_, err := New(store).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{TenantID: "writer"})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("GetAWSPublicEndpointInsights() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }

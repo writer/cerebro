@@ -1667,6 +1667,8 @@ type stubGraphStore struct {
 	cypherPlan          *ports.CypherPlan
 	cypherRows          [][]ports.CypherRow
 	cypherRequests      []ports.CypherQueryRequest
+	exposureResult      *ports.ExposureCoverageResult
+	exposureRequests    []ports.ExposureCoverageRequest
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -1746,6 +1748,14 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 		return rows, nil
 	}
 	return nil, nil
+}
+
+func (s *stubGraphStore) CompareExposureCoverage(_ context.Context, request ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.exposureRequests = append(s.exposureRequests, request)
+	return s.exposureResult, nil
 }
 
 func (s *stubGraphStore) ExplainReadCypher(_ context.Context, request ports.CypherQueryRequest) (*ports.CypherPlan, error) {
@@ -4067,31 +4077,14 @@ func TestGraphImpactEndpointRejectsExplicitZeroBounds(t *testing.T) {
 }
 
 func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
-	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
-		{{Values: map[string]any{
-			"aws_endpoint_count":                   int64(2),
-			"internet_indicator_count":             int64(2),
-			"internet_host_count":                  int64(1),
-			"internet_ip_count":                    int64(1),
-			"overlapping_aws_endpoint_count":       int64(1),
-			"overlapping_internet_indicator_count": int64(1),
-			"overlapping_vulnview_asset_count":     int64(1),
-		}}},
-		nil,
-		{{Values: map[string]any{
-			"aws_urn":               "urn:cerebro:writer:aws_application_load_balancer:alb",
-			"aws_entity_type":       "aws.application.load.balancer",
-			"aws_label":             "alb",
-			"indicator_urn":         "urn:cerebro:writer:internet_host:app.example.com",
-			"indicator_entity_type": "internet.host",
-			"indicator_label":       "app.example.com",
-			"vulnview_urn":          "urn:cerebro:writer:external_asset:app.example.com",
-			"vulnview_entity_type":  "external.asset",
-			"vulnview_label":        "app.example.com",
-		}}},
-		nil,
-		nil,
-		nil,
+	graph := &stubGraphStore{exposureResult: &ports.ExposureCoverageResult{
+		TenantID: "writer", GraphRevision: 9,
+		Counts: ports.ExposureCoverageCounts{PrimaryEntities: 2, Indicators: 2, HostIndicators: 1, IPIndicators: 1, OverlappingPrimaryEntities: 1, OverlappingIndicators: 1, OverlappingCorroboratingEntities: 1},
+		Overlaps: []ports.ExposureCoverageOverlap{{
+			Primary:       ports.ExposureCoverageEntity{URN: "urn:cerebro:writer:aws_application_load_balancer:alb", EntityType: "aws.application.load.balancer", Label: "alb"},
+			Indicator:     ports.ExposureCoverageEntity{URN: "urn:cerebro:writer:internet_host:app.example.com", EntityType: "internet.host", Label: "app.example.com"},
+			Corroborating: ports.ExposureCoverageEntity{URN: "urn:cerebro:writer:external_asset:app.example.com", EntityType: "external.asset", Label: "app.example.com"},
+		}},
 	}}
 	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -4123,11 +4116,11 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 	if body.TenantID != "writer" || body.Counts.AWSEndpoints != 2 || body.Counts.OverlappingVulnViewAssets != 1 {
 		t.Fatalf("body = %#v", body)
 	}
+	if len(graph.exposureRequests) != 1 || len(graph.cypherRequests) != 0 {
+		t.Fatalf("typed requests = %d, raw requests = %d; want 1, 0", len(graph.exposureRequests), len(graph.cypherRequests))
+	}
 	if len(body.Overlaps) != 1 || body.Overlaps[0].InternetIndicator.URN != "urn:cerebro:writer:internet_host:app.example.com" {
 		t.Fatalf("overlaps = %#v", body.Overlaps)
-	}
-	if len(graph.cypherRequests) != 6 || graph.cypherRequests[0].Params["tenant_id"] != "writer" {
-		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
 	}
 }
 

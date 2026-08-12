@@ -35,7 +35,11 @@ pub use cutover::{
     ProjectionPromotionRequest,
 };
 pub use neo4j::{
-    LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector, ResolvedLifecycleFinding,
+    ExposureCoverageAccount, ExposureCoverageCompleteness, ExposureCoverageCorroboratingOnly,
+    ExposureCoverageCounts, ExposureCoverageEntity, ExposureCoverageKindCount,
+    ExposureCoverageOverlap, ExposureCoveragePair, ExposureCoverageProfile, ExposureCoverageQuery,
+    ExposureCoverageResult, LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector,
+    ResolvedLifecycleFinding,
 };
 pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,

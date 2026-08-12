@@ -60,6 +60,18 @@ pub type OwnedQueryFactsRequestView = ::buffa::view::OwnedView<
 pub type OwnedQueryFactsResponseView = ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsResponseView<'static>,
 >;
+///Shorthand for `OwnedView<CompareExposureCoverageRequestView<'static>>`.
+pub type OwnedCompareExposureCoverageRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::CompareExposureCoverageRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<CompareExposureCoverageResponseView<'static>>`.
+pub type OwnedCompareExposureCoverageResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::CompareExposureCoverageResponseView<
+        'static,
+    >,
+>;
 ///Shorthand for `OwnedView<GetSourceSummaryRequestView<'static>>`.
 pub type OwnedGetSourceSummaryRequestView = ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetSourceSummaryRequestView<
@@ -321,6 +333,48 @@ for ::buffa::view::OwnedView<
     }
 }
 impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageResponse,
+>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::CompareExposureCoverageResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::CompareExposureCoverageResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<
     crate::rpc::proto::cerebro::graph::v1::GetSourceSummaryResponse,
 >
 for crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetSourceSummaryResponseView<
@@ -424,6 +478,15 @@ pub const ORGANIZATIONAL_GRAPH_SERVICE_EXPLAIN_ASSERTION_SPEC: ::connectrpc::Spe
 /// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
 pub const ORGANIZATIONAL_GRAPH_SERVICE_QUERY_FACTS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/cerebro.graph.v1.OrganizationalGraphService/QueryFacts",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `CompareExposureCoverage` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_COMPARE_EXPOSURE_COVERAGE_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/CompareExposureCoverage",
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
@@ -645,6 +708,30 @@ pub trait OrganizationalGraphService: Send + Sync + 'static {
         Output = ::connectrpc::ServiceResult<
             impl ::connectrpc::Encodable<
                 crate::rpc::proto::cerebro::graph::v1::QueryFactsResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// CompareExposureCoverage returns one bounded, revision-bound comparison of
+    /// primary observations and an independent corroborating source.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn compare_exposure_coverage<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageResponse,
             > + Send + use<'a, Self>,
         >,
     > + Send;
@@ -908,6 +995,35 @@ impl<S: OrganizationalGraphService> OrganizationalGraphServiceExt for S {
             .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_QUERY_FACTS_SPEC)
             .route_view(
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "CompareExposureCoverage",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::CompareExposureCoverageRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.compare_exposure_coverage(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_COMPARE_EXPOSURE_COVERAGE_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "GetSourceSummary",
                 {
                     let svc = ::std::sync::Arc::clone(&self);
@@ -1032,6 +1148,14 @@ for OrganizationalGraphServiceServer<T> {
                 Some(
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
                         .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_QUERY_FACTS_SPEC),
+                )
+            }
+            "CompareExposureCoverage" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(
+                            ORGANIZATIONAL_GRAPH_SERVICE_COMPARE_EXPOSURE_COVERAGE_SPEC,
+                        ),
                 )
             }
             "GetSourceSummary" => {
@@ -1207,6 +1331,28 @@ for OrganizationalGraphServiceServer<T> {
                         .await?
                         .encode::<
                             crate::rpc::proto::cerebro::graph::v1::QueryFactsResponse,
+                        >(format)
+                })
+            }
+            "CompareExposureCoverage" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::CompareExposureCoverageRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageRequest,
+                    >::from_parts(&req, &body);
+                    svc.compare_exposure_coverage(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageResponse,
                         >(format)
                 })
             }
@@ -1667,6 +1813,51 @@ where
                 &self.config,
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "QueryFacts",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the CompareExposureCoverage RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/CompareExposureCoverage.
+    pub async fn compare_exposure_coverage(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::CompareExposureCoverageResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.compare_exposure_coverage_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the CompareExposureCoverage RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn compare_exposure_coverage_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::CompareExposureCoverageResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "CompareExposureCoverage",
                 request,
                 options,
             )

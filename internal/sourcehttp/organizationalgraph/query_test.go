@@ -128,6 +128,49 @@ func (s *assertionQueryStoreStub) MigrateProjectedLinkAssertions(_ context.Conte
 	return ports.ProjectionAssertionMigrationResult{LinksMatched: 7, LinksMigrated: 6, LinksQuarantined: 1}, nil
 }
 
+func TestProductExposureCoverageEnforcesTenantBoundsAndCompleteness(t *testing.T) {
+	entity := func(tenant, kind, id string) *cerebrographv1.GraphEntity {
+		return &cerebrographv1.GraphEntity{AgentKey: "urn:cerebro:" + tenant + ":" + strings.ReplaceAll(kind, ".", "_") + ":" + id, EntityKind: kind, Label: id}
+	}
+	valid := func() *cerebrographv1.CompareExposureCoverageResponse {
+		return &cerebrographv1.CompareExposureCoverageResponse{
+			TenantId: "tenant-a", GraphRevision: 17,
+			Counts:       &cerebrographv1.ExposureCoverageCounts{PrimaryEntities: 3},
+			Completeness: &cerebrographv1.ExposureCoverageCompleteness{OverlapsTruncated: true},
+			Overlaps: []*cerebrographv1.ExposureCoverageOverlap{{
+				Primary: entity("tenant-a", "aws.load.balancer", "alb"), Indicator: entity("tenant-a", "internet.host", "app"), Corroborating: entity("tenant-a", "external.asset", "app"),
+			}},
+		}
+	}
+
+	result, err := productExposureCoverage("tenant-a", 1, valid())
+	if err != nil {
+		t.Fatalf("productExposureCoverage() error = %v", err)
+	}
+	if result.GraphRevision != 17 || result.Counts.PrimaryEntities != 3 || !result.Completeness.OverlapsTruncated || len(result.Overlaps) != 1 {
+		t.Fatalf("result = %#v", result)
+	}
+
+	for name, mutate := range map[string]func(*cerebrographv1.CompareExposureCoverageResponse){
+		"omitted completeness": func(response *cerebrographv1.CompareExposureCoverageResponse) { response.Completeness = nil },
+		"wrong tenant":         func(response *cerebrographv1.CompareExposureCoverageResponse) { response.TenantId = "tenant-b" },
+		"cross tenant entity": func(response *cerebrographv1.CompareExposureCoverageResponse) {
+			response.Overlaps[0].Indicator = entity("tenant-b", "internet.host", "app")
+		},
+		"over bound": func(response *cerebrographv1.CompareExposureCoverageResponse) {
+			response.Overlaps = append(response.Overlaps, response.Overlaps[0])
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := valid()
+			mutate(response)
+			if _, err := productExposureCoverage("tenant-a", 1, response); err == nil {
+				t.Fatal("productExposureCoverage() error = nil, want fail-closed rejection")
+			}
+		})
+	}
+}
+
 func TestQueryStoreReturnsRustNeighborhoodAndDelegatesRawCypher(t *testing.T) {
 	server := newGraphTestServer(t, graphServiceStub{
 		expand: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {

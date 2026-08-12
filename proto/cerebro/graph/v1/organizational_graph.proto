@@ -20,6 +20,9 @@ service OrganizationalGraphService {
   rpc ExplainAssertion(ExplainAssertionRequest) returns (ExplainAssertionResponse);
   // QueryFacts executes one bounded, schema-checked graph pattern.
   rpc QueryFacts(QueryFactsRequest) returns (QueryFactsResponse);
+  // CompareExposureCoverage returns one bounded, revision-bound comparison of
+  // primary observations and an independent corroborating source.
+  rpc CompareExposureCoverage(CompareExposureCoverageRequest) returns (CompareExposureCoverageResponse);
   // GetSourceSummary returns the catalog coverage compiled into the running Rust service.
   rpc GetSourceSummary(GetSourceSummaryRequest) returns (GetSourceSummaryResponse);
 }
@@ -210,4 +213,87 @@ message GetSourceSummaryResponse {
   uint64 authoritative_families = 4;
   uint64 shadow_only_sources = 5;
   map<string, uint64> projection_classes = 6;
+}
+
+// ExposureCoverageProfile declares the closed entity kinds and sources used by
+// one coverage comparison. Relations are fixed by the server.
+message ExposureCoverageProfile {
+  string primary_source_id = 1;
+  string primary_entity_kind_prefix = 2;
+  string corroborating_source_id = 3;
+  string corroborating_entity_kind = 4;
+  repeated string indicator_kinds = 5;
+  string account_kind = 6;
+  string corroborating_observation_kind = 7;
+}
+
+// CompareExposureCoverageRequest scopes one bounded coverage comparison to an
+// authenticated tenant. Empty account, region, and query values disable those
+// optional filters.
+message CompareExposureCoverageRequest {
+  string tenant_id = 1;
+  ExposureCoverageProfile profile = 2;
+  string account_id = 3;
+  string region = 4;
+  string query = 5;
+  uint32 limit = 6;
+}
+
+message ExposureCoverageCounts {
+  uint64 primary_entities = 1;
+  uint64 indicators = 2;
+  uint64 host_indicators = 3;
+  uint64 ip_indicators = 4;
+  uint64 overlapping_primary_entities = 5;
+  uint64 overlapping_indicators = 6;
+  uint64 overlapping_corroborating_entities = 7;
+}
+
+message ExposureCoverageKindCount {
+  string entity_kind = 1;
+  uint64 count = 2;
+}
+
+message ExposureCoverageOverlap {
+  GraphEntity primary = 1;
+  GraphEntity indicator = 2;
+  GraphEntity corroborating = 3;
+}
+
+message ExposureCoveragePair {
+  GraphEntity primary = 1;
+  GraphEntity indicator = 2;
+}
+
+message ExposureCoverageCorroboratingOnly {
+  GraphEntity corroborating = 1;
+  GraphEntity indicator = 2;
+}
+
+message ExposureCoverageAccount {
+  GraphEntity account = 1;
+  uint64 primary_entities = 2;
+  uint64 corroborating_observations = 3;
+}
+
+message ExposureCoverageCompleteness {
+  bool type_counts_truncated = 1;
+  bool overlaps_truncated = 2;
+  bool primary_only_truncated = 3;
+  bool corroborating_only_truncated = 4;
+  bool accounts_truncated = 5;
+}
+
+// CompareExposureCoverageResponse binds every count and sample to one durable
+// graph revision and reports every server-side collection bound explicitly.
+message CompareExposureCoverageResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  ExposureCoverageCounts counts = 3;
+  repeated ExposureCoverageKindCount type_counts = 4;
+  repeated ExposureCoverageOverlap overlaps = 5;
+  repeated ExposureCoveragePair primary_only = 6;
+  repeated ExposureCoverageCorroboratingOnly corroborating_only = 7;
+  repeated ExposureCoverageAccount accounts = 8;
+  ExposureCoverageCompleteness completeness = 9;
 }

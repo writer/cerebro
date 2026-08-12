@@ -7,7 +7,11 @@ use cerebro_agent_context::{
     QueryMatch as ContextQueryMatch, QueryNode as ContextQueryNode,
 };
 use cerebro_organizational_model::{AssertionId, EntityId, TenantId};
-use cerebro_organizational_store::{Neo4jProjector, StoreError};
+use cerebro_organizational_store::{
+    ExposureCoverageEntity as StoreExposureEntity, ExposureCoverageProfile as StoreExposureProfile,
+    ExposureCoverageQuery as StoreExposureQuery, ExposureCoverageResult as StoreExposureResult,
+    Neo4jProjector, StoreError,
+};
 use cerebro_security_lifecycle::{
     LifecycleQuery, LifecycleState, ProjectedResource, QueryResult as LifecycleQueryResult,
     QuerySource, SubjectKind, SubjectLocator, canonical_resource_urn, finalize_indexed_query,
@@ -523,6 +527,49 @@ impl OrganizationalGraphService for GraphRpc {
         })
     }
 
+    async fn compare_exposure_coverage(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, CompareExposureCoverageRequest>,
+    ) -> ServiceResult<CompareExposureCoverageResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let profile = request.profile.as_option().ok_or_else(|| {
+            ConnectError::invalid_argument("exposure coverage profile is required")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let query = StoreExposureQuery {
+            profile: StoreExposureProfile {
+                primary_source_id: profile.primary_source_id.to_owned(),
+                primary_entity_kind_prefix: profile.primary_entity_kind_prefix.to_owned(),
+                corroborating_source_id: profile.corroborating_source_id.to_owned(),
+                corroborating_entity_kind: profile.corroborating_entity_kind.to_owned(),
+                indicator_kinds: profile
+                    .indicator_kinds
+                    .iter()
+                    .map(|value| (*value).to_owned())
+                    .collect(),
+                account_kind: profile.account_kind.to_owned(),
+                corroborating_observation_kind: profile.corroborating_observation_kind.to_owned(),
+            },
+            account_id: request.account_id.to_owned(),
+            region: request.region.to_owned(),
+            search: request.query.to_owned(),
+            limit,
+        };
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The organizational graph projection is not loaded.")
+        })?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.compare_exposure_coverage(&tenant, &query),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Exposure coverage read exceeded 2 seconds."))?
+        .map_err(exposure_store_error)?;
+        Response::ok(exposure_coverage_response(result))
+    }
+
     async fn get_source_summary(
         &self,
         context: RequestContext,
@@ -556,6 +603,105 @@ impl OrganizationalGraphService for GraphRpc {
                 .collect::<Result<_, ConnectError>>()?,
             ..Default::default()
         })
+    }
+}
+
+fn exposure_store_error(error: StoreError) -> ConnectError {
+    match error {
+        StoreError::Conflict(message)
+            if message.starts_with("invalid exposure coverage")
+                || message.starts_with("exposure coverage limit")
+                || message.starts_with("exposure coverage requires") =>
+        {
+            ConnectError::invalid_argument(message)
+        }
+        StoreError::Conflict(message) => ConnectError::unavailable(message),
+        other => ConnectError::unavailable(other.to_string()),
+    }
+}
+
+fn exposure_coverage_response(result: StoreExposureResult) -> CompareExposureCoverageResponse {
+    CompareExposureCoverageResponse {
+        tenant_id: result.tenant_id,
+        graph_revision: result.graph_revision,
+        counts: ExposureCoverageCounts {
+            primary_entities: result.counts.primary_entities,
+            indicators: result.counts.indicators,
+            host_indicators: result.counts.host_indicators,
+            ip_indicators: result.counts.ip_indicators,
+            overlapping_primary_entities: result.counts.overlapping_primary_entities,
+            overlapping_indicators: result.counts.overlapping_indicators,
+            overlapping_corroborating_entities: result.counts.overlapping_corroborating_entities,
+            ..Default::default()
+        }
+        .into(),
+        type_counts: result
+            .type_counts
+            .into_iter()
+            .map(|value| ExposureCoverageKindCount {
+                entity_kind: value.entity_kind,
+                count: value.count,
+                ..Default::default()
+            })
+            .collect(),
+        overlaps: result
+            .overlaps
+            .into_iter()
+            .map(|value| ExposureCoverageOverlap {
+                primary: exposure_graph_entity(value.primary).into(),
+                indicator: exposure_graph_entity(value.indicator).into(),
+                corroborating: exposure_graph_entity(value.corroborating).into(),
+                ..Default::default()
+            })
+            .collect(),
+        primary_only: result
+            .primary_only
+            .into_iter()
+            .map(|value| ExposureCoveragePair {
+                primary: exposure_graph_entity(value.primary).into(),
+                indicator: exposure_graph_entity(value.indicator).into(),
+                ..Default::default()
+            })
+            .collect(),
+        corroborating_only: result
+            .corroborating_only
+            .into_iter()
+            .map(|value| ExposureCoverageCorroboratingOnly {
+                corroborating: exposure_graph_entity(value.corroborating).into(),
+                indicator: exposure_graph_entity(value.indicator).into(),
+                ..Default::default()
+            })
+            .collect(),
+        accounts: result
+            .accounts
+            .into_iter()
+            .map(|value| ExposureCoverageAccount {
+                account: exposure_graph_entity(value.account).into(),
+                primary_entities: value.primary_entities,
+                corroborating_observations: value.corroborating_observations,
+                ..Default::default()
+            })
+            .collect(),
+        completeness: ExposureCoverageCompleteness {
+            type_counts_truncated: result.completeness.type_counts_truncated,
+            overlaps_truncated: result.completeness.overlaps_truncated,
+            primary_only_truncated: result.completeness.primary_only_truncated,
+            corroborating_only_truncated: result.completeness.corroborating_only_truncated,
+            accounts_truncated: result.completeness.accounts_truncated,
+            ..Default::default()
+        }
+        .into(),
+        ..Default::default()
+    }
+}
+
+fn exposure_graph_entity(value: StoreExposureEntity) -> GraphEntity {
+    GraphEntity {
+        entity_id: value.agent_key.clone(),
+        agent_key: value.agent_key,
+        entity_kind: value.entity_kind,
+        label: value.label,
+        ..Default::default()
     }
 }
 

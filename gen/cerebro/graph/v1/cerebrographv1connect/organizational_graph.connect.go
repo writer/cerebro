@@ -55,6 +55,9 @@ const (
 	// OrganizationalGraphServiceQueryFactsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's QueryFacts RPC.
 	OrganizationalGraphServiceQueryFactsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/QueryFacts"
+	// OrganizationalGraphServiceCompareExposureCoverageProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's CompareExposureCoverage RPC.
+	OrganizationalGraphServiceCompareExposureCoverageProcedure = "/cerebro.graph.v1.OrganizationalGraphService/CompareExposureCoverage"
 	// OrganizationalGraphServiceGetSourceSummaryProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's GetSourceSummary RPC.
 	OrganizationalGraphServiceGetSourceSummaryProcedure = "/cerebro.graph.v1.OrganizationalGraphService/GetSourceSummary"
@@ -77,6 +80,9 @@ type OrganizationalGraphServiceClient interface {
 	ExplainAssertion(context.Context, *connect.Request[v1.ExplainAssertionRequest]) (*connect.Response[v1.ExplainAssertionResponse], error)
 	// QueryFacts executes one bounded, schema-checked graph pattern.
 	QueryFacts(context.Context, *connect.Request[v1.QueryFactsRequest]) (*connect.Response[v1.QueryFactsResponse], error)
+	// CompareExposureCoverage returns one bounded, revision-bound comparison of
+	// primary observations and an independent corroborating source.
+	CompareExposureCoverage(context.Context, *connect.Request[v1.CompareExposureCoverageRequest]) (*connect.Response[v1.CompareExposureCoverageResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
 }
@@ -135,6 +141,12 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("QueryFacts")),
 			connect.WithClientOptions(opts...),
 		),
+		compareExposureCoverage: connect.NewClient[v1.CompareExposureCoverageRequest, v1.CompareExposureCoverageResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceCompareExposureCoverageProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("CompareExposureCoverage")),
+			connect.WithClientOptions(opts...),
+		),
 		getSourceSummary: connect.NewClient[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse](
 			httpClient,
 			baseURL+OrganizationalGraphServiceGetSourceSummaryProcedure,
@@ -146,14 +158,15 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 
 // organizationalGraphServiceClient implements OrganizationalGraphServiceClient.
 type organizationalGraphServiceClient struct {
-	search           *connect.Client[v1.SearchRequest, v1.SearchResponse]
-	getEntity        *connect.Client[v1.GetEntityRequest, v1.GetEntityResponse]
-	expand           *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
-	expandBatch      *connect.Client[v1.ExpandBatchRequest, v1.ExpandBatchResponse]
-	findPaths        *connect.Client[v1.FindPathsRequest, v1.FindPathsResponse]
-	explainAssertion *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
-	queryFacts       *connect.Client[v1.QueryFactsRequest, v1.QueryFactsResponse]
-	getSourceSummary *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
+	search                  *connect.Client[v1.SearchRequest, v1.SearchResponse]
+	getEntity               *connect.Client[v1.GetEntityRequest, v1.GetEntityResponse]
+	expand                  *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
+	expandBatch             *connect.Client[v1.ExpandBatchRequest, v1.ExpandBatchResponse]
+	findPaths               *connect.Client[v1.FindPathsRequest, v1.FindPathsResponse]
+	explainAssertion        *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
+	queryFacts              *connect.Client[v1.QueryFactsRequest, v1.QueryFactsResponse]
+	compareExposureCoverage *connect.Client[v1.CompareExposureCoverageRequest, v1.CompareExposureCoverageResponse]
+	getSourceSummary        *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
 }
 
 // Search calls cerebro.graph.v1.OrganizationalGraphService.Search.
@@ -191,6 +204,12 @@ func (c *organizationalGraphServiceClient) QueryFacts(ctx context.Context, req *
 	return c.queryFacts.CallUnary(ctx, req)
 }
 
+// CompareExposureCoverage calls
+// cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage.
+func (c *organizationalGraphServiceClient) CompareExposureCoverage(ctx context.Context, req *connect.Request[v1.CompareExposureCoverageRequest]) (*connect.Response[v1.CompareExposureCoverageResponse], error) {
+	return c.compareExposureCoverage.CallUnary(ctx, req)
+}
+
 // GetSourceSummary calls cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary.
 func (c *organizationalGraphServiceClient) GetSourceSummary(ctx context.Context, req *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {
 	return c.getSourceSummary.CallUnary(ctx, req)
@@ -213,6 +232,9 @@ type OrganizationalGraphServiceHandler interface {
 	ExplainAssertion(context.Context, *connect.Request[v1.ExplainAssertionRequest]) (*connect.Response[v1.ExplainAssertionResponse], error)
 	// QueryFacts executes one bounded, schema-checked graph pattern.
 	QueryFacts(context.Context, *connect.Request[v1.QueryFactsRequest]) (*connect.Response[v1.QueryFactsResponse], error)
+	// CompareExposureCoverage returns one bounded, revision-bound comparison of
+	// primary observations and an independent corroborating source.
+	CompareExposureCoverage(context.Context, *connect.Request[v1.CompareExposureCoverageRequest]) (*connect.Response[v1.CompareExposureCoverageResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
 }
@@ -266,6 +288,12 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("QueryFacts")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceCompareExposureCoverageHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceCompareExposureCoverageProcedure,
+		svc.CompareExposureCoverage,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("CompareExposureCoverage")),
+		connect.WithHandlerOptions(opts...),
+	)
 	organizationalGraphServiceGetSourceSummaryHandler := connect.NewUnaryHandler(
 		OrganizationalGraphServiceGetSourceSummaryProcedure,
 		svc.GetSourceSummary,
@@ -288,6 +316,8 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceExplainAssertionHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceQueryFactsProcedure:
 			organizationalGraphServiceQueryFactsHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceCompareExposureCoverageProcedure:
+			organizationalGraphServiceCompareExposureCoverageHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceGetSourceSummaryProcedure:
 			organizationalGraphServiceGetSourceSummaryHandler.ServeHTTP(w, r)
 		default:
@@ -325,6 +355,10 @@ func (UnimplementedOrganizationalGraphServiceHandler) ExplainAssertion(context.C
 
 func (UnimplementedOrganizationalGraphServiceHandler) QueryFacts(context.Context, *connect.Request[v1.QueryFactsRequest]) (*connect.Response[v1.QueryFactsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.QueryFacts is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) CompareExposureCoverage(context.Context, *connect.Request[v1.CompareExposureCoverageRequest]) (*connect.Response[v1.CompareExposureCoverageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage is not implemented"))
 }
 
 func (UnimplementedOrganizationalGraphServiceHandler) GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {

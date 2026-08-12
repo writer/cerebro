@@ -17,7 +17,7 @@ use cerebro_security_lifecycle::{
     PolicyStateCount, PreparedLifecycleQuery, ProjectedResource, StateCount, SubjectKind,
     SubjectKindCount,
 };
-use neo4rs::{BoltList, BoltMap, BoltType, Graph, Row, query};
+use neo4rs::{BoltList, BoltMap, BoltType, Graph, Row, Txn, query};
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -126,6 +126,21 @@ MATCH ()-[assertion:ORGANIZATIONAL_RELATION {
   assertion_id: row.assertion_id
 }]->()
 DELETE assertion
+"#;
+
+const EXPOSURE_PRIMARY_FILTER: &str = r#"
+endpoint.entity_type STARTS WITH $primary_kind_prefix
+  AND indicator.entity_type IN $indicator_kinds
+  AND ($account_id = '' OR coalesce(endpoint.attributes_json, '') CONTAINS ('"domain":"' + $account_id + '"'))
+  AND ($region = '' OR endpoint.urn CONTAINS (':' + $region + ':') OR coalesce(endpoint.attributes_json, '') CONTAINS ('"' + $region + '"'))
+  AND ($search = '' OR toLower(coalesce(endpoint.urn, '') + ' ' + coalesce(endpoint.label, '') + ' ' + coalesce(indicator.urn, '') + ' ' + coalesce(indicator.label, '')) CONTAINS $search)
+"#;
+
+const EXPOSURE_ACCOUNT_FILTER: &str = r#"
+endpoint.entity_type STARTS WITH $primary_kind_prefix
+  AND ($account_id = '' OR account.label = $account_id OR account.urn CONTAINS $account_id OR coalesce(endpoint.attributes_json, '') CONTAINS ('"domain":"' + $account_id + '"'))
+  AND ($region = '' OR endpoint.urn CONTAINS (':' + $region + ':') OR coalesce(endpoint.attributes_json, '') CONTAINS ('"' + $region + '"'))
+  AND ($search = '' OR toLower(coalesce(endpoint.urn, '') + ' ' + coalesce(endpoint.label, '') + ' ' + coalesce(account.urn, '') + ' ' + coalesce(account.label, '')) CONTAINS $search)
 "#;
 
 const REVISION_QUERY: &str = r#"
@@ -472,6 +487,157 @@ pub struct LegacyRootCoverage {
     pub entity_types: Vec<LegacyRootCoverageKind>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Closed source and entity-kind filters for one exposure coverage comparison.
+pub struct ExposureCoverageProfile {
+    /// Source that owns the primary endpoint observations.
+    pub primary_source_id: String,
+    /// Entity-kind prefix admitted for primary endpoints.
+    pub primary_entity_kind_prefix: String,
+    /// Independent source used to corroborate primary observations.
+    pub corroborating_source_id: String,
+    /// Entity kind emitted by the corroborating source.
+    pub corroborating_entity_kind: String,
+    /// Closed indicator kinds shared between both sources.
+    pub indicator_kinds: Vec<String>,
+    /// Entity kind used for account grouping.
+    pub account_kind: String,
+    /// Corroborating observation kind linked to accounts.
+    pub corroborating_observation_kind: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Bounded tenant-scoped exposure coverage query.
+pub struct ExposureCoverageQuery {
+    /// Closed comparison profile.
+    pub profile: ExposureCoverageProfile,
+    /// Optional account identifier filter.
+    pub account_id: String,
+    /// Optional region filter.
+    pub region: String,
+    /// Optional case-insensitive label or identity search.
+    pub search: String,
+    /// Maximum rows returned by each sample collection.
+    pub limit: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Stable entity identity returned by an exposure coverage read.
+pub struct ExposureCoverageEntity {
+    /// Tenant-scoped stable graph key.
+    pub agent_key: String,
+    /// Entity kind.
+    pub entity_kind: String,
+    /// Human-readable label.
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// Complete aggregate counts for one exposure comparison.
+pub struct ExposureCoverageCounts {
+    /// Primary endpoint observations.
+    pub primary_entities: u64,
+    /// Distinct shared indicators.
+    pub indicators: u64,
+    /// Host indicators.
+    pub host_indicators: u64,
+    /// IP indicators.
+    pub ip_indicators: u64,
+    /// Primary endpoints also observed by the corroborating source.
+    pub overlapping_primary_entities: u64,
+    /// Shared indicators observed by both sources.
+    pub overlapping_indicators: u64,
+    /// Corroborating entities that overlap primary observations.
+    pub overlapping_corroborating_entities: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Count for one primary entity kind.
+pub struct ExposureCoverageKindCount {
+    /// Primary entity kind.
+    pub entity_kind: String,
+    /// Distinct primary entities of this kind.
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One primary observation corroborated by an independent source.
+pub struct ExposureCoverageOverlap {
+    /// Primary observation.
+    pub primary: ExposureCoverageEntity,
+    /// Shared indicator.
+    pub indicator: ExposureCoverageEntity,
+    /// Corroborating observation.
+    pub corroborating: ExposureCoverageEntity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One primary observation without corroboration.
+pub struct ExposureCoveragePair {
+    /// Primary observation.
+    pub primary: ExposureCoverageEntity,
+    /// Shared indicator.
+    pub indicator: ExposureCoverageEntity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One corroborating observation missing from the primary source.
+pub struct ExposureCoverageCorroboratingOnly {
+    /// Corroborating observation.
+    pub corroborating: ExposureCoverageEntity,
+    /// Shared indicator.
+    pub indicator: ExposureCoverageEntity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Per-account exposure coverage counts.
+pub struct ExposureCoverageAccount {
+    /// Account entity.
+    pub account: ExposureCoverageEntity,
+    /// Distinct primary endpoint observations.
+    pub primary_entities: u64,
+    /// Distinct corroborating observations.
+    pub corroborating_observations: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// Explicit completeness state for every bounded collection.
+pub struct ExposureCoverageCompleteness {
+    /// Primary kind counts exceeded their server bound.
+    pub type_counts_truncated: bool,
+    /// Overlap samples exceeded the request bound.
+    pub overlaps_truncated: bool,
+    /// Primary-only samples exceeded the request bound.
+    pub primary_only_truncated: bool,
+    /// Corroborating-only samples exceeded the request bound.
+    pub corroborating_only_truncated: bool,
+    /// Account samples exceeded the request bound.
+    pub accounts_truncated: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Revision-bound result of one typed exposure coverage comparison.
+pub struct ExposureCoverageResult {
+    /// Tenant whose projection was queried.
+    pub tenant_id: String,
+    /// Durable graph revision shared by every returned value.
+    pub graph_revision: u64,
+    /// Complete aggregate counts.
+    pub counts: ExposureCoverageCounts,
+    /// Bounded primary entity-kind counts.
+    pub type_counts: Vec<ExposureCoverageKindCount>,
+    /// Bounded overlap samples.
+    pub overlaps: Vec<ExposureCoverageOverlap>,
+    /// Bounded primary-only samples.
+    pub primary_only: Vec<ExposureCoveragePair>,
+    /// Bounded corroborating-only samples.
+    pub corroborating_only: Vec<ExposureCoverageCorroboratingOnly>,
+    /// Bounded per-account samples.
+    pub accounts: Vec<ExposureCoverageAccount>,
+    /// Explicit collection completeness state.
+    pub completeness: ExposureCoverageCompleteness,
+}
+
 impl Neo4jProjector {
     /// Wraps an existing Neo4j client graph.
     pub fn from_graph(graph: Graph) -> Self {
@@ -538,6 +704,181 @@ impl Neo4jProjector {
             rows.push((entity_type, legacy, covered));
         }
         aggregate_legacy_root_coverage(tenant_id, rows)
+    }
+
+    /// Compares two bounded exposure observation sets inside one tenant-scoped
+    /// read transaction. Callers select only source IDs and entity kinds; the
+    /// graph labels and relation shapes remain fixed by this store operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Conflict`] for invalid bounds, filters, malformed
+    /// projected rows, or revision drift. Neo4j failures are returned as
+    /// [`StoreError::Neo4j`].
+    pub async fn compare_exposure_coverage(
+        &self,
+        tenant_id: &TenantId,
+        request: &ExposureCoverageQuery,
+    ) -> Result<ExposureCoverageResult, StoreError> {
+        validate_exposure_coverage_query(request)?;
+        let sample_limit = i64::try_from(request.limit + 1)
+            .map_err(|_| StoreError::Conflict("exposure coverage limit overflow".to_owned()))?;
+        let params = |statement: &str| {
+            query(statement)
+                .param("tenant_id", tenant_id.as_str())
+                .param(
+                    "primary_source_id",
+                    request.profile.primary_source_id.as_str(),
+                )
+                .param(
+                    "primary_kind_prefix",
+                    request.profile.primary_entity_kind_prefix.as_str(),
+                )
+                .param(
+                    "corroborating_source_id",
+                    request.profile.corroborating_source_id.as_str(),
+                )
+                .param(
+                    "corroborating_kind",
+                    request.profile.corroborating_entity_kind.as_str(),
+                )
+                .param(
+                    "indicator_kinds",
+                    string_list(&request.profile.indicator_kinds),
+                )
+                .param("account_kind", request.profile.account_kind.as_str())
+                .param(
+                    "corroborating_observation_kind",
+                    request.profile.corroborating_observation_kind.as_str(),
+                )
+                .param("account_id", request.account_id.as_str())
+                .param("region", request.region.as_str())
+                .param("search", request.search.to_lowercase())
+                .param("sample_limit", sample_limit)
+        };
+
+        let mut transaction = self.graph.start_txn().await?;
+        let start_revision = transaction_graph_revision(&mut transaction, tenant_id).await?;
+
+        let counts_statement = format!(
+            "MATCH (endpoint:Entity {{tenant_id: $tenant_id, source_id: $primary_source_id}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator:Entity {{tenant_id: $tenant_id}}) WHERE {EXPOSURE_PRIMARY_FILTER} OPTIONAL MATCH (asset:Entity {{tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_kind}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator) RETURN count(DISTINCT endpoint) AS primary_count, count(DISTINCT indicator) AS indicator_count, count(DISTINCT CASE WHEN indicator.entity_type = 'internet.host' THEN indicator END) AS host_count, count(DISTINCT CASE WHEN indicator.entity_type = 'internet.ip' THEN indicator END) AS ip_count, count(DISTINCT CASE WHEN asset IS NOT NULL THEN endpoint END) AS overlapping_primary_count, count(DISTINCT CASE WHEN asset IS NOT NULL THEN indicator END) AS overlapping_indicator_count, count(DISTINCT asset) AS overlapping_corroborating_count"
+        );
+        let mut counts_rows = transaction.execute(params(&counts_statement)).await?;
+        let counts_row = counts_rows
+            .next(transaction.handle())
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict("exposure coverage counts returned no row".to_owned())
+            })?;
+        let counts = ExposureCoverageCounts {
+            primary_entities: row_u64(&counts_row, "primary_count")?,
+            indicators: row_u64(&counts_row, "indicator_count")?,
+            host_indicators: row_u64(&counts_row, "host_count")?,
+            ip_indicators: row_u64(&counts_row, "ip_count")?,
+            overlapping_primary_entities: row_u64(&counts_row, "overlapping_primary_count")?,
+            overlapping_indicators: row_u64(&counts_row, "overlapping_indicator_count")?,
+            overlapping_corroborating_entities: row_u64(
+                &counts_row,
+                "overlapping_corroborating_count",
+            )?,
+        };
+        drop(counts_rows);
+
+        let type_statement = format!(
+            "MATCH (endpoint:Entity {{tenant_id: $tenant_id, source_id: $primary_source_id}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator:Entity {{tenant_id: $tenant_id}}) WHERE {EXPOSURE_PRIMARY_FILTER} RETURN endpoint.entity_type AS entity_kind, count(DISTINCT endpoint) AS count ORDER BY count DESC, entity_kind LIMIT 51"
+        );
+        let mut type_rows = transaction.execute(params(&type_statement)).await?;
+        let mut type_counts = Vec::new();
+        while let Some(row) = type_rows.next(transaction.handle()).await? {
+            type_counts.push(ExposureCoverageKindCount {
+                entity_kind: row
+                    .get("entity_kind")
+                    .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                count: row_u64(&row, "count")?,
+            });
+        }
+        drop(type_rows);
+
+        let overlap_statement = format!(
+            "MATCH (endpoint:Entity {{tenant_id: $tenant_id, source_id: $primary_source_id}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator:Entity {{tenant_id: $tenant_id}}) WHERE {EXPOSURE_PRIMARY_FILTER} MATCH (asset:Entity {{tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_kind}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator) RETURN endpoint.urn AS primary_key, endpoint.entity_type AS primary_kind, endpoint.label AS primary_label, indicator.urn AS indicator_key, indicator.entity_type AS indicator_kind, indicator.label AS indicator_label, asset.urn AS corroborating_key, asset.entity_type AS corroborating_kind, asset.label AS corroborating_label ORDER BY indicator.label, endpoint.label, asset.label, indicator.urn, endpoint.urn, asset.urn LIMIT $sample_limit"
+        );
+        let mut overlap_rows = transaction.execute(params(&overlap_statement)).await?;
+        let mut overlaps = Vec::new();
+        while let Some(row) = overlap_rows.next(transaction.handle()).await? {
+            overlaps.push(ExposureCoverageOverlap {
+                primary: exposure_entity(&row, "primary", tenant_id)?,
+                indicator: exposure_entity(&row, "indicator", tenant_id)?,
+                corroborating: exposure_entity(&row, "corroborating", tenant_id)?,
+            });
+        }
+        drop(overlap_rows);
+
+        let primary_only_statement = format!(
+            "MATCH (endpoint:Entity {{tenant_id: $tenant_id, source_id: $primary_source_id}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator:Entity {{tenant_id: $tenant_id}}) WHERE {EXPOSURE_PRIMARY_FILTER} AND NOT EXISTS {{ MATCH (:Entity {{tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_kind}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator) }} RETURN endpoint.urn AS primary_key, endpoint.entity_type AS primary_kind, endpoint.label AS primary_label, indicator.urn AS indicator_key, indicator.entity_type AS indicator_kind, indicator.label AS indicator_label ORDER BY indicator.label, endpoint.label, indicator.urn, endpoint.urn LIMIT $sample_limit"
+        );
+        let mut primary_only_rows = transaction.execute(params(&primary_only_statement)).await?;
+        let mut primary_only = Vec::new();
+        while let Some(row) = primary_only_rows.next(transaction.handle()).await? {
+            primary_only.push(ExposureCoveragePair {
+                primary: exposure_entity(&row, "primary", tenant_id)?,
+                indicator: exposure_entity(&row, "indicator", tenant_id)?,
+            });
+        }
+        drop(primary_only_rows);
+
+        let corroborating_only_statement = "MATCH (asset:Entity {tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_kind})-[:RELATION {tenant_id: $tenant_id, relation: 'represents'}]->(indicator:Entity {tenant_id: $tenant_id}) WHERE indicator.entity_type IN $indicator_kinds AND $account_id = '' AND $region = '' AND ($search = '' OR toLower(coalesce(asset.urn, '') + ' ' + coalesce(asset.label, '') + ' ' + coalesce(indicator.urn, '') + ' ' + coalesce(indicator.label, '')) CONTAINS $search) AND NOT EXISTS { MATCH (endpoint:Entity {tenant_id: $tenant_id, source_id: $primary_source_id})-[:RELATION {tenant_id: $tenant_id, relation: 'represents'}]->(indicator) WHERE endpoint.entity_type STARTS WITH $primary_kind_prefix } RETURN asset.urn AS corroborating_key, asset.entity_type AS corroborating_kind, asset.label AS corroborating_label, indicator.urn AS indicator_key, indicator.entity_type AS indicator_kind, indicator.label AS indicator_label ORDER BY indicator.label, asset.label, indicator.urn, asset.urn LIMIT $sample_limit";
+        let mut corroborating_only_rows = transaction
+            .execute(params(corroborating_only_statement))
+            .await?;
+        let mut corroborating_only = Vec::new();
+        while let Some(row) = corroborating_only_rows.next(transaction.handle()).await? {
+            corroborating_only.push(ExposureCoverageCorroboratingOnly {
+                corroborating: exposure_entity(&row, "corroborating", tenant_id)?,
+                indicator: exposure_entity(&row, "indicator", tenant_id)?,
+            });
+        }
+        drop(corroborating_only_rows);
+
+        let account_statement = format!(
+            "MATCH (endpoint:Entity {{tenant_id: $tenant_id, source_id: $primary_source_id}})-[:RELATION {{tenant_id: $tenant_id, relation: 'belongs_to'}}]->(account:Entity {{tenant_id: $tenant_id, entity_type: $account_kind}}) WHERE {EXPOSURE_ACCOUNT_FILTER} OPTIONAL MATCH (scan:Entity {{tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_observation_kind}})-[:RELATION {{tenant_id: $tenant_id, relation: 'belongs_to'}}]->(account) RETURN account.urn AS account_key, account.entity_type AS account_kind, account.label AS account_label, count(DISTINCT endpoint) AS primary_count, count(DISTINCT scan) AS corroborating_count ORDER BY primary_count DESC, account.label, account.urn LIMIT $sample_limit"
+        );
+        let mut account_rows = transaction.execute(params(&account_statement)).await?;
+        let mut accounts = Vec::new();
+        while let Some(row) = account_rows.next(transaction.handle()).await? {
+            accounts.push(ExposureCoverageAccount {
+                account: exposure_entity(&row, "account", tenant_id)?,
+                primary_entities: row_u64(&row, "primary_count")?,
+                corroborating_observations: row_u64(&row, "corroborating_count")?,
+            });
+        }
+        drop(account_rows);
+
+        let end_revision = transaction_graph_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        if start_revision != end_revision {
+            return Err(StoreError::Conflict(
+                "exposure coverage graph revision changed during the read".to_owned(),
+            ));
+        }
+
+        let completeness = ExposureCoverageCompleteness {
+            type_counts_truncated: truncate_to_limit(&mut type_counts, 50),
+            overlaps_truncated: truncate_to_limit(&mut overlaps, request.limit),
+            primary_only_truncated: truncate_to_limit(&mut primary_only, request.limit),
+            corroborating_only_truncated: truncate_to_limit(&mut corroborating_only, request.limit),
+            accounts_truncated: truncate_to_limit(&mut accounts, request.limit),
+        };
+        Ok(ExposureCoverageResult {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: start_revision,
+            counts,
+            type_counts,
+            overlaps,
+            primary_only,
+            corroborating_only,
+            accounts,
+            completeness,
+        })
     }
 
     async fn expand_legacy_one_hop_many(
@@ -2185,6 +2526,125 @@ fn row_u64(row: &Row, field: &str) -> Result<u64, StoreError> {
         .map_err(|_| StoreError::Conflict(format!("{field} is negative or exceeds u64")))
 }
 
+fn validate_exposure_coverage_query(request: &ExposureCoverageQuery) -> Result<(), StoreError> {
+    if !(1..=100).contains(&request.limit) {
+        return Err(StoreError::Conflict(
+            "exposure coverage limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    for (name, value, limit) in [
+        (
+            "primary_source_id",
+            request.profile.primary_source_id.as_str(),
+            128,
+        ),
+        (
+            "primary_entity_kind_prefix",
+            request.profile.primary_entity_kind_prefix.as_str(),
+            128,
+        ),
+        (
+            "corroborating_source_id",
+            request.profile.corroborating_source_id.as_str(),
+            128,
+        ),
+        (
+            "corroborating_entity_kind",
+            request.profile.corroborating_entity_kind.as_str(),
+            128,
+        ),
+        ("account_kind", request.profile.account_kind.as_str(), 128),
+        (
+            "corroborating_observation_kind",
+            request.profile.corroborating_observation_kind.as_str(),
+            128,
+        ),
+    ] {
+        validate_exposure_text(name, value, limit, true)?;
+    }
+    validate_exposure_text("account_id", &request.account_id, 256, false)?;
+    validate_exposure_text("region", &request.region, 128, false)?;
+    validate_exposure_text("query", &request.search, 512, false)?;
+    if request.profile.indicator_kinds.is_empty() || request.profile.indicator_kinds.len() > 8 {
+        return Err(StoreError::Conflict(
+            "exposure coverage requires 1 to 8 indicator kinds".to_owned(),
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for kind in &request.profile.indicator_kinds {
+        validate_exposure_text("indicator_kind", kind, 128, true)?;
+        if !seen.insert(kind) {
+            return Err(StoreError::Conflict(
+                "exposure coverage indicator kinds must be unique".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_exposure_text(
+    name: &str,
+    value: &str,
+    limit: usize,
+    required: bool,
+) -> Result<(), StoreError> {
+    if (required && value.is_empty())
+        || value.trim() != value
+        || value.len() > limit
+        || value.chars().any(char::is_control)
+    {
+        return Err(StoreError::Conflict(format!(
+            "invalid exposure coverage {name}"
+        )));
+    }
+    Ok(())
+}
+
+async fn transaction_graph_revision(
+    transaction: &mut Txn,
+    tenant_id: &TenantId,
+) -> Result<u64, StoreError> {
+    let mut rows = transaction
+        .execute(
+            query("OPTIONAL MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) RETURN coalesce(revision.graph_revision, 0) AS graph_revision")
+                .param("tenant_id", tenant_id.as_str()),
+        )
+        .await?;
+    let row = rows
+        .next(transaction.handle())
+        .await?
+        .ok_or_else(|| StoreError::Conflict("graph revision query returned no row".to_owned()))?;
+    let revision = row_u64(&row, "graph_revision")?;
+    drop(rows);
+    Ok(revision)
+}
+
+fn exposure_entity(
+    row: &Row,
+    prefix: &str,
+    tenant_id: &TenantId,
+) -> Result<ExposureCoverageEntity, StoreError> {
+    let agent_key: String = row
+        .get(&format!("{prefix}_key"))
+        .map_err(|error| StoreError::Conflict(error.to_string()))?;
+    if !agent_key.starts_with(&format!("urn:cerebro:{}:", tenant_id.as_str())) {
+        return Err(StoreError::Conflict(format!(
+            "exposure coverage {prefix} key is not tenant scoped"
+        )));
+    }
+    let entity_kind = row
+        .get(&format!("{prefix}_kind"))
+        .map_err(|error| StoreError::Conflict(error.to_string()))?;
+    let label = row
+        .get(&format!("{prefix}_label"))
+        .map_err(|error| StoreError::Conflict(error.to_string()))?;
+    Ok(ExposureCoverageEntity {
+        agent_key,
+        entity_kind,
+        label,
+    })
+}
+
 fn optional_timestamp(row: &Row, field: &str) -> Result<Option<String>, StoreError> {
     let value: i64 = row
         .get(field)
@@ -2917,6 +3377,47 @@ mod tests {
         assert!(truncate_to_limit(&mut overflow, 2));
         assert_eq!(overflow, [1, 2]);
         assert_eq!(row_limit(500), 501);
+    }
+
+    #[test]
+    fn exposure_coverage_rejects_unbounded_or_ambiguous_profiles() {
+        let valid = || ExposureCoverageQuery {
+            profile: ExposureCoverageProfile {
+                primary_source_id: "aws".to_owned(),
+                primary_entity_kind_prefix: "aws.".to_owned(),
+                corroborating_source_id: "vulnview".to_owned(),
+                corroborating_entity_kind: "external.asset".to_owned(),
+                indicator_kinds: vec!["internet.host".to_owned(), "internet.ip".to_owned()],
+                account_kind: "cloud.account".to_owned(),
+                corroborating_observation_kind: "vulnview.scan".to_owned(),
+            },
+            account_id: String::new(),
+            region: String::new(),
+            search: String::new(),
+            limit: 100,
+        };
+
+        assert!(validate_exposure_coverage_query(&valid()).is_ok());
+
+        let mut zero = valid();
+        zero.limit = 0;
+        assert!(validate_exposure_coverage_query(&zero).is_err());
+
+        let mut over = valid();
+        over.limit = 101;
+        assert!(validate_exposure_coverage_query(&over).is_err());
+
+        let mut duplicate = valid();
+        duplicate.profile.indicator_kinds = vec!["internet.host".to_owned(); 2];
+        assert!(validate_exposure_coverage_query(&duplicate).is_err());
+
+        let mut control = valid();
+        control.search = "unsafe\nquery".to_owned();
+        assert!(validate_exposure_coverage_query(&control).is_err());
+
+        let mut truncated = vec![1, 2, 3];
+        assert!(truncate_to_limit(&mut truncated, 2));
+        assert_eq!(truncated, [1, 2]);
     }
 
     #[test]
