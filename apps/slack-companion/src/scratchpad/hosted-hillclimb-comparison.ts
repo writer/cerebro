@@ -16,6 +16,16 @@ export interface HostedHillclimbComparisonV1 {
   readonly corpus_digest: string;
   readonly current_evaluated_at: string;
   readonly efficiency_stable: boolean;
+  readonly execution_boundary: {
+    readonly distinct_model_id: boolean;
+    readonly generator_provider: string;
+    readonly generator_region: string;
+    readonly generator_sampling_parameters: string;
+    readonly judge_provider: string;
+    readonly judge_region: string;
+    readonly judge_sampling_parameters: string;
+    readonly separate_model_ports: boolean;
+  };
   readonly generator_model_id: string;
   readonly judge_repair_count_delta: number;
   readonly judge_p95_latency_ms_delta: number;
@@ -89,6 +99,16 @@ export function compareHostedSlackWorkingStateHillclimbs(
     corpus_digest: current.corpus_digest,
     current_evaluated_at: current.evaluated_at,
     efficiency_stable: modelTokenCount(current) <= modelTokenCount(previous),
+    execution_boundary: Object.freeze({
+      distinct_model_id: current.evaluation_independence.distinct_model_id,
+      generator_provider: current.generator.provider,
+      generator_region: current.generator.region,
+      generator_sampling_parameters: current.generator.sampling_parameters,
+      judge_provider: current.judge.provider,
+      judge_region: current.judge.region,
+      judge_sampling_parameters: current.judge.sampling_parameters,
+      separate_model_ports: current.evaluation_independence.separate_model_ports,
+    }),
     generator_model_id: current.generator.model_id,
     judge_repair_count_delta: current.judge.repair_count - previous.judge.repair_count,
     judge_p95_latency_ms_delta: delta(

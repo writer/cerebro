@@ -102,6 +102,16 @@ test("compares repeat measurements without answer content", () => {
   assert.equal(comparison.corpus_digest, `sha256:${"a".repeat(64)}`);
   assert.equal(comparison.generator_model_id, "us.anthropic.claude-opus-4-8");
   assert.equal(comparison.judge_model_id, "us.anthropic.claude-opus-5");
+  assert.deepEqual(comparison.execution_boundary, {
+    distinct_model_id: true,
+    generator_provider: "aws_bedrock",
+    generator_region: "us-east-1",
+    generator_sampling_parameters: "provider_default",
+    judge_provider: "aws_bedrock",
+    judge_region: "us-east-1",
+    judge_sampling_parameters: "provider_default",
+    separate_model_ports: true,
+  });
   assert.deepEqual(comparison.blocker_change, {
     added: ["new_blocker"],
     resolved: ["old_blocker"],
