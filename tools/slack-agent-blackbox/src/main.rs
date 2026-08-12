@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod execution_v2;
+mod phase_report;
 mod promotion;
 mod transcript_quality;
 
@@ -18,7 +19,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox run-v2 CONFIG.json RECEIPT.json\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json\n  slack-agent-blackbox score-transcript-v2 PACKET.json REPORT.json\n  slack-agent-blackbox commit-holdouts-v2 SUITE.json PRIVATE_ASSIGNMENTS.json COMMITMENT.json\n  slack-agent-blackbox verify-promotion-v2 BUNDLE.json";
+const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox run-v2 CONFIG.json RECEIPT.json\n  slack-agent-blackbox phase-report-v2 REPORT.json RECEIPT.json [RECEIPT.json ...]\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json\n  slack-agent-blackbox score-transcript-v2 PACKET.json REPORT.json\n  slack-agent-blackbox commit-holdouts-v2 SUITE.json PRIVATE_ASSIGNMENTS.json COMMITMENT.json\n  slack-agent-blackbox verify-promotion-v2 BUNDLE.json";
 const RUN_CONFIG_V1: &str = "slack-agent-blackbox-run-config/v1";
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +85,9 @@ async fn dispatch(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     match arguments.as_slice() {
         [command, config, output] if command == "run" => run(config, output).await,
         [command, config, output] if command == "run-v2" => run_v2(config, output).await,
+        [command, output, inputs @ ..] if command == "phase-report-v2" && !inputs.is_empty() => {
+            phase_report::write_report(inputs, output)
+        }
         [command, receipt, assignment, alias, brief, output] if command == "blind" => {
             blind(receipt, assignment, alias, brief, output)
         }

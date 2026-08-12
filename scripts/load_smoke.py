@@ -7,6 +7,7 @@ import argparse
 import concurrent.futures
 import dataclasses
 import json
+import math
 import os
 import pathlib
 import sys
@@ -28,6 +29,15 @@ class RequestResult:
     latency_ms: float
     response_bytes: int
     error_kind: str
+    schedule_lag_ms: float
+
+
+@dataclasses.dataclass(frozen=True)
+class ScheduleRun:
+    results: list[RequestResult]
+    planned_request_count: int
+    started_request_count: int
+    max_in_flight: int
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -55,6 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-p95-ms", type=positive_float, default=float(os.environ.get("CEREBRO_LOAD_SMOKE_MAX_P95_MS", "750")), help="Fail when p95 latency exceeds this value")
     parser.add_argument("--max-error-rate", type=non_negative_float, default=float(os.environ.get("CEREBRO_LOAD_SMOKE_MAX_ERROR_RATE", "0.01")), help="Fail when non-success or transport errors exceed this fraction")
     parser.add_argument("--max-5xx-rate", type=non_negative_float, default=float(os.environ.get("CEREBRO_LOAD_SMOKE_MAX_5XX_RATE", "0")), help="Fail when 5xx responses exceed this fraction")
+    parser.add_argument("--max-schedule-lag-ms", type=non_negative_float, default=float(os.environ.get("CEREBRO_LOAD_SMOKE_MAX_SCHEDULE_LAG_MS", "60000")), help="Fail when p95 request-start lag exceeds this value")
+    parser.add_argument("--max-missed-request-rate", type=unit_float, default=float(os.environ.get("CEREBRO_LOAD_SMOKE_MAX_MISSED_REQUEST_RATE", "1")), help="Fail when concurrency pressure prevents more than this fraction of planned requests from starting")
     parser.add_argument("--min-requests", type=positive_int, default=1, help="Fail when fewer requests completed")
     parser.add_argument("--min-requests-per-path", type=positive_int, default=1, help="Fail when any configured path completes fewer requests")
     parser.add_argument("--header", action="append", default=[], help="Extra HTTP header as 'Name: value'; repeatable")
@@ -73,7 +85,7 @@ def execute(args: argparse.Namespace) -> dict:
         headers["Authorization"] = f"Bearer {args.bearer_token}"
 
     started_at = time.time()
-    results = run_schedule(
+    schedule = run_schedule(
         base_url=base_url,
         paths=paths,
         headers=headers,
@@ -87,7 +99,8 @@ def execute(args: argparse.Namespace) -> dict:
     summary = summarize(
         base_url=base_url,
         paths=paths,
-        results=results,
+        results=schedule.results,
+        schedule=schedule,
         args=args,
         started_at=started_at,
         finished_at=finished_at,
@@ -105,7 +118,7 @@ def run_schedule(
     concurrency: int,
     timeout_seconds: float,
     max_read_bytes: int,
-) -> list[RequestResult]:
+) -> ScheduleRun:
     interval = 1.0 / rps
     started = time.monotonic()
     deadline = started + duration_seconds
@@ -113,6 +126,7 @@ def run_schedule(
     request_index = 0
     results: list[RequestResult] = []
     pending: set[concurrent.futures.Future[RequestResult]] = set()
+    max_in_flight = 0
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
         while time.monotonic() < deadline:
@@ -124,13 +138,20 @@ def run_schedule(
                 drain_ready(pending, results, timeout=0.05)
                 continue
             path = paths[request_index % len(paths)]
-            pending.add(pool.submit(fetch_once, base_url, path, dict(headers), timeout_seconds, max_read_bytes))
+            schedule_lag_ms = max(0.0, (now - next_request_at) * 1000.0)
+            pending.add(pool.submit(fetch_once, base_url, path, dict(headers), timeout_seconds, max_read_bytes, schedule_lag_ms))
+            max_in_flight = max(max_in_flight, len(pending))
             request_index += 1
             next_request_at += interval
 
         while pending:
             drain_ready(pending, results, timeout=0.1)
-    return results
+    return ScheduleRun(
+        results=results,
+        planned_request_count=max(1, math.ceil(duration_seconds * rps)),
+        started_request_count=request_index,
+        max_in_flight=max_in_flight,
+    )
 
 
 def drain_ready(pending: set[concurrent.futures.Future[RequestResult]], results: list[RequestResult], *, timeout: float) -> None:
@@ -145,7 +166,7 @@ def drain_ready(pending: set[concurrent.futures.Future[RequestResult]], results:
         results.append(future.result())
 
 
-def fetch_once(base_url: str, path: str, headers: dict[str, str], timeout_seconds: float, max_read_bytes: int) -> RequestResult:
+def fetch_once(base_url: str, path: str, headers: dict[str, str], timeout_seconds: float, max_read_bytes: int, schedule_lag_ms: float = 0.0) -> RequestResult:
     url = urllib.parse.urljoin(base_url.rstrip("/") + "/", path.lstrip("/"))
     request_headers = {
         "Accept": "application/json, text/plain, */*",
@@ -176,10 +197,10 @@ def fetch_once(base_url: str, path: str, headers: dict[str, str], timeout_second
     except OSError as exc:
         error_kind = exc.__class__.__name__
     latency_ms = (time.perf_counter() - started) * 1000.0
-    return RequestResult(path=path, status_code=status_code, latency_ms=latency_ms, response_bytes=response_bytes, error_kind=error_kind)
+    return RequestResult(path=path, status_code=status_code, latency_ms=latency_ms, response_bytes=response_bytes, error_kind=error_kind, schedule_lag_ms=schedule_lag_ms)
 
 
-def summarize(*, base_url: str, paths: list[str], results: list[RequestResult], args: argparse.Namespace, started_at: float, finished_at: float) -> dict:
+def summarize(*, base_url: str, paths: list[str], results: list[RequestResult], schedule: ScheduleRun, args: argparse.Namespace, started_at: float, finished_at: float) -> dict:
     aggregate = summarize_results(results, args=args, min_requests=args.min_requests)
     path_summaries: dict[str, dict] = {}
     path_failures: list[str] = []
@@ -192,7 +213,16 @@ def summarize(*, base_url: str, paths: list[str], results: list[RequestResult], 
         path_summaries[path] = path_summary
         path_failures.extend(f"{path}: {failure}" for failure in path_summary["failures"])
 
-    failures = [*aggregate["failures"], *path_failures]
+    schedule_lags = sorted(result.schedule_lag_ms for result in results)
+    missed_request_count = max(0, schedule.planned_request_count - schedule.started_request_count)
+    missed_request_rate = rate(missed_request_count, schedule.planned_request_count)
+    schedule_p95_ms = percentile(schedule_lags, 95)
+    load_generation_failures = evaluate_load_generation_failures(
+        schedule_p95_ms=schedule_p95_ms,
+        missed_request_rate=missed_request_rate,
+        args=args,
+    )
+    failures = [*aggregate["failures"], *load_generation_failures, *path_failures]
     return {
         "kind": "cerebro_load_smoke",
         "healthy": not failures,
@@ -216,6 +246,22 @@ def summarize(*, base_url: str, paths: list[str], results: list[RequestResult], 
             "max_p95_ms": args.max_p95_ms,
             "max_error_rate": args.max_error_rate,
             "max_5xx_rate": args.max_5xx_rate,
+            "max_schedule_lag_ms": args.max_schedule_lag_ms,
+            "max_missed_request_rate": args.max_missed_request_rate,
+        },
+        "load_generation": {
+            "planned_request_count": schedule.planned_request_count,
+            "started_request_count": schedule.started_request_count,
+            "missed_request_count": missed_request_count,
+            "missed_request_rate": missed_request_rate,
+            "achieved_rps": round(rate(len(results), finished_at - started_at), 3),
+            "max_in_flight": schedule.max_in_flight,
+            "schedule_lag_ms": {
+                "p50": percentile(schedule_lags, 50),
+                "p95": schedule_p95_ms,
+                "p99": percentile(schedule_lags, 99),
+                "max": round(schedule_lags[-1], 3) if schedule_lags else None,
+            },
         },
         **{key: value for key, value in aggregate.items() if key != "failures"},
         "path_counts": {
@@ -290,6 +336,15 @@ def evaluate_failures(*, total: int, p95_ms: float | None, error_rate: float, ht
     return failures
 
 
+def evaluate_load_generation_failures(*, schedule_p95_ms: float | None, missed_request_rate: float, args: argparse.Namespace) -> list[str]:
+    failures: list[str] = []
+    if schedule_p95_ms is not None and schedule_p95_ms > args.max_schedule_lag_ms:
+        failures.append(f"p95 request-start lag {schedule_p95_ms:.1f}ms exceeds {args.max_schedule_lag_ms:.1f}ms")
+    if missed_request_rate > args.max_missed_request_rate:
+        failures.append(f"missed request rate {missed_request_rate:.4f} exceeds {args.max_missed_request_rate:.4f}")
+    return failures
+
+
 def write_outputs(summary: dict, args: argparse.Namespace) -> None:
     if args.json_out:
         write_text(args.json_out, json.dumps(summary, indent=2, sort_keys=True) + "\n")
@@ -318,6 +373,8 @@ def render_console_summary(summary: dict) -> str:
 def render_markdown(summary: dict) -> str:
     latency = summary["latency_ms"]
     failures = summary["failures"] or ["none"]
+    load_generation = summary["load_generation"]
+    schedule_lag = load_generation["schedule_lag_ms"]
     lines = [
         "# Cerebro Load Smoke",
         "",
@@ -328,6 +385,11 @@ def render_markdown(summary: dict) -> str:
         f"- Error rate: {summary['error_rate']:.4f}",
         f"- 5xx rate: {summary['http_5xx_rate']:.4f}",
         f"- Latency ms: p50={latency['p50']}, p95={latency['p95']}, p99={latency['p99']}, max={latency['max']}",
+        f"- Offered requests: {load_generation['planned_request_count']}",
+        f"- Started requests: {load_generation['started_request_count']}",
+        f"- Missed request rate: {load_generation['missed_request_rate']:.4f}",
+        f"- Achieved RPS: {load_generation['achieved_rps']}",
+        f"- Request-start lag ms: p50={schedule_lag['p50']}, p95={schedule_lag['p95']}, p99={schedule_lag['p99']}, max={schedule_lag['max']}",
         "",
         "## Failures",
         "",
@@ -449,6 +511,13 @@ def non_negative_float(value: str) -> float:
     parsed = float(value)
     if parsed < 0:
         raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
+def unit_float(value: str) -> float:
+    parsed = float(value)
+    if not 0 <= parsed <= 1:
+        raise argparse.ArgumentTypeError("must be between 0 and 1")
     return parsed
 
 

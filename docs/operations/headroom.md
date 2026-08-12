@@ -200,6 +200,13 @@ thresholds. This prevents a cheap health route from hiding a regression in a
 protected or dependency-backed route. Use `--min-requests-per-path` when a
 longer smoke must collect more than the default one sample for each route.
 
+The receipt also records offered requests, started requests, achieved RPS,
+maximum in-flight work, missed request rate, and request-start lag percentiles.
+These distinguish service latency from a saturated load generator. Set
+`--max-schedule-lag-ms` and `--max-missed-request-rate` to make those signals
+release gates; their defaults preserve existing smoke behavior while still
+recording the evidence.
+
 The GitHub Actions workflow [`load-smoke.yml`](../../.github/workflows/load-smoke.yml) supports:
 
 - daily scheduled execution when `CEREBRO_LOAD_SMOKE_BASE_URL` is configured as a repository secret;
