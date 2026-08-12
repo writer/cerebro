@@ -5,8 +5,32 @@ import {
   createAgentGymToolRegistry,
   injectAgentGymToolError,
   injectAgentGymToolTimeout,
+  injectAgentGymPartialToolResult,
   recordAgentGymToolResult,
 } from "../src/index.js";
+
+test("partial tool results preserve useful output and named gaps", () => {
+  const result = injectAgentGymPartialToolResult({
+    call_ref: "tool-call://one",
+    missing_fields: ["owner", "freshness.observed_at"],
+    output: { evidence_ref: "evidence://one" },
+    reason_code: "source.partial",
+    tool_id: "cerebro.search",
+  });
+  assert.deepEqual(result.missing_fields, ["freshness.observed_at", "owner"]);
+  assert.equal(result.output.evidence_ref, "evidence://one");
+  assert.equal(Object.isFrozen(result.output), true);
+});
+
+test("partial tool results require at least one named gap", () => {
+  assert.throws(() => injectAgentGymPartialToolResult({
+    call_ref: "tool-call://one",
+    missing_fields: [],
+    output: { evidence_ref: "evidence://one" },
+    reason_code: "source.partial",
+    tool_id: "cerebro.search",
+  }), /partial tool result is invalid/u);
+});
 
 test("tool timeout injection advances virtual time without sleeping", () => {
   const fixture = injectAgentGymToolTimeout({

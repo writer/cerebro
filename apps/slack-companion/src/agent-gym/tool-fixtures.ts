@@ -40,6 +40,41 @@ export interface AgentGymToolTimeoutFixtureV1 {
   readonly tool_id: string;
 }
 
+export interface AgentGymPartialToolResultV1 {
+  readonly call_ref: string;
+  readonly missing_fields: readonly string[];
+  readonly output: Readonly<Record<string, AgentGymJson>>;
+  readonly reason_code: string;
+  readonly schema_version: "agent-gym-partial-tool-result/v1";
+  readonly tool_id: string;
+}
+
+/** Records useful but explicitly incomplete tool output. */
+export function injectAgentGymPartialToolResult(
+  input: Omit<AgentGymPartialToolResultV1, "schema_version">,
+): AgentGymPartialToolResultV1 {
+  reference(input.call_ref);
+  bounded(input.tool_id, 160);
+  bounded(input.reason_code, 120);
+  if (!/^[a-z0-9][a-z0-9._-]*$/u.test(input.reason_code)
+    || !Array.isArray(input.missing_fields)
+    || input.missing_fields.length === 0
+    || input.missing_fields.length > 64
+    || new Set(input.missing_fields).size !== input.missing_fields.length) {
+    invalidPartial();
+  }
+  for (const field of input.missing_fields) {
+    bounded(field, 160);
+    if (!/^[a-z][a-z0-9_.-]*$/u.test(field)) invalidPartial();
+  }
+  return Object.freeze({
+    ...input,
+    missing_fields: Object.freeze([...input.missing_fields].sort()),
+    output: deepFreeze({ ...input.output }),
+    schema_version: "agent-gym-partial-tool-result/v1",
+  });
+}
+
 /** Records a deterministic timeout boundary without waiting in real time. */
 export function injectAgentGymToolTimeout(
   input: Omit<AgentGymToolTimeoutFixtureV1, "schema_version">,
@@ -151,4 +186,7 @@ function invalidError(): never {
 }
 function invalidTimeout(): never {
   throw new AgentGymContractError("Agent gym tool timeout fixture is invalid.");
+}
+function invalidPartial(): never {
+  throw new AgentGymContractError("Agent gym partial tool result is invalid.");
 }
