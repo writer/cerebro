@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   AgentGymSlackDeliveryLedger,
+  planAgentGymSlackApiRetry,
   simulateSlackAppHomeOpened,
   simulateSlackButtonAction,
   simulateSlackDirectMessage,
@@ -12,6 +13,51 @@ import {
   simulateSlackReactionAdded,
   simulateSlackThreadReply,
 } from "../src/index.js";
+
+test("Slack API simulation honors retry-after and bounded timeout backoff", () => {
+  const policy = {
+    maximum_attempts: 4,
+    maximum_delay_ms: 60_000,
+    timeout_base_delay_ms: 1_000,
+  };
+  assert.deepEqual(planAgentGymSlackApiRetry({
+    attempt_index: 0,
+    observed_at: "2026-08-12T08:39:00.000Z",
+    outcome: "rate_limited",
+    retry_after_ms: 30_000,
+  }, policy), {
+    attempt_index: 0,
+    delay_ms: 30_000,
+    disposition: "retry",
+    next_attempt_at: "2026-08-12T08:39:30.000Z",
+    reason: "rate_limited",
+    schema_version: "agent-gym-slack-retry-plan/v1",
+  });
+  assert.equal(planAgentGymSlackApiRetry({
+    attempt_index: 2,
+    observed_at: "2026-08-12T08:39:00.000Z",
+    outcome: "timeout",
+  }, policy).delay_ms, 4_000);
+});
+
+test("Slack API simulation exhausts retries and rejects ambiguous outcomes", () => {
+  const policy = {
+    maximum_attempts: 2,
+    maximum_delay_ms: 60_000,
+    timeout_base_delay_ms: 1_000,
+  };
+  assert.equal(planAgentGymSlackApiRetry({
+    attempt_index: 1,
+    observed_at: "2026-08-12T08:39:00.000Z",
+    outcome: "timeout",
+  }, policy).disposition, "exhausted");
+  assert.throws(() => planAgentGymSlackApiRetry({
+    attempt_index: 0,
+    observed_at: "2026-08-12T08:39:00.000Z",
+    outcome: "success",
+    retry_after_ms: 1_000,
+  }, policy), /retry input is invalid/u);
+});
 
 test("delivery simulation admits once and suppresses exact Slack retries", () => {
   const event = {
