@@ -67,6 +67,7 @@ export * from "./regression-replay-request-pair.js";
 export * from "./regression-replay-parity.js";
 export * from "./regression-replay-execution.js";
 export * from "./regression-replay-runtime-result.js";
+export * from "./regression-replay-evaluator-binding.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
