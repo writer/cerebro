@@ -108,6 +108,19 @@ test("delivery, clarification, correction, and feedback failures stay explicit",
   ]);
 });
 
+test("category feedback names the concrete answer failure", () => {
+  const receipt = evaluateAssistantTurn(observation({
+    explicit_feedback: "negative",
+    explicit_feedback_category: "missed_source",
+  }));
+
+  assert.equal(receipt.passed, false);
+  assert.deepEqual(receipt.blockers, [
+    "negative_feedback",
+    "missed_source_feedback",
+  ]);
+});
+
 test("action, coverage, subject, and machinery failures stay explicit", () => {
   const receipt = evaluateAssistantTurn(observation({
     claim_count: 2,

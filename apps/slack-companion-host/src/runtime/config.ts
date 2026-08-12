@@ -1,3 +1,5 @@
+import type { SlackNotificationPreferencesV1 } from "@writer/cerebro-slack-companion";
+
 export interface ArchetypeWorkspaceRuntimeConfig {
   allowedEmailDomains: ReadonlySet<string>;
   baseUrl: string;
@@ -21,6 +23,7 @@ export interface SlackRuntimeConfig {
   lifecycleChannelIds: ReadonlySet<string>;
   lifecycleNoticesEnabled: boolean;
   memoryDirectory: string;
+  notificationPreferences: SlackNotificationPreferencesV1;
   port: number;
   production: boolean;
   rustAgentEnabled: boolean;
@@ -94,10 +97,32 @@ export function loadSlackRuntimeConfig(
     lifecycleNoticesEnabled,
     memoryDirectory: env.CEREBRO_SLACK_RUNTIME_MEMORY_DIR?.trim()
       || "/memory/slack-runtime",
+    notificationPreferences: notificationPreferences(env),
     port: port(env.PORT),
     production,
     rustAgentEnabled,
     computerSandboxGateways: computerSandboxGateways(env),
+  });
+}
+
+function notificationPreferences(env: NodeJS.ProcessEnv): SlackNotificationPreferencesV1 {
+  const enabled = csv(env.CEREBRO_SLACK_NOTIFICATION_CLASSES?.trim()
+    || "alert,digest,followup");
+  if (enabled.some((value) => !["alert", "digest", "followup"].includes(value))) {
+    throw new SlackRuntimeConfigError("Slack notification classes are invalid.");
+  }
+  const minimumSeverity = env.CEREBRO_SLACK_NOTIFICATION_MINIMUM_SEVERITY?.trim() || "low";
+  if (!["critical", "high", "medium", "low"].includes(minimumSeverity)) {
+    throw new SlackRuntimeConfigError("Slack notification minimum severity is invalid.");
+  }
+  return Object.freeze({
+    digest_hour: positiveInteger(env.CEREBRO_SLACK_NOTIFICATION_DIGEST_HOUR, 8, 0, 23, "Slack notification digest hour"),
+    enabled_classes: Object.freeze(enabled) as SlackNotificationPreferencesV1["enabled_classes"],
+    minimum_severity: minimumSeverity as SlackNotificationPreferencesV1["minimum_severity"],
+    quiet_hours_end: positiveInteger(env.CEREBRO_SLACK_NOTIFICATION_QUIET_END, 7, 0, 23, "Slack notification quiet-hours end"),
+    quiet_hours_start: positiveInteger(env.CEREBRO_SLACK_NOTIFICATION_QUIET_START, 22, 0, 23, "Slack notification quiet-hours start"),
+    schema_version: "slack-notification-preferences/v1",
+    timezone: env.CEREBRO_SLACK_NOTIFICATION_TIMEZONE?.trim() || "America/Los_Angeles",
   });
 }
 

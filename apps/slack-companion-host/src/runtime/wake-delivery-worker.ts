@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  planSlackNotification,
+  type SlackNotificationPreferencesV1,
+} from "@writer/cerebro-slack-companion";
 import type {
   CerebroAskClient,
   RustPendingWakeDelivery,
@@ -53,6 +57,7 @@ export interface SlackWakeDeliveryClient {
 
 export interface WakeDeliveryWorkerOptions {
   clock?: () => Date;
+  notificationPreferences?: SlackNotificationPreferencesV1;
   signal?: (milliseconds: number) => AbortSignal;
   workerRef: string;
 }
@@ -78,6 +83,14 @@ export class WakeDeliveryWorker {
     this.running = true;
     try {
       await this.flush();
+      if (this.options.notificationPreferences) {
+        const decision = planSlackNotification(this.options.notificationPreferences, {
+          class: "followup",
+          observed_at: this.clock().toISOString(),
+          severity: "medium",
+        });
+        if (decision.disposition !== "deliver") return;
+      }
       await this.rust.runDueWake({
         signal: this.signal(950_000),
         workerRef: this.options.workerRef,
