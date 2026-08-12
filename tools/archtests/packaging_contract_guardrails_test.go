@@ -246,8 +246,8 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		t.Fatal("candidate receipt must wait for CI, both image scans, and the exact-image Rust proof")
 	}
 	if !strings.Contains(candidate, "group: candidate-build-main") ||
-		!strings.Contains(candidate, "cancel-in-progress: true") {
-		t.Fatal("candidate workflow must cancel stale main builds")
+		!strings.Contains(candidate, "cancel-in-progress: false") {
+		t.Fatal("candidate workflow must queue main builds so active attestations reach a receipt")
 	}
 	resolveIndex := strings.Index(candidate, "  resolve:\n")
 	ciGateIndex := strings.Index(candidate, "  ci-gate:\n")

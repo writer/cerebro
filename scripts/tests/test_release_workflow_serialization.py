@@ -17,12 +17,19 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertNotIn("group: release-${{ inputs.release_tag }}", workflow)
 
-    def test_release_tag_reservation_is_serialized_across_triggers(self) -> None:
+    def test_candidate_build_does_not_claim_stable_release_reservation(self) -> None:
         workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn("group: stable-release-tag-reservation", workflow)
-        self.assertIn("cancel-in-progress: false", workflow)
-        self.assertNotIn("group: cut-release-${{", workflow)
+        concurrency = workflow.split("concurrency:\n", 1)[1].split("\njobs:\n", 1)[0]
+        self.assertNotIn("group: stable-release-tag-reservation", concurrency)
+
+    def test_candidate_attestations_are_queued_instead_of_cancelled(self) -> None:
+        workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+        concurrency = workflow.split("concurrency:\n", 1)[1].split("\njobs:\n", 1)[0]
+        self.assertIn("group: candidate-build-main", concurrency)
+        self.assertIn("cancel-in-progress: false", concurrency)
+        self.assertNotIn("cancel-in-progress: true", concurrency)
 
     def test_candidate_web_images_use_native_architecture_runners(self) -> None:
         workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
