@@ -66,6 +66,28 @@ export function simulateSlackMention(
   });
 }
 
+/** Simulates a reply bound to the exact existing Slack thread identity. */
+export function simulateSlackThreadReply(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "thread_reply") invalid("thread-reply event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const channelId = field(payload, "channel_id");
+  if (!/^[CG][A-Z0-9]+$/u.test(channelId)) invalid("thread-reply channel");
+  const userId = field(payload, "user_id");
+  const messageTs = timestampField(payload, "ts");
+  const threadTs = timestampField(payload, "thread_ts");
+  if (threadTs === messageTs) invalid("thread-reply timestamp");
+  const text = field(payload, "text", 12_000).trim();
+  return invocation(event, {
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-thread", teamId, channelId, threadTs),
+    route: "assistant_turn",
+    text,
+  });
+}
+
 function invocation(
   event: AgentGymSlackEventV1,
   input: Omit<AgentGymSlackInvocationV1,
