@@ -1351,6 +1351,78 @@ RETURN count(*)`, params)
 	return nil
 }
 
+// DeleteProjectedLinks retracts source-runtime assertions in one transaction and
+// reconciles each affected logical relationship after all assertions are gone.
+func (s *Store) DeleteProjectedLinks(ctx context.Context, links []*ports.ProjectedLink) error {
+	rows := make([]map[string]any, 0, len(links))
+	seen := map[string]struct{}{}
+	for _, link := range links {
+		fromURN, toURN, relation, err := validateProjectedLinkIdentity(link)
+		if err != nil {
+			return err
+		}
+		tenantID := strings.TrimSpace(link.TenantID)
+		sourceID := strings.TrimSpace(link.SourceID)
+		runtimeID := strings.TrimSpace(link.RuntimeID)
+		if tenantID != "" {
+			if err := ports.ValidateProjectedLinkTenantScope(link); err != nil {
+				return err
+			}
+		}
+		if tenantID == "" || sourceID == "" {
+			continue
+		}
+		key := strings.Join([]string{fromURN, relation, toURN, tenantID, sourceID, runtimeID}, "\x00")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		rows = append(rows, map[string]any{
+			"from_urn": fromURN, "to_urn": toURN, "relation": relation,
+			"tenant_id": tenantID, "source_id": sourceID, "runtime_id": runtimeID,
+		})
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := s.requireConfigured(); err != nil {
+		return err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return err
+	}
+	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		result, err := tx.Run(ctx, `UNWIND $rows AS row
+MATCH (src:Entity {urn: row.from_urn})-[assertion:RELATION_ASSERTION {
+    relation: row.relation,
+    tenant_id: row.tenant_id,
+    source_id: row.source_id,
+    runtime_id: row.runtime_id
+}]->(dst:Entity {urn: row.to_urn})
+DELETE assertion
+RETURN DISTINCT row.from_urn, row.relation, row.to_urn, row.tenant_id`, map[string]any{"rows": rows})
+		if err != nil {
+			return nil, err
+		}
+		affected := make([]map[string]any, 0, len(rows))
+		for result.Next(ctx) {
+			record := result.Record()
+			affected = append(affected, map[string]any{
+				"from_urn": stringValue(record.Values[0]), "relation": stringValue(record.Values[1]),
+				"to_urn": stringValue(record.Values[2]), "tenant_id": stringValue(record.Values[3]),
+			})
+		}
+		if err := result.Err(); err != nil {
+			return nil, err
+		}
+		return nil, reconcileProjectedLogicalLinks(ctx, tx, affected)
+	})
+	if err != nil {
+		return fmt.Errorf("delete projected links: %w", err)
+	}
+	return nil
+}
+
 // DeleteProjectedEntity removes only an isolated entity. The identity-less API
 // cannot safely choose among source-runtime assertions, so shared or legacy
 // graph facts must be retracted through their scoped link APIs first.
@@ -1373,6 +1445,43 @@ DELETE e`, map[string]any{"urn": normalizedURN})
 	})
 	if err != nil {
 		return fmt.Errorf("delete projected entity %q: %w", normalizedURN, err)
+	}
+	return nil
+}
+
+// DeleteProjectedEntities removes isolated entities with one UNWIND query.
+func (s *Store) DeleteProjectedEntities(ctx context.Context, urns []string) error {
+	normalized := make([]string, 0, len(urns))
+	seen := map[string]struct{}{}
+	for _, urn := range urns {
+		urn = strings.TrimSpace(urn)
+		if urn == "" {
+			return errors.New("projected entity urn is required")
+		}
+		if _, ok := seen[urn]; ok {
+			continue
+		}
+		seen[urn] = struct{}{}
+		normalized = append(normalized, urn)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	if err := s.requireConfigured(); err != nil {
+		return err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return err
+	}
+	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		return consume(ctx, tx, `UNWIND $urns AS urn
+MATCH (e:Entity {urn: urn})
+WHERE NOT (e)-[:RELATION]-()
+  AND NOT (e)-[:RELATION_ASSERTION]-()
+DELETE e`, map[string]any{"urns": normalized})
+	})
+	if err != nil {
+		return fmt.Errorf("delete projected entities: %w", err)
 	}
 	return nil
 }

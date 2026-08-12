@@ -897,12 +897,22 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		result.EventsRead++
 	}
 	if deleter, ok := graphStore.(ports.ProjectionEntityDeleter); ok {
+		orderedCleanupURNs := make([]string, 0, len(cleanupURNs))
 		for _, urn := range sortedMapKeys(cleanupURNs) {
 			if _, willUpsert := entities[urn]; willUpsert {
 				continue
 			}
-			if err := deleter.DeleteProjectedEntity(ctx, urn); err != nil {
-				return result, fmt.Errorf("delete coalesced projected entity %q: %w", urn, err)
+			orderedCleanupURNs = append(orderedCleanupURNs, urn)
+		}
+		if batchDeleter, ok := graphStore.(ports.ProjectionEntityBatchDeleter); ok {
+			if err := batchDeleter.DeleteProjectedEntities(ctx, orderedCleanupURNs); err != nil {
+				return result, fmt.Errorf("delete coalesced projected entities: %w", err)
+			}
+		} else {
+			for _, urn := range orderedCleanupURNs {
+				if err := deleter.DeleteProjectedEntity(ctx, urn); err != nil {
+					return result, fmt.Errorf("delete coalesced projected entity %q: %w", urn, err)
+				}
 			}
 		}
 	}
@@ -917,13 +927,22 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		}
 	}
 	if deleter, ok := graphStore.(ports.ProjectionLinkDeleter); ok {
-		var deleted uint32
+		orderedRetractions := make([]*ports.ProjectedLink, 0, len(retractedLinks))
 		for _, key := range sortedMapKeys(retractedLinks) {
-			if err := deleter.DeleteProjectedLink(ctx, retractedLinks[key]); err != nil {
-				return result, fmt.Errorf("delete coalesced projected link %q: %w", key, err)
-			}
-			deleted++
+			orderedRetractions = append(orderedRetractions, retractedLinks[key])
 		}
+		if batchDeleter, ok := graphStore.(ports.ProjectionLinkBatchDeleter); ok {
+			if err := batchDeleter.DeleteProjectedLinks(ctx, orderedRetractions); err != nil {
+				return result, fmt.Errorf("delete coalesced projected links: %w", err)
+			}
+		} else {
+			for index, link := range orderedRetractions {
+				if err := deleter.DeleteProjectedLink(ctx, link); err != nil {
+					return result, fmt.Errorf("delete coalesced projected link %q: %w", sortedMapKeys(retractedLinks)[index], err)
+				}
+			}
+		}
+		deleted := boundedUint32(len(orderedRetractions))
 		if len(retractedLinks) != 0 {
 			attrs := telemetry.Attrs(
 				telemetry.Field{Key: "tenant_id", Value: request.TenantID},
