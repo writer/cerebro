@@ -56,6 +56,7 @@ export * from "./regression-learning-candidate.js";
 export * from "./regression-sanitization.js";
 export * from "./regression-duplicate-report.js";
 export * from "./regression-fixture.js";
+export * from "./regression-corpus-augmentation.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";

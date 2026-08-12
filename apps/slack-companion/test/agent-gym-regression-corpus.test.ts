@@ -4,11 +4,13 @@ import test from "node:test";
 import {
   digestAgentGymJson,
   agentGymFixtureScenarioDigest,
+  augmentAgentGymRegressionCorpus,
   buildAgentGymRegressionFixture,
   inspectAgentGymRegressionDuplicates,
   validateAgentGymRegressionSanitization,
   validateAgentGymRegressionDuplicateReport,
   validateAgentGymRegressionFixtureReceipt,
+  validateAgentGymRegressionCorpusAugmentation,
   type AgentGymFixtureCaseV1,
   verifyAgentGymRegressionSanitization,
   type AgentGymRegressionLearningCandidateV1,
@@ -71,6 +73,26 @@ test("regression fixtures cannot place incident-derived cases in held-out data",
     "agent-gym-regression-fixture-receipt://nightly/invalid"), /regression fixture receipt is invalid/u);
 });
 
+test("regression corpus augmentation binds the append-only manifest transition", () => {
+  const fixture = fixtureCase("agent-gym-case://regression/new", ["live_sample_failed"]);
+  const augmentation = augmentAgentGymRegressionCorpus([fixtureCase()], regressionFixtureReceipt(fixture), {
+    augmented_at: "2026-08-12T11:39:00.000Z",
+    augmentation_ref: "agent-gym-regression-corpus-augmentation://nightly/one",
+  });
+  assert.equal(augmentation.next_case_count, augmentation.previous_case_count + 1);
+  assert.deepEqual(validateAgentGymRegressionCorpusAugmentation(augmentation), augmentation);
+});
+
+test("regression corpus augmentation rejects scenario duplicates", () => {
+  const fixture = fixtureCase("agent-gym-case://regression/new", ["live_sample_failed"]);
+  assert.throws(() => augmentAgentGymRegressionCorpus([
+    { ...fixture, case_ref: "agent-gym-case://existing/same-scenario" },
+  ], regressionFixtureReceipt(fixture), {
+    augmented_at: "2026-08-12T11:39:00.000Z",
+    augmentation_ref: "agent-gym-regression-corpus-augmentation://nightly/invalid",
+  }), /corpus augmentation is invalid/u);
+});
+
 function regressionFixtureReceipt(fixture: AgentGymFixtureCaseV1) {
   const proof = sanitization(agentGymFixtureScenarioDigest(fixture));
   const report = inspectAgentGymRegressionDuplicates(proof, [], "agent-gym-regression-duplicate-report://nightly/new");
@@ -92,7 +114,7 @@ function fixtureCase(caseRef = "agent-gym-case://existing/one", labels = ["regre
     case_ref: caseRef, expected_invariants: ["answer_is_grounded"], labels,
     partition: "train", schema_version: "agent-gym-fixture-case/v1",
     slack_events: [{ event_ref: "agent-gym-event://existing/one", kind: "mention",
-      occurred_at: "2026-08-12T11:00:00.000Z", payload: { text: "sanitized request" } }], tool_fixtures: [],
+      occurred_at: "2026-08-12T11:00:00.000Z", payload: { case_ref: caseRef, text: "sanitized request" } }], tool_fixtures: [],
   };
 }
 
