@@ -982,9 +982,11 @@ impl Neo4jProjector {
             relations,
             neighbor_kinds,
             limit,
-            after_agent_key,
-            after_relation,
-            after_direction,
+            CatalogRelationCursor {
+                agent_key: after_agent_key,
+                relation: after_relation,
+                direction: after_direction,
+            },
         )?;
         let mut transaction = self.graph.start_txn().await?;
         let revision = catalog_revision(&mut transaction, tenant_id).await?;
@@ -3061,6 +3063,13 @@ fn validate_catalog_request(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct CatalogRelationCursor<'a> {
+    agent_key: &'a str,
+    relation: &'a str,
+    direction: Option<EntityCatalogDirection>,
+}
+
 fn validate_catalog_relation_request(
     tenant_id: &TenantId,
     agent_key: &str,
@@ -3068,15 +3077,13 @@ fn validate_catalog_relation_request(
     relations: &[String],
     neighbor_kinds: &[String],
     limit: usize,
-    after_agent_key: &str,
-    after_relation: &str,
-    after_direction: Option<EntityCatalogDirection>,
+    cursor: CatalogRelationCursor<'_>,
 ) -> Result<(), StoreError> {
     validate_catalog_request(
         tenant_id,
         &EntityCatalogFilter::default(),
         limit,
-        after_agent_key,
+        cursor.agent_key,
     )?;
     validate_catalog_text("agent_key", agent_key, 4096, true)?;
     if !agent_key.starts_with(&format!("urn:cerebro:{}:", tenant_id.as_str())) {
@@ -3092,11 +3099,11 @@ fn validate_catalog_relation_request(
             "entity catalog directions are invalid".to_owned(),
         ));
     }
-    validate_catalog_text("after_relation", after_relation, 128, false)?;
+    validate_catalog_text("after_relation", cursor.relation, 128, false)?;
     let cursor_fields = (
-        !after_agent_key.is_empty(),
-        !after_relation.is_empty(),
-        after_direction.is_some(),
+        !cursor.agent_key.is_empty(),
+        !cursor.relation.is_empty(),
+        cursor.direction.is_some(),
     );
     if cursor_fields != (false, false, false) && cursor_fields != (true, true, true) {
         return Err(StoreError::Conflict(
@@ -4085,9 +4092,11 @@ mod tests {
                 &["associated_with".to_owned()],
                 &["contract".to_owned()],
                 100,
-                "urn:cerebro:writer:contract:one",
-                "",
-                None,
+                CatalogRelationCursor {
+                    agent_key: "urn:cerebro:writer:contract:one",
+                    relation: "",
+                    direction: None,
+                },
             )
             .is_err(),
             "all composite cursor fields are required"
