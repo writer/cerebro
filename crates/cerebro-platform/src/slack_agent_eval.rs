@@ -6851,6 +6851,8 @@ fn quality_contract(case_ref: &str) -> &'static str {
         "Identify the supported cursor-format mismatch after the configuration revision as the cause, preserve that authentication and prior evidence remain healthy, and own the bounded corrective next step without claiming it was executed."
     } else if case_ref.contains("finding") || case_ref.contains("asset") {
         "Synthesize the single high-risk finding, exposed production asset, complete evidence chain, remediation owner, and bounded restrict-then-reobserve recommendation. A row list or generic risk description fails."
+    } else if case_ref.contains("behavior-change-boundary") {
+        "Separate the evaluated result from an operative change. A higher or steadier score proves only the measured candidate and run. Do not say the deployed prompt, tools, planner, runtime, or user-visible behavior improved without current evidence identifying the changed artifact and its deployed state."
     } else if case_ref.contains("conversation-appraisal") {
         "Answer in one short conversational paragraph. Name the exact prior miss or correction from the invented thread, answer the appraisal directly, and add one useful implication. Advertising, capability disclaimers, asking for another task as proof, making the operator repeat context, or ending with a generic offer fails."
     } else if case_ref.contains("pure-conversation") || case_ref.contains("concept-chat") {
