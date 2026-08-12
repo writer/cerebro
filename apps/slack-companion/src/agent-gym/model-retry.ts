@@ -1,5 +1,11 @@
 import { AgentGymContractError } from "./index.js";
 import type { AgentGymModelFailureV1 } from "./model-failure.js";
+import { AgentGymModelInvocationError } from "./model-failure.js";
+import type {
+  AgentGymModelInvocationRequestV1,
+  AgentGymModelPort,
+  AgentGymModelResponseV1,
+} from "./model-runtime.js";
 
 export interface AgentGymModelRetryPolicyV1 {
   readonly backoff_ms: readonly number[];
@@ -15,6 +21,54 @@ export interface AgentGymModelRetryDecisionV1 {
   readonly reason_code: string;
   readonly retry: boolean;
   readonly schema_version: "agent-gym-model-retry-decision/v1";
+}
+
+export interface AgentGymModelRetryAttemptV1 {
+  readonly attempt: number;
+  readonly delay_ms: number;
+  readonly error_code?: string;
+  readonly outcome: "failure" | "success";
+}
+
+export interface AgentGymModelRetryResultV1 {
+  readonly attempts: readonly AgentGymModelRetryAttemptV1[];
+  readonly response: AgentGymModelResponseV1;
+  readonly schema_version: "agent-gym-model-retry-result/v1";
+  readonly virtual_elapsed_ms: number;
+}
+
+/** Executes retries using virtual delay accounting; it never sleeps. */
+export async function invokeAgentGymModelWithRetry(
+  request: AgentGymModelInvocationRequestV1,
+  policy: AgentGymModelRetryPolicyV1,
+  model: AgentGymModelPort,
+): Promise<AgentGymModelRetryResultV1> {
+  const attempts: AgentGymModelRetryAttemptV1[] = [];
+  let elapsedMs = 0;
+  for (let attempt = 1; attempt <= policy.max_attempts; attempt += 1) {
+    try {
+      const response = await model.invoke(request);
+      attempts.push(Object.freeze({ attempt, delay_ms: 0, outcome: "success" }));
+      return Object.freeze({
+        attempts: Object.freeze(attempts),
+        response,
+        schema_version: "agent-gym-model-retry-result/v1",
+        virtual_elapsed_ms: elapsedMs,
+      });
+    } catch (error: unknown) {
+      if (!(error instanceof AgentGymModelInvocationError)) throw error;
+      const decision = decideAgentGymModelRetry(policy, error.failure, attempt, elapsedMs);
+      attempts.push(Object.freeze({
+        attempt,
+        delay_ms: decision.delay_ms ?? 0,
+        error_code: error.failure.error_code,
+        outcome: "failure",
+      }));
+      if (!decision.retry) throw error;
+      elapsedMs += decision.delay_ms ?? 0;
+    }
+  }
+  throw new AgentGymContractError("Agent gym model retry execution is invalid.");
 }
 
 /** Makes a deterministic retry decision without sleeping or reading wall time. */

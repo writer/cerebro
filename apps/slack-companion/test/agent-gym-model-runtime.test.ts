@@ -5,6 +5,7 @@ import {
   agentGymModelRequestDigest,
   AgentGymModelInvocationError,
   decideAgentGymModelRetry,
+  invokeAgentGymModelWithRetry,
   evaluateAgentGymModelBudget,
   invokeAgentGymModel,
   RecordedAgentGymModel,
@@ -12,6 +13,29 @@ import {
   validateAgentGymModelFailure,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+test("model retry execution advances virtual time without sleeping", async () => {
+  let invocationCount = 0;
+  const result = await invokeAgentGymModelWithRetry(request(), retryPolicy(), {
+    async invoke() {
+      invocationCount += 1;
+      if (invocationCount < 3) throw new AgentGymModelInvocationError(retryableFailure());
+      return modelResponse();
+    },
+  });
+  assert.equal(result.virtual_elapsed_ms, 350);
+  assert.deepEqual(result.attempts.map((attempt) => attempt.outcome), [
+    "failure", "failure", "success",
+  ]);
+});
+
+test("model retry execution propagates terminal failures", async () => {
+  const failure = { ...retryableFailure(), retryable: false };
+  await assert.rejects(invokeAgentGymModelWithRetry(request(), retryPolicy(), {
+    async invoke() { throw new AgentGymModelInvocationError(failure); },
+  }), (error: unknown) => error instanceof AgentGymModelInvocationError
+    && error.failure.error_code === "provider.throttled");
+});
 
 function retryPolicy() {
   return {
