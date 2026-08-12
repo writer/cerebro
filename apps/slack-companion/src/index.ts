@@ -1,4 +1,5 @@
 export * from "./admission.js";
+export * from "./agent-gym/index.js";
 export * from "./autonomy/contracts.js";
 export * from "./autonomy/ledger.js";
 export * from "./autonomy/ports.js";
