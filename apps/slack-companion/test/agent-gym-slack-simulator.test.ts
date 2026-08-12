@@ -1,7 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { simulateSlackMention } from "../src/index.js";
+import { simulateSlackDirectMessage, simulateSlackMention } from "../src/index.js";
+
+test("direct-message simulation routes one bounded private request", () => {
+  const invocation = simulateSlackDirectMessage({
+    event_ref: "slack-event://dm/one",
+    kind: "direct_message",
+    occurred_at: "2026-08-12T08:31:00.000Z",
+    payload: {
+      channel_id: "D12345",
+      team_id: "T_ONE",
+      text: "Summarize the current evidence.",
+      ts: "1786523460.000001",
+      user_id: "U_ONE",
+    },
+  });
+  assert.equal(invocation.route, "assistant_turn");
+  assert.equal(invocation.text, "Summarize the current evidence.");
+  assert.match(invocation.conversation_ref, /^slack-dm:\/\/sha256\/[0-9a-f]{64}$/u);
+});
+
+test("direct-message simulation rejects a public channel payload", () => {
+  assert.throws(() => simulateSlackDirectMessage({
+    event_ref: "slack-event://dm/public",
+    kind: "direct_message",
+    occurred_at: "2026-08-12T08:31:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      team_id: "T_ONE",
+      text: "Summarize the current evidence.",
+      ts: "1786523460.000001",
+      user_id: "U_ONE",
+    },
+  }), /direct-message channel is invalid/u);
+});
 
 test("mention simulation produces a Slack-independent assistant invocation", () => {
   const invocation = simulateSlackMention({
