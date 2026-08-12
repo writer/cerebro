@@ -32,6 +32,29 @@ export interface AgentGymToolErrorFixtureV1 {
   readonly tool_id: string;
 }
 
+export interface AgentGymToolTimeoutFixtureV1 {
+  readonly call_ref: string;
+  readonly elapsed_ms: number;
+  readonly timeout_ms: number;
+  readonly schema_version: "agent-gym-tool-timeout-fixture/v1";
+  readonly tool_id: string;
+}
+
+/** Records a deterministic timeout boundary without waiting in real time. */
+export function injectAgentGymToolTimeout(
+  input: Omit<AgentGymToolTimeoutFixtureV1, "schema_version">,
+): AgentGymToolTimeoutFixtureV1 {
+  reference(input.call_ref);
+  bounded(input.tool_id, 160);
+  integer(input.timeout_ms, 15 * 60_000, false);
+  integer(input.elapsed_ms, 60 * 60_000, false);
+  if (input.elapsed_ms < input.timeout_ms) invalidTimeout();
+  return Object.freeze({
+    ...input,
+    schema_version: "agent-gym-tool-timeout-fixture/v1",
+  });
+}
+
 /** Creates a bounded provider-error fixture without a thrown live error. */
 export function injectAgentGymToolError(
   input: Omit<AgentGymToolErrorFixtureV1, "schema_version">,
@@ -109,6 +132,10 @@ function reference(value: string): void {
   bounded(value, 240);
   if (!value.includes("://")) invalidResult();
 }
+function integer(value: number, maximum: number, allowZero = true): void {
+  if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1)
+    || value > maximum) invalidTimeout();
+}
 function timestamp(value: string): void {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)
     || !Number.isFinite(Date.parse(value))) invalidResult();
@@ -121,4 +148,7 @@ function invalidResult(): never {
 }
 function invalidError(): never {
   throw new AgentGymContractError("Agent gym tool error fixture is invalid.");
+}
+function invalidTimeout(): never {
+  throw new AgentGymContractError("Agent gym tool timeout fixture is invalid.");
 }

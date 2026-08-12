@@ -4,8 +4,29 @@ import test from "node:test";
 import {
   createAgentGymToolRegistry,
   injectAgentGymToolError,
+  injectAgentGymToolTimeout,
   recordAgentGymToolResult,
 } from "../src/index.js";
+
+test("tool timeout injection advances virtual time without sleeping", () => {
+  const fixture = injectAgentGymToolTimeout({
+    call_ref: "tool-call://one",
+    elapsed_ms: 5_001,
+    timeout_ms: 5_000,
+    tool_id: "cerebro.search",
+  });
+  assert.equal(fixture.elapsed_ms, 5_001);
+  assert.equal(fixture.schema_version, "agent-gym-tool-timeout-fixture/v1");
+});
+
+test("tool timeout injection rejects a result before its deadline", () => {
+  assert.throws(() => injectAgentGymToolTimeout({
+    call_ref: "tool-call://one",
+    elapsed_ms: 4_999,
+    timeout_ms: 5_000,
+    tool_id: "cerebro.search",
+  }), /timeout fixture is invalid/u);
+});
 
 test("tool error injection preserves retryability as fixture data", () => {
   assert.deepEqual(injectAgentGymToolError({
