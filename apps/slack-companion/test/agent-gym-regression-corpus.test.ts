@@ -4,9 +4,11 @@ import test from "node:test";
 import {
   digestAgentGymJson,
   agentGymFixtureScenarioDigest,
+  buildAgentGymRegressionFixture,
   inspectAgentGymRegressionDuplicates,
   validateAgentGymRegressionSanitization,
   validateAgentGymRegressionDuplicateReport,
+  validateAgentGymRegressionFixtureReceipt,
   type AgentGymFixtureCaseV1,
   verifyAgentGymRegressionSanitization,
   type AgentGymRegressionLearningCandidateV1,
@@ -54,6 +56,28 @@ test("regression duplicate reports name matching existing cases", () => {
   assert.deepEqual(report.duplicate_case_refs, [fixture.case_ref]);
 });
 
+test("regression fixtures bind sanitized admitted scenarios to training cases", () => {
+  const fixture = fixtureCase("agent-gym-case://regression/new", ["live_sample_failed", "regression"]);
+  const receipt = regressionFixtureReceipt(fixture);
+  assert.equal(receipt.fixture_digest.length, 71);
+  assert.deepEqual(validateAgentGymRegressionFixtureReceipt(receipt), receipt);
+});
+
+test("regression fixtures cannot place incident-derived cases in held-out data", () => {
+  const fixture = { ...fixtureCase("agent-gym-case://regression/invalid", ["live_sample_failed"]), partition: "held_out" as const };
+  const proof = sanitization(agentGymFixtureScenarioDigest(fixture));
+  const report = inspectAgentGymRegressionDuplicates(proof, [], "agent-gym-regression-duplicate-report://nightly/new");
+  assert.throws(() => buildAgentGymRegressionFixture(learningCandidate(), proof, report, fixture,
+    "agent-gym-regression-fixture-receipt://nightly/invalid"), /regression fixture receipt is invalid/u);
+});
+
+function regressionFixtureReceipt(fixture: AgentGymFixtureCaseV1) {
+  const proof = sanitization(agentGymFixtureScenarioDigest(fixture));
+  const report = inspectAgentGymRegressionDuplicates(proof, [], "agent-gym-regression-duplicate-report://nightly/new");
+  return buildAgentGymRegressionFixture(learningCandidate(), proof, report, fixture,
+    "agent-gym-regression-fixture-receipt://nightly/new");
+}
+
 function sanitization(scenarioDigest: string) {
   return verifyAgentGymRegressionSanitization(learningCandidate(), {
     evidence_refs: ["agent-gym-evidence://sanitization/one"], prohibited_value_count: 0, redaction_count: 3,
@@ -63,9 +87,9 @@ function sanitization(scenarioDigest: string) {
   });
 }
 
-function fixtureCase(): AgentGymFixtureCaseV1 {
+function fixtureCase(caseRef = "agent-gym-case://existing/one", labels = ["regression"]): AgentGymFixtureCaseV1 {
   return {
-    case_ref: "agent-gym-case://existing/one", expected_invariants: ["answer_is_grounded"], labels: ["regression"],
+    case_ref: caseRef, expected_invariants: ["answer_is_grounded"], labels,
     partition: "train", schema_version: "agent-gym-fixture-case/v1",
     slack_events: [{ event_ref: "agent-gym-event://existing/one", kind: "mention",
       occurred_at: "2026-08-12T11:00:00.000Z", payload: { text: "sanitized request" } }], tool_fixtures: [],
