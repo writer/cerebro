@@ -51,6 +51,7 @@ export * from "./rollback-trigger.js";
 export * from "./rollback-action-receipt.js";
 export * from "./rollback-state-observation.js";
 export * from "./rollback-verification.js";
+export * from "./rollback-incident.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";

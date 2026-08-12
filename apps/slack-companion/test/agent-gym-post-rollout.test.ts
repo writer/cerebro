@@ -8,6 +8,7 @@ import {
   observeAgentGymRollbackState,
   recordAgentGymPostRolloutObservation,
   recordAgentGymRollbackActionReceipt,
+  recordAgentGymRollbackIncident,
   sealAgentGymPostRolloutWindow,
   triggerAgentGymRollback,
   verifyAgentGymRollback,
@@ -16,6 +17,7 @@ import {
   validateAgentGymRollbackActionReceipt,
   validateAgentGymRollbackStateObservation,
   validateAgentGymRollbackVerification,
+  validateAgentGymRollbackIncident,
   validateAgentGymPostRolloutObservation,
   validateAgentGymPostRolloutWindow,
   validateAgentGymPostRolloutGate,
@@ -214,6 +216,51 @@ test("rollback verification remains indeterminate when state is unavailable", ()
   });
   assert.equal(verification.outcome, "indeterminate");
 });
+
+test("rollback incidents close only after verified mitigation", () => {
+  const incident = recordAgentGymRollbackIncident(rollbackGate(), rollbackTrigger(), verifiedRollback(), {
+    evidence_refs: ["agent-gym-evidence://rollback/incident-one"],
+    incident_ref: "agent-gym-rollback-incident://nightly/one",
+    recorded_at: "2026-08-12T11:36:00.000Z",
+  });
+  assert.equal(incident.status, "mitigated");
+  assert.ok(incident.blocker_codes.includes("live_sample_failed"));
+  assert.deepEqual(validateAgentGymRollbackIncident(incident), incident);
+});
+
+test("rollback incidents remain unresolved without independent state", () => {
+  const incident = recordAgentGymRollbackIncident(rollbackGate(), rollbackTrigger(), indeterminateRollback(), {
+    evidence_refs: ["agent-gym-evidence://rollback/incident-unresolved"],
+    incident_ref: "agent-gym-rollback-incident://nightly/unresolved",
+    recorded_at: "2026-08-12T11:36:00.000Z",
+  });
+  assert.equal(incident.status, "unresolved");
+  assert.ok(incident.blocker_codes.includes("rollback_state_unavailable"));
+});
+
+function verifiedRollback() {
+  return verifyAgentGymRollback(rollbackTrigger(), appliedRollbackReceipt(), rollbackObservation(), {
+    evidence_refs: ["agent-gym-evidence://rollback/verification-one"],
+    verification_ref: "agent-gym-rollback-verification://nightly/one",
+    verified_at: "2026-08-12T11:35:00.000Z",
+  });
+}
+
+function indeterminateRollback() {
+  const observation = observeAgentGymRollbackState(appliedRollbackReceipt(), {
+    availability: "unavailable",
+    evidence_refs: ["agent-gym-evidence://rollback/state-unavailable"],
+    observation_ref: "agent-gym-rollback-state-observation://nightly/unavailable",
+    observed_at: "2026-08-12T11:34:00.000Z",
+    observed_candidate_ref: null,
+    observer_ref: "agent-gym-observer://rollout/independent",
+  });
+  return verifyAgentGymRollback(rollbackTrigger(), appliedRollbackReceipt(), observation, {
+    evidence_refs: ["agent-gym-evidence://rollback/verification-unavailable"],
+    verification_ref: "agent-gym-rollback-verification://nightly/unavailable",
+    verified_at: "2026-08-12T11:35:00.000Z",
+  });
+}
 
 function rollbackObservation() {
   return observeAgentGymRollbackState(appliedRollbackReceipt(), {
