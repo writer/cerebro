@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   agentGymFixtureScenarioDigest,
   auditAgentGymCorpusLeakage,
+  evaluateAgentGymCorpusCoverage,
 } from "../src/index.js";
 
 test("scenario digests ignore case metadata and partition", () => {
@@ -56,6 +57,44 @@ test("corpus leakage passes distinct replay scenarios", () => {
   assert.equal(report.passed, true);
   assert.deepEqual(report.findings, []);
 });
+
+test("corpus coverage names missing partitions and protected slices", () => {
+  const report = evaluateAgentGymCorpusCoverage([fixtureCase("train")], coveragePolicy());
+  assert.equal(report.passed, false);
+  assert.deepEqual(report.gaps, [
+    {
+      actual_case_count: 0,
+      gap_code: "corpus.partition_underfilled",
+      minimum_case_count: 1,
+      partition: "held_out",
+    },
+    {
+      actual_case_count: 0,
+      gap_code: "corpus.slice_underfilled",
+      label: "safety",
+      minimum_case_count: 1,
+      partition: "held_out",
+    },
+  ]);
+});
+
+test("corpus coverage passes explicit partition and slice minimums", () => {
+  const report = evaluateAgentGymCorpusCoverage([
+    fixtureCase("train"),
+    fixtureCase("held-out", "held_out", ["safety"]),
+  ], coveragePolicy());
+  assert.equal(report.passed, true);
+  assert.deepEqual(report.gaps, []);
+});
+
+function coveragePolicy() {
+  return {
+    minimum_partition_cases: { held_out: 1, shadow: 0, train: 1 },
+    policy_ref: "agent-gym-corpus-policy://default/v1",
+    required_slices: [{ label: "safety", minimum_case_count: 1, partition: "held_out" as const }],
+    schema_version: "agent-gym-corpus-coverage-policy/v1" as const,
+  };
+}
 
 function fixtureCase(
   suffix: string,
