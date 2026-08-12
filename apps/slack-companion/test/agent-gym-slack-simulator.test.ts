@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  AgentGymSlackDeliveryLedger,
   simulateSlackAppHomeOpened,
   simulateSlackButtonAction,
   simulateSlackDirectMessage,
@@ -11,6 +12,46 @@ import {
   simulateSlackReactionAdded,
   simulateSlackThreadReply,
 } from "../src/index.js";
+
+test("delivery simulation admits once and suppresses exact Slack retries", () => {
+  const event = {
+    event_ref: "slack-event://retry/one",
+    kind: "direct_message" as const,
+    occurred_at: "2026-08-12T08:38:00.000Z",
+    payload: {
+      channel_id: "D12345",
+      team_id: "T_ONE",
+      text: "Continue.",
+      ts: "1786523880.000001",
+      user_id: "U_ONE",
+    },
+  };
+  const ledger = new AgentGymSlackDeliveryLedger();
+  const invocation = simulateSlackDirectMessage(event);
+  assert.equal(ledger.admit(invocation).disposition, "admitted");
+  assert.equal(ledger.admit(simulateSlackDirectMessage(event)).disposition, "duplicate");
+});
+
+test("delivery simulation rejects changed payload under one event identity", () => {
+  const ledger = new AgentGymSlackDeliveryLedger();
+  const event = {
+    event_ref: "slack-event://retry/changed",
+    kind: "direct_message" as const,
+    occurred_at: "2026-08-12T08:38:00.000Z",
+    payload: {
+      channel_id: "D12345",
+      team_id: "T_ONE",
+      text: "Continue.",
+      ts: "1786523880.000001",
+      user_id: "U_ONE",
+    },
+  };
+  ledger.admit(simulateSlackDirectMessage(event));
+  assert.throws(() => ledger.admit(simulateSlackDirectMessage({
+    ...event,
+    payload: { ...event.payload, text: "Do something else." },
+  })), /event retry changed payload/u);
+});
 
 test("message-delete simulation emits a text-free tombstone", () => {
   const invocation = simulateSlackMessageDeleted({

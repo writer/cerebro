@@ -21,3 +21,4 @@ export * from "./replay-run.js";
 export * from "./run-summary.js";
 export * from "./scorecard.js";
 export * from "./slack-simulator.js";
+export * from "./slack-delivery.js";
