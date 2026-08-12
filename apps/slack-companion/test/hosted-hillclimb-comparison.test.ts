@@ -14,6 +14,7 @@ function receipt(overrides: {
   judgeLatency?: number;
   candidateTokens?: number;
   judgeTokens?: number;
+  region?: string;
   regressions?: number;
 } = {}): HostedHillclimbReceipt {
   return {
@@ -25,7 +26,7 @@ function receipt(overrides: {
     generator: {
       model_id: "us.anthropic.claude-opus-4-8",
       provider: "aws_bedrock",
-      region: "us-east-1",
+      region: overrides.region ?? "us-east-1",
       sampling_parameters: "provider_default",
     },
     goal: {
@@ -45,7 +46,7 @@ function receipt(overrides: {
       p95_latency_ms: overrides.judgeLatency ?? 200,
       provider: "aws_bedrock",
       repair_count: overrides.repairCount ?? 0,
-      region: "us-east-1",
+      region: overrides.region ?? "us-east-1",
       sampling_parameters: "provider_default",
       total_tokens: overrides.judgeTokens ?? 15,
     },
@@ -126,5 +127,18 @@ test("rejects comparisons across corpora or reversed time", () => {
       receipt({ evaluatedAt: "2026-08-12T15:00:00.000Z" }),
     ),
     /increasing evaluation times/u,
+  );
+});
+
+test("rejects comparisons across execution boundaries", () => {
+  assert.throws(
+    () => compareHostedSlackWorkingStateHillclimbs(
+      receipt(),
+      receipt({
+        evaluatedAt: "2026-08-12T17:00:00.000Z",
+        region: "us-west-2",
+      }),
+    ),
+    /same execution boundary/u,
   );
 });

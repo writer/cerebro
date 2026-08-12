@@ -39,6 +39,9 @@ export function compareHostedSlackWorkingStateHillclimbs(
     || previous.judge.model_id !== current.judge.model_id) {
     throw new Error("Hosted hillclimb comparison requires the same generator and judge models.");
   }
+  if (!sameExecutionBoundary(previous, current)) {
+    throw new Error("Hosted hillclimb comparison requires the same execution boundary.");
+  }
   const previousTime = Date.parse(previous.evaluated_at);
   const currentTime = Date.parse(current.evaluated_at);
   if (!Number.isFinite(previousTime) || !Number.isFinite(currentTime)
@@ -92,6 +95,22 @@ export function compareHostedSlackWorkingStateHillclimbs(
       current.promotion.regression_count - previous.promotion.regression_count,
     schema_version: "slack-working-state-hosted-hillclimb-comparison/v1",
   });
+}
+
+function sameExecutionBoundary(
+  previous: HostedHillclimbReceipt,
+  current: HostedHillclimbReceipt,
+): boolean {
+  return previous.generator.provider === current.generator.provider
+    && previous.generator.region === current.generator.region
+    && previous.generator.sampling_parameters === current.generator.sampling_parameters
+    && previous.judge.provider === current.judge.provider
+    && previous.judge.region === current.judge.region
+    && previous.judge.sampling_parameters === current.judge.sampling_parameters
+    && previous.evaluation_independence.distinct_model_id
+      === current.evaluation_independence.distinct_model_id
+    && previous.evaluation_independence.separate_model_ports
+      === current.evaluation_independence.separate_model_ports;
 }
 
 function modelTokenCount(receipt: HostedHillclimbReceipt): number {
