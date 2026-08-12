@@ -6,6 +6,7 @@ import {
   decideAgentGymPostRolloutGate,
   openAgentGymRollbackReserve,
   observeAgentGymRollbackState,
+  proposeAgentGymRegressionLearningCandidate,
   recordAgentGymPostRolloutObservation,
   recordAgentGymRollbackActionReceipt,
   recordAgentGymRollbackIncident,
@@ -18,6 +19,7 @@ import {
   validateAgentGymRollbackStateObservation,
   validateAgentGymRollbackVerification,
   validateAgentGymRollbackIncident,
+  validateAgentGymRegressionLearningCandidate,
   validateAgentGymPostRolloutObservation,
   validateAgentGymPostRolloutWindow,
   validateAgentGymPostRolloutGate,
@@ -237,6 +239,40 @@ test("rollback incidents remain unresolved without independent state", () => {
   assert.equal(incident.status, "unresolved");
   assert.ok(incident.blocker_codes.includes("rollback_state_unavailable"));
 });
+
+test("mitigated regressions become sealed replay learning candidates", () => {
+  const candidate = proposeAgentGymRegressionLearningCandidate(mitigatedIncident(), {
+    candidate_ref: "agent-gym-regression-learning-candidate://nightly/one",
+    evidence_refs: ["agent-gym-evidence://learning/regression-one"],
+    proposed_at: "2026-08-12T11:37:00.000Z",
+    source_case_ref: "agent-gym-source-case://post-rollout/regression-one",
+  });
+  assert.equal(candidate.expected_candidate_ref, "agent-gym-candidate://nightly/baseline");
+  assert.ok(candidate.failure_labels.includes("live_sample_failed"));
+  assert.deepEqual(validateAgentGymRegressionLearningCandidate(candidate), candidate);
+});
+
+test("unresolved regressions cannot enter the learning corpus", () => {
+  const incident = recordAgentGymRollbackIncident(rollbackGate(), rollbackTrigger(), indeterminateRollback(), {
+    evidence_refs: ["agent-gym-evidence://rollback/incident-unresolved"],
+    incident_ref: "agent-gym-rollback-incident://nightly/unresolved",
+    recorded_at: "2026-08-12T11:36:00.000Z",
+  });
+  assert.throws(() => proposeAgentGymRegressionLearningCandidate(incident, {
+    candidate_ref: "agent-gym-regression-learning-candidate://nightly/invalid",
+    evidence_refs: ["agent-gym-evidence://learning/regression-invalid"],
+    proposed_at: "2026-08-12T11:37:00.000Z",
+    source_case_ref: "agent-gym-source-case://post-rollout/regression-invalid",
+  }), /regression learning candidate is invalid/u);
+});
+
+function mitigatedIncident() {
+  return recordAgentGymRollbackIncident(rollbackGate(), rollbackTrigger(), verifiedRollback(), {
+    evidence_refs: ["agent-gym-evidence://rollback/incident-one"],
+    incident_ref: "agent-gym-rollback-incident://nightly/one",
+    recorded_at: "2026-08-12T11:36:00.000Z",
+  });
+}
 
 function verifiedRollback() {
   return verifyAgentGymRollback(rollbackTrigger(), appliedRollbackReceipt(), rollbackObservation(), {
