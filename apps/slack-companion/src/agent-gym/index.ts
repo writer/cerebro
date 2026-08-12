@@ -28,6 +28,7 @@ export * from "./paired-case-deltas.js";
 export * from "./paired-uncertainty.js";
 export * from "./paired-slices.js";
 export * from "./promotion-input.js";
+export * from "./promotion-verdict.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
