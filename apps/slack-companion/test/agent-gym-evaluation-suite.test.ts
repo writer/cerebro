@@ -12,6 +12,7 @@ import {
   defineAgentGymEvaluatorManifest,
   defineAgentGymEvaluatorRubric,
   planAgentGymEvaluationRun,
+  pairAgentGymEvaluationRuns,
   recordAgentGymCaseEvaluation,
   recordAgentGymCorpusQuality,
   summarizeAgentGymEvaluationSlices,
@@ -19,6 +20,7 @@ import {
   validateAgentGymEvaluationRunResult,
   validateAgentGymEvaluationReadinessDecision,
   validateAgentGymEvaluationSliceReport,
+  validateAgentGymPairedEvaluation,
 } from "../src/index.js";
 
 test("evaluation suites seal admitted non-training cases", () => {
@@ -159,6 +161,24 @@ test("evaluation readiness preserves invalid judge output as a blocker", () => {
   ]);
 });
 
+test("paired evaluations require ready runs over the same case set", () => {
+  const setup = evaluationSetup();
+  const suite = suiteFrom(setup);
+  const baseline = completedRunFor(setup, suite, "baseline", 0.8);
+  const candidate = completedRunFor(setup, suite, "challenger", 0.9);
+  const paired = pairAgentGymEvaluationRuns(
+    suite,
+    baseline.result,
+    baseline.readiness,
+    candidate.result,
+    candidate.readiness,
+    { pair_ref: "agent-gym-pair://nightly/one", paired_at: "2026-08-12T11:08:00.000Z" },
+  );
+  assert.equal(paired.case_count, 2);
+  assert.notEqual(paired.baseline_candidate_ref, paired.candidate_ref);
+  assert.deepEqual(validateAgentGymPairedEvaluation(paired), paired);
+});
+
 function evaluationSetup() {
   const fixtures = [
     fixture("train", "train", "Train request."),
@@ -275,6 +295,53 @@ function readinessPolicy() {
     ],
     schema_version: "agent-gym-evaluation-readiness-policy/v1" as const,
   };
+}
+
+function completedRunFor(
+  setup: ReturnType<typeof evaluationSetup>,
+  suite: ReturnType<typeof defineAgentGymEvaluationSuite>,
+  candidate: string,
+  score: number,
+) {
+  const runInput = {
+    ...runPlanInput(),
+    candidate_ref: `agent-gym-candidate://slack/${candidate}`,
+    run_ref: `agent-gym-evaluation-run://nightly/${candidate}`,
+  };
+  const plan = planAgentGymEvaluationRun(suite, runInput);
+  const evaluations = suite.cases.map((entry, index) => recordAgentGymCaseEvaluation(
+    setup.rubric,
+    [setup.modelJudge, setup.deterministic],
+    {
+      candidate_ref: runInput.candidate_ref,
+      case_ref: entry.case_ref,
+      evaluated_at: "2026-08-12T11:05:30.000Z",
+      evaluation_ref: `agent-gym-evaluation://nightly/${candidate}/case-${index}`,
+      invalid_reason_codes: [],
+      metrics: [
+        { evaluator_digest: setup.modelJudge.evaluator_digest, metric_id: "answer.grounded", reason_codes: [], score },
+        { evaluator_digest: setup.deterministic.evaluator_digest, metric_id: "effect.authorized", reason_codes: [], score: 1 },
+      ],
+      replay_ref: `agent-gym-replay://nightly/${candidate}/case-${index}`,
+      schema_version: "agent-gym-case-evaluation/v1",
+      valid: true,
+    },
+  ));
+  const result = completeAgentGymEvaluationRun(
+    suite,
+    plan,
+    evaluations,
+    { completed_at: "2026-08-12T11:06:00.000Z", started_at: "2026-08-12T11:05:00.000Z" },
+  );
+  const report = summarizeAgentGymEvaluationSlices(suite, result);
+  const readiness = decideAgentGymEvaluationReadiness(
+    suite,
+    result,
+    report,
+    readinessPolicy(),
+    "2026-08-12T11:07:00.000Z",
+  );
+  return { readiness, report, result };
 }
 
 function runPlanInput() {

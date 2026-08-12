@@ -23,6 +23,7 @@ export * from "./evaluation-run-plan.js";
 export * from "./evaluation-run-result.js";
 export * from "./evaluation-slices.js";
 export * from "./evaluation-readiness.js";
+export * from "./paired-evaluation.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
