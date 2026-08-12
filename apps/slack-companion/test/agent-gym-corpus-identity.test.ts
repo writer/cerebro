@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   agentGymFixtureCaseDigest,
   canonicalAgentGymJson,
+  createAgentGymCorpusManifest,
   digestAgentGymJson,
 } from "../src/index.js";
 
@@ -42,9 +43,25 @@ test("fixture case digests are stable across object insertion order", () => {
   assert.equal(agentGymFixtureCaseDigest(fixture), agentGymFixtureCaseDigest(reordered));
 });
 
-function fixtureCase() {
+test("corpus manifests are stable across fixture input order", () => {
+  const first = fixtureCase("agent-gym-case://support/one");
+  const second = fixtureCase("agent-gym-case://support/two");
+  assert.deepEqual(
+    createAgentGymCorpusManifest([first, second]),
+    createAgentGymCorpusManifest([second, first]),
+  );
+});
+
+test("corpus manifests reject duplicate case references", () => {
+  assert.throws(
+    () => createAgentGymCorpusManifest([fixtureCase(), fixtureCase()]),
+    /corpus manifest is invalid/u,
+  );
+});
+
+function fixtureCase(caseRef = "agent-gym-case://support/one") {
   return {
-    case_ref: "agent-gym-case://support/one",
+    case_ref: caseRef,
     expected_invariants: ["answer-grounded"],
     labels: ["support"],
     partition: "train" as const,

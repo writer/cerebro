@@ -6,6 +6,7 @@ export const CEREBRO_AGENT_GYM = Object.freeze({
 
 export * from "./contract-error.js";
 export * from "./canonical-json.js";
+export * from "./corpus-manifest.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
