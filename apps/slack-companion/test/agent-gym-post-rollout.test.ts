@@ -6,10 +6,12 @@ import {
   decideAgentGymPostRolloutGate,
   openAgentGymRollbackReserve,
   recordAgentGymPostRolloutObservation,
+  recordAgentGymRollbackActionReceipt,
   sealAgentGymPostRolloutWindow,
   triggerAgentGymRollback,
   validateAgentGymRollbackReserve,
   validateAgentGymRollbackTrigger,
+  validateAgentGymRollbackActionReceipt,
   validateAgentGymPostRolloutObservation,
   validateAgentGymPostRolloutWindow,
   validateAgentGymPostRolloutGate,
@@ -131,6 +133,41 @@ test("rollback triggers reject expired fallback reserves", () => {
     trigger_ref: "agent-gym-rollback-trigger://nightly/expired",
   }), /rollback trigger is invalid/u);
 });
+
+test("rollback action receipts retain the exact executor outcome", () => {
+  const receipt = recordAgentGymRollbackActionReceipt(rollbackTrigger(), {
+    action_outcome: "applied",
+    completed_at: "2026-08-12T11:33:00.000Z",
+    evidence_refs: ["agent-gym-evidence://rollback/action-one"],
+    executor_ref: "agent-gym-executor://rollout/default",
+    external_receipt_ref: "agent-gym-external-receipt://rollback/action-one",
+    observed_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    receipt_ref: "agent-gym-rollback-action-receipt://nightly/one",
+  });
+  assert.equal(receipt.action_outcome, "applied");
+  assert.deepEqual(validateAgentGymRollbackActionReceipt(receipt), receipt);
+});
+
+test("rollback action receipts cannot claim the failed candidate was applied", () => {
+  assert.throws(() => recordAgentGymRollbackActionReceipt(rollbackTrigger(), {
+    action_outcome: "applied",
+    completed_at: "2026-08-12T11:33:00.000Z",
+    evidence_refs: ["agent-gym-evidence://rollback/action-invalid"],
+    executor_ref: "agent-gym-executor://rollout/default",
+    external_receipt_ref: "agent-gym-external-receipt://rollback/action-invalid",
+    observed_candidate_ref: "agent-gym-candidate://nightly/challenger",
+    receipt_ref: "agent-gym-rollback-action-receipt://nightly/invalid",
+  }), /rollback action receipt is invalid/u);
+});
+
+function rollbackTrigger() {
+  return triggerAgentGymRollback(rollbackGate(), rollbackReserve(), {
+    evidence_refs: ["agent-gym-evidence://rollback/trigger-one"],
+    executor_action_ref: "agent-gym-executor-action://rollout/rollback-one",
+    triggered_at: "2026-08-12T11:32:00.000Z",
+    trigger_ref: "agent-gym-rollback-trigger://nightly/one",
+  });
+}
 
 function rollbackGate() {
   const window = sealAgentGymPostRolloutWindow([
