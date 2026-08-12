@@ -4,11 +4,13 @@ import test from "node:test";
 import {
   digestAgentGymJson,
   decideAgentGymCanaryGate,
+  planAgentGymCanaryAction,
   recordAgentGymCanaryObservation,
   sealAgentGymCanaryWindow,
   validateAgentGymCanaryObservation,
   validateAgentGymCanaryWindow,
   validateAgentGymCanaryGateDecision,
+  validateAgentGymCanaryActionPlan,
   type AgentGymChampionTransitionV1,
 } from "../src/index.js";
 
@@ -101,6 +103,44 @@ test("canary gates hold incomplete windows without overriding evidence", () => {
   assert.equal(decision.disposition, "hold");
   assert.deepEqual(decision.blocker_codes, ["canary.insufficient_samples"]);
 });
+
+test("canary action plans turn rollback evidence into zero candidate traffic", () => {
+  const plan = planAgentGymCanaryAction(championTransition(), canaryGateDecision(), canaryActionPolicy(), {
+    action_ref: "agent-gym-canary-action://nightly/rollback",
+    expires_at: "2026-08-12T11:30:00.000Z",
+    planned_at: "2026-08-12T11:20:00.000Z",
+    requested_traffic_percent: 0,
+  });
+  assert.equal(plan.action, "rollback_candidate");
+  assert.equal(plan.rollback_candidate_ref, "agent-gym-candidate://nightly/baseline");
+  assert.deepEqual(validateAgentGymCanaryActionPlan(plan), plan);
+});
+
+test("rollback decisions cannot increase candidate traffic", () => {
+  assert.throws(() => planAgentGymCanaryAction(
+    championTransition(), canaryGateDecision(), canaryActionPolicy(), {
+      action_ref: "agent-gym-canary-action://nightly/invalid-increase",
+      expires_at: "2026-08-12T11:30:00.000Z",
+      planned_at: "2026-08-12T11:20:00.000Z",
+      requested_traffic_percent: 20,
+    },
+  ), /canary action plan is invalid/u);
+});
+
+function canaryGateDecision() {
+  return decideAgentGymCanaryGate(canaryWindow(), canaryPolicy(), {
+    decision_ref: "agent-gym-canary-gate://nightly/one",
+    evaluated_at: "2026-08-12T11:19:00.000Z",
+  });
+}
+
+function canaryActionPolicy() {
+  return {
+    maximum_traffic_step_percent: 25,
+    policy_ref: "agent-gym-canary-action-policy://nightly/default",
+    schema_version: "agent-gym-canary-action-policy/v1" as const,
+  };
+}
 
 function canaryWindow() {
   return sealAgentGymCanaryWindow([
