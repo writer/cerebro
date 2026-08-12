@@ -9,7 +9,9 @@ import {
   defineAgentGymEvaluationSuite,
   defineAgentGymEvaluatorManifest,
   defineAgentGymEvaluatorRubric,
+  planAgentGymEvaluationRun,
   recordAgentGymCorpusQuality,
+  validateAgentGymEvaluationRunPlan,
 } from "../src/index.js";
 
 test("evaluation suites seal admitted non-training cases", () => {
@@ -34,6 +36,23 @@ test("evaluation suites reject unadmitted evaluator evidence", () => {
     { ...setup.evaluatorAdmission, admitted: false },
     { partitions: ["held_out"], suite_ref: "agent-gym-suite://nightly/default" },
   ), /evaluation suite is invalid/u);
+});
+
+test("evaluation run plans bind every suite case to one candidate", () => {
+  const suite = evaluationSuite();
+  const plan = planAgentGymEvaluationRun(suite, runPlanInput());
+  assert.equal(plan.case_count, suite.case_count);
+  assert.equal(plan.cases[0]?.ordinal, 0);
+  assert.match(plan.plan_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(validateAgentGymEvaluationRunPlan(plan), plan);
+});
+
+test("evaluation run plans reject tampered case identities", () => {
+  const plan = planAgentGymEvaluationRun(evaluationSuite(), runPlanInput());
+  assert.throws(() => validateAgentGymEvaluationRunPlan({
+    ...plan,
+    cases: [{ ...plan.cases[0]!, case_digest: digest("a") }, ...plan.cases.slice(1)],
+  }), /evaluation run plan is invalid/u);
 });
 
 function evaluationSetup() {
@@ -90,6 +109,26 @@ function evaluationSetup() {
     "2026-08-12T11:03:00.000Z",
   );
   return { deterministic, evaluatorAdmission, fixtures, modelJudge, quality, rubric };
+}
+
+function evaluationSuite() {
+  const setup = evaluationSetup();
+  return defineAgentGymEvaluationSuite(
+    setup.fixtures,
+    setup.quality,
+    setup.evaluatorAdmission,
+    { partitions: ["held_out", "shadow"], suite_ref: "agent-gym-suite://nightly/default" },
+  );
+}
+
+function runPlanInput() {
+  return {
+    candidate_ref: "agent-gym-candidate://slack/challenger",
+    case_timeout_ms: 120_000,
+    maximum_parallel_cases: 2,
+    planned_at: "2026-08-12T11:04:00.000Z",
+    run_ref: "agent-gym-evaluation-run://nightly/challenger",
+  };
 }
 
 function rubricInput() {
