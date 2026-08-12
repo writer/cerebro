@@ -67,7 +67,7 @@ export function orderAgentGymSlackEffects(
     entryByRef.set(entry.effect.effect_ref, entry);
   }
   for (const entry of entries) {
-    if (entry.after_effect_refs.some((reference) => !entryByRef.has(reference))) {
+    if (entry.after_effect_refs.some((reference: string) => !entryByRef.has(reference))) {
       invalidEffectPlan();
     }
   }
@@ -76,7 +76,7 @@ export function orderAgentGymSlackEffects(
   while (ordered.length < entries.length) {
     const ready = entries.filter((entry) =>
       !emitted.has(entry.effect.effect_ref)
-      && entry.after_effect_refs.every((reference) => emitted.has(reference))
+      && entry.after_effect_refs.every((reference: string) => emitted.has(reference))
     ).sort((left, right) => left.effect.effect_ref.localeCompare(right.effect.effect_ref));
     if (ready.length === 0) invalidEffectPlan();
     for (const entry of ready) {

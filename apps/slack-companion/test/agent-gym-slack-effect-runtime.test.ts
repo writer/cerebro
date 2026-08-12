@@ -7,8 +7,36 @@ import {
   captureAgentGymSlackUpdateMessage,
   orderAgentGymSlackEffects,
   resumeAgentGymSlackEffects,
+  snapshotAgentGymSlackEffects,
   planAgentGymSlackAcknowledgement,
 } from "../src/index.js";
+
+test("effect snapshots are stable across input order", () => {
+  const first = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:one",
+    text: "First.",
+  });
+  const second = captureAgentGymSlackUpdateMessage({
+    idempotency_key: "answer:one:complete",
+    message_ref: "slack-message://one",
+    text: "Complete.",
+  });
+  const snapshot = snapshotAgentGymSlackEffects([second, first]);
+  assert.deepEqual(snapshot, snapshotAgentGymSlackEffects([first, second]));
+  assert.deepEqual(snapshot.operations, { post_message: 1, update_message: 1 });
+  assert.match(snapshot.snapshot_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.equal(Object.isFrozen(snapshot.operations), true);
+});
+
+test("effect snapshots reject duplicate effect identities", () => {
+  const effect = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:one",
+    text: "First.",
+  });
+  assert.throws(() => snapshotAgentGymSlackEffects([effect, effect]), /snapshot is invalid/u);
+});
 
 test("effect resume returns accepted work not completed before a crash", () => {
   const first = captureAgentGymSlackPostMessage({

@@ -25,3 +25,4 @@ export * from "./slack-delivery.js";
 export * from "./slack-failure.js";
 export * from "./slack-effects.js";
 export * from "./slack-effect-runtime.js";
+export * from "./slack-effect-snapshot.js";
