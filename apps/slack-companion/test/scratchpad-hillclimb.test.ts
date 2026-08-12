@@ -221,6 +221,41 @@ test("hosted hillclimb fails closed on an invalid judge receipt", async () => {
   );
 });
 
+test("hosted hillclimb repairs an expired standalone case from original context", async () => {
+  const expiredCase = SLACK_WORKING_STATE_HILLCLIMB_CORPUS.find((evalCase) =>
+    evalCase.case_ref === "case://held-out/expired-state"
+  );
+  assert.ok(expiredCase);
+  const cases = [
+    expiredCase,
+    ...SLACK_WORKING_STATE_HILLCLIMB_CORPUS.filter((evalCase) =>
+      evalCase !== expiredCase
+    ),
+  ];
+  const generatorModel = new FakeHostedModel();
+  const judgeModel = new RepairingHostedModel();
+  const receipt = await runHostedSlackWorkingStateHillclimb(
+    cases,
+    {
+      generator_model_id: "us.anthropic.claude-opus-4-8",
+      judge_model_id: "us.anthropic.claude-opus-5",
+      region: "us-east-1",
+    },
+    { generator: generatorModel, judge: judgeModel },
+    new Date("2026-08-12T18:34:15.638Z"),
+  );
+
+  assert.equal(judgeModel.judgeCalls, 23);
+  assert.match(
+    judgeModel.repairPrompt,
+    /"current_request":"Start a separate assessment\."/u,
+  );
+  assert.match(judgeModel.repairPrompt, /REPAIR REQUIRED/u);
+  assert.match(judgeModel.repairPrompt, /do not copy its numeric scores/u);
+  assert.equal(receipt.results[0]?.candidate.score.authority_boundary, 1);
+  assert.equal(receipt.results[0]?.candidate.score.semantic_state_contract, 1);
+});
+
 test("hosted hillclimb rejects a judge that aliases the generator", async () => {
   const generatorModel = new FakeHostedModel();
   const judgeModel = new FakeHostedModel();
@@ -311,4 +346,42 @@ class FakeHostedModel implements HostedModelPort {
       },
     });
   }
+}
+
+class RepairingHostedModel implements HostedModelPort {
+  judgeCalls = 0;
+  repairPrompt = "";
+
+  converse(request: HostedModelRequest): Promise<HostedModelResponse> {
+    this.judgeCalls += 1;
+    if (this.judgeCalls === 2) this.repairPrompt = request.prompt;
+    const outputText = this.judgeCalls === 1
+      ? "not json"
+      : JSON.stringify({
+        baseline: passingJudgeScore(),
+        candidate: passingJudgeScore(),
+      });
+    return Promise.resolve({
+      latency_ms: 200,
+      model_id: request.model_id,
+      output_text: outputText,
+      provider_request_id: `repair-${this.judgeCalls}`,
+      token_usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+      },
+    });
+  }
+}
+
+function passingJudgeScore() {
+  return {
+    authority_boundary: 1,
+    context_recall: 1,
+    evidence_context_retention: 1,
+    reason_codes: [],
+    restatement_needed: 0,
+    semantic_state_contract: 1,
+  };
 }
