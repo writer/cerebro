@@ -25,6 +25,23 @@ export interface CaptureAgentGymSlackPostMessage {
   readonly thread_ref?: string;
 }
 
+export interface CaptureAgentGymSlackUpdateMessage {
+  readonly idempotency_key: string;
+  readonly message_ref: string;
+  readonly text: string;
+}
+
+/** Captures replacement content bound to one existing message. */
+export function captureAgentGymSlackUpdateMessage(
+  input: CaptureAgentGymSlackUpdateMessage,
+): AgentGymSlackEffectV1 {
+  reference(input.message_ref, "message reference");
+  safeText(input.text, 40_000, "message text");
+  return effect("update_message", input.idempotency_key, [input.message_ref], {
+    text: input.text,
+  });
+}
+
 /** Captures a message post as data instead of invoking Slack. */
 export function captureAgentGymSlackPostMessage(
   input: CaptureAgentGymSlackPostMessage,

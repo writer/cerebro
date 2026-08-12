@@ -1,7 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { captureAgentGymSlackPostMessage } from "../src/index.js";
+import {
+  captureAgentGymSlackPostMessage,
+  captureAgentGymSlackUpdateMessage,
+} from "../src/index.js";
+
+test("message update capture binds replacement content to one message", () => {
+  const effect = captureAgentGymSlackUpdateMessage({
+    idempotency_key: "status:one:complete",
+    message_ref: "slack-message://one",
+    text: "Verification complete.",
+  });
+  assert.equal(effect.operation, "update_message");
+  assert.deepEqual(effect.target_refs, ["slack-message://one"]);
+  assert.deepEqual(effect.payload, { text: "Verification complete." });
+});
+
+test("message update capture rejects control characters", () => {
+  assert.throws(() => captureAgentGymSlackUpdateMessage({
+    idempotency_key: "status:one:complete",
+    message_ref: "slack-message://one",
+    text: "bad\u0000text",
+  }), /message text is invalid/u);
+});
 
 test("message capture records a deterministic Slack-free effect", () => {
   const input = {
