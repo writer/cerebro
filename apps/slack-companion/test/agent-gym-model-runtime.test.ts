@@ -3,10 +3,62 @@ import test from "node:test";
 
 import {
   agentGymModelRequestDigest,
+  evaluateAgentGymModelBudget,
   RecordedAgentGymModel,
   validateAgentGymRecordedModelResponse,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+function modelResponse() {
+  return {
+    ...recordedResponse(),
+    response_source: "recorded" as const,
+    schema_version: "agent-gym-model-response/v1" as const,
+  };
+}
+
+function modelBudget() {
+  return {
+    max_input_tokens: 20,
+    max_invocations: 1,
+    max_latency_ms: 100,
+    max_output_tokens: 10,
+    max_total_tokens: 30,
+    schema_version: "agent-gym-model-budget/v1" as const,
+  };
+}
+
+test("model budget evaluation accounts for the complete response", () => {
+  const evaluation = evaluateAgentGymModelBudget(modelBudget(), [modelResponse()]);
+  assert.equal(evaluation.allowed, true);
+  assert.deepEqual(evaluation, {
+    allowed: true,
+    blockers: [],
+    input_tokens: 18,
+    invocation_count: 1,
+    latency_ms: 42,
+    output_tokens: 7,
+    schema_version: "agent-gym-model-budget-evaluation/v1",
+    total_tokens: 25,
+  });
+});
+
+test("model budget evaluation names every exceeded limit", () => {
+  const evaluation = evaluateAgentGymModelBudget({
+    ...modelBudget(),
+    max_input_tokens: 17,
+    max_latency_ms: 41,
+    max_output_tokens: 6,
+    max_total_tokens: 24,
+  }, [modelResponse()]);
+  assert.equal(evaluation.allowed, false);
+  assert.deepEqual(evaluation.blockers, [
+    "model_input_tokens_exceeded",
+    "model_output_tokens_exceeded",
+    "model_total_tokens_exceeded",
+    "model_latency_exceeded",
+  ]);
+});
 
 function recordedResponse(modelRequest = request()) {
   return {
