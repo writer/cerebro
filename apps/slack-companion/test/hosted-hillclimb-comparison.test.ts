@@ -12,11 +12,13 @@ function receipt(overrides: {
   evaluatedAt?: string;
   repairCount?: number;
   judgeLatency?: number;
+  candidateTokens?: number;
+  judgeTokens?: number;
   regressions?: number;
 } = {}): HostedHillclimbReceipt {
   return {
     baseline: summary(0.1),
-    candidate: summary(overrides.contextRecall ?? 0.9),
+    candidate: summary(overrides.contextRecall ?? 0.9, overrides.candidateTokens),
     corpus_digest: overrides.corpusDigest ?? `sha256:${"a".repeat(64)}`,
     evaluated_at: overrides.evaluatedAt ?? "2026-08-12T16:00:00.000Z",
     evaluation_independence: { distinct_model_id: true, separate_model_ports: true },
@@ -45,7 +47,7 @@ function receipt(overrides: {
       repair_count: overrides.repairCount ?? 0,
       region: "us-east-1",
       sampling_parameters: "provider_default",
-      total_tokens: 15,
+      total_tokens: overrides.judgeTokens ?? 15,
     },
     promotion: {
       blockers: overrides.blockers ?? [],
@@ -62,7 +64,10 @@ function receipt(overrides: {
   };
 }
 
-function summary(contextRecall: number): HostedHillclimbReceipt["candidate"] {
+function summary(
+  contextRecall: number,
+  totalTokens = 150,
+): HostedHillclimbReceipt["candidate"] {
   return {
     authority_boundary_rate: 1,
     case_count: 22,
@@ -74,7 +79,7 @@ function summary(contextRecall: number): HostedHillclimbReceipt["candidate"] {
     output_tokens: 50,
     p95_inference_latency_ms: 3_000,
     semantic_state_contract_rate: 1,
-    total_tokens: 150,
+    total_tokens: totalTokens,
   };
 }
 
@@ -87,6 +92,8 @@ test("compares repeat measurements without answer content", () => {
       evaluatedAt: "2026-08-12T17:00:00.000Z",
       repairCount: 2,
       judgeLatency: 350,
+      candidateTokens: 175,
+      judgeTokens: 25,
       regressions: 2,
     }),
   );
@@ -98,6 +105,7 @@ test("compares repeat measurements without answer content", () => {
   assert.equal(comparison.regression_count_delta, 2);
   assert.equal(comparison.judge_repair_count_delta, 2);
   assert.equal(comparison.judge_p95_latency_ms_delta, 150);
+  assert.equal(comparison.model_token_count_delta, 35);
   assert.equal(comparison.promotion_stable, true);
 });
 

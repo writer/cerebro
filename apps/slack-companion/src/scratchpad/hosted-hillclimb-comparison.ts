@@ -16,6 +16,7 @@ export interface HostedHillclimbComparisonV1 {
   readonly current_evaluated_at: string;
   readonly judge_repair_count_delta: number;
   readonly judge_p95_latency_ms_delta: number;
+  readonly model_token_count_delta: number;
   readonly previous_evaluated_at: string;
   readonly promotion_stable: boolean;
   readonly regression_count_delta: number;
@@ -83,6 +84,7 @@ export function compareHostedSlackWorkingStateHillclimbs(
       previous.judge.p95_latency_ms,
       current.judge.p95_latency_ms,
     ),
+    model_token_count_delta: modelTokenCount(current) - modelTokenCount(previous),
     previous_evaluated_at: previous.evaluated_at,
     promotion_stable:
       previous.promotion.promotion_ready === current.promotion.promotion_ready,
@@ -90,6 +92,11 @@ export function compareHostedSlackWorkingStateHillclimbs(
       current.promotion.regression_count - previous.promotion.regression_count,
     schema_version: "slack-working-state-hosted-hillclimb-comparison/v1",
   });
+}
+
+function modelTokenCount(receipt: HostedHillclimbReceipt): number {
+  return receipt.baseline.total_tokens + receipt.candidate.total_tokens
+    + receipt.judge.total_tokens;
 }
 
 function delta(previous: number, current: number): number {
