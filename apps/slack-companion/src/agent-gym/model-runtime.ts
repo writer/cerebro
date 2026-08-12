@@ -16,20 +16,32 @@ export interface AgentGymModelInvocationRequestV1 {
   readonly system_prompt: string;
 }
 
-export interface AgentGymRecordedModelResponseV1 {
+interface AgentGymModelResponseFields {
   readonly invocation_ref: string;
   readonly latency_ms: number;
   readonly model_id: string;
   readonly output_text: string;
   readonly provider_request_ref?: string;
   readonly request_digest: `sha256:${string}`;
-  readonly schema_version: "agent-gym-recorded-model-response/v1";
   readonly stop_reason: "content_filtered" | "end_turn" | "max_tokens";
   readonly token_usage: {
     readonly input_tokens: number;
     readonly output_tokens: number;
     readonly total_tokens: number;
   };
+}
+
+export interface AgentGymRecordedModelResponseV1 extends AgentGymModelResponseFields {
+  readonly schema_version: "agent-gym-recorded-model-response/v1";
+}
+
+export interface AgentGymModelResponseV1 extends AgentGymModelResponseFields {
+  readonly response_source: "live" | "recorded";
+  readonly schema_version: "agent-gym-model-response/v1";
+}
+
+export interface AgentGymModelPort {
+  invoke(request: AgentGymModelInvocationRequestV1): Promise<AgentGymModelResponseV1>;
 }
 
 /** Validates recorded provider output without trusting it as a live receipt. */
@@ -39,30 +51,9 @@ export function validateAgentGymRecordedModelResponse(
   if (response.schema_version !== "agent-gym-recorded-model-response/v1") {
     invalidResponse();
   }
-  referenceWith(response.invocation_ref, invalidResponse);
-  boundedWith(response.model_id, 240, invalidResponse);
-  digest(response.request_digest);
-  if (response.provider_request_ref !== undefined) {
-    referenceWith(response.provider_request_ref, invalidResponse);
-  }
-  if (!Number.isSafeInteger(response.latency_ms) || response.latency_ms < 0
-    || response.latency_ms > 60 * 60_000
-    || !["content_filtered", "end_turn", "max_tokens"].includes(response.stop_reason)) {
-    invalidResponse();
-  }
-  if (typeof response.output_text !== "string" || response.output_text.length > 256_000
-    || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(response.output_text)
-    || (response.stop_reason !== "content_filtered" && !response.output_text.trim())) {
-    invalidResponse();
-  }
-  const { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens } =
-    response.token_usage;
-  for (const tokens of [inputTokens, outputTokens, totalTokens]) {
-    if (!Number.isSafeInteger(tokens) || tokens < 0 || tokens > 10_000_000) {
-      invalidResponse();
-    }
-  }
-  if (totalTokens !== inputTokens + outputTokens) invalidResponse();
+  validateResponseFields(response, invalidResponse);
+  const { input_tokens: inputTokens, output_tokens: outputTokens,
+    total_tokens: totalTokens } = response.token_usage;
   return Object.freeze({
     invocation_ref: response.invocation_ref,
     latency_ms: response.latency_ms,
@@ -79,6 +70,31 @@ export function validateAgentGymRecordedModelResponse(
       output_tokens: outputTokens,
       total_tokens: totalTokens,
     }),
+  });
+}
+
+/** Validates the common response returned by recorded and live model ports. */
+export function validateAgentGymModelResponse(
+  response: AgentGymModelResponseV1,
+): AgentGymModelResponseV1 {
+  if (response.schema_version !== "agent-gym-model-response/v1"
+    || (response.response_source !== "live" && response.response_source !== "recorded")) {
+    invalidModelResponse();
+  }
+  validateResponseFields(response, invalidModelResponse);
+  return Object.freeze({
+    invocation_ref: response.invocation_ref,
+    latency_ms: response.latency_ms,
+    model_id: response.model_id,
+    output_text: response.output_text,
+    ...(response.provider_request_ref === undefined
+      ? {}
+      : { provider_request_ref: response.provider_request_ref }),
+    request_digest: response.request_digest,
+    response_source: response.response_source,
+    schema_version: "agent-gym-model-response/v1",
+    stop_reason: response.stop_reason,
+    token_usage: Object.freeze({ ...response.token_usage }),
   });
 }
 
@@ -144,6 +160,34 @@ function digest(value: string): void {
   if (!/^sha256:[0-9a-f]{64}$/u.test(value)) invalidResponse();
 }
 
+function validateResponseFields(
+  response: AgentGymModelResponseFields,
+  invalid: () => never,
+): void {
+  referenceWith(response.invocation_ref, invalid);
+  boundedWith(response.model_id, 240, invalid);
+  if (!/^sha256:[0-9a-f]{64}$/u.test(response.request_digest)) invalid();
+  if (response.provider_request_ref !== undefined) {
+    referenceWith(response.provider_request_ref, invalid);
+  }
+  if (!Number.isSafeInteger(response.latency_ms) || response.latency_ms < 0
+    || response.latency_ms > 60 * 60_000
+    || !["content_filtered", "end_turn", "max_tokens"].includes(response.stop_reason)) {
+    invalid();
+  }
+  if (typeof response.output_text !== "string" || response.output_text.length > 256_000
+    || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(response.output_text)
+    || (response.stop_reason !== "content_filtered" && !response.output_text.trim())) {
+    invalid();
+  }
+  const { input_tokens: inputTokens, output_tokens: outputTokens,
+    total_tokens: totalTokens } = response.token_usage;
+  for (const tokens of [inputTokens, outputTokens, totalTokens]) {
+    if (!Number.isSafeInteger(tokens) || tokens < 0 || tokens > 10_000_000) invalid();
+  }
+  if (totalTokens !== inputTokens + outputTokens) invalid();
+}
+
 function text(value: string, maximum: number): void {
   if (typeof value !== "string" || !value.trim() || value.length > maximum
     || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
@@ -157,4 +201,8 @@ function invalidRequest(): never {
 
 function invalidResponse(): never {
   throw new AgentGymContractError("Agent gym recorded model response is invalid.");
+}
+
+function invalidModelResponse(): never {
+  throw new AgentGymContractError("Agent gym model response is invalid.");
 }

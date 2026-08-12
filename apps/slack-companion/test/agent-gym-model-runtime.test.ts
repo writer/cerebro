@@ -3,9 +3,39 @@ import test from "node:test";
 
 import {
   agentGymModelRequestDigest,
+  RecordedAgentGymModel,
   validateAgentGymRecordedModelResponse,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+function recordedResponse(modelRequest = request()) {
+  return {
+    invocation_ref: modelRequest.invocation_ref,
+    latency_ms: 42,
+    model_id: modelRequest.model_id,
+    output_text: "The current evidence is incomplete.",
+    request_digest: agentGymModelRequestDigest(modelRequest),
+    schema_version: "agent-gym-recorded-model-response/v1" as const,
+    stop_reason: "end_turn" as const,
+    token_usage: { input_tokens: 18, output_tokens: 7, total_tokens: 25 },
+  };
+}
+
+test("recorded model ports replay the exact bound response", async () => {
+  const modelRequest = request();
+  const model = new RecordedAgentGymModel([recordedResponse(modelRequest)]);
+  const response = await model.invoke(modelRequest);
+  assert.equal(response.response_source, "recorded");
+  assert.equal(response.output_text, "The current evidence is incomplete.");
+});
+
+test("recorded model ports reject unrecorded requests", async () => {
+  const model = new RecordedAgentGymModel([recordedResponse()]);
+  await assert.rejects(model.invoke({
+    ...request(),
+    messages: [{ role: "user", text: "Summarize different evidence." }],
+  }), /recorded model fixture is missing/u);
+});
 
 test("recorded model responses retain usage and request identity", () => {
   const modelRequest = request();
