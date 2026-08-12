@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildAgentGymCorpus,
   calibrateAgentGymEvaluator,
+  calculateAgentGymPairedCaseDeltas,
   completeAgentGymEvaluationRun,
   decideAgentGymCorpusAdmission,
   decideAgentGymEvaluatorAdmission,
@@ -21,6 +22,7 @@ import {
   validateAgentGymEvaluationReadinessDecision,
   validateAgentGymEvaluationSliceReport,
   validateAgentGymPairedEvaluation,
+  validateAgentGymPairedCaseDeltaReport,
 } from "../src/index.js";
 
 test("evaluation suites seal admitted non-training cases", () => {
@@ -177,6 +179,20 @@ test("paired evaluations require ready runs over the same case set", () => {
   assert.equal(paired.case_count, 2);
   assert.notEqual(paired.baseline_candidate_ref, paired.candidate_ref);
   assert.deepEqual(validateAgentGymPairedEvaluation(paired), paired);
+});
+
+test("paired case deltas retain every improvement and regression", () => {
+  const comparison = pairedComparisonSetup();
+  const report = calculateAgentGymPairedCaseDeltas(
+    comparison.pair,
+    comparison.baseline.result,
+    comparison.candidate.result,
+  );
+  assert.equal(report.case_count, 2);
+  assert.equal(report.improvement_count, 2);
+  assert.equal(report.regression_count, 0);
+  assert.ok(report.mean_delta > 0);
+  assert.deepEqual(validateAgentGymPairedCaseDeltaReport(report), report);
 });
 
 function evaluationSetup() {
@@ -342,6 +358,22 @@ function completedRunFor(
     "2026-08-12T11:07:00.000Z",
   );
   return { readiness, report, result };
+}
+
+function pairedComparisonSetup() {
+  const setup = evaluationSetup();
+  const suite = suiteFrom(setup);
+  const baseline = completedRunFor(setup, suite, "baseline", 0.8);
+  const candidate = completedRunFor(setup, suite, "challenger", 0.9);
+  const pair = pairAgentGymEvaluationRuns(
+    suite,
+    baseline.result,
+    baseline.readiness,
+    candidate.result,
+    candidate.readiness,
+    { pair_ref: "agent-gym-pair://nightly/one", paired_at: "2026-08-12T11:08:00.000Z" },
+  );
+  return { baseline, candidate, pair, setup, suite };
 }
 
 function runPlanInput() {
