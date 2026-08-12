@@ -667,6 +667,41 @@ impl Neo4jProjector {
             .collect())
     }
 
+    async fn any_legacy_root_exists(
+        &self,
+        tenant_id: &TenantId,
+        root_keys: &[String],
+    ) -> Result<bool, ContextError> {
+        let urn_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
+        let legacy_keys = root_keys
+            .iter()
+            .filter(|root_key| root_key.starts_with(&urn_prefix))
+            .cloned()
+            .collect::<Vec<_>>();
+        if legacy_keys.is_empty() {
+            return Ok(false);
+        }
+        let mut stream = self
+            .graph
+            .execute(
+                query(LEGACY_ROOTS_STATEMENT)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("root_urns", string_list(&legacy_keys)),
+            )
+            .await
+            .map_err(context_backend)?;
+        if let Some(row) = stream.next().await.map_err(context_backend)? {
+            let match_count: i64 = row.get("match_count").map_err(context_decode)?;
+            if match_count != 1 {
+                return Err(ContextError::BackendUnavailable(
+                    "legacy graph root is ambiguous".to_owned(),
+                ));
+            }
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     async fn read_legacy_edge_phase(
         &self,
         tenant_id: &TenantId,
@@ -1760,10 +1795,14 @@ impl AgentGraph for Neo4jProjector {
         validate_bounds(depth, limit)?;
         if depth != 1 {
             let mut neighborhoods = std::collections::BTreeMap::new();
+            let mut missing_root_keys = Vec::new();
             for root_key in root_keys {
                 let root = match self.resolve(tenant_id, root_key).await {
                     Ok(root) => root,
-                    Err(ContextError::EntityNotFound) => continue,
+                    Err(ContextError::EntityNotFound) => {
+                        missing_root_keys.push(root_key.clone());
+                        continue;
+                    }
                     Err(error) => return Err(error),
                 };
                 neighborhoods.insert(
@@ -1771,6 +1810,14 @@ impl AgentGraph for Neo4jProjector {
                     self.expand(tenant_id, &root.entity_id, depth, limit)
                         .await?,
                 );
+            }
+            if self
+                .any_legacy_root_exists(tenant_id, &missing_root_keys)
+                .await?
+            {
+                return Err(ContextError::BackendUnavailable(
+                    "legacy graph compatibility supports depth one only".to_owned(),
+                ));
             }
             return Ok(neighborhoods);
         }
@@ -2835,6 +2882,13 @@ mod tests {
         assert_eq!(
             organizational.root.entity_id.as_str(),
             "organizational-root"
+        );
+        assert!(
+            projector
+                .expand_many(&tenant_id, std::slice::from_ref(&root_urn), 2, 3)
+                .await
+                .is_err(),
+            "legacy roots must not silently degrade a deeper traversal to one hop"
         );
 
         graph
