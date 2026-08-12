@@ -7,6 +7,7 @@ import { sealAgentGymRegressionReplayTrial, validateAgentGymRegressionReplayTria
 import { planAgentGymRegressionCampaign, validateAgentGymRegressionCampaignPlan } from "../src/agent-gym/regression-campaign-plan.js";
 import { invalidAgentGymRegressionCampaignCase, validateAgentGymRegressionCampaignCaseOutput } from "../src/agent-gym/regression-campaign-port.js";
 import { executeAgentGymRegressionCampaign } from "../src/agent-gym/regression-campaign-execution.js";
+import { recordAgentGymRegressionCampaignResult, validateAgentGymRegressionCampaignResult } from "../src/agent-gym/regression-campaign-result.js";
 
 const sha = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
 
@@ -149,6 +150,33 @@ test("keeps provider failures as invalid campaign cases", async () => {
   assert.equal(execution.invalid_case_count, 1);
   assert.equal(execution.outputs[0]?.status, "invalid");
   assert.equal(JSON.stringify(execution).includes("provider response"), false);
+});
+
+test("records complete campaign outcomes as text-free durable evidence", async () => {
+  const { campaign, trial } = campaignBundle();
+  const execution = await executeAgentGymRegressionCampaign(campaign, { async run(_campaign, replay) {
+    return { case_digest: replay.case_digest, case_ref: replay.case_ref,
+      schema_version: "agent-gym-regression-campaign-case-output/v1", status: "completed", trial };
+  } });
+  const result = recordAgentGymRegressionCampaignResult(campaign, execution, {
+    completed_at: "2026-08-12T15:06:00.000Z", result_ref: "agent-gym-regression-campaign-result://one",
+  });
+  assert.equal(validateAgentGymRegressionCampaignResult(result).status, "complete");
+  assert.equal(result.improved_case_count, 1);
+  assert.equal(JSON.stringify(result).includes("output_text"), false);
+});
+
+test("blocks campaigns above their invalid-case budget", async () => {
+  const { campaign } = campaignBundle();
+  const execution = await executeAgentGymRegressionCampaign(campaign, { async run() {
+    throw new Error("evaluator unavailable");
+  } });
+  const result = recordAgentGymRegressionCampaignResult(campaign, execution, {
+    completed_at: "2026-08-12T15:06:00.000Z", result_ref: "agent-gym-regression-campaign-result://blocked",
+  });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.invalid_case_count, 1);
+  assert.equal(result.improved_case_count, 0);
 });
 
 test("rejects a runtime chain whose evaluator binding targets another result", () => {
