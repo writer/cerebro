@@ -213,6 +213,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, nil, evaluationErr)
 	}
 	evidenceIDs := map[string]struct{}{}
+	pendingEvidence := make([]*cerebrov1.FindingEvidence, 0, len(emitted))
 	emittedFindingIDs := map[string]struct{}{}
 	for _, record := range emitted {
 		if record == nil {
@@ -237,12 +238,8 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
 		if _, seen := evidenceIDs[evidence.GetId()]; !seen {
-			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
-				evaluationErr := fmt.Errorf("persist evidence for graph rule %q finding %q: %w", spec.GetId(), stored.ID, err)
-				return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
-			}
 			evidenceIDs[evidence.GetId()] = struct{}{}
-			result.Evidence = append(result.Evidence, evidence)
+			pendingEvidence = append(pendingEvidence, evidence)
 		}
 		if err := s.projectFindingAnchor(ctx, stored); err != nil {
 			evaluationErr := fmt.Errorf("project graph rule %q finding %q anchor: %w", spec.GetId(), stored.ID, err)
@@ -259,6 +256,20 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			}
 		}
 	}
+	if batchStore, ok := s.evidenceStore.(ports.FindingEvidenceBatchStore); ok {
+		if err := batchStore.PutFindingEvidenceBatch(ctx, pendingEvidence); err != nil {
+			evaluationErr := fmt.Errorf("persist evidence batch for graph rule %q: %w", spec.GetId(), err)
+			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+		}
+	} else {
+		for _, evidence := range pendingEvidence {
+			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+				evaluationErr := fmt.Errorf("persist evidence for graph rule %q finding %q: %w", spec.GetId(), evidence.GetFindingId(), err)
+				return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+			}
+		}
+	}
+	result.Evidence = append(result.Evidence, pendingEvidence...)
 	resolveStale := !result.Truncated && s.canResolveFromFindingEvaluationRun(run, true)
 	var scopeFilter *staleScopeFilter
 	if result.Truncated && !rowLimitTruncated && s.canResolveFromFindingEvaluationRun(run, true) {

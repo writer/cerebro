@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -104,6 +105,31 @@ func findingEvidenceAdvisoryLockSQL() string {
 	return `SELECT pg_advisory_xact_lock(hashtext('finding_evidence'), hashtext($1))`
 }
 
+func validateFindingEvidence(evidence *cerebrov1.FindingEvidence) error {
+	if evidence == nil {
+		return errors.New("finding evidence is required")
+	}
+	for _, required := range []struct{ value, message string }{
+		{strings.TrimSpace(evidence.GetId()), "finding evidence id is required"},
+		{strings.TrimSpace(evidence.GetRuntimeId()), "finding evidence runtime id is required"},
+		{strings.TrimSpace(evidence.GetRuleId()), "finding evidence rule id is required"},
+		{strings.TrimSpace(evidence.GetFindingId()), "finding evidence finding id is required"},
+		{strings.TrimSpace(evidence.GetRunId()), "finding evidence run id is required"},
+	} {
+		if required.value == "" {
+			return errors.New(required.message)
+		}
+	}
+	createdAt := evidence.GetCreatedAt()
+	if createdAt == nil || createdAt.AsTime().IsZero() {
+		return errors.New("finding evidence created_at is required")
+	}
+	if evidence.GetLastObservedAt() == nil || evidence.GetLastObservedAt().AsTime().IsZero() {
+		evidence.LastObservedAt = createdAt
+	}
+	return nil
+}
+
 // PutFindingEvidence upserts one durable finding evidence record.
 func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.FindingEvidence) error {
 	if evidence == nil {
@@ -142,7 +168,6 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	if err := s.ensureFindingEvidenceTables(ctx); err != nil {
 		return err
 	}
-	evidence = findingevidence.Normalize(evidence)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin finding evidence upsert: %w", err)
@@ -152,6 +177,65 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 			_ = tx.Rollback()
 		}
 	}()
+	if err := putFindingEvidenceTx(ctx, tx, evidence); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit finding evidence %q: %w", id, err)
+	}
+	tx = nil
+	return nil
+}
+
+// PutFindingEvidenceBatch upserts a stable, ID-ordered evidence batch in one
+// transaction. Ordering advisory locks prevents cross-batch deadlocks while the
+// per-record merge contract remains identical to PutFindingEvidence.
+func (s *Store) PutFindingEvidenceBatch(ctx context.Context, evidence []*cerebrov1.FindingEvidence) error {
+	if len(evidence) == 0 {
+		return nil
+	}
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingEvidenceTables(ctx); err != nil {
+		return err
+	}
+	ordered := append([]*cerebrov1.FindingEvidence(nil), evidence...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i] == nil {
+			return true
+		}
+		if ordered[j] == nil {
+			return false
+		}
+		return strings.TrimSpace(ordered[i].GetId()) < strings.TrimSpace(ordered[j].GetId())
+	})
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin finding evidence batch upsert: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, item := range ordered {
+		if err := validateFindingEvidence(item); err != nil {
+			return err
+		}
+		if err := putFindingEvidenceTx(ctx, tx, item); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit finding evidence batch: %w", err)
+	}
+	return nil
+}
+
+func putFindingEvidenceTx(ctx context.Context, tx *sql.Tx, evidence *cerebrov1.FindingEvidence) error {
+	evidence = findingevidence.Normalize(evidence)
+	id := strings.TrimSpace(evidence.GetId())
+	runtimeID := strings.TrimSpace(evidence.GetRuntimeId())
+	ruleID := strings.TrimSpace(evidence.GetRuleId())
+	findingID := strings.TrimSpace(evidence.GetFindingId())
+	runID := strings.TrimSpace(evidence.GetRunId())
 	// Serialize same-ID first writes before the preflight read so history merges cannot race.
 	if _, err := tx.ExecContext(ctx, findingEvidenceAdvisoryLockSQL(), id); err != nil {
 		return fmt.Errorf("lock finding evidence %q: %w", id, err)
@@ -219,10 +303,6 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	); err != nil {
 		return fmt.Errorf("upsert finding evidence %q: %w", id, err)
 	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit finding evidence %q: %w", id, err)
-	}
-	tx = nil
 	return nil
 }
 

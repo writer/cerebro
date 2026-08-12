@@ -536,6 +536,11 @@ type FindingEvidenceStore interface {
 	ListFindingEvidence(context.Context, ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error)
 }
 
+// FindingEvidenceBatchStore persists a deterministic evidence batch in one store transaction.
+type FindingEvidenceBatchStore interface {
+	PutFindingEvidenceBatch(context.Context, []*cerebrov1.FindingEvidence) error
+}
+
 // FindingCandidateStore persists non-production candidate finding outputs.
 type FindingCandidateStore interface {
 	StateStore
