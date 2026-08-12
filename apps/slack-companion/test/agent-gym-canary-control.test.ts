@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   digestAgentGymJson,
+  decideAgentGymCanaryGate,
   recordAgentGymCanaryObservation,
   sealAgentGymCanaryWindow,
   validateAgentGymCanaryObservation,
   validateAgentGymCanaryWindow,
+  validateAgentGymCanaryGateDecision,
   type AgentGymChampionTransitionV1,
 } from "../src/index.js";
 
@@ -70,6 +72,58 @@ test("canary windows reject samples from another transition", () => {
     window_ref: "agent-gym-canary-window://nightly/mixed",
   }), /canary window is invalid/u);
 });
+
+test("canary gates roll back complete windows above thresholds", () => {
+  const decision = decideAgentGymCanaryGate(canaryWindow(), canaryPolicy(), {
+    decision_ref: "agent-gym-canary-gate://nightly/one",
+    evaluated_at: "2026-08-12T11:19:00.000Z",
+  });
+  assert.equal(decision.disposition, "rollback");
+  assert.deepEqual(decision.blocker_codes, [
+    "canary.failure_rate_exceeded",
+    "canary.quality_below_minimum",
+  ]);
+  assert.deepEqual(validateAgentGymCanaryGateDecision(decision), decision);
+});
+
+test("canary gates hold incomplete windows without overriding evidence", () => {
+  const oneSample = sealAgentGymCanaryWindow([
+    canaryObservation("one", "2026-08-12T11:16:00.000Z", "passed", 800, 0.9),
+  ], {
+    ended_at: "2026-08-12T11:18:00.000Z",
+    started_at: "2026-08-12T11:15:00.000Z",
+    window_ref: "agent-gym-canary-window://nightly/incomplete",
+  });
+  const decision = decideAgentGymCanaryGate(oneSample, canaryPolicy(), {
+    decision_ref: "agent-gym-canary-gate://nightly/incomplete",
+    evaluated_at: "2026-08-12T11:19:00.000Z",
+  });
+  assert.equal(decision.disposition, "hold");
+  assert.deepEqual(decision.blocker_codes, ["canary.insufficient_samples"]);
+});
+
+function canaryWindow() {
+  return sealAgentGymCanaryWindow([
+    canaryObservation("two", "2026-08-12T11:17:00.000Z", "failed", 1_100, 0.4),
+    canaryObservation("one", "2026-08-12T11:16:00.000Z", "passed", 800, 0.9),
+  ], {
+    ended_at: "2026-08-12T11:18:00.000Z",
+    started_at: "2026-08-12T11:15:00.000Z",
+    window_ref: "agent-gym-canary-window://nightly/one",
+  });
+}
+
+function canaryPolicy() {
+  return {
+    maximum_failure_rate: 0.1,
+    maximum_p95_latency_ms: 1_500,
+    minimum_mean_quality_score: 0.8,
+    minimum_observation_count: 2,
+    policy_ref: "agent-gym-canary-policy://nightly/default",
+    rollback_blocker_codes: ["safety.blocker"],
+    schema_version: "agent-gym-canary-gate-policy/v1" as const,
+  };
+}
 
 function canaryObservation(
   id: string,

@@ -35,6 +35,7 @@ export * from "./activation-receipt.js";
 export * from "./champion-transition.js";
 export * from "./canary-observation.js";
 export * from "./canary-window.js";
+export * from "./canary-gate.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
