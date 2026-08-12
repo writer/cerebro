@@ -6,7 +6,9 @@ import {
   digestAgentGymJson,
   issueAgentGymPromotionAuthorization,
   planAgentGymCandidateActivation,
+  recordAgentGymActivation,
   validateAgentGymActivationPlan,
+  validateAgentGymActivationReceipt,
   validateAgentGymPromotionAuthorization,
   validateAgentGymPromotionVerdict,
   type AgentGymPromotionInputReceiptV1,
@@ -97,6 +99,48 @@ test("expired authority cannot produce an activation plan", () => {
     target_ref: "agent-gym-target://slack-companion/default",
   }), /activation plan is invalid/u);
 });
+
+test("activation receipts retain exact observed candidate state", () => {
+  const receipt = recordAgentGymActivation(activationPlan(), {
+    completed_at: "2026-08-12T11:14:00.000Z",
+    executor_ref: "agent-gym-executor://release/default",
+    failure_codes: [],
+    observed_active_candidate_ref: "agent-gym-candidate://nightly/challenger",
+    observed_traffic_percent: 10,
+    previous_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    receipt_ref: "agent-gym-activation-receipt://nightly/one",
+    started_at: "2026-08-12T11:13:00.000Z",
+    status: "applied",
+  });
+  assert.equal(receipt.status, "applied");
+  assert.equal(receipt.observed_active_candidate_ref, receipt.candidate_ref);
+  assert.deepEqual(validateAgentGymActivationReceipt(receipt), receipt);
+});
+
+test("activation receipts reject unobserved success", () => {
+  assert.throws(() => recordAgentGymActivation(activationPlan(), {
+    completed_at: "2026-08-12T11:14:00.000Z",
+    executor_ref: "agent-gym-executor://release/default",
+    failure_codes: [],
+    observed_active_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    observed_traffic_percent: 10,
+    previous_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    receipt_ref: "agent-gym-activation-receipt://nightly/unobserved",
+    started_at: "2026-08-12T11:13:00.000Z",
+    status: "applied",
+  }), /activation receipt is invalid/u);
+});
+
+function activationPlan() {
+  return planAgentGymCandidateActivation(promotionAuthorization(), candidateManifest(), {
+    activation_ref: "agent-gym-activation://nightly/one",
+    baseline_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    initial_traffic_percent: 10,
+    mode: "canary",
+    planned_at: "2026-08-12T11:12:00.000Z",
+    target_ref: "agent-gym-target://slack-companion/default",
+  });
+}
 
 function promotionAuthorization() {
   return issueAgentGymPromotionAuthorization(promotionVerdict(), {
