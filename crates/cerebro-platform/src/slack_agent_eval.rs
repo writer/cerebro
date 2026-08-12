@@ -47,7 +47,7 @@ use super::slack_agent_session::{
 };
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-conversation-harness/v2";
-const EXPECTED_CASES_PER_PARTITION: usize = 17;
+const EXPECTED_CASES_PER_PARTITION: usize = 18;
 const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 const QUALITY_JUDGE_MAX_TOKENS: i32 = 2_048;
 const QUALITY_JUDGMENT_TOOL: &str = "submit_conversation_quality_judgment";
@@ -7114,6 +7114,16 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: false,
         },
         EvalCase {
+            case_ref: "case://held-out/behavior-change-boundary",
+            partition: "held_out",
+            message: "Assume none of the candidate artifacts shipped. What does a higher benchmark score actually prove?",
+            history: "Several repeated evaluation runs scored one candidate above a baseline.",
+            working_request: None,
+            expected_route: ExecutionLane::Converse,
+            expected_lane: ExecutionLane::Converse,
+            false_converse: false,
+        },
+        EvalCase {
             case_ref: "case://shadow/verified-day-log",
             partition: "shadow",
             message: "Describe your role, then list only the work from today you can verify.",
@@ -7282,6 +7292,16 @@ fn eval_cases() -> Vec<EvalCase> {
             expected_route: ExecutionLane::Converse,
             expected_lane: ExecutionLane::Converse,
             false_converse: false,
+        },
+        EvalCase {
+            case_ref: "case://shadow/behavior-change-boundary",
+            partition: "shadow",
+            message: "The trials are more repeatable now. Did the user-facing agent change too?",
+            history: "The thread contains repeated trial receipts but no current observation of the operative deployment.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
         },
     ]
 }
