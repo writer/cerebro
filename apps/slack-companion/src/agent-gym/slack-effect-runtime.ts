@@ -8,6 +8,51 @@ export interface AgentGymSlackEffectAdmissionV1 {
   readonly schema_version: "agent-gym-slack-effect-admission/v1";
 }
 
+export interface AgentGymSlackEffectPlanEntryV1 {
+  readonly after_effect_refs: readonly string[];
+  readonly effect: AgentGymSlackEffectV1;
+}
+
+/** Returns a deterministic dependency-respecting outbound effect order. */
+export function orderAgentGymSlackEffects(
+  entries: readonly AgentGymSlackEffectPlanEntryV1[],
+): readonly AgentGymSlackEffectV1[] {
+  if (!Array.isArray(entries) || entries.length === 0 || entries.length > 1_000) {
+    invalidEffectPlan();
+  }
+  const entryByRef = new Map<string, AgentGymSlackEffectPlanEntryV1>();
+  for (const entry of entries) {
+    if (entry.effect.schema_version !== "agent-gym-slack-effect/v1"
+      || entryByRef.has(entry.effect.effect_ref)
+      || !Array.isArray(entry.after_effect_refs)
+      || entry.after_effect_refs.length > 100
+      || new Set(entry.after_effect_refs).size !== entry.after_effect_refs.length
+      || entry.after_effect_refs.includes(entry.effect.effect_ref)) {
+      invalidEffectPlan();
+    }
+    entryByRef.set(entry.effect.effect_ref, entry);
+  }
+  for (const entry of entries) {
+    if (entry.after_effect_refs.some((reference) => !entryByRef.has(reference))) {
+      invalidEffectPlan();
+    }
+  }
+  const emitted = new Set<string>();
+  const ordered: AgentGymSlackEffectV1[] = [];
+  while (ordered.length < entries.length) {
+    const ready = entries.filter((entry) =>
+      !emitted.has(entry.effect.effect_ref)
+      && entry.after_effect_refs.every((reference) => emitted.has(reference))
+    ).sort((left, right) => left.effect.effect_ref.localeCompare(right.effect.effect_ref));
+    if (ready.length === 0) invalidEffectPlan();
+    for (const entry of ready) {
+      emitted.add(entry.effect.effect_ref);
+      ordered.push(entry.effect);
+    }
+  }
+  return Object.freeze(ordered);
+}
+
 /** Enforces exact-effect reuse under one outbound idempotency key. */
 export class AgentGymSlackEffectIdempotencyLedger {
   readonly #effectByKey = new Map<string, string>();
@@ -83,4 +128,7 @@ function invalid(): never {
 }
 function invalidEffect(): never {
   throw new AgentGymContractError("Agent gym Slack effect is invalid.");
+}
+function invalidEffectPlan(): never {
+  throw new AgentGymContractError("Agent gym Slack effect plan is invalid.");
 }

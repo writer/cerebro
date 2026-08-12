@@ -4,8 +4,44 @@ import test from "node:test";
 import {
   AgentGymSlackEffectIdempotencyLedger,
   captureAgentGymSlackPostMessage,
+  captureAgentGymSlackUpdateMessage,
+  orderAgentGymSlackEffects,
   planAgentGymSlackAcknowledgement,
 } from "../src/index.js";
+
+test("effect ordering honors dependencies independent of input order", () => {
+  const posted = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:one",
+    text: "Working.",
+  });
+  const updated = captureAgentGymSlackUpdateMessage({
+    idempotency_key: "answer:one:complete",
+    message_ref: "slack-message://one",
+    text: "Complete.",
+  });
+  assert.deepEqual(orderAgentGymSlackEffects([
+    { after_effect_refs: [posted.effect_ref], effect: updated },
+    { after_effect_refs: [], effect: posted },
+  ]).map((effect) => effect.effect_ref), [posted.effect_ref, updated.effect_ref]);
+});
+
+test("effect ordering rejects dependency cycles", () => {
+  const first = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:one",
+    text: "First.",
+  });
+  const second = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:two",
+    text: "Second.",
+  });
+  assert.throws(() => orderAgentGymSlackEffects([
+    { after_effect_refs: [second.effect_ref], effect: first },
+    { after_effect_refs: [first.effect_ref], effect: second },
+  ]), /effect plan is invalid/u);
+});
 
 test("effect idempotency admits once and recognizes exact retries", () => {
   const ledger = new AgentGymSlackEffectIdempotencyLedger();
