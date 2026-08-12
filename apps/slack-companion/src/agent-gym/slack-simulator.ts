@@ -126,6 +126,33 @@ export function simulateSlackReactionAdded(
   });
 }
 
+/** Simulates a changed message as a fresh turn with prior content identity. */
+export function simulateSlackMessageChanged(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "message_changed") invalid("message-change event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const channelId = field(payload, "channel_id");
+  if (!/^[CDG][A-Z0-9]+$/u.test(channelId)) invalid("message-change channel");
+  const userId = field(payload, "user_id");
+  const messageTs = timestampField(payload, "ts");
+  const threadTs = optionalTimestampField(payload, "thread_ts") ?? messageTs;
+  const priorText = field(payload, "previous_text", 12_000).trim();
+  const text = field(payload, "text", 12_000).trim();
+  if (priorText === text) invalid("message-change text");
+  return invocation(event, {
+    action: Object.freeze({
+      action_id: "message.changed",
+      value: `sha256:${digest(priorText)}`,
+    }),
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-thread", teamId, channelId, threadTs),
+    route: "assistant_turn",
+    text,
+  });
+}
+
 /** Simulates a reply bound to the exact existing Slack thread identity. */
 export function simulateSlackThreadReply(
   event: AgentGymSlackEventV1,

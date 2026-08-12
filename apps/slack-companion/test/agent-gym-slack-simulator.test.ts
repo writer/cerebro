@@ -6,9 +6,47 @@ import {
   simulateSlackButtonAction,
   simulateSlackDirectMessage,
   simulateSlackMention,
+  simulateSlackMessageChanged,
   simulateSlackReactionAdded,
   simulateSlackThreadReply,
 } from "../src/index.js";
+
+test("message-change simulation emits the correction and prior-content digest", () => {
+  const invocation = simulateSlackMessageChanged({
+    event_ref: "slack-event://changed/one",
+    kind: "message_changed",
+    occurred_at: "2026-08-12T08:36:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      previous_text: "Use the first option.",
+      team_id: "T_ONE",
+      text: "Use the second option.",
+      thread_ts: "1786523400.000001",
+      ts: "1786523640.000001",
+      user_id: "U_ONE",
+    },
+  });
+  assert.equal(invocation.route, "assistant_turn");
+  assert.equal(invocation.text, "Use the second option.");
+  assert.equal(invocation.action?.action_id, "message.changed");
+  assert.match(invocation.action?.value ?? "", /^sha256:[0-9a-f]{64}$/u);
+});
+
+test("message-change simulation rejects a no-op edit", () => {
+  assert.throws(() => simulateSlackMessageChanged({
+    event_ref: "slack-event://changed/noop",
+    kind: "message_changed",
+    occurred_at: "2026-08-12T08:36:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      previous_text: "No change.",
+      team_id: "T_ONE",
+      text: "No change.",
+      ts: "1786523640.000001",
+      user_id: "U_ONE",
+    },
+  }), /message-change text is invalid/u);
+});
 
 test("reaction simulation records exact message feedback without Slack", () => {
   const invocation = simulateSlackReactionAdded({
