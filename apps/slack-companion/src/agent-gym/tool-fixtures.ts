@@ -14,6 +14,41 @@ export interface AgentGymToolRegistrySnapshotV1 {
   readonly tools: readonly AgentGymToolDefinitionV1[];
 }
 
+export interface AgentGymRecordedToolResultV1 {
+  readonly call_ref: string;
+  readonly input_digest: `sha256:${string}`;
+  readonly output: Readonly<Record<string, AgentGymJson>>;
+  readonly recorded_at: string;
+  readonly schema_version: "agent-gym-recorded-tool-result/v1";
+  readonly tool_id: string;
+}
+
+export interface RecordAgentGymToolResult {
+  readonly call_ref: string;
+  readonly input: Readonly<Record<string, AgentGymJson>>;
+  readonly output: Readonly<Record<string, AgentGymJson>>;
+  readonly recorded_at: string;
+  readonly tool_id: string;
+}
+
+/** Records one successful tool response for deterministic replay. */
+export function recordAgentGymToolResult(
+  input: RecordAgentGymToolResult,
+): AgentGymRecordedToolResultV1 {
+  reference(input.call_ref);
+  bounded(input.tool_id, 160);
+  timestamp(input.recorded_at);
+  const output = deepFreeze({ ...input.output });
+  return Object.freeze({
+    call_ref: input.call_ref,
+    input_digest: `sha256:${createHash("sha256").update(JSON.stringify(input.input)).digest("hex")}`,
+    output,
+    recorded_at: input.recorded_at,
+    schema_version: "agent-gym-recorded-tool-result/v1",
+    tool_id: input.tool_id,
+  });
+}
+
 /** Builds a stable tool registry for one offline candidate replay. */
 export function createAgentGymToolRegistry(
   definitions: readonly AgentGymToolDefinitionV1[],
@@ -46,6 +81,17 @@ function deepFreeze<T extends AgentGymJson>(value: T): T {
   }
   return value;
 }
+function reference(value: string): void {
+  bounded(value, 240);
+  if (!value.includes("://")) invalidResult();
+}
+function timestamp(value: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)
+    || !Number.isFinite(Date.parse(value))) invalidResult();
+}
 function invalid(): never {
   throw new AgentGymContractError("Agent gym tool registry is invalid.");
+}
+function invalidResult(): never {
+  throw new AgentGymContractError("Agent gym recorded tool result is invalid.");
 }
