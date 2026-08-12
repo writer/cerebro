@@ -125,9 +125,24 @@ func newGraphRuleStubRuntimeStore(runtime *cerebrov1.SourceRuntime) *stubRuntime
 	return &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime}}
 }
 
+type batchEvidenceFindingStore struct {
+	stubFindingStore
+	batchEvidenceCalls int
+}
+
+func (s *batchEvidenceFindingStore) PutFindingEvidenceBatch(ctx context.Context, evidence []*cerebrov1.FindingEvidence) error {
+	s.batchEvidenceCalls++
+	for _, item := range evidence {
+		if err := s.PutFindingEvidence(ctx, item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
-	store := &stubFindingStore{}
+	store := &batchEvidenceFindingStore{}
 	graphStore := &stubGraphStore{
 		cypherRows: []ports.CypherRow{
 			{Values: map[string]any{"label": "alice@writer.com"}},
@@ -206,6 +221,9 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 	}
 	if got := len(evaluation.Evidence); got != 1 {
 		t.Fatalf("len(Evidence) = %d, want 1", got)
+	}
+	if store.batchEvidenceCalls != 1 {
+		t.Fatalf("batch evidence calls = %d, want 1", store.batchEvidenceCalls)
 	}
 	if got := len(evaluation.Evidence[0].GetGraphRows()); got != 1 {
 		t.Fatalf("len(Evidence[0].GraphRows) = %d, want 1", got)
