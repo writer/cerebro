@@ -72,6 +72,7 @@ export * from "./regression-replay-evaluator-port.js";
 export * from "./regression-replay-evaluator-inputs.js";
 export * from "./regression-replay-evaluator-execution.js";
 export * from "./regression-replay-runtime-evaluation.js";
+export * from "./regression-replay-trial.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
