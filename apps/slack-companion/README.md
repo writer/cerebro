@@ -142,6 +142,18 @@ Promotion requires the hosted candidate to:
 - introduce no case regression; and
 - keep candidate inference latency within a 10-second p95 budget.
 
+Aggregate the phase receipts from repeated V2 black-box runs before comparing
+candidate critical paths:
+
+```bash
+slack-agent-blackbox phase-report-v2 tmp/phase-report.json tmp/run-*.json
+```
+
+The report groups endpoint and phase samples with p50, p95, p99, maximum,
+budget utilization, model/tool/repair counts, and outcome counts. It also
+reports unaccounted endpoint overhead so transport or harness time cannot be
+misattributed to model or tool execution.
+
 `npm run --silent eval:hillclimb:structural` retains the air-gapped structural
 preflight. It proves the local context policy, expiry, byte limit, and offline
 execution boundary, but it is not a model hillclimb and cannot authorize
