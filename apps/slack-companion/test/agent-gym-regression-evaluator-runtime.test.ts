@@ -5,6 +5,12 @@ import { defineAgentGymEvaluatorManifest } from "../src/agent-gym/evaluator-mani
 import { decideAgentGymEvaluatorAdmission } from "../src/agent-gym/evaluator-admission.js";
 import { bindAgentGymRegressionReplayEvaluators, validateAgentGymRegressionReplayEvaluatorBinding } from "../src/agent-gym/regression-replay-evaluator-binding.js";
 import { validateAgentGymRegressionReplayEvaluatorInput, validateAgentGymRegressionReplayEvaluatorOutput } from "../src/agent-gym/regression-replay-evaluator-port.js";
+import { buildAgentGymRegressionReplayEvaluatorInputs } from "../src/agent-gym/regression-replay-evaluator-inputs.js";
+import { bindAgentGymRegressionReplayRequests } from "../src/agent-gym/regression-replay-request-pair.js";
+import { checkAgentGymRegressionReplayParity } from "../src/agent-gym/regression-replay-parity.js";
+import { executeAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-execution.js";
+import { recordExecutedAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-runtime-result.js";
+import { agentGymModelRequestDigest } from "../src/agent-gym/model-runtime.js";
 import { recordAgentGymRegressionReplayResult } from "../src/agent-gym/regression-replay-result.js";
 import { digestAgentGymJson } from "../src/agent-gym/canonical-json.js";
 
@@ -13,14 +19,40 @@ const rubric = defineAgentGymEvaluatorRubric({ metrics: [{ blocking: true, evalu
 const evaluator = defineAgentGymEvaluatorManifest({ evaluator_kind: "deterministic", evaluator_ref: "agent-gym-evaluator://regression/safety", implementation_digest: sha("a"), output_schema_digest: sha("b"), rubric_digest: rubric.rubric_digest, schema_version: "agent-gym-evaluator-manifest/v1" });
 const admission = decideAgentGymEvaluatorAdmission(rubric, [evaluator], [], { maximum_calibration_age_ms: 86_400_000, policy_ref: "agent-gym-evaluator-policy://regression/one", required_calibration_dataset_digest: sha("c"), required_calibration_policy_digest: sha("d"), schema_version: "agent-gym-evaluator-admission-policy/v1" }, "2026-08-12T14:00:00.000Z");
 
-function result() {
+function replayPlan() {
   const planBody = { baseline_invocation_ref: "agent-gym-invocation://baseline/one", case_digest: sha("e"), case_ref: "agent-gym-case://regression/one", challenger_invocation_ref: "agent-gym-invocation://challenger/one", maximum_model_calls: 2, plan_ref: "agent-gym-replay-plan://regression/one", planned_at: "2026-08-12T13:00:00.000Z", replay_request_digest: sha("f"), schema_version: "agent-gym-regression-replay-plan/v1" as const };
-  const plan = { ...planBody, plan_digest: digestAgentGymJson(planBody) };
+  return { ...planBody, plan_digest: digestAgentGymJson(planBody) };
+}
+
+function result() {
+  const plan = replayPlan();
   return recordAgentGymRegressionReplayResult(plan, { baseline: { candidate_ref: "agent-gym-candidate://baseline/one", invocation_receipt_digest: sha("1"), invocation_ref: plan.baseline_invocation_ref, latency_ms: 10, response_digest: sha("2"), total_tokens: 20 }, challenger: { candidate_ref: "agent-gym-candidate://challenger/one", invocation_receipt_digest: sha("3"), invocation_ref: plan.challenger_invocation_ref, latency_ms: 9, response_digest: sha("4"), total_tokens: 18 }, completed_at: "2026-08-12T13:30:00.000Z", result_ref: "agent-gym-replay-result://regression/one" });
 }
 
 function binding() {
   return bindAgentGymRegressionReplayEvaluators(result(), rubric, [evaluator], admission, { binding_ref: "agent-gym-evaluator-binding://regression/one", bound_at: "2026-08-12T14:01:00.000Z" });
+}
+
+async function runtimeBundle() {
+  const plan = replayPlan();
+  const request = (role: "baseline" | "challenger") => ({ candidate_ref: `agent-gym-candidate://${role}/one`,
+    invocation_ref: `agent-gym-invocation://${role}/one`, max_output_tokens: 256,
+    messages: [{ role: "user" as const, text: "Summarize the regression evidence." }], model_id: `model-${role}`,
+    schema_version: "agent-gym-model-request/v1" as const, system_prompt: `You are the ${role} candidate.` });
+  const baseline = request("baseline"); const challenger = request("challenger");
+  const pair = bindAgentGymRegressionReplayRequests(plan, baseline, challenger, "agent-gym-request-pair://regression/evaluator");
+  const parity = checkAgentGymRegressionReplayParity(pair, { checked_at: "2026-08-12T13:01:00.000Z", report_ref: "agent-gym-parity://regression/evaluator" });
+  const execution = await executeAgentGymRegressionReplay(plan, pair, parity, baseline, challenger,
+    { max_input_tokens: 1_000, max_invocations: 2, max_latency_ms: 1_000, max_output_tokens: 1_000,
+      max_total_tokens: 2_000, schema_version: "agent-gym-model-budget/v1" }, { async invoke(modelRequest) {
+      return { invocation_ref: modelRequest.invocation_ref, latency_ms: 10, model_id: modelRequest.model_id,
+        output_text: `answer:${modelRequest.candidate_ref}`, request_digest: agentGymModelRequestDigest(modelRequest),
+        response_source: "recorded" as const, schema_version: "agent-gym-model-response/v1" as const,
+        stop_reason: "end_turn" as const, token_usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+    } }, "2026-08-12T13:02:00.000Z", "agent-gym-model-batch://regression/evaluator");
+  const replayResult = recordExecutedAgentGymRegressionReplay(plan, execution, { completed_at: "2026-08-12T13:03:00.000Z", result_ref: "agent-gym-replay-result://regression/evaluator" });
+  const evaluatorBinding = bindAgentGymRegressionReplayEvaluators(replayResult, rubric, [evaluator], admission, { binding_ref: "agent-gym-evaluator-binding://regression/runtime", bound_at: "2026-08-12T14:01:00.000Z" });
+  return { evaluatorBinding, execution, replayResult };
 }
 
 test("binds replay scoring to admitted exact evaluator evidence", () => {
@@ -40,6 +72,13 @@ test("validates bounded evaluator inputs and fail-closed outputs", () => {
   assert.throws(() => validateAgentGymRegressionReplayEvaluatorOutput({ binding_digest: bound.binding_digest,
     blocker_codes: ["unsafe"], candidate_ref: bound.baseline_candidate_ref, evidence_digest: sha("5"), safety_passed: true,
     schema_version: "agent-gym-regression-replay-evaluator-output/v1", score: 0.8 }));
+});
+
+test("projects exact transient model answers into paired evaluator inputs", async () => {
+  const { evaluatorBinding, execution, replayResult } = await runtimeBundle();
+  const inputs = buildAgentGymRegressionReplayEvaluatorInputs(evaluatorBinding, replayResult, execution);
+  assert.deepEqual(inputs.map((input) => input.candidate_ref), [replayResult.baseline.candidate_ref, replayResult.challenger.candidate_ref]);
+  assert.equal(inputs[0].output_text, `answer:${replayResult.baseline.candidate_ref}`);
 });
 
 test("rejects evaluator evidence that was not admitted", () => {
