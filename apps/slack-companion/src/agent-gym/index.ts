@@ -10,3 +10,5 @@ export class AgentGymContractError extends Error {
     this.name = "AgentGymContractError";
   }
 }
+
+export * from "./fixture-case.js";
