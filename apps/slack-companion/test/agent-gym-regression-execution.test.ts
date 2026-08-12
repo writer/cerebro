@@ -5,6 +5,7 @@ import { planAgentGymRegressionReplay, validateAgentGymRegressionReplayPlan } fr
 import { recordAgentGymRegressionReplayResult, validateAgentGymRegressionReplayResult } from "../src/agent-gym/regression-replay-result.js";
 import { evaluateAgentGymRegressionReplay, validateAgentGymRegressionReplayEvaluation } from "../src/agent-gym/regression-replay-evaluation.js";
 import { compareAgentGymRegressionReplay, validateAgentGymRegressionReplayComparison } from "../src/agent-gym/regression-replay-comparison.js";
+import { admitAgentGymRegressionReplay, validateAgentGymRegressionReplayAdmission } from "../src/agent-gym/regression-replay-admission.js";
 import type { AgentGymRegressionReplayRequestV1 } from "../src/agent-gym/regression-replay-request.js";
 
 const sha = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
@@ -83,4 +84,20 @@ test("compares paired replay scores and latency deterministically", () => {
   assert.equal(comparison.outcome, "improved");
   assert.equal(comparison.latency_delta_ms, -20);
   assert.equal(validateAgentGymRegressionReplayComparison(comparison).score_delta, 0.14);
+});
+
+test("admits only challengers that pass every regression gate", () => {
+  const { evaluation, result } = replayEvaluation();
+  const comparison = compareAgentGymRegressionReplay(result, evaluation, { compared_at: "2026-08-12T13:04:00.000Z", comparison_ref: "agent-gym-replay-comparison://regression/one" });
+  const admission = admitAgentGymRegressionReplay(comparison, evaluation, {
+    maximum_latency_increase_ms: 25, minimum_challenger_score: 0.8, minimum_score_delta: 0,
+    policy_ref: "agent-gym-admission-policy://regression/one", schema_version: "agent-gym-regression-replay-admission-policy/v1",
+  }, { admitted_at: "2026-08-12T13:05:00.000Z", admission_ref: "agent-gym-replay-admission://regression/one" });
+  assert.equal(validateAgentGymRegressionReplayAdmission(admission).decision, "admitted");
+  const blocked = admitAgentGymRegressionReplay(comparison, evaluation, {
+    maximum_latency_increase_ms: 25, minimum_challenger_score: 0.9, minimum_score_delta: 0.2,
+    policy_ref: "agent-gym-admission-policy://regression/strict", schema_version: "agent-gym-regression-replay-admission-policy/v1",
+  }, { admitted_at: "2026-08-12T13:05:00.000Z", admission_ref: "agent-gym-replay-admission://regression/blocked" });
+  assert.deepEqual(blocked.blocker_codes, ["challenger_score_below_minimum", "score_delta_below_minimum"]);
+  assert.equal(blocked.decision, "blocked");
 });
