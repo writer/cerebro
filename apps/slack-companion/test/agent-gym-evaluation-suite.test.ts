@@ -13,8 +13,10 @@ import {
   planAgentGymEvaluationRun,
   recordAgentGymCaseEvaluation,
   recordAgentGymCorpusQuality,
+  summarizeAgentGymEvaluationSlices,
   validateAgentGymEvaluationRunPlan,
   validateAgentGymEvaluationRunResult,
+  validateAgentGymEvaluationSliceReport,
 } from "../src/index.js";
 
 test("evaluation suites seal admitted non-training cases", () => {
@@ -83,6 +85,17 @@ test("evaluation run results reject missing case evidence", () => {
     caseEvaluations(setup, suite).slice(1),
     { completed_at: "2026-08-12T11:06:00.000Z", started_at: "2026-08-12T11:05:00.000Z" },
   ), /evaluation run result is invalid/u);
+});
+
+test("evaluation slices retain partition and label evidence", () => {
+  const setup = evaluationSetup();
+  const suite = suiteFrom(setup);
+  const result = completedRun(setup, suite);
+  const report = summarizeAgentGymEvaluationSlices(suite, result);
+  assert.equal(report.slices.find((entry) => entry.slice_id === "overall:all")?.case_count, 2);
+  assert.equal(report.slices.find((entry) => entry.slice_id === "label:safety")?.case_count, 1);
+  assert.equal(report.slices.find((entry) => entry.slice_id === "partition:shadow")?.valid_case_count, 1);
+  assert.deepEqual(validateAgentGymEvaluationSliceReport(report), report);
 });
 
 function evaluationSetup() {
@@ -177,6 +190,18 @@ function caseEvaluations(
       valid: true,
     },
   ));
+}
+
+function completedRun(
+  setup: ReturnType<typeof evaluationSetup>,
+  suite: ReturnType<typeof defineAgentGymEvaluationSuite>,
+) {
+  return completeAgentGymEvaluationRun(
+    suite,
+    planAgentGymEvaluationRun(suite, runPlanInput()),
+    caseEvaluations(setup, suite),
+    { completed_at: "2026-08-12T11:06:00.000Z", started_at: "2026-08-12T11:05:00.000Z" },
+  );
 }
 
 function runPlanInput() {

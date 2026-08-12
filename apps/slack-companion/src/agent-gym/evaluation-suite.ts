@@ -58,7 +58,8 @@ export function defineAgentGymEvaluationSuite(
     labels: Object.freeze([...entry.labels]),
     partition: entry.partition,
   }));
-  if (cases.length === 0) invalid();
+  if (cases.length === 0
+    || partitions.some((partition) => !cases.some((entry) => entry.partition === partition))) invalid();
   const caseSetBody = cases.map((entry) => ({
     case_digest: entry.case_digest,
     case_ref: entry.case_ref,
