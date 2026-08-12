@@ -3,10 +3,50 @@ import test from "node:test";
 
 import {
   simulateSlackAppHomeOpened,
+  simulateSlackButtonAction,
   simulateSlackDirectMessage,
   simulateSlackMention,
   simulateSlackThreadReply,
 } from "../src/index.js";
+
+test("button simulation binds the exact action to its actor and thread", () => {
+  const invocation = simulateSlackButtonAction({
+    event_ref: "slack-event://button/one",
+    kind: "button_action",
+    occurred_at: "2026-08-12T08:34:00.000Z",
+    payload: {
+      action_id: "answer.feedback.correct",
+      channel_id: "C12345",
+      message_ts: "1786523640.000001",
+      team_id: "T_ONE",
+      thread_ts: "1786523400.000001",
+      user_id: "U_ONE",
+      value: "feedback://answer/one",
+    },
+  });
+  assert.equal(invocation.route, "interaction");
+  assert.deepEqual(invocation.action, {
+    action_id: "answer.feedback.correct",
+    value: "feedback://answer/one",
+  });
+  assert.equal(Object.isFrozen(invocation.action), true);
+});
+
+test("button simulation rejects an unbounded action identifier", () => {
+  assert.throws(() => simulateSlackButtonAction({
+    event_ref: "slack-event://button/bad",
+    kind: "button_action",
+    occurred_at: "2026-08-12T08:34:00.000Z",
+    payload: {
+      action_id: "Not a stable id",
+      channel_id: "C12345",
+      message_ts: "1786523640.000001",
+      team_id: "T_ONE",
+      user_id: "U_ONE",
+      value: "feedback://answer/one",
+    },
+  }), /button action id is invalid/u);
+});
 
 test("App Home simulation emits a publish request without message text", () => {
   const invocation = simulateSlackAppHomeOpened({
