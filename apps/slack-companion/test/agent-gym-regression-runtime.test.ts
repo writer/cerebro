@@ -3,6 +3,7 @@ import test from "node:test";
 import { bindAgentGymRegressionReplayRequests, validateAgentGymRegressionReplayRequestPair } from "../src/agent-gym/regression-replay-request-pair.js";
 import { checkAgentGymRegressionReplayParity, validateAgentGymRegressionReplayParity } from "../src/agent-gym/regression-replay-parity.js";
 import { executeAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-execution.js";
+import { recordExecutedAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-runtime-result.js";
 import { agentGymModelRequestDigest } from "../src/agent-gym/model-runtime.js";
 import type { AgentGymRegressionReplayPlanV1 } from "../src/agent-gym/regression-replay-plan.js";
 import { digestAgentGymJson } from "../src/agent-gym/canonical-json.js";
@@ -40,6 +41,20 @@ const budget = {
   max_input_tokens: 1_000, max_invocations: 2, max_latency_ms: 1_000, max_output_tokens: 1_000,
   max_total_tokens: 2_000, schema_version: "agent-gym-model-budget/v1" as const,
 };
+
+async function runExecution(maxTotalTokens = 2_000) {
+  const { baseline, challenger, pair, parity } = pairAndParity();
+  const execution = await executeAgentGymRegressionReplay(plan(), pair, parity, baseline, challenger,
+    { ...budget, max_total_tokens: maxTotalTokens }, {
+      async invoke(modelRequest) {
+        return { invocation_ref: modelRequest.invocation_ref, latency_ms: 10, model_id: modelRequest.model_id,
+          output_text: `answer:${modelRequest.candidate_ref}`, request_digest: agentGymModelRequestDigest(modelRequest),
+          response_source: "recorded" as const, schema_version: "agent-gym-model-response/v1" as const,
+          stop_reason: "end_turn" as const, token_usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+      },
+    }, "2026-08-12T13:03:00.000Z", "agent-gym-model-batch://regression/runtime");
+  return execution;
+}
 
 test("binds the exact two requests authorized by a replay plan", () => {
   const pair = bindAgentGymRegressionReplayRequests(plan(), request("baseline"), request("challenger"), "agent-gym-request-pair://regression/one");
@@ -96,4 +111,20 @@ test("retains aggregate budget failure across otherwise allowed calls", async ()
     }, "2026-08-12T13:03:00.000Z", "agent-gym-model-batch://regression/budget");
   assert.equal(execution.aggregate_budget.allowed, false);
   assert.deepEqual(execution.aggregate_budget.blockers, ["model_total_tokens_exceeded"]);
+});
+
+test("records successful execution as text-free durable replay evidence", async () => {
+  const result = recordExecutedAgentGymRegressionReplay(plan(), await runExecution(), {
+    completed_at: "2026-08-12T13:04:00.000Z", result_ref: "agent-gym-replay-result://regression/runtime",
+  });
+  assert.equal(result.baseline.total_tokens, 15);
+  assert.equal(result.challenger.total_tokens, 15);
+  assert.equal(JSON.stringify(result).includes("answer:"), false);
+});
+
+test("does not record replay results that exceed the aggregate budget", async () => {
+  const execution = await runExecution(20);
+  assert.throws(() => recordExecutedAgentGymRegressionReplay(plan(), execution, {
+    completed_at: "2026-08-12T13:04:00.000Z", result_ref: "agent-gym-replay-result://regression/budget",
+  }), /executed regression replay result is invalid/u);
 });
