@@ -5019,6 +5019,2390 @@ pub const __GET_SOURCE_SUMMARY_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAn
     from_json: ::buffa::type_registry::any_from_json::<GetSourceSummaryResponse>,
     is_wkt: false,
 };
+/// ExposureCoverageProfile declares the closed entity kinds and sources used by
+/// one coverage comparison. Relations are fixed by the server.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ExposureCoverageProfile {
+    /// Field 1: `primary_source_id`
+    #[serde(
+        rename = "primarySourceId",
+        alias = "primary_source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub primary_source_id: ::buffa::alloc::string::String,
+    /// Field 2: `primary_entity_kind_prefix`
+    #[serde(
+        rename = "primaryEntityKindPrefix",
+        alias = "primary_entity_kind_prefix",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub primary_entity_kind_prefix: ::buffa::alloc::string::String,
+    /// Field 3: `corroborating_source_id`
+    #[serde(
+        rename = "corroboratingSourceId",
+        alias = "corroborating_source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub corroborating_source_id: ::buffa::alloc::string::String,
+    /// Field 4: `corroborating_entity_kind`
+    #[serde(
+        rename = "corroboratingEntityKind",
+        alias = "corroborating_entity_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub corroborating_entity_kind: ::buffa::alloc::string::String,
+    /// Field 5: `indicator_kinds`
+    #[serde(
+        rename = "indicatorKinds",
+        alias = "indicator_kinds",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub indicator_kinds: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 6: `account_kind`
+    #[serde(
+        rename = "accountKind",
+        alias = "account_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub account_kind: ::buffa::alloc::string::String,
+    /// Field 7: `corroborating_observation_kind`
+    #[serde(
+        rename = "corroboratingObservationKind",
+        alias = "corroborating_observation_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub corroborating_observation_kind: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ExposureCoverageProfile {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ExposureCoverageProfile")
+            .field("primary_source_id", &self.primary_source_id)
+            .field("primary_entity_kind_prefix", &self.primary_entity_kind_prefix)
+            .field("corroborating_source_id", &self.corroborating_source_id)
+            .field("corroborating_entity_kind", &self.corroborating_entity_kind)
+            .field("indicator_kinds", &self.indicator_kinds)
+            .field("account_kind", &self.account_kind)
+            .field(
+                "corroborating_observation_kind",
+                &self.corroborating_observation_kind,
+            )
+            .finish()
+    }
+}
+impl ExposureCoverageProfile {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageProfile";
+}
+::buffa::impl_default_instance!(ExposureCoverageProfile);
+impl ::buffa::MessageName for ExposureCoverageProfile {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ExposureCoverageProfile";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageProfile";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageProfile";
+}
+impl ::buffa::Message for ExposureCoverageProfile {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.primary_source_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.primary_source_id) as u64;
+        }
+        if !self.primary_entity_kind_prefix.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(
+                        &self.primary_entity_kind_prefix,
+                    ) as u64;
+        }
+        if !self.corroborating_source_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.corroborating_source_id)
+                        as u64;
+        }
+        if !self.corroborating_entity_kind.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.corroborating_entity_kind)
+                        as u64;
+        }
+        for v in &self.indicator_kinds {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if !self.account_kind.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.account_kind) as u64;
+        }
+        if !self.corroborating_observation_kind.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(
+                        &self.corroborating_observation_kind,
+                    ) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.primary_source_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.primary_source_id, buf);
+        }
+        if !self.primary_entity_kind_prefix.is_empty() {
+            ::buffa::types::put_string_field(
+                2u32,
+                &self.primary_entity_kind_prefix,
+                buf,
+            );
+        }
+        if !self.corroborating_source_id.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.corroborating_source_id, buf);
+        }
+        if !self.corroborating_entity_kind.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.corroborating_entity_kind, buf);
+        }
+        for v in &self.indicator_kinds {
+            ::buffa::types::put_string_field(5u32, v, buf);
+        }
+        if !self.account_kind.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.account_kind, buf);
+        }
+        if !self.corroborating_observation_kind.is_empty() {
+            ::buffa::types::put_string_field(
+                7u32,
+                &self.corroborating_observation_kind,
+                buf,
+            );
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.primary_source_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.primary_entity_kind_prefix, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.corroborating_source_id, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.corroborating_entity_kind, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.indicator_kinds.push(__elem);
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.account_kind, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(
+                    &mut self.corroborating_observation_kind,
+                    buf,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.primary_source_id.clear();
+        self.primary_entity_kind_prefix.clear();
+        self.corroborating_source_id.clear();
+        self.corroborating_entity_kind.clear();
+        self.indicator_kinds.clear();
+        self.account_kind.clear();
+        self.corroborating_observation_kind.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ExposureCoverageProfile {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ExposureCoverageProfile";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ExposureCoverageProfile {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EXPOSURE_COVERAGE_PROFILE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ExposureCoverageProfile",
+    to_json: ::buffa::type_registry::any_to_json::<ExposureCoverageProfile>,
+    from_json: ::buffa::type_registry::any_from_json::<ExposureCoverageProfile>,
+    is_wkt: false,
+};
+/// CompareExposureCoverageRequest scopes one bounded coverage comparison to an
+/// authenticated tenant. Empty account, region, and query values disable those
+/// optional filters.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CompareExposureCoverageRequest {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `profile`
+    #[serde(
+        rename = "profile",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub profile: ::buffa::MessageField<
+        ExposureCoverageProfile,
+        ::buffa::Inline<ExposureCoverageProfile>,
+    >,
+    /// Field 3: `account_id`
+    #[serde(
+        rename = "accountId",
+        alias = "account_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub account_id: ::buffa::alloc::string::String,
+    /// Field 4: `region`
+    #[serde(
+        rename = "region",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub region: ::buffa::alloc::string::String,
+    /// Field 5: `query`
+    #[serde(
+        rename = "query",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub query: ::buffa::alloc::string::String,
+    /// Field 6: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CompareExposureCoverageRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CompareExposureCoverageRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("profile", &self.profile)
+            .field("account_id", &self.account_id)
+            .field("region", &self.region)
+            .field("query", &self.query)
+            .field("limit", &self.limit)
+            .finish()
+    }
+}
+impl CompareExposureCoverageRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CompareExposureCoverageRequest";
+}
+::buffa::impl_default_instance!(CompareExposureCoverageRequest);
+impl ::buffa::MessageName for CompareExposureCoverageRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CompareExposureCoverageRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CompareExposureCoverageRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CompareExposureCoverageRequest";
+}
+impl ::buffa::Message for CompareExposureCoverageRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.profile.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.profile.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.account_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.account_id) as u64;
+        }
+        if !self.region.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.region) as u64;
+        }
+        if !self.query.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.query) as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.profile.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.profile.write_to(__cache, buf);
+        }
+        if !self.account_id.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.account_id, buf);
+        }
+        if !self.region.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.region, buf);
+        }
+        if !self.query.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.query, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(6u32, self.limit, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.profile.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.account_id, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.region, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.query, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.profile = ::buffa::MessageField::none();
+        self.account_id.clear();
+        self.region.clear();
+        self.query.clear();
+        self.limit = 0u32;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CompareExposureCoverageRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CompareExposureCoverageRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CompareExposureCoverageRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __COMPARE_EXPOSURE_COVERAGE_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CompareExposureCoverageRequest",
+    to_json: ::buffa::type_registry::any_to_json::<CompareExposureCoverageRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<CompareExposureCoverageRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ExposureCoverageCounts {
+    /// Field 1: `primary_entities`
+    #[serde(
+        rename = "primaryEntities",
+        alias = "primary_entities",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub primary_entities: u64,
+    /// Field 2: `indicators`
+    #[serde(
+        rename = "indicators",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub indicators: u64,
+    /// Field 3: `host_indicators`
+    #[serde(
+        rename = "hostIndicators",
+        alias = "host_indicators",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub host_indicators: u64,
+    /// Field 4: `ip_indicators`
+    #[serde(
+        rename = "ipIndicators",
+        alias = "ip_indicators",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub ip_indicators: u64,
+    /// Field 5: `overlapping_primary_entities`
+    #[serde(
+        rename = "overlappingPrimaryEntities",
+        alias = "overlapping_primary_entities",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub overlapping_primary_entities: u64,
+    /// Field 6: `overlapping_indicators`
+    #[serde(
+        rename = "overlappingIndicators",
+        alias = "overlapping_indicators",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub overlapping_indicators: u64,
+    /// Field 7: `overlapping_corroborating_entities`
+    #[serde(
+        rename = "overlappingCorroboratingEntities",
+        alias = "overlapping_corroborating_entities",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub overlapping_corroborating_entities: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ExposureCoverageCounts {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ExposureCoverageCounts")
+            .field("primary_entities", &self.primary_entities)
+            .field("indicators", &self.indicators)
+            .field("host_indicators", &self.host_indicators)
+            .field("ip_indicators", &self.ip_indicators)
+            .field("overlapping_primary_entities", &self.overlapping_primary_entities)
+            .field("overlapping_indicators", &self.overlapping_indicators)
+            .field(
+                "overlapping_corroborating_entities",
+                &self.overlapping_corroborating_entities,
+            )
+            .finish()
+    }
+}
+impl ExposureCoverageCounts {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCounts";
+}
+::buffa::impl_default_instance!(ExposureCoverageCounts);
+impl ::buffa::MessageName for ExposureCoverageCounts {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ExposureCoverageCounts";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageCounts";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCounts";
+}
+impl ::buffa::Message for ExposureCoverageCounts {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.primary_entities != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.primary_entities) as u64;
+        }
+        if self.indicators != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.indicators) as u64;
+        }
+        if self.host_indicators != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.host_indicators) as u64;
+        }
+        if self.ip_indicators != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.ip_indicators) as u64;
+        }
+        if self.overlapping_primary_entities != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(
+                        self.overlapping_primary_entities,
+                    ) as u64;
+        }
+        if self.overlapping_indicators != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.overlapping_indicators)
+                        as u64;
+        }
+        if self.overlapping_corroborating_entities != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(
+                        self.overlapping_corroborating_entities,
+                    ) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.primary_entities != 0u64 {
+            ::buffa::types::put_uint64_field(1u32, self.primary_entities, buf);
+        }
+        if self.indicators != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.indicators, buf);
+        }
+        if self.host_indicators != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.host_indicators, buf);
+        }
+        if self.ip_indicators != 0u64 {
+            ::buffa::types::put_uint64_field(4u32, self.ip_indicators, buf);
+        }
+        if self.overlapping_primary_entities != 0u64 {
+            ::buffa::types::put_uint64_field(
+                5u32,
+                self.overlapping_primary_entities,
+                buf,
+            );
+        }
+        if self.overlapping_indicators != 0u64 {
+            ::buffa::types::put_uint64_field(6u32, self.overlapping_indicators, buf);
+        }
+        if self.overlapping_corroborating_entities != 0u64 {
+            ::buffa::types::put_uint64_field(
+                7u32,
+                self.overlapping_corroborating_entities,
+                buf,
+            );
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.primary_entities = ::buffa::types::decode_uint64(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.indicators = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.host_indicators = ::buffa::types::decode_uint64(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.ip_indicators = ::buffa::types::decode_uint64(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.overlapping_primary_entities = ::buffa::types::decode_uint64(buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.overlapping_indicators = ::buffa::types::decode_uint64(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.overlapping_corroborating_entities = ::buffa::types::decode_uint64(
+                    buf,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.primary_entities = 0u64;
+        self.indicators = 0u64;
+        self.host_indicators = 0u64;
+        self.ip_indicators = 0u64;
+        self.overlapping_primary_entities = 0u64;
+        self.overlapping_indicators = 0u64;
+        self.overlapping_corroborating_entities = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ExposureCoverageCounts {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ExposureCoverageCounts";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ExposureCoverageCounts {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EXPOSURE_COVERAGE_COUNTS_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCounts",
+    to_json: ::buffa::type_registry::any_to_json::<ExposureCoverageCounts>,
+    from_json: ::buffa::type_registry::any_from_json::<ExposureCoverageCounts>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ExposureCoverageKindCount {
+    /// Field 1: `entity_kind`
+    #[serde(
+        rename = "entityKind",
+        alias = "entity_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub entity_kind: ::buffa::alloc::string::String,
+    /// Field 2: `count`
+    #[serde(
+        rename = "count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub count: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ExposureCoverageKindCount {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ExposureCoverageKindCount")
+            .field("entity_kind", &self.entity_kind)
+            .field("count", &self.count)
+            .finish()
+    }
+}
+impl ExposureCoverageKindCount {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageKindCount";
+}
+::buffa::impl_default_instance!(ExposureCoverageKindCount);
+impl ::buffa::MessageName for ExposureCoverageKindCount {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ExposureCoverageKindCount";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageKindCount";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageKindCount";
+}
+impl ::buffa::Message for ExposureCoverageKindCount {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.entity_kind.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.entity_kind) as u64;
+        }
+        if self.count != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.entity_kind.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.entity_kind, buf);
+        }
+        if self.count != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.count, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.entity_kind, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.count = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.entity_kind.clear();
+        self.count = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ExposureCoverageKindCount {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ExposureCoverageKindCount";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ExposureCoverageKindCount {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EXPOSURE_COVERAGE_KIND_COUNT_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ExposureCoverageKindCount",
+    to_json: ::buffa::type_registry::any_to_json::<ExposureCoverageKindCount>,
+    from_json: ::buffa::type_registry::any_from_json::<ExposureCoverageKindCount>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ExposureCoverageOverlap {
+    /// Field 1: `primary`
+    #[serde(
+        rename = "primary",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub primary: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 2: `indicator`
+    #[serde(
+        rename = "indicator",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub indicator: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 3: `corroborating`
+    #[serde(
+        rename = "corroborating",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub corroborating: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ExposureCoverageOverlap {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ExposureCoverageOverlap")
+            .field("primary", &self.primary)
+            .field("indicator", &self.indicator)
+            .field("corroborating", &self.corroborating)
+            .finish()
+    }
+}
+impl ExposureCoverageOverlap {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageOverlap";
+}
+::buffa::impl_default_instance!(ExposureCoverageOverlap);
+impl ::buffa::MessageName for ExposureCoverageOverlap {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ExposureCoverageOverlap";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageOverlap";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageOverlap";
+}
+impl ::buffa::Message for ExposureCoverageOverlap {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.primary.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.primary.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.indicator.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.indicator.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.corroborating.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.corroborating.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.primary.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.primary.write_to(__cache, buf);
+        }
+        if self.indicator.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.indicator.write_to(__cache, buf);
+        }
+        if self.corroborating.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.corroborating.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.primary.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.indicator.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.corroborating.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.primary = ::buffa::MessageField::none();
+        self.indicator = ::buffa::MessageField::none();
+        self.corroborating = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ExposureCoverageOverlap {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ExposureCoverageOverlap";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ExposureCoverageOverlap {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EXPOSURE_COVERAGE_OVERLAP_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ExposureCoverageOverlap",
+    to_json: ::buffa::type_registry::any_to_json::<ExposureCoverageOverlap>,
+    from_json: ::buffa::type_registry::any_from_json::<ExposureCoverageOverlap>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ExposureCoveragePair {
+    /// Field 1: `primary`
+    #[serde(
+        rename = "primary",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub primary: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 2: `indicator`
+    #[serde(
+        rename = "indicator",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub indicator: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ExposureCoveragePair {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ExposureCoveragePair")
+            .field("primary", &self.primary)
+            .field("indicator", &self.indicator)
+            .finish()
+    }
+}
+impl ExposureCoveragePair {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoveragePair";
+}
+::buffa::impl_default_instance!(ExposureCoveragePair);
+impl ::buffa::MessageName for ExposureCoveragePair {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ExposureCoveragePair";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoveragePair";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoveragePair";
+}
+impl ::buffa::Message for ExposureCoveragePair {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.primary.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.primary.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.indicator.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.indicator.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.primary.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.primary.write_to(__cache, buf);
+        }
+        if self.indicator.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.indicator.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.primary.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.indicator.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.primary = ::buffa::MessageField::none();
+        self.indicator = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ExposureCoveragePair {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ExposureCoveragePair";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ExposureCoveragePair {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EXPOSURE_COVERAGE_PAIR_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ExposureCoveragePair",
+    to_json: ::buffa::type_registry::any_to_json::<ExposureCoveragePair>,
+    from_json: ::buffa::type_registry::any_from_json::<ExposureCoveragePair>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ExposureCoverageCorroboratingOnly {
+    /// Field 1: `corroborating`
+    #[serde(
+        rename = "corroborating",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub corroborating: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 2: `indicator`
+    #[serde(
+        rename = "indicator",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub indicator: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ExposureCoverageCorroboratingOnly {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ExposureCoverageCorroboratingOnly")
+            .field("corroborating", &self.corroborating)
+            .field("indicator", &self.indicator)
+            .finish()
+    }
+}
+impl ExposureCoverageCorroboratingOnly {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCorroboratingOnly";
+}
+::buffa::impl_default_instance!(ExposureCoverageCorroboratingOnly);
+impl ::buffa::MessageName for ExposureCoverageCorroboratingOnly {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ExposureCoverageCorroboratingOnly";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageCorroboratingOnly";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCorroboratingOnly";
+}
+impl ::buffa::Message for ExposureCoverageCorroboratingOnly {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.corroborating.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.corroborating.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.indicator.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.indicator.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.corroborating.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.corroborating.write_to(__cache, buf);
+        }
+        if self.indicator.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.indicator.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.corroborating.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.indicator.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.corroborating = ::buffa::MessageField::none();
+        self.indicator = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ExposureCoverageCorroboratingOnly {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ExposureCoverageCorroboratingOnly";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ExposureCoverageCorroboratingOnly {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EXPOSURE_COVERAGE_CORROBORATING_ONLY_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCorroboratingOnly",
+    to_json: ::buffa::type_registry::any_to_json::<ExposureCoverageCorroboratingOnly>,
+    from_json: ::buffa::type_registry::any_from_json::<
+        ExposureCoverageCorroboratingOnly,
+    >,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ExposureCoverageAccount {
+    /// Field 1: `account`
+    #[serde(
+        rename = "account",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub account: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 2: `primary_entities`
+    #[serde(
+        rename = "primaryEntities",
+        alias = "primary_entities",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub primary_entities: u64,
+    /// Field 3: `corroborating_observations`
+    #[serde(
+        rename = "corroboratingObservations",
+        alias = "corroborating_observations",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub corroborating_observations: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ExposureCoverageAccount {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ExposureCoverageAccount")
+            .field("account", &self.account)
+            .field("primary_entities", &self.primary_entities)
+            .field("corroborating_observations", &self.corroborating_observations)
+            .finish()
+    }
+}
+impl ExposureCoverageAccount {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageAccount";
+}
+::buffa::impl_default_instance!(ExposureCoverageAccount);
+impl ::buffa::MessageName for ExposureCoverageAccount {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ExposureCoverageAccount";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageAccount";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageAccount";
+}
+impl ::buffa::Message for ExposureCoverageAccount {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.account.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.account.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.primary_entities != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.primary_entities) as u64;
+        }
+        if self.corroborating_observations != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.corroborating_observations)
+                        as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.account.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.account.write_to(__cache, buf);
+        }
+        if self.primary_entities != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.primary_entities, buf);
+        }
+        if self.corroborating_observations != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.corroborating_observations, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.account.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.primary_entities = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.corroborating_observations = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.account = ::buffa::MessageField::none();
+        self.primary_entities = 0u64;
+        self.corroborating_observations = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ExposureCoverageAccount {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ExposureCoverageAccount";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ExposureCoverageAccount {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EXPOSURE_COVERAGE_ACCOUNT_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ExposureCoverageAccount",
+    to_json: ::buffa::type_registry::any_to_json::<ExposureCoverageAccount>,
+    from_json: ::buffa::type_registry::any_from_json::<ExposureCoverageAccount>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ExposureCoverageCompleteness {
+    /// Field 1: `type_counts_truncated`
+    #[serde(
+        rename = "typeCountsTruncated",
+        alias = "type_counts_truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub type_counts_truncated: bool,
+    /// Field 2: `overlaps_truncated`
+    #[serde(
+        rename = "overlapsTruncated",
+        alias = "overlaps_truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub overlaps_truncated: bool,
+    /// Field 3: `primary_only_truncated`
+    #[serde(
+        rename = "primaryOnlyTruncated",
+        alias = "primary_only_truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub primary_only_truncated: bool,
+    /// Field 4: `corroborating_only_truncated`
+    #[serde(
+        rename = "corroboratingOnlyTruncated",
+        alias = "corroborating_only_truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub corroborating_only_truncated: bool,
+    /// Field 5: `accounts_truncated`
+    #[serde(
+        rename = "accountsTruncated",
+        alias = "accounts_truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub accounts_truncated: bool,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ExposureCoverageCompleteness {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ExposureCoverageCompleteness")
+            .field("type_counts_truncated", &self.type_counts_truncated)
+            .field("overlaps_truncated", &self.overlaps_truncated)
+            .field("primary_only_truncated", &self.primary_only_truncated)
+            .field("corroborating_only_truncated", &self.corroborating_only_truncated)
+            .field("accounts_truncated", &self.accounts_truncated)
+            .finish()
+    }
+}
+impl ExposureCoverageCompleteness {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCompleteness";
+}
+::buffa::impl_default_instance!(ExposureCoverageCompleteness);
+impl ::buffa::MessageName for ExposureCoverageCompleteness {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ExposureCoverageCompleteness";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageCompleteness";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCompleteness";
+}
+impl ::buffa::Message for ExposureCoverageCompleteness {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.type_counts_truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.overlaps_truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.primary_only_truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.corroborating_only_truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.accounts_truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.type_counts_truncated {
+            ::buffa::types::put_bool_field(1u32, self.type_counts_truncated, buf);
+        }
+        if self.overlaps_truncated {
+            ::buffa::types::put_bool_field(2u32, self.overlaps_truncated, buf);
+        }
+        if self.primary_only_truncated {
+            ::buffa::types::put_bool_field(3u32, self.primary_only_truncated, buf);
+        }
+        if self.corroborating_only_truncated {
+            ::buffa::types::put_bool_field(4u32, self.corroborating_only_truncated, buf);
+        }
+        if self.accounts_truncated {
+            ::buffa::types::put_bool_field(5u32, self.accounts_truncated, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.type_counts_truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.overlaps_truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.primary_only_truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.corroborating_only_truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.accounts_truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.type_counts_truncated = false;
+        self.overlaps_truncated = false;
+        self.primary_only_truncated = false;
+        self.corroborating_only_truncated = false;
+        self.accounts_truncated = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ExposureCoverageCompleteness {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ExposureCoverageCompleteness";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ExposureCoverageCompleteness {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EXPOSURE_COVERAGE_COMPLETENESS_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCompleteness",
+    to_json: ::buffa::type_registry::any_to_json::<ExposureCoverageCompleteness>,
+    from_json: ::buffa::type_registry::any_from_json::<ExposureCoverageCompleteness>,
+    is_wkt: false,
+};
+/// CompareExposureCoverageResponse binds every count and sample to one durable
+/// graph revision and reports every server-side collection bound explicitly.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CompareExposureCoverageResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `counts`
+    #[serde(
+        rename = "counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub counts: ::buffa::MessageField<
+        ExposureCoverageCounts,
+        ::buffa::Inline<ExposureCoverageCounts>,
+    >,
+    /// Field 4: `type_counts`
+    #[serde(
+        rename = "typeCounts",
+        alias = "type_counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub type_counts: ::buffa::alloc::vec::Vec<ExposureCoverageKindCount>,
+    /// Field 5: `overlaps`
+    #[serde(
+        rename = "overlaps",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub overlaps: ::buffa::alloc::vec::Vec<ExposureCoverageOverlap>,
+    /// Field 6: `primary_only`
+    #[serde(
+        rename = "primaryOnly",
+        alias = "primary_only",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub primary_only: ::buffa::alloc::vec::Vec<ExposureCoveragePair>,
+    /// Field 7: `corroborating_only`
+    #[serde(
+        rename = "corroboratingOnly",
+        alias = "corroborating_only",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub corroborating_only: ::buffa::alloc::vec::Vec<ExposureCoverageCorroboratingOnly>,
+    /// Field 8: `accounts`
+    #[serde(
+        rename = "accounts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub accounts: ::buffa::alloc::vec::Vec<ExposureCoverageAccount>,
+    /// Field 9: `completeness`
+    #[serde(
+        rename = "completeness",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub completeness: ::buffa::MessageField<
+        ExposureCoverageCompleteness,
+        ::buffa::Inline<ExposureCoverageCompleteness>,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CompareExposureCoverageResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CompareExposureCoverageResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("counts", &self.counts)
+            .field("type_counts", &self.type_counts)
+            .field("overlaps", &self.overlaps)
+            .field("primary_only", &self.primary_only)
+            .field("corroborating_only", &self.corroborating_only)
+            .field("accounts", &self.accounts)
+            .field("completeness", &self.completeness)
+            .finish()
+    }
+}
+impl CompareExposureCoverageResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CompareExposureCoverageResponse";
+}
+::buffa::impl_default_instance!(CompareExposureCoverageResponse);
+impl ::buffa::MessageName for CompareExposureCoverageResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CompareExposureCoverageResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CompareExposureCoverageResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CompareExposureCoverageResponse";
+}
+impl ::buffa::Message for CompareExposureCoverageResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        if self.counts.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.counts.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.type_counts {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.overlaps {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.primary_only {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.corroborating_only {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.accounts {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.completeness.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.completeness.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        if self.counts.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.counts.write_to(__cache, buf);
+        }
+        for v in &self.type_counts {
+            ::buffa::types::put_len_delimited_header(
+                4u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.overlaps {
+            ::buffa::types::put_len_delimited_header(
+                5u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.primary_only {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.corroborating_only {
+            ::buffa::types::put_len_delimited_header(
+                7u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.accounts {
+            ::buffa::types::put_len_delimited_header(
+                8u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.completeness.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                9u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.completeness.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.counts.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.type_counts.push(elem);
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.overlaps.push(elem);
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.primary_only.push(elem);
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.corroborating_only.push(elem);
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.accounts.push(elem);
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.completeness.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.counts = ::buffa::MessageField::none();
+        self.type_counts.clear();
+        self.overlaps.clear();
+        self.primary_only.clear();
+        self.corroborating_only.clear();
+        self.accounts.clear();
+        self.completeness = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CompareExposureCoverageResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CompareExposureCoverageResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CompareExposureCoverageResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __COMPARE_EXPOSURE_COVERAGE_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CompareExposureCoverageResponse",
+    to_json: ::buffa::type_registry::any_to_json::<CompareExposureCoverageResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<CompareExposureCoverageResponse>,
+    is_wkt: false,
+};
 #[allow(
     non_camel_case_types,
     dead_code,
@@ -14231,6 +16615,4507 @@ pub mod __buffa {
                 ::serde::Serialize::serialize(&self.0, __s)
             }
         }
+        /// ExposureCoverageProfile declares the closed entity kinds and sources used by
+        /// one coverage comparison. Relations are fixed by the server.
+        #[derive(Clone, Debug, Default)]
+        pub struct ExposureCoverageProfileView<'a> {
+            /// Field 1: `primary_source_id`
+            pub primary_source_id: &'a str,
+            /// Field 2: `primary_entity_kind_prefix`
+            pub primary_entity_kind_prefix: &'a str,
+            /// Field 3: `corroborating_source_id`
+            pub corroborating_source_id: &'a str,
+            /// Field 4: `corroborating_entity_kind`
+            pub corroborating_entity_kind: &'a str,
+            /// Field 5: `indicator_kinds`
+            pub indicator_kinds: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 6: `account_kind`
+            pub account_kind: &'a str,
+            /// Field 7: `corroborating_observation_kind`
+            pub corroborating_observation_kind: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ExposureCoverageProfileView<'a> {
+            type Owned = super::super::ExposureCoverageProfile;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.primary_source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.primary_entity_kind_prefix = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.corroborating_source_id = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.corroborating_entity_kind = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.account_kind = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.corroborating_observation_kind = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.indicator_kinds.push(__elem);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageProfile,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageProfile,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ExposureCoverageProfile {
+                    primary_source_id: self.primary_source_id.to_string(),
+                    primary_entity_kind_prefix: self
+                        .primary_entity_kind_prefix
+                        .to_string(),
+                    corroborating_source_id: self.corroborating_source_id.to_string(),
+                    corroborating_entity_kind: self
+                        .corroborating_entity_kind
+                        .to_string(),
+                    indicator_kinds: self
+                        .indicator_kinds
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    account_kind: self.account_kind.to_string(),
+                    corroborating_observation_kind: self
+                        .corroborating_observation_kind
+                        .to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ExposureCoverageProfileView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.primary_source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.primary_source_id)
+                                as u64;
+                }
+                if !self.primary_entity_kind_prefix.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.primary_entity_kind_prefix,
+                            ) as u64;
+                }
+                if !self.corroborating_source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.corroborating_source_id,
+                            ) as u64;
+                }
+                if !self.corroborating_entity_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.corroborating_entity_kind,
+                            ) as u64;
+                }
+                for v in &self.indicator_kinds {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if !self.account_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.account_kind)
+                                as u64;
+                }
+                if !self.corroborating_observation_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.corroborating_observation_kind,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.primary_source_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.primary_source_id, buf);
+                }
+                if !self.primary_entity_kind_prefix.is_empty() {
+                    ::buffa::types::put_string_field(
+                        2u32,
+                        &self.primary_entity_kind_prefix,
+                        buf,
+                    );
+                }
+                if !self.corroborating_source_id.is_empty() {
+                    ::buffa::types::put_string_field(
+                        3u32,
+                        &self.corroborating_source_id,
+                        buf,
+                    );
+                }
+                if !self.corroborating_entity_kind.is_empty() {
+                    ::buffa::types::put_string_field(
+                        4u32,
+                        &self.corroborating_entity_kind,
+                        buf,
+                    );
+                }
+                for v in &self.indicator_kinds {
+                    ::buffa::types::put_string_field(5u32, v, buf);
+                }
+                if !self.account_kind.is_empty() {
+                    ::buffa::types::put_string_field(6u32, &self.account_kind, buf);
+                }
+                if !self.corroborating_observation_kind.is_empty() {
+                    ::buffa::types::put_string_field(
+                        7u32,
+                        &self.corroborating_observation_kind,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ExposureCoverageProfileView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.primary_source_id,
+                ) {
+                    __map.serialize_entry("primarySourceId", self.primary_source_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.primary_entity_kind_prefix,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "primaryEntityKindPrefix",
+                            self.primary_entity_kind_prefix,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.corroborating_source_id,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "corroboratingSourceId",
+                            self.corroborating_source_id,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.corroborating_entity_kind,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "corroboratingEntityKind",
+                            self.corroborating_entity_kind,
+                        )?;
+                }
+                if !self.indicator_kinds.is_empty() {
+                    __map.serialize_entry("indicatorKinds", &*self.indicator_kinds)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.account_kind) {
+                    __map.serialize_entry("accountKind", self.account_kind)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.corroborating_observation_kind,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "corroboratingObservationKind",
+                            self.corroborating_observation_kind,
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ExposureCoverageProfileView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ExposureCoverageProfile";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageProfile";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageProfile";
+        }
+        ::buffa::impl_default_view_instance!(ExposureCoverageProfileView);
+        ::buffa::impl_view_reborrow!(ExposureCoverageProfileView);
+        /** Self-contained, `'static` owned view of a `ExposureCoverageProfile` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ExposureCoverageProfileView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ExposureCoverageProfileView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ExposureCoverageProfileOwnedView(
+            ::buffa::OwnedView<ExposureCoverageProfileView<'static>>,
+        );
+        impl ExposureCoverageProfileOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageProfileOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageProfileOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ExposureCoverageProfile,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageProfileOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ExposureCoverageProfileView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ExposureCoverageProfileView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ExposureCoverageProfile {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `primary_source_id`
+            #[must_use]
+            pub fn primary_source_id(&self) -> &'_ str {
+                self.0.reborrow().primary_source_id
+            }
+            /// Field 2: `primary_entity_kind_prefix`
+            #[must_use]
+            pub fn primary_entity_kind_prefix(&self) -> &'_ str {
+                self.0.reborrow().primary_entity_kind_prefix
+            }
+            /// Field 3: `corroborating_source_id`
+            #[must_use]
+            pub fn corroborating_source_id(&self) -> &'_ str {
+                self.0.reborrow().corroborating_source_id
+            }
+            /// Field 4: `corroborating_entity_kind`
+            #[must_use]
+            pub fn corroborating_entity_kind(&self) -> &'_ str {
+                self.0.reborrow().corroborating_entity_kind
+            }
+            /// Field 5: `indicator_kinds`
+            #[must_use]
+            pub fn indicator_kinds(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().indicator_kinds
+            }
+            /// Field 6: `account_kind`
+            #[must_use]
+            pub fn account_kind(&self) -> &'_ str {
+                self.0.reborrow().account_kind
+            }
+            /// Field 7: `corroborating_observation_kind`
+            #[must_use]
+            pub fn corroborating_observation_kind(&self) -> &'_ str {
+                self.0.reborrow().corroborating_observation_kind
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ExposureCoverageProfileView<'static>>,
+        > for ExposureCoverageProfileOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ExposureCoverageProfileView<'static>>,
+            ) -> Self {
+                ExposureCoverageProfileOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ExposureCoverageProfileOwnedView>
+        for ::buffa::OwnedView<ExposureCoverageProfileView<'static>> {
+            fn from(wrapper: ExposureCoverageProfileOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ExposureCoverageProfileView<'static>>,
+        > for ExposureCoverageProfileOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ExposureCoverageProfileView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ExposureCoverageProfile {
+            type View<'a> = ExposureCoverageProfileView<'a>;
+            type ViewHandle = ExposureCoverageProfileOwnedView;
+        }
+        impl ::serde::Serialize for ExposureCoverageProfileOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        /// CompareExposureCoverageRequest scopes one bounded coverage comparison to an
+        /// authenticated tenant. Empty account, region, and query values disable those
+        /// optional filters.
+        #[derive(Clone, Debug, Default)]
+        pub struct CompareExposureCoverageRequestView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `profile`
+            pub profile: ::buffa::MessageFieldView<
+                super::super::__buffa::view::ExposureCoverageProfileView<'a>,
+            >,
+            /// Field 3: `account_id`
+            pub account_id: &'a str,
+            /// Field 4: `region`
+            pub region: &'a str,
+            /// Field 5: `query`
+            pub query: &'a str,
+            /// Field 6: `limit`
+            pub limit: u32,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CompareExposureCoverageRequestView<'a> {
+            type Owned = super::super::CompareExposureCoverageRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.profile.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.profile = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::ExposureCoverageProfileView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.account_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.region = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.query = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CompareExposureCoverageRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CompareExposureCoverageRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CompareExposureCoverageRequest {
+                    tenant_id: self.tenant_id.to_string(),
+                    profile: match self.profile.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::ExposureCoverageProfile,
+                                ::buffa::Inline<super::super::ExposureCoverageProfile>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    account_id: self.account_id.to_string(),
+                    region: self.region.to_string(),
+                    query: self.query.to_string(),
+                    limit: self.limit,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CompareExposureCoverageRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.profile.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.profile.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.account_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.account_id)
+                                as u64;
+                }
+                if !self.region.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.region) as u64;
+                }
+                if !self.query.is_empty() {
+                    size
+                        += 1u64 + ::buffa::types::string_encoded_len(&self.query) as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.profile.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.profile.write_to(__cache, buf);
+                }
+                if !self.account_id.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.account_id, buf);
+                }
+                if !self.region.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.region, buf);
+                }
+                if !self.query.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.query, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(6u32, self.limit, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CompareExposureCoverageRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.profile.as_option() {
+                        __map.serialize_entry("profile", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.account_id) {
+                    __map.serialize_entry("accountId", self.account_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.region) {
+                    __map.serialize_entry("region", self.region)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.query) {
+                    __map.serialize_entry("query", self.query)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CompareExposureCoverageRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CompareExposureCoverageRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CompareExposureCoverageRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CompareExposureCoverageRequest";
+        }
+        ::buffa::impl_default_view_instance!(CompareExposureCoverageRequestView);
+        ::buffa::impl_view_reborrow!(CompareExposureCoverageRequestView);
+        /** Self-contained, `'static` owned view of a `CompareExposureCoverageRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CompareExposureCoverageRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CompareExposureCoverageRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CompareExposureCoverageRequestOwnedView(
+            ::buffa::OwnedView<CompareExposureCoverageRequestView<'static>>,
+        );
+        impl CompareExposureCoverageRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CompareExposureCoverageRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CompareExposureCoverageRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CompareExposureCoverageRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CompareExposureCoverageRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`CompareExposureCoverageRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CompareExposureCoverageRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::CompareExposureCoverageRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `profile`
+            #[must_use]
+            pub fn profile(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::ExposureCoverageProfileView<'_>,
+            > {
+                &self.0.reborrow().profile
+            }
+            /// Field 3: `account_id`
+            #[must_use]
+            pub fn account_id(&self) -> &'_ str {
+                self.0.reborrow().account_id
+            }
+            /// Field 4: `region`
+            #[must_use]
+            pub fn region(&self) -> &'_ str {
+                self.0.reborrow().region
+            }
+            /// Field 5: `query`
+            #[must_use]
+            pub fn query(&self) -> &'_ str {
+                self.0.reborrow().query
+            }
+            /// Field 6: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<CompareExposureCoverageRequestView<'static>>,
+        > for CompareExposureCoverageRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<CompareExposureCoverageRequestView<'static>>,
+            ) -> Self {
+                CompareExposureCoverageRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CompareExposureCoverageRequestOwnedView>
+        for ::buffa::OwnedView<CompareExposureCoverageRequestView<'static>> {
+            fn from(wrapper: CompareExposureCoverageRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<CompareExposureCoverageRequestView<'static>>,
+        > for CompareExposureCoverageRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<CompareExposureCoverageRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CompareExposureCoverageRequest {
+            type View<'a> = CompareExposureCoverageRequestView<'a>;
+            type ViewHandle = CompareExposureCoverageRequestOwnedView;
+        }
+        impl ::serde::Serialize for CompareExposureCoverageRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ExposureCoverageCountsView<'a> {
+            /// Field 1: `primary_entities`
+            pub primary_entities: u64,
+            /// Field 2: `indicators`
+            pub indicators: u64,
+            /// Field 3: `host_indicators`
+            pub host_indicators: u64,
+            /// Field 4: `ip_indicators`
+            pub ip_indicators: u64,
+            /// Field 5: `overlapping_primary_entities`
+            pub overlapping_primary_entities: u64,
+            /// Field 6: `overlapping_indicators`
+            pub overlapping_indicators: u64,
+            /// Field 7: `overlapping_corroborating_entities`
+            pub overlapping_corroborating_entities: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ExposureCoverageCountsView<'a> {
+            type Owned = super::super::ExposureCoverageCounts;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.primary_entities = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.indicators = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.host_indicators = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.ip_indicators = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.overlapping_primary_entities = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.overlapping_indicators = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.overlapping_corroborating_entities = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageCounts,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageCounts,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ExposureCoverageCounts {
+                    primary_entities: self.primary_entities,
+                    indicators: self.indicators,
+                    host_indicators: self.host_indicators,
+                    ip_indicators: self.ip_indicators,
+                    overlapping_primary_entities: self.overlapping_primary_entities,
+                    overlapping_indicators: self.overlapping_indicators,
+                    overlapping_corroborating_entities: self
+                        .overlapping_corroborating_entities,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ExposureCoverageCountsView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.primary_entities != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.primary_entities)
+                                as u64;
+                }
+                if self.indicators != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.indicators) as u64;
+                }
+                if self.host_indicators != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.host_indicators)
+                                as u64;
+                }
+                if self.ip_indicators != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.ip_indicators)
+                                as u64;
+                }
+                if self.overlapping_primary_entities != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.overlapping_primary_entities,
+                            ) as u64;
+                }
+                if self.overlapping_indicators != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.overlapping_indicators,
+                            ) as u64;
+                }
+                if self.overlapping_corroborating_entities != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.overlapping_corroborating_entities,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.primary_entities != 0u64 {
+                    ::buffa::types::put_uint64_field(1u32, self.primary_entities, buf);
+                }
+                if self.indicators != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.indicators, buf);
+                }
+                if self.host_indicators != 0u64 {
+                    ::buffa::types::put_uint64_field(3u32, self.host_indicators, buf);
+                }
+                if self.ip_indicators != 0u64 {
+                    ::buffa::types::put_uint64_field(4u32, self.ip_indicators, buf);
+                }
+                if self.overlapping_primary_entities != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        5u32,
+                        self.overlapping_primary_entities,
+                        buf,
+                    );
+                }
+                if self.overlapping_indicators != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        6u32,
+                        self.overlapping_indicators,
+                        buf,
+                    );
+                }
+                if self.overlapping_corroborating_entities != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        7u32,
+                        self.overlapping_corroborating_entities,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ExposureCoverageCountsView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.primary_entities) {
+                    __map
+                        .serialize_entry(
+                            "primaryEntities",
+                            &::buffa::json_helpers::ProtoJson(&self.primary_entities),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.indicators) {
+                    __map
+                        .serialize_entry(
+                            "indicators",
+                            &::buffa::json_helpers::ProtoJson(&self.indicators),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.host_indicators) {
+                    __map
+                        .serialize_entry(
+                            "hostIndicators",
+                            &::buffa::json_helpers::ProtoJson(&self.host_indicators),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.ip_indicators) {
+                    __map
+                        .serialize_entry(
+                            "ipIndicators",
+                            &::buffa::json_helpers::ProtoJson(&self.ip_indicators),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.overlapping_primary_entities,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "overlappingPrimaryEntities",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.overlapping_primary_entities,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.overlapping_indicators,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "overlappingIndicators",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.overlapping_indicators,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.overlapping_corroborating_entities,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "overlappingCorroboratingEntities",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.overlapping_corroborating_entities,
+                            ),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ExposureCoverageCountsView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ExposureCoverageCounts";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageCounts";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCounts";
+        }
+        ::buffa::impl_default_view_instance!(ExposureCoverageCountsView);
+        ::buffa::impl_view_reborrow!(ExposureCoverageCountsView);
+        /** Self-contained, `'static` owned view of a `ExposureCoverageCounts` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ExposureCoverageCountsView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ExposureCoverageCountsView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ExposureCoverageCountsOwnedView(
+            ::buffa::OwnedView<ExposureCoverageCountsView<'static>>,
+        );
+        impl ExposureCoverageCountsOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCountsOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCountsOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ExposureCoverageCounts,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCountsOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`ExposureCoverageCountsView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ExposureCoverageCountsView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ExposureCoverageCounts {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `primary_entities`
+            #[must_use]
+            pub fn primary_entities(&self) -> u64 {
+                self.0.reborrow().primary_entities
+            }
+            /// Field 2: `indicators`
+            #[must_use]
+            pub fn indicators(&self) -> u64 {
+                self.0.reborrow().indicators
+            }
+            /// Field 3: `host_indicators`
+            #[must_use]
+            pub fn host_indicators(&self) -> u64 {
+                self.0.reborrow().host_indicators
+            }
+            /// Field 4: `ip_indicators`
+            #[must_use]
+            pub fn ip_indicators(&self) -> u64 {
+                self.0.reborrow().ip_indicators
+            }
+            /// Field 5: `overlapping_primary_entities`
+            #[must_use]
+            pub fn overlapping_primary_entities(&self) -> u64 {
+                self.0.reborrow().overlapping_primary_entities
+            }
+            /// Field 6: `overlapping_indicators`
+            #[must_use]
+            pub fn overlapping_indicators(&self) -> u64 {
+                self.0.reborrow().overlapping_indicators
+            }
+            /// Field 7: `overlapping_corroborating_entities`
+            #[must_use]
+            pub fn overlapping_corroborating_entities(&self) -> u64 {
+                self.0.reborrow().overlapping_corroborating_entities
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ExposureCoverageCountsView<'static>>,
+        > for ExposureCoverageCountsOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ExposureCoverageCountsView<'static>>,
+            ) -> Self {
+                ExposureCoverageCountsOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ExposureCoverageCountsOwnedView>
+        for ::buffa::OwnedView<ExposureCoverageCountsView<'static>> {
+            fn from(wrapper: ExposureCoverageCountsOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ExposureCoverageCountsView<'static>>,
+        > for ExposureCoverageCountsOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ExposureCoverageCountsView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ExposureCoverageCounts {
+            type View<'a> = ExposureCoverageCountsView<'a>;
+            type ViewHandle = ExposureCoverageCountsOwnedView;
+        }
+        impl ::serde::Serialize for ExposureCoverageCountsOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ExposureCoverageKindCountView<'a> {
+            /// Field 1: `entity_kind`
+            pub entity_kind: &'a str,
+            /// Field 2: `count`
+            pub count: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ExposureCoverageKindCountView<'a> {
+            type Owned = super::super::ExposureCoverageKindCount;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.entity_kind = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.count = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageKindCount,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageKindCount,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ExposureCoverageKindCount {
+                    entity_kind: self.entity_kind.to_string(),
+                    count: self.count,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ExposureCoverageKindCountView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.entity_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.entity_kind)
+                                as u64;
+                }
+                if self.count != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.entity_kind.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.entity_kind, buf);
+                }
+                if self.count != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.count, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ExposureCoverageKindCountView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.entity_kind) {
+                    __map.serialize_entry("entityKind", self.entity_kind)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.count) {
+                    __map
+                        .serialize_entry(
+                            "count",
+                            &::buffa::json_helpers::ProtoJson(&self.count),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ExposureCoverageKindCountView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ExposureCoverageKindCount";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageKindCount";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageKindCount";
+        }
+        ::buffa::impl_default_view_instance!(ExposureCoverageKindCountView);
+        ::buffa::impl_view_reborrow!(ExposureCoverageKindCountView);
+        /** Self-contained, `'static` owned view of a `ExposureCoverageKindCount` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ExposureCoverageKindCountView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ExposureCoverageKindCountView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ExposureCoverageKindCountOwnedView(
+            ::buffa::OwnedView<ExposureCoverageKindCountView<'static>>,
+        );
+        impl ExposureCoverageKindCountOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageKindCountOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageKindCountOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ExposureCoverageKindCount,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageKindCountOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ExposureCoverageKindCountView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ExposureCoverageKindCountView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ExposureCoverageKindCount {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `entity_kind`
+            #[must_use]
+            pub fn entity_kind(&self) -> &'_ str {
+                self.0.reborrow().entity_kind
+            }
+            /// Field 2: `count`
+            #[must_use]
+            pub fn count(&self) -> u64 {
+                self.0.reborrow().count
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ExposureCoverageKindCountView<'static>>,
+        > for ExposureCoverageKindCountOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ExposureCoverageKindCountView<'static>>,
+            ) -> Self {
+                ExposureCoverageKindCountOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ExposureCoverageKindCountOwnedView>
+        for ::buffa::OwnedView<ExposureCoverageKindCountView<'static>> {
+            fn from(wrapper: ExposureCoverageKindCountOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ExposureCoverageKindCountView<'static>>,
+        > for ExposureCoverageKindCountOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ExposureCoverageKindCountView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ExposureCoverageKindCount {
+            type View<'a> = ExposureCoverageKindCountView<'a>;
+            type ViewHandle = ExposureCoverageKindCountOwnedView;
+        }
+        impl ::serde::Serialize for ExposureCoverageKindCountOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ExposureCoverageOverlapView<'a> {
+            /// Field 1: `primary`
+            pub primary: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 2: `indicator`
+            pub indicator: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 3: `corroborating`
+            pub corroborating: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ExposureCoverageOverlapView<'a> {
+            type Owned = super::super::ExposureCoverageOverlap;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.primary.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.primary = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.indicator.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.indicator = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.corroborating.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.corroborating = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageOverlap,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageOverlap,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ExposureCoverageOverlap {
+                    primary: match self.primary.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    indicator: match self.indicator.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    corroborating: match self.corroborating.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ExposureCoverageOverlapView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.primary.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.primary.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.indicator.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.indicator.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.corroborating.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.corroborating.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.primary.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.primary.write_to(__cache, buf);
+                }
+                if self.indicator.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.indicator.write_to(__cache, buf);
+                }
+                if self.corroborating.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.corroborating.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ExposureCoverageOverlapView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.primary.as_option() {
+                        __map.serialize_entry("primary", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.indicator.as_option()
+                    {
+                        __map.serialize_entry("indicator", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .corroborating
+                        .as_option()
+                    {
+                        __map.serialize_entry("corroborating", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ExposureCoverageOverlapView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ExposureCoverageOverlap";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageOverlap";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageOverlap";
+        }
+        ::buffa::impl_default_view_instance!(ExposureCoverageOverlapView);
+        ::buffa::impl_view_reborrow!(ExposureCoverageOverlapView);
+        /** Self-contained, `'static` owned view of a `ExposureCoverageOverlap` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ExposureCoverageOverlapView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ExposureCoverageOverlapView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ExposureCoverageOverlapOwnedView(
+            ::buffa::OwnedView<ExposureCoverageOverlapView<'static>>,
+        );
+        impl ExposureCoverageOverlapOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageOverlapOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageOverlapOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ExposureCoverageOverlap,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageOverlapOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ExposureCoverageOverlapView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ExposureCoverageOverlapView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ExposureCoverageOverlap {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `primary`
+            #[must_use]
+            pub fn primary(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().primary
+            }
+            /// Field 2: `indicator`
+            #[must_use]
+            pub fn indicator(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().indicator
+            }
+            /// Field 3: `corroborating`
+            #[must_use]
+            pub fn corroborating(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().corroborating
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ExposureCoverageOverlapView<'static>>,
+        > for ExposureCoverageOverlapOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ExposureCoverageOverlapView<'static>>,
+            ) -> Self {
+                ExposureCoverageOverlapOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ExposureCoverageOverlapOwnedView>
+        for ::buffa::OwnedView<ExposureCoverageOverlapView<'static>> {
+            fn from(wrapper: ExposureCoverageOverlapOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ExposureCoverageOverlapView<'static>>,
+        > for ExposureCoverageOverlapOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ExposureCoverageOverlapView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ExposureCoverageOverlap {
+            type View<'a> = ExposureCoverageOverlapView<'a>;
+            type ViewHandle = ExposureCoverageOverlapOwnedView;
+        }
+        impl ::serde::Serialize for ExposureCoverageOverlapOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ExposureCoveragePairView<'a> {
+            /// Field 1: `primary`
+            pub primary: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 2: `indicator`
+            pub indicator: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ExposureCoveragePairView<'a> {
+            type Owned = super::super::ExposureCoveragePair;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.primary.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.primary = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.indicator.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.indicator = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoveragePair,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoveragePair,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ExposureCoveragePair {
+                    primary: match self.primary.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    indicator: match self.indicator.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ExposureCoveragePairView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.primary.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.primary.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.indicator.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.indicator.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.primary.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.primary.write_to(__cache, buf);
+                }
+                if self.indicator.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.indicator.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ExposureCoveragePairView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.primary.as_option() {
+                        __map.serialize_entry("primary", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.indicator.as_option()
+                    {
+                        __map.serialize_entry("indicator", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ExposureCoveragePairView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ExposureCoveragePair";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoveragePair";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoveragePair";
+        }
+        ::buffa::impl_default_view_instance!(ExposureCoveragePairView);
+        ::buffa::impl_view_reborrow!(ExposureCoveragePairView);
+        /** Self-contained, `'static` owned view of a `ExposureCoveragePair` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ExposureCoveragePairView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ExposureCoveragePairView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ExposureCoveragePairOwnedView(
+            ::buffa::OwnedView<ExposureCoveragePairView<'static>>,
+        );
+        impl ExposureCoveragePairOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoveragePairOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoveragePairOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ExposureCoveragePair,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoveragePairOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`ExposureCoveragePairView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ExposureCoveragePairView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ExposureCoveragePair {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `primary`
+            #[must_use]
+            pub fn primary(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().primary
+            }
+            /// Field 2: `indicator`
+            #[must_use]
+            pub fn indicator(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().indicator
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<ExposureCoveragePairView<'static>>>
+        for ExposureCoveragePairOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ExposureCoveragePairView<'static>>,
+            ) -> Self {
+                ExposureCoveragePairOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ExposureCoveragePairOwnedView>
+        for ::buffa::OwnedView<ExposureCoveragePairView<'static>> {
+            fn from(wrapper: ExposureCoveragePairOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ExposureCoveragePairView<'static>>,
+        > for ExposureCoveragePairOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<ExposureCoveragePairView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ExposureCoveragePair {
+            type View<'a> = ExposureCoveragePairView<'a>;
+            type ViewHandle = ExposureCoveragePairOwnedView;
+        }
+        impl ::serde::Serialize for ExposureCoveragePairOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ExposureCoverageCorroboratingOnlyView<'a> {
+            /// Field 1: `corroborating`
+            pub corroborating: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 2: `indicator`
+            pub indicator: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ExposureCoverageCorroboratingOnlyView<'a> {
+            type Owned = super::super::ExposureCoverageCorroboratingOnly;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.corroborating.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.corroborating = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.indicator.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.indicator = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageCorroboratingOnly,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageCorroboratingOnly,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ExposureCoverageCorroboratingOnly {
+                    corroborating: match self.corroborating.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    indicator: match self.indicator.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ExposureCoverageCorroboratingOnlyView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.corroborating.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.corroborating.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.indicator.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.indicator.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.corroborating.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.corroborating.write_to(__cache, buf);
+                }
+                if self.indicator.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.indicator.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ExposureCoverageCorroboratingOnlyView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .corroborating
+                        .as_option()
+                    {
+                        __map.serialize_entry("corroborating", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.indicator.as_option()
+                    {
+                        __map.serialize_entry("indicator", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ExposureCoverageCorroboratingOnlyView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ExposureCoverageCorroboratingOnly";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageCorroboratingOnly";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCorroboratingOnly";
+        }
+        ::buffa::impl_default_view_instance!(ExposureCoverageCorroboratingOnlyView);
+        ::buffa::impl_view_reborrow!(ExposureCoverageCorroboratingOnlyView);
+        /** Self-contained, `'static` owned view of a `ExposureCoverageCorroboratingOnly` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ExposureCoverageCorroboratingOnlyView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ExposureCoverageCorroboratingOnlyView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ExposureCoverageCorroboratingOnlyOwnedView(
+            ::buffa::OwnedView<ExposureCoverageCorroboratingOnlyView<'static>>,
+        );
+        impl ExposureCoverageCorroboratingOnlyOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCorroboratingOnlyOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCorroboratingOnlyOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ExposureCoverageCorroboratingOnly,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCorroboratingOnlyOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ExposureCoverageCorroboratingOnlyView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ExposureCoverageCorroboratingOnlyView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ExposureCoverageCorroboratingOnly {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `corroborating`
+            #[must_use]
+            pub fn corroborating(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().corroborating
+            }
+            /// Field 2: `indicator`
+            #[must_use]
+            pub fn indicator(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().indicator
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ExposureCoverageCorroboratingOnlyView<'static>>,
+        > for ExposureCoverageCorroboratingOnlyOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ExposureCoverageCorroboratingOnlyView<'static>>,
+            ) -> Self {
+                ExposureCoverageCorroboratingOnlyOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ExposureCoverageCorroboratingOnlyOwnedView>
+        for ::buffa::OwnedView<ExposureCoverageCorroboratingOnlyView<'static>> {
+            fn from(wrapper: ExposureCoverageCorroboratingOnlyOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ExposureCoverageCorroboratingOnlyView<'static>>,
+        > for ExposureCoverageCorroboratingOnlyOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ExposureCoverageCorroboratingOnlyView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView
+        for super::super::ExposureCoverageCorroboratingOnly {
+            type View<'a> = ExposureCoverageCorroboratingOnlyView<'a>;
+            type ViewHandle = ExposureCoverageCorroboratingOnlyOwnedView;
+        }
+        impl ::serde::Serialize for ExposureCoverageCorroboratingOnlyOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ExposureCoverageAccountView<'a> {
+            /// Field 1: `account`
+            pub account: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 2: `primary_entities`
+            pub primary_entities: u64,
+            /// Field 3: `corroborating_observations`
+            pub corroborating_observations: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ExposureCoverageAccountView<'a> {
+            type Owned = super::super::ExposureCoverageAccount;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.account.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.account = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.primary_entities = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.corroborating_observations = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageAccount,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageAccount,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ExposureCoverageAccount {
+                    account: match self.account.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    primary_entities: self.primary_entities,
+                    corroborating_observations: self.corroborating_observations,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ExposureCoverageAccountView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.account.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.account.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.primary_entities != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.primary_entities)
+                                as u64;
+                }
+                if self.corroborating_observations != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.corroborating_observations,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.account.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.account.write_to(__cache, buf);
+                }
+                if self.primary_entities != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.primary_entities, buf);
+                }
+                if self.corroborating_observations != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        3u32,
+                        self.corroborating_observations,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ExposureCoverageAccountView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.account.as_option() {
+                        __map.serialize_entry("account", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.primary_entities) {
+                    __map
+                        .serialize_entry(
+                            "primaryEntities",
+                            &::buffa::json_helpers::ProtoJson(&self.primary_entities),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.corroborating_observations,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "corroboratingObservations",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.corroborating_observations,
+                            ),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ExposureCoverageAccountView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ExposureCoverageAccount";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageAccount";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageAccount";
+        }
+        ::buffa::impl_default_view_instance!(ExposureCoverageAccountView);
+        ::buffa::impl_view_reborrow!(ExposureCoverageAccountView);
+        /** Self-contained, `'static` owned view of a `ExposureCoverageAccount` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ExposureCoverageAccountView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ExposureCoverageAccountView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ExposureCoverageAccountOwnedView(
+            ::buffa::OwnedView<ExposureCoverageAccountView<'static>>,
+        );
+        impl ExposureCoverageAccountOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageAccountOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageAccountOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ExposureCoverageAccount,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageAccountOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ExposureCoverageAccountView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ExposureCoverageAccountView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ExposureCoverageAccount {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `account`
+            #[must_use]
+            pub fn account(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().account
+            }
+            /// Field 2: `primary_entities`
+            #[must_use]
+            pub fn primary_entities(&self) -> u64 {
+                self.0.reborrow().primary_entities
+            }
+            /// Field 3: `corroborating_observations`
+            #[must_use]
+            pub fn corroborating_observations(&self) -> u64 {
+                self.0.reborrow().corroborating_observations
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ExposureCoverageAccountView<'static>>,
+        > for ExposureCoverageAccountOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ExposureCoverageAccountView<'static>>,
+            ) -> Self {
+                ExposureCoverageAccountOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ExposureCoverageAccountOwnedView>
+        for ::buffa::OwnedView<ExposureCoverageAccountView<'static>> {
+            fn from(wrapper: ExposureCoverageAccountOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ExposureCoverageAccountView<'static>>,
+        > for ExposureCoverageAccountOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ExposureCoverageAccountView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ExposureCoverageAccount {
+            type View<'a> = ExposureCoverageAccountView<'a>;
+            type ViewHandle = ExposureCoverageAccountOwnedView;
+        }
+        impl ::serde::Serialize for ExposureCoverageAccountOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ExposureCoverageCompletenessView<'a> {
+            /// Field 1: `type_counts_truncated`
+            pub type_counts_truncated: bool,
+            /// Field 2: `overlaps_truncated`
+            pub overlaps_truncated: bool,
+            /// Field 3: `primary_only_truncated`
+            pub primary_only_truncated: bool,
+            /// Field 4: `corroborating_only_truncated`
+            pub corroborating_only_truncated: bool,
+            /// Field 5: `accounts_truncated`
+            pub accounts_truncated: bool,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ExposureCoverageCompletenessView<'a> {
+            type Owned = super::super::ExposureCoverageCompleteness;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.type_counts_truncated = ::buffa::types::decode_bool(
+                            &mut cur,
+                        )?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.overlaps_truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.primary_only_truncated = ::buffa::types::decode_bool(
+                            &mut cur,
+                        )?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.corroborating_only_truncated = ::buffa::types::decode_bool(
+                            &mut cur,
+                        )?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.accounts_truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageCompleteness,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ExposureCoverageCompleteness,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ExposureCoverageCompleteness {
+                    type_counts_truncated: self.type_counts_truncated,
+                    overlaps_truncated: self.overlaps_truncated,
+                    primary_only_truncated: self.primary_only_truncated,
+                    corroborating_only_truncated: self.corroborating_only_truncated,
+                    accounts_truncated: self.accounts_truncated,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ExposureCoverageCompletenessView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.type_counts_truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.overlaps_truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.primary_only_truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.corroborating_only_truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.accounts_truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.type_counts_truncated {
+                    ::buffa::types::put_bool_field(
+                        1u32,
+                        self.type_counts_truncated,
+                        buf,
+                    );
+                }
+                if self.overlaps_truncated {
+                    ::buffa::types::put_bool_field(2u32, self.overlaps_truncated, buf);
+                }
+                if self.primary_only_truncated {
+                    ::buffa::types::put_bool_field(
+                        3u32,
+                        self.primary_only_truncated,
+                        buf,
+                    );
+                }
+                if self.corroborating_only_truncated {
+                    ::buffa::types::put_bool_field(
+                        4u32,
+                        self.corroborating_only_truncated,
+                        buf,
+                    );
+                }
+                if self.accounts_truncated {
+                    ::buffa::types::put_bool_field(5u32, self.accounts_truncated, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ExposureCoverageCompletenessView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if self.type_counts_truncated {
+                    __map
+                        .serialize_entry(
+                            "typeCountsTruncated",
+                            &self.type_counts_truncated,
+                        )?;
+                }
+                if self.overlaps_truncated {
+                    __map
+                        .serialize_entry("overlapsTruncated", &self.overlaps_truncated)?;
+                }
+                if self.primary_only_truncated {
+                    __map
+                        .serialize_entry(
+                            "primaryOnlyTruncated",
+                            &self.primary_only_truncated,
+                        )?;
+                }
+                if self.corroborating_only_truncated {
+                    __map
+                        .serialize_entry(
+                            "corroboratingOnlyTruncated",
+                            &self.corroborating_only_truncated,
+                        )?;
+                }
+                if self.accounts_truncated {
+                    __map
+                        .serialize_entry("accountsTruncated", &self.accounts_truncated)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ExposureCoverageCompletenessView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ExposureCoverageCompleteness";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ExposureCoverageCompleteness";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ExposureCoverageCompleteness";
+        }
+        ::buffa::impl_default_view_instance!(ExposureCoverageCompletenessView);
+        ::buffa::impl_view_reborrow!(ExposureCoverageCompletenessView);
+        /** Self-contained, `'static` owned view of a `ExposureCoverageCompleteness` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ExposureCoverageCompletenessView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ExposureCoverageCompletenessView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ExposureCoverageCompletenessOwnedView(
+            ::buffa::OwnedView<ExposureCoverageCompletenessView<'static>>,
+        );
+        impl ExposureCoverageCompletenessOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCompletenessOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCompletenessOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ExposureCoverageCompleteness,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ExposureCoverageCompletenessOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ExposureCoverageCompletenessView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ExposureCoverageCompletenessView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ExposureCoverageCompleteness {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `type_counts_truncated`
+            #[must_use]
+            pub fn type_counts_truncated(&self) -> bool {
+                self.0.reborrow().type_counts_truncated
+            }
+            /// Field 2: `overlaps_truncated`
+            #[must_use]
+            pub fn overlaps_truncated(&self) -> bool {
+                self.0.reborrow().overlaps_truncated
+            }
+            /// Field 3: `primary_only_truncated`
+            #[must_use]
+            pub fn primary_only_truncated(&self) -> bool {
+                self.0.reborrow().primary_only_truncated
+            }
+            /// Field 4: `corroborating_only_truncated`
+            #[must_use]
+            pub fn corroborating_only_truncated(&self) -> bool {
+                self.0.reborrow().corroborating_only_truncated
+            }
+            /// Field 5: `accounts_truncated`
+            #[must_use]
+            pub fn accounts_truncated(&self) -> bool {
+                self.0.reborrow().accounts_truncated
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ExposureCoverageCompletenessView<'static>>,
+        > for ExposureCoverageCompletenessOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ExposureCoverageCompletenessView<'static>>,
+            ) -> Self {
+                ExposureCoverageCompletenessOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ExposureCoverageCompletenessOwnedView>
+        for ::buffa::OwnedView<ExposureCoverageCompletenessView<'static>> {
+            fn from(wrapper: ExposureCoverageCompletenessOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ExposureCoverageCompletenessView<'static>>,
+        > for ExposureCoverageCompletenessOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ExposureCoverageCompletenessView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ExposureCoverageCompleteness {
+            type View<'a> = ExposureCoverageCompletenessView<'a>;
+            type ViewHandle = ExposureCoverageCompletenessOwnedView;
+        }
+        impl ::serde::Serialize for ExposureCoverageCompletenessOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        /// CompareExposureCoverageResponse binds every count and sample to one durable
+        /// graph revision and reports every server-side collection bound explicitly.
+        #[derive(Clone, Debug, Default)]
+        pub struct CompareExposureCoverageResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `counts`
+            pub counts: ::buffa::MessageFieldView<
+                super::super::__buffa::view::ExposureCoverageCountsView<'a>,
+            >,
+            /// Field 4: `type_counts`
+            pub type_counts: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::ExposureCoverageKindCountView<'a>,
+            >,
+            /// Field 5: `overlaps`
+            pub overlaps: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::ExposureCoverageOverlapView<'a>,
+            >,
+            /// Field 6: `primary_only`
+            pub primary_only: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::ExposureCoveragePairView<'a>,
+            >,
+            /// Field 7: `corroborating_only`
+            pub corroborating_only: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::ExposureCoverageCorroboratingOnlyView<'a>,
+            >,
+            /// Field 8: `accounts`
+            pub accounts: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::ExposureCoverageAccountView<'a>,
+            >,
+            /// Field 9: `completeness`
+            pub completeness: ::buffa::MessageFieldView<
+                super::super::__buffa::view::ExposureCoverageCompletenessView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CompareExposureCoverageResponseView<'a> {
+            type Owned = super::super::CompareExposureCoverageResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.counts.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.counts = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::ExposureCoverageCountsView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.completeness.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.completeness = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::ExposureCoverageCompletenessView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::ExposureCoverageKindCountView,
+                            >(),
+                        )?;
+                        view.type_counts
+                            .push(
+                                <super::super::__buffa::view::ExposureCoverageKindCountView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::ExposureCoverageOverlapView,
+                            >(),
+                        )?;
+                        view.overlaps
+                            .push(
+                                <super::super::__buffa::view::ExposureCoverageOverlapView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::ExposureCoveragePairView,
+                            >(),
+                        )?;
+                        view.primary_only
+                            .push(
+                                <super::super::__buffa::view::ExposureCoveragePairView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::ExposureCoverageCorroboratingOnlyView,
+                            >(),
+                        )?;
+                        view.corroborating_only
+                            .push(
+                                <super::super::__buffa::view::ExposureCoverageCorroboratingOnlyView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::ExposureCoverageAccountView,
+                            >(),
+                        )?;
+                        view.accounts
+                            .push(
+                                <super::super::__buffa::view::ExposureCoverageAccountView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CompareExposureCoverageResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CompareExposureCoverageResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CompareExposureCoverageResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    counts: match self.counts.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::ExposureCoverageCounts,
+                                ::buffa::Inline<super::super::ExposureCoverageCounts>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    type_counts: self
+                        .type_counts
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    overlaps: self
+                        .overlaps
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    primary_only: self
+                        .primary_only
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    corroborating_only: self
+                        .corroborating_only
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    accounts: self
+                        .accounts
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    completeness: match self.completeness.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::ExposureCoverageCompleteness,
+                                ::buffa::Inline<super::super::ExposureCoverageCompleteness>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CompareExposureCoverageResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                if self.counts.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.counts.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.type_counts {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.overlaps {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.primary_only {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.corroborating_only {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.accounts {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.completeness.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.completeness.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                if self.counts.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.counts.write_to(__cache, buf);
+                }
+                for v in &self.type_counts {
+                    ::buffa::types::put_len_delimited_header(
+                        4u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                for v in &self.overlaps {
+                    ::buffa::types::put_len_delimited_header(
+                        5u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                for v in &self.primary_only {
+                    ::buffa::types::put_len_delimited_header(
+                        6u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                for v in &self.corroborating_only {
+                    ::buffa::types::put_len_delimited_header(
+                        7u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                for v in &self.accounts {
+                    ::buffa::types::put_len_delimited_header(
+                        8u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.completeness.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        9u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.completeness.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CompareExposureCoverageResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.counts.as_option() {
+                        __map.serialize_entry("counts", __v)?;
+                    }
+                }
+                if !self.type_counts.is_empty() {
+                    __map.serialize_entry("typeCounts", &*self.type_counts)?;
+                }
+                if !self.overlaps.is_empty() {
+                    __map.serialize_entry("overlaps", &*self.overlaps)?;
+                }
+                if !self.primary_only.is_empty() {
+                    __map.serialize_entry("primaryOnly", &*self.primary_only)?;
+                }
+                if !self.corroborating_only.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "corroboratingOnly",
+                            &*self.corroborating_only,
+                        )?;
+                }
+                if !self.accounts.is_empty() {
+                    __map.serialize_entry("accounts", &*self.accounts)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .completeness
+                        .as_option()
+                    {
+                        __map.serialize_entry("completeness", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CompareExposureCoverageResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CompareExposureCoverageResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CompareExposureCoverageResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CompareExposureCoverageResponse";
+        }
+        ::buffa::impl_default_view_instance!(CompareExposureCoverageResponseView);
+        ::buffa::impl_view_reborrow!(CompareExposureCoverageResponseView);
+        /** Self-contained, `'static` owned view of a `CompareExposureCoverageResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CompareExposureCoverageResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CompareExposureCoverageResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CompareExposureCoverageResponseOwnedView(
+            ::buffa::OwnedView<CompareExposureCoverageResponseView<'static>>,
+        );
+        impl CompareExposureCoverageResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CompareExposureCoverageResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CompareExposureCoverageResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CompareExposureCoverageResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CompareExposureCoverageResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`CompareExposureCoverageResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CompareExposureCoverageResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::CompareExposureCoverageResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `counts`
+            #[must_use]
+            pub fn counts(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::ExposureCoverageCountsView<'_>,
+            > {
+                &self.0.reborrow().counts
+            }
+            /// Field 4: `type_counts`
+            #[must_use]
+            pub fn type_counts(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::ExposureCoverageKindCountView<'_>,
+            > {
+                &self.0.reborrow().type_counts
+            }
+            /// Field 5: `overlaps`
+            #[must_use]
+            pub fn overlaps(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::ExposureCoverageOverlapView<'_>,
+            > {
+                &self.0.reborrow().overlaps
+            }
+            /// Field 6: `primary_only`
+            #[must_use]
+            pub fn primary_only(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::ExposureCoveragePairView<'_>,
+            > {
+                &self.0.reborrow().primary_only
+            }
+            /// Field 7: `corroborating_only`
+            #[must_use]
+            pub fn corroborating_only(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::ExposureCoverageCorroboratingOnlyView<'_>,
+            > {
+                &self.0.reborrow().corroborating_only
+            }
+            /// Field 8: `accounts`
+            #[must_use]
+            pub fn accounts(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::ExposureCoverageAccountView<'_>,
+            > {
+                &self.0.reborrow().accounts
+            }
+            /// Field 9: `completeness`
+            #[must_use]
+            pub fn completeness(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::ExposureCoverageCompletenessView<'_>,
+            > {
+                &self.0.reborrow().completeness
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<CompareExposureCoverageResponseView<'static>>,
+        > for CompareExposureCoverageResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<CompareExposureCoverageResponseView<'static>>,
+            ) -> Self {
+                CompareExposureCoverageResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CompareExposureCoverageResponseOwnedView>
+        for ::buffa::OwnedView<CompareExposureCoverageResponseView<'static>> {
+            fn from(wrapper: CompareExposureCoverageResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<CompareExposureCoverageResponseView<'static>>,
+        > for CompareExposureCoverageResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<CompareExposureCoverageResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CompareExposureCoverageResponse {
+            type View<'a> = CompareExposureCoverageResponseView<'a>;
+            type ViewHandle = CompareExposureCoverageResponseOwnedView;
+        }
+        impl ::serde::Serialize for CompareExposureCoverageResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
     }
     /// Register this package's `Any` type entries and extension entries.
     pub fn register_types(reg: &mut ::buffa::type_registry::TypeRegistry) {
@@ -14259,6 +21144,16 @@ pub mod __buffa {
         reg.register_json_any(super::__QUERY_FACTS_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__GET_SOURCE_SUMMARY_REQUEST_JSON_ANY);
         reg.register_json_any(super::__GET_SOURCE_SUMMARY_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__EXPOSURE_COVERAGE_PROFILE_JSON_ANY);
+        reg.register_json_any(super::__COMPARE_EXPOSURE_COVERAGE_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__EXPOSURE_COVERAGE_COUNTS_JSON_ANY);
+        reg.register_json_any(super::__EXPOSURE_COVERAGE_KIND_COUNT_JSON_ANY);
+        reg.register_json_any(super::__EXPOSURE_COVERAGE_OVERLAP_JSON_ANY);
+        reg.register_json_any(super::__EXPOSURE_COVERAGE_PAIR_JSON_ANY);
+        reg.register_json_any(super::__EXPOSURE_COVERAGE_CORROBORATING_ONLY_JSON_ANY);
+        reg.register_json_any(super::__EXPOSURE_COVERAGE_ACCOUNT_JSON_ANY);
+        reg.register_json_any(super::__EXPOSURE_COVERAGE_COMPLETENESS_JSON_ANY);
+        reg.register_json_any(super::__COMPARE_EXPOSURE_COVERAGE_RESPONSE_JSON_ANY);
     }
 }
 #[doc(inline)]
@@ -14361,5 +21256,45 @@ pub use self::__buffa::view::GetSourceSummaryRequestOwnedView;
 pub use self::__buffa::view::GetSourceSummaryResponseView;
 #[doc(inline)]
 pub use self::__buffa::view::GetSourceSummaryResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageProfileView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageProfileOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CompareExposureCoverageRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::CompareExposureCoverageRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageCountsView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageCountsOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageKindCountView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageKindCountOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageOverlapView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageOverlapOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoveragePairView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoveragePairOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageCorroboratingOnlyView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageCorroboratingOnlyOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageAccountView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageAccountOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageCompletenessView;
+#[doc(inline)]
+pub use self::__buffa::view::ExposureCoverageCompletenessOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CompareExposureCoverageResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::CompareExposureCoverageResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::register_types;

@@ -442,6 +442,145 @@ func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []stri
 	return legacy, nil
 }
 
+// CompareExposureCoverage reads one bounded comparison from Rust. It never
+// delegates to the legacy raw-Cypher compatibility store.
+func (s *QueryStore) CompareExposureCoverage(ctx context.Context, request ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("exposure coverage tenant_id is required")
+	}
+	if request.Limit < 1 || request.Limit > 100 {
+		return nil, errors.New("exposure coverage limit must be between 1 and 100")
+	}
+	message := &cerebrographv1.CompareExposureCoverageRequest{
+		TenantId: tenantID,
+		Profile: &cerebrographv1.ExposureCoverageProfile{
+			PrimarySourceId:              request.Profile.PrimarySourceID,
+			PrimaryEntityKindPrefix:      request.Profile.PrimaryEntityKindPrefix,
+			CorroboratingSourceId:        request.Profile.CorroboratingSourceID,
+			CorroboratingEntityKind:      request.Profile.CorroboratingEntityKind,
+			IndicatorKinds:               append([]string(nil), request.Profile.IndicatorKinds...),
+			AccountKind:                  request.Profile.AccountKind,
+			CorroboratingObservationKind: request.Profile.CorroboratingObservationKind,
+		},
+		AccountId: strings.TrimSpace(request.AccountID),
+		Region:    strings.TrimSpace(request.Region),
+		Query:     strings.TrimSpace(request.Query),
+		Limit:     uint32(request.Limit), // #nosec G115 -- validated above to 1..100.
+	}
+	rpcRequest := connect.NewRequest(message)
+	if err := s.auth.authorizeHeader(rpcRequest.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.CompareExposureCoverage(ctx, rpcRequest)
+	if err != nil {
+		return nil, graphRPCError("compare exposure coverage", err)
+	}
+	return productExposureCoverage(tenantID, request.Limit, response.Msg)
+}
+
+func productExposureCoverage(tenantID string, limit int, response *cerebrographv1.CompareExposureCoverageResponse) (*ports.ExposureCoverageResult, error) {
+	if response == nil || response.GetCounts() == nil || response.GetCompleteness() == nil {
+		return nil, errors.New("rust exposure coverage response is incomplete")
+	}
+	if response.GetTenantId() != tenantID {
+		return nil, errors.New("rust exposure coverage response belongs to a different tenant")
+	}
+	if len(response.GetTypeCounts()) > 50 || len(response.GetOverlaps()) > limit || len(response.GetPrimaryOnly()) > limit || len(response.GetCorroboratingOnly()) > limit || len(response.GetAccounts()) > limit {
+		return nil, errors.New("rust exposure coverage response exceeds its bound")
+	}
+	result := &ports.ExposureCoverageResult{
+		TenantID:      tenantID,
+		GraphRevision: response.GetGraphRevision(),
+		Counts: ports.ExposureCoverageCounts{
+			PrimaryEntities:                  response.GetCounts().GetPrimaryEntities(),
+			Indicators:                       response.GetCounts().GetIndicators(),
+			HostIndicators:                   response.GetCounts().GetHostIndicators(),
+			IPIndicators:                     response.GetCounts().GetIpIndicators(),
+			OverlappingPrimaryEntities:       response.GetCounts().GetOverlappingPrimaryEntities(),
+			OverlappingIndicators:            response.GetCounts().GetOverlappingIndicators(),
+			OverlappingCorroboratingEntities: response.GetCounts().GetOverlappingCorroboratingEntities(),
+		},
+		Completeness: ports.ExposureCoverageCompleteness{
+			TypeCountsTruncated:        response.GetCompleteness().GetTypeCountsTruncated(),
+			OverlapsTruncated:          response.GetCompleteness().GetOverlapsTruncated(),
+			PrimaryOnlyTruncated:       response.GetCompleteness().GetPrimaryOnlyTruncated(),
+			CorroboratingOnlyTruncated: response.GetCompleteness().GetCorroboratingOnlyTruncated(),
+			AccountsTruncated:          response.GetCompleteness().GetAccountsTruncated(),
+		},
+	}
+	for _, value := range response.GetTypeCounts() {
+		if value == nil || strings.TrimSpace(value.GetEntityKind()) == "" {
+			return nil, errors.New("rust exposure coverage response contains an invalid kind count")
+		}
+		result.TypeCounts = append(result.TypeCounts, ports.ExposureCoverageKindCount{EntityKind: value.GetEntityKind(), Count: value.GetCount()})
+	}
+	for _, value := range response.GetOverlaps() {
+		if value == nil {
+			return nil, errors.New("rust exposure coverage response contains an empty overlap")
+		}
+		primary, err := productExposureEntity(tenantID, value.GetPrimary())
+		if err != nil {
+			return nil, err
+		}
+		indicator, err := productExposureEntity(tenantID, value.GetIndicator())
+		if err != nil {
+			return nil, err
+		}
+		corroborating, err := productExposureEntity(tenantID, value.GetCorroborating())
+		if err != nil {
+			return nil, err
+		}
+		result.Overlaps = append(result.Overlaps, ports.ExposureCoverageOverlap{Primary: primary, Indicator: indicator, Corroborating: corroborating})
+	}
+	for _, value := range response.GetPrimaryOnly() {
+		if value == nil {
+			return nil, errors.New("rust exposure coverage response contains an empty primary-only sample")
+		}
+		primary, err := productExposureEntity(tenantID, value.GetPrimary())
+		if err != nil {
+			return nil, err
+		}
+		indicator, err := productExposureEntity(tenantID, value.GetIndicator())
+		if err != nil {
+			return nil, err
+		}
+		result.PrimaryOnly = append(result.PrimaryOnly, ports.ExposureCoveragePair{Primary: primary, Indicator: indicator})
+	}
+	for _, value := range response.GetCorroboratingOnly() {
+		if value == nil {
+			return nil, errors.New("rust exposure coverage response contains an empty corroborating-only sample")
+		}
+		corroborating, err := productExposureEntity(tenantID, value.GetCorroborating())
+		if err != nil {
+			return nil, err
+		}
+		indicator, err := productExposureEntity(tenantID, value.GetIndicator())
+		if err != nil {
+			return nil, err
+		}
+		result.CorroboratingOnly = append(result.CorroboratingOnly, ports.ExposureCoverageCorroboratingOnly{Corroborating: corroborating, Indicator: indicator})
+	}
+	for _, value := range response.GetAccounts() {
+		if value == nil {
+			return nil, errors.New("rust exposure coverage response contains an empty account")
+		}
+		account, err := productExposureEntity(tenantID, value.GetAccount())
+		if err != nil {
+			return nil, err
+		}
+		result.Accounts = append(result.Accounts, ports.ExposureCoverageAccount{Account: account, PrimaryEntities: value.GetPrimaryEntities(), CorroboratingObservations: value.GetCorroboratingObservations()})
+	}
+	return result, nil
+}
+
+func productExposureEntity(tenantID string, entity *cerebrographv1.GraphEntity) (ports.ExposureCoverageEntity, error) {
+	if entity == nil || !cerebrourn.SameTenant(entity.GetAgentKey(), tenantID) || strings.TrimSpace(entity.GetEntityKind()) == "" {
+		return ports.ExposureCoverageEntity{}, errors.New("rust exposure coverage response contains an invalid entity")
+	}
+	return ports.ExposureCoverageEntity{URN: entity.GetAgentKey(), EntityType: entity.GetEntityKind(), Label: entity.GetLabel()}, nil
+}
+
 func (s *QueryStore) getRustEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
 	if len(rootURNs) == 0 {
 		return map[string]*ports.EntityNeighborhood{}, nil
