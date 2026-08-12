@@ -3195,7 +3195,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. pl
 
 GroundedDraft state describes the evidence coverage and response for this turn, not whether the long-lived mission has ended:
 - answered: every required current claim for this trigger is supported or directly contradicted by complete fresh evidence. Use answered when a current check is complete even if its result says a recovery threshold is not met and an executor-bound commitment remains open.
-- partial: useful evidence was observed, but at least one required current claim remains uncovered, incomplete, or stale. Set coverage_notice to concise text that appears verbatim in message and names that exact coverage gap.
+- partial: useful evidence was observed, but at least one required current claim remains uncovered, incomplete, or stale. Set coverage_notice to concise text that appears verbatim in message and names that exact coverage gap. In the same message, give the single most useful next step that would close the gap: name the required read or responsible role and its acceptance condition. A partial response that names a gap without a concrete closure step is invalid.
 - blocked: the required evidence could not be observed. Set coverage_notice to concise text that appears verbatim in message and names the exact blocker.
 - needs_input: one precise user decision or identifier blocks all useful progress. Set question to the exact question text appearing verbatim in message.
 If repair_feedback is present, correct every item before returning. Do not repeat a decision or draft that the runtime already rejected.
@@ -7625,6 +7625,9 @@ mod tests {
             instructions
                 .contains("Set coverage_notice to concise text that appears verbatim in message")
         );
+        assert!(instructions.contains(
+            "A partial response that names a gap without a concrete closure step is invalid"
+        ));
         assert!(
             instructions
                 .contains("Do not repeat a decision or draft that the runtime already rejected")
