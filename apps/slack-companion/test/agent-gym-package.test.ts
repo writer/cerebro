@@ -5,6 +5,7 @@ import {
   AgentGymContractError,
   CEREBRO_AGENT_GYM,
   identifyAgentGymArtifact,
+  parseAgentGymCliCommand,
   validateAgentGymCandidateManifest,
   validateAgentGymComparison,
   validateAgentGymPromotionDecision,
@@ -20,6 +21,18 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("agent gym CLI parses bounded machine-readable commands", () => {
+  assert.deepEqual(parseAgentGymCliCommand([
+    "replay", "fixtures/one.json", "--output", "ndjson",
+  ]), {
+    command: "replay",
+    input_paths: ["fixtures/one.json"],
+    output: "ndjson",
+    schema_version: "agent-gym-cli-command/v1",
+  });
+  assert.throws(() => parseAgentGymCliCommand(["replay", "--unknown"]), /CLI command is invalid/u);
 });
 
 test("artifact identities are portable content addresses", () => {

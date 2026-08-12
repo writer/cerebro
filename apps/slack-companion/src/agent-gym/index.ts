@@ -14,6 +14,7 @@ export class AgentGymContractError extends Error {
 export * from "./fixture-case.js";
 export * from "./artifact.js";
 export * from "./candidate-manifest.js";
+export * from "./cli.js";
 export * from "./comparison.js";
 export * from "./promotion-decision.js";
 export * from "./replay-run.js";
