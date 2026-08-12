@@ -22,6 +22,22 @@ export interface AgentGymSlackInvocationV1 {
   readonly text?: string;
 }
 
+/** Simulates an App Home open as a request to publish current operator state. */
+export function simulateSlackAppHomeOpened(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "app_home_opened") invalid("App Home event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const userId = field(payload, "user_id");
+  if (field(payload, "tab", 20) !== "home") invalid("App Home tab");
+  return invocation(event, {
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-home", teamId, userId),
+    route: "publish_home",
+  });
+}
+
 /** Simulates normalization of one direct message without contacting Slack. */
 export function simulateSlackDirectMessage(
   event: AgentGymSlackEventV1,
