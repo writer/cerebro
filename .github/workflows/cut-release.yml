@@ -14,11 +14,11 @@ permissions:
   contents: read
 
 concurrency:
-  # Candidate builds no longer use the stable release reservation:
-  # group: stable-release-tag-reservation
-  # cancel-in-progress: false
+  # A candidate receipt is a deployment prerequisite. Queue newer main commits
+  # behind the active attestation so normal merge traffic cannot repeatedly
+  # cancel the exact-image E2E job before it writes a receipt.
   group: candidate-build-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   resolve:
