@@ -10,18 +10,23 @@ function receipt(overrides: {
   contextRecall?: number;
   corpusDigest?: string;
   evaluatedAt?: string;
+  repairCount?: number;
+  judgeLatency?: number;
+  candidateTokens?: number;
+  judgeTokens?: number;
+  region?: string;
   regressions?: number;
 } = {}): HostedHillclimbReceipt {
   return {
     baseline: summary(0.1),
-    candidate: summary(overrides.contextRecall ?? 0.9),
+    candidate: summary(overrides.contextRecall ?? 0.9, overrides.candidateTokens),
     corpus_digest: overrides.corpusDigest ?? `sha256:${"a".repeat(64)}`,
     evaluated_at: overrides.evaluatedAt ?? "2026-08-12T16:00:00.000Z",
     evaluation_independence: { distinct_model_id: true, separate_model_ports: true },
     generator: {
       model_id: "us.anthropic.claude-opus-4-8",
       provider: "aws_bedrock",
-      region: "us-east-1",
+      region: overrides.region ?? "us-east-1",
       sampling_parameters: "provider_default",
     },
     goal: {
@@ -36,14 +41,14 @@ function receipt(overrides: {
     judge: {
       input_tokens: 10,
       invocation_count: 1,
-      model_id: "us.anthropic.claude-sonnet-5",
+      model_id: "us.anthropic.claude-opus-5",
       output_tokens: 5,
-      p95_latency_ms: 200,
+      p95_latency_ms: overrides.judgeLatency ?? 200,
       provider: "aws_bedrock",
-      repair_count: 0,
-      region: "us-east-1",
+      repair_count: overrides.repairCount ?? 0,
+      region: overrides.region ?? "us-east-1",
       sampling_parameters: "provider_default",
-      total_tokens: 15,
+      total_tokens: overrides.judgeTokens ?? 15,
     },
     promotion: {
       blockers: overrides.blockers ?? [],
@@ -60,7 +65,10 @@ function receipt(overrides: {
   };
 }
 
-function summary(contextRecall: number): HostedHillclimbReceipt["candidate"] {
+function summary(
+  contextRecall: number,
+  totalTokens = 150,
+): HostedHillclimbReceipt["candidate"] {
   return {
     authority_boundary_rate: 1,
     case_count: 22,
@@ -72,7 +80,7 @@ function summary(contextRecall: number): HostedHillclimbReceipt["candidate"] {
     output_tokens: 50,
     p95_inference_latency_ms: 3_000,
     semantic_state_contract_rate: 1,
-    total_tokens: 150,
+    total_tokens: totalTokens,
   };
 }
 
@@ -83,6 +91,10 @@ test("compares repeat measurements without answer content", () => {
       blockers: ["new_blocker"],
       contextRecall: 1,
       evaluatedAt: "2026-08-12T17:00:00.000Z",
+      repairCount: 2,
+      judgeLatency: 350,
+      candidateTokens: 175,
+      judgeTokens: 25,
       regressions: 2,
     }),
   );
@@ -92,6 +104,9 @@ test("compares repeat measurements without answer content", () => {
     resolved: ["old_blocker"],
   });
   assert.equal(comparison.regression_count_delta, 2);
+  assert.equal(comparison.judge_repair_count_delta, 2);
+  assert.equal(comparison.judge_p95_latency_ms_delta, 150);
+  assert.equal(comparison.model_token_count_delta, 35);
   assert.equal(comparison.promotion_stable, true);
 });
 
@@ -112,5 +127,18 @@ test("rejects comparisons across corpora or reversed time", () => {
       receipt({ evaluatedAt: "2026-08-12T15:00:00.000Z" }),
     ),
     /increasing evaluation times/u,
+  );
+});
+
+test("rejects comparisons across execution boundaries", () => {
+  assert.throws(
+    () => compareHostedSlackWorkingStateHillclimbs(
+      receipt(),
+      receipt({
+        evaluatedAt: "2026-08-12T17:00:00.000Z",
+        region: "us-west-2",
+      }),
+    ),
+    /same execution boundary/u,
   );
 });

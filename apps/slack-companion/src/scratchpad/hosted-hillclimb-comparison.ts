@@ -14,6 +14,9 @@ export interface HostedHillclimbComparisonV1 {
     readonly semantic_state_contract_rate: number;
   };
   readonly current_evaluated_at: string;
+  readonly judge_repair_count_delta: number;
+  readonly judge_p95_latency_ms_delta: number;
+  readonly model_token_count_delta: number;
   readonly previous_evaluated_at: string;
   readonly promotion_stable: boolean;
   readonly regression_count_delta: number;
@@ -35,6 +38,9 @@ export function compareHostedSlackWorkingStateHillclimbs(
   if (previous.generator.model_id !== current.generator.model_id
     || previous.judge.model_id !== current.judge.model_id) {
     throw new Error("Hosted hillclimb comparison requires the same generator and judge models.");
+  }
+  if (!sameExecutionBoundary(previous, current)) {
+    throw new Error("Hosted hillclimb comparison requires the same execution boundary.");
   }
   const previousTime = Date.parse(previous.evaluated_at);
   const currentTime = Date.parse(current.evaluated_at);
@@ -76,6 +82,12 @@ export function compareHostedSlackWorkingStateHillclimbs(
       ),
     }),
     current_evaluated_at: current.evaluated_at,
+    judge_repair_count_delta: current.judge.repair_count - previous.judge.repair_count,
+    judge_p95_latency_ms_delta: delta(
+      previous.judge.p95_latency_ms,
+      current.judge.p95_latency_ms,
+    ),
+    model_token_count_delta: modelTokenCount(current) - modelTokenCount(previous),
     previous_evaluated_at: previous.evaluated_at,
     promotion_stable:
       previous.promotion.promotion_ready === current.promotion.promotion_ready,
@@ -83,6 +95,27 @@ export function compareHostedSlackWorkingStateHillclimbs(
       current.promotion.regression_count - previous.promotion.regression_count,
     schema_version: "slack-working-state-hosted-hillclimb-comparison/v1",
   });
+}
+
+function sameExecutionBoundary(
+  previous: HostedHillclimbReceipt,
+  current: HostedHillclimbReceipt,
+): boolean {
+  return previous.generator.provider === current.generator.provider
+    && previous.generator.region === current.generator.region
+    && previous.generator.sampling_parameters === current.generator.sampling_parameters
+    && previous.judge.provider === current.judge.provider
+    && previous.judge.region === current.judge.region
+    && previous.judge.sampling_parameters === current.judge.sampling_parameters
+    && previous.evaluation_independence.distinct_model_id
+      === current.evaluation_independence.distinct_model_id
+    && previous.evaluation_independence.separate_model_ports
+      === current.evaluation_independence.separate_model_ports;
+}
+
+function modelTokenCount(receipt: HostedHillclimbReceipt): number {
+  return receipt.baseline.total_tokens + receipt.candidate.total_tokens
+    + receipt.judge.total_tokens;
 }
 
 function delta(previous: number, current: number): number {
