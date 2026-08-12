@@ -14,10 +14,13 @@ export interface AgentGymRegressionReplayTrialV1 {
   readonly comparison_digest: string;
   readonly completed_at: string;
   readonly evaluation_digest: string;
+  readonly evaluator_admission_digest: string;
   readonly evaluator_binding_digest: string;
+  readonly evaluator_digests: readonly string[];
   readonly outcome: AgentGymRegressionReplayComparisonV1["outcome"];
   readonly plan_digest: string;
   readonly replay_result_digest: string;
+  readonly rubric_digest: string;
   readonly schema_version: "agent-gym-regression-replay-trial/v1";
   readonly trial_digest: string;
   readonly trial_ref: string;
@@ -58,14 +61,18 @@ export function sealAgentGymRegressionReplayTrial(
     comparison_digest: comparison.comparison_digest,
     completed_at: input.completed_at,
     evaluation_digest: evaluation.evaluation_digest,
+    evaluator_admission_digest: binding.evaluator_admission_digest,
     evaluator_binding_digest: binding.binding_digest,
+    evaluator_digests: [...binding.evaluator_digests],
     outcome: comparison.outcome,
     plan_digest: plan.plan_digest,
     replay_result_digest: result.result_digest,
+    rubric_digest: binding.rubric_digest,
     schema_version: "agent-gym-regression-replay-trial/v1" as const,
     trial_ref: input.trial_ref,
   };
-  return Object.freeze({ ...body, trial_digest: digestAgentGymJson(body) });
+  return Object.freeze({ ...body, evaluator_digests: Object.freeze(body.evaluator_digests),
+    trial_digest: digestAgentGymJson(body) });
 }
 
 export function validateAgentGymRegressionReplayTrial(
@@ -75,14 +82,18 @@ export function validateAgentGymRegressionReplayTrial(
   for (const ref of [value.baseline_candidate_ref, value.case_ref,
     value.challenger_candidate_ref, value.trial_ref]) reference(ref);
   for (const item of [value.case_digest, value.comparison_digest, value.evaluation_digest,
-    value.evaluator_binding_digest, value.plan_digest, value.replay_result_digest,
-    value.trial_digest]) digest(item);
+    value.evaluator_admission_digest, value.evaluator_binding_digest, value.plan_digest,
+    value.replay_result_digest, value.rubric_digest, value.trial_digest]) digest(item);
+  if (!Array.isArray(value.evaluator_digests) || value.evaluator_digests.length < 1
+    || value.evaluator_digests.length > 2
+    || new Set(value.evaluator_digests).size !== value.evaluator_digests.length) invalid();
+  value.evaluator_digests.forEach(digest);
   timestamp(value.completed_at);
   if (value.baseline_candidate_ref === value.challenger_candidate_ref
     || !["equivalent", "improved", "regressed"].includes(value.outcome)) invalid();
   const { trial_digest: _digest, ...body } = value;
   if (digestAgentGymJson(body) !== value.trial_digest) invalid();
-  return Object.freeze({ ...value });
+  return Object.freeze({ ...value, evaluator_digests: Object.freeze([...value.evaluator_digests]) });
 }
 
 function reference(value: string): void {

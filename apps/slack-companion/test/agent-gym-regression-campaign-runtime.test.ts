@@ -4,6 +4,7 @@ import { digestAgentGymJson } from "../src/agent-gym/canonical-json.js";
 import { compareAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-comparison.js";
 import { evaluateAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-evaluation.js";
 import { sealAgentGymRegressionReplayTrial, validateAgentGymRegressionReplayTrial } from "../src/agent-gym/regression-replay-trial.js";
+import { planAgentGymRegressionCampaign, validateAgentGymRegressionCampaignPlan } from "../src/agent-gym/regression-campaign-plan.js";
 
 const sha = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
 
@@ -45,6 +46,14 @@ function trialChain() {
   return { binding, comparison, evaluation, plan, result };
 }
 
+function evaluatorAdmission() {
+  const body = { admitted: true, blocker_codes: [], calibration_digests: [],
+    decided_at: "2026-08-12T14:59:00.000Z", evaluator_digests: [sha("2")],
+    policy_ref: "agent-gym-evaluator-policy://campaign/one", rubric_digest: sha("3"),
+    schema_version: "agent-gym-evaluator-admission-decision/v1" as const };
+  return { ...body, decision_digest: digestAgentGymJson(body) };
+}
+
 test("seals one complete runtime chain without model output text", () => {
   const chain = trialChain();
   const trial = sealAgentGymRegressionReplayTrial(chain.plan, chain.result, chain.binding,
@@ -52,7 +61,31 @@ test("seals one complete runtime chain without model output text", () => {
       trial_ref: "agent-gym-regression-trial://campaign/one" });
   assert.equal(validateAgentGymRegressionReplayTrial(trial).outcome, "improved");
   assert.equal(trial.evaluator_binding_digest, chain.binding.binding_digest);
+  assert.equal(trial.evaluator_admission_digest, chain.binding.evaluator_admission_digest);
   assert.equal(JSON.stringify(trial).includes("output_text"), false);
+});
+
+test("plans ordered campaign cases under one admitted evaluator identity", () => {
+  const chain = trialChain();
+  const campaign = planAgentGymRegressionCampaign([chain.plan], evaluatorAdmission(), {
+    baseline_candidate_ref: chain.result.baseline.candidate_ref,
+    campaign_ref: "agent-gym-regression-campaign://one",
+    challenger_candidate_ref: chain.result.challenger.candidate_ref,
+    maximum_invalid_cases: 0, planned_at: "2026-08-12T15:00:00.000Z",
+  });
+  assert.equal(validateAgentGymRegressionCampaignPlan(campaign).cases[0]?.replay_plan_digest,
+    chain.plan.plan_digest);
+  assert.equal(campaign.maximum_model_calls, 2);
+});
+
+test("rejects campaign plans that tolerate every case being invalid", () => {
+  const chain = trialChain();
+  assert.throws(() => planAgentGymRegressionCampaign([chain.plan], evaluatorAdmission(), {
+    baseline_candidate_ref: chain.result.baseline.candidate_ref,
+    campaign_ref: "agent-gym-regression-campaign://invalid",
+    challenger_candidate_ref: chain.result.challenger.candidate_ref,
+    maximum_invalid_cases: 1, planned_at: "2026-08-12T15:00:00.000Z",
+  }));
 });
 
 test("rejects a runtime chain whose evaluator binding targets another result", () => {
