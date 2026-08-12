@@ -10,11 +10,17 @@ export interface HostedHillclimbRepeatWindowV1 {
     readonly semantic_state_contract_rate: number;
   };
   readonly comparison_count: number;
+  readonly efficiency_regression_count: number;
   readonly first_evaluated_at: string;
   readonly last_evaluated_at: string;
   readonly maximum_absolute_judge_p95_latency_ms_delta: number;
   readonly maximum_absolute_model_token_count_delta: number;
+  readonly quality_instability_count: number;
   readonly schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1";
+  readonly stability: {
+    readonly blockers: readonly string[];
+    readonly stable: boolean;
+  };
 }
 
 /** Seals a contiguous chronological sequence of content-free repeat comparisons. */
@@ -33,6 +39,13 @@ export function buildHostedHillclimbRepeatWindow(
       throw new Error("Hosted hillclimb repeat window requires a contiguous evaluation chain.");
     }
   }
+  const stabilityBlockers = [
+    ...(comparisons.length < 2 ? ["insufficient_repeat_comparisons"] : []),
+    ...(comparisons.some((comparison) => !comparison.promotion_stable)
+      ? ["promotion_state_changed"] : []),
+    ...(comparisons.some((comparison) => !comparison.quality_stable)
+      ? ["repeat_quality_regressed"] : []),
+  ];
   return Object.freeze({
     candidate_max_absolute_delta: Object.freeze({
       authority_boundary_rate: maximumAbsolute(comparisons.map(
@@ -55,6 +68,9 @@ export function buildHostedHillclimbRepeatWindow(
       )),
     }),
     comparison_count: comparisons.length,
+    efficiency_regression_count: comparisons.filter(
+      (comparison) => !comparison.efficiency_stable,
+    ).length,
     first_evaluated_at: comparisons[0]!.previous_evaluated_at,
     last_evaluated_at: comparisons[comparisons.length - 1]!.current_evaluated_at,
     maximum_absolute_judge_p95_latency_ms_delta: maximumAbsolute(comparisons.map(
@@ -63,7 +79,14 @@ export function buildHostedHillclimbRepeatWindow(
     maximum_absolute_model_token_count_delta: maximumAbsolute(comparisons.map(
       (comparison) => comparison.model_token_count_delta,
     )),
+    quality_instability_count: comparisons.filter(
+      (comparison) => !comparison.quality_stable,
+    ).length,
     schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1",
+    stability: Object.freeze({
+      blockers: Object.freeze(stabilityBlockers),
+      stable: stabilityBlockers.length === 0,
+    }),
   });
 }
 

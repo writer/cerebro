@@ -49,12 +49,31 @@ test("seals a contiguous repeat comparison window", () => {
       semantic_state_contract_rate: 0,
     },
     comparison_count: 2,
+    efficiency_regression_count: 0,
     first_evaluated_at: "2026-08-12T16:00:00.000Z",
     last_evaluated_at: "2026-08-12T18:00:00.000Z",
     maximum_absolute_judge_p95_latency_ms_delta: 0,
     maximum_absolute_model_token_count_delta: 294,
+    quality_instability_count: 0,
     schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1",
+    stability: { blockers: [], stable: true },
   });
+});
+
+test("holds stability until repeats are sufficient and quality remains stable", () => {
+  const oneComparison = comparison(
+    "2026-08-12T16:00:00.000Z",
+    "2026-08-12T17:00:00.000Z",
+  );
+  const window = buildHostedHillclimbRepeatWindow([{
+    ...oneComparison,
+    quality_stable: false,
+  }]);
+  assert.deepEqual(window.stability, {
+    blockers: ["insufficient_repeat_comparisons", "repeat_quality_regressed"],
+    stable: false,
+  });
+  assert.equal(window.quality_instability_count, 1);
 });
 
 test("rejects an empty or discontinuous repeat window", () => {
