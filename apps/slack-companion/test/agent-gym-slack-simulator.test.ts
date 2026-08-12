@@ -2,12 +2,207 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  AgentGymSlackDeliveryLedger,
+  planAgentGymSlackApiRetry,
   simulateSlackAppHomeOpened,
   simulateSlackButtonAction,
   simulateSlackDirectMessage,
   simulateSlackMention,
+  simulateSlackMessageChanged,
+  simulateSlackMessageDeleted,
+  simulateSlackReactionAdded,
   simulateSlackThreadReply,
 } from "../src/index.js";
+
+test("Slack API simulation honors retry-after and bounded timeout backoff", () => {
+  const policy = {
+    maximum_attempts: 4,
+    maximum_delay_ms: 60_000,
+    timeout_base_delay_ms: 1_000,
+  };
+  assert.deepEqual(planAgentGymSlackApiRetry({
+    attempt_index: 0,
+    observed_at: "2026-08-12T08:39:00.000Z",
+    outcome: "rate_limited",
+    retry_after_ms: 30_000,
+  }, policy), {
+    attempt_index: 0,
+    delay_ms: 30_000,
+    disposition: "retry",
+    next_attempt_at: "2026-08-12T08:39:30.000Z",
+    reason: "rate_limited",
+    schema_version: "agent-gym-slack-retry-plan/v1",
+  });
+  assert.equal(planAgentGymSlackApiRetry({
+    attempt_index: 2,
+    observed_at: "2026-08-12T08:39:00.000Z",
+    outcome: "timeout",
+  }, policy).delay_ms, 4_000);
+});
+
+test("Slack API simulation exhausts retries and rejects ambiguous outcomes", () => {
+  const policy = {
+    maximum_attempts: 2,
+    maximum_delay_ms: 60_000,
+    timeout_base_delay_ms: 1_000,
+  };
+  assert.equal(planAgentGymSlackApiRetry({
+    attempt_index: 1,
+    observed_at: "2026-08-12T08:39:00.000Z",
+    outcome: "timeout",
+  }, policy).disposition, "exhausted");
+  assert.throws(() => planAgentGymSlackApiRetry({
+    attempt_index: 0,
+    observed_at: "2026-08-12T08:39:00.000Z",
+    outcome: "success",
+    retry_after_ms: 1_000,
+  }, policy), /retry input is invalid/u);
+});
+
+test("delivery simulation admits once and suppresses exact Slack retries", () => {
+  const event = {
+    event_ref: "slack-event://retry/one",
+    kind: "direct_message" as const,
+    occurred_at: "2026-08-12T08:38:00.000Z",
+    payload: {
+      channel_id: "D12345",
+      team_id: "T_ONE",
+      text: "Continue.",
+      ts: "1786523880.000001",
+      user_id: "U_ONE",
+    },
+  };
+  const ledger = new AgentGymSlackDeliveryLedger();
+  const invocation = simulateSlackDirectMessage(event);
+  assert.equal(ledger.admit(invocation).disposition, "admitted");
+  assert.equal(ledger.admit(simulateSlackDirectMessage(event)).disposition, "duplicate");
+});
+
+test("delivery simulation rejects changed payload under one event identity", () => {
+  const ledger = new AgentGymSlackDeliveryLedger();
+  const event = {
+    event_ref: "slack-event://retry/changed",
+    kind: "direct_message" as const,
+    occurred_at: "2026-08-12T08:38:00.000Z",
+    payload: {
+      channel_id: "D12345",
+      team_id: "T_ONE",
+      text: "Continue.",
+      ts: "1786523880.000001",
+      user_id: "U_ONE",
+    },
+  };
+  ledger.admit(simulateSlackDirectMessage(event));
+  assert.throws(() => ledger.admit(simulateSlackDirectMessage({
+    ...event,
+    payload: { ...event.payload, text: "Do something else." },
+  })), /event retry changed payload/u);
+});
+
+test("message-delete simulation emits a text-free tombstone", () => {
+  const invocation = simulateSlackMessageDeleted({
+    event_ref: "slack-event://deleted/one",
+    kind: "message_deleted",
+    occurred_at: "2026-08-12T08:37:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      deleted_ts: "1786523640.000001",
+      team_id: "T_ONE",
+      thread_ts: "1786523400.000001",
+      user_id: "U_ONE",
+    },
+  });
+  assert.deepEqual(invocation.action, {
+    action_id: "message.deleted",
+    value: "1786523640.000001",
+  });
+  assert.equal(invocation.text, undefined);
+});
+
+test("message-delete simulation rejects a deletion without stable identity", () => {
+  assert.throws(() => simulateSlackMessageDeleted({
+    event_ref: "slack-event://deleted/missing",
+    kind: "message_deleted",
+    occurred_at: "2026-08-12T08:37:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      team_id: "T_ONE",
+      user_id: "U_ONE",
+    },
+  }), /deleted_ts is invalid/u);
+});
+
+test("message-change simulation emits the correction and prior-content digest", () => {
+  const invocation = simulateSlackMessageChanged({
+    event_ref: "slack-event://changed/one",
+    kind: "message_changed",
+    occurred_at: "2026-08-12T08:36:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      previous_text: "Use the first option.",
+      team_id: "T_ONE",
+      text: "Use the second option.",
+      thread_ts: "1786523400.000001",
+      ts: "1786523640.000001",
+      user_id: "U_ONE",
+    },
+  });
+  assert.equal(invocation.route, "assistant_turn");
+  assert.equal(invocation.text, "Use the second option.");
+  assert.equal(invocation.action?.action_id, "message.changed");
+  assert.match(invocation.action?.value ?? "", /^sha256:[0-9a-f]{64}$/u);
+});
+
+test("message-change simulation rejects a no-op edit", () => {
+  assert.throws(() => simulateSlackMessageChanged({
+    event_ref: "slack-event://changed/noop",
+    kind: "message_changed",
+    occurred_at: "2026-08-12T08:36:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      previous_text: "No change.",
+      team_id: "T_ONE",
+      text: "No change.",
+      ts: "1786523640.000001",
+      user_id: "U_ONE",
+    },
+  }), /message-change text is invalid/u);
+});
+
+test("reaction simulation records exact message feedback without Slack", () => {
+  const invocation = simulateSlackReactionAdded({
+    event_ref: "slack-event://reaction/one",
+    kind: "reaction_added",
+    occurred_at: "2026-08-12T08:35:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      item_ts: "1786523640.000001",
+      reaction: "thumbsup",
+      team_id: "T_ONE",
+      user_id: "U_ONE",
+    },
+  });
+  assert.deepEqual(invocation.action, {
+    action_id: "reaction.added",
+    value: "thumbsup",
+  });
+  assert.match(invocation.conversation_ref, /^slack-message:\/\/sha256\/[0-9a-f]{64}$/u);
+});
+
+test("reaction simulation rejects display emoji instead of stable names", () => {
+  assert.throws(() => simulateSlackReactionAdded({
+    event_ref: "slack-event://reaction/emoji",
+    kind: "reaction_added",
+    occurred_at: "2026-08-12T08:35:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      item_ts: "1786523640.000001",
+      reaction: "👍",
+      team_id: "T_ONE",
+      user_id: "U_ONE",
+    },
+  }), /reaction name is invalid/u);
+});
 
 test("button simulation binds the exact action to its actor and thread", () => {
   const invocation = simulateSlackButtonAction({

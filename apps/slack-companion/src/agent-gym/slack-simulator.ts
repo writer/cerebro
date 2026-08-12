@@ -105,6 +105,74 @@ export function simulateSlackMention(
   });
 }
 
+/** Simulates a reaction as explicit interaction evidence on one message. */
+export function simulateSlackReactionAdded(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "reaction_added") invalid("reaction event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const channelId = field(payload, "channel_id");
+  if (!/^[CDG][A-Z0-9]+$/u.test(channelId)) invalid("reaction channel");
+  const userId = field(payload, "user_id");
+  const itemTs = timestampField(payload, "item_ts");
+  const reaction = field(payload, "reaction", 100);
+  if (!/^[a-z0-9][a-z0-9_+-]*$/u.test(reaction)) invalid("reaction name");
+  return invocation(event, {
+    action: Object.freeze({ action_id: "reaction.added", value: reaction }),
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-message", teamId, channelId, itemTs),
+    route: "interaction",
+  });
+}
+
+/** Simulates a changed message as a fresh turn with prior content identity. */
+export function simulateSlackMessageChanged(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "message_changed") invalid("message-change event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const channelId = field(payload, "channel_id");
+  if (!/^[CDG][A-Z0-9]+$/u.test(channelId)) invalid("message-change channel");
+  const userId = field(payload, "user_id");
+  const messageTs = timestampField(payload, "ts");
+  const threadTs = optionalTimestampField(payload, "thread_ts") ?? messageTs;
+  const priorText = field(payload, "previous_text", 12_000).trim();
+  const text = field(payload, "text", 12_000).trim();
+  if (priorText === text) invalid("message-change text");
+  return invocation(event, {
+    action: Object.freeze({
+      action_id: "message.changed",
+      value: `sha256:${digest(priorText)}`,
+    }),
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-thread", teamId, channelId, threadTs),
+    route: "assistant_turn",
+    text,
+  });
+}
+
+/** Simulates deletion as a tombstone interaction without retaining message text. */
+export function simulateSlackMessageDeleted(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "message_deleted") invalid("message-delete event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const channelId = field(payload, "channel_id");
+  if (!/^[CDG][A-Z0-9]+$/u.test(channelId)) invalid("message-delete channel");
+  const userId = field(payload, "user_id");
+  const deletedTs = timestampField(payload, "deleted_ts");
+  const threadTs = optionalTimestampField(payload, "thread_ts") ?? deletedTs;
+  return invocation(event, {
+    action: Object.freeze({ action_id: "message.deleted", value: deletedTs }),
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-thread", teamId, channelId, threadTs),
+    route: "interaction",
+  });
+}
+
 /** Simulates a reply bound to the exact existing Slack thread identity. */
 export function simulateSlackThreadReply(
   event: AgentGymSlackEventV1,
