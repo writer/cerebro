@@ -97,6 +97,10 @@ export interface HostedHillclimbReceipt {
   readonly candidate: HostedHillclimbSummary;
   readonly corpus_digest: string;
   readonly evaluated_at: string;
+  readonly evaluation_independence: {
+    readonly distinct_model_id: true;
+    readonly separate_model_ports: true;
+  };
   readonly generator: {
     readonly model_id: string;
     readonly provider: "aws_bedrock";
@@ -183,6 +187,11 @@ export async function runHostedSlackWorkingStateHillclimb(
   evaluatedAt = new Date(),
 ): Promise<HostedHillclimbReceipt> {
   validateOptions(options);
+  if (models.generator === models.judge) {
+    throw new Error(
+      "Cerebro working-state hillclimb judging requires a separate model port.",
+    );
+  }
   const structural = runSlackWorkingStateHillclimb(cases, evaluatedAt);
   if (!structural.promotion.promotion_ready) {
     throw new Error(
@@ -273,6 +282,10 @@ export async function runHostedSlackWorkingStateHillclimb(
     candidate,
     corpus_digest: structural.corpus_digest,
     evaluated_at: evaluatedAt.toISOString(),
+    evaluation_independence: Object.freeze({
+      distinct_model_id: true as const,
+      separate_model_ports: true as const,
+    }),
     generator: Object.freeze({
       model_id: options.generator_model_id,
       provider: "aws_bedrock" as const,

@@ -166,6 +166,10 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(receipt.generator.sampling_parameters, "provider_default");
   assert.equal(receipt.judge.model_id, "us.anthropic.claude-sonnet-5");
   assert.equal(receipt.judge.sampling_parameters, "provider_default");
+  assert.deepEqual(receipt.evaluation_independence, {
+    distinct_model_id: true,
+    separate_model_ports: true,
+  });
   assert.equal(receipt.baseline.context_recall_rate, 0);
   assert.equal(receipt.baseline.expected_restatement_turns_per_case, 1);
   assert.equal(receipt.candidate.context_recall_rate, 1);
@@ -234,6 +238,24 @@ test("hosted hillclimb rejects a judge that aliases the generator", async () => 
   );
   assert.equal(generatorModel.generatorCalls, 0);
   assert.equal(judgeModel.judgeCalls, 0);
+});
+
+test("hosted hillclimb rejects a shared generator and judge port", async () => {
+  const sharedModel = new FakeHostedModel();
+  await assert.rejects(
+    runHostedSlackWorkingStateHillclimb(
+      SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
+      {
+        generator_model_id: "us.anthropic.claude-opus-4-8",
+        judge_model_id: "us.anthropic.claude-sonnet-5",
+        region: "us-east-1",
+      },
+      { generator: sharedModel, judge: sharedModel },
+    ),
+    /requires a separate model port/u,
+  );
+  assert.equal(sharedModel.generatorCalls, 0);
+  assert.equal(sharedModel.judgeCalls, 0);
 });
 
 class FakeHostedModel implements HostedModelPort {
