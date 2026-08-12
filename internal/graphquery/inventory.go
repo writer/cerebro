@@ -2,7 +2,6 @@ package graphquery
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -255,24 +254,6 @@ func normalizeInventoryLimit(limit uint32) int {
 	}
 }
 
-func inventoryAssetFromRow(row ports.CypherRow) InventoryAsset {
-	attrs := parseInventoryAttributes(rowString(row, "attributes_json"))
-	score, reasons := inventoryRisk(attrs)
-	return InventoryAsset{
-		URN:         rowString(row, "urn"),
-		EntityType:  rowString(row, "entity_type"),
-		Surface:     InventorySurfaceForEntityType(rowString(row, "entity_type")),
-		Label:       firstInventoryString(rowString(row, "label"), rowString(row, "urn")),
-		SourceID:    rowString(row, "source_id"),
-		RuntimeID:   rowString(row, "runtime_id"),
-		RiskScore:   score,
-		RiskLevel:   inventoryRiskLevel(score),
-		RiskReasons: reasons,
-		ScopeState:  "in_scope",
-		Attributes:  attrs,
-	}
-}
-
 func inventoryAssetFromCatalog(entity ports.CatalogEntity) InventoryAsset {
 	attrs := entity.Attributes
 	score, reasons := inventoryRisk(attrs)
@@ -374,66 +355,6 @@ func inventoryRiskLevel(score int) string {
 		return "low"
 	default:
 		return "unknown"
-	}
-}
-
-func parseInventoryAttributes(raw string) map[string]string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "{}" {
-		return nil
-	}
-	var values map[string]any
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
-		return nil
-	}
-	attrs := map[string]string{}
-	for key, value := range values {
-		if strings.TrimSpace(key) == "" || value == nil {
-			continue
-		}
-		switch typed := value.(type) {
-		case string:
-			if strings.TrimSpace(typed) != "" {
-				attrs[key] = typed
-			}
-		case float64, bool:
-			attrs[key] = fmt.Sprint(typed)
-		}
-	}
-	if len(attrs) == 0 {
-		return nil
-	}
-	return attrs
-}
-
-func rowString(row ports.CypherRow, key string) string {
-	value := row.Values[key]
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case fmt.Stringer:
-		return strings.TrimSpace(typed.String())
-	default:
-		if value == nil {
-			return ""
-		}
-		return strings.TrimSpace(fmt.Sprint(value))
-	}
-}
-
-func rowInt(row ports.CypherRow, key string) int {
-	value := row.Values[key]
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	default:
-		var parsed int
-		_, _ = fmt.Sscanf(fmt.Sprint(value), "%d", &parsed)
-		return parsed
 	}
 }
 

@@ -2167,31 +2167,6 @@ func normalizeRiskLevel(value string) string {
 	}
 }
 
-func vendorDetailParams(request VendorDetailRequest, urn string, vendorID string) map[string]any {
-	vendorID = strings.TrimSpace(vendorID)
-	vendorIDLower := strings.ToLower(vendorID)
-	return map[string]any{
-		"urn":             strings.TrimSpace(urn),
-		"vendor_id":       vendorID,
-		"vendor_id_lc":    vendorIDLower,
-		"vendor_id_probe": jsonAttributeProbe("vendor_id", vendorIDLower),
-		"external_probe":  jsonAttributeProbe("external_id", vendorIDLower),
-		"tenant_id":       strings.TrimSpace(request.TenantID),
-		"runtime_id":      strings.TrimSpace(request.RuntimeID),
-		"runtime_ids":     nonEmptyStrings(request.RuntimeIDs),
-		"source_id":       strings.TrimSpace(request.SourceID),
-	}
-}
-
-func jsonAttributeProbe(key string, value string) string {
-	key = strings.TrimSpace(key)
-	value = strings.ToLower(strings.TrimSpace(value))
-	if key == "" || value == "" {
-		return "\x00"
-	}
-	return fmt.Sprintf("%q:%q", key, value)
-}
-
 func validateVendorDetailScope(urn string, vendorID string) error {
 	if urn == "" && vendorID == "" {
 		return fmt.Errorf("%w: vendor_id is required", ErrInvalidRequest)
