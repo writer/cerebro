@@ -7,8 +7,10 @@ import {
   issueAgentGymPromotionAuthorization,
   planAgentGymCandidateActivation,
   recordAgentGymActivation,
+  recordAgentGymChampionTransition,
   validateAgentGymActivationPlan,
   validateAgentGymActivationReceipt,
+  validateAgentGymChampionTransition,
   validateAgentGymPromotionAuthorization,
   validateAgentGymPromotionVerdict,
   type AgentGymPromotionInputReceiptV1,
@@ -130,6 +132,51 @@ test("activation receipts reject unobserved success", () => {
     status: "applied",
   }), /activation receipt is invalid/u);
 });
+
+test("champion transitions append observed activation state", () => {
+  const transition = recordAgentGymChampionTransition(activationReceipt(), undefined, {
+    effective_at: "2026-08-12T11:15:00.000Z",
+    mode: "promote",
+    transition_ref: "agent-gym-champion-transition://nightly/one",
+  });
+  assert.equal(transition.sequence, 1);
+  assert.equal(transition.active_candidate_ref, "agent-gym-candidate://nightly/challenger");
+  assert.equal(transition.previous_transition_digest, null);
+  assert.deepEqual(validateAgentGymChampionTransition(transition), transition);
+});
+
+test("champion transitions require an applied activation receipt", () => {
+  const rejected = recordAgentGymActivation(activationPlan(), {
+    completed_at: "2026-08-12T11:14:00.000Z",
+    executor_ref: "agent-gym-executor://release/default",
+    failure_codes: ["activation.health_check_failed"],
+    observed_active_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    observed_traffic_percent: 0,
+    previous_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    receipt_ref: "agent-gym-activation-receipt://nightly/rejected",
+    started_at: "2026-08-12T11:13:00.000Z",
+    status: "rejected",
+  });
+  assert.throws(() => recordAgentGymChampionTransition(rejected, undefined, {
+    effective_at: "2026-08-12T11:15:00.000Z",
+    mode: "promote",
+    transition_ref: "agent-gym-champion-transition://nightly/rejected",
+  }), /champion transition is invalid/u);
+});
+
+function activationReceipt() {
+  return recordAgentGymActivation(activationPlan(), {
+    completed_at: "2026-08-12T11:14:00.000Z",
+    executor_ref: "agent-gym-executor://release/default",
+    failure_codes: [],
+    observed_active_candidate_ref: "agent-gym-candidate://nightly/challenger",
+    observed_traffic_percent: 10,
+    previous_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    receipt_ref: "agent-gym-activation-receipt://nightly/one",
+    started_at: "2026-08-12T11:13:00.000Z",
+    status: "applied",
+  });
+}
 
 function activationPlan() {
   return planAgentGymCandidateActivation(promotionAuthorization(), candidateManifest(), {
