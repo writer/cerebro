@@ -18,6 +18,7 @@ import {
   recordAgentGymCaseEvaluation,
   recordAgentGymCorpusQuality,
   summarizeAgentGymEvaluationSlices,
+  summarizeAgentGymPairedSlices,
   validateAgentGymEvaluationRunPlan,
   validateAgentGymEvaluationRunResult,
   validateAgentGymEvaluationReadinessDecision,
@@ -25,6 +26,7 @@ import {
   validateAgentGymPairedEvaluation,
   validateAgentGymPairedCaseDeltaReport,
   validateAgentGymPairedUncertainty,
+  validateAgentGymPairedSliceReport,
 } from "../src/index.js";
 
 test("evaluation suites seal admitted non-training cases", () => {
@@ -216,6 +218,20 @@ test("paired uncertainty is reproducible from a sealed seed", () => {
   assert.deepEqual(first, second);
   assert.equal(first.probability_positive, 1);
   assert.deepEqual(validateAgentGymPairedUncertainty(first), first);
+});
+
+test("paired slices expose regressions by partition and label", () => {
+  const comparison = pairedComparisonSetup();
+  const deltas = calculateAgentGymPairedCaseDeltas(
+    comparison.pair,
+    comparison.baseline.result,
+    comparison.candidate.result,
+  );
+  const report = summarizeAgentGymPairedSlices(comparison.suite, deltas);
+  assert.equal(report.slices.find((entry) => entry.slice_id === "overall:all")?.case_count, 2);
+  assert.equal(report.slices.find((entry) => entry.slice_id === "label:safety")?.improvement_count, 1);
+  assert.equal(report.slices.find((entry) => entry.slice_id === "partition:shadow")?.regression_count, 0);
+  assert.deepEqual(validateAgentGymPairedSliceReport(report), report);
 });
 
 function evaluationSetup() {
