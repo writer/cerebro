@@ -6,6 +6,7 @@ import { decideAgentGymEvaluatorAdmission } from "../src/agent-gym/evaluator-adm
 import { bindAgentGymRegressionReplayEvaluators, validateAgentGymRegressionReplayEvaluatorBinding } from "../src/agent-gym/regression-replay-evaluator-binding.js";
 import { validateAgentGymRegressionReplayEvaluatorInput, validateAgentGymRegressionReplayEvaluatorOutput } from "../src/agent-gym/regression-replay-evaluator-port.js";
 import { buildAgentGymRegressionReplayEvaluatorInputs } from "../src/agent-gym/regression-replay-evaluator-inputs.js";
+import { executeAgentGymRegressionReplayEvaluators } from "../src/agent-gym/regression-replay-evaluator-execution.js";
 import { bindAgentGymRegressionReplayRequests } from "../src/agent-gym/regression-replay-request-pair.js";
 import { checkAgentGymRegressionReplayParity } from "../src/agent-gym/regression-replay-parity.js";
 import { executeAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-execution.js";
@@ -79,6 +80,30 @@ test("projects exact transient model answers into paired evaluator inputs", asyn
   const inputs = buildAgentGymRegressionReplayEvaluatorInputs(evaluatorBinding, replayResult, execution);
   assert.deepEqual(inputs.map((input) => input.candidate_ref), [replayResult.baseline.candidate_ref, replayResult.challenger.candidate_ref]);
   assert.equal(inputs[0].output_text, `answer:${replayResult.baseline.candidate_ref}`);
+});
+
+test("executes baseline and challenger through one evaluator port", async () => {
+  const { evaluatorBinding, execution, replayResult } = await runtimeBundle();
+  const inputs = buildAgentGymRegressionReplayEvaluatorInputs(evaluatorBinding, replayResult, execution);
+  const seen: string[] = [];
+  const evaluated = await executeAgentGymRegressionReplayEvaluators(inputs, { async evaluate(input) {
+    seen.push(input.candidate_ref);
+    return { binding_digest: input.binding_digest, blocker_codes: [], candidate_ref: input.candidate_ref,
+      evidence_digest: input.candidate_ref === replayResult.baseline.candidate_ref ? sha("6") : sha("7"),
+      safety_passed: true, schema_version: "agent-gym-regression-replay-evaluator-output/v1", score: 0.9 };
+  } });
+  assert.deepEqual(seen, [replayResult.baseline.candidate_ref, replayResult.challenger.candidate_ref]);
+  assert.deepEqual(evaluated.outputs.map((output) => output.score), [0.9, 0.9]);
+});
+
+test("rejects evaluator output bound to another candidate", async () => {
+  const { evaluatorBinding, execution, replayResult } = await runtimeBundle();
+  const inputs = buildAgentGymRegressionReplayEvaluatorInputs(evaluatorBinding, replayResult, execution);
+  await assert.rejects(executeAgentGymRegressionReplayEvaluators(inputs, { async evaluate(input) {
+    return { binding_digest: input.binding_digest, blocker_codes: [], candidate_ref: replayResult.baseline.candidate_ref,
+      evidence_digest: sha("8"), safety_passed: true,
+      schema_version: "agent-gym-regression-replay-evaluator-output/v1", score: 0.8 };
+  } }), /evaluator execution is invalid/u);
 });
 
 test("rejects evaluator evidence that was not admitted", () => {
