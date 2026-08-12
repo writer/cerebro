@@ -44,6 +44,33 @@ export interface CaptureAgentGymSlackOpenModal {
   readonly view: Readonly<Record<string, AgentGymJson>>;
 }
 
+export interface CaptureAgentGymSlackPostEphemeral {
+  readonly channel_ref: string;
+  readonly idempotency_key: string;
+  readonly text: string;
+  readonly thread_ref?: string;
+  readonly user_ref: string;
+}
+
+/** Captures a user-scoped ephemeral response with its channel boundary. */
+export function captureAgentGymSlackPostEphemeral(
+  input: CaptureAgentGymSlackPostEphemeral,
+): AgentGymSlackEffectV1 {
+  reference(input.channel_ref, "channel reference");
+  reference(input.user_ref, "user reference");
+  if (input.thread_ref !== undefined) reference(input.thread_ref, "thread reference");
+  safeText(input.text, 40_000, "ephemeral text");
+  return effect("post_ephemeral", input.idempotency_key, [
+    input.channel_ref,
+    input.user_ref,
+    ...(input.thread_ref === undefined ? [] : [input.thread_ref]),
+  ], {
+    text: input.text,
+    user_ref: input.user_ref,
+    ...(input.thread_ref === undefined ? {} : { thread_ref: input.thread_ref }),
+  });
+}
+
 /** Captures a modal open request bound to its one-use trigger and actor. */
 export function captureAgentGymSlackOpenModal(
   input: CaptureAgentGymSlackOpenModal,

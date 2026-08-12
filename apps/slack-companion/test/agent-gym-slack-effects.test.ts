@@ -3,10 +3,37 @@ import test from "node:test";
 
 import {
   captureAgentGymSlackOpenModal,
+  captureAgentGymSlackPostEphemeral,
   captureAgentGymSlackPostMessage,
   captureAgentGymSlackPublishHome,
   captureAgentGymSlackUpdateMessage,
 } from "../src/index.js";
+
+test("ephemeral capture binds private text to one user and channel", () => {
+  const effect = captureAgentGymSlackPostEphemeral({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "clarification:one",
+    text: "Choose the target account before execution.",
+    thread_ref: "slack-thread://one",
+    user_ref: "slack-user://one",
+  });
+  assert.equal(effect.operation, "post_ephemeral");
+  assert.deepEqual(effect.target_refs, [
+    "slack-channel://one",
+    "slack-user://one",
+    "slack-thread://one",
+  ]);
+  assert.equal(effect.payload.user_ref, "slack-user://one");
+});
+
+test("ephemeral capture rejects an absent actor boundary", () => {
+  assert.throws(() => captureAgentGymSlackPostEphemeral({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "clarification:one",
+    text: "Choose the target account before execution.",
+    user_ref: "",
+  }), /user reference is invalid/u);
+});
 
 test("modal capture binds a valid modal to the actor and trigger", () => {
   const effect = captureAgentGymSlackOpenModal({
