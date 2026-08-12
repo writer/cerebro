@@ -315,7 +315,7 @@ func TestRunRuntimeUsesCallerHeldRuntimeLease(t *testing.T) {
 	}
 }
 
-func TestRunRuntimeAppliesOrchestratorBackpressurePageLimit(t *testing.T) {
+func TestRunRuntimeHonorsOrchestratorPageLimit(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(&multiCursorPagedSource{
 		id:    "paged",
 		pages: graphIngestTestPages(8, "paged"),
@@ -356,11 +356,11 @@ func TestRunRuntimeAppliesOrchestratorBackpressurePageLimit(t *testing.T) {
 	if orchestratorResult.Ingest == nil {
 		t.Fatal("RunRuntime(orchestrator) ingest = nil")
 	}
-	if orchestratorResult.Ingest.PagesRead != defaultOrchestratorPageLimit || orchestratorResult.Ingest.EventsRead != defaultOrchestratorPageLimit {
-		t.Fatalf("orchestrator pages/events = %d/%d, want %d/%d", orchestratorResult.Ingest.PagesRead, orchestratorResult.Ingest.EventsRead, defaultOrchestratorPageLimit, defaultOrchestratorPageLimit)
+	if orchestratorResult.Ingest.PagesRead != 8 || orchestratorResult.Ingest.EventsRead != 8 {
+		t.Fatalf("orchestrator pages/events = %d/%d, want the configured 8/8", orchestratorResult.Ingest.PagesRead, orchestratorResult.Ingest.EventsRead)
 	}
-	if orchestratorResult.Ingest.NextCursor != "page-5" {
-		t.Fatalf("orchestrator next cursor = %q, want page-5", orchestratorResult.Ingest.NextCursor)
+	if orchestratorResult.Ingest.NextCursor != "" || !orchestratorResult.Ingest.CheckpointComplete {
+		t.Fatalf("orchestrator checkpoint = next:%q complete:%t, want complete", orchestratorResult.Ingest.NextCursor, orchestratorResult.Ingest.CheckpointComplete)
 	}
 
 	manualResult, err := service.RunRuntime(context.Background(), RuntimeRequest{

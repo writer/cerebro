@@ -822,7 +822,7 @@ func TestRunOrchestratorIterationSkipsGraphRulesUntilGraphIngestCatchesSyncCurso
 }
 
 func TestRunOrchestratorIterationAlignsGraphIngestWithSyncPageBudget(t *testing.T) {
-	registry, err := sourcecdk.NewRegistry(orchestratorPagedSource{pages: 3})
+	registry, err := sourcecdk.NewRegistry(orchestratorPagedSource{pages: 8})
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
@@ -850,7 +850,7 @@ func TestRunOrchestratorIterationAlignsGraphIngestWithSyncPageBudget(t *testing.
 		sourceruntime.New(registry, store, eventLog, nil),
 		findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry),
 		graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore),
-		orchestratorOptions{PageLimit: 3, GraphPageLimit: 1},
+		orchestratorOptions{PageLimit: 8, GraphPageLimit: 1},
 		1,
 	)
 	if err != nil {
@@ -860,8 +860,8 @@ func TestRunOrchestratorIterationAlignsGraphIngestWithSyncPageBudget(t *testing.
 		t.Fatalf("runtime result count = %d, want 1", got)
 	}
 	runtimeResult := result.Runtimes[0]
-	if runtimeResult.PagesRead != 3 || runtimeResult.EventsAppended != 3 {
-		t.Fatalf("sync pages/events = %d/%d, want 3/3", runtimeResult.PagesRead, runtimeResult.EventsAppended)
+	if runtimeResult.PagesRead != 8 || runtimeResult.EventsAppended != 8 {
+		t.Fatalf("sync pages/events = %d/%d, want 8/8", runtimeResult.PagesRead, runtimeResult.EventsAppended)
 	}
 	if runtimeResult.GraphIngest != "completed" {
 		t.Fatalf("graph ingest status = %q, want completed", runtimeResult.GraphIngest)
@@ -873,8 +873,8 @@ func TestRunOrchestratorIterationAlignsGraphIngestWithSyncPageBudget(t *testing.
 	if len(runs) != 1 {
 		t.Fatalf("completed ingest runs = %d, want 1", len(runs))
 	}
-	if runs[0].PagesRead != 3 {
-		t.Fatalf("graph ingest pages read = %d, want synced page budget 3 despite graph_page_limit=1", runs[0].PagesRead)
+	if runs[0].PagesRead != 8 {
+		t.Fatalf("graph ingest pages read = %d, want synced page budget 8 despite graph_page_limit=1", runs[0].PagesRead)
 	}
 }
 
