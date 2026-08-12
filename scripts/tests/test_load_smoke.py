@@ -79,6 +79,38 @@ class LoadSmokeTests(unittest.TestCase):
 
             self.assertEqual(code, 1)
 
+    def test_reports_load_generator_saturation(self):
+        with load_smoke_server() as base_url, tempfile.TemporaryDirectory() as tmp:
+            json_out = Path(tmp) / "summary.json"
+
+            code = load_smoke.main([
+                "--base-url",
+                base_url,
+                "--path",
+                "/slow",
+                "--duration",
+                "0.25",
+                "--rps",
+                "100",
+                "--concurrency",
+                "1",
+                "--max-p95-ms",
+                "1000",
+                "--max-missed-request-rate",
+                "0",
+                "--json-out",
+                str(json_out),
+            ])
+
+            self.assertEqual(code, 1)
+            summary = json.loads(json_out.read_text(encoding="utf-8"))
+            generation = summary["load_generation"]
+            self.assertEqual(generation["planned_request_count"], 25)
+            self.assertLess(generation["started_request_count"], 25)
+            self.assertGreater(generation["missed_request_rate"], 0)
+            self.assertGreater(generation["schedule_lag_ms"]["p95"], 0)
+            self.assertTrue(any(failure.startswith("missed request rate") for failure in summary["failures"]))
+
     def test_rejects_full_url_path(self):
         code = load_smoke.main([
             "--base-url",

@@ -101,6 +101,8 @@ LOAD_SMOKE_PATHS ?= /health
 LOAD_SMOKE_MAX_P95_MS ?= 750
 LOAD_SMOKE_MAX_ERROR_RATE ?= 0.01
 LOAD_SMOKE_MAX_5XX_RATE ?= 0
+LOAD_SMOKE_MAX_SCHEDULE_LAG_MS ?= 60000
+LOAD_SMOKE_MAX_MISSED_REQUEST_RATE ?= 1
 LOAD_SMOKE_JSON_OUT ?= tmp/load-smoke.json
 LOAD_SMOKE_MARKDOWN_OUT ?= tmp/load-smoke.md
 AGENT_ONBOARD_PLAN ?= examples/onboarding/cerebro-onboarding.yaml
@@ -866,6 +868,8 @@ load-smoke: ## Run bounded capacity/load smoke checks against CEREBRO_BASE_URL.
 		--max-p95-ms "$(LOAD_SMOKE_MAX_P95_MS)" \
 		--max-error-rate "$(LOAD_SMOKE_MAX_ERROR_RATE)" \
 		--max-5xx-rate "$(LOAD_SMOKE_MAX_5XX_RATE)" \
+		--max-schedule-lag-ms "$(LOAD_SMOKE_MAX_SCHEDULE_LAG_MS)" \
+		--max-missed-request-rate "$(LOAD_SMOKE_MAX_MISSED_REQUEST_RATE)" \
 		--json-out "$(LOAD_SMOKE_JSON_OUT)" \
 		--markdown-out "$(LOAD_SMOKE_MARKDOWN_OUT)"
 
