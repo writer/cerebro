@@ -2,9 +2,36 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createAgentGymAuthorizationFixture,
   createAgentGymStaleEvidenceFixture,
   createAgentGymToolPageFixture,
 } from "../src/index.js";
+
+test("authorization fixtures retain the policy evidence for a denial", () => {
+  const fixture = createAgentGymAuthorizationFixture({
+    action: "evidence.read",
+    decision: "deny",
+    policy_ref: "policy://evidence-reader/v3",
+    principal_ref: "principal://user/U123",
+    reason_code: "principal.not_entitled",
+    request_ref: "authorization-request://one",
+    resource_ref: "evidence://one",
+  });
+  assert.equal(fixture.decision, "deny");
+  assert.equal(fixture.policy_ref, "policy://evidence-reader/v3");
+});
+
+test("authorization fixtures fail closed on unknown decisions", () => {
+  assert.throws(() => createAgentGymAuthorizationFixture({
+    action: "evidence.read",
+    decision: "unknown" as "allow",
+    policy_ref: "policy://evidence-reader/v3",
+    principal_ref: "principal://user/U123",
+    reason_code: "decision.unavailable",
+    request_ref: "authorization-request://one",
+    resource_ref: "evidence://one",
+  }), /authorization fixture is invalid/u);
+});
 
 test("stale evidence fixtures use the replay clock", () => {
   const fixture = createAgentGymStaleEvidenceFixture({

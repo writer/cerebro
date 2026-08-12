@@ -35,11 +35,46 @@ export interface CreateAgentGymStaleEvidenceFixture {
   readonly observed_at: string;
 }
 
+export interface AgentGymAuthorizationFixtureV1 {
+  readonly action: string;
+  readonly decision: "allow" | "deny";
+  readonly policy_ref: string;
+  readonly principal_ref: string;
+  readonly reason_code: string;
+  readonly request_ref: string;
+  readonly resource_ref: string;
+  readonly schema_version: "agent-gym-authorization-fixture/v1";
+}
+
+export type CreateAgentGymAuthorizationFixture = Omit<
+  AgentGymAuthorizationFixtureV1,
+  "schema_version"
+>;
+
+/** Records a replay-only authorization decision with its policy evidence. */
+export function createAgentGymAuthorizationFixture(
+  input: CreateAgentGymAuthorizationFixture,
+): AgentGymAuthorizationFixtureV1 {
+  reference(input.request_ref, invalidAuthorization);
+  reference(input.policy_ref, invalidAuthorization);
+  reference(input.principal_ref, invalidAuthorization);
+  reference(input.resource_ref, invalidAuthorization);
+  code(input.action, 160);
+  code(input.reason_code, 160);
+  if (input.decision !== "allow" && input.decision !== "deny") {
+    invalidAuthorization();
+  }
+  return Object.freeze({
+    ...input,
+    schema_version: "agent-gym-authorization-fixture/v1",
+  });
+}
+
 /** Evaluates evidence age against an explicit replay clock. */
 export function createAgentGymStaleEvidenceFixture(
   input: CreateAgentGymStaleEvidenceFixture,
 ): AgentGymStaleEvidenceFixtureV1 {
-  reference(input.evidence_ref);
+  reference(input.evidence_ref, invalidStaleEvidence);
   const observedAt = canonicalTime(input.observed_at);
   const evaluatedAt = canonicalTime(input.evaluated_at);
   if (!Number.isSafeInteger(input.max_age_ms) || input.max_age_ms < 1
@@ -88,9 +123,9 @@ function identifier(value: string, maximum: number): void {
     || /[\u0000-\u001f\u007f]/u.test(value)) invalidPage();
 }
 
-function reference(value: string): void {
-  identifier(value, 240);
-  if (!value.includes("://")) invalidPage();
+function reference(value: string, invalid: () => never = invalidPage): void {
+  if (typeof value !== "string" || !value.trim() || value.length > 240
+    || /[\u0000-\u001f\u007f]/u.test(value) || !value.includes("://")) invalid();
 }
 
 function canonicalTime(value: string): number {
@@ -102,10 +137,19 @@ function canonicalTime(value: string): number {
   return parsed;
 }
 
+function code(value: string, maximum: number): void {
+  if (typeof value !== "string" || value.length > maximum
+    || !/^[a-z0-9][a-z0-9._:-]*$/u.test(value)) invalidAuthorization();
+}
+
 function invalidPage(): never {
   throw new AgentGymContractError("Agent gym tool page fixture is invalid.");
 }
 
 function invalidStaleEvidence(): never {
   throw new AgentGymContractError("Agent gym stale evidence fixture is invalid.");
+}
+
+function invalidAuthorization(): never {
+  throw new AgentGymContractError("Agent gym authorization fixture is invalid.");
 }
