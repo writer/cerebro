@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  calibrateAgentGymEvaluator,
   defineAgentGymEvaluatorManifest,
   defineAgentGymEvaluatorRubric,
   recordAgentGymCaseEvaluation,
@@ -64,6 +65,34 @@ test("invalid evaluator output cannot carry candidate scores", () => {
   }), /case evaluation is invalid/u);
 });
 
+test("model judge calibration measures a sealed labeled dataset", () => {
+  const evaluator = defineAgentGymEvaluatorManifest(modelJudgeManifestInput());
+  const calibration = calibrateAgentGymEvaluator(evaluator, calibrationPolicy(), {
+    calibrated_at: "2026-08-12T10:47:00.000Z",
+    calibration_dataset_digest: digest("f"),
+    samples: [
+      { expected_score: 0.9, observed_score: 0.85, sample_ref: "agent-gym-calibration-sample://one" },
+      { expected_score: 0.5, observed_score: 0.55, sample_ref: "agent-gym-calibration-sample://two" },
+    ],
+  });
+  assert.equal(calibration.passed, true);
+  assert.ok(calibration.mean_absolute_error < 0.1);
+  assert.match(calibration.calibration_digest, /^sha256:[0-9a-f]{64}$/u);
+});
+
+test("model judge calibration fails closed on too few labeled samples", () => {
+  const calibration = calibrateAgentGymEvaluator(
+    defineAgentGymEvaluatorManifest(modelJudgeManifestInput()),
+    calibrationPolicy(),
+    {
+      calibrated_at: "2026-08-12T10:47:00.000Z",
+      calibration_dataset_digest: digest("f"),
+      samples: [{ expected_score: 1, observed_score: 1, sample_ref: "agent-gym-calibration-sample://one" }],
+    },
+  );
+  assert.equal(calibration.passed, false);
+});
+
 function rubricInput() {
   return {
     metrics: [
@@ -124,6 +153,16 @@ function caseEvaluationInput() {
     replay_ref: "agent-gym-replay://nightly/held-out-one",
     schema_version: "agent-gym-case-evaluation/v1" as const,
     valid: true,
+  };
+}
+
+function calibrationPolicy() {
+  return {
+    maximum_mean_absolute_error: 0.1,
+    maximum_sample_absolute_error: 0.2,
+    minimum_sample_count: 2,
+    policy_ref: "agent-gym-calibration-policy://model-judge/default-v1",
+    schema_version: "agent-gym-calibration-policy/v1" as const,
   };
 }
 
