@@ -31,6 +31,24 @@ export interface CaptureAgentGymSlackUpdateMessage {
   readonly text: string;
 }
 
+export interface CaptureAgentGymSlackPublishHome {
+  readonly idempotency_key: string;
+  readonly user_ref: string;
+  readonly view: Readonly<Record<string, AgentGymJson>>;
+}
+
+/** Captures an App Home publication with a fully inspectable view payload. */
+export function captureAgentGymSlackPublishHome(
+  input: CaptureAgentGymSlackPublishHome,
+): AgentGymSlackEffectV1 {
+  reference(input.user_ref, "user reference");
+  jsonObject(input.view, "Home view");
+  if (input.view.type !== "home") invalid("Home view type");
+  return effect("publish_home", input.idempotency_key, [input.user_ref], {
+    view: input.view,
+  });
+}
+
 /** Captures replacement content bound to one existing message. */
 export function captureAgentGymSlackUpdateMessage(
   input: CaptureAgentGymSlackUpdateMessage,
@@ -67,7 +85,7 @@ function effect(
   bounded(idempotencyKey, 240, "idempotency key");
   if (targetRefs.length === 0 || targetRefs.length > 8
     || new Set(targetRefs).size !== targetRefs.length) invalid("targets");
-  const frozenPayload = Object.freeze({ ...payload });
+  const frozenPayload = deepFreeze({ ...payload });
   return Object.freeze({
     effect_ref: `slack-effect://sha256/${digest(JSON.stringify({
       idempotency_key: idempotencyKey,
@@ -83,6 +101,14 @@ function effect(
   });
 }
 
+function deepFreeze<T extends AgentGymJson>(value: T): T {
+  if (value !== null && typeof value === "object") {
+    for (const nested of Object.values(value)) deepFreeze(nested);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 function bounded(value: string, maximum: number, label: string): void {
   if (typeof value !== "string" || !value.trim() || value.length > maximum
     || /[\u0000-\u001f\u007f]/u.test(value)) invalid(label);
@@ -93,6 +119,14 @@ function digest(value: string): string {
 function reference(value: string, label: string): void {
   bounded(value, 240, label);
   if (!value.includes("://")) invalid(label);
+}
+function jsonObject(value: object, label: string): void {
+  try {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined || Buffer.byteLength(encoded, "utf8") > 256_000) invalid(label);
+  } catch {
+    invalid(label);
+  }
 }
 function safeText(value: string, maximum: number, label: string): void {
   if (typeof value !== "string" || !value.trim() || value.length > maximum

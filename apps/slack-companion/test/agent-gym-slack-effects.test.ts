@@ -3,8 +3,31 @@ import test from "node:test";
 
 import {
   captureAgentGymSlackPostMessage,
+  captureAgentGymSlackPublishHome,
   captureAgentGymSlackUpdateMessage,
 } from "../src/index.js";
+
+test("Home publication capture retains a deeply frozen view", () => {
+  const blocks = [{ text: "2 outcome checks pending", type: "section" }];
+  const view = { blocks, type: "home" };
+  const effect = captureAgentGymSlackPublishHome({
+    idempotency_key: "home:user-one:revision-one",
+    user_ref: "slack-user://one",
+    view,
+  });
+  assert.equal(effect.operation, "publish_home");
+  assert.equal(Object.isFrozen(view), true);
+  assert.equal(Object.isFrozen(blocks), true);
+  assert.equal(Object.isFrozen(blocks[0]), true);
+});
+
+test("Home publication capture rejects a modal-shaped view", () => {
+  assert.throws(() => captureAgentGymSlackPublishHome({
+    idempotency_key: "home:user-one:revision-one",
+    user_ref: "slack-user://one",
+    view: { type: "modal" },
+  }), /Home view type is invalid/u);
+});
 
 test("message update capture binds replacement content to one message", () => {
   const effect = captureAgentGymSlackUpdateMessage({
