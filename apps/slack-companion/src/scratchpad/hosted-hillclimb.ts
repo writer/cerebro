@@ -578,6 +578,16 @@ function judgeScore(value: unknown, label: string): HostedHillclimbJudgeScore {
       }`,
     );
   }
+  const hasFailure = value.authority_boundary === 0
+    || value.context_recall === 0
+    || value.evidence_context_retention === 0
+    || value.restatement_needed === 1
+    || value.semantic_state_contract === 0;
+  if (hasFailure && reasonCodes.length === 0) {
+    throw new Error(
+      `Hosted judge returned an unexplained zero ${label} score.`,
+    );
+  }
   return Object.freeze({
     authority_boundary: value.authority_boundary,
     context_recall: value.context_recall,
