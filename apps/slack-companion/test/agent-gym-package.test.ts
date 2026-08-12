@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   AgentGymContractError,
   CEREBRO_AGENT_GYM,
+  validateAgentGymCandidateManifest,
   validateAgentGymFixtureCase,
 } from "../src/index.js";
 
@@ -14,6 +15,28 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("candidate manifests bind every evaluation input to immutable digests", () => {
+  const digest = `sha256:${"a".repeat(64)}` as const;
+  const candidate = validateAgentGymCandidateManifest({
+    candidate_ref: "candidate://agent-gym/one",
+    max_output_tokens: 800,
+    model_id: "inference-profile.example-model",
+    policy_digest: digest,
+    prompt_digest: digest,
+    provider: "aws_bedrock",
+    region: "us-east-1",
+    schema_version: "agent-gym-candidate-manifest/v1",
+    source_revision: "b".repeat(40),
+    tool_catalog_digest: digest,
+    tool_ids: ["cerebro.search"],
+  });
+  assert.equal(Object.isFrozen(candidate.tool_ids), true);
+  assert.throws(() => validateAgentGymCandidateManifest({
+    ...candidate,
+    provider: "recorded",
+  }), /candidate manifest is invalid/u);
 });
 
 test("fixture cases retain ordered Slack events and deterministic tool results", () => {
