@@ -1,5 +1,9 @@
 import type { AssistantExecutionLaneV1 } from "./contracts.js";
 import { assistantTurnBudget } from "./policy.js";
+import {
+  ANSWER_FEEDBACK_CATEGORIES,
+  type AnswerFeedbackCategoryV1,
+} from "../feedback/policy.js";
 
 export const ASSISTANT_TURN_OUTCOME_STATES = [
   "completed",
@@ -29,6 +33,9 @@ export const ASSISTANT_TURN_EVALUATION_BLOCKERS = [
   "unnecessary_clarification",
   "user_correction",
   "negative_feedback",
+  "missed_source_feedback",
+  "wrong_owner_feedback",
+  "followup_requested",
   "outcome_unknown",
 ] as const;
 
@@ -69,6 +76,7 @@ export interface AssistantTurnEvaluationInputV1 {
   evaluator_ref: string;
   execution_lane: AssistantExecutionLaneV1;
   explicit_feedback?: "positive" | "negative";
+  explicit_feedback_category?: AnswerFeedbackCategoryV1;
   grounded_claim_count: number;
   internal_machinery_exposure_count: number;
   latency_ms: number;
@@ -184,6 +192,9 @@ export function evaluateAssistantTurn(
   const humanBurden = input.unnecessary_clarification_count === 0
     && !input.user_correction
     && input.explicit_feedback !== "negative"
+    && input.explicit_feedback_category !== "missed_source"
+    && input.explicit_feedback_category !== "wrong_owner"
+    && input.explicit_feedback_category !== "needs_followup"
     && input.internal_machinery_exposure_count === 0
     ? 1
     : 0;
@@ -219,6 +230,12 @@ export function evaluateAssistantTurn(
       : undefined,
     input.user_correction ? "user_correction" : undefined,
     input.explicit_feedback === "negative" ? "negative_feedback" : undefined,
+    input.explicit_feedback_category === "missed_source"
+      ? "missed_source_feedback" : undefined,
+    input.explicit_feedback_category === "wrong_owner"
+      ? "wrong_owner_feedback" : undefined,
+    input.explicit_feedback_category === "needs_followup"
+      ? "followup_requested" : undefined,
     input.outcome_state === "unknown" ? "outcome_unknown" : undefined,
   ].filter((value): value is AssistantTurnEvaluationBlockerV1 => value !== undefined);
   const dimensions: AssistantTurnEvaluationDimensionsV1 = {
@@ -435,6 +452,19 @@ function validateEvaluationInput(input: AssistantTurnEvaluationInputV1): void {
     && input.explicit_feedback !== "negative"
   ) {
     throw new AssistantTurnEvaluationInputError("The explicit feedback value is unsupported.");
+  }
+  if (
+    input.explicit_feedback_category !== undefined
+    && !ANSWER_FEEDBACK_CATEGORIES.includes(input.explicit_feedback_category)
+  ) {
+    throw new AssistantTurnEvaluationInputError("The explicit feedback category is unsupported.");
+  }
+  if (
+    input.explicit_feedback_category !== undefined
+    && input.explicit_feedback !== undefined
+    && (input.explicit_feedback_category === "helpful") !== (input.explicit_feedback === "positive")
+  ) {
+    throw new AssistantTurnEvaluationInputError("The explicit feedback value and category conflict.");
   }
   for (const [name, value] of [
     ["delivery.complete", input.delivery.complete],

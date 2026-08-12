@@ -773,7 +773,10 @@ export class SlackCompanionRuntime {
         this.app.client as unknown as SlackWakeDeliveryClient,
         threadRoutes,
         wakeDeliveries,
-        { workerRef: `slack-host:${config.environmentLabel}:${config.appName}` },
+        {
+          notificationPreferences: config.notificationPreferences,
+          workerRef: `slack-host:${config.environmentLabel}:${config.appName}`,
+        },
       );
     }
     this.registerRoutes();

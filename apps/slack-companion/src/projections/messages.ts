@@ -61,6 +61,14 @@ export type SlackRichMessageSegmentV1 =
       readonly type: "citation";
     }
   | {
+      readonly evidence_ref: string;
+      readonly label: string;
+      readonly observed_at: string;
+      readonly source_system: string;
+      readonly source_url: string;
+      readonly type: "source";
+    }
+  | {
       readonly items: readonly string[];
       readonly title?: string;
       readonly type: "list";
@@ -174,6 +182,27 @@ function snapshotRichSegment(
         label: segment.label,
         type,
       });
+    case "source":
+      requireExactRecord(
+        segment,
+        ["evidence_ref", "label", "observed_at", "source_system", "source_url", "type"],
+        `rich segment ${sequence}`,
+      );
+      if (
+        typeof segment.evidence_ref !== "string"
+        || typeof segment.label !== "string"
+        || typeof segment.observed_at !== "string"
+        || typeof segment.source_system !== "string"
+        || typeof segment.source_url !== "string"
+      ) throw new SlackMessageProjectionError("Slack rich source segment is invalid.");
+      return Object.freeze({
+        evidence_ref: segment.evidence_ref,
+        label: segment.label,
+        observed_at: segment.observed_at,
+        source_system: segment.source_system,
+        source_url: segment.source_url,
+        type,
+      });
     case "list": {
       const keys = Object.prototype.hasOwnProperty.call(segment, "title")
         ? ["items", "title", "type"]
@@ -214,6 +243,7 @@ function richSegmentType(
     case "text":
     case "code":
     case "citation":
+    case "source":
     case "list":
       return descriptor.value;
     default:
@@ -282,6 +312,14 @@ function renderRichSegment(
       );
       return `Source: ${label} (${evidenceRef})`;
     }
+    case "source": {
+      const label = normalizeSlackText(segment.label, `rich source label ${sequence}`, 160);
+      const system = normalizeSlackText(segment.source_system, `rich source system ${sequence}`, 80);
+      const evidenceRef = requireSlackOpaqueRef(segment.evidence_ref, `rich source ref ${sequence}`);
+      const observedAt = canonicalTimestamp(segment.observed_at, `rich source observed_at ${sequence}`);
+      const sourceUrl = safeSourceUrl(segment.source_url);
+      return `Source: ${label}\nSystem: ${system}\nObserved: ${observedAt}\nRecord: ${sourceUrl}\nEvidence: ${evidenceRef}`;
+    }
     case "list": {
       if (!Array.isArray(segment.items) || segment.items.length === 0 || segment.items.length > 12) {
         throw new SlackMessageProjectionError("Slack rich list segment is invalid.");
@@ -295,6 +333,26 @@ function renderRichSegment(
       return `${title}${items.join("\n")}`;
     }
   }
+}
+
+function canonicalTimestamp(value: string, field: string): string {
+  const normalized = normalizeSlackText(value, field, 64);
+  const parsed = Date.parse(normalized);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== normalized) {
+    throw new SlackMessageProjectionError(`${field} is invalid.`);
+  }
+  return normalized;
+}
+
+function safeSourceUrl(value: string): string {
+  let parsed: URL;
+  try { parsed = new URL(value); } catch {
+    throw new SlackMessageProjectionError("Slack source URL is invalid.");
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash) {
+    throw new SlackMessageProjectionError("Slack source URL must be a safe HTTPS URL.");
+  }
+  return normalizeSlackText(parsed.toString(), "rich source URL", 1_000);
 }
 
 /** Joins stored payload truth to durable receipt identities and resume state. */

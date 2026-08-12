@@ -1252,6 +1252,46 @@ test("wake worker posts one metadata-bound reply and ACKs only after Slack accep
   }
 });
 
+test("wake worker leaves scheduled follow-through pending during configured quiet hours", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-wake-worker-quiet-"));
+  let requests = 0;
+  try {
+    const client = new CerebroAskClient({
+      agentRuntimeUrl: "http://127.0.0.1:8091",
+      answerAuthority: testAnswerAuthority,
+      apiKey: "unused",
+      baseUrl: "https://legacy.example.com",
+      fetchImpl: async () => {
+        requests += 1;
+        return Response.json({ wake: null });
+      },
+      tenantId: "writer",
+    });
+    const worker = new WakeDeliveryWorker(client, {
+      chat: { async postMessage() { throw new Error("quiet hours must not post"); } },
+      conversations: { async replies() { throw new Error("quiet hours must not reconcile"); } },
+    }, new FileSlackThreadRouteStore(root), new FileWakeDeliveryOutbox(root), {
+      clock: () => new Date("2026-08-12T06:00:00.000Z"),
+      notificationPreferences: {
+        digest_hour: 8,
+        enabled_classes: ["alert", "digest", "followup"],
+        minimum_severity: "low",
+        quiet_hours_end: 7,
+        quiet_hours_start: 22,
+        schema_version: "slack-notification-preferences/v1",
+        timezone: "America/Los_Angeles",
+      },
+      signal: () => new AbortController().signal,
+      workerRef: "slack-host:test",
+    });
+
+    await worker.tick();
+    assert.equal(requests, 0);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("wake worker reconciles an ambiguous post by metadata and never posts again", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-wake-worker-reconcile-"));
   const delivery = wakeDeliveryFixture("reconcile");
@@ -1314,12 +1354,21 @@ test("wake worker reconciles an ambiguous post by metadata and never posts again
         },
       },
     }, routes, outbox, {
-      clock: () => new Date("2026-07-31T20:01:00.000Z"),
+      clock: () => new Date("2026-08-12T06:00:00.000Z"),
+      notificationPreferences: {
+        digest_hour: 8,
+        enabled_classes: ["alert", "digest", "followup"],
+        minimum_severity: "low",
+        quiet_hours_end: 7,
+        quiet_hours_start: 22,
+        schema_version: "slack-notification-preferences/v1",
+        timezone: "America/Los_Angeles",
+      },
       signal: () => new AbortController().signal,
       workerRef: "slack-host:test",
     });
 
-    await worker.flush();
+    await worker.tick();
 
     assert.equal(posts, 0);
     assert.equal(acknowledgements, 1);
