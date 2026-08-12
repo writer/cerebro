@@ -37,6 +37,27 @@ export interface CaptureAgentGymSlackPublishHome {
   readonly view: Readonly<Record<string, AgentGymJson>>;
 }
 
+export interface CaptureAgentGymSlackOpenModal {
+  readonly idempotency_key: string;
+  readonly trigger_ref: string;
+  readonly user_ref: string;
+  readonly view: Readonly<Record<string, AgentGymJson>>;
+}
+
+/** Captures a modal open request bound to its one-use trigger and actor. */
+export function captureAgentGymSlackOpenModal(
+  input: CaptureAgentGymSlackOpenModal,
+): AgentGymSlackEffectV1 {
+  reference(input.trigger_ref, "trigger reference");
+  reference(input.user_ref, "user reference");
+  jsonObject(input.view, "modal view");
+  if (input.view.type !== "modal") invalid("modal view type");
+  return effect("open_modal", input.idempotency_key, [
+    input.trigger_ref,
+    input.user_ref,
+  ], { view: input.view });
+}
+
 /** Captures an App Home publication with a fully inspectable view payload. */
 export function captureAgentGymSlackPublishHome(
   input: CaptureAgentGymSlackPublishHome,

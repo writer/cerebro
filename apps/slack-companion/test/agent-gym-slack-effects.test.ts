@@ -2,10 +2,38 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  captureAgentGymSlackOpenModal,
   captureAgentGymSlackPostMessage,
   captureAgentGymSlackPublishHome,
   captureAgentGymSlackUpdateMessage,
 } from "../src/index.js";
+
+test("modal capture binds a valid modal to the actor and trigger", () => {
+  const effect = captureAgentGymSlackOpenModal({
+    idempotency_key: "modal:approval:one",
+    trigger_ref: "slack-trigger://one",
+    user_ref: "slack-user://one",
+    view: {
+      callback_id: "approval.confirm",
+      title: { text: "Confirm action", type: "plain_text" },
+      type: "modal",
+    },
+  });
+  assert.equal(effect.operation, "open_modal");
+  assert.deepEqual(effect.target_refs, [
+    "slack-trigger://one",
+    "slack-user://one",
+  ]);
+});
+
+test("modal capture rejects a Home-shaped view", () => {
+  assert.throws(() => captureAgentGymSlackOpenModal({
+    idempotency_key: "modal:approval:one",
+    trigger_ref: "slack-trigger://one",
+    user_ref: "slack-user://one",
+    view: { type: "home" },
+  }), /modal view type is invalid/u);
+});
 
 test("Home publication capture retains a deeply frozen view", () => {
   const blocks = [{ text: "2 outcome checks pending", type: "section" }];
