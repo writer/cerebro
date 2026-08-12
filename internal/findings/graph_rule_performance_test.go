@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,6 +40,77 @@ func TestCloudExposureGraphRulesAnchorPublicPrincipalOnIndex(t *testing.T) {
 				t.Fatalf("query missing index-anchored public-principal predicate %q:\n%s", indexedAnchor, query)
 			}
 		})
+	}
+}
+
+type concurrentGraphQuery struct {
+	*stubGraphStore
+	started chan struct{}
+	release chan struct{}
+	active  atomic.Int32
+	maximum atomic.Int32
+}
+
+func (s *concurrentGraphQuery) ExecuteReadCypher(ctx context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	active := s.active.Add(1)
+	defer s.active.Add(-1)
+	for {
+		maximum := s.maximum.Load()
+		if active <= maximum || s.maximum.CompareAndSwap(maximum, active) {
+			break
+		}
+	}
+	s.started <- struct{}{}
+	select {
+	case <-s.release:
+		return nil, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesReadsConcurrentlyAndReturnsInRuleOrder(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &concurrentGraphQuery{
+		stubGraphStore: &stubGraphStore{},
+		started:        make(chan struct{}, 2),
+		release:        make(chan struct{}),
+	}
+	ruleA := &stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "rule-a"}, sourceID: "okta", query: ports.CypherQueryRequest{Query: "MATCH (a) RETURN a"}}
+	ruleB := &stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "rule-b"}, sourceID: "okta", query: ports.CypherQueryRequest{Query: "MATCH (b) RETURN b"}}
+	registry, err := NewRegistry(ruleA, ruleB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+
+	type evaluationResult struct {
+		result *EvaluateGraphRulesResult
+		err    error
+	}
+	completed := make(chan evaluationResult, 1)
+	go func() {
+		result, evaluateErr := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+		completed <- evaluationResult{result: result, err: evaluateErr}
+	}()
+	for range 2 {
+		select {
+		case <-graphStore.started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("two graph reads did not overlap")
+		}
+	}
+	close(graphStore.release)
+	outcome := <-completed
+	if outcome.err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", outcome.err)
+	}
+	if graphStore.maximum.Load() < 2 {
+		t.Fatalf("maximum concurrent graph reads = %d, want at least 2", graphStore.maximum.Load())
+	}
+	if len(outcome.result.Evaluations) != 2 || outcome.result.Evaluations[0].Rule.GetId() != "rule-a" || outcome.result.Evaluations[1].Rule.GetId() != "rule-b" {
+		t.Fatalf("evaluation order = %#v, want rule-a then rule-b", outcome.result.Evaluations)
 	}
 }
 
