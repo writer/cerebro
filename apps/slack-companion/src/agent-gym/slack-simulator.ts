@@ -38,6 +38,29 @@ export function simulateSlackAppHomeOpened(
   });
 }
 
+/** Simulates a block-action click bound to its exact actor and conversation. */
+export function simulateSlackButtonAction(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "button_action") invalid("button-action event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const channelId = field(payload, "channel_id");
+  if (!/^[CDG][A-Z0-9]+$/u.test(channelId)) invalid("button-action channel");
+  const userId = field(payload, "user_id");
+  const messageTs = timestampField(payload, "message_ts");
+  const threadTs = optionalTimestampField(payload, "thread_ts") ?? messageTs;
+  const actionId = field(payload, "action_id", 255);
+  if (!/^[a-z0-9][a-z0-9._:-]*$/u.test(actionId)) invalid("button action id");
+  const value = field(payload, "value", 2_000);
+  return invocation(event, {
+    action: Object.freeze({ action_id: actionId, value }),
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-thread", teamId, channelId, threadTs),
+    route: "interaction",
+  });
+}
+
 /** Simulates normalization of one direct message without contacting Slack. */
 export function simulateSlackDirectMessage(
   event: AgentGymSlackEventV1,
@@ -135,8 +158,13 @@ function field(
   return value;
 }
 function object(value: AgentGymJson): Readonly<Record<string, AgentGymJson>> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) invalid("payload");
+  if (!isJsonObject(value)) invalid("payload");
   return value;
+}
+function isJsonObject(
+  value: AgentGymJson,
+): value is { readonly [key: string]: AgentGymJson } {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function optionalTimestampField(
   payload: Readonly<Record<string, AgentGymJson>>,
