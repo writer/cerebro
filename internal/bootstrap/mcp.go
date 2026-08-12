@@ -3846,23 +3846,6 @@ func mcpEnforceMaxBytes(value any, args map[string]any) error {
 	return fmt.Errorf("%w: response exceeds max_bytes; narrow filters, lower limit, or enable compact", errInvalidHTTPRequest)
 }
 
-func mcpAssetSearchResultFromRow(row ports.CypherRow) (mcpAssetSearchResult, error) {
-	values := row.Values
-	attributes, err := mcpStringMapFromJSON(mcpAnyString(values["attributes_json"]))
-	if err != nil {
-		return mcpAssetSearchResult{}, err
-	}
-	return mcpAssetSearchResult{
-		URN:        mcpAnyString(values["urn"]),
-		TenantID:   mcpAnyString(values["tenant_id"]),
-		RuntimeID:  mcpAnyString(values["runtime_id"]),
-		SourceID:   mcpAnyString(values["source_id"]),
-		EntityType: mcpAnyString(values["entity_type"]),
-		Label:      mcpAnyString(values["label"]),
-		Attributes: mcpRedactSensitiveAttributes(attributes),
-	}, nil
-}
-
 func (app *App) mcpListRiskFindings(r *http.Request, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
 	ctx := r.Context()
 	store := findingStore(app.deps.StateStore)
@@ -4108,22 +4091,6 @@ func mcpTopRiskReasons(counts map[string]int, limit int) []mcpRiskReasonCount {
 		reasons = reasons[:limit]
 	}
 	return reasons
-}
-
-func mcpStringMapFromJSON(raw string) (map[string]string, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return nil, nil
-	}
-	rawValues := map[string]any{}
-	if err := json.Unmarshal([]byte(trimmed), &rawValues); err != nil {
-		return nil, fmt.Errorf("%w: decode asset attributes", graphquery.ErrInvalidRequest)
-	}
-	values := make(map[string]string, len(rawValues))
-	for key, value := range rawValues {
-		values[key] = mcpAnyString(value)
-	}
-	return values, nil
 }
 
 func mcpRedactSensitiveAttributes(attributes map[string]string) map[string]string {
