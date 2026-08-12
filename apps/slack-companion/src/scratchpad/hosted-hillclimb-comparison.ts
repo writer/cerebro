@@ -14,6 +14,7 @@ export interface HostedHillclimbComparisonV1 {
     readonly semantic_state_contract_rate: number;
   };
   readonly current_evaluated_at: string;
+  readonly judge_repair_count_delta: number;
   readonly previous_evaluated_at: string;
   readonly promotion_stable: boolean;
   readonly regression_count_delta: number;
@@ -76,6 +77,7 @@ export function compareHostedSlackWorkingStateHillclimbs(
       ),
     }),
     current_evaluated_at: current.evaluated_at,
+    judge_repair_count_delta: current.judge.repair_count - previous.judge.repair_count,
     previous_evaluated_at: previous.evaluated_at,
     promotion_stable:
       previous.promotion.promotion_ready === current.promotion.promotion_ready,

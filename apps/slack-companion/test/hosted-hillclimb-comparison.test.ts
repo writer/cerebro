@@ -10,6 +10,7 @@ function receipt(overrides: {
   contextRecall?: number;
   corpusDigest?: string;
   evaluatedAt?: string;
+  repairCount?: number;
   regressions?: number;
 } = {}): HostedHillclimbReceipt {
   return {
@@ -40,7 +41,7 @@ function receipt(overrides: {
       output_tokens: 5,
       p95_latency_ms: 200,
       provider: "aws_bedrock",
-      repair_count: 0,
+      repair_count: overrides.repairCount ?? 0,
       region: "us-east-1",
       sampling_parameters: "provider_default",
       total_tokens: 15,
@@ -83,6 +84,7 @@ test("compares repeat measurements without answer content", () => {
       blockers: ["new_blocker"],
       contextRecall: 1,
       evaluatedAt: "2026-08-12T17:00:00.000Z",
+      repairCount: 2,
       regressions: 2,
     }),
   );
@@ -92,6 +94,7 @@ test("compares repeat measurements without answer content", () => {
     resolved: ["old_blocker"],
   });
   assert.equal(comparison.regression_count_delta, 2);
+  assert.equal(comparison.judge_repair_count_delta, 2);
   assert.equal(comparison.promotion_stable, true);
 });
 
