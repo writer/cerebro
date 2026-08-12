@@ -6,6 +6,7 @@ import {
   CEREBRO_AGENT_GYM,
   validateAgentGymCandidateManifest,
   validateAgentGymFixtureCase,
+  validateAgentGymReplayRun,
 } from "../src/index.js";
 
 test("agent gym exposes a stable public contract identity", () => {
@@ -15,6 +16,33 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("replay runs preserve ordered model and effect receipts", () => {
+  const digest = `sha256:${"c".repeat(64)}` as const;
+  const run = validateAgentGymReplayRun({
+    artifact_digest: digest,
+    candidate_ref: "candidate://agent-gym/one",
+    completed_at: "2026-08-12T08:00:02.000Z",
+    fixture_ref: "case://agent-gym/mention-one",
+    run_ref: "replay://agent-gym/one",
+    schema_version: "agent-gym-replay-run/v1",
+    started_at: "2026-08-12T08:00:00.000Z",
+    status: "passed",
+    turns: [{
+      content_digest: digest,
+      kind: "model",
+      latency_ms: 800,
+      recorded_at: "2026-08-12T08:00:01.000Z",
+      token_usage: { input_tokens: 100, output_tokens: 25 },
+      turn_index: 0,
+    }],
+  });
+  assert.equal(Object.isFrozen(run.turns[0]?.token_usage), true);
+  assert.throws(() => validateAgentGymReplayRun({
+    ...run,
+    status: "failed",
+  }), /replay run is invalid/u);
 });
 
 test("candidate manifests bind every evaluation input to immutable digests", () => {
