@@ -14,11 +14,13 @@ export interface HostedHillclimbComparisonV1 {
     readonly semantic_state_contract_rate: number;
   };
   readonly current_evaluated_at: string;
+  readonly efficiency_stable: boolean;
   readonly judge_repair_count_delta: number;
   readonly judge_p95_latency_ms_delta: number;
   readonly model_token_count_delta: number;
   readonly previous_evaluated_at: string;
   readonly promotion_stable: boolean;
+  readonly quality_stable: boolean;
   readonly regression_count_delta: number;
   readonly schema_version: "slack-working-state-hosted-hillclimb-comparison/v1";
 }
@@ -82,6 +84,7 @@ export function compareHostedSlackWorkingStateHillclimbs(
       ),
     }),
     current_evaluated_at: current.evaluated_at,
+    efficiency_stable: modelTokenCount(current) <= modelTokenCount(previous),
     judge_repair_count_delta: current.judge.repair_count - previous.judge.repair_count,
     judge_p95_latency_ms_delta: delta(
       previous.judge.p95_latency_ms,
@@ -91,6 +94,10 @@ export function compareHostedSlackWorkingStateHillclimbs(
     previous_evaluated_at: previous.evaluated_at,
     promotion_stable:
       previous.promotion.promotion_ready === current.promotion.promotion_ready,
+    quality_stable:
+      current.promotion.regression_count <= previous.promotion.regression_count
+      && current.judge.repair_count <= previous.judge.repair_count
+      && current.promotion.blockers.every((blocker) => previousBlockers.has(blocker)),
     regression_count_delta:
       current.promotion.regression_count - previous.promotion.regression_count,
     schema_version: "slack-working-state-hosted-hillclimb-comparison/v1",
