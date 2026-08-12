@@ -5,8 +5,10 @@ import {
   digestAgentGymJson,
   openAgentGymRollbackReserve,
   recordAgentGymPostRolloutObservation,
+  sealAgentGymPostRolloutWindow,
   validateAgentGymRollbackReserve,
   validateAgentGymPostRolloutObservation,
+  validateAgentGymPostRolloutWindow,
   type AgentGymRolloutSummaryV1,
 } from "../src/index.js";
 
@@ -59,6 +61,43 @@ test("post-rollout failures require explicit blocker codes", () => {
     sample_ref: "agent-gym-live-sample://nightly/invalid",
   }), /post-rollout observation is invalid/u);
 });
+
+test("post-rollout windows aggregate chronological live observations", () => {
+  const observations = [liveObservation("one", "2026-08-12T11:28:00.000Z", 700, 0.95),
+    liveObservation("two", "2026-08-12T11:29:00.000Z", 1200, 0.85)];
+  const window = sealAgentGymPostRolloutWindow(observations, {
+    evidence_refs: ["agent-gym-evidence://post-rollout/window-one"],
+    sealed_at: "2026-08-12T11:30:00.000Z",
+    window_ref: "agent-gym-post-rollout-window://nightly/one",
+  });
+  assert.equal(window.observation_count, 2);
+  assert.equal(window.mean_quality_score, 0.9);
+  assert.equal(window.p95_latency_ms, 1200);
+  assert.deepEqual(validateAgentGymPostRolloutWindow(window), window);
+});
+
+test("post-rollout windows reject observations presented out of order", () => {
+  const observations = [liveObservation("two", "2026-08-12T11:29:00.000Z", 1200, 0.85),
+    liveObservation("one", "2026-08-12T11:28:00.000Z", 700, 0.95)];
+  assert.throws(() => sealAgentGymPostRolloutWindow(observations, {
+    evidence_refs: ["agent-gym-evidence://post-rollout/window-invalid"],
+    sealed_at: "2026-08-12T11:30:00.000Z",
+    window_ref: "agent-gym-post-rollout-window://nightly/invalid",
+  }), /post-rollout window is invalid/u);
+});
+
+function liveObservation(ref: string, observedAt: string, latencyMs: number, qualityScore: number) {
+  return recordAgentGymPostRolloutObservation(completedRollout(), {
+    blocker_codes: [],
+    evidence_refs: [`agent-gym-evidence://post-rollout/${ref}`],
+    latency_ms: latencyMs,
+    observation_ref: `agent-gym-post-rollout-observation://nightly/${ref}`,
+    observed_at: observedAt,
+    outcome: "passed",
+    quality_score: qualityScore,
+    sample_ref: `agent-gym-live-sample://nightly/${ref}`,
+  });
+}
 
 function completedRollout(): AgentGymRolloutSummaryV1 {
   const body = {

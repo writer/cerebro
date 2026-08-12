@@ -45,6 +45,7 @@ export * from "./rollout-completion.js";
 export * from "./rollout-summary.js";
 export * from "./rollback-reserve.js";
 export * from "./post-rollout-observation.js";
+export * from "./post-rollout-window.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
