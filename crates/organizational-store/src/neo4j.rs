@@ -143,6 +143,12 @@ endpoint.entity_type STARTS WITH $primary_kind_prefix
   AND ($search = '' OR toLower(coalesce(endpoint.urn, '') + ' ' + coalesce(endpoint.label, '') + ' ' + coalesce(account.urn, '') + ' ' + coalesce(account.label, '')) CONTAINS $search)
 "#;
 
+fn exposure_counts_statement() -> String {
+    format!(
+        "OPTIONAL MATCH (revision:OrganizationalGraphRevision {{tenant_id: $tenant_id}}) WITH coalesce(revision.graph_revision, 0) AS graph_revision CALL {{ MATCH (endpoint:Entity {{tenant_id: $tenant_id, source_id: $primary_source_id}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator:Entity {{tenant_id: $tenant_id}}) WHERE {EXPOSURE_PRIMARY_FILTER} OPTIONAL MATCH (asset:Entity {{tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_kind}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator) RETURN count(DISTINCT endpoint) AS primary_count, count(DISTINCT indicator) AS indicator_count, count(DISTINCT CASE WHEN indicator.entity_type = 'internet.host' THEN indicator END) AS host_count, count(DISTINCT CASE WHEN indicator.entity_type = 'internet.ip' THEN indicator END) AS ip_count, count(DISTINCT CASE WHEN asset IS NOT NULL THEN endpoint END) AS overlapping_primary_count, count(DISTINCT CASE WHEN asset IS NOT NULL THEN indicator END) AS overlapping_indicator_count, count(DISTINCT asset) AS overlapping_corroborating_count }} RETURN graph_revision, primary_count, indicator_count, host_count, ip_count, overlapping_primary_count, overlapping_indicator_count, overlapping_corroborating_count"
+    )
+}
+
 const REVISION_QUERY: &str = r#"
 MERGE (revision:OrganizationalGraphRevision {tenant_id: $tenant_id})
 SET revision.graph_revision = $graph_revision,
@@ -758,11 +764,7 @@ impl Neo4jProjector {
         };
 
         let mut transaction = self.graph.start_txn().await?;
-        let start_revision = transaction_graph_revision(&mut transaction, tenant_id).await?;
-
-        let counts_statement = format!(
-            "MATCH (endpoint:Entity {{tenant_id: $tenant_id, source_id: $primary_source_id}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator:Entity {{tenant_id: $tenant_id}}) WHERE {EXPOSURE_PRIMARY_FILTER} OPTIONAL MATCH (asset:Entity {{tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_kind}})-[:RELATION {{tenant_id: $tenant_id, relation: 'represents'}}]->(indicator) RETURN count(DISTINCT endpoint) AS primary_count, count(DISTINCT indicator) AS indicator_count, count(DISTINCT CASE WHEN indicator.entity_type = 'internet.host' THEN indicator END) AS host_count, count(DISTINCT CASE WHEN indicator.entity_type = 'internet.ip' THEN indicator END) AS ip_count, count(DISTINCT CASE WHEN asset IS NOT NULL THEN endpoint END) AS overlapping_primary_count, count(DISTINCT CASE WHEN asset IS NOT NULL THEN indicator END) AS overlapping_indicator_count, count(DISTINCT asset) AS overlapping_corroborating_count"
-        );
+        let counts_statement = exposure_counts_statement();
         let mut counts_rows = transaction.execute(params(&counts_statement)).await?;
         let counts_row = counts_rows
             .next(transaction.handle())
@@ -770,6 +772,7 @@ impl Neo4jProjector {
             .ok_or_else(|| {
                 StoreError::Conflict("exposure coverage counts returned no row".to_owned())
             })?;
+        let start_revision = row_u64(&counts_row, "graph_revision")?;
         let counts = ExposureCoverageCounts {
             primary_entities: row_u64(&counts_row, "primary_count")?,
             indicators: row_u64(&counts_row, "indicator_count")?,
@@ -3405,6 +3408,10 @@ mod tests {
 
         assert!(validate_exposure_coverage_query(&valid()).is_ok());
         assert!(should_query_corroborating_only(&valid()));
+        let counts_statement = exposure_counts_statement();
+        assert!(counts_statement.starts_with("OPTIONAL MATCH (revision:"));
+        assert!(counts_statement.contains("CALL { MATCH (endpoint:Entity"));
+        assert!(counts_statement.contains("RETURN graph_revision, primary_count"));
 
         let mut account_filtered = valid();
         account_filtered.account_id = "123456789012".to_owned();
