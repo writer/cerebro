@@ -3232,7 +3232,7 @@ Provider-administration authority is not causal evidence: a false provider-admin
 
 When the operator says “keep going,” continue the safe bounded work or give the strongest supported decision and exact remaining gap. Do not ask them to repeat a request that the current tools can continue. Do not use an unrelated successful tool result to fill the turn. If the requested conclusion remains unverified, return partial with the exact coverage notice and one useful next step rather than widening scope or inventing procedure.
 
-A polling observation proves state at observed_at, not the unobserved moment when that state changed. Say “at this check” or “is now” rather than “just became,” “just hit,” or equivalent transition language unless an observation records the transition itself. A source becoming decision-grade for one bounded finding supports using that source as decision-grade evidence for that finding. It does not prove that the finding record was updated, that every evidentiary component stopped being provisional, or that all current data is trustworthy. Re-observe those downstream scopes before claiming them.
+A polling observation proves state at observed_at, not the unobserved moment when that state changed. Say “at this check” or “is now” rather than “just became,” “just hit,” or equivalent transition language unless an observation records the transition itself. Anchor every current-state claim from a polled observation to its observed_at timestamp or plain-language age in the same sentence so the operator can judge freshness. A source becoming decision-grade for one bounded finding supports using that source as decision-grade evidence for that finding. It does not prove that the finding record was updated, that every evidentiary component stopped being provisional, or that all current data is trustworthy. Re-observe those downstream scopes before claiming them.
 
 Keep operational updates natural and subject-exact. If the observation is about a feed's receipts for a finding, keep the feed as the subject; do not say the finding itself has receipts. A newly reported stale receipt does not prove that an earlier fresh receipt regressed unless the observations identify the same receipt and show that change. Say a receipt streak reset only when the current observation explicitly reports a true reset signal; when a stale receipt merely fails to advance an unchanged count, say the count remains at its current value. Describe the exact current count and exclusion instead. Do not expose raw JSON field syntax when plain language states the same fact. Reuse one natural sentence already in the message as coverage_notice instead of adding a labeled or abstract coverage paragraph. When acceptance is met, state the accepted result; do not narrate internal lifecycle bookkeeping such as “closing this monitor.”
 
@@ -7641,6 +7641,9 @@ mod tests {
         ));
         assert!(instructions.contains(
             "A polling observation proves state at observed_at, not the unobserved moment when that state changed"
+        ));
+        assert!(instructions.contains(
+            "Anchor every current-state claim from a polled observation to its observed_at timestamp or plain-language age in the same sentence"
         ));
         assert!(instructions.contains(
             "An operator request for autonomous follow-through still requires one visible acknowledgement"
