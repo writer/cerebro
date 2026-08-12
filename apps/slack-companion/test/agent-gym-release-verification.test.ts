@@ -3,7 +3,10 @@ import test from "node:test";
 
 import {
   digestAgentGymJson,
+  recordAgentGymCanaryAction,
   recordAgentGymCanaryStateObservation,
+  verifyAgentGymCanaryAction,
+  validateAgentGymCanaryActionVerification,
   validateAgentGymCanaryStateObservation,
   type AgentGymCanaryActionPlanV1,
 } from "../src/index.js";
@@ -35,6 +38,57 @@ test("unavailable state observations cannot guess active state", () => {
     status: "unavailable",
   }), /state observation is invalid/u);
 });
+
+test("canary action verification requires a fresh independent observer", () => {
+  const verification = verifyAgentGymCanaryAction(
+    actionPlan(), actionReceipt(), stateObservation("agent-gym-observer://verification/one"), {
+      verification_ref: "agent-gym-action-verification://nightly/one",
+      verified_at: "2026-08-12T11:24:00.000Z",
+      verifier_ref: "agent-gym-observer://verification/one",
+    },
+  );
+  assert.equal(verification.verified, true);
+  assert.deepEqual(verification.blocker_codes, []);
+  assert.deepEqual(validateAgentGymCanaryActionVerification(verification), verification);
+});
+
+test("an action executor cannot independently verify its own state", () => {
+  const verification = verifyAgentGymCanaryAction(
+    actionPlan(), actionReceipt(), stateObservation("agent-gym-executor://canary/default"), {
+      verification_ref: "agent-gym-action-verification://nightly/self",
+      verified_at: "2026-08-12T11:24:00.000Z",
+      verifier_ref: "agent-gym-executor://canary/default",
+    },
+  );
+  assert.equal(verification.verified, false);
+  assert.deepEqual(verification.blocker_codes, ["verification.non_independent_observer"]);
+});
+
+function actionReceipt() {
+  return recordAgentGymCanaryAction(actionPlan(), {
+    completed_at: "2026-08-12T11:22:00.000Z",
+    executor_ref: "agent-gym-executor://canary/default",
+    failure_codes: [],
+    observed_active_candidate_ref: "agent-gym-candidate://nightly/challenger",
+    observed_candidate_traffic_percent: 20,
+    receipt_ref: "agent-gym-canary-action-receipt://nightly/increase",
+    started_at: "2026-08-12T11:21:00.000Z",
+    status: "applied",
+  });
+}
+
+function stateObservation(observerRef: string) {
+  return recordAgentGymCanaryStateObservation(actionPlan(), {
+    active_candidate_ref: "agent-gym-candidate://nightly/challenger",
+    candidate_traffic_percent: 20,
+    evidence_refs: ["agent-gym-evidence://state/one"],
+    observation_ref: `agent-gym-state-observation://nightly/${observerRef.split("/").at(-1)}`,
+    observed_at: "2026-08-12T11:23:00.000Z",
+    observer_ref: observerRef,
+    reason_codes: [],
+    status: "observed",
+  });
+}
 
 function actionPlan(): AgentGymCanaryActionPlanV1 {
   const identity = {
