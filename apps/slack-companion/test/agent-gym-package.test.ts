@@ -7,6 +7,7 @@ import {
   validateAgentGymCandidateManifest,
   validateAgentGymFixtureCase,
   validateAgentGymReplayRun,
+  validateAgentGymScorecard,
 } from "../src/index.js";
 
 test("agent gym exposes a stable public contract identity", () => {
@@ -16,6 +17,40 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("scorecards fail closed when deterministic invariants fail", () => {
+  const input = {
+    blocker_codes: ["missing_evidence"],
+    candidate_ref: "candidate://agent-gym/one",
+    evaluated_at: "2026-08-12T08:01:00.000Z",
+    fixture_ref: "case://agent-gym/mention-one",
+    metrics: [{
+      evaluator: "deterministic" as const,
+      metric_id: "answer_has_evidence",
+      passed: false,
+      reason_codes: ["no_evidence_ref"],
+      score: 0,
+      weight: 2,
+    }, {
+      evaluator: "model_judge" as const,
+      metric_id: "response_quality",
+      passed: true,
+      reason_codes: [],
+      score: 0.75,
+      weight: 1,
+    }],
+    replay_ref: "replay://agent-gym/one",
+    schema_version: "agent-gym-scorecard/v1" as const,
+    scorecard_ref: "scorecard://agent-gym/one",
+    weighted_score: 0.25,
+  };
+  const scorecard = validateAgentGymScorecard(input);
+  assert.equal(scorecard.weighted_score, 0.25);
+  assert.throws(() => validateAgentGymScorecard({
+    ...input,
+    blocker_codes: [],
+  }), /scorecard is invalid/u);
 });
 
 test("replay runs preserve ordered model and effect receipts", () => {
