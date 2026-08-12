@@ -6,6 +6,7 @@ import {
   CEREBRO_AGENT_GYM,
   validateAgentGymCandidateManifest,
   validateAgentGymComparison,
+  validateAgentGymPromotionDecision,
   validateAgentGymFixtureCase,
   validateAgentGymReplayRun,
   validateAgentGymScorecard,
@@ -18,6 +19,26 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("promotion decisions require held-out evidence and no safety blockers", () => {
+  const decision = validateAgentGymPromotionDecision({
+    baseline_candidate_ref: "candidate://agent-gym/baseline",
+    candidate_ref: "candidate://agent-gym/one",
+    comparison_ref: "comparison://agent-gym/one",
+    decided_at: "2026-08-12T08:03:00.000Z",
+    decision_ref: "promotion://agent-gym/one",
+    disposition: "promote",
+    held_out_passed: true,
+    reason_codes: ["credible_practical_gain"],
+    safety_blocker_codes: [],
+    schema_version: "agent-gym-promotion-decision/v1",
+  });
+  assert.equal(decision.disposition, "promote");
+  assert.throws(() => validateAgentGymPromotionDecision({
+    ...decision,
+    held_out_passed: false,
+  }), /promotion decision is invalid/u);
 });
 
 test("comparisons retain paired confidence and protected slice deltas", () => {
