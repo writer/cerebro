@@ -1,6 +1,9 @@
 #![deny(missing_docs)]
 
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use cerebro_agent_context::{
@@ -15,6 +18,7 @@ use cerebro_security_lifecycle::{
     SubjectKindCount,
 };
 use neo4rs::{BoltList, BoltMap, BoltType, Graph, Row, query};
+use sha2::{Digest, Sha256};
 
 use crate::{
     StoreError,
@@ -310,6 +314,98 @@ OPTIONAL MATCH (target:OrganizationalEntity {
 RETURN source IS NOT NULL AND target IS NOT NULL AS endpoints_exist
 "#;
 
+const LEGACY_ROOT_COVERAGE_STATEMENT: &str = r#"
+MATCH (legacy:Entity)
+WHERE legacy.tenant_id = $tenant_id OR legacy.urn STARTS WITH $urn_prefix
+WITH legacy, coalesce(legacy.entity_type, 'unknown') AS entity_type
+OPTIONAL MATCH (current:OrganizationalEntity {tenant_id: $tenant_id})
+WHERE current.entity_id = legacy.urn OR current.external_id = legacy.urn
+WITH entity_type, legacy, count(current) > 0 AS covered
+RETURN entity_type,
+       count(legacy) AS legacy_roots,
+       sum(CASE WHEN covered THEN 1 ELSE 0 END) AS covered_roots
+ORDER BY entity_type
+"#;
+
+const LEGACY_ROOTS_STATEMENT: &str = r#"
+UNWIND $root_urns AS root_urn
+MATCH (root:Entity {tenant_id: $tenant_id, urn: root_urn})
+WITH root_urn, collect(root) AS roots
+RETURN root_urn, size(roots) AS match_count,
+       coalesce(roots[0].entity_type, 'unknown') AS root_kind,
+       coalesce(roots[0].label, root_urn) AS root_label,
+       coalesce(roots[0].attributes_json, '{}') AS root_properties,
+       coalesce(roots[0].source_id, '') AS root_source_id,
+       coalesce(roots[0].runtime_id, '') AS root_runtime_id
+ORDER BY root_urn
+"#;
+
+const LEGACY_OUTGOING_STATEMENT: &str = r#"
+UNWIND $root_urns AS root_urn
+MATCH (root:Entity {tenant_id: $tenant_id, urn: root_urn})
+CALL {
+  WITH root
+  MATCH (root)-[relation:RELATION {tenant_id: $tenant_id}]->(neighbor:Entity {tenant_id: $tenant_id})
+  WITH root, neighbor, relation.relation AS relation_kind,
+       collect(DISTINCT coalesce(relation.runtime_id, '')) AS typed_runtime_ids,
+       collect(DISTINCT coalesce(relation.attributes_json, '{}')) AS relation_properties_values
+  RETURN neighbor.urn AS neighbor_urn,
+         coalesce(neighbor.entity_type, 'unknown') AS neighbor_kind,
+         coalesce(neighbor.label, neighbor.urn) AS neighbor_label,
+         coalesce(neighbor.attributes_json, '{}') AS neighbor_properties,
+         coalesce(neighbor.source_id, '') AS neighbor_source_id,
+         coalesce(neighbor.runtime_id, '') AS neighbor_runtime_id,
+         root.urn AS from_urn,
+         relation_kind,
+         neighbor.urn AS to_urn,
+         typed_runtime_ids,
+         relation_properties_values
+  ORDER BY neighbor.urn, relation_kind, neighbor.entity_type, neighbor.label
+  LIMIT $row_limit
+}
+RETURN root_urn, neighbor_urn, neighbor_kind, neighbor_label, neighbor_properties,
+       neighbor_source_id, neighbor_runtime_id,
+       from_urn, relation_kind, to_urn, typed_runtime_ids, relation_properties_values
+ORDER BY root_urn, neighbor_urn, relation_kind
+"#;
+
+const LEGACY_INCOMING_STATEMENT: &str = r#"
+UNWIND $root_urns AS root_urn
+MATCH (root:Entity {tenant_id: $tenant_id, urn: root_urn})
+CALL {
+  WITH root
+  MATCH (neighbor:Entity {tenant_id: $tenant_id})-[relation:RELATION {tenant_id: $tenant_id}]->(root)
+  WITH root, neighbor, relation.relation AS relation_kind,
+       collect(DISTINCT coalesce(relation.runtime_id, '')) AS typed_runtime_ids,
+       collect(DISTINCT coalesce(relation.attributes_json, '{}')) AS relation_properties_values
+  RETURN neighbor.urn AS neighbor_urn,
+         coalesce(neighbor.entity_type, 'unknown') AS neighbor_kind,
+         coalesce(neighbor.label, neighbor.urn) AS neighbor_label,
+         coalesce(neighbor.attributes_json, '{}') AS neighbor_properties,
+         coalesce(neighbor.source_id, '') AS neighbor_source_id,
+         coalesce(neighbor.runtime_id, '') AS neighbor_runtime_id,
+         neighbor.urn AS from_urn,
+         relation_kind,
+         root.urn AS to_urn,
+         typed_runtime_ids,
+         relation_properties_values
+  ORDER BY neighbor.urn, relation_kind, neighbor.entity_type, neighbor.label
+  LIMIT $row_limit
+}
+RETURN root_urn, neighbor_urn, neighbor_kind, neighbor_label, neighbor_properties,
+       neighbor_source_id, neighbor_runtime_id,
+       from_urn, relation_kind, to_urn, typed_runtime_ids, relation_properties_values
+ORDER BY root_urn, neighbor_urn, relation_kind
+"#;
+
+const LEGACY_NEIGHBOR_SCOPE_STATEMENT: &str = r#"
+UNWIND $root_urns AS root_urn
+MATCH (root:Entity {tenant_id: $tenant_id, urn: root_urn})-[relation:RELATION]-(neighbor:Entity)
+WHERE coalesce(relation.tenant_id, '') <> $tenant_id
+   OR coalesce(neighbor.tenant_id, '') <> $tenant_id
+RETURN count(*) AS violations
+"#;
+
 const NEO4J_SCHEMA: &[&str] = &[
     "CREATE CONSTRAINT organizational_entity_identity IF NOT EXISTS FOR (entity:OrganizationalEntity) REQUIRE (entity.tenant_id, entity.entity_id) IS UNIQUE",
     "CREATE CONSTRAINT organizational_revision_tenant IF NOT EXISTS FOR (revision:OrganizationalGraphRevision) REQUIRE revision.tenant_id IS UNIQUE",
@@ -348,6 +444,34 @@ pub struct ResolvedLifecycleFinding {
     pub source_collection_id: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+/// Aggregate coverage for one legacy graph entity type.
+pub struct LegacyRootCoverageKind {
+    /// Legacy entity type, or `unknown` when the legacy node omitted it.
+    pub entity_type: String,
+    /// Distinct legacy roots observed for this type.
+    pub legacy_roots: u64,
+    /// Legacy roots addressable through the Rust organizational projection.
+    pub covered_roots: u64,
+    /// Legacy roots that the Rust organizational projection cannot resolve.
+    pub missing_roots: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+/// Tenant-scoped aggregate coverage of legacy graph roots by the Rust projection.
+pub struct LegacyRootCoverage {
+    /// Tenant whose legacy and Rust projection roots were compared.
+    pub tenant_id: String,
+    /// Total distinct legacy roots observed for the tenant.
+    pub legacy_roots: u64,
+    /// Total legacy roots addressable through the Rust organizational projection.
+    pub covered_roots: u64,
+    /// Total legacy roots that the Rust organizational projection cannot resolve.
+    pub missing_roots: u64,
+    /// Coverage grouped by the legacy entity type without exposing entity identifiers.
+    pub entity_types: Vec<LegacyRootCoverageKind>,
+}
+
 impl Neo4jProjector {
     /// Wraps an existing Neo4j client graph.
     pub fn from_graph(graph: Graph) -> Self {
@@ -375,6 +499,270 @@ impl Neo4jProjector {
     pub async fn migrate(&self) -> Result<(), StoreError> {
         for statement in NEO4J_SCHEMA {
             self.graph.run(query(statement)).await?;
+        }
+        Ok(())
+    }
+
+    /// Compares tenant-scoped legacy graph roots with the Rust organizational projection.
+    ///
+    /// The receipt contains counts by legacy entity type. It never returns entity URNs,
+    /// provider identifiers, labels, properties, or credentials.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Neo4j`] when the aggregate query fails and
+    /// [`StoreError::Conflict`] when Neo4j returns invalid negative counts.
+    pub async fn legacy_root_coverage(
+        &self,
+        tenant_id: &TenantId,
+    ) -> Result<LegacyRootCoverage, StoreError> {
+        let mut stream = self
+            .graph
+            .execute(
+                query(LEGACY_ROOT_COVERAGE_STATEMENT)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("urn_prefix", format!("urn:cerebro:{}:", tenant_id.as_str())),
+            )
+            .await?;
+        let mut rows = Vec::new();
+        while let Some(row) = stream.next().await? {
+            let entity_type: String = row.get("entity_type").map_err(|error| {
+                StoreError::Conflict(format!("decode legacy entity type: {error}"))
+            })?;
+            let legacy: i64 = row.get("legacy_roots").map_err(|error| {
+                StoreError::Conflict(format!("decode legacy root count: {error}"))
+            })?;
+            let covered: i64 = row.get("covered_roots").map_err(|error| {
+                StoreError::Conflict(format!("decode covered root count: {error}"))
+            })?;
+            rows.push((entity_type, legacy, covered));
+        }
+        aggregate_legacy_root_coverage(tenant_id, rows)
+    }
+
+    async fn expand_legacy_one_hop_many(
+        &self,
+        tenant_id: &TenantId,
+        root_keys: &[String],
+        limit: usize,
+    ) -> Result<BTreeMap<String, Neighborhood>, ContextError> {
+        let urn_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
+        let legacy_keys = root_keys
+            .iter()
+            .filter(|root_key| root_key.starts_with(&urn_prefix))
+            .cloned()
+            .collect::<Vec<_>>();
+        if legacy_keys.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+
+        let mut root_stream = self
+            .graph
+            .execute(
+                query(LEGACY_ROOTS_STATEMENT)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("root_urns", string_list(&legacy_keys)),
+            )
+            .await
+            .map_err(context_backend)?;
+        let mut accumulators = BTreeMap::new();
+        while let Some(row) = root_stream.next().await.map_err(context_backend)? {
+            let root_key = row_string(&row, "root_urn")?;
+            let match_count: i64 = row.get("match_count").map_err(context_decode)?;
+            if match_count != 1 {
+                return Err(ContextError::BackendUnavailable(format!(
+                    "legacy graph root {root_key:?} is ambiguous"
+                )));
+            }
+            let root = legacy_context_entity(
+                tenant_id,
+                &root_key,
+                row_string(&row, "root_kind")?,
+                row_string(&row, "root_label")?,
+                row_string(&row, "root_properties")?,
+                row_string(&row, "root_source_id")?,
+                row_string(&row, "root_runtime_id")?,
+            )?;
+            accumulators.insert(root_key, LegacyNeighborhoodAccumulator::new(root));
+        }
+        if accumulators.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+
+        let present_keys = legacy_keys
+            .into_iter()
+            .filter(|root_key| accumulators.contains_key(root_key))
+            .collect::<Vec<_>>();
+        let mut scope_stream = self
+            .graph
+            .execute(
+                query(LEGACY_NEIGHBOR_SCOPE_STATEMENT)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("root_urns", string_list(&present_keys)),
+            )
+            .await
+            .map_err(context_backend)?;
+        let violations = scope_stream
+            .next()
+            .await
+            .map_err(context_backend)?
+            .ok_or_else(|| {
+                ContextError::BackendUnavailable(
+                    "legacy graph scope query returned no row".to_owned(),
+                )
+            })?
+            .get::<i64>("violations")
+            .map_err(context_decode)?;
+        if violations != 0 {
+            return Err(ContextError::BackendUnavailable(
+                "legacy graph contains cross-tenant neighborhood data".to_owned(),
+            ));
+        }
+        self.read_legacy_edge_phase(
+            tenant_id,
+            LEGACY_OUTGOING_STATEMENT,
+            &present_keys,
+            limit,
+            &mut accumulators,
+        )
+        .await?;
+        let mut incoming_by_limit = BTreeMap::<usize, Vec<String>>::new();
+        for root_key in &present_keys {
+            let accumulator = &accumulators[root_key];
+            if accumulator.truncated {
+                continue;
+            }
+            let remaining = limit.saturating_sub(accumulator.edges.len());
+            incoming_by_limit
+                .entry(remaining)
+                .or_default()
+                .push(root_key.clone());
+        }
+        for (remaining, roots) in incoming_by_limit {
+            self.read_legacy_edge_phase(
+                tenant_id,
+                LEGACY_INCOMING_STATEMENT,
+                &roots,
+                remaining,
+                &mut accumulators,
+            )
+            .await?;
+        }
+
+        Ok(accumulators
+            .into_iter()
+            .map(|(root_key, accumulator)| {
+                (
+                    root_key,
+                    Neighborhood {
+                        tenant_id: tenant_id.clone(),
+                        graph_revision: 0,
+                        root: accumulator.root,
+                        entities: accumulator.entities.into_values().collect(),
+                        edges: accumulator.edges,
+                        truncated: accumulator.truncated,
+                    },
+                )
+            })
+            .collect())
+    }
+
+    async fn any_legacy_root_exists(
+        &self,
+        tenant_id: &TenantId,
+        root_keys: &[String],
+    ) -> Result<bool, ContextError> {
+        let urn_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
+        let legacy_keys = root_keys
+            .iter()
+            .filter(|root_key| root_key.starts_with(&urn_prefix))
+            .cloned()
+            .collect::<Vec<_>>();
+        if legacy_keys.is_empty() {
+            return Ok(false);
+        }
+        let mut stream = self
+            .graph
+            .execute(
+                query(LEGACY_ROOTS_STATEMENT)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("root_urns", string_list(&legacy_keys)),
+            )
+            .await
+            .map_err(context_backend)?;
+        if let Some(row) = stream.next().await.map_err(context_backend)? {
+            let match_count: i64 = row.get("match_count").map_err(context_decode)?;
+            if match_count != 1 {
+                return Err(ContextError::BackendUnavailable(
+                    "legacy graph root is ambiguous".to_owned(),
+                ));
+            }
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    async fn read_legacy_edge_phase(
+        &self,
+        tenant_id: &TenantId,
+        statement: &str,
+        root_keys: &[String],
+        limit: usize,
+        accumulators: &mut BTreeMap<String, LegacyNeighborhoodAccumulator>,
+    ) -> Result<(), ContextError> {
+        let row_limit = limit.checked_add(1).ok_or_else(|| {
+            ContextError::BackendUnavailable("legacy graph limit overflowed".to_owned())
+        })?;
+        let mut stream = self
+            .graph
+            .execute(
+                query(statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("root_urns", string_list(root_keys))
+                    .param("row_limit", i64::try_from(row_limit).unwrap_or(501)),
+            )
+            .await
+            .map_err(context_backend)?;
+        let mut phase_counts = BTreeMap::<String, usize>::new();
+        while let Some(row) = stream.next().await.map_err(context_backend)? {
+            let root_key = row_string(&row, "root_urn")?;
+            let Some(accumulator) = accumulators.get_mut(&root_key) else {
+                return Err(ContextError::BackendUnavailable(
+                    "legacy graph returned an unrequested root".to_owned(),
+                ));
+            };
+            let count = phase_counts.entry(root_key).or_default();
+            *count = count.saturating_add(1);
+            if *count > limit {
+                accumulator.truncated = true;
+                continue;
+            }
+            let neighbor_urn = row_string(&row, "neighbor_urn")?;
+            let neighbor = legacy_context_entity(
+                tenant_id,
+                &neighbor_urn,
+                row_string(&row, "neighbor_kind")?,
+                row_string(&row, "neighbor_label")?,
+                row_string(&row, "neighbor_properties")?,
+                row_string(&row, "neighbor_source_id")?,
+                row_string(&row, "neighbor_runtime_id")?,
+            )?;
+            let relation = row_string(&row, "relation_kind")?;
+            let from = row_string(&row, "from_urn")?;
+            let to = row_string(&row, "to_urn")?;
+            let edge_key = format!("{from}\0{relation}\0{to}");
+            if accumulator.seen_edges.insert(edge_key) {
+                accumulator.entities.insert(neighbor_urn, neighbor);
+                accumulator.edges.push(legacy_context_edge(
+                    tenant_id,
+                    from,
+                    relation,
+                    to,
+                    row.get("typed_runtime_ids").map_err(context_decode)?,
+                    row.get("relation_properties_values")
+                        .map_err(context_decode)?,
+                )?);
+            }
         }
         Ok(())
     }
@@ -1407,10 +1795,14 @@ impl AgentGraph for Neo4jProjector {
         validate_bounds(depth, limit)?;
         if depth != 1 {
             let mut neighborhoods = std::collections::BTreeMap::new();
+            let mut missing_root_keys = Vec::new();
             for root_key in root_keys {
                 let root = match self.resolve(tenant_id, root_key).await {
                     Ok(root) => root,
-                    Err(ContextError::EntityNotFound) => continue,
+                    Err(ContextError::EntityNotFound) => {
+                        missing_root_keys.push(root_key.clone());
+                        continue;
+                    }
                     Err(error) => return Err(error),
                 };
                 neighborhoods.insert(
@@ -1418,6 +1810,14 @@ impl AgentGraph for Neo4jProjector {
                     self.expand(tenant_id, &root.entity_id, depth, limit)
                         .await?,
                 );
+            }
+            if self
+                .any_legacy_root_exists(tenant_id, &missing_root_keys)
+                .await?
+            {
+                return Err(ContextError::BackendUnavailable(
+                    "legacy graph compatibility supports depth one only".to_owned(),
+                ));
             }
             return Ok(neighborhoods);
         }
@@ -1667,6 +2067,7 @@ impl Neo4jProjector {
             .await
             .map_err(context_backend)?;
         let mut accumulators = std::collections::BTreeMap::<String, NeighborhoodAccumulator>::new();
+        let mut missing_root_keys = Vec::new();
         while let Some(row) = stream.next().await.map_err(context_backend)? {
             let root_key = row_string(&row, "root_key")?;
             let match_count: i64 = row.get("match_count").map_err(context_decode)?;
@@ -1676,6 +2077,7 @@ impl Neo4jProjector {
                 )));
             }
             if match_count == 0 {
+                missing_root_keys.push(root_key);
                 continue;
             }
             let graph_revision: i64 = row.get("graph_revision").map_err(context_decode)?;
@@ -1717,7 +2119,7 @@ impl Neo4jProjector {
             accumulator.entities.insert(to.entity_id.clone(), to);
             accumulator.edges.push(edge);
         }
-        Ok(accumulators
+        let mut neighborhoods = accumulators
             .into_iter()
             .map(|(root_key, mut accumulator)| {
                 let truncated = truncate_to_limit(&mut accumulator.edges, limit);
@@ -1735,7 +2137,14 @@ impl Neo4jProjector {
                     },
                 )
             })
-            .collect())
+            .collect::<BTreeMap<_, _>>();
+        if !missing_root_keys.is_empty() {
+            neighborhoods.extend(
+                self.expand_legacy_one_hop_many(tenant_id, &missing_root_keys, limit)
+                    .await?,
+            );
+        }
+        Ok(neighborhoods)
     }
 
     async fn revision(&self, tenant_id: &TenantId) -> Result<u64, ContextError> {
@@ -1881,6 +2290,222 @@ fn string_list(values: &[String]) -> BoltType {
             .map(BoltType::from)
             .collect::<Vec<_>>(),
     ))
+}
+
+fn aggregate_legacy_root_coverage(
+    tenant_id: &TenantId,
+    rows: impl IntoIterator<Item = (String, i64, i64)>,
+) -> Result<LegacyRootCoverage, StoreError> {
+    let mut entity_types = Vec::new();
+    let mut legacy_roots = 0_u64;
+    let mut covered_roots = 0_u64;
+    for (entity_type, legacy, covered) in rows {
+        let legacy = u64::try_from(legacy).map_err(|_| {
+            StoreError::Conflict("legacy root coverage count is negative".to_owned())
+        })?;
+        let covered = u64::try_from(covered)
+            .map_err(|_| StoreError::Conflict("covered root count is negative".to_owned()))?;
+        if covered > legacy {
+            return Err(StoreError::Conflict(
+                "covered root count exceeds legacy root count".to_owned(),
+            ));
+        }
+        legacy_roots = legacy_roots.checked_add(legacy).ok_or_else(|| {
+            StoreError::Conflict("legacy root coverage count overflowed".to_owned())
+        })?;
+        covered_roots = covered_roots
+            .checked_add(covered)
+            .ok_or_else(|| StoreError::Conflict("covered root count overflowed".to_owned()))?;
+        entity_types.push(LegacyRootCoverageKind {
+            entity_type,
+            legacy_roots: legacy,
+            covered_roots: covered,
+            missing_roots: legacy - covered,
+        });
+    }
+    Ok(LegacyRootCoverage {
+        tenant_id: tenant_id.as_str().to_owned(),
+        legacy_roots,
+        covered_roots,
+        missing_roots: legacy_roots - covered_roots,
+        entity_types,
+    })
+}
+
+struct LegacyNeighborhoodAccumulator {
+    root: ContextEntity,
+    entities: BTreeMap<String, ContextEntity>,
+    edges: Vec<ContextEdge>,
+    seen_edges: BTreeSet<String>,
+    truncated: bool,
+}
+
+impl LegacyNeighborhoodAccumulator {
+    fn new(root: ContextEntity) -> Self {
+        Self {
+            root,
+            entities: BTreeMap::new(),
+            edges: Vec::new(),
+            seen_edges: BTreeSet::new(),
+            truncated: false,
+        }
+    }
+}
+
+fn legacy_context_entity(
+    tenant_id: &TenantId,
+    urn: &str,
+    entity_kind: String,
+    label: String,
+    properties_json: String,
+    source_id: String,
+    runtime_id: String,
+) -> Result<ContextEntity, ContextError> {
+    let expected_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
+    if !urn.starts_with(&expected_prefix) {
+        return Err(ContextError::BackendUnavailable(
+            "legacy graph returned a cross-tenant entity".to_owned(),
+        ));
+    }
+    let mut properties: BTreeMap<String, String> = parse_json(&properties_json)?;
+    properties.insert("entity_urn".to_owned(), urn.to_owned());
+    properties.insert("entity_type".to_owned(), entity_kind.clone());
+    if !source_id.is_empty() {
+        properties.insert("source_id".to_owned(), source_id.clone());
+    }
+    let attributes_runtime_id = properties
+        .get("source_runtime_id")
+        .or_else(|| properties.get("runtime_id"))
+        .cloned()
+        .unwrap_or_default();
+    if !runtime_id.is_empty()
+        && !attributes_runtime_id.is_empty()
+        && runtime_id != attributes_runtime_id
+    {
+        return Err(ContextError::BackendUnavailable(
+            "legacy entity runtime provenance conflicts".to_owned(),
+        ));
+    }
+    let source_runtime_id = if runtime_id.is_empty() {
+        attributes_runtime_id
+    } else {
+        runtime_id.clone()
+    };
+    if !source_runtime_id.is_empty() {
+        properties.insert("source_runtime_id".to_owned(), source_runtime_id.clone());
+    }
+    let provider_kind = properties
+        .get("provider_kind")
+        .cloned()
+        .unwrap_or_else(|| entity_kind.clone());
+    let provider_id = properties
+        .get("provider_id")
+        .cloned()
+        .unwrap_or_else(|| urn.to_owned());
+    Ok(ContextEntity {
+        entity_id: legacy_entity_id(tenant_id, urn),
+        agent_key: urn.to_owned(),
+        entity_kind,
+        authority: serde_json::json!({
+            "authority": "legacy_projection",
+            "source_runtime_id": source_runtime_id,
+            "provider_kind": provider_kind,
+            "provider_id": provider_id,
+        }),
+        label,
+        properties,
+    })
+}
+
+fn legacy_context_edge(
+    tenant_id: &TenantId,
+    from: String,
+    relation: String,
+    to: String,
+    typed_runtime_ids: Vec<String>,
+    properties_values: Vec<String>,
+) -> Result<ContextEdge, ContextError> {
+    let expected_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
+    if !from.starts_with(&expected_prefix) || !to.starts_with(&expected_prefix) {
+        return Err(ContextError::BackendUnavailable(
+            "legacy graph returned a cross-tenant relation".to_owned(),
+        ));
+    }
+    if typed_runtime_ids.len() > 1 || properties_values.len() > 1 {
+        return Err(ContextError::BackendUnavailable(
+            "legacy relation metadata conflicts".to_owned(),
+        ));
+    }
+    let properties: BTreeMap<String, String> = parse_json(
+        properties_values
+            .first()
+            .map(String::as_str)
+            .unwrap_or("{}"),
+    )?;
+    let typed_runtime_id = typed_runtime_ids
+        .first()
+        .map(String::as_str)
+        .unwrap_or_default();
+    let attributes_runtime_id = properties
+        .get("source_runtime_id")
+        .or_else(|| properties.get("runtime_id"))
+        .map(String::as_str)
+        .unwrap_or_default();
+    if !typed_runtime_id.is_empty()
+        && !attributes_runtime_id.is_empty()
+        && typed_runtime_id != attributes_runtime_id
+    {
+        return Err(ContextError::BackendUnavailable(
+            "legacy relation runtime provenance conflicts".to_owned(),
+        ));
+    }
+    let source_runtime_id = if typed_runtime_id.is_empty() {
+        attributes_runtime_id.to_owned()
+    } else {
+        typed_runtime_id.to_owned()
+    };
+    let identity_binding = relation == "represents"
+        || properties
+            .get("identity_binding")
+            .is_some_and(|value| value == "true");
+    let assertion_id = legacy_assertion_id(tenant_id, &from, &relation, &to);
+    Ok(ContextEdge {
+        assertion_id,
+        from: legacy_entity_id(tenant_id, &from),
+        relation,
+        to: legacy_entity_id(tenant_id, &to),
+        source_runtime_id,
+        identity_binding,
+    })
+}
+
+fn legacy_entity_id(tenant_id: &TenantId, urn: &str) -> EntityId {
+    EntityId::parse(legacy_digest("legacy-entity", [tenant_id.as_str(), urn]))
+        .expect("legacy entity digest is a valid identifier")
+}
+
+fn legacy_assertion_id(tenant_id: &TenantId, from: &str, relation: &str, to: &str) -> AssertionId {
+    AssertionId::parse(legacy_digest(
+        "legacy-edge",
+        [tenant_id.as_str(), from, relation, to],
+    ))
+    .expect("legacy assertion digest is a valid identifier")
+}
+
+fn legacy_digest<'a>(prefix: &str, parts: impl IntoIterator<Item = &'a str>) -> String {
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    let bytes = hasher.finalize();
+    let mut value = String::with_capacity(prefix.len() + 1 + bytes.len() * 2);
+    value.push_str(prefix);
+    value.push(':');
+    for byte in bytes {
+        value.push_str(&format!("{byte:02x}"));
+    }
+    value
 }
 
 fn entity_row(entity: &ProjectionEntity) -> BoltMap {
@@ -2193,6 +2818,88 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    #[ignore = "requires a disposable Neo4j instance"]
+    async fn legacy_root_is_served_by_rust_with_outgoing_first_bounds() -> Result<(), Box<dyn Error>>
+    {
+        let graph = Graph::new(
+            env::var("CEREBRO_TEST_NEO4J_URI")?,
+            env::var("CEREBRO_TEST_NEO4J_USERNAME")?,
+            env::var("CEREBRO_TEST_NEO4J_PASSWORD")?,
+        )
+        .await?;
+        let tenant = format!("tenant-legacy-rust-{}", std::process::id());
+        let root_urn = format!("urn:cerebro:{tenant}:asset:root#1@example");
+        let organizational_urn = format!("urn:cerebro:{tenant}:asset:organizational");
+        graph
+            .run(
+                query(
+                    "CREATE (root:Entity {tenant_id: $tenant, urn: $root, entity_type: 'asset', label: 'Root', attributes_json: '{}'}) WITH root UNWIND range(1, 4) AS index CREATE (out:Entity {tenant_id: $tenant, urn: $prefix + 'out-' + toString(index), entity_type: 'finding', label: 'Outgoing', attributes_json: '{}'}), (root)-[:RELATION {tenant_id: $tenant, relation: 'has_finding', runtime_id: 'runtime-a', attributes_json: '{\"source_runtime_id\":\"runtime-a\"}'}]->(out) WITH DISTINCT root CREATE (incoming:Entity {tenant_id: $tenant, urn: $prefix + 'incoming', entity_type: 'identity', label: 'Incoming', attributes_json: '{}'}), (incoming)-[:RELATION {tenant_id: $tenant, relation: 'owns', runtime_id: 'runtime-a', attributes_json: '{\"source_runtime_id\":\"runtime-a\"}'}]->(root)",
+                )
+                .param("tenant", tenant.clone())
+                .param("root", root_urn.clone())
+                .param("prefix", format!("urn:cerebro:{tenant}:fixture:")),
+            )
+            .await?;
+        graph
+            .run(
+                query("CREATE (:OrganizationalGraphRevision {tenant_id: $tenant, graph_revision: 7}), (:OrganizationalEntity {tenant_id: $tenant, entity_id: 'organizational-root', entity_kind: 'resource', authority_json: '{}', label: 'Organizational root', properties_json: $properties, external_id: $urn, graph_revision: 7})")
+                    .param("tenant", tenant.clone())
+                    .param("urn", organizational_urn.clone())
+                    .param("properties", format!(r#"{{"entity_urn":"{organizational_urn}"}}"#)),
+            )
+            .await?;
+
+        let projector = Neo4jProjector::from_graph(graph.clone());
+        let tenant_id = TenantId::parse(tenant.clone())?;
+        let neighborhoods = projector
+            .expand_many(
+                &tenant_id,
+                &[root_urn.clone(), organizational_urn.clone()],
+                1,
+                3,
+            )
+            .await?;
+        let neighborhood = &neighborhoods[&root_urn];
+        assert_eq!(neighborhood.root.agent_key, root_urn);
+        assert_eq!(neighborhood.graph_revision, 0);
+        assert_eq!(neighborhood.edges.len(), 3);
+        assert!(neighborhood.truncated);
+        assert!(
+            neighborhood
+                .edges
+                .iter()
+                .all(|edge| edge.relation == "has_finding")
+        );
+        assert!(
+            neighborhood
+                .entities
+                .iter()
+                .all(|entity| entity.properties["entity_type"] == "finding")
+        );
+        let organizational = &neighborhoods[&organizational_urn];
+        assert_eq!(organizational.graph_revision, 7);
+        assert_eq!(
+            organizational.root.entity_id.as_str(),
+            "organizational-root"
+        );
+        assert!(
+            projector
+                .expand_many(&tenant_id, std::slice::from_ref(&root_urn), 2, 3)
+                .await
+                .is_err(),
+            "legacy roots must not silently degrade a deeper traversal to one hop"
+        );
+
+        graph
+            .run(
+                query("MATCH (node {tenant_id: $tenant}) DETACH DELETE node")
+                    .param("tenant", tenant),
+            )
+            .await?;
+        Ok(())
+    }
+
     #[test]
     fn graph_queries_enforce_edge_bounds_and_simple_paths() {
         assert!(ONE_HOP_BATCH_QUERY.contains("LIMIT $row_limit"));
@@ -2210,6 +2917,154 @@ mod tests {
         assert!(truncate_to_limit(&mut overflow, 2));
         assert_eq!(overflow, [1, 2]);
         assert_eq!(row_limit(500), 501);
+    }
+
+    #[test]
+    fn legacy_root_coverage_is_tenant_scoped_and_identifier_free() {
+        assert!(LEGACY_ROOT_COVERAGE_STATEMENT.contains("$tenant_id"));
+        assert!(LEGACY_ROOT_COVERAGE_STATEMENT.contains("$urn_prefix"));
+        assert!(LEGACY_ROOT_COVERAGE_STATEMENT.contains("RETURN entity_type"));
+        assert!(!LEGACY_ROOT_COVERAGE_STATEMENT.contains("RETURN legacy"));
+        assert!(!LEGACY_ROOT_COVERAGE_STATEMENT.contains("legacy.urn AS"));
+
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        let coverage = aggregate_legacy_root_coverage(
+            &tenant_id,
+            [("finding".to_owned(), 7, 5), ("resource".to_owned(), 3, 3)],
+        )
+        .expect("valid aggregate");
+        assert_eq!(coverage.legacy_roots, 10);
+        assert_eq!(coverage.covered_roots, 8);
+        assert_eq!(coverage.missing_roots, 2);
+        assert_eq!(coverage.entity_types[0].missing_roots, 2);
+
+        let json = serde_json::to_value(&coverage).expect("serialize receipt");
+        assert_eq!(json["tenant_id"], "writer");
+        assert_eq!(json["missing_roots"], 2);
+        let object = json.as_object().expect("receipt object");
+        assert_eq!(object.len(), 5, "receipt must remain aggregate-only");
+    }
+
+    #[test]
+    fn legacy_root_coverage_rejects_impossible_counts() {
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        for rows in [
+            vec![("resource".to_owned(), -1, 0)],
+            vec![("resource".to_owned(), 1, -1)],
+            vec![("resource".to_owned(), 1, 2)],
+        ] {
+            assert!(aggregate_legacy_root_coverage(&tenant_id, rows).is_err());
+        }
+    }
+
+    #[test]
+    fn legacy_compatibility_ids_are_tenant_bound_and_urn_safe() {
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        let other_tenant = TenantId::parse("other").expect("tenant");
+        let urn = format!(
+            "urn:cerebro:writer:github_pull_request:{}#{}@{}",
+            "repository".repeat(40),
+            2288,
+            "example"
+        );
+        let first = legacy_entity_id(&tenant_id, &urn);
+        assert_eq!(first, legacy_entity_id(&tenant_id, &urn));
+        assert_ne!(first, legacy_entity_id(&other_tenant, &urn));
+        assert!(first.as_str().starts_with("legacy-entity:"));
+        assert!(first.as_str().len() < 100);
+    }
+
+    #[test]
+    fn legacy_entity_preserves_product_type_and_rejects_cross_tenant_data() {
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        let urn = "urn:cerebro:writer:internet_host:example";
+        let entity = legacy_context_entity(
+            &tenant_id,
+            urn,
+            "internet_host".to_owned(),
+            "example".to_owned(),
+            r#"{"source_runtime_id":"runtime-a"}"#.to_owned(),
+            "internet".to_owned(),
+            "runtime-a".to_owned(),
+        )
+        .expect("legacy entity");
+        assert_eq!(entity.agent_key, urn);
+        assert_eq!(entity.properties["entity_type"], "internet_host");
+        assert_eq!(entity.properties["source_id"], "internet");
+        assert_eq!(entity.properties["source_runtime_id"], "runtime-a");
+
+        assert!(
+            legacy_context_entity(
+                &tenant_id,
+                "urn:cerebro:other:internet_host:example",
+                "internet_host".to_owned(),
+                "example".to_owned(),
+                "{}".to_owned(),
+                String::new(),
+                String::new(),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn legacy_edges_preserve_provenance_and_fail_closed_on_conflict() {
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        let from = "urn:cerebro:writer:asset:one";
+        let to = "urn:cerebro:writer:finding:two";
+        let edge = legacy_context_edge(
+            &tenant_id,
+            from.to_owned(),
+            "represents".to_owned(),
+            to.to_owned(),
+            vec!["runtime-a".to_owned()],
+            vec![r#"{"source_runtime_id":"runtime-a","identity_binding":"true"}"#.to_owned()],
+        )
+        .expect("legacy edge");
+        assert_eq!(edge.source_runtime_id, "runtime-a");
+        assert!(edge.identity_binding);
+        assert_eq!(
+            edge.assertion_id,
+            legacy_assertion_id(&tenant_id, from, "represents", to)
+        );
+
+        assert!(
+            legacy_context_edge(
+                &tenant_id,
+                from.to_owned(),
+                "owns".to_owned(),
+                to.to_owned(),
+                vec!["runtime-a".to_owned(), "runtime-b".to_owned()],
+                vec!["{}".to_owned()],
+            )
+            .is_err()
+        );
+        assert!(
+            legacy_context_edge(
+                &tenant_id,
+                from.to_owned(),
+                "owns".to_owned(),
+                to.to_owned(),
+                vec!["runtime-a".to_owned()],
+                vec![r#"{"source_runtime_id":"runtime-b"}"#.to_owned()],
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn legacy_queries_are_tenant_scoped_and_preserve_go_edge_order() {
+        assert!(LEGACY_ROOTS_STATEMENT.contains("tenant_id: $tenant_id"));
+        for statement in [LEGACY_OUTGOING_STATEMENT, LEGACY_INCOMING_STATEMENT] {
+            assert!(statement.contains("Entity {tenant_id: $tenant_id"));
+            assert!(statement.contains("RELATION {tenant_id: $tenant_id}"));
+            assert!(statement.contains("LIMIT $row_limit"));
+            assert!(statement.contains("ORDER BY neighbor.urn, relation_kind"));
+        }
+        assert!(!LEGACY_OUTGOING_STATEMENT.contains("UNION"));
+        assert!(!LEGACY_INCOMING_STATEMENT.contains("UNION"));
+        assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("relation.tenant_id"));
+        assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("neighbor.tenant_id"));
     }
 
     #[test]

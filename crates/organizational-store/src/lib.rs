@@ -34,7 +34,9 @@ pub use cutover::{
     CutoverDecision, CutoverGate, CutoverPolicy, ProjectionAuthority, ProjectionAuthorityRecord,
     ProjectionPromotionRequest,
 };
-pub use neo4j::{Neo4jProjector, ResolvedLifecycleFinding};
+pub use neo4j::{
+    LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector, ResolvedLifecycleFinding,
+};
 pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,
     SemanticMismatch, SemanticSnapshot,
