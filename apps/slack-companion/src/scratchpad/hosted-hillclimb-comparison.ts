@@ -14,6 +14,7 @@ export interface HostedHillclimbComparisonV1 {
     readonly semantic_state_contract_rate: number;
   };
   readonly current_evaluated_at: string;
+  readonly efficiency_stable: boolean;
   readonly judge_repair_count_delta: number;
   readonly judge_p95_latency_ms_delta: number;
   readonly model_token_count_delta: number;
@@ -83,6 +84,7 @@ export function compareHostedSlackWorkingStateHillclimbs(
       ),
     }),
     current_evaluated_at: current.evaluated_at,
+    efficiency_stable: modelTokenCount(current) <= modelTokenCount(previous),
     judge_repair_count_delta: current.judge.repair_count - previous.judge.repair_count,
     judge_p95_latency_ms_delta: delta(
       previous.judge.p95_latency_ms,

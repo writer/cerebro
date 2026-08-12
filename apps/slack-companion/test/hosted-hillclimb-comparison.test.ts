@@ -109,6 +109,7 @@ test("compares repeat measurements without answer content", () => {
   assert.equal(comparison.model_token_count_delta, 35);
   assert.equal(comparison.promotion_stable, true);
   assert.equal(comparison.quality_stable, false);
+  assert.equal(comparison.efficiency_stable, false);
 });
 
 test("marks quality stable when repeats add no failures or repairs", () => {
@@ -117,6 +118,7 @@ test("marks quality stable when repeats add no failures or repairs", () => {
     receipt({ evaluatedAt: "2026-08-12T17:00:00.000Z" }),
   );
   assert.equal(comparison.quality_stable, true);
+  assert.equal(comparison.efficiency_stable, true);
 });
 
 test("rejects comparisons across corpora or reversed time", () => {
