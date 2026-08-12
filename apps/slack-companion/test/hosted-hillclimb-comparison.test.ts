@@ -36,7 +36,7 @@ function receipt(overrides: {
     judge: {
       input_tokens: 10,
       invocation_count: 1,
-      model_id: "us.anthropic.claude-sonnet-5",
+      model_id: "us.anthropic.claude-opus-5",
       output_tokens: 5,
       p95_latency_ms: 200,
       provider: "aws_bedrock",

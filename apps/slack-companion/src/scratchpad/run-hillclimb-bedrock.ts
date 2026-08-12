@@ -3,7 +3,7 @@ import { SLACK_WORKING_STATE_HILLCLIMB_CORPUS } from "./hillclimb-corpus.js";
 import { runHostedSlackWorkingStateHillclimb } from "./hosted-hillclimb.js";
 
 const DEPLOYED_OPUS_MODEL_ID = "us.anthropic.claude-opus-4-8";
-const INDEPENDENT_JUDGE_MODEL_ID = "us.anthropic.claude-sonnet-5";
+const INDEPENDENT_JUDGE_MODEL_ID = "us.anthropic.claude-opus-5";
 const region = required("CEREBRO_SLACK_HILLCLIMB_REGION");
 const generatorModelId = optional(
   "CEREBRO_SLACK_HILLCLIMB_GENERATOR_MODEL_ID",

@@ -140,7 +140,7 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
     SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
     {
       generator_model_id: "us.anthropic.claude-opus-4-8",
-      judge_model_id: "us.anthropic.claude-sonnet-5",
+      judge_model_id: "us.anthropic.claude-opus-5",
       region: "us-east-1",
     },
     { generator: generatorModel, judge: judgeModel },
@@ -164,7 +164,7 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(receipt.generator.provider, "aws_bedrock");
   assert.equal(receipt.generator.model_id, "us.anthropic.claude-opus-4-8");
   assert.equal(receipt.generator.sampling_parameters, "provider_default");
-  assert.equal(receipt.judge.model_id, "us.anthropic.claude-sonnet-5");
+  assert.equal(receipt.judge.model_id, "us.anthropic.claude-opus-5");
   assert.equal(receipt.judge.sampling_parameters, "provider_default");
   assert.deepEqual(receipt.evaluation_independence, {
     distinct_model_id: true,
@@ -186,15 +186,15 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(receipt.promotion.promotion_ready, true);
 });
 
-test("hosted hillclimb rejects a Nova generator before invocation", async () => {
+test("hosted hillclimb rejects a non-Opus generator before invocation", async () => {
   const generatorModel = new FakeHostedModel();
   const judgeModel = new FakeHostedModel();
   await assert.rejects(
     runHostedSlackWorkingStateHillclimb(
       SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
       {
-        generator_model_id: "us.amazon.nova-pro-v1:0",
-        judge_model_id: "us.anthropic.claude-sonnet-5",
+        generator_model_id: "us.anthropic.claude-haiku-4-5",
+        judge_model_id: "us.anthropic.claude-opus-5",
         region: "us-east-1",
       },
       { generator: generatorModel, judge: judgeModel },
@@ -213,7 +213,7 @@ test("hosted hillclimb fails closed on an invalid judge receipt", async () => {
       SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
       {
         generator_model_id: "us.anthropic.claude-opus-4-8",
-        judge_model_id: "us.anthropic.claude-sonnet-5",
+        judge_model_id: "us.anthropic.claude-opus-5",
         region: "us-east-1",
       },
       { generator: generatorModel, judge: judgeModel },
@@ -284,7 +284,7 @@ test("hosted hillclimb rejects a shared generator and judge port", async () => {
       SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
       {
         generator_model_id: "us.anthropic.claude-opus-4-8",
-        judge_model_id: "us.anthropic.claude-sonnet-5",
+        judge_model_id: "us.anthropic.claude-opus-5",
         region: "us-east-1",
       },
       { generator: sharedModel, judge: sharedModel },
