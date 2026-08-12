@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   agentGymFixtureScenarioDigest,
   auditAgentGymCorpusLeakage,
+  decideAgentGymCorpusAdmission,
   evaluateAgentGymCorpusCoverage,
 } from "../src/index.js";
 
@@ -85,6 +86,26 @@ test("corpus coverage passes explicit partition and slice minimums", () => {
   ], coveragePolicy());
   assert.equal(report.passed, true);
   assert.deepEqual(report.gaps, []);
+});
+
+test("corpus admission fails closed with stable blocker codes", () => {
+  const decision = decideAgentGymCorpusAdmission([
+    fixtureCase("train"),
+    fixtureCase("held-out", "held_out", ["safety"]),
+  ], coveragePolicy());
+  assert.equal(decision.admitted, false);
+  assert.deepEqual(decision.blocker_codes, ["corpus.partition_leakage"]);
+  assert.match(decision.decision_digest, /^sha256:[0-9a-f]{64}$/u);
+});
+
+test("corpus admission accepts covered and isolated scenarios", () => {
+  const heldOut = fixtureCase("held-out", "held_out", ["safety"]);
+  const decision = decideAgentGymCorpusAdmission([
+    fixtureCase("train"),
+    { ...heldOut, slack_events: [{ ...heldOut.slack_events[0]!, payload: { text: "Held-out alert." } }] },
+  ], coveragePolicy());
+  assert.equal(decision.admitted, true);
+  assert.deepEqual(decision.blocker_codes, []);
 });
 
 function coveragePolicy() {
