@@ -153,6 +153,26 @@ export function simulateSlackMessageChanged(
   });
 }
 
+/** Simulates deletion as a tombstone interaction without retaining message text. */
+export function simulateSlackMessageDeleted(
+  event: AgentGymSlackEventV1,
+): AgentGymSlackInvocationV1 {
+  if (event.kind !== "message_deleted") invalid("message-delete event");
+  const payload = object(event.payload);
+  const teamId = field(payload, "team_id");
+  const channelId = field(payload, "channel_id");
+  if (!/^[CDG][A-Z0-9]+$/u.test(channelId)) invalid("message-delete channel");
+  const userId = field(payload, "user_id");
+  const deletedTs = timestampField(payload, "deleted_ts");
+  const threadTs = optionalTimestampField(payload, "thread_ts") ?? deletedTs;
+  return invocation(event, {
+    action: Object.freeze({ action_id: "message.deleted", value: deletedTs }),
+    actor_ref: ref("slack-user", teamId, userId),
+    conversation_ref: ref("slack-thread", teamId, channelId, threadTs),
+    route: "interaction",
+  });
+}
+
 /** Simulates a reply bound to the exact existing Slack thread identity. */
 export function simulateSlackThreadReply(
   event: AgentGymSlackEventV1,

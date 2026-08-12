@@ -7,9 +7,43 @@ import {
   simulateSlackDirectMessage,
   simulateSlackMention,
   simulateSlackMessageChanged,
+  simulateSlackMessageDeleted,
   simulateSlackReactionAdded,
   simulateSlackThreadReply,
 } from "../src/index.js";
+
+test("message-delete simulation emits a text-free tombstone", () => {
+  const invocation = simulateSlackMessageDeleted({
+    event_ref: "slack-event://deleted/one",
+    kind: "message_deleted",
+    occurred_at: "2026-08-12T08:37:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      deleted_ts: "1786523640.000001",
+      team_id: "T_ONE",
+      thread_ts: "1786523400.000001",
+      user_id: "U_ONE",
+    },
+  });
+  assert.deepEqual(invocation.action, {
+    action_id: "message.deleted",
+    value: "1786523640.000001",
+  });
+  assert.equal(invocation.text, undefined);
+});
+
+test("message-delete simulation rejects a deletion without stable identity", () => {
+  assert.throws(() => simulateSlackMessageDeleted({
+    event_ref: "slack-event://deleted/missing",
+    kind: "message_deleted",
+    occurred_at: "2026-08-12T08:37:00.000Z",
+    payload: {
+      channel_id: "C12345",
+      team_id: "T_ONE",
+      user_id: "U_ONE",
+    },
+  }), /deleted_ts is invalid/u);
+});
 
 test("message-change simulation emits the correction and prior-content digest", () => {
   const invocation = simulateSlackMessageChanged({
