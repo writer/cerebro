@@ -826,18 +826,20 @@ impl Neo4jProjector {
         }
         drop(primary_only_rows);
 
-        let corroborating_only_statement = "MATCH (asset:Entity {tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_kind})-[:RELATION {tenant_id: $tenant_id, relation: 'represents'}]->(indicator:Entity {tenant_id: $tenant_id}) WHERE indicator.entity_type IN $indicator_kinds AND $account_id = '' AND $region = '' AND ($search = '' OR toLower(coalesce(asset.urn, '') + ' ' + coalesce(asset.label, '') + ' ' + coalesce(indicator.urn, '') + ' ' + coalesce(indicator.label, '')) CONTAINS $search) AND NOT EXISTS { MATCH (endpoint:Entity {tenant_id: $tenant_id, source_id: $primary_source_id})-[:RELATION {tenant_id: $tenant_id, relation: 'represents'}]->(indicator) WHERE endpoint.entity_type STARTS WITH $primary_kind_prefix } RETURN asset.urn AS corroborating_key, asset.entity_type AS corroborating_kind, asset.label AS corroborating_label, indicator.urn AS indicator_key, indicator.entity_type AS indicator_kind, indicator.label AS indicator_label ORDER BY indicator.label, asset.label, indicator.urn, asset.urn LIMIT $sample_limit";
-        let mut corroborating_only_rows = transaction
-            .execute(params(corroborating_only_statement))
-            .await?;
         let mut corroborating_only = Vec::new();
-        while let Some(row) = corroborating_only_rows.next(transaction.handle()).await? {
-            corroborating_only.push(ExposureCoverageCorroboratingOnly {
-                corroborating: exposure_entity(&row, "corroborating", tenant_id)?,
-                indicator: exposure_entity(&row, "indicator", tenant_id)?,
-            });
+        if should_query_corroborating_only(request) {
+            let corroborating_only_statement = "MATCH (asset:Entity {tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_kind})-[:RELATION {tenant_id: $tenant_id, relation: 'represents'}]->(indicator:Entity {tenant_id: $tenant_id}) WHERE indicator.entity_type IN $indicator_kinds AND ($search = '' OR toLower(coalesce(asset.urn, '') + ' ' + coalesce(asset.label, '') + ' ' + coalesce(indicator.urn, '') + ' ' + coalesce(indicator.label, '')) CONTAINS $search) AND NOT EXISTS { MATCH (endpoint:Entity {tenant_id: $tenant_id, source_id: $primary_source_id})-[:RELATION {tenant_id: $tenant_id, relation: 'represents'}]->(indicator) WHERE endpoint.entity_type STARTS WITH $primary_kind_prefix } RETURN asset.urn AS corroborating_key, asset.entity_type AS corroborating_kind, asset.label AS corroborating_label, indicator.urn AS indicator_key, indicator.entity_type AS indicator_kind, indicator.label AS indicator_label ORDER BY indicator.label, asset.label, indicator.urn, asset.urn LIMIT $sample_limit";
+            let mut corroborating_only_rows = transaction
+                .execute(params(corroborating_only_statement))
+                .await?;
+            while let Some(row) = corroborating_only_rows.next(transaction.handle()).await? {
+                corroborating_only.push(ExposureCoverageCorroboratingOnly {
+                    corroborating: exposure_entity(&row, "corroborating", tenant_id)?,
+                    indicator: exposure_entity(&row, "indicator", tenant_id)?,
+                });
+            }
+            drop(corroborating_only_rows);
         }
-        drop(corroborating_only_rows);
 
         let account_statement = format!(
             "MATCH (endpoint:Entity {{tenant_id: $tenant_id, source_id: $primary_source_id}})-[:RELATION {{tenant_id: $tenant_id, relation: 'belongs_to'}}]->(account:Entity {{tenant_id: $tenant_id, entity_type: $account_kind}}) WHERE {EXPOSURE_ACCOUNT_FILTER} OPTIONAL MATCH (scan:Entity {{tenant_id: $tenant_id, source_id: $corroborating_source_id, entity_type: $corroborating_observation_kind}})-[:RELATION {{tenant_id: $tenant_id, relation: 'belongs_to'}}]->(account) RETURN account.urn AS account_key, account.entity_type AS account_kind, account.label AS account_label, count(DISTINCT endpoint) AS primary_count, count(DISTINCT scan) AS corroborating_count ORDER BY primary_count DESC, account.label, account.urn LIMIT $sample_limit"
@@ -2582,6 +2584,10 @@ fn validate_exposure_coverage_query(request: &ExposureCoverageQuery) -> Result<(
     Ok(())
 }
 
+fn should_query_corroborating_only(request: &ExposureCoverageQuery) -> bool {
+    request.account_id.is_empty() && request.region.is_empty()
+}
+
 fn validate_exposure_text(
     name: &str,
     value: &str,
@@ -3398,6 +3404,19 @@ mod tests {
         };
 
         assert!(validate_exposure_coverage_query(&valid()).is_ok());
+        assert!(should_query_corroborating_only(&valid()));
+
+        let mut account_filtered = valid();
+        account_filtered.account_id = "123456789012".to_owned();
+        assert!(!should_query_corroborating_only(&account_filtered));
+
+        let mut region_filtered = valid();
+        region_filtered.region = "us-west-2".to_owned();
+        assert!(!should_query_corroborating_only(&region_filtered));
+
+        let mut search_filtered = valid();
+        search_filtered.search = "example.com".to_owned();
+        assert!(should_query_corroborating_only(&search_filtered));
 
         let mut zero = valid();
         zero.limit = 0;
