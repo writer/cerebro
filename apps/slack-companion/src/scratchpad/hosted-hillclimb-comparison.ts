@@ -63,6 +63,9 @@ export function compareHostedSlackWorkingStateHillclimbs(
     || currentTime <= previousTime) {
     throw new Error("Hosted hillclimb comparison requires increasing evaluation times.");
   }
+  if (!isCanonicalTime(previous.evaluated_at) || !isCanonicalTime(current.evaluated_at)) {
+    throw new Error("Hosted hillclimb comparison requires canonical evaluation times.");
+  }
   const previousBlockers = new Set(previous.promotion.blockers);
   const currentBlockers = new Set(current.promotion.blockers);
   return Object.freeze({
@@ -156,4 +159,9 @@ function delta(previous: number, current: number): number {
     throw new Error("Hosted hillclimb comparison metrics must be finite.");
   }
   return Math.round((current - previous) * 10_000) / 10_000;
+}
+
+function isCanonicalTime(value: string): boolean {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }

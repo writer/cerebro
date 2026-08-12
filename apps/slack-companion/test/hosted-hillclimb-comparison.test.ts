@@ -152,6 +152,13 @@ test("rejects comparisons across corpora or reversed time", () => {
     ),
     /increasing evaluation times/u,
   );
+  assert.throws(
+    () => compareHostedSlackWorkingStateHillclimbs(
+      receipt(),
+      receipt({ evaluatedAt: "2026-08-12T17:00:00Z" }),
+    ),
+    /canonical evaluation times/u,
+  );
 });
 
 test("rejects comparisons across execution boundaries", () => {
