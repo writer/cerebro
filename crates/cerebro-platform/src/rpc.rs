@@ -8,6 +8,10 @@ use cerebro_agent_context::{
 };
 use cerebro_organizational_model::{AssertionId, EntityId, TenantId};
 use cerebro_organizational_store::{
+    EntityCatalogDirection as StoreCatalogDirection, EntityCatalogFilter as StoreCatalogFilter,
+    EntityCatalogKindPage as StoreCatalogKindPage, EntityCatalogPage as StoreCatalogPage,
+    EntityCatalogRelationCountFilter as StoreCatalogRelationCountFilter,
+    EntityCatalogRelationPage as StoreCatalogRelationPage,
     ExposureCoverageEntity as StoreExposureEntity, ExposureCoverageProfile as StoreExposureProfile,
     ExposureCoverageQuery as StoreExposureQuery, ExposureCoverageResult as StoreExposureResult,
     Neo4jProjector, StoreError,
@@ -570,6 +574,124 @@ impl OrganizationalGraphService for GraphRpc {
         Response::ok(exposure_coverage_response(result))
     }
 
+    async fn list_entities(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListEntitiesRequest>,
+    ) -> ServiceResult<ListEntitiesResponse> {
+        let filter = request
+            .filter
+            .as_option()
+            .ok_or_else(|| ConnectError::invalid_argument("entity catalog filter is required"))?;
+        let tenant = self.authorized_tenant(&context, filter.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.list_catalog_entities(
+                &tenant,
+                &catalog_filter(filter),
+                limit,
+                request.after_agent_key,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Entity catalog read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(catalog_page_response(result))
+    }
+
+    async fn count_entity_kinds(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, CountEntityKindsRequest>,
+    ) -> ServiceResult<CountEntityKindsResponse> {
+        let filter = request
+            .filter
+            .as_option()
+            .ok_or_else(|| ConnectError::invalid_argument("entity catalog filter is required"))?;
+        let tenant = self.authorized_tenant(&context, filter.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.count_catalog_entity_kinds(
+                &tenant,
+                &catalog_filter(filter),
+                limit,
+                request.after_entity_kind,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Entity kind count read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(catalog_kind_response(result))
+    }
+
+    async fn list_entity_relations(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListEntityRelationsRequest>,
+    ) -> ServiceResult<ListEntityRelationsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let directions = request
+            .directions
+            .iter()
+            .map(|value| match value.as_known() {
+                Some(EntityRelationDirection::Incoming) => Ok(StoreCatalogDirection::Incoming),
+                Some(EntityRelationDirection::Outgoing) => Ok(StoreCatalogDirection::Outgoing),
+                _ => Err(ConnectError::invalid_argument(
+                    "relation direction must be incoming or outgoing",
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let after_direction = match request.after_direction.as_known() {
+            None | Some(EntityRelationDirection::Unspecified) => None,
+            Some(EntityRelationDirection::Incoming) => Some(StoreCatalogDirection::Incoming),
+            Some(EntityRelationDirection::Outgoing) => Some(StoreCatalogDirection::Outgoing),
+        };
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let relations = request
+            .relations
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect::<Vec<_>>();
+        let neighbor_kinds = request
+            .neighbor_kinds
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect::<Vec<_>>();
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.list_catalog_relations(
+                &tenant,
+                request.agent_key,
+                &directions,
+                &relations,
+                &neighbor_kinds,
+                limit,
+                request.after_agent_key,
+                request.after_relation,
+                after_direction,
+                request.expected_graph_revision,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Entity relation read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(catalog_relation_response(result))
+    }
+
     async fn get_source_summary(
         &self,
         context: RequestContext,
@@ -983,6 +1105,169 @@ fn normalize_lifecycle_record(record: &mut serde_json::Value) -> Result<(), Conn
         serde_json::Value::String(state.to_owned()),
     );
     Ok(())
+}
+
+fn catalog_filter(filter: &__buffa::view::EntityCatalogFilterView<'_>) -> StoreCatalogFilter {
+    let relation_counts =
+        filter
+            .relation_counts
+            .as_option()
+            .map(|counts| StoreCatalogRelationCountFilter {
+                directions: counts
+                    .directions
+                    .iter()
+                    .filter_map(|value| match value.as_known() {
+                        Some(EntityRelationDirection::Incoming) => {
+                            Some(StoreCatalogDirection::Incoming)
+                        }
+                        Some(EntityRelationDirection::Outgoing) => {
+                            Some(StoreCatalogDirection::Outgoing)
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+                relations: counts
+                    .relations
+                    .iter()
+                    .map(|value| (*value).to_owned())
+                    .collect(),
+                neighbor_kinds: counts
+                    .neighbor_kinds
+                    .iter()
+                    .map(|value| (*value).to_owned())
+                    .collect(),
+            });
+    StoreCatalogFilter {
+        source_id: filter.source_id.to_owned(),
+        runtime_ids: filter
+            .runtime_ids
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect(),
+        exact_agent_key: filter.exact_agent_key.to_owned(),
+        include_kinds: filter
+            .include_kinds
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect(),
+        include_kind_prefixes: filter
+            .include_kind_prefixes
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect(),
+        exclude_kinds: filter
+            .exclude_kinds
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect(),
+        exclude_kind_prefixes: filter
+            .exclude_kind_prefixes
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect(),
+        search: filter.query.to_owned(),
+        search_attributes: filter.query_attributes,
+        relation_counts,
+        expected_graph_revision: filter.expected_graph_revision,
+    }
+}
+
+fn catalog_store_error(error: StoreError) -> ConnectError {
+    match error {
+        StoreError::Conflict(message)
+            if message.starts_with("invalid entity catalog")
+                || message.contains("limit must")
+                || message.contains("contains duplicates")
+                || message.contains("exceeds its bound")
+                || message.contains("cursor is incomplete")
+                || message.contains("not tenant scoped")
+                || message.contains("directions are invalid") =>
+        {
+            ConnectError::invalid_argument(message)
+        }
+        StoreError::Conflict(message) if message.contains("was not found") => {
+            ConnectError::not_found(message)
+        }
+        StoreError::Conflict(message) => ConnectError::unavailable(message),
+        other => ConnectError::unavailable(other.to_string()),
+    }
+}
+
+fn catalog_page_response(page: StoreCatalogPage) -> ListEntitiesResponse {
+    ListEntitiesResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        entities: page.entities.into_iter().map(graph_entity).collect(),
+        truncated: page.truncated,
+        next_after_agent_key: page.next_after_agent_key,
+        relation_counts: page
+            .relation_counts
+            .into_iter()
+            .map(|value| EntityRelationCount {
+                agent_key: value.agent_key,
+                direction: match value.direction {
+                    StoreCatalogDirection::Incoming => EntityRelationDirection::Incoming,
+                    StoreCatalogDirection::Outgoing => EntityRelationDirection::Outgoing,
+                }
+                .into(),
+                relation: value.relation,
+                neighbor_kind: value.neighbor_kind,
+                count: value.count,
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+fn catalog_kind_response(page: StoreCatalogKindPage) -> CountEntityKindsResponse {
+    CountEntityKindsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        counts: page
+            .counts
+            .into_iter()
+            .map(|count| EntityKindCount {
+                entity_kind: count.entity_kind,
+                count: count.count,
+                ..Default::default()
+            })
+            .collect(),
+        truncated: page.truncated,
+        next_after_entity_kind: page.next_after_entity_kind,
+        ..Default::default()
+    }
+}
+
+fn catalog_relation_response(page: StoreCatalogRelationPage) -> ListEntityRelationsResponse {
+    let next_after_direction = match page.next_after_direction {
+        Some(StoreCatalogDirection::Incoming) => EntityRelationDirection::Incoming,
+        Some(StoreCatalogDirection::Outgoing) => EntityRelationDirection::Outgoing,
+        None => EntityRelationDirection::Unspecified,
+    };
+    ListEntityRelationsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        relations: page
+            .relations
+            .into_iter()
+            .map(|value| EntityRelation {
+                direction: match value.direction {
+                    StoreCatalogDirection::Incoming => EntityRelationDirection::Incoming,
+                    StoreCatalogDirection::Outgoing => EntityRelationDirection::Outgoing,
+                }
+                .into(),
+                relation: value.relation,
+                entity: graph_entity(value.entity).into(),
+                ..Default::default()
+            })
+            .collect(),
+        truncated: page.truncated,
+        next_after_agent_key: page.next_after_agent_key,
+        next_after_relation: page.next_after_relation,
+        next_after_direction: next_after_direction.into(),
+        ..Default::default()
+    }
 }
 
 fn graph_entity(entity: ContextEntity) -> GraphEntity {

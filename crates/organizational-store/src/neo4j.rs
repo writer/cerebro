@@ -17,7 +17,7 @@ use cerebro_security_lifecycle::{
     PolicyStateCount, PreparedLifecycleQuery, ProjectedResource, StateCount, SubjectKind,
     SubjectKindCount,
 };
-use neo4rs::{BoltList, BoltMap, BoltType, Graph, Row, Txn, query};
+use neo4rs::{BoltList, BoltMap, BoltType, Graph, Query, Row, Txn, query};
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -493,6 +493,139 @@ pub struct LegacyRootCoverage {
     pub entity_types: Vec<LegacyRootCoverageKind>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// Closed filters shared by typed legacy entity-catalog reads.
+pub struct EntityCatalogFilter {
+    /// Optional source identifier.
+    pub source_id: String,
+    /// Optional closed runtime identifiers.
+    pub runtime_ids: Vec<String>,
+    /// Optional exact tenant-scoped agent key.
+    pub exact_agent_key: String,
+    /// Exact admitted entity kinds.
+    pub include_kinds: Vec<String>,
+    /// Admitted entity-kind prefixes.
+    pub include_kind_prefixes: Vec<String>,
+    /// Exact excluded entity kinds.
+    pub exclude_kinds: Vec<String>,
+    /// Excluded entity-kind prefixes.
+    pub exclude_kind_prefixes: Vec<String>,
+    /// Optional case-insensitive catalog search.
+    pub search: String,
+    /// Whether catalog search may inspect stored attributes.
+    pub search_attributes: bool,
+    /// Optional closed relation-count projection for each returned entity.
+    pub relation_counts: Option<EntityCatalogRelationCountFilter>,
+    /// Required revision for continuation pages, or zero for the first page.
+    pub expected_graph_revision: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded entity-catalog page.
+pub struct EntityCatalogPage {
+    /// Tenant whose catalog was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Stable catalog entities ordered by agent key.
+    pub entities: Vec<ContextEntity>,
+    /// Whether another page exists.
+    pub truncated: bool,
+    /// Stable key after which the next page begins.
+    pub next_after_agent_key: String,
+    /// Complete grouped relation counts for the returned page.
+    pub relation_counts: Vec<EntityCatalogRelationCount>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Closed grouped relation-count selector.
+pub struct EntityCatalogRelationCountFilter {
+    /// Directions relative to each returned entity.
+    pub directions: Vec<EntityCatalogDirection>,
+    /// Stored relation kinds.
+    pub relations: Vec<String>,
+    /// Neighbor entity kinds.
+    pub neighbor_kinds: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One complete grouped relation count for a catalog entity.
+pub struct EntityCatalogRelationCount {
+    /// Stable catalog entity key.
+    pub agent_key: String,
+    /// Direction relative to the catalog entity.
+    pub direction: EntityCatalogDirection,
+    /// Stored relation kind.
+    pub relation: String,
+    /// Neighbor entity kind.
+    pub neighbor_kind: String,
+    /// Distinct matching neighbors.
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Aggregate count for one catalog entity kind.
+pub struct EntityCatalogKindCount {
+    /// Entity kind.
+    pub entity_kind: String,
+    /// Tenant-scoped entity count.
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded entity-kind count page.
+pub struct EntityCatalogKindPage {
+    /// Tenant whose catalog was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Counts ordered by entity kind.
+    pub counts: Vec<EntityCatalogKindCount>,
+    /// Whether another page exists.
+    pub truncated: bool,
+    /// Entity kind after which the next page begins.
+    pub next_after_entity_kind: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+/// Direction of a direct entity-catalog relation.
+pub enum EntityCatalogDirection {
+    /// Neighbor points to the requested entity.
+    Incoming,
+    /// Requested entity points to the neighbor.
+    Outgoing,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One direct entity-catalog relation and its neighbor.
+pub struct EntityCatalogRelation {
+    /// Direction relative to the requested entity.
+    pub direction: EntityCatalogDirection,
+    /// Stored relation kind.
+    pub relation: String,
+    /// Neighbor entity.
+    pub entity: ContextEntity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded direct-relation page.
+pub struct EntityCatalogRelationPage {
+    /// Tenant whose catalog was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Relations ordered by neighbor agent key.
+    pub relations: Vec<EntityCatalogRelation>,
+    /// Whether another page exists.
+    pub truncated: bool,
+    /// Stable neighbor key after which the next page begins.
+    pub next_after_agent_key: String,
+    /// Relation kind paired with the continuation neighbor key.
+    pub next_after_relation: String,
+    /// Direction paired with the continuation neighbor key.
+    pub next_after_direction: Option<EntityCatalogDirection>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Closed source and entity-kind filters for one exposure coverage comparison.
 pub struct ExposureCoverageProfile {
@@ -710,6 +843,271 @@ impl Neo4jProjector {
             rows.push((entity_type, legacy, covered));
         }
         aggregate_legacy_root_coverage(tenant_id, rows)
+    }
+
+    /// Lists one revision-bound page from the legacy entity catalog.
+    pub async fn list_catalog_entities(
+        &self,
+        tenant_id: &TenantId,
+        filter: &EntityCatalogFilter,
+        limit: usize,
+        after_agent_key: &str,
+    ) -> Result<EntityCatalogPage, StoreError> {
+        validate_catalog_request(tenant_id, filter, limit, after_agent_key)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(filter.expected_graph_revision, revision)?;
+        let statement = "MATCH (entity:Entity {tenant_id: $tenant_id}) WHERE ($source_id = '' OR coalesce(entity.source_id, '') = $source_id) AND (size($runtime_ids) = 0 OR coalesce(entity.runtime_id, '') IN $runtime_ids) AND ($exact_key = '' OR entity.urn = $exact_key) AND (size($include_kinds) + size($include_prefixes) = 0 OR entity.entity_type IN $include_kinds OR any(prefix IN $include_prefixes WHERE entity.entity_type STARTS WITH prefix)) AND NOT entity.entity_type IN $exclude_kinds AND none(prefix IN $exclude_prefixes WHERE entity.entity_type STARTS WITH prefix) AND ($search = '' OR toLower(coalesce(entity.urn, '') + ' ' + coalesce(entity.label, '')) CONTAINS $search OR ($search_attributes AND toLower(coalesce(entity.attributes_json, '')) CONTAINS $search)) AND ($after_key = '' OR entity.urn > $after_key) RETURN entity.urn AS entity_key, coalesce(entity.entity_type, 'unknown') AS entity_kind, coalesce(entity.label, entity.urn) AS entity_label, coalesce(entity.attributes_json, '{}') AS entity_properties, coalesce(entity.source_id, '') AS entity_source_id, coalesce(entity.runtime_id, '') AS entity_runtime_id ORDER BY entity.urn LIMIT $row_limit";
+        let mut rows = transaction
+            .execute(
+                catalog_query(statement, tenant_id, filter)
+                    .param("after_key", after_agent_key)
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut entities = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            entities.push(
+                legacy_context_entity(
+                    tenant_id,
+                    &catalog_row_string(&row, "entity_key")?,
+                    catalog_row_string(&row, "entity_kind")?,
+                    catalog_row_string(&row, "entity_label")?,
+                    catalog_row_string(&row, "entity_properties")?,
+                    catalog_row_string(&row, "entity_source_id")?,
+                    catalog_row_string(&row, "entity_runtime_id")?,
+                )
+                .map_err(|error| StoreError::Conflict(error.to_string()))?,
+            );
+        }
+        drop(rows);
+        if !filter.exact_agent_key.is_empty() && entities.len() > 1 {
+            return Err(StoreError::Conflict(
+                "entity catalog exact key is ambiguous".to_owned(),
+            ));
+        }
+        let relation_counts = if let Some(count_filter) = &filter.relation_counts {
+            let root_keys = entities
+                .iter()
+                .take(limit)
+                .map(|entity| entity.agent_key.clone())
+                .collect::<Vec<_>>();
+            catalog_relation_counts(&mut transaction, tenant_id, &root_keys, count_filter).await?
+        } else {
+            Vec::new()
+        };
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut entities, limit);
+        let next_after_agent_key = truncated
+            .then(|| entities.last().map(|entity| entity.agent_key.clone()))
+            .flatten()
+            .unwrap_or_default();
+        Ok(EntityCatalogPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            entities,
+            truncated,
+            next_after_agent_key,
+            relation_counts,
+        })
+    }
+
+    /// Counts entity kinds in one revision-bound catalog page.
+    pub async fn count_catalog_entity_kinds(
+        &self,
+        tenant_id: &TenantId,
+        filter: &EntityCatalogFilter,
+        limit: usize,
+        after_entity_kind: &str,
+    ) -> Result<EntityCatalogKindPage, StoreError> {
+        validate_catalog_request(tenant_id, filter, limit, "")?;
+        validate_catalog_text("after_entity_kind", after_entity_kind, 256, false)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(filter.expected_graph_revision, revision)?;
+        let statement = "MATCH (entity:Entity {tenant_id: $tenant_id}) WHERE ($source_id = '' OR coalesce(entity.source_id, '') = $source_id) AND (size($runtime_ids) = 0 OR coalesce(entity.runtime_id, '') IN $runtime_ids) AND ($exact_key = '' OR entity.urn = $exact_key) AND (size($include_kinds) + size($include_prefixes) = 0 OR entity.entity_type IN $include_kinds OR any(prefix IN $include_prefixes WHERE entity.entity_type STARTS WITH prefix)) AND NOT entity.entity_type IN $exclude_kinds AND none(prefix IN $exclude_prefixes WHERE entity.entity_type STARTS WITH prefix) AND ($search = '' OR toLower(coalesce(entity.urn, '') + ' ' + coalesce(entity.label, '')) CONTAINS $search OR ($search_attributes AND toLower(coalesce(entity.attributes_json, '')) CONTAINS $search)) AND entity.entity_type > $after_kind RETURN entity.entity_type AS entity_kind, count(entity) AS entity_count ORDER BY entity.entity_type LIMIT $row_limit";
+        let mut rows = transaction
+            .execute(
+                catalog_query(statement, tenant_id, filter)
+                    .param("after_kind", after_entity_kind)
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut counts = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            counts.push(EntityCatalogKindCount {
+                entity_kind: catalog_row_string(&row, "entity_kind")?,
+                count: catalog_row_u64(&row, "entity_count")?,
+            });
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut counts, limit);
+        let next_after_entity_kind = truncated
+            .then(|| counts.last().map(|count| count.entity_kind.clone()))
+            .flatten()
+            .unwrap_or_default();
+        Ok(EntityCatalogKindPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            counts,
+            truncated,
+            next_after_entity_kind,
+        })
+    }
+
+    /// Lists one revision-bound page of direct catalog relations.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_catalog_relations(
+        &self,
+        tenant_id: &TenantId,
+        agent_key: &str,
+        directions: &[EntityCatalogDirection],
+        relations: &[String],
+        neighbor_kinds: &[String],
+        limit: usize,
+        after_agent_key: &str,
+        after_relation: &str,
+        after_direction: Option<EntityCatalogDirection>,
+        expected_graph_revision: u64,
+    ) -> Result<EntityCatalogRelationPage, StoreError> {
+        validate_catalog_relation_request(
+            tenant_id,
+            agent_key,
+            directions,
+            relations,
+            neighbor_kinds,
+            limit,
+            after_agent_key,
+            after_relation,
+            after_direction,
+        )?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(expected_graph_revision, revision)?;
+        let mut root_rows = transaction.execute(query("MATCH (root:Entity {tenant_id: $tenant_id, urn: $agent_key}) RETURN count(root) AS root_count").param("tenant_id", tenant_id.as_str()).param("agent_key", agent_key)).await?;
+        let root_count = catalog_row_u64(
+            &root_rows.next(transaction.handle()).await?.ok_or_else(|| {
+                StoreError::Conflict("entity catalog root count returned no row".to_owned())
+            })?,
+            "root_count",
+        )?;
+        drop(root_rows);
+        if root_count == 0 {
+            return Err(StoreError::Conflict(
+                "entity catalog root was not found".to_owned(),
+            ));
+        }
+        if root_count != 1 {
+            return Err(StoreError::Conflict(
+                "entity catalog root is ambiguous".to_owned(),
+            ));
+        }
+        let mut scope_rows = transaction.execute(query("MATCH (root:Entity {tenant_id: $tenant_id, urn: $agent_key})-[edge:RELATION]-(neighbor:Entity) WHERE coalesce(edge.tenant_id, '') <> $tenant_id OR coalesce(neighbor.tenant_id, '') <> $tenant_id RETURN count(*) AS violations").param("tenant_id", tenant_id.as_str()).param("agent_key", agent_key)).await?;
+        let violations = catalog_row_u64(
+            &scope_rows
+                .next(transaction.handle())
+                .await?
+                .ok_or_else(|| {
+                    StoreError::Conflict("entity catalog relation scope returned no row".to_owned())
+                })?,
+            "violations",
+        )?;
+        drop(scope_rows);
+        if violations != 0 {
+            return Err(StoreError::Conflict(
+                "entity catalog contains cross-tenant relations".to_owned(),
+            ));
+        }
+        let direction_names = directions
+            .iter()
+            .map(|direction| match direction {
+                EntityCatalogDirection::Incoming => "incoming".to_owned(),
+                EntityCatalogDirection::Outgoing => "outgoing".to_owned(),
+            })
+            .collect::<Vec<_>>();
+        let after_direction_name = after_direction
+            .map(|direction| match direction {
+                EntityCatalogDirection::Incoming => "incoming",
+                EntityCatalogDirection::Outgoing => "outgoing",
+            })
+            .unwrap_or("");
+        let statement = "MATCH (root:Entity {tenant_id: $tenant_id, urn: $agent_key}) MATCH (root)-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE (size($directions) = 0 OR direction IN $directions) AND (size($relations) = 0 OR edge.relation IN $relations) AND (size($neighbor_kinds) = 0 OR neighbor.entity_type IN $neighbor_kinds) AND ($after_key = '' OR neighbor.urn > $after_key OR (neighbor.urn = $after_key AND edge.relation > $after_relation) OR (neighbor.urn = $after_key AND edge.relation = $after_relation AND direction > $after_direction)) RETURN direction, edge.relation AS relation, neighbor.urn AS entity_key, coalesce(neighbor.entity_type, 'unknown') AS entity_kind, coalesce(neighbor.label, neighbor.urn) AS entity_label, coalesce(neighbor.attributes_json, '{}') AS entity_properties, coalesce(neighbor.source_id, '') AS entity_source_id, coalesce(neighbor.runtime_id, '') AS entity_runtime_id ORDER BY neighbor.urn, edge.relation, direction LIMIT $row_limit";
+        let mut rows = transaction
+            .execute(
+                query(statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("agent_key", agent_key)
+                    .param("directions", string_list(&direction_names))
+                    .param("relations", string_list(relations))
+                    .param("neighbor_kinds", string_list(neighbor_kinds))
+                    .param("after_key", after_agent_key)
+                    .param("after_relation", after_relation)
+                    .param("after_direction", after_direction_name)
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut values = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            let direction = match catalog_row_string(&row, "direction")?.as_str() {
+                "incoming" => EntityCatalogDirection::Incoming,
+                "outgoing" => EntityCatalogDirection::Outgoing,
+                _ => {
+                    return Err(StoreError::Conflict(
+                        "entity catalog relation direction is invalid".to_owned(),
+                    ));
+                }
+            };
+            values.push(EntityCatalogRelation {
+                direction,
+                relation: catalog_row_string(&row, "relation")?,
+                entity: legacy_context_entity(
+                    tenant_id,
+                    &catalog_row_string(&row, "entity_key")?,
+                    catalog_row_string(&row, "entity_kind")?,
+                    catalog_row_string(&row, "entity_label")?,
+                    catalog_row_string(&row, "entity_properties")?,
+                    catalog_row_string(&row, "entity_source_id")?,
+                    catalog_row_string(&row, "entity_runtime_id")?,
+                )
+                .map_err(|error| StoreError::Conflict(error.to_string()))?,
+            });
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut values, limit);
+        let continuation = truncated
+            .then(|| {
+                values.last().map(|value| {
+                    (
+                        value.entity.agent_key.clone(),
+                        value.relation.clone(),
+                        value.direction,
+                    )
+                })
+            })
+            .flatten();
+        Ok(EntityCatalogRelationPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            relations: values,
+            truncated,
+            next_after_agent_key: continuation
+                .as_ref()
+                .map(|value| value.0.clone())
+                .unwrap_or_default(),
+            next_after_relation: continuation
+                .as_ref()
+                .map(|value| value.1.clone())
+                .unwrap_or_default(),
+            next_after_direction: continuation.map(|value| value.2),
+        })
     }
 
     /// Compares two bounded exposure observation sets inside one tenant-scoped
@@ -2523,6 +2921,267 @@ fn row_limit(limit: usize) -> i64 {
     i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX)
 }
 
+fn catalog_query(statement: &str, tenant_id: &TenantId, filter: &EntityCatalogFilter) -> Query {
+    query(statement)
+        .param("tenant_id", tenant_id.as_str())
+        .param("source_id", filter.source_id.as_str())
+        .param("runtime_ids", string_list(&filter.runtime_ids))
+        .param("exact_key", filter.exact_agent_key.as_str())
+        .param("include_kinds", string_list(&filter.include_kinds))
+        .param(
+            "include_prefixes",
+            string_list(&filter.include_kind_prefixes),
+        )
+        .param("exclude_kinds", string_list(&filter.exclude_kinds))
+        .param(
+            "exclude_prefixes",
+            string_list(&filter.exclude_kind_prefixes),
+        )
+        .param("search", filter.search.to_lowercase())
+        .param("search_attributes", filter.search_attributes)
+}
+
+async fn catalog_relation_counts(
+    transaction: &mut Txn,
+    tenant_id: &TenantId,
+    root_keys: &[String],
+    filter: &EntityCatalogRelationCountFilter,
+) -> Result<Vec<EntityCatalogRelationCount>, StoreError> {
+    if root_keys.is_empty() {
+        return Ok(Vec::new());
+    }
+    let direction_names = filter
+        .directions
+        .iter()
+        .map(|direction| match direction {
+            EntityCatalogDirection::Incoming => "incoming".to_owned(),
+            EntityCatalogDirection::Outgoing => "outgoing".to_owned(),
+        })
+        .collect::<Vec<_>>();
+    let mut scope_rows = transaction
+        .execute(
+            query("MATCH (root:Entity)-[edge:RELATION]-(neighbor:Entity) WHERE root.urn IN $root_keys AND (coalesce(root.tenant_id, '') <> $tenant_id OR coalesce(edge.tenant_id, '') <> $tenant_id OR coalesce(neighbor.tenant_id, '') <> $tenant_id) RETURN count(*) AS violations")
+                .param("tenant_id", tenant_id.as_str())
+                .param("root_keys", string_list(root_keys)),
+        )
+        .await?;
+    let violations = catalog_row_u64(
+        &scope_rows
+            .next(transaction.handle())
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict(
+                    "entity catalog relation-count scope returned no row".to_owned(),
+                )
+            })?,
+        "violations",
+    )?;
+    drop(scope_rows);
+    if violations != 0 {
+        return Err(StoreError::Conflict(
+            "entity catalog contains cross-tenant relation counts".to_owned(),
+        ));
+    }
+    let statement = "MATCH (root:Entity {tenant_id: $tenant_id})-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WHERE root.urn IN $root_keys WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE direction IN $directions AND edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind";
+    let mut rows = transaction
+        .execute(
+            query(statement)
+                .param("tenant_id", tenant_id.as_str())
+                .param("root_keys", string_list(root_keys))
+                .param("directions", string_list(&direction_names))
+                .param("relations", string_list(&filter.relations))
+                .param("neighbor_kinds", string_list(&filter.neighbor_kinds)),
+        )
+        .await?;
+    let mut counts = Vec::new();
+    while let Some(row) = rows.next(transaction.handle()).await? {
+        let direction = match catalog_row_string(&row, "direction")?.as_str() {
+            "incoming" => EntityCatalogDirection::Incoming,
+            "outgoing" => EntityCatalogDirection::Outgoing,
+            _ => {
+                return Err(StoreError::Conflict(
+                    "entity catalog relation-count direction is invalid".to_owned(),
+                ));
+            }
+        };
+        counts.push(EntityCatalogRelationCount {
+            agent_key: catalog_row_string(&row, "agent_key")?,
+            direction,
+            relation: catalog_row_string(&row, "relation")?,
+            neighbor_kind: catalog_row_string(&row, "neighbor_kind")?,
+            count: catalog_row_u64(&row, "entity_count")?,
+        });
+    }
+    Ok(counts)
+}
+
+fn validate_catalog_request(
+    tenant_id: &TenantId,
+    filter: &EntityCatalogFilter,
+    limit: usize,
+    after_agent_key: &str,
+) -> Result<(), StoreError> {
+    if !(1..=500).contains(&limit) {
+        return Err(StoreError::Conflict(
+            "entity catalog limit must be between 1 and 500".to_owned(),
+        ));
+    }
+    validate_catalog_text("source_id", &filter.source_id, 128, false)?;
+    validate_catalog_text("query", &filter.search, 512, false)?;
+    validate_catalog_list("runtime_ids", &filter.runtime_ids, 100)?;
+    validate_catalog_list("include_kinds", &filter.include_kinds, 500)?;
+    validate_catalog_list("include_kind_prefixes", &filter.include_kind_prefixes, 500)?;
+    validate_catalog_list("exclude_kinds", &filter.exclude_kinds, 500)?;
+    validate_catalog_list("exclude_kind_prefixes", &filter.exclude_kind_prefixes, 500)?;
+    if let Some(counts) = &filter.relation_counts {
+        validate_catalog_list("relation_count_relations", &counts.relations, 16)?;
+        validate_catalog_list("relation_count_neighbor_kinds", &counts.neighbor_kinds, 32)?;
+        if counts.directions.is_empty()
+            || counts.relations.is_empty()
+            || counts.neighbor_kinds.is_empty()
+            || counts.directions.len() > 2
+            || counts.directions.iter().collect::<BTreeSet<_>>().len() != counts.directions.len()
+        {
+            return Err(StoreError::Conflict(
+                "entity catalog relation-count filter is incomplete or invalid".to_owned(),
+            ));
+        }
+    }
+    for (name, key) in [
+        ("exact_agent_key", filter.exact_agent_key.as_str()),
+        ("after_agent_key", after_agent_key),
+    ] {
+        validate_catalog_text(name, key, 4096, false)?;
+        if !key.is_empty() && !key.starts_with(&format!("urn:cerebro:{}:", tenant_id.as_str())) {
+            return Err(StoreError::Conflict(format!(
+                "entity catalog {name} is not tenant scoped"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_catalog_relation_request(
+    tenant_id: &TenantId,
+    agent_key: &str,
+    directions: &[EntityCatalogDirection],
+    relations: &[String],
+    neighbor_kinds: &[String],
+    limit: usize,
+    after_agent_key: &str,
+    after_relation: &str,
+    after_direction: Option<EntityCatalogDirection>,
+) -> Result<(), StoreError> {
+    validate_catalog_request(
+        tenant_id,
+        &EntityCatalogFilter::default(),
+        limit,
+        after_agent_key,
+    )?;
+    validate_catalog_text("agent_key", agent_key, 4096, true)?;
+    if !agent_key.starts_with(&format!("urn:cerebro:{}:", tenant_id.as_str())) {
+        return Err(StoreError::Conflict(
+            "entity catalog agent_key is not tenant scoped".to_owned(),
+        ));
+    }
+    validate_catalog_list("relations", relations, 64)?;
+    validate_catalog_list("neighbor_kinds", neighbor_kinds, 500)?;
+    if directions.len() > 2 || directions.iter().collect::<BTreeSet<_>>().len() != directions.len()
+    {
+        return Err(StoreError::Conflict(
+            "entity catalog directions are invalid".to_owned(),
+        ));
+    }
+    validate_catalog_text("after_relation", after_relation, 128, false)?;
+    let cursor_fields = (
+        !after_agent_key.is_empty(),
+        !after_relation.is_empty(),
+        after_direction.is_some(),
+    );
+    if cursor_fields != (false, false, false) && cursor_fields != (true, true, true) {
+        return Err(StoreError::Conflict(
+            "entity catalog relation cursor is incomplete".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_catalog_list(name: &str, values: &[String], max: usize) -> Result<(), StoreError> {
+    if values.len() > max {
+        return Err(StoreError::Conflict(format!(
+            "entity catalog {name} exceeds its bound"
+        )));
+    }
+    let mut seen = BTreeSet::new();
+    for value in values {
+        validate_catalog_text(name, value, 256, true)?;
+        if !seen.insert(value) {
+            return Err(StoreError::Conflict(format!(
+                "entity catalog {name} contains duplicates"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_catalog_text(
+    name: &str,
+    value: &str,
+    limit: usize,
+    required: bool,
+) -> Result<(), StoreError> {
+    if (required && value.is_empty())
+        || value.trim() != value
+        || value.len() > limit
+        || value.chars().any(char::is_control)
+    {
+        return Err(StoreError::Conflict(format!(
+            "invalid entity catalog {name}"
+        )));
+    }
+    Ok(())
+}
+
+async fn catalog_revision(transaction: &mut Txn, tenant_id: &TenantId) -> Result<u64, StoreError> {
+    let mut rows = transaction.execute(query("OPTIONAL MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) RETURN coalesce(revision.graph_revision, 0) AS graph_revision").param("tenant_id", tenant_id.as_str())).await?;
+    let row = rows.next(transaction.handle()).await?.ok_or_else(|| {
+        StoreError::Conflict("entity catalog revision returned no row".to_owned())
+    })?;
+    let revision = catalog_row_u64(&row, "graph_revision")?;
+    drop(rows);
+    Ok(revision)
+}
+
+fn require_catalog_revision(expected: u64, actual: u64) -> Result<(), StoreError> {
+    if expected != 0 && expected != actual {
+        return Err(StoreError::Conflict(
+            "entity catalog revision changed before continuation".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn require_same_catalog_revision(start: u64, end: u64) -> Result<(), StoreError> {
+    if start != end {
+        return Err(StoreError::Conflict(
+            "entity catalog revision changed during the read".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn catalog_row_string(row: &Row, field: &str) -> Result<String, StoreError> {
+    row.get(field)
+        .map_err(|error| StoreError::Conflict(error.to_string()))
+}
+fn catalog_row_u64(row: &Row, field: &str) -> Result<u64, StoreError> {
+    let value: i64 = row
+        .get(field)
+        .map_err(|error| StoreError::Conflict(error.to_string()))?;
+    u64::try_from(value)
+        .map_err(|_| StoreError::Conflict(format!("entity catalog {field} is negative")))
+}
+
 fn row_u64(row: &Row, field: &str) -> Result<u64, StoreError> {
     let value: i64 = row
         .get(field)
@@ -3386,6 +4045,53 @@ mod tests {
         assert!(truncate_to_limit(&mut overflow, 2));
         assert_eq!(overflow, [1, 2]);
         assert_eq!(row_limit(500), 501);
+    }
+
+    #[test]
+    fn entity_catalog_rejects_unbounded_ambiguous_or_cross_tenant_requests() {
+        let tenant = TenantId::parse("writer").expect("tenant");
+        let mut filter = EntityCatalogFilter {
+            include_kinds: vec!["vendor".to_owned()],
+            relation_counts: Some(EntityCatalogRelationCountFilter {
+                directions: vec![EntityCatalogDirection::Incoming],
+                relations: vec!["associated_with".to_owned()],
+                neighbor_kinds: vec!["contract".to_owned()],
+            }),
+            ..Default::default()
+        };
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_ok());
+        assert!(validate_catalog_request(&tenant, &filter, 0, "").is_err());
+        assert!(
+            validate_catalog_request(&tenant, &filter, 100, "urn:cerebro:other:vendor:example")
+                .is_err()
+        );
+
+        filter.include_kinds.push("vendor".to_owned());
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_err());
+        filter.include_kinds.pop();
+        filter
+            .relation_counts
+            .as_mut()
+            .expect("relation counts")
+            .directions
+            .push(EntityCatalogDirection::Incoming);
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_err());
+
+        assert!(
+            validate_catalog_relation_request(
+                &tenant,
+                "urn:cerebro:writer:vendor:example",
+                &[EntityCatalogDirection::Incoming],
+                &["associated_with".to_owned()],
+                &["contract".to_owned()],
+                100,
+                "urn:cerebro:writer:contract:one",
+                "",
+                None,
+            )
+            .is_err(),
+            "all composite cursor fields are required"
+        );
     }
 
     #[test]

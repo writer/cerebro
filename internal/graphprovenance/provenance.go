@@ -54,26 +54,26 @@ func (s *Service) Get(ctx context.Context, request Request) (Response, error) {
 		return Response{}, graphquery.ErrRuntimeUnavailable
 	}
 	tenantID := TenantIDFromURN(urn)
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: `MATCH (e:Entity {tenant_id: $tenant_id, urn: $urn})
-RETURN e.urn AS urn,
-       e.tenant_id AS tenant_id,
-       e.entity_type AS entity_type,
-       e.label AS label,
-       e.source_id AS source_id,
-       e.runtime_id AS runtime_id,
-       coalesce(e.attributes_json, '{}') AS attributes_json
-LIMIT 1`,
-		Params:   map[string]any{"tenant_id": tenantID, "urn": urn},
-		RowLimit: 1,
-	})
+	store, ok := s.store.(ports.EntityCatalogStore)
+	if !ok {
+		return Response{}, ports.ErrGraphTypedOperationRequired
+	}
+	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn}, Limit: 1})
 	if err != nil {
 		return Response{}, err
 	}
-	if len(rows) == 0 {
+	if page == nil || page.TenantID != tenantID {
+		return Response{}, graphquery.ErrRuntimeUnavailable
+	}
+	if len(page.Entities) == 0 {
 		return Response{}, ports.ErrGraphEntityNotFound
 	}
-	return fromRow(rows[0])
+	entity := page.Entities[0]
+	attributesJSON, err := json.Marshal(entity.Attributes)
+	if err != nil {
+		return Response{}, err
+	}
+	return fromRow(ports.CypherRow{Values: map[string]any{"urn": entity.URN, "tenant_id": entity.TenantID, "entity_type": entity.EntityType, "label": entity.Label, "source_id": entity.SourceID, "runtime_id": entity.RuntimeID, "attributes_json": string(attributesJSON)}})
 }
 
 func TenantIDFromURN(urn string) string {

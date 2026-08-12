@@ -52,8 +52,13 @@ type assertionQueryStoreStub struct {
 
 type graphServiceStub struct {
 	cerebrographv1connect.UnimplementedOrganizationalGraphServiceHandler
-	expand      func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
-	expandBatch func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
+	expand       func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
+	expandBatch  func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
+	listEntities func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
+}
+
+func (s graphServiceStub) ListEntities(ctx context.Context, request *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error) {
+	return s.listEntities(ctx, request)
 }
 
 func (s graphServiceStub) Expand(ctx context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
@@ -168,6 +173,36 @@ func TestProductExposureCoverageEnforcesTenantBoundsAndCompleteness(t *testing.T
 				t.Fatal("productExposureCoverage() error = nil, want fail-closed rejection")
 			}
 		})
+	}
+}
+
+func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		listEntities: func(_ context.Context, request *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetFilter().GetTenantId() != "tenant-a" {
+				t.Fatalf("tenant authority missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			if request.Msg.GetFilter().GetQueryAttributes() {
+				t.Fatal("attribute search widened without caller opt-in")
+			}
+			counts := request.Msg.GetFilter().GetRelationCounts()
+			if counts == nil || len(counts.GetDirections()) != 1 || counts.GetRelations()[0] != "associated_with" || counts.GetNeighborKinds()[0] != "contract" {
+				t.Fatalf("relation count filter = %#v", counts)
+			}
+			return connect.NewResponse(&cerebrographv1.ListEntitiesResponse{TenantId: "tenant-a", GraphRevision: 9, Entities: []*cerebrographv1.GraphEntity{{AgentKey: "urn:cerebro:tenant-a:vendor:one", EntityKind: "vendor", Label: "One"}}, RelationCounts: []*cerebrographv1.EntityRelationCount{{AgentKey: "urn:cerebro:tenant-a:vendor:one", Direction: cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING, Relation: "associated_with", NeighborKind: "contract", Count: 2}}}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	page, err := store.ListEntities(context.Background(), ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: "tenant-a", IncludeKinds: []string{"vendor"}, Query: "one", RelationCounts: &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract"}}}, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListEntities() error = %v", err)
+	}
+	if page.GraphRevision != 9 || len(page.Entities) != 1 || len(page.RelationCounts) != 1 || page.RelationCounts[0].Count != 2 {
+		t.Fatalf("page = %#v", page)
 	}
 }
 

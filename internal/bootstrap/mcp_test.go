@@ -1646,7 +1646,7 @@ func TestMCPGraphFactsURNSelectorsDoNotRevealCrossTenantExistence(t *testing.T) 
 	}
 }
 
-func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
+func TestMCPAssetsSearchUsesTenantScopedTypedCatalog(t *testing.T) {
 	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{{
 		{Values: map[string]any{
 			"urn":             "urn:cerebro:writer:asset:prod-db",
@@ -1686,14 +1686,11 @@ func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
 	if response["error"] != nil {
 		t.Fatalf("tools/call error = %#v", response["error"])
 	}
-	if len(graph.cypherRequests) != 1 {
-		t.Fatalf("cypher requests = %d, want 1", len(graph.cypherRequests))
+	if len(graph.entityRequests) != 1 || len(graph.cypherRequests) != 0 {
+		t.Fatalf("entity requests = %d, cypher requests = %d, want 1, 0", len(graph.entityRequests), len(graph.cypherRequests))
 	}
-	if graph.cypherRequests[0].Params["tenant_id"] != "writer" || graph.cypherRequests[0].RowLimit != 7 {
-		t.Fatalf("cypher request = %#v", graph.cypherRequests[0])
-	}
-	if strings.Contains(graph.cypherRequests[0].Query, "toLower(coalesce(e.attributes_json") {
-		t.Fatalf("asset search query matches raw sensitive attributes: %s", graph.cypherRequests[0].Query)
+	if graph.entityRequests[0].Filter.TenantID != "writer" || graph.entityRequests[0].Limit != 7 || len(graph.entityRequests[0].Filter.IncludeKinds) != 1 {
+		t.Fatalf("entity request = %#v", graph.entityRequests[0])
 	}
 	assets := response["result"].(map[string]any)["structuredContent"].(map[string]any)["assets"].([]any)
 	if len(assets) != 1 {

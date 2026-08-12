@@ -923,6 +923,227 @@ func digestBytes(value []byte) string {
 	return fmt.Sprintf("%x", digest)
 }
 
+func (s *QueryStore) ListEntities(ctx context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	filter, tenantID, err := entityCatalogFilter(request.Filter)
+	if err != nil {
+		return nil, err
+	}
+	if request.Limit < 1 || request.Limit > 500 {
+		return nil, errors.New("entity catalog limit must be between 1 and 500")
+	}
+	message := connect.NewRequest(&cerebrographv1.ListEntitiesRequest{Filter: filter, Limit: uint32(request.Limit), AfterAgentKey: strings.TrimSpace(request.AfterAgentKey)}) // #nosec G115 -- bounded above.
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListEntities(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("list entities", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetEntities()) > request.Limit {
+		return nil, errors.New("rust entity catalog returned an invalid tenant or bound")
+	}
+	page := &ports.EntityCatalogPage{TenantID: tenantID, GraphRevision: response.Msg.GetGraphRevision(), Truncated: response.Msg.GetTruncated(), NextAfterAgentKey: response.Msg.GetNextAfterAgentKey()}
+	seenEntities := make(map[string]struct{}, len(response.Msg.GetEntities()))
+	for _, entity := range response.Msg.GetEntities() {
+		converted, err := catalogEntity(tenantID, entity)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := seenEntities[converted.URN]; exists || (filter.GetExactAgentKey() != "" && converted.URN != filter.GetExactAgentKey()) {
+			return nil, errors.New("rust entity catalog returned duplicate or non-exact entities")
+		}
+		seenEntities[converted.URN] = struct{}{}
+		page.Entities = append(page.Entities, converted)
+	}
+	if filter.GetExactAgentKey() != "" && len(page.Entities) > 1 {
+		return nil, errors.New("rust entity catalog returned an ambiguous exact key")
+	}
+	pageKeys := make(map[string]struct{}, len(page.Entities))
+	for _, entity := range page.Entities {
+		pageKeys[entity.URN] = struct{}{}
+	}
+	seenCounts := make(map[string]struct{}, len(response.Msg.GetRelationCounts()))
+	for _, count := range response.Msg.GetRelationCounts() {
+		if count == nil || count.GetCount() == 0 || strings.TrimSpace(count.GetRelation()) == "" || strings.TrimSpace(count.GetNeighborKind()) == "" {
+			return nil, errors.New("rust entity catalog returned an invalid relation count")
+		}
+		if _, ok := pageKeys[count.GetAgentKey()]; !ok || !cerebrourn.SameTenant(count.GetAgentKey(), tenantID) {
+			return nil, errors.New("rust entity catalog returned an out-of-page relation count")
+		}
+		direction, err := catalogRelationDirection(count.GetDirection())
+		if err != nil {
+			return nil, err
+		}
+		countKey := count.GetAgentKey() + "\x00" + string(direction) + "\x00" + count.GetRelation() + "\x00" + count.GetNeighborKind()
+		if _, exists := seenCounts[countKey]; exists {
+			return nil, errors.New("rust entity catalog returned duplicate relation counts")
+		}
+		seenCounts[countKey] = struct{}{}
+		page.RelationCounts = append(page.RelationCounts, ports.EntityRelationCount{AgentKey: count.GetAgentKey(), Direction: direction, Relation: count.GetRelation(), NeighborKind: count.GetNeighborKind(), Count: count.GetCount()})
+	}
+	if page.Truncated && (page.NextAfterAgentKey == "" || len(page.Entities) != request.Limit) {
+		return nil, errors.New("rust entity catalog returned an invalid continuation")
+	}
+	return page, nil
+}
+
+func (s *QueryStore) CountEntityKinds(ctx context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	filter, tenantID, err := entityCatalogFilter(request.Filter)
+	if err != nil {
+		return nil, err
+	}
+	if request.Limit < 1 || request.Limit > 500 {
+		return nil, errors.New("entity kind count limit must be between 1 and 500")
+	}
+	message := connect.NewRequest(&cerebrographv1.CountEntityKindsRequest{Filter: filter, Limit: uint32(request.Limit), AfterEntityKind: strings.TrimSpace(request.AfterEntityKind)}) // #nosec G115 -- bounded above.
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.CountEntityKinds(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("count entity kinds", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetCounts()) > request.Limit {
+		return nil, errors.New("rust entity kind counts returned an invalid tenant or bound")
+	}
+	page := &ports.EntityKindCountPage{TenantID: tenantID, GraphRevision: response.Msg.GetGraphRevision(), Truncated: response.Msg.GetTruncated(), NextAfterEntityKind: response.Msg.GetNextAfterEntityKind()}
+	for _, count := range response.Msg.GetCounts() {
+		if count == nil || strings.TrimSpace(count.GetEntityKind()) == "" {
+			return nil, errors.New("rust entity kind counts returned an invalid kind")
+		}
+		page.Counts = append(page.Counts, ports.EntityKindCount{EntityKind: count.GetEntityKind(), Count: count.GetCount()})
+	}
+	if page.Truncated && (page.NextAfterEntityKind == "" || len(page.Counts) != request.Limit) {
+		return nil, errors.New("rust entity kind counts returned an invalid continuation")
+	}
+	return page, nil
+}
+
+func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("entity relation tenant_id is required")
+	}
+	if request.Limit < 1 || request.Limit > 500 {
+		return nil, errors.New("entity relation limit must be between 1 and 500")
+	}
+	directions := make([]cerebrographv1.EntityRelationDirection, 0, len(request.Directions))
+	for _, direction := range request.Directions {
+		switch direction {
+		case ports.EntityRelationIncoming:
+			directions = append(directions, cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING)
+		case ports.EntityRelationOutgoing:
+			directions = append(directions, cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_OUTGOING)
+		default:
+			return nil, errors.New("entity relation direction is invalid")
+		}
+	}
+	afterDirection := cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_UNSPECIFIED
+	switch request.AfterDirection {
+	case ports.EntityRelationIncoming:
+		afterDirection = cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING
+	case ports.EntityRelationOutgoing:
+		afterDirection = cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_OUTGOING
+	case "":
+	default:
+		return nil, errors.New("entity relation continuation direction is invalid")
+	}
+	message := connect.NewRequest(&cerebrographv1.ListEntityRelationsRequest{TenantId: tenantID, AgentKey: strings.TrimSpace(request.AgentKey), Directions: directions, Relations: append([]string(nil), request.Relations...), NeighborKinds: append([]string(nil), request.NeighborKinds...), Limit: uint32(request.Limit), AfterAgentKey: strings.TrimSpace(request.AfterAgentKey), ExpectedGraphRevision: request.ExpectedRevision, AfterRelation: strings.TrimSpace(request.AfterRelation), AfterDirection: afterDirection}) // #nosec G115 -- bounded above.
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListEntityRelations(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("list entity relations", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetRelations()) > request.Limit {
+		return nil, errors.New("rust entity relations returned an invalid tenant or bound")
+	}
+	page := &ports.EntityRelationPage{TenantID: tenantID, GraphRevision: response.Msg.GetGraphRevision(), Truncated: response.Msg.GetTruncated(), NextAfterAgentKey: response.Msg.GetNextAfterAgentKey(), NextAfterRelation: response.Msg.GetNextAfterRelation()}
+	for _, relation := range response.Msg.GetRelations() {
+		if relation == nil || strings.TrimSpace(relation.GetRelation()) == "" {
+			return nil, errors.New("rust entity relations returned an invalid relation")
+		}
+		entity, err := catalogEntity(tenantID, relation.GetEntity())
+		if err != nil {
+			return nil, err
+		}
+		direction := ports.EntityRelationDirection("")
+		switch relation.GetDirection() {
+		case cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING:
+			direction = ports.EntityRelationIncoming
+		case cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_OUTGOING:
+			direction = ports.EntityRelationOutgoing
+		default:
+			return nil, errors.New("rust entity relations returned an invalid direction")
+		}
+		page.Relations = append(page.Relations, ports.EntityCatalogRelation{Direction: direction, Relation: relation.GetRelation(), Entity: entity})
+	}
+	switch response.Msg.GetNextAfterDirection() {
+	case cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING:
+		page.NextAfterDirection = ports.EntityRelationIncoming
+	case cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_OUTGOING:
+		page.NextAfterDirection = ports.EntityRelationOutgoing
+	}
+	if page.Truncated && (page.NextAfterAgentKey == "" || page.NextAfterRelation == "" || page.NextAfterDirection == "" || len(page.Relations) != request.Limit) {
+		return nil, errors.New("rust entity relations returned an invalid continuation")
+	}
+	return page, nil
+}
+
+func entityCatalogFilter(filter ports.EntityCatalogFilter) (*cerebrographv1.EntityCatalogFilter, string, error) {
+	tenantID := strings.TrimSpace(filter.TenantID)
+	if tenantID == "" {
+		return nil, "", errors.New("entity catalog tenant_id is required")
+	}
+	message := &cerebrographv1.EntityCatalogFilter{TenantId: tenantID, SourceId: strings.TrimSpace(filter.SourceID), RuntimeIds: append([]string(nil), filter.RuntimeIDs...), ExactAgentKey: strings.TrimSpace(filter.ExactAgentKey), IncludeKinds: append([]string(nil), filter.IncludeKinds...), IncludeKindPrefixes: append([]string(nil), filter.IncludeKindPrefixes...), ExcludeKinds: append([]string(nil), filter.ExcludeKinds...), ExcludeKindPrefixes: append([]string(nil), filter.ExcludeKindPrefixes...), Query: strings.TrimSpace(filter.Query), ExpectedGraphRevision: filter.ExpectedRevision, QueryAttributes: filter.QueryAttributes}
+	if filter.RelationCounts != nil {
+		directions := make([]cerebrographv1.EntityRelationDirection, 0, len(filter.RelationCounts.Directions))
+		for _, direction := range filter.RelationCounts.Directions {
+			switch direction {
+			case ports.EntityRelationIncoming:
+				directions = append(directions, cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING)
+			case ports.EntityRelationOutgoing:
+				directions = append(directions, cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_OUTGOING)
+			default:
+				return nil, "", errors.New("entity catalog relation-count direction is invalid")
+			}
+		}
+		message.RelationCounts = &cerebrographv1.EntityRelationCountFilter{Directions: directions, Relations: append([]string(nil), filter.RelationCounts.Relations...), NeighborKinds: append([]string(nil), filter.RelationCounts.NeighborKinds...)}
+	}
+	return message, tenantID, nil
+}
+
+func catalogRelationDirection(direction cerebrographv1.EntityRelationDirection) (ports.EntityRelationDirection, error) {
+	switch direction {
+	case cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING:
+		return ports.EntityRelationIncoming, nil
+	case cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_OUTGOING:
+		return ports.EntityRelationOutgoing, nil
+	default:
+		return "", errors.New("rust entity catalog returned an invalid relation direction")
+	}
+}
+
+func catalogEntity(tenantID string, entity *cerebrographv1.GraphEntity) (ports.CatalogEntity, error) {
+	if entity == nil || !cerebrourn.SameTenant(entity.GetAgentKey(), tenantID) || strings.TrimSpace(entity.GetEntityKind()) == "" {
+		return ports.CatalogEntity{}, errors.New("rust entity catalog returned an invalid entity")
+	}
+	properties := mapsClone(entity.GetProperties())
+	return ports.CatalogEntity{URN: entity.GetAgentKey(), TenantID: tenantID, EntityType: entity.GetEntityKind(), Label: entity.GetLabel(), SourceID: properties["source_id"], RuntimeID: entity.GetSourceRuntimeId(), Attributes: properties}, nil
+}
+
+func mapsClone(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
+}
+
 func (s *QueryStore) ExecuteReadCypher(ctx context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	if s.rawCypher == nil {
 		return nil, ports.ErrGraphTypedOperationRequired

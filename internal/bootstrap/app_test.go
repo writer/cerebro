@@ -1669,6 +1669,7 @@ type stubGraphStore struct {
 	cypherRequests      []ports.CypherQueryRequest
 	exposureResult      *ports.ExposureCoverageResult
 	exposureRequests    []ports.ExposureCoverageRequest
+	entityRequests      []ports.EntityCatalogPageRequest
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -1756,6 +1757,38 @@ func (s *stubGraphStore) CompareExposureCoverage(_ context.Context, request port
 	}
 	s.exposureRequests = append(s.exposureRequests, request)
 	return s.exposureResult, nil
+}
+
+func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.entityRequests = append(s.entityRequests, request)
+	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, GraphRevision: 1}
+	if len(s.cypherRows) == 0 {
+		return page, nil
+	}
+	rows := s.cypherRows[0]
+	s.cypherRows = s.cypherRows[1:]
+	for _, row := range rows {
+		attrs := map[string]string{}
+		_ = json.Unmarshal([]byte(fmt.Sprint(row.Values["attributes_json"])), &attrs)
+		tenant := fmt.Sprint(row.Values["tenant_id"])
+		if tenant == "<nil>" || tenant == "" {
+			tenant = request.Filter.TenantID
+		}
+		if tenant != request.Filter.TenantID {
+			continue
+		}
+		page.Entities = append(page.Entities, ports.CatalogEntity{URN: fmt.Sprint(row.Values["urn"]), TenantID: tenant, RuntimeID: fmt.Sprint(row.Values["runtime_id"]), SourceID: fmt.Sprint(row.Values["source_id"]), EntityType: fmt.Sprint(row.Values["entity_type"]), Label: fmt.Sprint(row.Values["label"]), Attributes: attrs})
+	}
+	return page, nil
+}
+func (s *stubGraphStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return &ports.EntityKindCountPage{TenantID: "writer"}, nil
+}
+func (s *stubGraphStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	return &ports.EntityRelationPage{TenantID: "writer"}, nil
 }
 
 func (s *stubGraphStore) ExplainReadCypher(_ context.Context, request ports.CypherQueryRequest) (*ports.CypherPlan, error) {

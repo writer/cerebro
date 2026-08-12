@@ -2,6 +2,7 @@ package grcvendor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -32,6 +33,53 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 	rows := s.rows[0]
 	s.rows = s.rows[1:]
 	return rows, nil
+}
+
+func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.requests = append(s.requests, ports.CypherQueryRequest{Params: map[string]any{"tenant_id": request.Filter.TenantID, "limit": request.Limit}})
+	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID}
+	if len(s.rows) == 0 {
+		return page, nil
+	}
+	rows := s.rows[0]
+	s.rows = s.rows[1:]
+	for _, row := range rows {
+		attrs := map[string]string{}
+		_ = json.Unmarshal([]byte(rowString(row, "attributes_json")), &attrs)
+		entity := ports.CatalogEntity{URN: rowString(row, "urn"), TenantID: request.Filter.TenantID, EntityType: firstNonEmpty(rowString(row, "entity_type"), request.Filter.IncludeKinds[0]), Label: rowString(row, "label"), SourceID: rowString(row, "source_id"), RuntimeID: rowString(row, "runtime_id"), Attributes: attrs}
+		page.Entities = append(page.Entities, entity)
+		if request.Filter.RelationCounts != nil {
+			for kind, field := range map[string]string{"contract": "contract_count", "security.review": "security_review_count", "security.questionnaire": "questionnaire_count", "assurance.document": "assurance_document_count"} {
+				if count := rowInt(row, field); count > 0 {
+					page.RelationCounts = append(page.RelationCounts, ports.EntityRelationCount{AgentKey: entity.URN, Direction: ports.EntityRelationIncoming, Relation: "associated_with", NeighborKind: kind, Count: uint64(count)})
+				}
+			}
+		}
+	}
+	return page, nil
+}
+func (s *stubGraphStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return nil, nil
+}
+func (s *stubGraphStore) ListEntityRelations(_ context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	page := &ports.EntityRelationPage{TenantID: request.TenantID}
+	if len(s.rows) == 0 {
+		return page, nil
+	}
+	rows := s.rows[0]
+	s.rows = s.rows[1:]
+	for _, row := range rows {
+		attrs := map[string]string{}
+		_ = json.Unmarshal([]byte(rowString(row, "attributes_json")), &attrs)
+		page.Relations = append(page.Relations, ports.EntityCatalogRelation{Direction: ports.EntityRelationIncoming, Relation: rowString(row, "relation"), Entity: ports.CatalogEntity{URN: rowString(row, "urn"), TenantID: request.TenantID, EntityType: rowString(row, "entity_type"), Label: rowString(row, "label"), SourceID: rowString(row, "source_id"), RuntimeID: rowString(row, "runtime_id"), Attributes: attrs}})
+	}
+	return page, nil
 }
 
 func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
@@ -101,7 +149,7 @@ func TestListVendorsDerivesPostureAndAppliesFilters(t *testing.T) {
 		t.Fatalf("vendor queue posture = %#v", vendor.VendorQueuePosture)
 	}
 	if vendor.ContractCount != 2 || vendor.SecurityReviewCount != 1 || vendor.AssuranceDocumentCount != 1 {
-		t.Fatalf("vendor counts = contracts %d reviews %d docs %d", vendor.ContractCount, vendor.SecurityReviewCount, vendor.AssuranceDocumentCount)
+		t.Fatalf("typed relation counts = %#v", vendor.VendorRecordCounts)
 	}
 	if len(store.requests) != 1 {
 		t.Fatalf("cypher requests = %d, want 1", len(store.requests))
@@ -109,8 +157,8 @@ func TestListVendorsDerivesPostureAndAppliesFilters(t *testing.T) {
 	if store.requests[0].Params["tenant_id"] != "writer" {
 		t.Fatalf("tenant param = %#v, want writer", store.requests[0].Params["tenant_id"])
 	}
-	if store.requests[0].RowLimit != maxVendorLimit {
-		t.Fatalf("row limit = %d, want derived filter limit %d", store.requests[0].RowLimit, maxVendorLimit)
+	if store.requests[0].Params["limit"] != maxVendorLimit {
+		t.Fatalf("typed limit = %v, want derived filter limit %d", store.requests[0].Params["limit"], maxVendorLimit)
 	}
 
 	vendor.OpenFindings = 2
@@ -286,8 +334,8 @@ func TestListVendorsCanDeferLimitUntilAfterEnrichment(t *testing.T) {
 	if len(vendors) != 2 {
 		t.Fatalf("vendors len = %d, want deferred untruncated rows", len(vendors))
 	}
-	if store.requests[0].RowLimit != maxVendorLimit {
-		t.Fatalf("row limit = %d, want queue prefetch limit %d", store.requests[0].RowLimit, maxVendorLimit)
+	if store.requests[0].Params["limit"] != maxVendorLimit {
+		t.Fatalf("typed limit = %v, want queue prefetch limit %d", store.requests[0].Params["limit"], maxVendorLimit)
 	}
 	for index := range vendors {
 		if vendors[index].VendorID == "critical-finding" {
@@ -461,7 +509,7 @@ func TestGetVendorAcceptsVendorID(t *testing.T) {
 	if detail.Vendor.URN != urn {
 		t.Fatalf("vendor urn = %q, want %q", detail.Vendor.URN, urn)
 	}
-	if store.requests[0].Params["vendor_id"] != "acme" || store.requests[0].Params["tenant_id"] != "writer" {
+	if store.requests[0].Params["tenant_id"] != "writer" {
 		t.Fatalf("detail params = %#v", store.requests[0].Params)
 	}
 	if store.rootURN != urn {
