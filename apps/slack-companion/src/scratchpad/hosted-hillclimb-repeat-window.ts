@@ -13,6 +13,7 @@ export interface HostedHillclimbRepeatWindowV1 {
   readonly corpus_digest: string;
   readonly efficiency_regression_count: number;
   readonly evaluation_span_ms: number;
+  readonly execution_boundary: HostedHillclimbComparisonV1["execution_boundary"];
   readonly generator_model_id: string;
   readonly first_evaluated_at: string;
   readonly last_evaluated_at: string;
@@ -89,6 +90,7 @@ export function buildHostedHillclimbRepeatWindow(
     evaluation_span_ms:
       Date.parse(comparisons[comparisons.length - 1]!.current_evaluated_at)
       - Date.parse(comparisons[0]!.previous_evaluated_at),
+    execution_boundary: Object.freeze({ ...comparisons[0]!.execution_boundary }),
     generator_model_id: comparisons[0]!.generator_model_id,
     first_evaluated_at: comparisons[0]!.previous_evaluated_at,
     last_evaluated_at: comparisons[comparisons.length - 1]!.current_evaluated_at,
