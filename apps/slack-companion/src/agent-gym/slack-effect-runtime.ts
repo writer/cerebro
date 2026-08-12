@@ -13,6 +13,40 @@ export interface AgentGymSlackEffectPlanEntryV1 {
   readonly effect: AgentGymSlackEffectV1;
 }
 
+export interface AgentGymSlackEffectCheckpointV1 {
+  readonly accepted_effect_refs: readonly string[];
+  readonly checkpoint_ref: string;
+  readonly completed_effect_refs: readonly string[];
+  readonly schema_version: "agent-gym-slack-effect-checkpoint/v1";
+}
+
+/** Selects only accepted effects not durably completed before a restart. */
+export function resumeAgentGymSlackEffects(
+  checkpoint: AgentGymSlackEffectCheckpointV1,
+  effects: readonly AgentGymSlackEffectV1[],
+): readonly AgentGymSlackEffectV1[] {
+  if (checkpoint.schema_version !== "agent-gym-slack-effect-checkpoint/v1"
+    || !checkpoint.checkpoint_ref.includes("://")
+    || !Array.isArray(effects)
+    || effects.length > 1_000) invalidCheckpoint();
+  references(checkpoint.accepted_effect_refs, 1_000);
+  references(checkpoint.completed_effect_refs, 1_000);
+  const accepted = new Set(checkpoint.accepted_effect_refs);
+  const completed = new Set(checkpoint.completed_effect_refs);
+  if ([...completed].some((reference) => !accepted.has(reference))) invalidCheckpoint();
+  const effectByRef = new Map(effects.map((effect) => [effect.effect_ref, effect]));
+  if (effectByRef.size !== effects.length
+    || [...accepted].some((reference) => !effectByRef.has(reference))) invalidCheckpoint();
+  return Object.freeze([...accepted]
+    .filter((reference) => !completed.has(reference))
+    .sort()
+    .map((reference) => {
+      const effect = effectByRef.get(reference);
+      if (effect === undefined) return invalidCheckpoint();
+      return effect;
+    }));
+}
+
 /** Returns a deterministic dependency-respecting outbound effect order. */
 export function orderAgentGymSlackEffects(
   entries: readonly AgentGymSlackEffectPlanEntryV1[],
@@ -131,4 +165,15 @@ function invalidEffect(): never {
 }
 function invalidEffectPlan(): never {
   throw new AgentGymContractError("Agent gym Slack effect plan is invalid.");
+}
+function references(values: readonly string[], maximum: number): void {
+  if (!Array.isArray(values) || values.length > maximum
+    || new Set(values).size !== values.length
+    || values.some((value) => typeof value !== "string"
+      || !/^slack-effect:\/\/sha256\/[0-9a-f]{64}$/u.test(value))) {
+    invalidCheckpoint();
+  }
+}
+function invalidCheckpoint(): never {
+  throw new AgentGymContractError("Agent gym Slack effect checkpoint is invalid.");
 }

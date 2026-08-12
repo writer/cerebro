@@ -6,8 +6,42 @@ import {
   captureAgentGymSlackPostMessage,
   captureAgentGymSlackUpdateMessage,
   orderAgentGymSlackEffects,
+  resumeAgentGymSlackEffects,
   planAgentGymSlackAcknowledgement,
 } from "../src/index.js";
+
+test("effect resume returns accepted work not completed before a crash", () => {
+  const first = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:one",
+    text: "First.",
+  });
+  const second = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:two",
+    text: "Second.",
+  });
+  assert.deepEqual(resumeAgentGymSlackEffects({
+    accepted_effect_refs: [first.effect_ref, second.effect_ref],
+    checkpoint_ref: "checkpoint://effects/one",
+    completed_effect_refs: [first.effect_ref],
+    schema_version: "agent-gym-slack-effect-checkpoint/v1",
+  }, [second, first]), [second]);
+});
+
+test("effect resume rejects completion without prior acceptance", () => {
+  const effect = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:one",
+    text: "First.",
+  });
+  assert.throws(() => resumeAgentGymSlackEffects({
+    accepted_effect_refs: [],
+    checkpoint_ref: "checkpoint://effects/one",
+    completed_effect_refs: [effect.effect_ref],
+    schema_version: "agent-gym-slack-effect-checkpoint/v1",
+  }, [effect]), /checkpoint is invalid/u);
+});
 
 test("effect ordering honors dependencies independent of input order", () => {
   const posted = captureAgentGymSlackPostMessage({
