@@ -11,6 +11,7 @@ import {
   validateAgentGymPromotionDecision,
   validateAgentGymFixtureCase,
   validateAgentGymReplayRun,
+  validateAgentGymRunSummary,
   validateAgentGymScorecard,
 } from "../src/index.js";
 
@@ -21,6 +22,26 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("run summaries expose exact CI case counts and blockers", () => {
+  const summary = validateAgentGymRunSummary({
+    artifact_refs: ["artifact://sha256/one"],
+    blocker_codes: [],
+    candidate_ref: "candidate://agent-gym/one",
+    completed_at: "2026-08-12T08:04:00.000Z",
+    failed_case_count: 0,
+    passed_case_count: 40,
+    run_ref: "run://agent-gym/one",
+    schema_version: "agent-gym-run-summary/v1",
+    status: "passed",
+    total_case_count: 40,
+  });
+  assert.equal(summary.status, "passed");
+  assert.throws(() => validateAgentGymRunSummary({
+    ...summary,
+    failed_case_count: 1,
+  }), /run summary is invalid/u);
 });
 
 test("agent gym CLI parses bounded machine-readable commands", () => {
@@ -85,7 +106,7 @@ test("comparisons retain paired confidence and protected slice deltas", () => {
   assert.equal(Object.isFrozen(comparison.confidence_interval_95), true);
   assert.throws(() => validateAgentGymComparison({
     ...comparison,
-    confidence_interval_95: [-0.01, 0.08],
+    confidence_interval_95: [0.06, 0.08],
   }), /comparison is invalid/u);
 });
 

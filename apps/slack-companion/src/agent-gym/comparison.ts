@@ -53,7 +53,7 @@ export function validateAgentGymComparison(
   });
   return Object.freeze({
     ...comparison,
-    confidence_interval_95: Object.freeze([lower, upper]),
+    confidence_interval_95: Object.freeze([lower, upper] as const),
     slices: Object.freeze(slices),
   });
 }

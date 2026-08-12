@@ -18,4 +18,5 @@ export * from "./cli.js";
 export * from "./comparison.js";
 export * from "./promotion-decision.js";
 export * from "./replay-run.js";
+export * from "./run-summary.js";
 export * from "./scorecard.js";
