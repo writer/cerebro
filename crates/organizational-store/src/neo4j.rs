@@ -310,6 +310,19 @@ OPTIONAL MATCH (target:OrganizationalEntity {
 RETURN source IS NOT NULL AND target IS NOT NULL AS endpoints_exist
 "#;
 
+const LEGACY_ROOT_COVERAGE_STATEMENT: &str = r#"
+MATCH (legacy:Entity)
+WHERE legacy.tenant_id = $tenant_id OR legacy.urn STARTS WITH $urn_prefix
+WITH legacy, coalesce(legacy.entity_type, 'unknown') AS entity_type
+OPTIONAL MATCH (current:OrganizationalEntity {tenant_id: $tenant_id})
+WHERE current.entity_id = legacy.urn OR current.external_id = legacy.urn
+WITH entity_type, legacy, count(current) > 0 AS covered
+RETURN entity_type,
+       count(legacy) AS legacy_roots,
+       sum(CASE WHEN covered THEN 1 ELSE 0 END) AS covered_roots
+ORDER BY entity_type
+"#;
+
 const NEO4J_SCHEMA: &[&str] = &[
     "CREATE CONSTRAINT organizational_entity_identity IF NOT EXISTS FOR (entity:OrganizationalEntity) REQUIRE (entity.tenant_id, entity.entity_id) IS UNIQUE",
     "CREATE CONSTRAINT organizational_revision_tenant IF NOT EXISTS FOR (revision:OrganizationalGraphRevision) REQUIRE revision.tenant_id IS UNIQUE",
@@ -348,6 +361,34 @@ pub struct ResolvedLifecycleFinding {
     pub source_collection_id: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+/// Aggregate coverage for one legacy graph entity type.
+pub struct LegacyRootCoverageKind {
+    /// Legacy entity type, or `unknown` when the legacy node omitted it.
+    pub entity_type: String,
+    /// Distinct legacy roots observed for this type.
+    pub legacy_roots: u64,
+    /// Legacy roots addressable through the Rust organizational projection.
+    pub covered_roots: u64,
+    /// Legacy roots that the Rust organizational projection cannot resolve.
+    pub missing_roots: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+/// Tenant-scoped aggregate coverage of legacy graph roots by the Rust projection.
+pub struct LegacyRootCoverage {
+    /// Tenant whose legacy and Rust projection roots were compared.
+    pub tenant_id: String,
+    /// Total distinct legacy roots observed for the tenant.
+    pub legacy_roots: u64,
+    /// Total legacy roots addressable through the Rust organizational projection.
+    pub covered_roots: u64,
+    /// Total legacy roots that the Rust organizational projection cannot resolve.
+    pub missing_roots: u64,
+    /// Coverage grouped by the legacy entity type without exposing entity identifiers.
+    pub entity_types: Vec<LegacyRootCoverageKind>,
+}
+
 impl Neo4jProjector {
     /// Wraps an existing Neo4j client graph.
     pub fn from_graph(graph: Graph) -> Self {
@@ -377,6 +418,43 @@ impl Neo4jProjector {
             self.graph.run(query(statement)).await?;
         }
         Ok(())
+    }
+
+    /// Compares tenant-scoped legacy graph roots with the Rust organizational projection.
+    ///
+    /// The receipt contains counts by legacy entity type. It never returns entity URNs,
+    /// provider identifiers, labels, properties, or credentials.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Neo4j`] when the aggregate query fails and
+    /// [`StoreError::Conflict`] when Neo4j returns invalid negative counts.
+    pub async fn legacy_root_coverage(
+        &self,
+        tenant_id: &TenantId,
+    ) -> Result<LegacyRootCoverage, StoreError> {
+        let mut stream = self
+            .graph
+            .execute(
+                query(LEGACY_ROOT_COVERAGE_STATEMENT)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("urn_prefix", format!("urn:cerebro:{}:", tenant_id.as_str())),
+            )
+            .await?;
+        let mut rows = Vec::new();
+        while let Some(row) = stream.next().await? {
+            let entity_type: String = row.get("entity_type").map_err(|error| {
+                StoreError::Conflict(format!("decode legacy entity type: {error}"))
+            })?;
+            let legacy: i64 = row.get("legacy_roots").map_err(|error| {
+                StoreError::Conflict(format!("decode legacy root count: {error}"))
+            })?;
+            let covered: i64 = row.get("covered_roots").map_err(|error| {
+                StoreError::Conflict(format!("decode covered root count: {error}"))
+            })?;
+            rows.push((entity_type, legacy, covered));
+        }
+        aggregate_legacy_root_coverage(tenant_id, rows)
     }
 
     /// Executes a prepared lifecycle query against a current tenant projection.
@@ -1883,6 +1961,46 @@ fn string_list(values: &[String]) -> BoltType {
     ))
 }
 
+fn aggregate_legacy_root_coverage(
+    tenant_id: &TenantId,
+    rows: impl IntoIterator<Item = (String, i64, i64)>,
+) -> Result<LegacyRootCoverage, StoreError> {
+    let mut entity_types = Vec::new();
+    let mut legacy_roots = 0_u64;
+    let mut covered_roots = 0_u64;
+    for (entity_type, legacy, covered) in rows {
+        let legacy = u64::try_from(legacy).map_err(|_| {
+            StoreError::Conflict("legacy root coverage count is negative".to_owned())
+        })?;
+        let covered = u64::try_from(covered)
+            .map_err(|_| StoreError::Conflict("covered root count is negative".to_owned()))?;
+        if covered > legacy {
+            return Err(StoreError::Conflict(
+                "covered root count exceeds legacy root count".to_owned(),
+            ));
+        }
+        legacy_roots = legacy_roots.checked_add(legacy).ok_or_else(|| {
+            StoreError::Conflict("legacy root coverage count overflowed".to_owned())
+        })?;
+        covered_roots = covered_roots
+            .checked_add(covered)
+            .ok_or_else(|| StoreError::Conflict("covered root count overflowed".to_owned()))?;
+        entity_types.push(LegacyRootCoverageKind {
+            entity_type,
+            legacy_roots: legacy,
+            covered_roots: covered,
+            missing_roots: legacy - covered,
+        });
+    }
+    Ok(LegacyRootCoverage {
+        tenant_id: tenant_id.as_str().to_owned(),
+        legacy_roots,
+        covered_roots,
+        missing_roots: legacy_roots - covered_roots,
+        entity_types,
+    })
+}
+
 fn entity_row(entity: &ProjectionEntity) -> BoltMap {
     let lifecycle = entity.lifecycle.as_ref();
     map([
@@ -2210,6 +2328,44 @@ mod tests {
         assert!(truncate_to_limit(&mut overflow, 2));
         assert_eq!(overflow, [1, 2]);
         assert_eq!(row_limit(500), 501);
+    }
+
+    #[test]
+    fn legacy_root_coverage_is_tenant_scoped_and_identifier_free() {
+        assert!(LEGACY_ROOT_COVERAGE_STATEMENT.contains("$tenant_id"));
+        assert!(LEGACY_ROOT_COVERAGE_STATEMENT.contains("$urn_prefix"));
+        assert!(LEGACY_ROOT_COVERAGE_STATEMENT.contains("RETURN entity_type"));
+        assert!(!LEGACY_ROOT_COVERAGE_STATEMENT.contains("RETURN legacy"));
+        assert!(!LEGACY_ROOT_COVERAGE_STATEMENT.contains("legacy.urn AS"));
+
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        let coverage = aggregate_legacy_root_coverage(
+            &tenant_id,
+            [("finding".to_owned(), 7, 5), ("resource".to_owned(), 3, 3)],
+        )
+        .expect("valid aggregate");
+        assert_eq!(coverage.legacy_roots, 10);
+        assert_eq!(coverage.covered_roots, 8);
+        assert_eq!(coverage.missing_roots, 2);
+        assert_eq!(coverage.entity_types[0].missing_roots, 2);
+
+        let json = serde_json::to_value(&coverage).expect("serialize receipt");
+        assert_eq!(json["tenant_id"], "writer");
+        assert_eq!(json["missing_roots"], 2);
+        let object = json.as_object().expect("receipt object");
+        assert_eq!(object.len(), 5, "receipt must remain aggregate-only");
+    }
+
+    #[test]
+    fn legacy_root_coverage_rejects_impossible_counts() {
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        for rows in [
+            vec![("resource".to_owned(), -1, 0)],
+            vec![("resource".to_owned(), 1, -1)],
+            vec![("resource".to_owned(), 1, 2)],
+        ] {
+            assert!(aggregate_legacy_root_coverage(&tenant_id, rows).is_err());
+        }
     }
 
     #[test]

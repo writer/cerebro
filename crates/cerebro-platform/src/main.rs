@@ -17,6 +17,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     env,
     error::Error,
+    io,
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
@@ -1441,6 +1442,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("inspect-consumer-run") => append_log_consumer::inspect_run().await,
         Some("migrate-stores") => migrate_stores().await,
         Some("rebuild-lifecycle-projection") => rebuild_lifecycle_projection().await,
+        Some("audit-legacy-root-coverage") => audit_legacy_root_coverage().await,
         Some("sync-source") => sync_source().await,
         Some("catalog-summary") => catalog_summary(),
         Some("list-catalog-families") => list_catalog_families(),
@@ -1451,7 +1453,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("evaluate-all-families") => cutover_command::evaluate_all_families().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|eval-slack-agent|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|list-catalog-families|compare-projection|evaluate-family|promote-family|show-authority|evaluate-all-families>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|eval-slack-agent|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|audit-legacy-root-coverage|sync-source|catalog-summary|list-catalog-families|compare-projection|evaluate-family|promote-family|show-authority|evaluate-all-families>"
             );
             Ok(())
         }
@@ -1556,6 +1558,15 @@ async fn rebuild_lifecycle_projection() -> Result<(), Box<dyn Error>> {
             "entities_rebuilt": rebuilt,
         })
     );
+    Ok(())
+}
+
+async fn audit_legacy_root_coverage() -> Result<(), Box<dyn Error>> {
+    let tenant_id = TenantId::parse(required_env("CEREBRO_TENANT_ID")?)?;
+    let graph = connect_neo4j().await?;
+    let coverage = graph.legacy_root_coverage(&tenant_id).await?;
+    serde_json::to_writer(io::stdout(), &coverage)?;
+    println!();
     Ok(())
 }
 
