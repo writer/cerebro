@@ -58,6 +58,15 @@ const (
 	// OrganizationalGraphServiceCompareExposureCoverageProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's CompareExposureCoverage RPC.
 	OrganizationalGraphServiceCompareExposureCoverageProcedure = "/cerebro.graph.v1.OrganizationalGraphService/CompareExposureCoverage"
+	// OrganizationalGraphServiceListEntitiesProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's ListEntities RPC.
+	OrganizationalGraphServiceListEntitiesProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListEntities"
+	// OrganizationalGraphServiceCountEntityKindsProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's CountEntityKinds RPC.
+	OrganizationalGraphServiceCountEntityKindsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/CountEntityKinds"
+	// OrganizationalGraphServiceListEntityRelationsProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's ListEntityRelations RPC.
+	OrganizationalGraphServiceListEntityRelationsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListEntityRelations"
 	// OrganizationalGraphServiceGetSourceSummaryProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's GetSourceSummary RPC.
 	OrganizationalGraphServiceGetSourceSummaryProcedure = "/cerebro.graph.v1.OrganizationalGraphService/GetSourceSummary"
@@ -83,6 +92,12 @@ type OrganizationalGraphServiceClient interface {
 	// CompareExposureCoverage returns one bounded, revision-bound comparison of
 	// primary observations and an independent corroborating source.
 	CompareExposureCoverage(context.Context, *connect.Request[v1.CompareExposureCoverageRequest]) (*connect.Response[v1.CompareExposureCoverageResponse], error)
+	// ListEntities returns one bounded page from the tenant entity catalog.
+	ListEntities(context.Context, *connect.Request[v1.ListEntitiesRequest]) (*connect.Response[v1.ListEntitiesResponse], error)
+	// CountEntityKinds returns bounded entity-kind counts from the tenant catalog.
+	CountEntityKinds(context.Context, *connect.Request[v1.CountEntityKindsRequest]) (*connect.Response[v1.CountEntityKindsResponse], error)
+	// ListEntityRelations returns filtered direct relations for one catalog entity.
+	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
 }
@@ -147,6 +162,24 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("CompareExposureCoverage")),
 			connect.WithClientOptions(opts...),
 		),
+		listEntities: connect.NewClient[v1.ListEntitiesRequest, v1.ListEntitiesResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceListEntitiesProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListEntities")),
+			connect.WithClientOptions(opts...),
+		),
+		countEntityKinds: connect.NewClient[v1.CountEntityKindsRequest, v1.CountEntityKindsResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceCountEntityKindsProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("CountEntityKinds")),
+			connect.WithClientOptions(opts...),
+		),
+		listEntityRelations: connect.NewClient[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceListEntityRelationsProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListEntityRelations")),
+			connect.WithClientOptions(opts...),
+		),
 		getSourceSummary: connect.NewClient[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse](
 			httpClient,
 			baseURL+OrganizationalGraphServiceGetSourceSummaryProcedure,
@@ -166,6 +199,9 @@ type organizationalGraphServiceClient struct {
 	explainAssertion        *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
 	queryFacts              *connect.Client[v1.QueryFactsRequest, v1.QueryFactsResponse]
 	compareExposureCoverage *connect.Client[v1.CompareExposureCoverageRequest, v1.CompareExposureCoverageResponse]
+	listEntities            *connect.Client[v1.ListEntitiesRequest, v1.ListEntitiesResponse]
+	countEntityKinds        *connect.Client[v1.CountEntityKindsRequest, v1.CountEntityKindsResponse]
+	listEntityRelations     *connect.Client[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse]
 	getSourceSummary        *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
 }
 
@@ -210,6 +246,21 @@ func (c *organizationalGraphServiceClient) CompareExposureCoverage(ctx context.C
 	return c.compareExposureCoverage.CallUnary(ctx, req)
 }
 
+// ListEntities calls cerebro.graph.v1.OrganizationalGraphService.ListEntities.
+func (c *organizationalGraphServiceClient) ListEntities(ctx context.Context, req *connect.Request[v1.ListEntitiesRequest]) (*connect.Response[v1.ListEntitiesResponse], error) {
+	return c.listEntities.CallUnary(ctx, req)
+}
+
+// CountEntityKinds calls cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds.
+func (c *organizationalGraphServiceClient) CountEntityKinds(ctx context.Context, req *connect.Request[v1.CountEntityKindsRequest]) (*connect.Response[v1.CountEntityKindsResponse], error) {
+	return c.countEntityKinds.CallUnary(ctx, req)
+}
+
+// ListEntityRelations calls cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations.
+func (c *organizationalGraphServiceClient) ListEntityRelations(ctx context.Context, req *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error) {
+	return c.listEntityRelations.CallUnary(ctx, req)
+}
+
 // GetSourceSummary calls cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary.
 func (c *organizationalGraphServiceClient) GetSourceSummary(ctx context.Context, req *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {
 	return c.getSourceSummary.CallUnary(ctx, req)
@@ -235,6 +286,12 @@ type OrganizationalGraphServiceHandler interface {
 	// CompareExposureCoverage returns one bounded, revision-bound comparison of
 	// primary observations and an independent corroborating source.
 	CompareExposureCoverage(context.Context, *connect.Request[v1.CompareExposureCoverageRequest]) (*connect.Response[v1.CompareExposureCoverageResponse], error)
+	// ListEntities returns one bounded page from the tenant entity catalog.
+	ListEntities(context.Context, *connect.Request[v1.ListEntitiesRequest]) (*connect.Response[v1.ListEntitiesResponse], error)
+	// CountEntityKinds returns bounded entity-kind counts from the tenant catalog.
+	CountEntityKinds(context.Context, *connect.Request[v1.CountEntityKindsRequest]) (*connect.Response[v1.CountEntityKindsResponse], error)
+	// ListEntityRelations returns filtered direct relations for one catalog entity.
+	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
 }
@@ -294,6 +351,24 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("CompareExposureCoverage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceListEntitiesHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceListEntitiesProcedure,
+		svc.ListEntities,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListEntities")),
+		connect.WithHandlerOptions(opts...),
+	)
+	organizationalGraphServiceCountEntityKindsHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceCountEntityKindsProcedure,
+		svc.CountEntityKinds,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("CountEntityKinds")),
+		connect.WithHandlerOptions(opts...),
+	)
+	organizationalGraphServiceListEntityRelationsHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceListEntityRelationsProcedure,
+		svc.ListEntityRelations,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListEntityRelations")),
+		connect.WithHandlerOptions(opts...),
+	)
 	organizationalGraphServiceGetSourceSummaryHandler := connect.NewUnaryHandler(
 		OrganizationalGraphServiceGetSourceSummaryProcedure,
 		svc.GetSourceSummary,
@@ -318,6 +393,12 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceQueryFactsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceCompareExposureCoverageProcedure:
 			organizationalGraphServiceCompareExposureCoverageHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceListEntitiesProcedure:
+			organizationalGraphServiceListEntitiesHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceCountEntityKindsProcedure:
+			organizationalGraphServiceCountEntityKindsHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceListEntityRelationsProcedure:
+			organizationalGraphServiceListEntityRelationsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceGetSourceSummaryProcedure:
 			organizationalGraphServiceGetSourceSummaryHandler.ServeHTTP(w, r)
 		default:
@@ -359,6 +440,18 @@ func (UnimplementedOrganizationalGraphServiceHandler) QueryFacts(context.Context
 
 func (UnimplementedOrganizationalGraphServiceHandler) CompareExposureCoverage(context.Context, *connect.Request[v1.CompareExposureCoverageRequest]) (*connect.Response[v1.CompareExposureCoverageResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) ListEntities(context.Context, *connect.Request[v1.ListEntitiesRequest]) (*connect.Response[v1.ListEntitiesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListEntities is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) CountEntityKinds(context.Context, *connect.Request[v1.CountEntityKindsRequest]) (*connect.Response[v1.CountEntityKindsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations is not implemented"))
 }
 
 func (UnimplementedOrganizationalGraphServiceHandler) GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {

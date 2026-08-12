@@ -72,6 +72,42 @@ pub type OwnedCompareExposureCoverageResponseView = ::buffa::view::OwnedView<
         'static,
     >,
 >;
+///Shorthand for `OwnedView<ListEntitiesRequestView<'static>>`.
+pub type OwnedListEntitiesRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntitiesRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListEntitiesResponseView<'static>>`.
+pub type OwnedListEntitiesResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntitiesResponseView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<CountEntityKindsRequestView<'static>>`.
+pub type OwnedCountEntityKindsRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::CountEntityKindsRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<CountEntityKindsResponseView<'static>>`.
+pub type OwnedCountEntityKindsResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::CountEntityKindsResponseView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListEntityRelationsRequestView<'static>>`.
+pub type OwnedListEntityRelationsRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListEntityRelationsResponseView<'static>>`.
+pub type OwnedListEntityRelationsResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsResponseView<
+        'static,
+    >,
+>;
 ///Shorthand for `OwnedView<GetSourceSummaryRequestView<'static>>`.
 pub type OwnedGetSourceSummaryRequestView = ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetSourceSummaryRequestView<
@@ -374,6 +410,126 @@ for ::buffa::view::OwnedView<
         )
     }
 }
+impl ::connectrpc::Encodable<crate::rpc::proto::cerebro::graph::v1::ListEntitiesResponse>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntitiesResponseView<'_> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<crate::rpc::proto::cerebro::graph::v1::ListEntitiesResponse>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntitiesResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::CountEntityKindsResponse,
+>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::CountEntityKindsResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::CountEntityKindsResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::CountEntityKindsResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsResponse,
+>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
 impl ::connectrpc::Encodable<
     crate::rpc::proto::cerebro::graph::v1::GetSourceSummaryResponse,
 >
@@ -487,6 +643,33 @@ pub const ORGANIZATIONAL_GRAPH_SERVICE_QUERY_FACTS_SPEC: ::connectrpc::Spec = ::
 /// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
 pub const ORGANIZATIONAL_GRAPH_SERVICE_COMPARE_EXPOSURE_COVERAGE_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/cerebro.graph.v1.OrganizationalGraphService/CompareExposureCoverage",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `ListEntities` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITIES_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/ListEntities",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `CountEntityKinds` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_COUNT_ENTITY_KINDS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/CountEntityKinds",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `ListEntityRelations` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITY_RELATIONS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/ListEntityRelations",
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
@@ -732,6 +915,75 @@ pub trait OrganizationalGraphService: Send + Sync + 'static {
         Output = ::connectrpc::ServiceResult<
             impl ::connectrpc::Encodable<
                 crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// ListEntities returns one bounded page from the tenant entity catalog.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn list_entities<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::ListEntitiesRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::ListEntitiesResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// CountEntityKinds returns bounded entity-kind counts from the tenant catalog.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn count_entity_kinds<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::CountEntityKindsRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::CountEntityKindsResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// ListEntityRelations returns filtered direct relations for one catalog entity.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn list_entity_relations<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsResponse,
             > + Send + use<'a, Self>,
         >,
     > + Send;
@@ -1024,6 +1276,93 @@ impl<S: OrganizationalGraphService> OrganizationalGraphServiceExt for S {
             .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_COMPARE_EXPOSURE_COVERAGE_SPEC)
             .route_view(
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListEntities",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntitiesRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::ListEntitiesRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.list_entities(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::ListEntitiesResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITIES_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "CountEntityKinds",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::CountEntityKindsRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::CountEntityKindsRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.count_entity_kinds(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::CountEntityKindsResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_COUNT_ENTITY_KINDS_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListEntityRelations",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.list_entity_relations(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITY_RELATIONS_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "GetSourceSummary",
                 {
                     let svc = ::std::sync::Arc::clone(&self);
@@ -1155,6 +1494,26 @@ for OrganizationalGraphServiceServer<T> {
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
                         .with_spec(
                             ORGANIZATIONAL_GRAPH_SERVICE_COMPARE_EXPOSURE_COVERAGE_SPEC,
+                        ),
+                )
+            }
+            "ListEntities" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITIES_SPEC),
+                )
+            }
+            "CountEntityKinds" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_COUNT_ENTITY_KINDS_SPEC),
+                )
+            }
+            "ListEntityRelations" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(
+                            ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITY_RELATIONS_SPEC,
                         ),
                 )
             }
@@ -1353,6 +1712,72 @@ for OrganizationalGraphServiceServer<T> {
                         .await?
                         .encode::<
                             crate::rpc::proto::cerebro::graph::v1::CompareExposureCoverageResponse,
+                        >(format)
+                })
+            }
+            "ListEntities" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::ListEntitiesRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntitiesRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::ListEntitiesRequest,
+                    >::from_parts(&req, &body);
+                    svc.list_entities(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::ListEntitiesResponse,
+                        >(format)
+                })
+            }
+            "CountEntityKinds" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::CountEntityKindsRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::CountEntityKindsRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::CountEntityKindsRequest,
+                    >::from_parts(&req, &body);
+                    svc.count_entity_kinds(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::CountEntityKindsResponse,
+                        >(format)
+                })
+            }
+            "ListEntityRelations" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsRequest,
+                    >::from_parts(&req, &body);
+                    svc.list_entity_relations(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsResponse,
                         >(format)
                 })
             }
@@ -1858,6 +2283,141 @@ where
                 &self.config,
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "CompareExposureCoverage",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the ListEntities RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/ListEntities.
+    pub async fn list_entities(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListEntitiesRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntitiesResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.list_entities_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the ListEntities RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn list_entities_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListEntitiesRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntitiesResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListEntities",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the CountEntityKinds RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/CountEntityKinds.
+    pub async fn count_entity_kinds(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::CountEntityKindsRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::CountEntityKindsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.count_entity_kinds_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the CountEntityKinds RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn count_entity_kinds_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::CountEntityKindsRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::CountEntityKindsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "CountEntityKinds",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the ListEntityRelations RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/ListEntityRelations.
+    pub async fn list_entity_relations(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.list_entity_relations_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the ListEntityRelations RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn list_entity_relations_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListEntityRelations",
                 request,
                 options,
             )

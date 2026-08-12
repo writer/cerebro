@@ -52,8 +52,11 @@ func TestHandleGetGraphProvenance(t *testing.T) {
 	if len(response.Provenance.FreshnessSignals) != 1 {
 		t.Fatalf("freshness signals = %#v", response.Provenance.FreshnessSignals)
 	}
-	if got := graphStore.cypherRequests[0].Params["tenant_id"]; got != "writer" {
-		t.Fatalf("tenant param = %v, want writer", got)
+	if len(graphStore.entityRequests) != 1 || graphStore.entityRequests[0].Filter.TenantID != "writer" || graphStore.entityRequests[0].Filter.ExactAgentKey != "urn:cerebro:writer:asset:alpha" {
+		t.Fatalf("typed entity request = %#v", graphStore.entityRequests)
+	}
+	if len(graphStore.cypherRequests) != 0 {
+		t.Fatalf("raw cypher requests = %#v, want none", graphStore.cypherRequests)
 	}
 }
 

@@ -152,6 +152,171 @@ impl ::buffa::Enumeration for QueryDirection {
         ]
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(i32)]
+pub enum EntityRelationDirection {
+    ENTITY_RELATION_DIRECTION_UNSPECIFIED = 0i32,
+    ENTITY_RELATION_DIRECTION_INCOMING = 1i32,
+    ENTITY_RELATION_DIRECTION_OUTGOING = 2i32,
+}
+impl EntityRelationDirection {
+    ///Idiomatic alias for [`Self::ENTITY_RELATION_DIRECTION_UNSPECIFIED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Unspecified: Self = Self::ENTITY_RELATION_DIRECTION_UNSPECIFIED;
+    ///Idiomatic alias for [`Self::ENTITY_RELATION_DIRECTION_INCOMING`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Incoming: Self = Self::ENTITY_RELATION_DIRECTION_INCOMING;
+    ///Idiomatic alias for [`Self::ENTITY_RELATION_DIRECTION_OUTGOING`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Outgoing: Self = Self::ENTITY_RELATION_DIRECTION_OUTGOING;
+}
+impl ::core::default::Default for EntityRelationDirection {
+    fn default() -> Self {
+        Self::ENTITY_RELATION_DIRECTION_UNSPECIFIED
+    }
+}
+impl ::serde::Serialize for EntityRelationDirection {
+    fn serialize<S: ::serde::Serializer>(
+        &self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        s.serialize_str(::buffa::Enumeration::proto_name(self))
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EntityRelationDirection {
+    fn deserialize<D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        struct _V;
+        impl ::serde::de::Visitor<'_> for _V {
+            type Value = EntityRelationDirection;
+            fn expecting(
+                &self,
+                f: &mut ::core::fmt::Formatter<'_>,
+            ) -> ::core::fmt::Result {
+                f.write_str(
+                    concat!(
+                        "a string, integer, or null for ",
+                        stringify!(EntityRelationDirection)
+                    ),
+                )
+            }
+            fn visit_str<E: ::serde::de::Error>(
+                self,
+                v: &str,
+            ) -> ::core::result::Result<EntityRelationDirection, E> {
+                <EntityRelationDirection as ::buffa::Enumeration>::from_proto_name(v)
+                    .ok_or_else(|| { ::serde::de::Error::unknown_variant(v, &[]) })
+            }
+            fn visit_i64<E: ::serde::de::Error>(
+                self,
+                v: i64,
+            ) -> ::core::result::Result<EntityRelationDirection, E> {
+                let v32 = i32::try_from(v)
+                    .map_err(|_| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("enum value {v} out of i32 range"),
+                        )
+                    })?;
+                <EntityRelationDirection as ::buffa::Enumeration>::from_i32(v32)
+                    .ok_or_else(|| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("unknown enum value {v32}"),
+                        )
+                    })
+            }
+            fn visit_u64<E: ::serde::de::Error>(
+                self,
+                v: u64,
+            ) -> ::core::result::Result<EntityRelationDirection, E> {
+                let v32 = i32::try_from(v)
+                    .map_err(|_| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("enum value {v} out of i32 range"),
+                        )
+                    })?;
+                <EntityRelationDirection as ::buffa::Enumeration>::from_i32(v32)
+                    .ok_or_else(|| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("unknown enum value {v32}"),
+                        )
+                    })
+            }
+            fn visit_unit<E: ::serde::de::Error>(
+                self,
+            ) -> ::core::result::Result<EntityRelationDirection, E> {
+                ::core::result::Result::Ok(::core::default::Default::default())
+            }
+        }
+        d.deserialize_any(_V)
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for EntityRelationDirection {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+impl ::buffa::Enumeration for EntityRelationDirection {
+    fn from_i32(value: i32) -> ::core::option::Option<Self> {
+        match value {
+            0i32 => {
+                ::core::option::Option::Some(Self::ENTITY_RELATION_DIRECTION_UNSPECIFIED)
+            }
+            1i32 => {
+                ::core::option::Option::Some(Self::ENTITY_RELATION_DIRECTION_INCOMING)
+            }
+            2i32 => {
+                ::core::option::Option::Some(Self::ENTITY_RELATION_DIRECTION_OUTGOING)
+            }
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+    fn proto_name(&self) -> &'static str {
+        match self {
+            Self::ENTITY_RELATION_DIRECTION_UNSPECIFIED => {
+                "ENTITY_RELATION_DIRECTION_UNSPECIFIED"
+            }
+            Self::ENTITY_RELATION_DIRECTION_INCOMING => {
+                "ENTITY_RELATION_DIRECTION_INCOMING"
+            }
+            Self::ENTITY_RELATION_DIRECTION_OUTGOING => {
+                "ENTITY_RELATION_DIRECTION_OUTGOING"
+            }
+        }
+    }
+    fn from_proto_name(name: &str) -> ::core::option::Option<Self> {
+        match name {
+            "ENTITY_RELATION_DIRECTION_UNSPECIFIED" => {
+                ::core::option::Option::Some(Self::ENTITY_RELATION_DIRECTION_UNSPECIFIED)
+            }
+            "ENTITY_RELATION_DIRECTION_INCOMING" => {
+                ::core::option::Option::Some(Self::ENTITY_RELATION_DIRECTION_INCOMING)
+            }
+            "ENTITY_RELATION_DIRECTION_OUTGOING" => {
+                ::core::option::Option::Some(Self::ENTITY_RELATION_DIRECTION_OUTGOING)
+            }
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn values() -> &'static [Self] {
+        &[
+            Self::ENTITY_RELATION_DIRECTION_UNSPECIFIED,
+            Self::ENTITY_RELATION_DIRECTION_INCOMING,
+            Self::ENTITY_RELATION_DIRECTION_OUTGOING,
+        ]
+    }
+}
 /// GraphEntity is the stable agent-facing view of one organizational entity.
 #[derive(Clone, PartialEq, Default)]
 #[derive(::serde::Serialize, ::serde::Deserialize)]
@@ -4627,6 +4792,2804 @@ pub const __QUERY_FACTS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry 
     type_url: "type.googleapis.com/cerebro.graph.v1.QueryFactsResponse",
     to_json: ::buffa::type_registry::any_to_json::<QueryFactsResponse>,
     from_json: ::buffa::type_registry::any_from_json::<QueryFactsResponse>,
+    is_wkt: false,
+};
+/// EntityCatalogFilter is a closed, provider-neutral entity selector. Exact and
+/// prefix kind lists are ORed; exclusions are always applied.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct EntityCatalogFilter {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 3: `runtime_ids`
+    #[serde(
+        rename = "runtimeIds",
+        alias = "runtime_ids",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub runtime_ids: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 4: `exact_agent_key`
+    #[serde(
+        rename = "exactAgentKey",
+        alias = "exact_agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub exact_agent_key: ::buffa::alloc::string::String,
+    /// Field 5: `include_kinds`
+    #[serde(
+        rename = "includeKinds",
+        alias = "include_kinds",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub include_kinds: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 6: `include_kind_prefixes`
+    #[serde(
+        rename = "includeKindPrefixes",
+        alias = "include_kind_prefixes",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub include_kind_prefixes: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 7: `exclude_kinds`
+    #[serde(
+        rename = "excludeKinds",
+        alias = "exclude_kinds",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub exclude_kinds: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 8: `exclude_kind_prefixes`
+    #[serde(
+        rename = "excludeKindPrefixes",
+        alias = "exclude_kind_prefixes",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub exclude_kind_prefixes: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 9: `query`
+    #[serde(
+        rename = "query",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub query: ::buffa::alloc::string::String,
+    /// Field 10: `expected_graph_revision`
+    #[serde(
+        rename = "expectedGraphRevision",
+        alias = "expected_graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub expected_graph_revision: u64,
+    /// query_attributes opts into searching stored attributes in addition to the
+    /// stable key and label. Callers must select this explicitly.
+    ///
+    /// Field 11: `query_attributes`
+    #[serde(
+        rename = "queryAttributes",
+        alias = "query_attributes",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub query_attributes: bool,
+    /// Field 12: `relation_counts`
+    #[serde(
+        rename = "relationCounts",
+        alias = "relation_counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub relation_counts: ::buffa::MessageField<
+        EntityRelationCountFilter,
+        ::buffa::Inline<EntityRelationCountFilter>,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for EntityCatalogFilter {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("EntityCatalogFilter")
+            .field("tenant_id", &self.tenant_id)
+            .field("source_id", &self.source_id)
+            .field("runtime_ids", &self.runtime_ids)
+            .field("exact_agent_key", &self.exact_agent_key)
+            .field("include_kinds", &self.include_kinds)
+            .field("include_kind_prefixes", &self.include_kind_prefixes)
+            .field("exclude_kinds", &self.exclude_kinds)
+            .field("exclude_kind_prefixes", &self.exclude_kind_prefixes)
+            .field("query", &self.query)
+            .field("expected_graph_revision", &self.expected_graph_revision)
+            .field("query_attributes", &self.query_attributes)
+            .field("relation_counts", &self.relation_counts)
+            .finish()
+    }
+}
+impl EntityCatalogFilter {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityCatalogFilter";
+}
+::buffa::impl_default_instance!(EntityCatalogFilter);
+impl ::buffa::MessageName for EntityCatalogFilter {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "EntityCatalogFilter";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.EntityCatalogFilter";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityCatalogFilter";
+}
+impl ::buffa::Message for EntityCatalogFilter {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        for v in &self.runtime_ids {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if !self.exact_agent_key.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.exact_agent_key) as u64;
+        }
+        for v in &self.include_kinds {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.include_kind_prefixes {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.exclude_kinds {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.exclude_kind_prefixes {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if !self.query.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.query) as u64;
+        }
+        if self.expected_graph_revision != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.expected_graph_revision)
+                        as u64;
+        }
+        if self.query_attributes {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.relation_counts.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.relation_counts.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.source_id, buf);
+        }
+        for v in &self.runtime_ids {
+            ::buffa::types::put_string_field(3u32, v, buf);
+        }
+        if !self.exact_agent_key.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.exact_agent_key, buf);
+        }
+        for v in &self.include_kinds {
+            ::buffa::types::put_string_field(5u32, v, buf);
+        }
+        for v in &self.include_kind_prefixes {
+            ::buffa::types::put_string_field(6u32, v, buf);
+        }
+        for v in &self.exclude_kinds {
+            ::buffa::types::put_string_field(7u32, v, buf);
+        }
+        for v in &self.exclude_kind_prefixes {
+            ::buffa::types::put_string_field(8u32, v, buf);
+        }
+        if !self.query.is_empty() {
+            ::buffa::types::put_string_field(9u32, &self.query, buf);
+        }
+        if self.expected_graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(10u32, self.expected_graph_revision, buf);
+        }
+        if self.query_attributes {
+            ::buffa::types::put_bool_field(11u32, self.query_attributes, buf);
+        }
+        if self.relation_counts.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                12u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.relation_counts.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.runtime_ids.push(__elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.exact_agent_key, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.include_kinds.push(__elem);
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.include_kind_prefixes.push(__elem);
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.exclude_kinds.push(__elem);
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.exclude_kind_prefixes.push(__elem);
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.query, buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.expected_graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.query_attributes = ::buffa::types::decode_bool(buf)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.relation_counts.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.source_id.clear();
+        self.runtime_ids.clear();
+        self.exact_agent_key.clear();
+        self.include_kinds.clear();
+        self.include_kind_prefixes.clear();
+        self.exclude_kinds.clear();
+        self.exclude_kind_prefixes.clear();
+        self.query.clear();
+        self.expected_graph_revision = 0u64;
+        self.query_attributes = false;
+        self.relation_counts = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for EntityCatalogFilter {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.EntityCatalogFilter";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for EntityCatalogFilter {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __ENTITY_CATALOG_FILTER_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.EntityCatalogFilter",
+    to_json: ::buffa::type_registry::any_to_json::<EntityCatalogFilter>,
+    from_json: ::buffa::type_registry::any_from_json::<EntityCatalogFilter>,
+    is_wkt: false,
+};
+/// EntityRelationCountFilter requests complete grouped counts for the bounded
+/// entity page. Every list is closed and parameterized by the Rust store.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct EntityRelationCountFilter {
+    /// Field 1: `directions`
+    #[serde(
+        rename = "directions",
+        with = "::buffa::json_helpers::repeated_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec"
+    )]
+    pub directions: ::buffa::alloc::vec::Vec<
+        ::buffa::EnumValue<EntityRelationDirection>,
+    >,
+    /// Field 2: `relations`
+    #[serde(
+        rename = "relations",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub relations: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 3: `neighbor_kinds`
+    #[serde(
+        rename = "neighborKinds",
+        alias = "neighbor_kinds",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub neighbor_kinds: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for EntityRelationCountFilter {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("EntityRelationCountFilter")
+            .field("directions", &self.directions)
+            .field("relations", &self.relations)
+            .field("neighbor_kinds", &self.neighbor_kinds)
+            .finish()
+    }
+}
+impl EntityRelationCountFilter {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelationCountFilter";
+}
+::buffa::impl_default_instance!(EntityRelationCountFilter);
+impl ::buffa::MessageName for EntityRelationCountFilter {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "EntityRelationCountFilter";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.EntityRelationCountFilter";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelationCountFilter";
+}
+impl ::buffa::Message for EntityRelationCountFilter {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.directions.is_empty() {
+            let payload: u64 = self
+                .directions
+                .iter()
+                .map(|v| ::buffa::types::int32_encoded_len(v.to_i32()) as u64)
+                .sum::<u64>();
+            size += 1u64 + ::buffa::encoding::varint_len(payload) as u64 + payload;
+        }
+        for v in &self.relations {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.neighbor_kinds {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.directions.is_empty() {
+            let payload: u64 = self
+                .directions
+                .iter()
+                .map(|v| ::buffa::types::int32_encoded_len(v.to_i32()) as u64)
+                .sum::<u64>();
+            ::buffa::types::put_len_delimited_header(1u32, payload, buf);
+            for v in &self.directions {
+                ::buffa::types::encode_int32(v.to_i32(), buf);
+            }
+        }
+        for v in &self.relations {
+            ::buffa::types::put_string_field(2u32, v, buf);
+        }
+        for v in &self.neighbor_kinds {
+            ::buffa::types::put_string_field(3u32, v, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                if tag.wire_type() == ::buffa::encoding::WireType::LengthDelimited {
+                    let len = ::buffa::encoding::decode_varint(buf)?;
+                    let len = usize::try_from(len)
+                        .map_err(|_| ::buffa::DecodeError::MessageTooLarge)?;
+                    if buf.remaining() < len {
+                        return ::core::result::Result::Err(
+                            ::buffa::DecodeError::UnexpectedEof,
+                        );
+                    }
+                    self.directions.reserve(len);
+                    let mut limited = buf.take(len);
+                    while limited.has_remaining() {
+                        self.directions
+                            .push(
+                                ::buffa::EnumValue::from(
+                                    ::buffa::types::decode_int32_packed(&mut limited)?,
+                                ),
+                            );
+                    }
+                    let leftover = limited.remaining();
+                    if leftover > 0 {
+                        limited.advance(leftover);
+                    }
+                } else if tag.wire_type() == ::buffa::encoding::WireType::Varint {
+                    self.directions
+                        .push(
+                            ::buffa::EnumValue::from(::buffa::types::decode_int32(buf)?),
+                        );
+                } else {
+                    return ::core::result::Result::Err(
+                        ::buffa::encoding::wire_type_mismatch(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        ),
+                    );
+                }
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.relations.push(__elem);
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.neighbor_kinds.push(__elem);
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.directions.clear();
+        self.relations.clear();
+        self.neighbor_kinds.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for EntityRelationCountFilter {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.EntityRelationCountFilter";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for EntityRelationCountFilter {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __ENTITY_RELATION_COUNT_FILTER_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.EntityRelationCountFilter",
+    to_json: ::buffa::type_registry::any_to_json::<EntityRelationCountFilter>,
+    from_json: ::buffa::type_registry::any_from_json::<EntityRelationCountFilter>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListEntitiesRequest {
+    /// Field 1: `filter`
+    #[serde(
+        rename = "filter",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub filter: ::buffa::MessageField<
+        EntityCatalogFilter,
+        ::buffa::Inline<EntityCatalogFilter>,
+    >,
+    /// Field 2: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    /// Field 3: `after_agent_key`
+    #[serde(
+        rename = "afterAgentKey",
+        alias = "after_agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub after_agent_key: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListEntitiesRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListEntitiesRequest")
+            .field("filter", &self.filter)
+            .field("limit", &self.limit)
+            .field("after_agent_key", &self.after_agent_key)
+            .finish()
+    }
+}
+impl ListEntitiesRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntitiesRequest";
+}
+::buffa::impl_default_instance!(ListEntitiesRequest);
+impl ::buffa::MessageName for ListEntitiesRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListEntitiesRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListEntitiesRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntitiesRequest";
+}
+impl ::buffa::Message for ListEntitiesRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.filter.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.filter.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        if !self.after_agent_key.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.after_agent_key) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.filter.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.filter.write_to(__cache, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(2u32, self.limit, buf);
+        }
+        if !self.after_agent_key.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.after_agent_key, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.filter.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.after_agent_key, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.filter = ::buffa::MessageField::none();
+        self.limit = 0u32;
+        self.after_agent_key.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListEntitiesRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListEntitiesRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListEntitiesRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_ENTITIES_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListEntitiesRequest",
+    to_json: ::buffa::type_registry::any_to_json::<ListEntitiesRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<ListEntitiesRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListEntitiesResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `entities`
+    #[serde(
+        rename = "entities",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub entities: ::buffa::alloc::vec::Vec<GraphEntity>,
+    /// Field 4: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    /// Field 5: `next_after_agent_key`
+    #[serde(
+        rename = "nextAfterAgentKey",
+        alias = "next_after_agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub next_after_agent_key: ::buffa::alloc::string::String,
+    /// Field 6: `relation_counts`
+    #[serde(
+        rename = "relationCounts",
+        alias = "relation_counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub relation_counts: ::buffa::alloc::vec::Vec<EntityRelationCount>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListEntitiesResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListEntitiesResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("entities", &self.entities)
+            .field("truncated", &self.truncated)
+            .field("next_after_agent_key", &self.next_after_agent_key)
+            .field("relation_counts", &self.relation_counts)
+            .finish()
+    }
+}
+impl ListEntitiesResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntitiesResponse";
+}
+::buffa::impl_default_instance!(ListEntitiesResponse);
+impl ::buffa::MessageName for ListEntitiesResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListEntitiesResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListEntitiesResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntitiesResponse";
+}
+impl ::buffa::Message for ListEntitiesResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        for v in &self.entities {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if !self.next_after_agent_key.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.next_after_agent_key)
+                        as u64;
+        }
+        for v in &self.relation_counts {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        for v in &self.entities {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+        }
+        if !self.next_after_agent_key.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.next_after_agent_key, buf);
+        }
+        for v in &self.relation_counts {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.entities.push(elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.next_after_agent_key, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.relation_counts.push(elem);
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.entities.clear();
+        self.truncated = false;
+        self.next_after_agent_key.clear();
+        self.relation_counts.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListEntitiesResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListEntitiesResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListEntitiesResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_ENTITIES_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListEntitiesResponse",
+    to_json: ::buffa::type_registry::any_to_json::<ListEntitiesResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<ListEntitiesResponse>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct EntityRelationCount {
+    /// Field 1: `agent_key`
+    #[serde(
+        rename = "agentKey",
+        alias = "agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub agent_key: ::buffa::alloc::string::String,
+    /// Field 2: `direction`
+    #[serde(
+        rename = "direction",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub direction: ::buffa::EnumValue<EntityRelationDirection>,
+    /// Field 3: `relation`
+    #[serde(
+        rename = "relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub relation: ::buffa::alloc::string::String,
+    /// Field 4: `neighbor_kind`
+    #[serde(
+        rename = "neighborKind",
+        alias = "neighbor_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub neighbor_kind: ::buffa::alloc::string::String,
+    /// Field 5: `count`
+    #[serde(
+        rename = "count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub count: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for EntityRelationCount {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("EntityRelationCount")
+            .field("agent_key", &self.agent_key)
+            .field("direction", &self.direction)
+            .field("relation", &self.relation)
+            .field("neighbor_kind", &self.neighbor_kind)
+            .field("count", &self.count)
+            .finish()
+    }
+}
+impl EntityRelationCount {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelationCount";
+}
+::buffa::impl_default_instance!(EntityRelationCount);
+impl ::buffa::MessageName for EntityRelationCount {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "EntityRelationCount";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.EntityRelationCount";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelationCount";
+}
+impl ::buffa::Message for EntityRelationCount {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.agent_key.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.agent_key) as u64;
+        }
+        {
+            let val = self.direction.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if !self.relation.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.relation) as u64;
+        }
+        if !self.neighbor_kind.is_empty() {
+            size
+                += 1u64 + ::buffa::types::string_encoded_len(&self.neighbor_kind) as u64;
+        }
+        if self.count != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.agent_key.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.agent_key, buf);
+        }
+        {
+            let val = self.direction.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(2u32, val, buf);
+            }
+        }
+        if !self.relation.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.relation, buf);
+        }
+        if !self.neighbor_kind.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.neighbor_kind, buf);
+        }
+        if self.count != 0u64 {
+            ::buffa::types::put_uint64_field(5u32, self.count, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.agent_key, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.direction = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.relation, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.neighbor_kind, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.count = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.agent_key.clear();
+        self.direction = ::buffa::EnumValue::from(0);
+        self.relation.clear();
+        self.neighbor_kind.clear();
+        self.count = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for EntityRelationCount {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.EntityRelationCount";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for EntityRelationCount {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __ENTITY_RELATION_COUNT_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.EntityRelationCount",
+    to_json: ::buffa::type_registry::any_to_json::<EntityRelationCount>,
+    from_json: ::buffa::type_registry::any_from_json::<EntityRelationCount>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct EntityKindCount {
+    /// Field 1: `entity_kind`
+    #[serde(
+        rename = "entityKind",
+        alias = "entity_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub entity_kind: ::buffa::alloc::string::String,
+    /// Field 2: `count`
+    #[serde(
+        rename = "count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub count: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for EntityKindCount {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("EntityKindCount")
+            .field("entity_kind", &self.entity_kind)
+            .field("count", &self.count)
+            .finish()
+    }
+}
+impl EntityKindCount {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityKindCount";
+}
+::buffa::impl_default_instance!(EntityKindCount);
+impl ::buffa::MessageName for EntityKindCount {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "EntityKindCount";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.EntityKindCount";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityKindCount";
+}
+impl ::buffa::Message for EntityKindCount {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.entity_kind.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.entity_kind) as u64;
+        }
+        if self.count != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.entity_kind.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.entity_kind, buf);
+        }
+        if self.count != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.count, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.entity_kind, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.count = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.entity_kind.clear();
+        self.count = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for EntityKindCount {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.EntityKindCount";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for EntityKindCount {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __ENTITY_KIND_COUNT_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.EntityKindCount",
+    to_json: ::buffa::type_registry::any_to_json::<EntityKindCount>,
+    from_json: ::buffa::type_registry::any_from_json::<EntityKindCount>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CountEntityKindsRequest {
+    /// Field 1: `filter`
+    #[serde(
+        rename = "filter",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub filter: ::buffa::MessageField<
+        EntityCatalogFilter,
+        ::buffa::Inline<EntityCatalogFilter>,
+    >,
+    /// Field 2: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    /// Field 3: `after_entity_kind`
+    #[serde(
+        rename = "afterEntityKind",
+        alias = "after_entity_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub after_entity_kind: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CountEntityKindsRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CountEntityKindsRequest")
+            .field("filter", &self.filter)
+            .field("limit", &self.limit)
+            .field("after_entity_kind", &self.after_entity_kind)
+            .finish()
+    }
+}
+impl CountEntityKindsRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CountEntityKindsRequest";
+}
+::buffa::impl_default_instance!(CountEntityKindsRequest);
+impl ::buffa::MessageName for CountEntityKindsRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CountEntityKindsRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CountEntityKindsRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CountEntityKindsRequest";
+}
+impl ::buffa::Message for CountEntityKindsRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.filter.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.filter.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        if !self.after_entity_kind.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.after_entity_kind) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.filter.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.filter.write_to(__cache, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(2u32, self.limit, buf);
+        }
+        if !self.after_entity_kind.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.after_entity_kind, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.filter.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.after_entity_kind, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.filter = ::buffa::MessageField::none();
+        self.limit = 0u32;
+        self.after_entity_kind.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CountEntityKindsRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CountEntityKindsRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CountEntityKindsRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __COUNT_ENTITY_KINDS_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CountEntityKindsRequest",
+    to_json: ::buffa::type_registry::any_to_json::<CountEntityKindsRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<CountEntityKindsRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CountEntityKindsResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `counts`
+    #[serde(
+        rename = "counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub counts: ::buffa::alloc::vec::Vec<EntityKindCount>,
+    /// Field 4: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    /// Field 5: `next_after_entity_kind`
+    #[serde(
+        rename = "nextAfterEntityKind",
+        alias = "next_after_entity_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub next_after_entity_kind: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CountEntityKindsResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CountEntityKindsResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("counts", &self.counts)
+            .field("truncated", &self.truncated)
+            .field("next_after_entity_kind", &self.next_after_entity_kind)
+            .finish()
+    }
+}
+impl CountEntityKindsResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CountEntityKindsResponse";
+}
+::buffa::impl_default_instance!(CountEntityKindsResponse);
+impl ::buffa::MessageName for CountEntityKindsResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CountEntityKindsResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CountEntityKindsResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CountEntityKindsResponse";
+}
+impl ::buffa::Message for CountEntityKindsResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        for v in &self.counts {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if !self.next_after_entity_kind.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.next_after_entity_kind)
+                        as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        for v in &self.counts {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+        }
+        if !self.next_after_entity_kind.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.next_after_entity_kind, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.counts.push(elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.next_after_entity_kind, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.counts.clear();
+        self.truncated = false;
+        self.next_after_entity_kind.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CountEntityKindsResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CountEntityKindsResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CountEntityKindsResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __COUNT_ENTITY_KINDS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CountEntityKindsResponse",
+    to_json: ::buffa::type_registry::any_to_json::<CountEntityKindsResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<CountEntityKindsResponse>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListEntityRelationsRequest {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `agent_key`
+    #[serde(
+        rename = "agentKey",
+        alias = "agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub agent_key: ::buffa::alloc::string::String,
+    /// Field 3: `directions`
+    #[serde(
+        rename = "directions",
+        with = "::buffa::json_helpers::repeated_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec"
+    )]
+    pub directions: ::buffa::alloc::vec::Vec<
+        ::buffa::EnumValue<EntityRelationDirection>,
+    >,
+    /// Field 4: `relations`
+    #[serde(
+        rename = "relations",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub relations: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 5: `neighbor_kinds`
+    #[serde(
+        rename = "neighborKinds",
+        alias = "neighbor_kinds",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub neighbor_kinds: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 6: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    /// Field 7: `after_agent_key`
+    #[serde(
+        rename = "afterAgentKey",
+        alias = "after_agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub after_agent_key: ::buffa::alloc::string::String,
+    /// Field 8: `expected_graph_revision`
+    #[serde(
+        rename = "expectedGraphRevision",
+        alias = "expected_graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub expected_graph_revision: u64,
+    /// Field 9: `after_relation`
+    #[serde(
+        rename = "afterRelation",
+        alias = "after_relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub after_relation: ::buffa::alloc::string::String,
+    /// Field 10: `after_direction`
+    #[serde(
+        rename = "afterDirection",
+        alias = "after_direction",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub after_direction: ::buffa::EnumValue<EntityRelationDirection>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListEntityRelationsRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListEntityRelationsRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("agent_key", &self.agent_key)
+            .field("directions", &self.directions)
+            .field("relations", &self.relations)
+            .field("neighbor_kinds", &self.neighbor_kinds)
+            .field("limit", &self.limit)
+            .field("after_agent_key", &self.after_agent_key)
+            .field("expected_graph_revision", &self.expected_graph_revision)
+            .field("after_relation", &self.after_relation)
+            .field("after_direction", &self.after_direction)
+            .finish()
+    }
+}
+impl ListEntityRelationsRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntityRelationsRequest";
+}
+::buffa::impl_default_instance!(ListEntityRelationsRequest);
+impl ::buffa::MessageName for ListEntityRelationsRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListEntityRelationsRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListEntityRelationsRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntityRelationsRequest";
+}
+impl ::buffa::Message for ListEntityRelationsRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.agent_key.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.agent_key) as u64;
+        }
+        if !self.directions.is_empty() {
+            let payload: u64 = self
+                .directions
+                .iter()
+                .map(|v| ::buffa::types::int32_encoded_len(v.to_i32()) as u64)
+                .sum::<u64>();
+            size += 1u64 + ::buffa::encoding::varint_len(payload) as u64 + payload;
+        }
+        for v in &self.relations {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.neighbor_kinds {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        if !self.after_agent_key.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.after_agent_key) as u64;
+        }
+        if self.expected_graph_revision != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.expected_graph_revision)
+                        as u64;
+        }
+        if !self.after_relation.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.after_relation) as u64;
+        }
+        {
+            let val = self.after_direction.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.agent_key.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.agent_key, buf);
+        }
+        if !self.directions.is_empty() {
+            let payload: u64 = self
+                .directions
+                .iter()
+                .map(|v| ::buffa::types::int32_encoded_len(v.to_i32()) as u64)
+                .sum::<u64>();
+            ::buffa::types::put_len_delimited_header(3u32, payload, buf);
+            for v in &self.directions {
+                ::buffa::types::encode_int32(v.to_i32(), buf);
+            }
+        }
+        for v in &self.relations {
+            ::buffa::types::put_string_field(4u32, v, buf);
+        }
+        for v in &self.neighbor_kinds {
+            ::buffa::types::put_string_field(5u32, v, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(6u32, self.limit, buf);
+        }
+        if !self.after_agent_key.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.after_agent_key, buf);
+        }
+        if self.expected_graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(8u32, self.expected_graph_revision, buf);
+        }
+        if !self.after_relation.is_empty() {
+            ::buffa::types::put_string_field(9u32, &self.after_relation, buf);
+        }
+        {
+            let val = self.after_direction.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(10u32, val, buf);
+            }
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.agent_key, buf)?;
+            }
+            3u32 => {
+                if tag.wire_type() == ::buffa::encoding::WireType::LengthDelimited {
+                    let len = ::buffa::encoding::decode_varint(buf)?;
+                    let len = usize::try_from(len)
+                        .map_err(|_| ::buffa::DecodeError::MessageTooLarge)?;
+                    if buf.remaining() < len {
+                        return ::core::result::Result::Err(
+                            ::buffa::DecodeError::UnexpectedEof,
+                        );
+                    }
+                    self.directions.reserve(len);
+                    let mut limited = buf.take(len);
+                    while limited.has_remaining() {
+                        self.directions
+                            .push(
+                                ::buffa::EnumValue::from(
+                                    ::buffa::types::decode_int32_packed(&mut limited)?,
+                                ),
+                            );
+                    }
+                    let leftover = limited.remaining();
+                    if leftover > 0 {
+                        limited.advance(leftover);
+                    }
+                } else if tag.wire_type() == ::buffa::encoding::WireType::Varint {
+                    self.directions
+                        .push(
+                            ::buffa::EnumValue::from(::buffa::types::decode_int32(buf)?),
+                        );
+                } else {
+                    return ::core::result::Result::Err(
+                        ::buffa::encoding::wire_type_mismatch(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        ),
+                    );
+                }
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.relations.push(__elem);
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.neighbor_kinds.push(__elem);
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.after_agent_key, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.expected_graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.after_relation, buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.after_direction = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.agent_key.clear();
+        self.directions.clear();
+        self.relations.clear();
+        self.neighbor_kinds.clear();
+        self.limit = 0u32;
+        self.after_agent_key.clear();
+        self.expected_graph_revision = 0u64;
+        self.after_relation.clear();
+        self.after_direction = ::buffa::EnumValue::from(0);
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListEntityRelationsRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListEntityRelationsRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListEntityRelationsRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_ENTITY_RELATIONS_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListEntityRelationsRequest",
+    to_json: ::buffa::type_registry::any_to_json::<ListEntityRelationsRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<ListEntityRelationsRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct EntityRelation {
+    /// Field 1: `direction`
+    #[serde(
+        rename = "direction",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub direction: ::buffa::EnumValue<EntityRelationDirection>,
+    /// Field 2: `relation`
+    #[serde(
+        rename = "relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub relation: ::buffa::alloc::string::String,
+    /// Field 3: `entity`
+    #[serde(
+        rename = "entity",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub entity: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for EntityRelation {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("EntityRelation")
+            .field("direction", &self.direction)
+            .field("relation", &self.relation)
+            .field("entity", &self.entity)
+            .finish()
+    }
+}
+impl EntityRelation {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelation";
+}
+::buffa::impl_default_instance!(EntityRelation);
+impl ::buffa::MessageName for EntityRelation {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "EntityRelation";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.EntityRelation";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelation";
+}
+impl ::buffa::Message for EntityRelation {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        {
+            let val = self.direction.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if !self.relation.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.relation) as u64;
+        }
+        if self.entity.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.entity.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        {
+            let val = self.direction.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(1u32, val, buf);
+            }
+        }
+        if !self.relation.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.relation, buf);
+        }
+        if self.entity.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.entity.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.direction = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.relation, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.entity.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.direction = ::buffa::EnumValue::from(0);
+        self.relation.clear();
+        self.entity = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for EntityRelation {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.EntityRelation";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for EntityRelation {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __ENTITY_RELATION_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.EntityRelation",
+    to_json: ::buffa::type_registry::any_to_json::<EntityRelation>,
+    from_json: ::buffa::type_registry::any_from_json::<EntityRelation>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListEntityRelationsResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `relations`
+    #[serde(
+        rename = "relations",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub relations: ::buffa::alloc::vec::Vec<EntityRelation>,
+    /// Field 4: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    /// Field 5: `next_after_agent_key`
+    #[serde(
+        rename = "nextAfterAgentKey",
+        alias = "next_after_agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub next_after_agent_key: ::buffa::alloc::string::String,
+    /// Field 6: `next_after_relation`
+    #[serde(
+        rename = "nextAfterRelation",
+        alias = "next_after_relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub next_after_relation: ::buffa::alloc::string::String,
+    /// Field 7: `next_after_direction`
+    #[serde(
+        rename = "nextAfterDirection",
+        alias = "next_after_direction",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub next_after_direction: ::buffa::EnumValue<EntityRelationDirection>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListEntityRelationsResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListEntityRelationsResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("relations", &self.relations)
+            .field("truncated", &self.truncated)
+            .field("next_after_agent_key", &self.next_after_agent_key)
+            .field("next_after_relation", &self.next_after_relation)
+            .field("next_after_direction", &self.next_after_direction)
+            .finish()
+    }
+}
+impl ListEntityRelationsResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntityRelationsResponse";
+}
+::buffa::impl_default_instance!(ListEntityRelationsResponse);
+impl ::buffa::MessageName for ListEntityRelationsResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListEntityRelationsResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListEntityRelationsResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntityRelationsResponse";
+}
+impl ::buffa::Message for ListEntityRelationsResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        for v in &self.relations {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if !self.next_after_agent_key.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.next_after_agent_key)
+                        as u64;
+        }
+        if !self.next_after_relation.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.next_after_relation)
+                        as u64;
+        }
+        {
+            let val = self.next_after_direction.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        for v in &self.relations {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+        }
+        if !self.next_after_agent_key.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.next_after_agent_key, buf);
+        }
+        if !self.next_after_relation.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.next_after_relation, buf);
+        }
+        {
+            let val = self.next_after_direction.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(7u32, val, buf);
+            }
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.relations.push(elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.next_after_agent_key, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.next_after_relation, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.next_after_direction = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.relations.clear();
+        self.truncated = false;
+        self.next_after_agent_key.clear();
+        self.next_after_relation.clear();
+        self.next_after_direction = ::buffa::EnumValue::from(0);
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListEntityRelationsResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListEntityRelationsResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListEntityRelationsResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_ENTITY_RELATIONS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListEntityRelationsResponse",
+    to_json: ::buffa::type_registry::any_to_json::<ListEntityRelationsResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<ListEntityRelationsResponse>,
     is_wkt: false,
 };
 /// GetSourceSummaryRequest binds the catalog read to one authenticated tenant.
@@ -15801,6 +18764,4827 @@ pub mod __buffa {
                 ::serde::Serialize::serialize(&self.0, __s)
             }
         }
+        /// EntityCatalogFilter is a closed, provider-neutral entity selector. Exact and
+        /// prefix kind lists are ORed; exclusions are always applied.
+        #[derive(Clone, Debug, Default)]
+        pub struct EntityCatalogFilterView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `source_id`
+            pub source_id: &'a str,
+            /// Field 3: `runtime_ids`
+            pub runtime_ids: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 4: `exact_agent_key`
+            pub exact_agent_key: &'a str,
+            /// Field 5: `include_kinds`
+            pub include_kinds: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 6: `include_kind_prefixes`
+            pub include_kind_prefixes: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 7: `exclude_kinds`
+            pub exclude_kinds: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 8: `exclude_kind_prefixes`
+            pub exclude_kind_prefixes: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 9: `query`
+            pub query: &'a str,
+            /// Field 10: `expected_graph_revision`
+            pub expected_graph_revision: u64,
+            /// query_attributes opts into searching stored attributes in addition to the
+            /// stable key and label. Callers must select this explicitly.
+            ///
+            /// Field 11: `query_attributes`
+            pub query_attributes: bool,
+            /// Field 12: `relation_counts`
+            pub relation_counts: ::buffa::MessageFieldView<
+                super::super::__buffa::view::EntityRelationCountFilterView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for EntityCatalogFilterView<'a> {
+            type Owned = super::super::EntityCatalogFilter;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.exact_agent_key = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.query = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.expected_graph_revision = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    11u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.query_attributes = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    12u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.relation_counts.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.relation_counts = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::EntityRelationCountFilterView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.runtime_ids.push(__elem);
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.include_kinds.push(__elem);
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.include_kind_prefixes.push(__elem);
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.exclude_kinds.push(__elem);
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.exclude_kind_prefixes.push(__elem);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::EntityCatalogFilter,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::EntityCatalogFilter,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::EntityCatalogFilter {
+                    tenant_id: self.tenant_id.to_string(),
+                    source_id: self.source_id.to_string(),
+                    runtime_ids: self
+                        .runtime_ids
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    exact_agent_key: self.exact_agent_key.to_string(),
+                    include_kinds: self
+                        .include_kinds
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    include_kind_prefixes: self
+                        .include_kind_prefixes
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    exclude_kinds: self
+                        .exclude_kinds
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    exclude_kind_prefixes: self
+                        .exclude_kind_prefixes
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    query: self.query.to_string(),
+                    expected_graph_revision: self.expected_graph_revision,
+                    query_attributes: self.query_attributes,
+                    relation_counts: match self.relation_counts.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::EntityRelationCountFilter,
+                                ::buffa::Inline<super::super::EntityRelationCountFilter>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for EntityCatalogFilterView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                for v in &self.runtime_ids {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if !self.exact_agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.exact_agent_key)
+                                as u64;
+                }
+                for v in &self.include_kinds {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                for v in &self.include_kind_prefixes {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                for v in &self.exclude_kinds {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                for v in &self.exclude_kind_prefixes {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if !self.query.is_empty() {
+                    size
+                        += 1u64 + ::buffa::types::string_encoded_len(&self.query) as u64;
+                }
+                if self.expected_graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.expected_graph_revision,
+                            ) as u64;
+                }
+                if self.query_attributes {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.relation_counts.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.relation_counts.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.source_id, buf);
+                }
+                for v in &self.runtime_ids {
+                    ::buffa::types::put_string_field(3u32, v, buf);
+                }
+                if !self.exact_agent_key.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.exact_agent_key, buf);
+                }
+                for v in &self.include_kinds {
+                    ::buffa::types::put_string_field(5u32, v, buf);
+                }
+                for v in &self.include_kind_prefixes {
+                    ::buffa::types::put_string_field(6u32, v, buf);
+                }
+                for v in &self.exclude_kinds {
+                    ::buffa::types::put_string_field(7u32, v, buf);
+                }
+                for v in &self.exclude_kind_prefixes {
+                    ::buffa::types::put_string_field(8u32, v, buf);
+                }
+                if !self.query.is_empty() {
+                    ::buffa::types::put_string_field(9u32, &self.query, buf);
+                }
+                if self.expected_graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        10u32,
+                        self.expected_graph_revision,
+                        buf,
+                    );
+                }
+                if self.query_attributes {
+                    ::buffa::types::put_bool_field(11u32, self.query_attributes, buf);
+                }
+                if self.relation_counts.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        12u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.relation_counts.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for EntityCatalogFilterView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !self.runtime_ids.is_empty() {
+                    __map.serialize_entry("runtimeIds", &*self.runtime_ids)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.exact_agent_key) {
+                    __map.serialize_entry("exactAgentKey", self.exact_agent_key)?;
+                }
+                if !self.include_kinds.is_empty() {
+                    __map.serialize_entry("includeKinds", &*self.include_kinds)?;
+                }
+                if !self.include_kind_prefixes.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "includeKindPrefixes",
+                            &*self.include_kind_prefixes,
+                        )?;
+                }
+                if !self.exclude_kinds.is_empty() {
+                    __map.serialize_entry("excludeKinds", &*self.exclude_kinds)?;
+                }
+                if !self.exclude_kind_prefixes.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "excludeKindPrefixes",
+                            &*self.exclude_kind_prefixes,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.query) {
+                    __map.serialize_entry("query", self.query)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.expected_graph_revision,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "expectedGraphRevision",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.expected_graph_revision,
+                            ),
+                        )?;
+                }
+                if self.query_attributes {
+                    __map.serialize_entry("queryAttributes", &self.query_attributes)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .relation_counts
+                        .as_option()
+                    {
+                        __map.serialize_entry("relationCounts", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for EntityCatalogFilterView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "EntityCatalogFilter";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.EntityCatalogFilter";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityCatalogFilter";
+        }
+        ::buffa::impl_default_view_instance!(EntityCatalogFilterView);
+        ::buffa::impl_view_reborrow!(EntityCatalogFilterView);
+        /** Self-contained, `'static` owned view of a `EntityCatalogFilter` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`EntityCatalogFilterView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`EntityCatalogFilterView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct EntityCatalogFilterOwnedView(
+            ::buffa::OwnedView<EntityCatalogFilterView<'static>>,
+        );
+        impl EntityCatalogFilterOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityCatalogFilterOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityCatalogFilterOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::EntityCatalogFilter,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityCatalogFilterOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`EntityCatalogFilterView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &EntityCatalogFilterView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::EntityCatalogFilter {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 3: `runtime_ids`
+            #[must_use]
+            pub fn runtime_ids(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().runtime_ids
+            }
+            /// Field 4: `exact_agent_key`
+            #[must_use]
+            pub fn exact_agent_key(&self) -> &'_ str {
+                self.0.reborrow().exact_agent_key
+            }
+            /// Field 5: `include_kinds`
+            #[must_use]
+            pub fn include_kinds(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().include_kinds
+            }
+            /// Field 6: `include_kind_prefixes`
+            #[must_use]
+            pub fn include_kind_prefixes(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().include_kind_prefixes
+            }
+            /// Field 7: `exclude_kinds`
+            #[must_use]
+            pub fn exclude_kinds(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().exclude_kinds
+            }
+            /// Field 8: `exclude_kind_prefixes`
+            #[must_use]
+            pub fn exclude_kind_prefixes(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().exclude_kind_prefixes
+            }
+            /// Field 9: `query`
+            #[must_use]
+            pub fn query(&self) -> &'_ str {
+                self.0.reborrow().query
+            }
+            /// Field 10: `expected_graph_revision`
+            #[must_use]
+            pub fn expected_graph_revision(&self) -> u64 {
+                self.0.reborrow().expected_graph_revision
+            }
+            /// query_attributes opts into searching stored attributes in addition to the
+            /// stable key and label. Callers must select this explicitly.
+            ///
+            /// Field 11: `query_attributes`
+            #[must_use]
+            pub fn query_attributes(&self) -> bool {
+                self.0.reborrow().query_attributes
+            }
+            /// Field 12: `relation_counts`
+            #[must_use]
+            pub fn relation_counts(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::EntityRelationCountFilterView<'_>,
+            > {
+                &self.0.reborrow().relation_counts
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<EntityCatalogFilterView<'static>>>
+        for EntityCatalogFilterOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<EntityCatalogFilterView<'static>>,
+            ) -> Self {
+                EntityCatalogFilterOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<EntityCatalogFilterOwnedView>
+        for ::buffa::OwnedView<EntityCatalogFilterView<'static>> {
+            fn from(wrapper: EntityCatalogFilterOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<EntityCatalogFilterView<'static>>>
+        for EntityCatalogFilterOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<EntityCatalogFilterView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::EntityCatalogFilter {
+            type View<'a> = EntityCatalogFilterView<'a>;
+            type ViewHandle = EntityCatalogFilterOwnedView;
+        }
+        impl ::serde::Serialize for EntityCatalogFilterOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        /// EntityRelationCountFilter requests complete grouped counts for the bounded
+        /// entity page. Every list is closed and parameterized by the Rust store.
+        #[derive(Clone, Debug, Default)]
+        pub struct EntityRelationCountFilterView<'a> {
+            /// Field 1: `directions`
+            pub directions: ::buffa::RepeatedView<
+                'a,
+                ::buffa::EnumValue<super::super::EntityRelationDirection>,
+            >,
+            /// Field 2: `relations`
+            pub relations: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 3: `neighbor_kinds`
+            pub neighbor_kinds: ::buffa::RepeatedView<'a, &'a str>,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for EntityRelationCountFilterView<'a> {
+            type Owned = super::super::EntityRelationCountFilter;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        if tag.wire_type()
+                            == ::buffa::encoding::WireType::LengthDelimited
+                        {
+                            let payload = ::buffa::types::borrow_bytes(&mut cur)?;
+                            view.directions
+                                .reserve(::buffa::encoding::count_varints(payload));
+                            let mut pcur: &[u8] = payload;
+                            while !pcur.is_empty() {
+                                view.directions
+                                    .push(
+                                        ::buffa::EnumValue::from(
+                                            ::buffa::types::decode_int32_packed(&mut pcur)?,
+                                        ),
+                                    );
+                            }
+                        } else if tag.wire_type() == ::buffa::encoding::WireType::Varint
+                        {
+                            view.directions
+                                .push(
+                                    ::buffa::EnumValue::from(
+                                        ::buffa::types::decode_int32(&mut cur)?,
+                                    ),
+                                );
+                        } else {
+                            return Err(
+                                ::buffa::encoding::wire_type_mismatch(
+                                    tag,
+                                    ::buffa::encoding::WireType::LengthDelimited,
+                                ),
+                            );
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.relations.push(__elem);
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.neighbor_kinds.push(__elem);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::EntityRelationCountFilter,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::EntityRelationCountFilter,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::EntityRelationCountFilter {
+                    directions: self.directions.to_vec(),
+                    relations: self.relations.iter().map(|s| s.to_string()).collect(),
+                    neighbor_kinds: self
+                        .neighbor_kinds
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for EntityRelationCountFilterView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.directions.is_empty() {
+                    let payload: u64 = self
+                        .directions
+                        .iter()
+                        .map(|v| ::buffa::types::int32_encoded_len(v.to_i32()) as u64)
+                        .sum::<u64>();
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(payload) as u64
+                            + payload;
+                }
+                for v in &self.relations {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                for v in &self.neighbor_kinds {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.directions.is_empty() {
+                    let payload: u64 = self
+                        .directions
+                        .iter()
+                        .map(|v| ::buffa::types::int32_encoded_len(v.to_i32()) as u64)
+                        .sum::<u64>();
+                    ::buffa::types::put_len_delimited_header(1u32, payload, buf);
+                    for v in &self.directions {
+                        ::buffa::types::encode_int32(v.to_i32(), buf);
+                    }
+                }
+                for v in &self.relations {
+                    ::buffa::types::put_string_field(2u32, v, buf);
+                }
+                for v in &self.neighbor_kinds {
+                    ::buffa::types::put_string_field(3u32, v, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for EntityRelationCountFilterView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !self.directions.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "directions",
+                            &::buffa::json_helpers::EnumSeqJson(&self.directions),
+                        )?;
+                }
+                if !self.relations.is_empty() {
+                    __map.serialize_entry("relations", &*self.relations)?;
+                }
+                if !self.neighbor_kinds.is_empty() {
+                    __map.serialize_entry("neighborKinds", &*self.neighbor_kinds)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for EntityRelationCountFilterView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "EntityRelationCountFilter";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.EntityRelationCountFilter";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelationCountFilter";
+        }
+        ::buffa::impl_default_view_instance!(EntityRelationCountFilterView);
+        ::buffa::impl_view_reborrow!(EntityRelationCountFilterView);
+        /** Self-contained, `'static` owned view of a `EntityRelationCountFilter` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`EntityRelationCountFilterView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`EntityRelationCountFilterView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct EntityRelationCountFilterOwnedView(
+            ::buffa::OwnedView<EntityRelationCountFilterView<'static>>,
+        );
+        impl EntityRelationCountFilterOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationCountFilterOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationCountFilterOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::EntityRelationCountFilter,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationCountFilterOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`EntityRelationCountFilterView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &EntityRelationCountFilterView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::EntityRelationCountFilter {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `directions`
+            #[must_use]
+            pub fn directions(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                ::buffa::EnumValue<super::super::EntityRelationDirection>,
+            > {
+                &self.0.reborrow().directions
+            }
+            /// Field 2: `relations`
+            #[must_use]
+            pub fn relations(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().relations
+            }
+            /// Field 3: `neighbor_kinds`
+            #[must_use]
+            pub fn neighbor_kinds(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().neighbor_kinds
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<EntityRelationCountFilterView<'static>>,
+        > for EntityRelationCountFilterOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<EntityRelationCountFilterView<'static>>,
+            ) -> Self {
+                EntityRelationCountFilterOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<EntityRelationCountFilterOwnedView>
+        for ::buffa::OwnedView<EntityRelationCountFilterView<'static>> {
+            fn from(wrapper: EntityRelationCountFilterOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<EntityRelationCountFilterView<'static>>,
+        > for EntityRelationCountFilterOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<EntityRelationCountFilterView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::EntityRelationCountFilter {
+            type View<'a> = EntityRelationCountFilterView<'a>;
+            type ViewHandle = EntityRelationCountFilterOwnedView;
+        }
+        impl ::serde::Serialize for EntityRelationCountFilterOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListEntitiesRequestView<'a> {
+            /// Field 1: `filter`
+            pub filter: ::buffa::MessageFieldView<
+                super::super::__buffa::view::EntityCatalogFilterView<'a>,
+            >,
+            /// Field 2: `limit`
+            pub limit: u32,
+            /// Field 3: `after_agent_key`
+            pub after_agent_key: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListEntitiesRequestView<'a> {
+            type Owned = super::super::ListEntitiesRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.filter.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.filter = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::EntityCatalogFilterView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.after_agent_key = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListEntitiesRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListEntitiesRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListEntitiesRequest {
+                    filter: match self.filter.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::EntityCatalogFilter,
+                                ::buffa::Inline<super::super::EntityCatalogFilter>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    limit: self.limit,
+                    after_agent_key: self.after_agent_key.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListEntitiesRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.filter.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.filter.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                if !self.after_agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.after_agent_key)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.filter.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.filter.write_to(__cache, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(2u32, self.limit, buf);
+                }
+                if !self.after_agent_key.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.after_agent_key, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListEntitiesRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.filter.as_option() {
+                        __map.serialize_entry("filter", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.after_agent_key) {
+                    __map.serialize_entry("afterAgentKey", self.after_agent_key)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListEntitiesRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListEntitiesRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListEntitiesRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntitiesRequest";
+        }
+        ::buffa::impl_default_view_instance!(ListEntitiesRequestView);
+        ::buffa::impl_view_reborrow!(ListEntitiesRequestView);
+        /** Self-contained, `'static` owned view of a `ListEntitiesRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListEntitiesRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListEntitiesRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListEntitiesRequestOwnedView(
+            ::buffa::OwnedView<ListEntitiesRequestView<'static>>,
+        );
+        impl ListEntitiesRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntitiesRequestOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntitiesRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListEntitiesRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntitiesRequestOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`ListEntitiesRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListEntitiesRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ListEntitiesRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `filter`
+            #[must_use]
+            pub fn filter(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::EntityCatalogFilterView<'_>,
+            > {
+                &self.0.reborrow().filter
+            }
+            /// Field 2: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+            /// Field 3: `after_agent_key`
+            #[must_use]
+            pub fn after_agent_key(&self) -> &'_ str {
+                self.0.reborrow().after_agent_key
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<ListEntitiesRequestView<'static>>>
+        for ListEntitiesRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListEntitiesRequestView<'static>>,
+            ) -> Self {
+                ListEntitiesRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListEntitiesRequestOwnedView>
+        for ::buffa::OwnedView<ListEntitiesRequestView<'static>> {
+            fn from(wrapper: ListEntitiesRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<ListEntitiesRequestView<'static>>>
+        for ListEntitiesRequestOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<ListEntitiesRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListEntitiesRequest {
+            type View<'a> = ListEntitiesRequestView<'a>;
+            type ViewHandle = ListEntitiesRequestOwnedView;
+        }
+        impl ::serde::Serialize for ListEntitiesRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListEntitiesResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `entities`
+            pub entities: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 4: `truncated`
+            pub truncated: bool,
+            /// Field 5: `next_after_agent_key`
+            pub next_after_agent_key: &'a str,
+            /// Field 6: `relation_counts`
+            pub relation_counts: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::EntityRelationCountView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListEntitiesResponseView<'a> {
+            type Owned = super::super::ListEntitiesResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.next_after_agent_key = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::GraphEntityView,
+                            >(),
+                        )?;
+                        view.entities
+                            .push(
+                                <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::EntityRelationCountView,
+                            >(),
+                        )?;
+                        view.relation_counts
+                            .push(
+                                <super::super::__buffa::view::EntityRelationCountView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListEntitiesResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListEntitiesResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListEntitiesResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    entities: self
+                        .entities
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    truncated: self.truncated,
+                    next_after_agent_key: self.next_after_agent_key.to_string(),
+                    relation_counts: self
+                        .relation_counts
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListEntitiesResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                for v in &self.entities {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if !self.next_after_agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.next_after_agent_key,
+                            ) as u64;
+                }
+                for v in &self.relation_counts {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                for v in &self.entities {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+                }
+                if !self.next_after_agent_key.is_empty() {
+                    ::buffa::types::put_string_field(
+                        5u32,
+                        &self.next_after_agent_key,
+                        buf,
+                    );
+                }
+                for v in &self.relation_counts {
+                    ::buffa::types::put_len_delimited_header(
+                        6u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListEntitiesResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !self.entities.is_empty() {
+                    __map.serialize_entry("entities", &*self.entities)?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.next_after_agent_key,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "nextAfterAgentKey",
+                            self.next_after_agent_key,
+                        )?;
+                }
+                if !self.relation_counts.is_empty() {
+                    __map.serialize_entry("relationCounts", &*self.relation_counts)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListEntitiesResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListEntitiesResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListEntitiesResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntitiesResponse";
+        }
+        ::buffa::impl_default_view_instance!(ListEntitiesResponseView);
+        ::buffa::impl_view_reborrow!(ListEntitiesResponseView);
+        /** Self-contained, `'static` owned view of a `ListEntitiesResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListEntitiesResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListEntitiesResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListEntitiesResponseOwnedView(
+            ::buffa::OwnedView<ListEntitiesResponseView<'static>>,
+        );
+        impl ListEntitiesResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntitiesResponseOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntitiesResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListEntitiesResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntitiesResponseOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`ListEntitiesResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListEntitiesResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ListEntitiesResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `entities`
+            #[must_use]
+            pub fn entities(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().entities
+            }
+            /// Field 4: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+            /// Field 5: `next_after_agent_key`
+            #[must_use]
+            pub fn next_after_agent_key(&self) -> &'_ str {
+                self.0.reborrow().next_after_agent_key
+            }
+            /// Field 6: `relation_counts`
+            #[must_use]
+            pub fn relation_counts(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::EntityRelationCountView<'_>,
+            > {
+                &self.0.reborrow().relation_counts
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<ListEntitiesResponseView<'static>>>
+        for ListEntitiesResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListEntitiesResponseView<'static>>,
+            ) -> Self {
+                ListEntitiesResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListEntitiesResponseOwnedView>
+        for ::buffa::OwnedView<ListEntitiesResponseView<'static>> {
+            fn from(wrapper: ListEntitiesResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListEntitiesResponseView<'static>>,
+        > for ListEntitiesResponseOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<ListEntitiesResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListEntitiesResponse {
+            type View<'a> = ListEntitiesResponseView<'a>;
+            type ViewHandle = ListEntitiesResponseOwnedView;
+        }
+        impl ::serde::Serialize for ListEntitiesResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct EntityRelationCountView<'a> {
+            /// Field 1: `agent_key`
+            pub agent_key: &'a str,
+            /// Field 2: `direction`
+            pub direction: ::buffa::EnumValue<super::super::EntityRelationDirection>,
+            /// Field 3: `relation`
+            pub relation: &'a str,
+            /// Field 4: `neighbor_kind`
+            pub neighbor_kind: &'a str,
+            /// Field 5: `count`
+            pub count: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for EntityRelationCountView<'a> {
+            type Owned = super::super::EntityRelationCount;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.agent_key = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.direction = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.neighbor_kind = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.count = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::EntityRelationCount,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::EntityRelationCount,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::EntityRelationCount {
+                    agent_key: self.agent_key.to_string(),
+                    direction: self.direction,
+                    relation: self.relation.to_string(),
+                    neighbor_kind: self.neighbor_kind.to_string(),
+                    count: self.count,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for EntityRelationCountView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.agent_key) as u64;
+                }
+                {
+                    let val = self.direction.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                if !self.relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.relation) as u64;
+                }
+                if !self.neighbor_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.neighbor_kind)
+                                as u64;
+                }
+                if self.count != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.agent_key.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.agent_key, buf);
+                }
+                {
+                    let val = self.direction.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(2u32, val, buf);
+                    }
+                }
+                if !self.relation.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.relation, buf);
+                }
+                if !self.neighbor_kind.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.neighbor_kind, buf);
+                }
+                if self.count != 0u64 {
+                    ::buffa::types::put_uint64_field(5u32, self.count, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for EntityRelationCountView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.agent_key) {
+                    __map.serialize_entry("agentKey", self.agent_key)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(
+                    &self.direction,
+                ) {
+                    __map.serialize_entry("direction", &self.direction)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.relation) {
+                    __map.serialize_entry("relation", self.relation)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.neighbor_kind) {
+                    __map.serialize_entry("neighborKind", self.neighbor_kind)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.count) {
+                    __map
+                        .serialize_entry(
+                            "count",
+                            &::buffa::json_helpers::ProtoJson(&self.count),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for EntityRelationCountView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "EntityRelationCount";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.EntityRelationCount";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelationCount";
+        }
+        ::buffa::impl_default_view_instance!(EntityRelationCountView);
+        ::buffa::impl_view_reborrow!(EntityRelationCountView);
+        /** Self-contained, `'static` owned view of a `EntityRelationCount` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`EntityRelationCountView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`EntityRelationCountView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct EntityRelationCountOwnedView(
+            ::buffa::OwnedView<EntityRelationCountView<'static>>,
+        );
+        impl EntityRelationCountOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationCountOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationCountOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::EntityRelationCount,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationCountOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`EntityRelationCountView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &EntityRelationCountView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::EntityRelationCount {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `agent_key`
+            #[must_use]
+            pub fn agent_key(&self) -> &'_ str {
+                self.0.reborrow().agent_key
+            }
+            /// Field 2: `direction`
+            #[must_use]
+            pub fn direction(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::EntityRelationDirection> {
+                self.0.reborrow().direction
+            }
+            /// Field 3: `relation`
+            #[must_use]
+            pub fn relation(&self) -> &'_ str {
+                self.0.reborrow().relation
+            }
+            /// Field 4: `neighbor_kind`
+            #[must_use]
+            pub fn neighbor_kind(&self) -> &'_ str {
+                self.0.reborrow().neighbor_kind
+            }
+            /// Field 5: `count`
+            #[must_use]
+            pub fn count(&self) -> u64 {
+                self.0.reborrow().count
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<EntityRelationCountView<'static>>>
+        for EntityRelationCountOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<EntityRelationCountView<'static>>,
+            ) -> Self {
+                EntityRelationCountOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<EntityRelationCountOwnedView>
+        for ::buffa::OwnedView<EntityRelationCountView<'static>> {
+            fn from(wrapper: EntityRelationCountOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<EntityRelationCountView<'static>>>
+        for EntityRelationCountOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<EntityRelationCountView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::EntityRelationCount {
+            type View<'a> = EntityRelationCountView<'a>;
+            type ViewHandle = EntityRelationCountOwnedView;
+        }
+        impl ::serde::Serialize for EntityRelationCountOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct EntityKindCountView<'a> {
+            /// Field 1: `entity_kind`
+            pub entity_kind: &'a str,
+            /// Field 2: `count`
+            pub count: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for EntityKindCountView<'a> {
+            type Owned = super::super::EntityKindCount;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.entity_kind = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.count = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::EntityKindCount,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::EntityKindCount,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::EntityKindCount {
+                    entity_kind: self.entity_kind.to_string(),
+                    count: self.count,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for EntityKindCountView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.entity_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.entity_kind)
+                                as u64;
+                }
+                if self.count != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.entity_kind.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.entity_kind, buf);
+                }
+                if self.count != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.count, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for EntityKindCountView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.entity_kind) {
+                    __map.serialize_entry("entityKind", self.entity_kind)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.count) {
+                    __map
+                        .serialize_entry(
+                            "count",
+                            &::buffa::json_helpers::ProtoJson(&self.count),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for EntityKindCountView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "EntityKindCount";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.EntityKindCount";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityKindCount";
+        }
+        ::buffa::impl_default_view_instance!(EntityKindCountView);
+        ::buffa::impl_view_reborrow!(EntityKindCountView);
+        /** Self-contained, `'static` owned view of a `EntityKindCount` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`EntityKindCountView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`EntityKindCountView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct EntityKindCountOwnedView(
+            ::buffa::OwnedView<EntityKindCountView<'static>>,
+        );
+        impl EntityKindCountOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityKindCountOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityKindCountOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::EntityKindCount,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityKindCountOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`EntityKindCountView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &EntityKindCountView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::EntityKindCount {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `entity_kind`
+            #[must_use]
+            pub fn entity_kind(&self) -> &'_ str {
+                self.0.reborrow().entity_kind
+            }
+            /// Field 2: `count`
+            #[must_use]
+            pub fn count(&self) -> u64 {
+                self.0.reborrow().count
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<EntityKindCountView<'static>>>
+        for EntityKindCountOwnedView {
+            fn from(inner: ::buffa::OwnedView<EntityKindCountView<'static>>) -> Self {
+                EntityKindCountOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<EntityKindCountOwnedView>
+        for ::buffa::OwnedView<EntityKindCountView<'static>> {
+            fn from(wrapper: EntityKindCountOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<EntityKindCountView<'static>>>
+        for EntityKindCountOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<EntityKindCountView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::EntityKindCount {
+            type View<'a> = EntityKindCountView<'a>;
+            type ViewHandle = EntityKindCountOwnedView;
+        }
+        impl ::serde::Serialize for EntityKindCountOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct CountEntityKindsRequestView<'a> {
+            /// Field 1: `filter`
+            pub filter: ::buffa::MessageFieldView<
+                super::super::__buffa::view::EntityCatalogFilterView<'a>,
+            >,
+            /// Field 2: `limit`
+            pub limit: u32,
+            /// Field 3: `after_entity_kind`
+            pub after_entity_kind: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CountEntityKindsRequestView<'a> {
+            type Owned = super::super::CountEntityKindsRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.filter.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.filter = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::EntityCatalogFilterView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.after_entity_kind = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CountEntityKindsRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CountEntityKindsRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CountEntityKindsRequest {
+                    filter: match self.filter.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::EntityCatalogFilter,
+                                ::buffa::Inline<super::super::EntityCatalogFilter>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    limit: self.limit,
+                    after_entity_kind: self.after_entity_kind.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CountEntityKindsRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.filter.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.filter.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                if !self.after_entity_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.after_entity_kind)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.filter.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.filter.write_to(__cache, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(2u32, self.limit, buf);
+                }
+                if !self.after_entity_kind.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.after_entity_kind, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CountEntityKindsRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.filter.as_option() {
+                        __map.serialize_entry("filter", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.after_entity_kind,
+                ) {
+                    __map.serialize_entry("afterEntityKind", self.after_entity_kind)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CountEntityKindsRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CountEntityKindsRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CountEntityKindsRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CountEntityKindsRequest";
+        }
+        ::buffa::impl_default_view_instance!(CountEntityKindsRequestView);
+        ::buffa::impl_view_reborrow!(CountEntityKindsRequestView);
+        /** Self-contained, `'static` owned view of a `CountEntityKindsRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CountEntityKindsRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CountEntityKindsRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CountEntityKindsRequestOwnedView(
+            ::buffa::OwnedView<CountEntityKindsRequestView<'static>>,
+        );
+        impl CountEntityKindsRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CountEntityKindsRequestOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CountEntityKindsRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CountEntityKindsRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CountEntityKindsRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`CountEntityKindsRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CountEntityKindsRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::CountEntityKindsRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `filter`
+            #[must_use]
+            pub fn filter(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::EntityCatalogFilterView<'_>,
+            > {
+                &self.0.reborrow().filter
+            }
+            /// Field 2: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+            /// Field 3: `after_entity_kind`
+            #[must_use]
+            pub fn after_entity_kind(&self) -> &'_ str {
+                self.0.reborrow().after_entity_kind
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<CountEntityKindsRequestView<'static>>,
+        > for CountEntityKindsRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<CountEntityKindsRequestView<'static>>,
+            ) -> Self {
+                CountEntityKindsRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CountEntityKindsRequestOwnedView>
+        for ::buffa::OwnedView<CountEntityKindsRequestView<'static>> {
+            fn from(wrapper: CountEntityKindsRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<CountEntityKindsRequestView<'static>>,
+        > for CountEntityKindsRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<CountEntityKindsRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CountEntityKindsRequest {
+            type View<'a> = CountEntityKindsRequestView<'a>;
+            type ViewHandle = CountEntityKindsRequestOwnedView;
+        }
+        impl ::serde::Serialize for CountEntityKindsRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct CountEntityKindsResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `counts`
+            pub counts: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::EntityKindCountView<'a>,
+            >,
+            /// Field 4: `truncated`
+            pub truncated: bool,
+            /// Field 5: `next_after_entity_kind`
+            pub next_after_entity_kind: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CountEntityKindsResponseView<'a> {
+            type Owned = super::super::CountEntityKindsResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.next_after_entity_kind = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::EntityKindCountView,
+                            >(),
+                        )?;
+                        view.counts
+                            .push(
+                                <super::super::__buffa::view::EntityKindCountView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CountEntityKindsResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CountEntityKindsResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CountEntityKindsResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    counts: self
+                        .counts
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    truncated: self.truncated,
+                    next_after_entity_kind: self.next_after_entity_kind.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CountEntityKindsResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                for v in &self.counts {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if !self.next_after_entity_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.next_after_entity_kind,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                for v in &self.counts {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+                }
+                if !self.next_after_entity_kind.is_empty() {
+                    ::buffa::types::put_string_field(
+                        5u32,
+                        &self.next_after_entity_kind,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CountEntityKindsResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !self.counts.is_empty() {
+                    __map.serialize_entry("counts", &*self.counts)?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.next_after_entity_kind,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "nextAfterEntityKind",
+                            self.next_after_entity_kind,
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CountEntityKindsResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CountEntityKindsResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CountEntityKindsResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CountEntityKindsResponse";
+        }
+        ::buffa::impl_default_view_instance!(CountEntityKindsResponseView);
+        ::buffa::impl_view_reborrow!(CountEntityKindsResponseView);
+        /** Self-contained, `'static` owned view of a `CountEntityKindsResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CountEntityKindsResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CountEntityKindsResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CountEntityKindsResponseOwnedView(
+            ::buffa::OwnedView<CountEntityKindsResponseView<'static>>,
+        );
+        impl CountEntityKindsResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CountEntityKindsResponseOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CountEntityKindsResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CountEntityKindsResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CountEntityKindsResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`CountEntityKindsResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CountEntityKindsResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::CountEntityKindsResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `counts`
+            #[must_use]
+            pub fn counts(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::EntityKindCountView<'_>,
+            > {
+                &self.0.reborrow().counts
+            }
+            /// Field 4: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+            /// Field 5: `next_after_entity_kind`
+            #[must_use]
+            pub fn next_after_entity_kind(&self) -> &'_ str {
+                self.0.reborrow().next_after_entity_kind
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<CountEntityKindsResponseView<'static>>,
+        > for CountEntityKindsResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<CountEntityKindsResponseView<'static>>,
+            ) -> Self {
+                CountEntityKindsResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CountEntityKindsResponseOwnedView>
+        for ::buffa::OwnedView<CountEntityKindsResponseView<'static>> {
+            fn from(wrapper: CountEntityKindsResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<CountEntityKindsResponseView<'static>>,
+        > for CountEntityKindsResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<CountEntityKindsResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CountEntityKindsResponse {
+            type View<'a> = CountEntityKindsResponseView<'a>;
+            type ViewHandle = CountEntityKindsResponseOwnedView;
+        }
+        impl ::serde::Serialize for CountEntityKindsResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListEntityRelationsRequestView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `agent_key`
+            pub agent_key: &'a str,
+            /// Field 3: `directions`
+            pub directions: ::buffa::RepeatedView<
+                'a,
+                ::buffa::EnumValue<super::super::EntityRelationDirection>,
+            >,
+            /// Field 4: `relations`
+            pub relations: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 5: `neighbor_kinds`
+            pub neighbor_kinds: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 6: `limit`
+            pub limit: u32,
+            /// Field 7: `after_agent_key`
+            pub after_agent_key: &'a str,
+            /// Field 8: `expected_graph_revision`
+            pub expected_graph_revision: u64,
+            /// Field 9: `after_relation`
+            pub after_relation: &'a str,
+            /// Field 10: `after_direction`
+            pub after_direction: ::buffa::EnumValue<
+                super::super::EntityRelationDirection,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListEntityRelationsRequestView<'a> {
+            type Owned = super::super::ListEntityRelationsRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.agent_key = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.after_agent_key = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.expected_graph_revision = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.after_relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.after_direction = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    3u32 => {
+                        if tag.wire_type()
+                            == ::buffa::encoding::WireType::LengthDelimited
+                        {
+                            let payload = ::buffa::types::borrow_bytes(&mut cur)?;
+                            view.directions
+                                .reserve(::buffa::encoding::count_varints(payload));
+                            let mut pcur: &[u8] = payload;
+                            while !pcur.is_empty() {
+                                view.directions
+                                    .push(
+                                        ::buffa::EnumValue::from(
+                                            ::buffa::types::decode_int32_packed(&mut pcur)?,
+                                        ),
+                                    );
+                            }
+                        } else if tag.wire_type() == ::buffa::encoding::WireType::Varint
+                        {
+                            view.directions
+                                .push(
+                                    ::buffa::EnumValue::from(
+                                        ::buffa::types::decode_int32(&mut cur)?,
+                                    ),
+                                );
+                        } else {
+                            return Err(
+                                ::buffa::encoding::wire_type_mismatch(
+                                    tag,
+                                    ::buffa::encoding::WireType::LengthDelimited,
+                                ),
+                            );
+                        }
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.relations.push(__elem);
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.neighbor_kinds.push(__elem);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListEntityRelationsRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListEntityRelationsRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListEntityRelationsRequest {
+                    tenant_id: self.tenant_id.to_string(),
+                    agent_key: self.agent_key.to_string(),
+                    directions: self.directions.to_vec(),
+                    relations: self.relations.iter().map(|s| s.to_string()).collect(),
+                    neighbor_kinds: self
+                        .neighbor_kinds
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    limit: self.limit,
+                    after_agent_key: self.after_agent_key.to_string(),
+                    expected_graph_revision: self.expected_graph_revision,
+                    after_relation: self.after_relation.to_string(),
+                    after_direction: self.after_direction,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListEntityRelationsRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.agent_key) as u64;
+                }
+                if !self.directions.is_empty() {
+                    let payload: u64 = self
+                        .directions
+                        .iter()
+                        .map(|v| ::buffa::types::int32_encoded_len(v.to_i32()) as u64)
+                        .sum::<u64>();
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(payload) as u64
+                            + payload;
+                }
+                for v in &self.relations {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                for v in &self.neighbor_kinds {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                if !self.after_agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.after_agent_key)
+                                as u64;
+                }
+                if self.expected_graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.expected_graph_revision,
+                            ) as u64;
+                }
+                if !self.after_relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.after_relation)
+                                as u64;
+                }
+                {
+                    let val = self.after_direction.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.agent_key.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.agent_key, buf);
+                }
+                if !self.directions.is_empty() {
+                    let payload: u64 = self
+                        .directions
+                        .iter()
+                        .map(|v| ::buffa::types::int32_encoded_len(v.to_i32()) as u64)
+                        .sum::<u64>();
+                    ::buffa::types::put_len_delimited_header(3u32, payload, buf);
+                    for v in &self.directions {
+                        ::buffa::types::encode_int32(v.to_i32(), buf);
+                    }
+                }
+                for v in &self.relations {
+                    ::buffa::types::put_string_field(4u32, v, buf);
+                }
+                for v in &self.neighbor_kinds {
+                    ::buffa::types::put_string_field(5u32, v, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(6u32, self.limit, buf);
+                }
+                if !self.after_agent_key.is_empty() {
+                    ::buffa::types::put_string_field(7u32, &self.after_agent_key, buf);
+                }
+                if self.expected_graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        8u32,
+                        self.expected_graph_revision,
+                        buf,
+                    );
+                }
+                if !self.after_relation.is_empty() {
+                    ::buffa::types::put_string_field(9u32, &self.after_relation, buf);
+                }
+                {
+                    let val = self.after_direction.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(10u32, val, buf);
+                    }
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListEntityRelationsRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.agent_key) {
+                    __map.serialize_entry("agentKey", self.agent_key)?;
+                }
+                if !self.directions.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "directions",
+                            &::buffa::json_helpers::EnumSeqJson(&self.directions),
+                        )?;
+                }
+                if !self.relations.is_empty() {
+                    __map.serialize_entry("relations", &*self.relations)?;
+                }
+                if !self.neighbor_kinds.is_empty() {
+                    __map.serialize_entry("neighborKinds", &*self.neighbor_kinds)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.after_agent_key) {
+                    __map.serialize_entry("afterAgentKey", self.after_agent_key)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.expected_graph_revision,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "expectedGraphRevision",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.expected_graph_revision,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.after_relation) {
+                    __map.serialize_entry("afterRelation", self.after_relation)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(
+                    &self.after_direction,
+                ) {
+                    __map.serialize_entry("afterDirection", &self.after_direction)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListEntityRelationsRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListEntityRelationsRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListEntityRelationsRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntityRelationsRequest";
+        }
+        ::buffa::impl_default_view_instance!(ListEntityRelationsRequestView);
+        ::buffa::impl_view_reborrow!(ListEntityRelationsRequestView);
+        /** Self-contained, `'static` owned view of a `ListEntityRelationsRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListEntityRelationsRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListEntityRelationsRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListEntityRelationsRequestOwnedView(
+            ::buffa::OwnedView<ListEntityRelationsRequestView<'static>>,
+        );
+        impl ListEntityRelationsRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntityRelationsRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntityRelationsRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListEntityRelationsRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntityRelationsRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListEntityRelationsRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListEntityRelationsRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ListEntityRelationsRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `agent_key`
+            #[must_use]
+            pub fn agent_key(&self) -> &'_ str {
+                self.0.reborrow().agent_key
+            }
+            /// Field 3: `directions`
+            #[must_use]
+            pub fn directions(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                ::buffa::EnumValue<super::super::EntityRelationDirection>,
+            > {
+                &self.0.reborrow().directions
+            }
+            /// Field 4: `relations`
+            #[must_use]
+            pub fn relations(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().relations
+            }
+            /// Field 5: `neighbor_kinds`
+            #[must_use]
+            pub fn neighbor_kinds(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().neighbor_kinds
+            }
+            /// Field 6: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+            /// Field 7: `after_agent_key`
+            #[must_use]
+            pub fn after_agent_key(&self) -> &'_ str {
+                self.0.reborrow().after_agent_key
+            }
+            /// Field 8: `expected_graph_revision`
+            #[must_use]
+            pub fn expected_graph_revision(&self) -> u64 {
+                self.0.reborrow().expected_graph_revision
+            }
+            /// Field 9: `after_relation`
+            #[must_use]
+            pub fn after_relation(&self) -> &'_ str {
+                self.0.reborrow().after_relation
+            }
+            /// Field 10: `after_direction`
+            #[must_use]
+            pub fn after_direction(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::EntityRelationDirection> {
+                self.0.reborrow().after_direction
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListEntityRelationsRequestView<'static>>,
+        > for ListEntityRelationsRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListEntityRelationsRequestView<'static>>,
+            ) -> Self {
+                ListEntityRelationsRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListEntityRelationsRequestOwnedView>
+        for ::buffa::OwnedView<ListEntityRelationsRequestView<'static>> {
+            fn from(wrapper: ListEntityRelationsRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListEntityRelationsRequestView<'static>>,
+        > for ListEntityRelationsRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListEntityRelationsRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListEntityRelationsRequest {
+            type View<'a> = ListEntityRelationsRequestView<'a>;
+            type ViewHandle = ListEntityRelationsRequestOwnedView;
+        }
+        impl ::serde::Serialize for ListEntityRelationsRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct EntityRelationView<'a> {
+            /// Field 1: `direction`
+            pub direction: ::buffa::EnumValue<super::super::EntityRelationDirection>,
+            /// Field 2: `relation`
+            pub relation: &'a str,
+            /// Field 3: `entity`
+            pub entity: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for EntityRelationView<'a> {
+            type Owned = super::super::EntityRelation;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.direction = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.entity.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.entity = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::EntityRelation,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::EntityRelation,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::EntityRelation {
+                    direction: self.direction,
+                    relation: self.relation.to_string(),
+                    entity: match self.entity.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for EntityRelationView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                {
+                    let val = self.direction.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                if !self.relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.relation) as u64;
+                }
+                if self.entity.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.entity.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                {
+                    let val = self.direction.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(1u32, val, buf);
+                    }
+                }
+                if !self.relation.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.relation, buf);
+                }
+                if self.entity.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.entity.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for EntityRelationView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(
+                    &self.direction,
+                ) {
+                    __map.serialize_entry("direction", &self.direction)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.relation) {
+                    __map.serialize_entry("relation", self.relation)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.entity.as_option() {
+                        __map.serialize_entry("entity", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for EntityRelationView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "EntityRelation";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.EntityRelation";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EntityRelation";
+        }
+        ::buffa::impl_default_view_instance!(EntityRelationView);
+        ::buffa::impl_view_reborrow!(EntityRelationView);
+        /** Self-contained, `'static` owned view of a `EntityRelation` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`EntityRelationView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`EntityRelationView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct EntityRelationOwnedView(
+            ::buffa::OwnedView<EntityRelationView<'static>>,
+        );
+        impl EntityRelationOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::EntityRelation,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EntityRelationOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`EntityRelationView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &EntityRelationView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::EntityRelation {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `direction`
+            #[must_use]
+            pub fn direction(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::EntityRelationDirection> {
+                self.0.reborrow().direction
+            }
+            /// Field 2: `relation`
+            #[must_use]
+            pub fn relation(&self) -> &'_ str {
+                self.0.reborrow().relation
+            }
+            /// Field 3: `entity`
+            #[must_use]
+            pub fn entity(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().entity
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<EntityRelationView<'static>>>
+        for EntityRelationOwnedView {
+            fn from(inner: ::buffa::OwnedView<EntityRelationView<'static>>) -> Self {
+                EntityRelationOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<EntityRelationOwnedView>
+        for ::buffa::OwnedView<EntityRelationView<'static>> {
+            fn from(wrapper: EntityRelationOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<EntityRelationView<'static>>>
+        for EntityRelationOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<EntityRelationView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::EntityRelation {
+            type View<'a> = EntityRelationView<'a>;
+            type ViewHandle = EntityRelationOwnedView;
+        }
+        impl ::serde::Serialize for EntityRelationOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListEntityRelationsResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `relations`
+            pub relations: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::EntityRelationView<'a>,
+            >,
+            /// Field 4: `truncated`
+            pub truncated: bool,
+            /// Field 5: `next_after_agent_key`
+            pub next_after_agent_key: &'a str,
+            /// Field 6: `next_after_relation`
+            pub next_after_relation: &'a str,
+            /// Field 7: `next_after_direction`
+            pub next_after_direction: ::buffa::EnumValue<
+                super::super::EntityRelationDirection,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListEntityRelationsResponseView<'a> {
+            type Owned = super::super::ListEntityRelationsResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.next_after_agent_key = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.next_after_relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.next_after_direction = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::EntityRelationView,
+                            >(),
+                        )?;
+                        view.relations
+                            .push(
+                                <super::super::__buffa::view::EntityRelationView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListEntityRelationsResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListEntityRelationsResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListEntityRelationsResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    relations: self
+                        .relations
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    truncated: self.truncated,
+                    next_after_agent_key: self.next_after_agent_key.to_string(),
+                    next_after_relation: self.next_after_relation.to_string(),
+                    next_after_direction: self.next_after_direction,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListEntityRelationsResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                for v in &self.relations {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if !self.next_after_agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.next_after_agent_key,
+                            ) as u64;
+                }
+                if !self.next_after_relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.next_after_relation,
+                            ) as u64;
+                }
+                {
+                    let val = self.next_after_direction.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                for v in &self.relations {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+                }
+                if !self.next_after_agent_key.is_empty() {
+                    ::buffa::types::put_string_field(
+                        5u32,
+                        &self.next_after_agent_key,
+                        buf,
+                    );
+                }
+                if !self.next_after_relation.is_empty() {
+                    ::buffa::types::put_string_field(
+                        6u32,
+                        &self.next_after_relation,
+                        buf,
+                    );
+                }
+                {
+                    let val = self.next_after_direction.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(7u32, val, buf);
+                    }
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListEntityRelationsResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !self.relations.is_empty() {
+                    __map.serialize_entry("relations", &*self.relations)?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.next_after_agent_key,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "nextAfterAgentKey",
+                            self.next_after_agent_key,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.next_after_relation,
+                ) {
+                    __map
+                        .serialize_entry("nextAfterRelation", self.next_after_relation)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(
+                    &self.next_after_direction,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "nextAfterDirection",
+                            &self.next_after_direction,
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListEntityRelationsResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListEntityRelationsResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListEntityRelationsResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEntityRelationsResponse";
+        }
+        ::buffa::impl_default_view_instance!(ListEntityRelationsResponseView);
+        ::buffa::impl_view_reborrow!(ListEntityRelationsResponseView);
+        /** Self-contained, `'static` owned view of a `ListEntityRelationsResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListEntityRelationsResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListEntityRelationsResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListEntityRelationsResponseOwnedView(
+            ::buffa::OwnedView<ListEntityRelationsResponseView<'static>>,
+        );
+        impl ListEntityRelationsResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntityRelationsResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntityRelationsResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListEntityRelationsResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEntityRelationsResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListEntityRelationsResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListEntityRelationsResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ListEntityRelationsResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `relations`
+            #[must_use]
+            pub fn relations(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::EntityRelationView<'_>,
+            > {
+                &self.0.reborrow().relations
+            }
+            /// Field 4: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+            /// Field 5: `next_after_agent_key`
+            #[must_use]
+            pub fn next_after_agent_key(&self) -> &'_ str {
+                self.0.reborrow().next_after_agent_key
+            }
+            /// Field 6: `next_after_relation`
+            #[must_use]
+            pub fn next_after_relation(&self) -> &'_ str {
+                self.0.reborrow().next_after_relation
+            }
+            /// Field 7: `next_after_direction`
+            #[must_use]
+            pub fn next_after_direction(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::EntityRelationDirection> {
+                self.0.reborrow().next_after_direction
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListEntityRelationsResponseView<'static>>,
+        > for ListEntityRelationsResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListEntityRelationsResponseView<'static>>,
+            ) -> Self {
+                ListEntityRelationsResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListEntityRelationsResponseOwnedView>
+        for ::buffa::OwnedView<ListEntityRelationsResponseView<'static>> {
+            fn from(wrapper: ListEntityRelationsResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListEntityRelationsResponseView<'static>>,
+        > for ListEntityRelationsResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListEntityRelationsResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListEntityRelationsResponse {
+            type View<'a> = ListEntityRelationsResponseView<'a>;
+            type ViewHandle = ListEntityRelationsResponseOwnedView;
+        }
+        impl ::serde::Serialize for ListEntityRelationsResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
         /// GetSourceSummaryRequest binds the catalog read to one authenticated tenant.
         #[derive(Clone, Debug, Default)]
         pub struct GetSourceSummaryRequestView<'a> {
@@ -21142,6 +28926,17 @@ pub mod __buffa {
         reg.register_json_any(super::__QUERY_BOUND_EDGE_JSON_ANY);
         reg.register_json_any(super::__QUERY_FACT_MATCH_JSON_ANY);
         reg.register_json_any(super::__QUERY_FACTS_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__ENTITY_CATALOG_FILTER_JSON_ANY);
+        reg.register_json_any(super::__ENTITY_RELATION_COUNT_FILTER_JSON_ANY);
+        reg.register_json_any(super::__LIST_ENTITIES_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__LIST_ENTITIES_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__ENTITY_RELATION_COUNT_JSON_ANY);
+        reg.register_json_any(super::__ENTITY_KIND_COUNT_JSON_ANY);
+        reg.register_json_any(super::__COUNT_ENTITY_KINDS_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__COUNT_ENTITY_KINDS_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__LIST_ENTITY_RELATIONS_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__ENTITY_RELATION_JSON_ANY);
+        reg.register_json_any(super::__LIST_ENTITY_RELATIONS_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__GET_SOURCE_SUMMARY_REQUEST_JSON_ANY);
         reg.register_json_any(super::__GET_SOURCE_SUMMARY_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__EXPOSURE_COVERAGE_PROFILE_JSON_ANY);
@@ -21248,6 +29043,50 @@ pub use self::__buffa::view::QueryFactMatchOwnedView;
 pub use self::__buffa::view::QueryFactsResponseView;
 #[doc(inline)]
 pub use self::__buffa::view::QueryFactsResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityCatalogFilterView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityCatalogFilterOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityRelationCountFilterView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityRelationCountFilterOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEntitiesRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEntitiesRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEntitiesResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEntitiesResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityRelationCountView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityRelationCountOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityKindCountView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityKindCountOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CountEntityKindsRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::CountEntityKindsRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CountEntityKindsResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::CountEntityKindsResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEntityRelationsRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEntityRelationsRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityRelationView;
+#[doc(inline)]
+pub use self::__buffa::view::EntityRelationOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEntityRelationsResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEntityRelationsResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::view::GetSourceSummaryRequestView;
 #[doc(inline)]

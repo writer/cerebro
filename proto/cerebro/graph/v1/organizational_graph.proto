@@ -23,6 +23,12 @@ service OrganizationalGraphService {
   // CompareExposureCoverage returns one bounded, revision-bound comparison of
   // primary observations and an independent corroborating source.
   rpc CompareExposureCoverage(CompareExposureCoverageRequest) returns (CompareExposureCoverageResponse);
+  // ListEntities returns one bounded page from the tenant entity catalog.
+  rpc ListEntities(ListEntitiesRequest) returns (ListEntitiesResponse);
+  // CountEntityKinds returns bounded entity-kind counts from the tenant catalog.
+  rpc CountEntityKinds(CountEntityKindsRequest) returns (CountEntityKindsResponse);
+  // ListEntityRelations returns filtered direct relations for one catalog entity.
+  rpc ListEntityRelations(ListEntityRelationsRequest) returns (ListEntityRelationsResponse);
   // GetSourceSummary returns the catalog coverage compiled into the running Rust service.
   rpc GetSourceSummary(GetSourceSummaryRequest) returns (GetSourceSummaryResponse);
 }
@@ -198,6 +204,110 @@ message QueryFactsResponse {
   uint64 graph_revision = 2;
   repeated QueryFactMatch matches = 3;
   bool truncated = 4;
+}
+
+// EntityCatalogFilter is a closed, provider-neutral entity selector. Exact and
+// prefix kind lists are ORed; exclusions are always applied.
+message EntityCatalogFilter {
+  string tenant_id = 1;
+  string source_id = 2;
+  repeated string runtime_ids = 3;
+  string exact_agent_key = 4;
+  repeated string include_kinds = 5;
+  repeated string include_kind_prefixes = 6;
+  repeated string exclude_kinds = 7;
+  repeated string exclude_kind_prefixes = 8;
+  string query = 9;
+  uint64 expected_graph_revision = 10;
+  // query_attributes opts into searching stored attributes in addition to the
+  // stable key and label. Callers must select this explicitly.
+  bool query_attributes = 11;
+  EntityRelationCountFilter relation_counts = 12;
+}
+
+// EntityRelationCountFilter requests complete grouped counts for the bounded
+// entity page. Every list is closed and parameterized by the Rust store.
+message EntityRelationCountFilter {
+  repeated EntityRelationDirection directions = 1;
+  repeated string relations = 2;
+  repeated string neighbor_kinds = 3;
+}
+
+message ListEntitiesRequest {
+  EntityCatalogFilter filter = 1;
+  uint32 limit = 2;
+  string after_agent_key = 3;
+}
+
+message ListEntitiesResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated GraphEntity entities = 3;
+  bool truncated = 4;
+  string next_after_agent_key = 5;
+  repeated EntityRelationCount relation_counts = 6;
+}
+
+message EntityRelationCount {
+  string agent_key = 1;
+  EntityRelationDirection direction = 2;
+  string relation = 3;
+  string neighbor_kind = 4;
+  uint64 count = 5;
+}
+
+message EntityKindCount {
+  string entity_kind = 1;
+  uint64 count = 2;
+}
+
+message CountEntityKindsRequest {
+  EntityCatalogFilter filter = 1;
+  uint32 limit = 2;
+  string after_entity_kind = 3;
+}
+
+message CountEntityKindsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated EntityKindCount counts = 3;
+  bool truncated = 4;
+  string next_after_entity_kind = 5;
+}
+
+enum EntityRelationDirection {
+  ENTITY_RELATION_DIRECTION_UNSPECIFIED = 0;
+  ENTITY_RELATION_DIRECTION_INCOMING = 1;
+  ENTITY_RELATION_DIRECTION_OUTGOING = 2;
+}
+
+message ListEntityRelationsRequest {
+  string tenant_id = 1;
+  string agent_key = 2;
+  repeated EntityRelationDirection directions = 3;
+  repeated string relations = 4;
+  repeated string neighbor_kinds = 5;
+  uint32 limit = 6;
+  string after_agent_key = 7;
+  uint64 expected_graph_revision = 8;
+  string after_relation = 9;
+  EntityRelationDirection after_direction = 10;
+}
+
+message EntityRelation {
+  EntityRelationDirection direction = 1;
+  string relation = 2;
+  GraphEntity entity = 3;
+}
+
+message ListEntityRelationsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated EntityRelation relations = 3;
+  bool truncated = 4;
+  string next_after_agent_key = 5;
+  string next_after_relation = 6;
+  EntityRelationDirection next_after_direction = 7;
 }
 
 // GetSourceSummaryRequest binds the catalog read to one authenticated tenant.

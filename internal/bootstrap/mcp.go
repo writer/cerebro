@@ -1228,39 +1228,27 @@ func (app *App) mcpAssetSearchResults(r *http.Request, args map[string]any) ([]m
 	if store == nil {
 		return nil, graphquery.ErrRuntimeUnavailable
 	}
-	rows, err := store.ExecuteReadCypher(r.Context(), ports.CypherQueryRequest{
-		Query: `MATCH (e:Entity)
-WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
-  AND ($runtime_id = '' OR coalesce(e.runtime_id, '') = $runtime_id)
-  AND ($urn = '' OR e.urn = $urn)
-  AND ($entity_type = '' OR e.entity_type = $entity_type)
-  AND ($query = '' OR toLower(coalesce(e.urn, '')) CONTAINS $query OR toLower(coalesce(e.label, '')) CONTAINS $query)
-RETURN e.urn AS urn,
-       coalesce(e.tenant_id, '') AS tenant_id,
-       coalesce(e.runtime_id, '') AS runtime_id,
-       coalesce(e.source_id, '') AS source_id,
-       coalesce(e.entity_type, '') AS entity_type,
-       coalesce(e.label, '') AS label,
-       coalesce(e.attributes_json, '{}') AS attributes_json
-ORDER BY e.entity_type, e.label, e.urn`,
-		Params: map[string]any{
-			"tenant_id":   tenantID,
-			"runtime_id":  runtimeID,
-			"urn":         urn,
-			"entity_type": entityType,
-			"query":       strings.ToLower(query),
-		},
-		RowLimit: limit,
-	})
+	typed, ok := store.(ports.EntityCatalogStore)
+	if !ok {
+		return nil, ports.ErrGraphTypedOperationRequired
+	}
+	filter := ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn, Query: query}
+	if runtimeID != "" {
+		filter.RuntimeIDs = []string{runtimeID}
+	}
+	if entityType != "" {
+		filter.IncludeKinds = []string{entityType}
+	}
+	page, err := typed.ListEntities(r.Context(), ports.EntityCatalogPageRequest{Filter: filter, Limit: limit})
 	if err != nil {
 		return nil, err
 	}
-	assets := make([]mcpAssetSearchResult, 0, len(rows))
-	for _, row := range rows {
-		asset, err := mcpAssetSearchResultFromRow(row)
-		if err != nil {
-			return nil, err
-		}
+	if page == nil || page.TenantID != tenantID {
+		return nil, graphquery.ErrRuntimeUnavailable
+	}
+	assets := make([]mcpAssetSearchResult, 0, len(page.Entities))
+	for _, entity := range page.Entities {
+		asset := mcpAssetSearchResult{URN: entity.URN, TenantID: entity.TenantID, RuntimeID: entity.RuntimeID, SourceID: entity.SourceID, EntityType: entity.EntityType, Label: entity.Label, Attributes: mcpRedactSensitiveAttributes(entity.Attributes)}
 		if !tenantAllowedByContext(r.Context(), asset.TenantID) {
 			continue
 		}

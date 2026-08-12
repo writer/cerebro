@@ -35,8 +35,8 @@ func TestServiceGetReturnsProjectionProvenance(t *testing.T) {
 	if len(response.Provenance.FreshnessSignals) != 1 {
 		t.Fatalf("freshness = %#v", response.Provenance.FreshnessSignals)
 	}
-	if store.request.Params["tenant_id"] != "tenant-a" || store.request.Params["urn"] != "urn:cerebro:tenant-a:runtime_evidence:evidence-1" {
-		t.Fatalf("query params = %#v", store.request.Params)
+	if store.catalogRequest.Filter.TenantID != "tenant-a" || store.catalogRequest.Filter.ExactAgentKey != "urn:cerebro:tenant-a:runtime_evidence:evidence-1" {
+		t.Fatalf("catalog request = %#v", store.catalogRequest)
 	}
 }
 
@@ -64,9 +64,10 @@ func TestServiceGetRejectsKindOnlyURN(t *testing.T) {
 }
 
 type recordingStore struct {
-	rows    []ports.CypherRow
-	request ports.CypherQueryRequest
-	called  bool
+	rows           []ports.CypherRow
+	request        ports.CypherQueryRequest
+	called         bool
+	catalogRequest ports.EntityCatalogPageRequest
 }
 
 func (s *recordingStore) Ping(context.Context) error { return nil }
@@ -79,4 +80,21 @@ func (s *recordingStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 	s.called = true
 	s.request = request
 	return s.rows, nil
+}
+
+func (s *recordingStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	s.called = true
+	s.catalogRequest = request
+	if len(s.rows) == 0 {
+		return &ports.EntityCatalogPage{TenantID: request.Filter.TenantID}, nil
+	}
+	row := s.rows[0].Values
+	attributes, _ := attributesFromRow(row["attributes_json"])
+	return &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, Entities: []ports.CatalogEntity{{URN: stringValue(row["urn"]), TenantID: stringValue(row["tenant_id"]), EntityType: stringValue(row["entity_type"]), Label: stringValue(row["label"]), SourceID: stringValue(row["source_id"]), RuntimeID: stringValue(row["runtime_id"]), Attributes: attributes}}}, nil
+}
+func (s *recordingStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return nil, nil
+}
+func (s *recordingStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	return nil, nil
 }

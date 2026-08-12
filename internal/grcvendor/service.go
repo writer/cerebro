@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/ports"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 const (
@@ -468,24 +470,29 @@ func (s *Service) ListVendors(ctx context.Context, request ListVendorsRequest) (
 	if hasDerivedFilter(request) {
 		queryLimit = maxVendorLimit
 	}
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: vendorListQuery,
-		Params: map[string]any{
-			"tenant_id":   strings.TrimSpace(request.TenantID),
-			"runtime_id":  strings.TrimSpace(request.RuntimeID),
-			"runtime_ids": nonEmptyStrings(request.RuntimeIDs),
-			"source_id":   strings.TrimSpace(request.SourceID),
-			"q":           strings.ToLower(strings.TrimSpace(request.Query)),
-			"limit":       queryLimit,
-		},
-		RowLimit: queryLimit,
-	})
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
+	}
+	store, ok := s.store.(ports.EntityCatalogStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
+	}
+	filter, possible := vendorCatalogFilter(tenantID, request.RuntimeID, request.RuntimeIDs, request.SourceID, request.Query, "vendor")
+	if !possible {
+		return []Vendor{}, nil
+	}
+	filter.RelationCounts = &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract", "security.review", "security.questionnaire", "assurance.document"}}
+	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: queryLimit})
 	if err != nil {
 		return nil, err
 	}
-	vendors := make([]Vendor, 0, len(rows))
-	for _, row := range rows {
-		vendor := s.vendorFromRow(row)
+	if page == nil || page.TenantID != tenantID {
+		return nil, ErrRuntimeUnavailable
+	}
+	vendors := make([]Vendor, 0, len(page.Entities))
+	for _, entity := range page.Entities {
+		vendor := s.vendorFromRow(catalogVendorRow(entity, page.RelationCounts))
 		if vendor.URN == "" {
 			continue
 		}
@@ -510,24 +517,28 @@ func (s *Service) ListDiscoveries(ctx context.Context, request ListDiscoveriesRe
 	if hasDiscoveryDerivedFilter(request) {
 		queryLimit = maxVendorLimit
 	}
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: discoveryListQuery,
-		Params: map[string]any{
-			"tenant_id":   strings.TrimSpace(request.TenantID),
-			"runtime_id":  strings.TrimSpace(request.RuntimeID),
-			"runtime_ids": nonEmptyStrings(request.RuntimeIDs),
-			"source_id":   strings.TrimSpace(request.SourceID),
-			"q":           strings.ToLower(strings.TrimSpace(request.Query)),
-			"limit":       queryLimit,
-		},
-		RowLimit: queryLimit,
-	})
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
+	}
+	store, ok := s.store.(ports.EntityCatalogStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
+	}
+	filter, possible := vendorCatalogFilter(tenantID, request.RuntimeID, request.RuntimeIDs, request.SourceID, request.Query, "vendor.discovery")
+	if !possible {
+		return []VendorDiscovery{}, nil
+	}
+	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: queryLimit})
 	if err != nil {
 		return nil, err
 	}
-	discoveries := make([]VendorDiscovery, 0, len(rows))
-	for _, row := range rows {
-		discovery := discoveryFromRow(row)
+	if page == nil || page.TenantID != tenantID {
+		return nil, ErrRuntimeUnavailable
+	}
+	discoveries := make([]VendorDiscovery, 0, len(page.Entities))
+	for _, entity := range page.Entities {
+		discovery := discoveryFromRow(catalogCypherRow(entity))
 		if discovery.URN == "" {
 			continue
 		}
@@ -567,30 +578,72 @@ func (s *Service) GetVendor(ctx context.Context, request VendorDetailRequest) (*
 	if err := validateVendorDetailScope(urn, vendorID); err != nil {
 		return nil, err
 	}
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query:    vendorDetailQuery,
-		Params:   vendorDetailParams(request, urn, vendorID),
-		RowLimit: 1,
-	})
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" && urn != "" {
+		tenantID = tenantFromVendorURN(urn)
+	}
+	if tenantID == "" {
+		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
+	}
+	store, ok := s.store.(ports.EntityCatalogStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
+	}
+	filter, possible := vendorCatalogFilter(tenantID, request.RuntimeID, request.RuntimeIDs, request.SourceID, "", "vendor")
+	if !possible {
+		return nil, ports.ErrGraphEntityNotFound
+	}
+	if urn != "" {
+		filter.ExactAgentKey = urn
+	} else {
+		filter.Query = vendorID
+	}
+	filter.RelationCounts = &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract", "security.review", "security.questionnaire", "assurance.document"}}
+	entityLimit := 2
+	if vendorID != "" {
+		entityLimit = maxVendorLimit
+	}
+	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: entityLimit})
 	if err != nil {
 		return nil, err
 	}
-	if len(rows) == 0 {
+	if page == nil || page.TenantID != tenantID {
+		return nil, ErrRuntimeUnavailable
+	}
+	if vendorID != "" && page.Truncated {
+		return nil, ErrRuntimeUnavailable
+	}
+	if len(page.Entities) == 0 {
 		return nil, ports.ErrGraphEntityNotFound
 	}
-	vendor := s.vendorFromRow(rows[0])
+	matched := page.Entities
+	if vendorID != "" {
+		matched = slicesMatchingVendorID(matched, vendorID)
+	}
+	if len(matched) != 1 {
+		if len(matched) == 0 {
+			return nil, ports.ErrGraphEntityNotFound
+		}
+		return nil, ErrRuntimeUnavailable
+	}
+	vendor := s.vendorFromRow(catalogVendorRow(matched[0], page.RelationCounts))
 	if vendor.URN == "" {
 		return nil, ports.ErrGraphEntityNotFound
 	}
 	urn = vendor.URN
 	limit := normalizeRelatedLimit(request.Limit)
-	relatedRows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query:    vendorRelationshipsQuery,
-		Params:   map[string]any{"urn": urn, "limit": limit},
-		RowLimit: limit,
-	})
+	relationPage, err := store.ListEntityRelations(ctx, ports.EntityRelationPageRequest{TenantID: tenantID, AgentKey: urn, Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming, ports.EntityRelationOutgoing}, Relations: []string{"associated_with", "owned_by", "has_identifier", "has_contact", "uses_subprocessor", "depends_on"}, NeighborKinds: vendorRelatedKinds(), Limit: limit})
 	if err != nil {
 		return nil, err
+	}
+	if relationPage == nil || relationPage.TenantID != tenantID {
+		return nil, ErrRuntimeUnavailable
+	}
+	relatedRows := make([]ports.CypherRow, 0, len(relationPage.Relations))
+	for _, relation := range relationPage.Relations {
+		row := catalogCypherRow(relation.Entity)
+		row.Values["relation"] = relation.Relation
+		relatedRows = append(relatedRows, row)
 	}
 	relationships := relationshipsFromRows(relatedRows)
 	graph, err := s.store.GetEntityNeighborhood(ctx, urn, normalizeNeighborhoodLimit(request.Limit))
@@ -2114,31 +2167,6 @@ func normalizeRiskLevel(value string) string {
 	}
 }
 
-func vendorDetailParams(request VendorDetailRequest, urn string, vendorID string) map[string]any {
-	vendorID = strings.TrimSpace(vendorID)
-	vendorIDLower := strings.ToLower(vendorID)
-	return map[string]any{
-		"urn":             strings.TrimSpace(urn),
-		"vendor_id":       vendorID,
-		"vendor_id_lc":    vendorIDLower,
-		"vendor_id_probe": jsonAttributeProbe("vendor_id", vendorIDLower),
-		"external_probe":  jsonAttributeProbe("external_id", vendorIDLower),
-		"tenant_id":       strings.TrimSpace(request.TenantID),
-		"runtime_id":      strings.TrimSpace(request.RuntimeID),
-		"runtime_ids":     nonEmptyStrings(request.RuntimeIDs),
-		"source_id":       strings.TrimSpace(request.SourceID),
-	}
-}
-
-func jsonAttributeProbe(key string, value string) string {
-	key = strings.TrimSpace(key)
-	value = strings.ToLower(strings.TrimSpace(value))
-	if key == "" || value == "" {
-		return "\x00"
-	}
-	return fmt.Sprintf("%q:%q", key, value)
-}
-
 func validateVendorDetailScope(urn string, vendorID string) error {
 	if urn == "" && vendorID == "" {
 		return fmt.Errorf("%w: vendor_id is required", ErrInvalidRequest)
@@ -2436,104 +2464,55 @@ func timeValue(value *time.Time) time.Time {
 	return *value
 }
 
-const vendorListQuery = `MATCH (v:Entity)
-WHERE v.entity_type = 'vendor'
-  AND ($tenant_id = '' OR v.tenant_id = $tenant_id)
-  AND ($runtime_id = '' OR v.runtime_id = $runtime_id)
-  AND (size($runtime_ids) = 0 OR v.runtime_id IN $runtime_ids)
-  AND ($source_id = '' OR v.source_id = $source_id)
-  AND ($q = '' OR toLower(coalesce(v.label, '')) CONTAINS $q OR toLower(v.urn) CONTAINS $q OR toLower(coalesce(v.attributes_json, '')) CONTAINS $q)
-OPTIONAL MATCH (v)<-[contract_rel:RELATION]-(contract:Entity)
-WHERE contract_rel.relation = 'associated_with' AND contract.entity_type = 'contract'
-OPTIONAL MATCH (v)<-[review_rel:RELATION]-(security_review:Entity)
-WHERE review_rel.relation = 'associated_with' AND security_review.entity_type = 'security.review'
-OPTIONAL MATCH (v)<-[questionnaire_rel:RELATION]-(questionnaire:Entity)
-WHERE questionnaire_rel.relation = 'associated_with' AND questionnaire.entity_type = 'security.questionnaire'
-OPTIONAL MATCH (v)<-[document_rel:RELATION]-(assurance_document:Entity)
-WHERE document_rel.relation = 'associated_with' AND assurance_document.entity_type = 'assurance.document'
-RETURN v.urn AS urn,
-       v.label AS label,
-       v.source_id AS source_id,
-       v.runtime_id AS runtime_id,
-       coalesce(v.attributes_json, '{}') AS attributes_json,
-       count(DISTINCT contract) AS contract_count,
-       count(DISTINCT security_review) AS security_review_count,
-       count(DISTINCT questionnaire) AS questionnaire_count,
-       count(DISTINCT assurance_document) AS assurance_document_count
-ORDER BY v.label ASC, v.urn ASC
-LIMIT $limit`
+func vendorCatalogFilter(tenantID, runtimeID string, runtimeIDs []string, sourceID, search, kind string) (ports.EntityCatalogFilter, bool) {
+	runtimes := nonEmptyStrings(runtimeIDs)
+	if value := strings.TrimSpace(runtimeID); value != "" {
+		if len(runtimes) > 0 && !slices.Contains(runtimes, value) {
+			return ports.EntityCatalogFilter{}, false
+		}
+		runtimes = []string{value}
+	}
+	return ports.EntityCatalogFilter{TenantID: tenantID, SourceID: strings.TrimSpace(sourceID), RuntimeIDs: runtimes, IncludeKinds: []string{kind}, Query: strings.TrimSpace(search), QueryAttributes: true}, true
+}
 
-const vendorDetailQuery = `MATCH (v:Entity)
-WHERE v.entity_type = 'vendor'
-  AND ($tenant_id = '' OR v.tenant_id = $tenant_id)
-  AND ($runtime_id = '' OR v.runtime_id = $runtime_id)
-  AND (size($runtime_ids) = 0 OR v.runtime_id IN $runtime_ids)
-  AND ($source_id = '' OR v.source_id = $source_id)
-  AND (
-    ($urn <> '' AND v.urn = $urn)
-    OR
-    ($vendor_id <> '' AND (
-      v.urn = $vendor_id
-      OR v.urn ENDS WITH ':' + $vendor_id
-      OR toLower(coalesce(v.label, '')) = $vendor_id_lc
-      OR toLower(coalesce(v.attributes_json, '')) CONTAINS $vendor_id_probe
-      OR toLower(coalesce(v.attributes_json, '')) CONTAINS $external_probe
-    ))
-  )
-OPTIONAL MATCH (v)<-[contract_rel:RELATION]-(contract:Entity)
-WHERE contract_rel.relation = 'associated_with' AND contract.entity_type = 'contract'
-OPTIONAL MATCH (v)<-[review_rel:RELATION]-(security_review:Entity)
-WHERE review_rel.relation = 'associated_with' AND security_review.entity_type = 'security.review'
-OPTIONAL MATCH (v)<-[questionnaire_rel:RELATION]-(questionnaire:Entity)
-WHERE questionnaire_rel.relation = 'associated_with' AND questionnaire.entity_type = 'security.questionnaire'
-OPTIONAL MATCH (v)<-[document_rel:RELATION]-(assurance_document:Entity)
-WHERE document_rel.relation = 'associated_with' AND assurance_document.entity_type = 'assurance.document'
-RETURN v.urn AS urn,
-       v.label AS label,
-       v.source_id AS source_id,
-       v.runtime_id AS runtime_id,
-       coalesce(v.attributes_json, '{}') AS attributes_json,
-       count(DISTINCT contract) AS contract_count,
-       count(DISTINCT security_review) AS security_review_count,
-       count(DISTINCT questionnaire) AS questionnaire_count,
-       count(DISTINCT assurance_document) AS assurance_document_count
-LIMIT 1`
+func catalogVendorRow(entity ports.CatalogEntity, counts []ports.EntityRelationCount) ports.CypherRow {
+	row := catalogCypherRow(entity)
+	fields := map[string]string{"contract": "contract_count", "security.review": "security_review_count", "security.questionnaire": "questionnaire_count", "assurance.document": "assurance_document_count"}
+	for _, count := range counts {
+		if count.AgentKey != entity.URN || count.Direction != ports.EntityRelationIncoming || count.Relation != "associated_with" {
+			continue
+		}
+		if field := fields[count.NeighborKind]; field != "" {
+			row.Values[field] = int64(count.Count) // #nosec G115 -- Rust count is bounded by tenant entities.
+		}
+	}
+	return row
+}
 
-const vendorRelationshipsQuery = `MATCH (v:Entity {urn: $urn})<-[rel:RELATION]-(e:Entity)
-WHERE rel.relation = 'associated_with'
-  AND e.entity_type IN ['contract', 'security.review', 'security.questionnaire', 'assurance.document', 'vendor.assessment', 'privacy.assessment', 'security.assessment', 'risk.assessment', 'legal.assessment']
-RETURN e.urn AS urn,
-       e.entity_type AS entity_type,
-       e.label AS label,
-       e.source_id AS source_id,
-       e.runtime_id AS runtime_id,
-       rel.relation AS relation,
-       coalesce(e.attributes_json, '{}') AS attributes_json
-UNION
-MATCH (v:Entity {urn: $urn})-[rel:RELATION]->(e:Entity)
-WHERE rel.relation IN ['owned_by', 'has_identifier', 'has_contact', 'uses_subprocessor', 'depends_on']
-  AND e.entity_type IN ['grc.user', 'user', 'internet.host', 'vendor.alias', 'vendor.contact', 'contact', 'vendor.fourth_party', 'fourth_party.vendor', 'subprocessor']
-RETURN e.urn AS urn,
-       e.entity_type AS entity_type,
-       e.label AS label,
-       e.source_id AS source_id,
-       e.runtime_id AS runtime_id,
-       rel.relation AS relation,
-       coalesce(e.attributes_json, '{}') AS attributes_json
-ORDER BY entity_type ASC, label ASC, urn ASC
-LIMIT $limit`
+func catalogCypherRow(entity ports.CatalogEntity) ports.CypherRow {
+	attributes, _ := json.Marshal(entity.Attributes)
+	return ports.CypherRow{Values: map[string]any{"urn": entity.URN, "tenant_id": entity.TenantID, "entity_type": entity.EntityType, "label": entity.Label, "source_id": entity.SourceID, "runtime_id": entity.RuntimeID, "attributes_json": string(attributes), "contract_count": int64(0), "security_review_count": int64(0), "questionnaire_count": int64(0), "assurance_document_count": int64(0)}}
+}
 
-const discoveryListQuery = `MATCH (d:Entity)
-WHERE d.entity_type = 'vendor.discovery'
-  AND ($tenant_id = '' OR d.tenant_id = $tenant_id)
-  AND ($runtime_id = '' OR d.runtime_id = $runtime_id)
-  AND (size($runtime_ids) = 0 OR d.runtime_id IN $runtime_ids)
-  AND ($source_id = '' OR d.source_id = $source_id)
-  AND ($q = '' OR toLower(coalesce(d.label, '')) CONTAINS $q OR toLower(d.urn) CONTAINS $q OR toLower(coalesce(d.attributes_json, '')) CONTAINS $q)
-RETURN d.urn AS urn,
-       d.label AS label,
-       d.source_id AS source_id,
-       d.runtime_id AS runtime_id,
-       coalesce(d.attributes_json, '{}') AS attributes_json
-ORDER BY d.label ASC, d.urn ASC
-LIMIT $limit`
+func tenantFromVendorURN(value string) string {
+	parsed, err := cerebrourn.Parse(value)
+	if err != nil {
+		return ""
+	}
+	return parsed.TenantID
+}
+
+func slicesMatchingVendorID(entities []ports.CatalogEntity, vendorID string) []ports.CatalogEntity {
+	vendorID = strings.ToLower(strings.TrimSpace(vendorID))
+	matched := make([]ports.CatalogEntity, 0, 1)
+	for _, entity := range entities {
+		if strings.EqualFold(urnTail(entity.URN), vendorID) || strings.EqualFold(entity.Label, vendorID) || strings.EqualFold(entity.Attributes["vendor_id"], vendorID) || strings.EqualFold(entity.Attributes["external_id"], vendorID) {
+			matched = append(matched, entity)
+		}
+	}
+	return matched
+}
+
+func vendorRelatedKinds() []string {
+	return []string{"contract", "security.review", "security.questionnaire", "assurance.document", "vendor.assessment", "privacy.assessment", "security.assessment", "risk.assessment", "legal.assessment", "grc.user", "user", "internet.host", "vendor.alias", "vendor.contact", "contact", "vendor.fourth_party", "fourth_party.vendor", "subprocessor"}
+}

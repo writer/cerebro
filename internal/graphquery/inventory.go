@@ -2,12 +2,12 @@ package graphquery
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 const (
@@ -109,38 +109,38 @@ func (s *Service) ListInventoryCategories(ctx context.Context, request Inventory
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
-	surfaceClause, surfaceParams := inventorySurfaceParams(request.Surface)
-	params := map[string]any{
-		"tenant_id":             tenantID,
-		"source_id":             strings.TrimSpace(request.SourceID),
-		"excluded_entity_types": excludedInventoryEntityTypes(),
-		"limit":                 normalizeInventoryLimit(request.Limit),
+	if tenantID == "" {
+		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	for key, value := range surfaceParams {
-		params[key] = value
+	store, ok := s.store.(ports.EntityCatalogStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
 	}
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: `MATCH (e:Entity)
-WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
-  AND ($source_id = '' OR e.source_id = $source_id)
-  AND NOT e.entity_type IN $excluded_entity_types
-` + surfaceClause + `
-RETURN e.entity_type AS entity_type, count(e) AS count
-ORDER BY count DESC, entity_type ASC
-LIMIT $limit`,
-		Params:   params,
-		RowLimit: normalizeInventoryLimit(request.Limit),
-	})
+	filter := inventoryCatalogFilter(tenantID, request.SourceID, request.Surface)
+	page, err := store.CountEntityKinds(ctx, ports.EntityKindCountRequest{Filter: filter, Limit: maxInventoryLimit})
 	if err != nil {
 		return nil, err
 	}
+	if page == nil || page.TenantID != tenantID || page.Truncated {
+		return nil, fmt.Errorf("%w: inventory category catalog is incomplete", ErrRuntimeUnavailable)
+	}
+	counts := append([]ports.EntityKindCount(nil), page.Counts...)
+	sort.Slice(counts, func(i, j int) bool {
+		if counts[i].Count != counts[j].Count {
+			return counts[i].Count > counts[j].Count
+		}
+		return counts[i].EntityKind < counts[j].EntityKind
+	})
+	if limit := normalizeInventoryLimit(request.Limit); len(counts) > limit {
+		counts = counts[:limit]
+	}
 	grouped := map[string]*InventoryCategory{}
-	for _, row := range rows {
-		entityType := rowString(row, "entity_type")
+	for _, value := range counts {
+		entityType := value.EntityKind
 		if entityType == "" {
 			continue
 		}
-		count := rowInt(row, "count")
+		count := boundedInventoryCount(value.Count)
 		id, label := inventoryCategoryForEntityType(entityType)
 		category := grouped[id]
 		if category == nil {
@@ -169,39 +169,30 @@ func (s *Service) ListInventoryAssets(ctx context.Context, request InventoryAsse
 		return nil, ErrRuntimeUnavailable
 	}
 	entityTypes := inventoryEntityTypesForFilter(request.CategoryID, request.EntityType)
-	query := strings.ToLower(strings.TrimSpace(request.Query))
-	surfaceClause, surfaceParams := inventorySurfaceParams(request.Surface)
-	params := map[string]any{
-		"tenant_id":             strings.TrimSpace(request.TenantID),
-		"source_id":             strings.TrimSpace(request.SourceID),
-		"entity_types":          entityTypes,
-		"excluded_entity_types": excludedInventoryEntityTypes(),
-		"q":                     query,
-		"limit":                 normalizeInventoryLimit(request.Limit),
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	for key, value := range surfaceParams {
-		params[key] = value
+	store, ok := s.store.(ports.EntityCatalogStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
 	}
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: `MATCH (e:Entity)
-WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
-  AND ($source_id = '' OR e.source_id = $source_id)
-  AND (size($entity_types) = 0 OR e.entity_type IN $entity_types)
-  AND NOT e.entity_type IN $excluded_entity_types
-` + surfaceClause + `
-  AND ($q = '' OR toLower(coalesce(e.label, '')) CONTAINS $q OR toLower(e.urn) CONTAINS $q OR toLower(coalesce(e.attributes_json, '')) CONTAINS $q)
-RETURN e.urn AS urn, e.entity_type AS entity_type, e.label AS label, e.source_id AS source_id, e.runtime_id AS runtime_id, coalesce(e.attributes_json, '{}') AS attributes_json
-ORDER BY e.entity_type ASC, e.label ASC, e.urn ASC
-LIMIT $limit`,
-		Params:   params,
-		RowLimit: normalizeInventoryLimit(request.Limit),
-	})
+	filter := inventoryCatalogFilter(tenantID, request.SourceID, request.Surface)
+	filter.Query = strings.TrimSpace(request.Query)
+	if len(entityTypes) > 0 {
+		filter.IncludeKinds = entityTypes
+		filter.IncludeKindPrefixes = nil
+	}
+	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: normalizeInventoryLimit(request.Limit)})
 	if err != nil {
 		return nil, err
 	}
-	assets := make([]InventoryAsset, 0, len(rows))
-	for _, row := range rows {
-		asset := inventoryAssetFromRow(row)
+	if page == nil || page.TenantID != tenantID {
+		return nil, ErrRuntimeUnavailable
+	}
+	assets := make([]InventoryAsset, 0, len(page.Entities))
+	for _, entity := range page.Entities {
+		asset := inventoryAssetFromCatalog(entity)
 		if strings.TrimSpace(asset.URN) != "" {
 			assets = append(assets, asset)
 		}
@@ -220,17 +211,19 @@ func (s *Service) GetInventoryAsset(ctx context.Context, request InventoryAssetD
 	if err := validateCerebroURN(urn); err != nil {
 		return nil, err
 	}
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: `MATCH (e:Entity {urn: $urn})
-RETURN e.urn AS urn, e.entity_type AS entity_type, e.label AS label, e.source_id AS source_id, e.runtime_id AS runtime_id, coalesce(e.attributes_json, '{}') AS attributes_json
-LIMIT 1`,
-		Params:   map[string]any{"urn": urn},
-		RowLimit: 1,
-	})
+	store, ok := s.store.(ports.EntityCatalogStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
+	}
+	tenantID := cerebrourn.TenantID(urn)
+	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn}, Limit: 1})
 	if err != nil {
 		return nil, err
 	}
-	if len(rows) == 0 {
+	if page == nil || page.TenantID != tenantID {
+		return nil, ErrRuntimeUnavailable
+	}
+	if len(page.Entities) == 0 {
 		return nil, ports.ErrGraphEntityNotFound
 	}
 	limit := normalizeInventoryLimit(request.Limit)
@@ -242,7 +235,7 @@ LIMIT 1`,
 		return nil, err
 	}
 	return &InventoryAssetDetail{
-		Asset: inventoryAssetFromRow(rows[0]),
+		Asset: inventoryAssetFromCatalog(page.Entities[0]),
 		Graph: graph,
 		Generated: map[string]InventorySignal{
 			"neighborhood": {Count: len(graph.Neighbors), State: "available"},
@@ -261,22 +254,35 @@ func normalizeInventoryLimit(limit uint32) int {
 	}
 }
 
-func inventoryAssetFromRow(row ports.CypherRow) InventoryAsset {
-	attrs := parseInventoryAttributes(rowString(row, "attributes_json"))
+func inventoryAssetFromCatalog(entity ports.CatalogEntity) InventoryAsset {
+	attrs := entity.Attributes
 	score, reasons := inventoryRisk(attrs)
-	return InventoryAsset{
-		URN:         rowString(row, "urn"),
-		EntityType:  rowString(row, "entity_type"),
-		Surface:     InventorySurfaceForEntityType(rowString(row, "entity_type")),
-		Label:       firstInventoryString(rowString(row, "label"), rowString(row, "urn")),
-		SourceID:    rowString(row, "source_id"),
-		RuntimeID:   rowString(row, "runtime_id"),
-		RiskScore:   score,
-		RiskLevel:   inventoryRiskLevel(score),
-		RiskReasons: reasons,
-		ScopeState:  "in_scope",
-		Attributes:  attrs,
+	return InventoryAsset{URN: entity.URN, EntityType: entity.EntityType, Surface: InventorySurfaceForEntityType(entity.EntityType), Label: firstInventoryString(entity.Label, entity.URN), SourceID: entity.SourceID, RuntimeID: entity.RuntimeID, RiskScore: score, RiskLevel: inventoryRiskLevel(score), RiskReasons: reasons, ScopeState: "in_scope", Attributes: attrs}
+}
+
+func inventoryCatalogFilter(tenantID, sourceID, surface string) ports.EntityCatalogFilter {
+	filter := ports.EntityCatalogFilter{TenantID: tenantID, SourceID: strings.TrimSpace(sourceID), ExcludeKinds: excludedInventoryEntityTypes(), QueryAttributes: true}
+	normalized := NormalizeInventorySurface(surface)
+	if normalized == InventorySurfaceAll {
+		return filter
 	}
+	if normalized == InventorySurfaceAsset {
+		rules := inventorySurfaceNonAssetRules()
+		filter.ExcludeKinds = append(filter.ExcludeKinds, rules.Exact...)
+		filter.ExcludeKindPrefixes = append(filter.ExcludeKindPrefixes, rules.Prefixes...)
+		return filter
+	}
+	rules := inventorySurfaceRules(normalized)
+	filter.IncludeKinds = append(filter.IncludeKinds, rules.Exact...)
+	filter.IncludeKindPrefixes = append(filter.IncludeKindPrefixes, rules.Prefixes...)
+	return filter
+}
+
+func boundedInventoryCount(value uint64) int {
+	if value > uint64(^uint(0)>>1) {
+		return int(^uint(0) >> 1)
+	}
+	return int(value)
 }
 
 func inventoryRisk(attrs map[string]string) (int, []string) {
@@ -349,66 +355,6 @@ func inventoryRiskLevel(score int) string {
 		return "low"
 	default:
 		return "unknown"
-	}
-}
-
-func parseInventoryAttributes(raw string) map[string]string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "{}" {
-		return nil
-	}
-	var values map[string]any
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
-		return nil
-	}
-	attrs := map[string]string{}
-	for key, value := range values {
-		if strings.TrimSpace(key) == "" || value == nil {
-			continue
-		}
-		switch typed := value.(type) {
-		case string:
-			if strings.TrimSpace(typed) != "" {
-				attrs[key] = typed
-			}
-		case float64, bool:
-			attrs[key] = fmt.Sprint(typed)
-		}
-	}
-	if len(attrs) == 0 {
-		return nil
-	}
-	return attrs
-}
-
-func rowString(row ports.CypherRow, key string) string {
-	value := row.Values[key]
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case fmt.Stringer:
-		return strings.TrimSpace(typed.String())
-	default:
-		if value == nil {
-			return ""
-		}
-		return strings.TrimSpace(fmt.Sprint(value))
-	}
-}
-
-func rowInt(row ports.CypherRow, key string) int {
-	value := row.Values[key]
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	default:
-		var parsed int
-		_, _ = fmt.Sscanf(fmt.Sprint(value), "%d", &parsed)
-		return parsed
 	}
 }
 
