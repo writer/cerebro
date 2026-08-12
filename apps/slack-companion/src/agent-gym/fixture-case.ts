@@ -68,6 +68,25 @@ export function agentGymFixtureCaseDigest(fixture: AgentGymFixtureCaseV1): strin
   });
 }
 
+/** Identifies scenario content independently of case metadata and partition. */
+export function agentGymFixtureScenarioDigest(fixture: AgentGymFixtureCaseV1): string {
+  const value = validateAgentGymFixtureCase(fixture);
+  return digestAgentGymJson({
+    expected_invariants: value.expected_invariants,
+    slack_events: value.slack_events.map((event) => ({
+      kind: event.kind,
+      payload: event.payload,
+    })),
+    tool_fixtures: value.tool_fixtures.map((tool) => ({
+      ...(tool.error_code === undefined ? {} : { error_code: tool.error_code }),
+      input: tool.input,
+      outcome: tool.outcome,
+      ...(tool.output === undefined ? {} : { output: tool.output }),
+      tool_id: tool.tool_id,
+    })),
+  });
+}
+
 const EVENT_KINDS: readonly AgentGymSlackEventKind[] = [
   "app_home_opened", "button_action", "direct_message", "mention",
   "message_changed", "message_deleted", "reaction_added", "thread_reply",
