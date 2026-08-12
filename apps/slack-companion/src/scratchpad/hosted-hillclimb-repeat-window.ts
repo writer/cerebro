@@ -11,10 +11,12 @@ export interface HostedHillclimbRepeatWindowV1 {
   };
   readonly comparison_count: number;
   readonly efficiency_regression_count: number;
+  readonly evaluation_span_ms: number;
   readonly first_evaluated_at: string;
   readonly last_evaluated_at: string;
   readonly maximum_absolute_judge_p95_latency_ms_delta: number;
   readonly maximum_absolute_model_token_count_delta: number;
+  readonly maximum_evaluation_gap_ms: number;
   readonly quality_instability_count: number;
   readonly schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1";
   readonly stability: {
@@ -40,6 +42,12 @@ export function buildHostedHillclimbRepeatWindow(
     }
     if (!sameComparisonBoundary(comparisons[0]!, comparison)) {
       throw new Error("Hosted hillclimb repeat window requires one corpus and execution boundary.");
+    }
+    const previousTime = Date.parse(comparison.previous_evaluated_at);
+    const currentTime = Date.parse(comparison.current_evaluated_at);
+    if (!Number.isFinite(previousTime) || !Number.isFinite(currentTime)
+      || currentTime <= previousTime) {
+      throw new Error("Hosted hillclimb repeat window requires increasing canonical times.");
     }
   }
   const stabilityBlockers = [
@@ -74,6 +82,9 @@ export function buildHostedHillclimbRepeatWindow(
     efficiency_regression_count: comparisons.filter(
       (comparison) => !comparison.efficiency_stable,
     ).length,
+    evaluation_span_ms:
+      Date.parse(comparisons[comparisons.length - 1]!.current_evaluated_at)
+      - Date.parse(comparisons[0]!.previous_evaluated_at),
     first_evaluated_at: comparisons[0]!.previous_evaluated_at,
     last_evaluated_at: comparisons[comparisons.length - 1]!.current_evaluated_at,
     maximum_absolute_judge_p95_latency_ms_delta: maximumAbsolute(comparisons.map(
@@ -81,6 +92,10 @@ export function buildHostedHillclimbRepeatWindow(
     )),
     maximum_absolute_model_token_count_delta: maximumAbsolute(comparisons.map(
       (comparison) => comparison.model_token_count_delta,
+    )),
+    maximum_evaluation_gap_ms: Math.max(...comparisons.map(
+      (comparison) => Date.parse(comparison.current_evaluated_at)
+        - Date.parse(comparison.previous_evaluated_at),
     )),
     quality_instability_count: comparisons.filter(
       (comparison) => !comparison.quality_stable,

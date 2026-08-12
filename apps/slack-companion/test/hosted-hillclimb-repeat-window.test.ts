@@ -63,10 +63,12 @@ test("seals a contiguous repeat comparison window", () => {
     },
     comparison_count: 2,
     efficiency_regression_count: 0,
+    evaluation_span_ms: 7_200_000,
     first_evaluated_at: "2026-08-12T16:00:00.000Z",
     last_evaluated_at: "2026-08-12T18:00:00.000Z",
     maximum_absolute_judge_p95_latency_ms_delta: 0,
     maximum_absolute_model_token_count_delta: 294,
+    maximum_evaluation_gap_ms: 3_600_000,
     quality_instability_count: 0,
     schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1",
     stability: { blockers: [], stable: true },
@@ -116,5 +118,13 @@ test("rejects repeat comparisons from another corpus or model boundary", () => {
       { ...second, judge_model_id: "us.anthropic.claude-opus-5-1" },
     ]),
     /one corpus and execution boundary/u,
+  );
+});
+
+test("rejects malformed repeat measurement time evidence", () => {
+  const malformed = comparison("not-a-time", "2026-08-12T17:00:00.000Z");
+  assert.throws(
+    () => buildHostedHillclimbRepeatWindow([malformed]),
+    /increasing canonical times/u,
   );
 });
