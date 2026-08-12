@@ -416,10 +416,13 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	originalCheckpoint := cloneCheckpoint(runtime.GetCheckpoint())
 	collectionID := sourceRuntimeCollectionID(runtime.GetId(), started)
 	for i := uint32(0); i < pageLimit; i++ {
+		pageStarted := time.Now()
+		phaseStarted := pageStarted
 		pull, err := readSourcePull(ctx, source, sourceConfig, cursor, originalCheckpoint)
 		if err != nil {
 			return nil, err
 		}
+		pullDuration := time.Since(phaseStarted)
 		pageNumber := i + 1
 		pageShortCircuitReason := string(pullShortCircuitReason(pull))
 		if pageShortCircuitReason != "" {
@@ -430,6 +433,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			reconciliationReason = pageReconciliationReason
 		}
 		eventsRead := boundedUint32(len(pull.Events))
+		phaseStarted = time.Now()
 		materializedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
 		for _, event := range pull.Events {
 			syncedEvent := materializeEvent(runtime, collectionID, event)
@@ -438,6 +442,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 			materializedEvents = append(materializedEvents, syncedEvent)
 		}
+		materializeDuration := time.Since(phaseStarted)
+		phaseStarted = time.Now()
 		admission, admissionErr := s.eventAdmitter.Admit(ctx, materializedEvents, eventContracts)
 		if admissionErr != nil {
 			if errors.Is(admissionErr, eventadmission.ErrBatchRejected) {
@@ -445,6 +451,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 			return nil, fmt.Errorf("admit source event batch: %w", admissionErr)
 		}
+		admissionDuration := time.Since(phaseStarted)
 		acceptedEvents := admission.Events
 		eventLimit := req.GetEventLimit()
 		if eventLimit > 0 && uint64(eventsAppended)+uint64(len(acceptedEvents)) > uint64(eventLimit) {
@@ -536,6 +543,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		pagesRead++
 		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
 		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
+		ledgerDuration := time.Duration(0)
+		phaseStarted = time.Now()
 		if ledgerEnabled {
 			if err := ledger.BeginSourceRuntimePage(ctx, ports.SourceRuntimePageAttempt{
 				AttemptID:      attemptID,
@@ -561,8 +570,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				return nil, err
 			}
 		}
+		ledgerDuration += time.Since(phaseStarted)
 		pageEntitiesProjected := uint32(0)
 		pageLinksProjected := uint32(0)
+		phaseStarted = time.Now()
 		if batcher, ok := s.appendLog.(ports.AppendLogBatcher); ok {
 			if err := batcher.AppendBatch(ctx, acceptedEvents); err != nil {
 				return nil, fmt.Errorf("append source event batch: %w", err)
@@ -576,16 +587,20 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				eventsAppended++
 			}
 		}
+		appendDuration := time.Since(phaseStarted)
 		for _, syncedEvent := range acceptedEvents {
 			if familyID := sourceEventFamilyID(syncedEvent); familyID != "" {
 				observedFamilies[familyID] = struct{}{}
 			}
 		}
+		phaseStarted = time.Now()
 		if ledgerEnabled {
 			if err := ledger.MarkSourceRuntimePageAppended(ctx, attemptID); err != nil {
 				return nil, err
 			}
 		}
+		ledgerDuration += time.Since(phaseStarted)
+		phaseStarted = time.Now()
 		if s.projector != nil {
 			for _, syncedEvent := range acceptedEvents {
 				result, err := s.projector.Project(ctx, syncedEvent)
@@ -598,6 +613,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				pageLinksProjected += result.LinksProjected
 			}
 		}
+		projectionDuration := time.Since(phaseStarted)
+		phaseStarted = time.Now()
 		if ledgerEnabled {
 			if err := ledger.MarkSourceRuntimePageProjected(ctx, attemptID, ports.SourceRuntimePageProjection{
 				EntitiesProjected: pageEntitiesProjected,
@@ -606,6 +623,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				return nil, err
 			}
 		}
+		ledgerDuration += time.Since(phaseStarted)
 		candidateRuntime.LastSyncedAt = timestamppb.Now()
 		updateRuntimeSyncStatus(candidateRuntime, runtimeSyncStatus{
 			Status:               "completed",
@@ -619,6 +637,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			ShortCircuitReason:   shortCircuitReason,
 			ReconciliationReason: reconciliationReason,
 		})
+		phaseStarted = time.Now()
 		if ledgerEnabled {
 			if err := ledger.CommitSourceRuntimePage(ctx, attemptID, candidateRuntime); err != nil {
 				return nil, err
@@ -628,6 +647,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				return nil, err
 			}
 		}
+		commitDuration := time.Since(phaseStarted)
 		runtime = candidateRuntime
 		checkpointAdvanced = runtimeCheckpointAdvanced(originalCheckpoint, runtime.GetCheckpoint())
 		pageCommittedAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
@@ -648,6 +668,22 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "reconciliation_reason", Value: pageReconciliationReason},
 		), runtime.GetCheckpoint())
 		telemetry.Event(ctx, "source_runtime.page_committed", pageCommittedAttrs)
+		telemetry.Event(ctx, "source_runtime.page_processing", telemetry.Attrs(
+			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+			telemetry.Field{Key: "page", Value: pageNumber},
+			telemetry.Field{Key: "events_read", Value: eventsRead},
+			telemetry.Field{Key: "events_accepted", Value: boundedUint32(len(acceptedEvents))},
+			telemetry.Field{Key: "pull_duration_ms", Value: durationMilliseconds(pullDuration)},
+			telemetry.Field{Key: "materialize_duration_ms", Value: durationMilliseconds(materializeDuration)},
+			telemetry.Field{Key: "admission_duration_ms", Value: durationMilliseconds(admissionDuration)},
+			telemetry.Field{Key: "ledger_duration_ms", Value: durationMilliseconds(ledgerDuration)},
+			telemetry.Field{Key: "append_duration_ms", Value: durationMilliseconds(appendDuration)},
+			telemetry.Field{Key: "projection_duration_ms", Value: durationMilliseconds(projectionDuration)},
+			telemetry.Field{Key: "commit_duration_ms", Value: durationMilliseconds(commitDuration)},
+			telemetry.Field{Key: "total_duration_ms", Value: durationMilliseconds(time.Since(pageStarted))},
+		))
 		telemetry.IncrementMain(ctx, "source_runtime.page.committed.count", 1)
 		telemetry.AnnotateMain(ctx, pageCommittedAttrs.With(telemetry.Attrs(
 			telemetry.Field{Key: "source_runtime.page.last_committed_number", Value: pageNumber},
@@ -726,6 +762,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		ReconciliationReason: reconciliationReason,
 		EventLimitReached:    eventLimitReached,
 	}, nil
+}
+
+func durationMilliseconds(duration time.Duration) float64 {
+	return float64(duration) / float64(time.Millisecond)
 }
 
 func sourceRuntimeTelemetryErrorKind(err error) string {

@@ -1400,6 +1400,44 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	}
 }
 
+func TestSyncRuntimeEmitsPageProcessingReceipt(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "test"}},
+	}}
+	service := New(registry, store, &batchAppendLog{}, &projector{})
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		if _, syncErr := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-github"}); syncErr != nil {
+			t.Fatalf("Sync() error = %v", syncErr)
+		}
+	})
+	payload := sourceRuntimeTelemetryEventPayload(t, stderr, "source_runtime.page_processing")
+	for key, want := range map[string]any{
+		"runtime_id":      "writer-github",
+		"source_id":       "github",
+		"tenant_id":       "writer",
+		"page":            float64(1),
+		"events_read":     float64(1),
+		"events_accepted": float64(1),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("page processing receipt %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	for _, key := range []string{
+		"pull_duration_ms", "materialize_duration_ms", "admission_duration_ms", "ledger_duration_ms",
+		"append_duration_ms", "projection_duration_ms", "commit_duration_ms", "total_duration_ms",
+	} {
+		if got, ok := payload[key].(float64); !ok || got < 0 {
+			t.Fatalf("page processing receipt %s = %#v, want non-negative duration", key, payload[key])
+		}
+	}
+}
+
 func TestMaterializeEventPinsSyncCollectionProvenance(t *testing.T) {
 	t.Parallel()
 

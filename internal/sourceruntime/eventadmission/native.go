@@ -15,6 +15,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/wasmhost"
 )
 
@@ -95,11 +96,26 @@ func (a *NativeAdmitter) Admit(ctx context.Context, events []*cerebrov1.EventEnv
 	a.mu.Unlock()
 	defer a.active.Done()
 
+	waitStarted := time.Now()
+	availableAtEnqueue := len(a.clients)
 	select {
 	case client := <-a.clients:
+		waitDuration := time.Since(waitStarted)
+		telemetry.Event(ctx, "source_runtime.event_admission_worker_acquired", telemetry.Attrs(
+			telemetry.Field{Key: "worker_pool_capacity", Value: cap(a.clients)},
+			telemetry.Field{Key: "workers_available_at_enqueue", Value: availableAtEnqueue},
+			telemetry.Field{Key: "queue_wait_duration_ms", Value: float64(waitDuration) / float64(time.Millisecond)},
+			telemetry.Field{Key: "queued", Value: availableAtEnqueue == 0},
+		))
 		defer func() { a.clients <- client }()
 		return admitNative(ctx, client, events, contracts)
 	case <-ctx.Done():
+		telemetry.Event(ctx, "source_runtime.event_admission_worker_wait_failed", telemetry.Attrs(
+			telemetry.Field{Key: "worker_pool_capacity", Value: cap(a.clients)},
+			telemetry.Field{Key: "workers_available_at_enqueue", Value: availableAtEnqueue},
+			telemetry.Field{Key: "queue_wait_duration_ms", Value: float64(time.Since(waitStarted)) / float64(time.Millisecond)},
+			telemetry.Field{Key: "error_kind", Value: "context_done"},
+		))
 		return Response{}, ctx.Err()
 	}
 }
