@@ -3376,13 +3376,15 @@ test("a restart reuses the durable Slack message binding without searching or po
       .digest("hex")
       .slice(0, 8)}-`;
     let updatedTs = "";
+    let updatedBlocks: unknown;
     const client = {
       chat: {
         postMessage: async () => {
           throw new Error("a durable binding must suppress a duplicate post");
         },
-        update: async (input: { ts: string }) => {
+        update: async (input: { blocks?: unknown; ts: string }) => {
           updatedTs = input.ts;
+          updatedBlocks = input.blocks;
         },
       },
       conversations: {
@@ -3424,6 +3426,12 @@ test("a restart reuses the durable Slack message binding without searching or po
       true,
     );
     assert.equal(updatedTs, "1710000000.000002");
+    const renderedBlocks = JSON.stringify(updatedBlocks);
+    assert.match(renderedBlocks, /Was this answer useful\?/u);
+    assert.match(renderedBlocks, /cerebro\.action\.[a-f0-9]{32}/u);
+    assert.match(renderedBlocks, /Missed source/u);
+    assert.match(renderedBlocks, /Wrong owner/u);
+    assert.match(renderedBlocks, /Needs follow-up/u);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -3621,6 +3629,83 @@ test("outcome store applies negative feedback before the durable 24-hour assessm
     const assessment = JSON.parse(await readFile(join(root, "assessments", assessmentFiles[0]!), "utf8"));
     assert.equal(assessment.negative_feedback_count, 1);
     assert.equal(assessment.verified_outcome_within_slo, false);
+    const evaluationFiles = await readdir(join(root, "evaluations"));
+    assert.equal(evaluationFiles.length, 1);
+    const evaluation = JSON.parse(
+      await readFile(join(root, "evaluations", evaluationFiles[0]!), "utf8"),
+    );
+    assert.equal(evaluation.partition, "train");
+    assert.equal(evaluation.blockers.includes("negative_feedback"), true);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("structured answer feedback is durable, idempotent, and reopens an assessed outcome", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-feedback-"));
+  let now = new Date("2026-07-19T10:00:01.000Z");
+  try {
+    const store = new FileOutcomeStore(root, {
+      clock: () => now,
+      log: () => undefined,
+    });
+    await store.recordPending({
+      delivered_message_ts: "1710000000.000001",
+      execution_lane: "lookup",
+      latency_budget_ms: 30_000,
+      negative_feedback_count: 0,
+      opened_at: "2026-07-18T10:00:00.000Z",
+      outcome_state: "completed",
+      request_id: "request-feedback",
+      schema_version: "assistant-turn-pending-outcome/v1",
+      user_correction_count: 0,
+      useful_answer_at: "2026-07-18T10:00:10.000Z",
+      verified: true,
+    });
+    assert.equal(await store.assessDue(createAssistantTurnHost(store)), 1);
+
+    const input = {
+      actor_ref: "slack-actor://sha256/actor",
+      answer_ref: "slack-answer://sha256/answer",
+      category: "missed_source" as const,
+      delivered_message_ts: "1710000000.000001",
+      observed_at: now.toISOString(),
+      tenant_ref: "slack-team://sha256/team",
+      thread_ref: "slack-thread://sha256/thread",
+    };
+    const first = await store.recordFeedback(input);
+    assert.ok(first);
+    const replay = await store.recordFeedback(input);
+    assert.deepEqual(replay, first);
+    const pendingFile = (await readdir(join(root, "pending")))[0]!;
+    const pendingPath = join(root, "pending", pendingFile);
+    const pendingAfterFeedback = JSON.parse(await readFile(pendingPath, "utf8"));
+    await writeFile(pendingPath, `${JSON.stringify({
+      ...pendingAfterFeedback,
+      assessed_at: now.toISOString(),
+      feedback_categories: undefined,
+      feedback_record_refs: undefined,
+      negative_feedback_count: 0,
+    })}\n`);
+    const delayedReplay = await store.recordFeedback({
+      ...input,
+      observed_at: "2026-07-19T10:00:01.500Z",
+    });
+    assert.deepEqual(delayedReplay, first);
+    assert.equal((await readdir(join(root, "feedback"))).length, 1);
+    assert.equal((await store.summary()).pending_count, 1);
+    const reconciledPending = JSON.parse(await readFile(pendingPath, "utf8"));
+    assert.deepEqual(reconciledPending.feedback_record_refs, [first.record_ref]);
+    assert.equal(reconciledPending.negative_feedback_count, 1);
+
+    now = new Date("2026-07-19T10:00:02.000Z");
+    assert.equal(await store.assessDue(createAssistantTurnHost(store)), 1);
+    const evaluationFile = (await readdir(join(root, "evaluations")))[0]!;
+    const evaluation = JSON.parse(
+      await readFile(join(root, "evaluations", evaluationFile), "utf8"),
+    );
+    assert.equal(evaluation.blockers.includes("missed_source_feedback"), true);
+    assert.equal((await store.summary()).pending_count, 0);
   } finally {
     await rm(root, { force: true, recursive: true });
   }

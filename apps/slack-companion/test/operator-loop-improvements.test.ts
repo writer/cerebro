@@ -78,10 +78,10 @@ test("memory retrieval evaluation is separate, bounded, and explicit when unavai
 
 test("operator Home reports scope, source health, memory, and follow-through", () => {
   const projection = projectSlackOperatorHome({
-    active_commitment_count: 2,
     enabled_capabilities: ["security findings", "source health"],
     memory_note_count: 7,
     notification_mode: "digest",
+    pending_outcome_count: 2,
     projection_key: "operator-home:U123",
     source_states: [
       { label: "Graph", state: "available" },
@@ -94,7 +94,18 @@ test("operator Home reports scope, source health, memory, and follow-through", (
   assert.match(rendered, /Scope: security findings, source health/u);
   assert.match(rendered, /Audit logs: degraded; Graph: available/u);
   assert.match(rendered, /Memory: 7 retained notes/u);
-  assert.match(rendered, /2 active commitments; notifications digest/u);
+  assert.match(rendered, /Outcome checks: 2 pending; notifications digest/u);
+
+  const unavailable = projectSlackOperatorHome({
+    enabled_capabilities: [],
+    notification_mode: "muted",
+    pending_outcome_count: 0,
+    projection_key: "operator-home:unknown-memory",
+    source_states: [],
+    statuses: [],
+    view_selector: "tenant-user:unknown-memory",
+  });
+  assert.match(JSON.stringify(unavailable.view.blocks), /Memory: unavailable/u);
 });
 
 test("effect approvals expose exact-input controls without authorizing the click", () => {

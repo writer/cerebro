@@ -7,10 +7,10 @@ export interface SlackOperatorSourceStateV1 {
 }
 
 export interface SlackOperatorHomeInputV1 {
-  readonly active_commitment_count: number;
   readonly enabled_capabilities: readonly string[];
-  readonly memory_note_count: number;
+  readonly memory_note_count?: number;
   readonly notification_mode: "immediate" | "digest" | "muted";
+  readonly pending_outcome_count: number;
   readonly projection_key: string;
   readonly source_states: readonly SlackOperatorSourceStateV1[];
   readonly statuses: readonly SlackStatusProjectionV1[];
@@ -23,8 +23,10 @@ export class SlackOperatorHomeError extends Error {}
 export function projectSlackOperatorHome(
   input: SlackOperatorHomeInputV1,
 ): SlackHomeProjectionV1 {
-  integer(input.active_commitment_count, "active commitment count");
-  integer(input.memory_note_count, "memory note count");
+  integer(input.pending_outcome_count, "pending outcome count");
+  if (input.memory_note_count !== undefined) {
+    integer(input.memory_note_count, "memory note count");
+  }
   if (!Array.isArray(input.enabled_capabilities) || input.enabled_capabilities.length > 20
     || new Set(input.enabled_capabilities).size !== input.enabled_capabilities.length) {
     throw new SlackOperatorHomeError("Enabled capabilities are invalid.");
@@ -46,8 +48,8 @@ export function projectSlackOperatorHome(
     summary: [
       `Scope: ${capabilities.length === 0 ? "No capabilities enabled" : capabilities.join(", ")}`,
       `Sources: ${sources.length === 0 ? "No source health reported" : sources.join("; ")}`,
-      `Memory: ${input.memory_note_count} retained notes`,
-      `Follow-through: ${input.active_commitment_count} active commitments; notifications ${input.notification_mode}`,
+      `Memory: ${input.memory_note_count === undefined ? "unavailable" : `${input.memory_note_count} retained notes`}`,
+      `Outcome checks: ${input.pending_outcome_count} pending; notifications ${input.notification_mode}`,
     ].join("\n"),
     title: "Cerebro operator state",
     view_selector: input.view_selector,

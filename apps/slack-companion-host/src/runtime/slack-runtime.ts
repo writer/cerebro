@@ -12,10 +12,16 @@ import {
   assistantTurnBudget,
   buildAssistantTurnEvidenceFallback,
   createToolCatalog,
+  decodeSlackActionEnvelope,
+  decideSlackAction,
   formatSlackThreadScratchpadContext,
   parseSlackRememberCommand,
   parseSlackThreadScratchpadCommand,
   preflightAssistantTurnInvocation,
+  projectSlackAnswerFeedbackActions,
+  projectSlackBlocks,
+  projectSlackOperatorHome,
+  SLACK_OPERATOR_ACTION_REGISTRY,
   projectAssistantTurnProgress,
   projectSlackMultipartDelivery,
   slackChannelContextScopeRef,
@@ -26,6 +32,7 @@ import {
   type SlackThreadScratchpadPort,
   type SlackThreadWorkingStateV1,
   type SlackThreadWorkingOutcome,
+  type AnswerFeedbackCategoryV1,
 } from "@writer/cerebro-slack-companion";
 import {
   AssistantTurnHostAdapter,
@@ -135,7 +142,12 @@ export interface SlackMentionClient extends SlackThreadRepliesClient {
       text: string;
       thread_ts: string;
     }): Promise<{ ts?: string }>;
-    update(input: { channel: string; text: string; ts: string }): Promise<unknown>;
+    update(input: {
+      blocks?: HomeView["blocks"];
+      channel: string;
+      text: string;
+      ts: string;
+    }): Promise<unknown>;
   };
 }
 
@@ -866,12 +878,16 @@ export class SlackCompanionRuntime {
       if (!context.teamId || !this.config.allowedTeamIds.has(context.teamId)) return;
       if (this.archetype) {
         try {
-          const view = await this.archetype.home({
+          const archetypeView = await this.archetype.home({
             slack: client,
             teamId: context.teamId,
             userId: event.user,
           });
-          await client.views.publish({ user_id: event.user, view });
+          const operatorView = await this.operatorHomeView(context.teamId, event.user);
+          await client.views.publish({
+            user_id: event.user,
+            view: mergeHomeViews(operatorView, archetypeView),
+          });
         } catch (error) {
           logArchetypeFailure("home", error);
           await client.views.publish({
@@ -883,8 +899,79 @@ export class SlackCompanionRuntime {
       }
       await client.views.publish({
         user_id: event.user,
-        view: environmentHomeView(this.config),
+        view: await this.operatorHomeView(context.teamId, event.user),
       });
+    });
+
+    this.app.action(/^cerebro\.action\.[a-f0-9]{32}$/u, async ({
+      ack,
+      action,
+      body,
+    }) => {
+      if (action.type !== "button" || !action.value) {
+        await ack();
+        return;
+      }
+      const teamId = body.team?.id;
+      const channelId = "channel" in body ? body.channel?.id : undefined;
+      const message = "message" in body ? body.message : undefined;
+      const messageTs = message?.ts;
+      const threadTs = "thread_ts" in (message ?? {})
+        && typeof message?.thread_ts === "string"
+        ? message.thread_ts
+        : messageTs;
+      if (
+        !teamId
+        || !channelId
+        || !messageTs
+        || !threadTs
+        || !this.config.allowedTeamIds.has(teamId)
+      ) {
+        await ack();
+        return;
+      }
+      let envelope: ReturnType<typeof decodeSlackActionEnvelope>;
+      try {
+        envelope = decodeSlackActionEnvelope(action.value);
+      } catch {
+        await ack();
+        return;
+      }
+      const decision = decideSlackAction(SLACK_OPERATOR_ACTION_REGISTRY, {
+        action: envelope,
+        available_capabilities: [{
+          capability_id: "assistant.feedback",
+          level: "required",
+          version: "v1",
+        }],
+      });
+      if (
+        decision.disposition !== "admit"
+        || envelope.command !== "answer_feedback"
+      ) {
+        await ack();
+        return;
+      }
+      const category = feedbackCategory(envelope.action);
+      if (category === undefined) {
+        await ack();
+        return;
+      }
+      const answerRef = slackAnswerRef(teamId, channelId, messageTs);
+      if (envelope.subject_ref !== answerRef) {
+        await ack();
+        return;
+      }
+      await this.outcomes.recordFeedback({
+        actor_ref: slackScratchpadAuthorRef(teamId, body.user.id),
+        answer_ref: answerRef,
+        category,
+        delivered_message_ts: messageTs,
+        observed_at: new Date().toISOString(),
+        tenant_ref: `slack-team://sha256/${digest(teamId)}`,
+        thread_ref: slackThreadScratchpadRef(teamId, channelId, threadTs),
+      });
+      await ack();
     });
 
     this.app.action(/^archetype_start_work_[0-9a-f]+$/u, async ({
@@ -999,6 +1086,28 @@ export class SlackCompanionRuntime {
         state: "failed",
       })}\n`);
     }
+  }
+
+  private async operatorHomeView(teamId: string, userId: string): Promise<HomeView> {
+    const summary = await this.outcomes.summary();
+    const projection = projectSlackOperatorHome({
+      enabled_capabilities: [
+        "Evidence-backed answers",
+        ...(this.config.rustAgentEnabled ? ["Durable work"] : []),
+        ...(this.archetype ? ["Assigned security work"] : []),
+      ],
+      notification_mode: this.config.notificationPreferences.enabled_classes.length === 0
+        ? "muted"
+        : this.config.notificationPreferences.enabled_classes.includes("digest")
+          ? "digest"
+          : "immediate",
+      pending_outcome_count: summary.pending_count,
+      projection_key: `operator-home-${digest(`${teamId}:${userId}`)}`,
+      source_states: [{ label: "Slack runtime", state: "available" }],
+      statuses: [],
+      view_selector: `operator-${digest(`${teamId}:${userId}`)}`,
+    });
+    return projection.view as HomeView;
   }
 
   private flushSlackIngress(): Promise<void> {
@@ -1549,6 +1658,16 @@ export async function handleSlackMention(input: {
     }
     await input.leaseGuard?.();
     await input.client.chat.update({
+      blocks: answerFeedbackBlocks({
+        answerRef: slackAnswerRef(
+          input.event.teamId,
+          input.event.channel,
+          deliveredMessageTs,
+        ),
+        deliveredAt,
+        deliveredText,
+        feedbackKey: requestKey,
+      }),
       channel: input.event.channel,
       text: deliveredText,
       ts: deliveredMessageTs,
@@ -1859,6 +1978,71 @@ export function environmentHomeView(
         }],
       },
     ],
+  };
+}
+
+function answerFeedbackBlocks(input: {
+  answerRef: string;
+  deliveredAt: string;
+  deliveredText: string;
+  feedbackKey: string;
+}): HomeView["blocks"] {
+  const actions = projectSlackAnswerFeedbackActions({
+    feedback_key: input.feedbackKey,
+    issued_at: input.deliveredAt,
+    subject_ref: input.answerRef,
+  });
+  const controls = projectSlackBlocks({
+    actions,
+    projection_key: `answer-feedback-${digest(input.answerRef)}`,
+    sections: ["Answer feedback"],
+  });
+  const actionBlock = controls.blocks.find((block) => block.type === "actions");
+  if (actionBlock === undefined) throw new Error("Answer feedback controls are incomplete.");
+  const answerBlocks = splitSlackSections(input.deliveredText).map((text) => ({
+    type: "section" as const,
+    text: { type: "mrkdwn" as const, text },
+  }));
+  return [
+    ...answerBlocks,
+    {
+      type: "context" as const,
+      elements: [{
+        type: "mrkdwn" as const,
+        text: "Was this answer useful?",
+      }],
+    },
+    actionBlock,
+  ] as HomeView["blocks"];
+}
+
+function splitSlackSections(value: string): string[] {
+  const characters = Array.from(value);
+  const sections: string[] = [];
+  for (let index = 0; index < characters.length; index += 2_800) {
+    sections.push(characters.slice(index, index + 2_800).join(""));
+  }
+  return sections.length === 0 ? ["No answer was delivered."] : sections;
+}
+
+function slackAnswerRef(teamId: string, channelId: string, messageTs: string): string {
+  return `slack-answer://sha256/${digest(`${teamId}:${channelId}:${messageTs}`)}`;
+}
+
+function feedbackCategory(actionId: string): AnswerFeedbackCategoryV1 | undefined {
+  switch (actionId) {
+    case "answer.feedback.helpful": return "helpful";
+    case "answer.feedback.missed_source": return "missed_source";
+    case "answer.feedback.wrong_owner": return "wrong_owner";
+    case "answer.feedback.needs_followup": return "needs_followup";
+    default: return undefined;
+  }
+}
+
+function mergeHomeViews(primary: HomeView, secondary: HomeView): HomeView {
+  return {
+    type: "home",
+    blocks: [...(primary.blocks ?? []), ...(secondary.blocks ?? [])].slice(0, 100),
   };
 }
 
