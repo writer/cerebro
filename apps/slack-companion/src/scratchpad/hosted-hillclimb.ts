@@ -492,8 +492,9 @@ function repairJudgePrompt(
   return `${originalPrompt}
 
 REPAIR REQUIRED
-Your previous score failed validation. Correct its JSON shape while scoring the
-original CASE and ANSWERS above.
+Your previous score failed validation. Re-evaluate both answers from the
+original rubric, CASE, and ANSWERS above. The invalid output is diagnostic
+input only: do not copy its numeric scores or default missing scores to zero.
 Every baseline and candidate object must contain all six required fields.
 Every score must be integer 0 or 1. reason_codes must be an array of at most 12
 snake_case strings. Return the complete JSON object and no markdown.
