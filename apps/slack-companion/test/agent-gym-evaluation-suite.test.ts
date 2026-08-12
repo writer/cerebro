@@ -13,6 +13,7 @@ import {
   defineAgentGymEvaluatorManifest,
   defineAgentGymEvaluatorRubric,
   estimateAgentGymPairedUncertainty,
+  issueAgentGymPromotionInput,
   planAgentGymEvaluationRun,
   pairAgentGymEvaluationRuns,
   recordAgentGymCaseEvaluation,
@@ -27,6 +28,7 @@ import {
   validateAgentGymPairedCaseDeltaReport,
   validateAgentGymPairedUncertainty,
   validateAgentGymPairedSliceReport,
+  validateAgentGymPromotionInput,
 } from "../src/index.js";
 
 test("evaluation suites seal admitted non-training cases", () => {
@@ -234,6 +236,35 @@ test("paired slices expose regressions by partition and label", () => {
   assert.deepEqual(validateAgentGymPairedSliceReport(report), report);
 });
 
+test("promotion inputs bind complete paired evidence and policy", () => {
+  const evidence = pairedEvidence();
+  const receipt = issueAgentGymPromotionInput(
+    evidence.comparison.pair,
+    evidence.deltas,
+    evidence.uncertainty,
+    evidence.slices,
+    promotionInputPolicy(),
+    "2026-08-12T11:09:00.000Z",
+  );
+  assert.equal(receipt.eligible, true);
+  assert.deepEqual(receipt.blocker_codes, []);
+  assert.deepEqual(validateAgentGymPromotionInput(receipt), receipt);
+});
+
+test("promotion inputs block a practical improvement below policy", () => {
+  const evidence = pairedEvidence();
+  const receipt = issueAgentGymPromotionInput(
+    evidence.comparison.pair,
+    evidence.deltas,
+    evidence.uncertainty,
+    evidence.slices,
+    { ...promotionInputPolicy(), minimum_mean_delta: 0.2 },
+    "2026-08-12T11:09:00.000Z",
+  );
+  assert.equal(receipt.eligible, false);
+  assert.deepEqual(receipt.blocker_codes, ["comparison.mean_below_threshold"]);
+});
+
 function evaluationSetup() {
   const fixtures = [
     fixture("train", "train", "Train request."),
@@ -413,6 +444,39 @@ function pairedComparisonSetup() {
     { pair_ref: "agent-gym-pair://nightly/one", paired_at: "2026-08-12T11:08:00.000Z" },
   );
   return { baseline, candidate, pair, setup, suite };
+}
+
+function pairedEvidence() {
+  const comparison = pairedComparisonSetup();
+  const deltas = calculateAgentGymPairedCaseDeltas(
+    comparison.pair,
+    comparison.baseline.result,
+    comparison.candidate.result,
+  );
+  const uncertainty = estimateAgentGymPairedUncertainty(deltas, {
+    confidence_level: 0.95,
+    policy_ref: "agent-gym-bootstrap-policy://nightly/default",
+    resample_count: 1_000,
+    schema_version: "agent-gym-paired-bootstrap-policy/v1",
+    seed_digest: comparison.pair.pair_digest,
+  });
+  return {
+    comparison,
+    deltas,
+    slices: summarizeAgentGymPairedSlices(comparison.suite, deltas),
+    uncertainty,
+  };
+}
+
+function promotionInputPolicy() {
+  return {
+    maximum_case_regressions: 0,
+    minimum_mean_delta: 0.05,
+    minimum_probability_positive: 0.95,
+    policy_ref: "agent-gym-promotion-input-policy://default/v1",
+    required_slice_ids: ["partition:held_out", "partition:shadow"],
+    schema_version: "agent-gym-promotion-input-policy/v1" as const,
+  };
 }
 
 function runPlanInput() {
