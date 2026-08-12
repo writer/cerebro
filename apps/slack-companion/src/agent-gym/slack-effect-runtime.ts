@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 import type { AgentGymSlackEffectV1 } from "./slack-effects.js";
 
 export interface AgentGymSlackEffectAdmissionV1 {

@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 
 export interface AgentGymRunSummaryV1 {
   readonly artifact_refs: readonly string[];

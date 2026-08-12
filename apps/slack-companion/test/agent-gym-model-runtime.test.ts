@@ -3,12 +3,169 @@ import test from "node:test";
 
 import {
   agentGymModelRequestDigest,
+  AgentGymModelInvocationError,
+  createAgentGymModelInvocationLedger,
+  decideAgentGymModelRetry,
+  invokeAgentGymModelWithRetry,
   evaluateAgentGymModelBudget,
   invokeAgentGymModel,
   RecordedAgentGymModel,
+  runAgentGymModelBatch,
   validateAgentGymRecordedModelResponse,
+  validateAgentGymModelFailure,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+test("model batches replay requests in declared order", async () => {
+  const first = request();
+  const second = {
+    ...request(),
+    invocation_ref: "model-invocation://case-two/one",
+    messages: [{ role: "user" as const, text: "Summarize the second case." }],
+  };
+  const model = new RecordedAgentGymModel([
+    recordedResponse(first),
+    recordedResponse(second),
+  ]);
+  const batch = await runAgentGymModelBatch(
+    "model-batch://one",
+    [first, second],
+    modelBudget(),
+    model,
+    "2026-08-12T09:45:00.000Z",
+  );
+  assert.deepEqual(batch.results.map((result) => result.receipt.invocation_ref), [
+    first.invocation_ref,
+    second.invocation_ref,
+  ]);
+  assert.equal(batch.ledger.invocation_count, 2);
+});
+
+test("model batches reject duplicate invocation identities", async () => {
+  await assert.rejects(runAgentGymModelBatch(
+    "model-batch://one",
+    [request(), request()],
+    modelBudget(),
+    new RecordedAgentGymModel([recordedResponse()]),
+    "2026-08-12T09:45:00.000Z",
+  ), /model batch is invalid/u);
+});
+
+test("model invocation ledgers aggregate replay cost and blockers", async () => {
+  const modelRequest = request();
+  const result = await invokeAgentGymModel(
+    modelRequest,
+    modelBudget(),
+    new RecordedAgentGymModel([recordedResponse(modelRequest)]),
+    "2026-08-12T09:45:00.000Z",
+  );
+  const ledger = createAgentGymModelInvocationLedger([result.receipt]);
+  assert.equal(ledger.invocation_count, 1);
+  assert.equal(ledger.recorded_invocation_count, 1);
+  assert.equal(ledger.blocked_invocation_count, 0);
+  assert.equal(ledger.total_tokens, 25);
+});
+
+test("model invocation ledgers reject duplicate invocation identities", async () => {
+  const modelRequest = request();
+  const result = await invokeAgentGymModel(
+    modelRequest,
+    modelBudget(),
+    new RecordedAgentGymModel([recordedResponse(modelRequest)]),
+    "2026-08-12T09:45:00.000Z",
+  );
+  assert.throws(() => createAgentGymModelInvocationLedger([
+    result.receipt, result.receipt,
+  ]), /invocation ledger is invalid/u);
+});
+
+test("model retry execution advances virtual time without sleeping", async () => {
+  let invocationCount = 0;
+  const result = await invokeAgentGymModelWithRetry(request(), retryPolicy(), {
+    async invoke() {
+      invocationCount += 1;
+      if (invocationCount < 3) throw new AgentGymModelInvocationError(retryableFailure());
+      return modelResponse();
+    },
+  });
+  assert.equal(result.virtual_elapsed_ms, 350);
+  assert.deepEqual(result.attempts.map((attempt) => attempt.outcome), [
+    "failure", "failure", "success",
+  ]);
+});
+
+test("model retry execution propagates terminal failures", async () => {
+  const failure = { ...retryableFailure(), retryable: false };
+  await assert.rejects(invokeAgentGymModelWithRetry(request(), retryPolicy(), {
+    async invoke() { throw new AgentGymModelInvocationError(failure); },
+  }), (error: unknown) => error instanceof AgentGymModelInvocationError
+    && error.failure.error_code === "provider.throttled");
+});
+
+function retryPolicy() {
+  return {
+    backoff_ms: [100, 250],
+    max_attempts: 3,
+    max_elapsed_ms: 1_000,
+    retryable_error_codes: ["provider.throttled"],
+    schema_version: "agent-gym-model-retry-policy/v1" as const,
+  };
+}
+
+function retryableFailure() {
+  return {
+    error_code: "provider.throttled",
+    invocation_ref: "model-invocation://one",
+    message: "The model provider throttled the request.",
+    model_id: "recorded.model-v1",
+    retryable: true,
+    schema_version: "agent-gym-model-failure/v1" as const,
+  };
+}
+
+test("model retry decisions use deterministic backoff", () => {
+  assert.deepEqual(decideAgentGymModelRetry(retryPolicy(), retryableFailure(), 1, 20), {
+    attempt: 1,
+    delay_ms: 100,
+    reason_code: "retry.scheduled",
+    retry: true,
+    schema_version: "agent-gym-model-retry-decision/v1",
+  });
+});
+
+test("model retry decisions stop at the attempt boundary", () => {
+  const decision = decideAgentGymModelRetry(retryPolicy(), retryableFailure(), 3, 500);
+  assert.equal(decision.retry, false);
+  assert.equal(decision.reason_code, "retry.attempts_exhausted");
+});
+
+test("model failures retain retry and provider correlation", () => {
+  const failure = validateAgentGymModelFailure({
+    error_code: "provider.throttled",
+    invocation_ref: "model-invocation://one",
+    message: "The model provider throttled the request.",
+    model_id: "recorded.model-v1",
+    provider_request_ref: "provider-request://one",
+    retry_after_ms: 250,
+    retryable: true,
+    schema_version: "agent-gym-model-failure/v1",
+  });
+  const error = new AgentGymModelInvocationError(failure);
+  assert.equal(error.failure.retry_after_ms, 250);
+  assert.equal(error.name, "AgentGymModelInvocationError");
+});
+
+test("model failures reject retry delay on terminal errors", () => {
+  assert.throws(() => validateAgentGymModelFailure({
+    error_code: "request.invalid",
+    invocation_ref: "model-invocation://one",
+    message: "The request is invalid.",
+    model_id: "recorded.model-v1",
+    retry_after_ms: 250,
+    retryable: false,
+    schema_version: "agent-gym-model-failure/v1",
+  }), /model failure is invalid/u);
+});
 
 test("model invocation receipts bind request, response, and budget", async () => {
   const modelRequest = request();

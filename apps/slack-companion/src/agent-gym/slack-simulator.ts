@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AgentGymJson, AgentGymSlackEventV1 } from "./fixture-case.js";
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 
 export type AgentGymSlackInvocationRoute =
   | "assistant_turn"

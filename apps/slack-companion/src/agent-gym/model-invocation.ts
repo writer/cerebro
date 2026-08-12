@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 import {
   evaluateAgentGymModelBudget,
   type AgentGymModelBudgetEvaluationV1,

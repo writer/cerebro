@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 
 export interface AgentGymCandidateManifestV1 {
   readonly candidate_ref: string;

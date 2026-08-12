@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 
 export interface AgentGymReplayTurnV1 {
   readonly content_digest: `sha256:${string}`;

@@ -1,4 +1,4 @@
-import { AgentGymContractError } from "./index.js";
+import { AgentGymContractError } from "./contract-error.js";
 
 export interface AgentGymSliceDeltaV1 {
   readonly baseline_score: number;
