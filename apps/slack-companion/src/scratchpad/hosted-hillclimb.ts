@@ -169,6 +169,7 @@ const MAX_GENERATOR_TOKENS = 320;
 const MAX_JUDGE_TOKENS = 700;
 const MAX_JUDGE_ATTEMPTS = 3;
 const OPUS_MODEL_MARKER = "anthropic.claude-opus-";
+const CLAUDE_MODEL_MARKER = "anthropic.claude-";
 const MINIMUM_CANDIDATE_RATE = 0.9;
 const REQUIRED_AUTHORITY_RATE = 1;
 const MAXIMUM_RESTATEMENT_RATE = 0.1;
@@ -694,12 +695,19 @@ function validateOptions(options: HostedHillclimbOptions): void {
       throw new Error(`Hosted hillclimb ${label} is missing or unbounded.`);
     }
   }
-  if (
-    !isOpusModelId(options.generator_model_id)
-    || !isOpusModelId(options.judge_model_id)
-  ) {
+  if (!isOpusModelId(options.generator_model_id)) {
     throw new Error(
-      "Cerebro working-state hillclimbs require AWS-hosted Claude Opus models.",
+      "Cerebro working-state hillclimb generation requires an AWS-hosted Claude Opus model.",
+    );
+  }
+  if (!isClaudeModelId(options.judge_model_id)) {
+    throw new Error(
+      "Cerebro working-state hillclimb judging requires an AWS-hosted Claude model.",
+    );
+  }
+  if (options.generator_model_id === options.judge_model_id) {
+    throw new Error(
+      "Cerebro working-state hillclimb judging requires a model distinct from generation.",
     );
   }
 }
@@ -713,6 +721,20 @@ function isOpusModelId(modelId: string): boolean {
     return false;
   }
   const suffix = modelId.slice(markerIndex + OPUS_MODEL_MARKER.length);
+  return suffix.length > 0 && [...suffix].every((character) =>
+    character === "."
+    || character === "-"
+    || character >= "0" && character <= "9"
+    || character >= "a" && character <= "z"
+  );
+}
+
+function isClaudeModelId(modelId: string): boolean {
+  const markerIndex = modelId.indexOf(CLAUDE_MODEL_MARKER);
+  if (markerIndex <= 0 || ![".", "/"].includes(modelId[markerIndex - 1]!)) {
+    return false;
+  }
+  const suffix = modelId.slice(markerIndex + CLAUDE_MODEL_MARKER.length);
   return suffix.length > 0 && [...suffix].every((character) =>
     character === "."
     || character === "-"
