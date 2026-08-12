@@ -7439,6 +7439,21 @@ mod tests {
         assert!(appraisal.history.contains("one useful implication"));
         assert!(quality_contract(appraisal.case_ref).contains("exact prior miss"));
         assert!(quality_contract(appraisal.case_ref).contains("another task as proof"));
+        let behavior_change_cases = cases
+            .iter()
+            .filter(|case| case.case_ref.contains("behavior-change-boundary"))
+            .collect::<Vec<_>>();
+        assert_eq!(behavior_change_cases.len(), 2);
+        assert!(behavior_change_cases.iter().any(|case| {
+            case.expected_route == ExecutionLane::Converse && !case.false_converse
+        }));
+        assert!(behavior_change_cases.iter().any(|case| {
+            case.expected_route == ExecutionLane::Investigate && case.false_converse
+        }));
+        assert!(
+            quality_contract(behavior_change_cases[0].case_ref)
+                .contains("higher or steadier score proves only the measured candidate")
+        );
         validate_candidate_payload(&eval_request(0, appraisal, "2026-08-03T03:00:00Z"))
             .expect("embedded regression requests remain production-shaped");
         assert!(

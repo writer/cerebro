@@ -6703,6 +6703,12 @@ mod tests {
             "When the requested lane is converse and the operator is appraising this exchange"
         ));
         assert!(session_instructions().contains(
+            "Measurement, scoring, simulation, or observation of behavior is not itself a change"
+        ));
+        assert!(
+            route_instructions().contains("evaluated artifact and the operative deployed artifact")
+        );
+        assert!(session_instructions().contains(
             "current-system facts explicitly supplied by the operator may be used as attributed premises"
         ));
         assert!(
