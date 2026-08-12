@@ -3,12 +3,42 @@ import test from "node:test";
 
 import {
   agentGymModelRequestDigest,
+  AgentGymModelInvocationError,
   evaluateAgentGymModelBudget,
   invokeAgentGymModel,
   RecordedAgentGymModel,
   validateAgentGymRecordedModelResponse,
+  validateAgentGymModelFailure,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+test("model failures retain retry and provider correlation", () => {
+  const failure = validateAgentGymModelFailure({
+    error_code: "provider.throttled",
+    invocation_ref: "model-invocation://one",
+    message: "The model provider throttled the request.",
+    model_id: "recorded.model-v1",
+    provider_request_ref: "provider-request://one",
+    retry_after_ms: 250,
+    retryable: true,
+    schema_version: "agent-gym-model-failure/v1",
+  });
+  const error = new AgentGymModelInvocationError(failure);
+  assert.equal(error.failure.retry_after_ms, 250);
+  assert.equal(error.name, "AgentGymModelInvocationError");
+});
+
+test("model failures reject retry delay on terminal errors", () => {
+  assert.throws(() => validateAgentGymModelFailure({
+    error_code: "request.invalid",
+    invocation_ref: "model-invocation://one",
+    message: "The request is invalid.",
+    model_id: "recorded.model-v1",
+    retry_after_ms: 250,
+    retryable: false,
+    schema_version: "agent-gym-model-failure/v1",
+  }), /model failure is invalid/u);
+});
 
 test("model invocation receipts bind request, response, and budget", async () => {
   const modelRequest = request();
