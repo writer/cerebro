@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   defineAgentGymEvaluatorManifest,
   defineAgentGymEvaluatorRubric,
+  recordAgentGymCaseEvaluation,
 } from "../src/index.js";
 
 test("evaluator rubrics seal ordered metric policy", () => {
@@ -32,6 +33,35 @@ test("deterministic evaluator manifests reject model configuration", () => {
     ...modelJudgeManifestInput(),
     evaluator_kind: "deterministic",
   }), /evaluator manifest is invalid/u);
+});
+
+test("case evaluations bind ordered metrics to exact evaluator versions", () => {
+  const rubric = defineAgentGymEvaluatorRubric(rubricInput());
+  const modelJudge = defineAgentGymEvaluatorManifest(modelJudgeManifestInput());
+  const deterministic = defineAgentGymEvaluatorManifest(deterministicManifestInput());
+  const evaluation = recordAgentGymCaseEvaluation(rubric, [modelJudge, deterministic], {
+    ...caseEvaluationInput(),
+    metrics: [
+      { evaluator_digest: modelJudge.evaluator_digest, metric_id: "answer.grounded", reason_codes: [], score: 0.9 },
+      { evaluator_digest: deterministic.evaluator_digest, metric_id: "effect.authorized", reason_codes: [], score: 1 },
+    ],
+  });
+  assert.equal(evaluation.valid, true);
+  assert.equal(evaluation.weighted_score, 2.8 / 3);
+  assert.deepEqual(evaluation.blocker_codes, []);
+});
+
+test("invalid evaluator output cannot carry candidate scores", () => {
+  const rubric = defineAgentGymEvaluatorRubric(rubricInput());
+  assert.throws(() => recordAgentGymCaseEvaluation(rubric, [
+    defineAgentGymEvaluatorManifest(modelJudgeManifestInput()),
+    defineAgentGymEvaluatorManifest(deterministicManifestInput()),
+  ], {
+    ...caseEvaluationInput(),
+    invalid_reason_codes: ["judge.output_schema_mismatch"],
+    metrics: [{ evaluator_digest: digest("d"), metric_id: "answer.grounded", reason_codes: [], score: 1 }],
+    valid: false,
+  }), /case evaluation is invalid/u);
 });
 
 function rubricInput() {
@@ -69,6 +99,31 @@ function modelJudgeManifestInput() {
     output_schema_digest: digest("c"),
     rubric_digest: defineAgentGymEvaluatorRubric(rubricInput()).rubric_digest,
     schema_version: "agent-gym-evaluator-manifest/v1" as const,
+  };
+}
+
+function deterministicManifestInput() {
+  return {
+    evaluator_kind: "deterministic" as const,
+    evaluator_ref: "agent-gym-evaluator://effect-authority/v1",
+    implementation_digest: digest("d"),
+    output_schema_digest: digest("e"),
+    rubric_digest: defineAgentGymEvaluatorRubric(rubricInput()).rubric_digest,
+    schema_version: "agent-gym-evaluator-manifest/v1" as const,
+  };
+}
+
+function caseEvaluationInput() {
+  return {
+    candidate_ref: "agent-gym-candidate://slack/challenger",
+    case_ref: "agent-gym-case://slack/held-out-one",
+    evaluated_at: "2026-08-12T10:45:00.000Z",
+    evaluation_ref: "agent-gym-evaluation://nightly/held-out-one",
+    invalid_reason_codes: [],
+    metrics: [],
+    replay_ref: "agent-gym-replay://nightly/held-out-one",
+    schema_version: "agent-gym-case-evaluation/v1" as const,
+    valid: true,
   };
 }
 
