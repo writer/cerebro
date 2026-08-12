@@ -82,6 +82,10 @@ test("seals a contiguous repeat comparison window", () => {
     maximum_absolute_judge_p95_latency_ms_delta: 0,
     maximum_absolute_model_token_count_delta: 294,
     maximum_evaluation_gap_ms: 3_600_000,
+    policy: {
+      maximum_window_span_ms: 86_400_000,
+      minimum_comparison_count: 2,
+    },
     quality_instability_count: 0,
     schema_version: "slack-working-state-hosted-hillclimb-repeat-window/v1",
     stability: { blockers: [], stable: true },
@@ -111,15 +115,29 @@ test("applies an explicit bounded repeat sample policy", () => {
   );
   assert.equal(buildHostedHillclimbRepeatWindow(
     [oneComparison],
-    { minimum_comparison_count: 1 },
+    { maximum_window_span_ms: 3_600_000, minimum_comparison_count: 1 },
   ).stability.stable, true);
   assert.throws(
     () => buildHostedHillclimbRepeatWindow(
       [oneComparison],
-      { minimum_comparison_count: 0 },
+      { maximum_window_span_ms: 3_600_000, minimum_comparison_count: 0 },
     ),
     /bounded sample minimum/u,
   );
+});
+
+test("blocks repeat evidence collected outside the admitted time span", () => {
+  const window = buildHostedHillclimbRepeatWindow([
+    comparison("2026-08-12T16:00:00.000Z", "2026-08-12T17:00:00.000Z"),
+    comparison("2026-08-12T17:00:00.000Z", "2026-08-12T18:00:00.000Z"),
+  ], {
+    maximum_window_span_ms: 3_600_000,
+    minimum_comparison_count: 2,
+  });
+  assert.deepEqual(window.stability, {
+    blockers: ["repeat_window_too_wide"],
+    stable: false,
+  });
 });
 
 test("rejects an empty or discontinuous repeat window", () => {
