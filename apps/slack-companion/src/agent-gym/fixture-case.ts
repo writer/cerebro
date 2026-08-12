@@ -1,4 +1,5 @@
 import { AgentGymContractError } from "./contract-error.js";
+import { digestAgentGymJson } from "./canonical-json.js";
 
 export type AgentGymJson =
   | boolean | number | string | null
@@ -39,6 +40,32 @@ export interface AgentGymFixtureCaseV1 {
   readonly schema_version: "agent-gym-fixture-case/v1";
   readonly slack_events: readonly AgentGymSlackEventV1[];
   readonly tool_fixtures: readonly AgentGymToolFixtureV1[];
+}
+
+/** Returns the stable content identity of a validated fixture case. */
+export function agentGymFixtureCaseDigest(fixture: AgentGymFixtureCaseV1): string {
+  const value = validateAgentGymFixtureCase(fixture);
+  return digestAgentGymJson({
+    case_ref: value.case_ref,
+    expected_invariants: value.expected_invariants,
+    labels: value.labels,
+    partition: value.partition,
+    schema_version: value.schema_version,
+    slack_events: value.slack_events.map((event) => ({
+      event_ref: event.event_ref,
+      kind: event.kind,
+      occurred_at: event.occurred_at,
+      payload: event.payload,
+    })),
+    tool_fixtures: value.tool_fixtures.map((tool) => ({
+      call_ref: tool.call_ref,
+      ...(tool.error_code === undefined ? {} : { error_code: tool.error_code }),
+      input: tool.input,
+      outcome: tool.outcome,
+      ...(tool.output === undefined ? {} : { output: tool.output }),
+      tool_id: tool.tool_id,
+    })),
+  });
 }
 
 const EVENT_KINDS: readonly AgentGymSlackEventKind[] = [
