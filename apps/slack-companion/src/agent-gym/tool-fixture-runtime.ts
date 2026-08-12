@@ -66,6 +66,45 @@ export interface AgentGymToolCallValidationV1 {
   readonly valid: boolean;
 }
 
+export interface AgentGymToolUsageAnalysisV1 {
+  readonly call_count: number;
+  readonly schema_version: "agent-gym-tool-usage-analysis/v1";
+  readonly unregistered_tool_ids: readonly string[];
+  readonly unused_tool_ids: readonly string[];
+  readonly used_tool_ids: readonly string[];
+}
+
+/** Reports excess registry surface and calls outside the declared tool boundary. */
+export function analyzeAgentGymToolUsage(
+  registry: AgentGymToolRegistrySnapshotV1,
+  calls: readonly AgentGymToolCallV1[],
+): AgentGymToolUsageAnalysisV1 {
+  if (!Array.isArray(calls) || calls.length > 10_000) invalidToolUsage();
+  const callRefs = new Set<string>();
+  const calledToolIds = new Set<string>();
+  for (const call of calls) {
+    reference(call.call_ref, invalidToolUsage);
+    toolIdentifier(call.tool_id, invalidToolUsage);
+    if (callRefs.has(call.call_ref)) invalidToolUsage();
+    callRefs.add(call.call_ref);
+    calledToolIds.add(call.tool_id);
+  }
+  const registeredToolIds = new Set(registry.tools.map((tool) => tool.tool_id));
+  const usedToolIds = [...calledToolIds]
+    .filter((toolId) => registeredToolIds.has(toolId)).sort();
+  const unusedToolIds = [...registeredToolIds]
+    .filter((toolId) => !calledToolIds.has(toolId)).sort();
+  const unregisteredToolIds = [...calledToolIds]
+    .filter((toolId) => !registeredToolIds.has(toolId)).sort();
+  return Object.freeze({
+    call_count: calls.length,
+    schema_version: "agent-gym-tool-usage-analysis/v1",
+    unregistered_tool_ids: Object.freeze(unregisteredToolIds),
+    unused_tool_ids: Object.freeze(unusedToolIds),
+    used_tool_ids: Object.freeze(usedToolIds),
+  });
+}
+
 /** Validates a replayed call against the frozen registry's JSON Schema subset. */
 export function validateAgentGymToolCall(
   registry: AgentGymToolRegistrySnapshotV1,
@@ -280,4 +319,8 @@ function invalidAuthorization(): never {
 
 function invalidToolCall(): never {
   throw new AgentGymContractError("Agent gym tool call is invalid.");
+}
+
+function invalidToolUsage(): never {
+  throw new AgentGymContractError("Agent gym tool usage is invalid.");
 }

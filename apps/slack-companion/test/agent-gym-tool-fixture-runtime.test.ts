@@ -2,12 +2,37 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  analyzeAgentGymToolUsage,
   createAgentGymAuthorizationFixture,
   createAgentGymStaleEvidenceFixture,
   createAgentGymToolPageFixture,
   createAgentGymToolRegistry,
   validateAgentGymToolCall,
 } from "../src/index.js";
+
+test("tool usage analysis identifies unused and unregistered tools", () => {
+  const registry = createAgentGymToolRegistry([
+    { description: "Read evidence.", input_schema: { type: "object" }, tool_id: "evidence.read" },
+    { description: "Read work.", input_schema: { type: "object" }, tool_id: "work.read" },
+  ]);
+  const analysis = analyzeAgentGymToolUsage(registry, [
+    { call_ref: "tool-call://one", input: {}, tool_id: "evidence.read" },
+    { call_ref: "tool-call://two", input: {}, tool_id: "unknown.read" },
+  ]);
+  assert.deepEqual(analysis.used_tool_ids, ["evidence.read"]);
+  assert.deepEqual(analysis.unused_tool_ids, ["work.read"]);
+  assert.deepEqual(analysis.unregistered_tool_ids, ["unknown.read"]);
+});
+
+test("tool usage analysis rejects duplicate call references", () => {
+  const registry = createAgentGymToolRegistry([
+    { description: "Read evidence.", input_schema: { type: "object" }, tool_id: "evidence.read" },
+  ]);
+  assert.throws(() => analyzeAgentGymToolUsage(registry, [
+    { call_ref: "tool-call://one", input: {}, tool_id: "evidence.read" },
+    { call_ref: "tool-call://one", input: {}, tool_id: "evidence.read" },
+  ]), /tool usage is invalid/u);
+});
 
 test("tool-call validation reports missing required input", () => {
   const registry = createAgentGymToolRegistry([{
