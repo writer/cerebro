@@ -2,10 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  simulateSlackAppHomeOpened,
   simulateSlackDirectMessage,
   simulateSlackMention,
   simulateSlackThreadReply,
 } from "../src/index.js";
+
+test("App Home simulation emits a publish request without message text", () => {
+  const invocation = simulateSlackAppHomeOpened({
+    event_ref: "slack-event://home/one",
+    kind: "app_home_opened",
+    occurred_at: "2026-08-12T08:33:00.000Z",
+    payload: { tab: "home", team_id: "T_ONE", user_id: "U_ONE" },
+  });
+  assert.equal(invocation.route, "publish_home");
+  assert.equal(invocation.text, undefined);
+  assert.equal(invocation.action, undefined);
+  assert.match(invocation.conversation_ref, /^slack-home:\/\/sha256\/[0-9a-f]{64}$/u);
+});
+
+test("App Home simulation rejects non-home tabs", () => {
+  assert.throws(() => simulateSlackAppHomeOpened({
+    event_ref: "slack-event://home/messages",
+    kind: "app_home_opened",
+    occurred_at: "2026-08-12T08:33:00.000Z",
+    payload: { tab: "messages", team_id: "T_ONE", user_id: "U_ONE" },
+  }), /App Home tab is invalid/u);
+});
 
 test("thread-reply simulation preserves the root conversation identity", () => {
   const base = {
