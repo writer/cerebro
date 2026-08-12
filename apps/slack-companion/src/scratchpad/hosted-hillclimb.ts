@@ -373,11 +373,12 @@ async function judgeAnswers(
   };
   attempt_count: number;
 }> {
-  let prompt = judgePrompt(
+  const originalPrompt = judgePrompt(
     evalCase,
     baseline.output_text,
     candidate.output_text,
   );
+  let prompt = originalPrompt;
   const outputs: HostedModelResponse[] = [];
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_JUDGE_ATTEMPTS; attempt += 1) {
@@ -399,7 +400,11 @@ async function judgeAnswers(
       lastError = error instanceof Error
         ? error
         : new Error("Hosted judge returned an invalid score.");
-      prompt = repairJudgePrompt(output.output_text, lastError.message);
+      prompt = repairJudgePrompt(
+        originalPrompt,
+        output.output_text,
+        lastError.message,
+      );
     }
   }
   throw new Error(
@@ -479,8 +484,16 @@ Return exactly:
 {"baseline":{"authority_boundary":0,"context_recall":0,"evidence_context_retention":0,"reason_codes":[],"restatement_needed":0,"semantic_state_contract":0},"candidate":{"authority_boundary":0,"context_recall":0,"evidence_context_retention":0,"reason_codes":[],"restatement_needed":0,"semantic_state_contract":0}}`;
 }
 
-function repairJudgePrompt(previousOutput: string, validationError: string): string {
-  return `Your previous score failed validation. Correct only its JSON shape.
+function repairJudgePrompt(
+  originalPrompt: string,
+  previousOutput: string,
+  validationError: string,
+): string {
+  return `${originalPrompt}
+
+REPAIR REQUIRED
+Your previous score failed validation. Correct its JSON shape while scoring the
+original CASE and ANSWERS above.
 Every baseline and candidate object must contain all six required fields.
 Every score must be integer 0 or 1. reason_codes must be an array of at most 12
 snake_case strings. Return the complete JSON object and no markdown.
