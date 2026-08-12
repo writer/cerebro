@@ -10,10 +10,12 @@ import {
   recordAgentGymRollbackActionReceipt,
   sealAgentGymPostRolloutWindow,
   triggerAgentGymRollback,
+  verifyAgentGymRollback,
   validateAgentGymRollbackReserve,
   validateAgentGymRollbackTrigger,
   validateAgentGymRollbackActionReceipt,
   validateAgentGymRollbackStateObservation,
+  validateAgentGymRollbackVerification,
   validateAgentGymPostRolloutObservation,
   validateAgentGymPostRolloutWindow,
   validateAgentGymPostRolloutGate,
@@ -185,6 +187,44 @@ test("rollback executors cannot independently observe their own action", () => {
     observer_ref: "agent-gym-executor://rollout/default",
   }), /rollback state observation is invalid/u);
 });
+
+test("rollback verification closes only from independently observed fallback state", () => {
+  const verification = verifyAgentGymRollback(rollbackTrigger(), appliedRollbackReceipt(), rollbackObservation(), {
+    evidence_refs: ["agent-gym-evidence://rollback/verification-one"],
+    verification_ref: "agent-gym-rollback-verification://nightly/one",
+    verified_at: "2026-08-12T11:35:00.000Z",
+  });
+  assert.equal(verification.outcome, "verified");
+  assert.deepEqual(validateAgentGymRollbackVerification(verification), verification);
+});
+
+test("rollback verification remains indeterminate when state is unavailable", () => {
+  const observation = observeAgentGymRollbackState(appliedRollbackReceipt(), {
+    availability: "unavailable",
+    evidence_refs: ["agent-gym-evidence://rollback/state-unavailable"],
+    observation_ref: "agent-gym-rollback-state-observation://nightly/unavailable",
+    observed_at: "2026-08-12T11:34:00.000Z",
+    observed_candidate_ref: null,
+    observer_ref: "agent-gym-observer://rollout/independent",
+  });
+  const verification = verifyAgentGymRollback(rollbackTrigger(), appliedRollbackReceipt(), observation, {
+    evidence_refs: ["agent-gym-evidence://rollback/verification-unavailable"],
+    verification_ref: "agent-gym-rollback-verification://nightly/unavailable",
+    verified_at: "2026-08-12T11:35:00.000Z",
+  });
+  assert.equal(verification.outcome, "indeterminate");
+});
+
+function rollbackObservation() {
+  return observeAgentGymRollbackState(appliedRollbackReceipt(), {
+    availability: "available",
+    evidence_refs: ["agent-gym-evidence://rollback/state-one"],
+    observation_ref: "agent-gym-rollback-state-observation://nightly/one",
+    observed_at: "2026-08-12T11:34:00.000Z",
+    observed_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    observer_ref: "agent-gym-observer://rollout/independent",
+  });
+}
 
 function appliedRollbackReceipt() {
   return recordAgentGymRollbackActionReceipt(rollbackTrigger(), {
