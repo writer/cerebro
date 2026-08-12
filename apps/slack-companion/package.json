@@ -27,6 +27,7 @@
     "directory": "apps/slack-companion"
   },
   "scripts": {
+    "agent-gym": "npm run build --silent && node dist/src/agent-gym/run-cli.js",
     "build": "tsc -p tsconfig.json",
     "check": "npm run typecheck && npm test",
     "eval:hillclimb": "npm run build --silent && node dist/src/scratchpad/run-hillclimb-bedrock.js",

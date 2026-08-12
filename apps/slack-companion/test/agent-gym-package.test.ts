@@ -4,9 +4,14 @@ import test from "node:test";
 import {
   AgentGymContractError,
   CEREBRO_AGENT_GYM,
+  identifyAgentGymArtifact,
+  parseAgentGymCliCommand,
   validateAgentGymCandidateManifest,
+  validateAgentGymComparison,
+  validateAgentGymPromotionDecision,
   validateAgentGymFixtureCase,
   validateAgentGymReplayRun,
+  validateAgentGymRunSummary,
   validateAgentGymScorecard,
 } from "../src/index.js";
 
@@ -17,6 +22,92 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("run summaries expose exact CI case counts and blockers", () => {
+  const summary = validateAgentGymRunSummary({
+    artifact_refs: ["artifact://sha256/one"],
+    blocker_codes: [],
+    candidate_ref: "candidate://agent-gym/one",
+    completed_at: "2026-08-12T08:04:00.000Z",
+    failed_case_count: 0,
+    passed_case_count: 40,
+    run_ref: "run://agent-gym/one",
+    schema_version: "agent-gym-run-summary/v1",
+    status: "passed",
+    total_case_count: 40,
+  });
+  assert.equal(summary.status, "passed");
+  assert.throws(() => validateAgentGymRunSummary({
+    ...summary,
+    failed_case_count: 1,
+  }), /run summary is invalid/u);
+});
+
+test("agent gym CLI parses bounded machine-readable commands", () => {
+  assert.deepEqual(parseAgentGymCliCommand([
+    "replay", "fixtures/one.json", "--output", "ndjson",
+  ]), {
+    command: "replay",
+    input_paths: ["fixtures/one.json"],
+    output: "ndjson",
+    schema_version: "agent-gym-cli-command/v1",
+  });
+  assert.throws(() => parseAgentGymCliCommand(["replay", "--unknown"]), /CLI command is invalid/u);
+});
+
+test("artifact identities are portable content addresses", () => {
+  const first = identifyAgentGymArtifact(Buffer.from("{\"ok\":true}\n"), "application/json");
+  const second = identifyAgentGymArtifact(Buffer.from("{\"ok\":true}\n"), "application/json");
+  assert.deepEqual(first, second);
+  assert.match(first.content_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.throws(() => identifyAgentGymArtifact(new Uint8Array(), "text/plain"), /artifact is invalid/u);
+});
+
+test("promotion decisions require held-out evidence and no safety blockers", () => {
+  const decision = validateAgentGymPromotionDecision({
+    baseline_candidate_ref: "candidate://agent-gym/baseline",
+    candidate_ref: "candidate://agent-gym/one",
+    comparison_ref: "comparison://agent-gym/one",
+    decided_at: "2026-08-12T08:03:00.000Z",
+    decision_ref: "promotion://agent-gym/one",
+    disposition: "promote",
+    held_out_passed: true,
+    reason_codes: ["credible_practical_gain"],
+    safety_blocker_codes: [],
+    schema_version: "agent-gym-promotion-decision/v1",
+  });
+  assert.equal(decision.disposition, "promote");
+  assert.throws(() => validateAgentGymPromotionDecision({
+    ...decision,
+    held_out_passed: false,
+  }), /promotion decision is invalid/u);
+});
+
+test("comparisons retain paired confidence and protected slice deltas", () => {
+  const comparison = validateAgentGymComparison({
+    baseline_candidate_ref: "candidate://agent-gym/baseline",
+    candidate_ref: "candidate://agent-gym/one",
+    compared_at: "2026-08-12T08:02:00.000Z",
+    comparison_ref: "comparison://agent-gym/one",
+    confidence_interval_95: [0.02, 0.08],
+    paired_case_count: 40,
+    practical_threshold: 0.02,
+    schema_version: "agent-gym-comparison/v1",
+    slices: [{
+      baseline_score: 0.8,
+      candidate_score: 0.85,
+      case_count: 20,
+      delta: 0.05,
+      slice_id: "evidence",
+    }],
+    weighted_score_delta: 0.05,
+  });
+  assert.equal(Object.isFrozen(comparison.confidence_interval_95), true);
+  assert.throws(() => validateAgentGymComparison({
+    ...comparison,
+    confidence_interval_95: [0.06, 0.08],
+  }), /comparison is invalid/u);
 });
 
 test("scorecards fail closed when deterministic invariants fail", () => {
