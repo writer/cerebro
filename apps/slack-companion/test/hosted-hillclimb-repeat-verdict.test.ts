@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { decideHostedHillclimbRepeatVerdict } from
+import {
+  decideHostedHillclimbRepeatVerdict,
+  validateHostedHillclimbRepeatVerdict,
+} from
   "../src/scratchpad/hosted-hillclimb-repeat-verdict.js";
 import type { HostedHillclimbRepeatWindowV1 } from
   "../src/scratchpad/hosted-hillclimb-repeat-window.js";
@@ -53,6 +56,9 @@ test("projects a stable content-free repeat verdict", () => {
   assert.deepEqual(verdict.blockers, []);
   assert.equal(verdict.generator_model_id, "us.anthropic.claude-opus-4-8");
   assert.equal(verdict.judge_model_id, "us.anthropic.claude-opus-5");
+  assert.match(verdict.window_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.match(verdict.verdict_digest, /^sha256:[0-9a-f]{64}$/u);
+  assert.deepEqual(validateHostedHillclimbRepeatVerdict(verdict), verdict);
 });
 
 test("holds a repeat verdict with exact window blockers", () => {
@@ -60,4 +66,15 @@ test("holds a repeat verdict with exact window blockers", () => {
   assert.equal(verdict.decision, "hold");
   assert.deepEqual(verdict.blockers, ["repeat_quality_regressed"]);
   assert.equal(verdict.judge_repair_increase_count, 1);
+});
+
+test("rejects a tampered repeat verdict digest", () => {
+  const verdict = decideHostedHillclimbRepeatVerdict(window(true));
+  assert.throws(
+    () => validateHostedHillclimbRepeatVerdict({
+      ...verdict,
+      comparison_count: verdict.comparison_count + 1,
+    }),
+    /repeat verdict is invalid/u,
+  );
 });
