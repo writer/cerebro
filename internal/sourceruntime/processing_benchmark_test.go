@@ -102,7 +102,7 @@ func BenchmarkSyncProcessingPipeline(b *testing.B) {
 					"processing-benchmark": {Id: "processing-benchmark", SourceId: "processing_benchmark", TenantId: "benchmark"},
 				}
 				response, syncErr := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
-					Id: "processing-benchmark", PageLimit: uint32(workload.pages),
+					Id: "processing-benchmark", PageLimit: boundedUint32(workload.pages),
 				})
 				if syncErr != nil {
 					b.Fatal(syncErr)
