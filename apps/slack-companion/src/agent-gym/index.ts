@@ -63,6 +63,7 @@ export * from "./regression-replay-result.js";
 export * from "./regression-replay-evaluation.js";
 export * from "./regression-replay-comparison.js";
 export * from "./regression-replay-admission.js";
+export * from "./regression-replay-request-pair.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
