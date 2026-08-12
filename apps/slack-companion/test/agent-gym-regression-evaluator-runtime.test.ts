@@ -7,6 +7,7 @@ import { bindAgentGymRegressionReplayEvaluators, validateAgentGymRegressionRepla
 import { validateAgentGymRegressionReplayEvaluatorInput, validateAgentGymRegressionReplayEvaluatorOutput } from "../src/agent-gym/regression-replay-evaluator-port.js";
 import { buildAgentGymRegressionReplayEvaluatorInputs } from "../src/agent-gym/regression-replay-evaluator-inputs.js";
 import { executeAgentGymRegressionReplayEvaluators } from "../src/agent-gym/regression-replay-evaluator-execution.js";
+import { recordExecutedAgentGymRegressionReplayEvaluation } from "../src/agent-gym/regression-replay-runtime-evaluation.js";
 import { bindAgentGymRegressionReplayRequests } from "../src/agent-gym/regression-replay-request-pair.js";
 import { checkAgentGymRegressionReplayParity } from "../src/agent-gym/regression-replay-parity.js";
 import { executeAgentGymRegressionReplay } from "../src/agent-gym/regression-replay-execution.js";
@@ -104,6 +105,36 @@ test("rejects evaluator output bound to another candidate", async () => {
       evidence_digest: sha("8"), safety_passed: true,
       schema_version: "agent-gym-regression-replay-evaluator-output/v1", score: 0.8 };
   } }), /evaluator execution is invalid/u);
+});
+
+test("records validated evaluator execution as durable paired evidence", async () => {
+  const { evaluatorBinding, execution, replayResult } = await runtimeBundle();
+  const inputs = buildAgentGymRegressionReplayEvaluatorInputs(evaluatorBinding, replayResult, execution);
+  const evaluated = await executeAgentGymRegressionReplayEvaluators(inputs, { async evaluate(input) {
+    const baseline = input.candidate_ref === replayResult.baseline.candidate_ref;
+    return { binding_digest: input.binding_digest, blocker_codes: baseline ? ["safety_regression"] : [],
+      candidate_ref: input.candidate_ref, evidence_digest: baseline ? sha("9") : sha("a"), safety_passed: !baseline,
+      schema_version: "agent-gym-regression-replay-evaluator-output/v1", score: baseline ? 0.4 : 0.95 };
+  } });
+  const durable = recordExecutedAgentGymRegressionReplayEvaluation(replayResult, evaluatorBinding, evaluated, {
+    evaluated_at: "2026-08-12T14:02:00.000Z", evaluation_ref: "agent-gym-replay-evaluation://regression/runtime",
+  });
+  assert.equal(durable.baseline.safety_passed, false);
+  assert.equal(durable.challenger.score, 0.95);
+  assert.equal(JSON.stringify(durable).includes("answer:"), false);
+});
+
+test("rejects evaluator execution for another binding", async () => {
+  const { evaluatorBinding, execution, replayResult } = await runtimeBundle();
+  const inputs = buildAgentGymRegressionReplayEvaluatorInputs(evaluatorBinding, replayResult, execution);
+  const evaluated = await executeAgentGymRegressionReplayEvaluators(inputs, { async evaluate(input) {
+    return { binding_digest: input.binding_digest, blocker_codes: [], candidate_ref: input.candidate_ref,
+      evidence_digest: sha("b"), safety_passed: true,
+      schema_version: "agent-gym-regression-replay-evaluator-output/v1", score: 0.8 };
+  } });
+  assert.throws(() => recordExecutedAgentGymRegressionReplayEvaluation(replayResult, evaluatorBinding,
+    { ...evaluated, binding_digest: sha("c") }, { evaluated_at: "2026-08-12T14:02:00.000Z",
+      evaluation_ref: "agent-gym-replay-evaluation://regression/invalid" }));
 });
 
 test("rejects evaluator evidence that was not admitted", () => {
