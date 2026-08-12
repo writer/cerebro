@@ -3,7 +3,11 @@ import test from "node:test";
 
 import {
   digestAgentGymJson,
+  agentGymFixtureScenarioDigest,
+  inspectAgentGymRegressionDuplicates,
   validateAgentGymRegressionSanitization,
+  validateAgentGymRegressionDuplicateReport,
+  type AgentGymFixtureCaseV1,
   verifyAgentGymRegressionSanitization,
   type AgentGymRegressionLearningCandidateV1,
 } from "../src/index.js";
@@ -34,6 +38,39 @@ test("regression sanitization rejects remaining prohibited values", () => {
     verification_ref: "agent-gym-regression-sanitization://nightly/invalid",
   }), /regression sanitization is invalid/u);
 });
+
+test("regression duplicate reports admit a distinct scenario", () => {
+  const report = inspectAgentGymRegressionDuplicates(sanitization(digest("b")), [fixtureCase()],
+    "agent-gym-regression-duplicate-report://nightly/one");
+  assert.equal(report.admissible, true);
+  assert.deepEqual(validateAgentGymRegressionDuplicateReport(report), report);
+});
+
+test("regression duplicate reports name matching existing cases", () => {
+  const fixture = fixtureCase();
+  const report = inspectAgentGymRegressionDuplicates(sanitization(agentGymFixtureScenarioDigest(fixture)), [fixture],
+    "agent-gym-regression-duplicate-report://nightly/duplicate");
+  assert.equal(report.admissible, false);
+  assert.deepEqual(report.duplicate_case_refs, [fixture.case_ref]);
+});
+
+function sanitization(scenarioDigest: string) {
+  return verifyAgentGymRegressionSanitization(learningCandidate(), {
+    evidence_refs: ["agent-gym-evidence://sanitization/one"], prohibited_value_count: 0, redaction_count: 3,
+    sanitized_scenario_digest: scenarioDigest, sanitizer_ref: "agent-gym-sanitizer://portable/default",
+    source_content_digest: digest("c"), verified_at: "2026-08-12T11:38:00.000Z",
+    verification_ref: "agent-gym-regression-sanitization://nightly/one",
+  });
+}
+
+function fixtureCase(): AgentGymFixtureCaseV1 {
+  return {
+    case_ref: "agent-gym-case://existing/one", expected_invariants: ["answer_is_grounded"], labels: ["regression"],
+    partition: "train", schema_version: "agent-gym-fixture-case/v1",
+    slack_events: [{ event_ref: "agent-gym-event://existing/one", kind: "mention",
+      occurred_at: "2026-08-12T11:00:00.000Z", payload: { text: "sanitized request" } }], tool_fixtures: [],
+  };
+}
 
 function learningCandidate(): AgentGymRegressionLearningCandidateV1 {
   const body = {
