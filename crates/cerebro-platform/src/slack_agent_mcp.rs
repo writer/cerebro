@@ -11,7 +11,7 @@ use cerebro_agent_runtime::{
 use hmac::{Hmac, KeyInit, Mac};
 use reqwest::{
     Client, Url,
-    header::{ACCEPT, AUTHORIZATION},
+    header::{ACCEPT, AUTHORIZATION, USER_AGENT},
 };
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -25,6 +25,7 @@ const MCP_TOOLSETS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_TOOLSETS";
 const MCP_OBSERVE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_OBSERVE_TOOLS";
 const MCP_PROPOSE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_PROPOSE_TOOLS";
 const MCP_ACTUATE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS";
+const MCP_USER_AGENT: &str = concat!("cerebro-platform/", env!("CARGO_PKG_VERSION"));
 const MAX_MCP_TOOLS: usize = 256;
 const MAX_SCHEMA_BYTES: usize = 8 * 1024;
 const MAX_MCP_RESPONSE_BYTES: usize = 1024 * 1024;
@@ -408,6 +409,7 @@ impl McpAgentTools {
             .client
             .post(self.endpoint.clone())
             .header(ACCEPT, "application/json, text/event-stream")
+            .header(USER_AGENT, MCP_USER_AGENT)
             .header(AUTHORIZATION, format!("Bearer {}", self.bearer_token))
             .header("MCP-Protocol-Version", "2025-03-26")
             .header("X-Cerebro-MCP-Toolsets", &self.toolsets)
@@ -545,6 +547,7 @@ async fn list_tools(
         let response = client
             .post(endpoint.clone())
             .header(ACCEPT, "application/json, text/event-stream")
+            .header(USER_AGENT, MCP_USER_AGENT)
             .header(AUTHORIZATION, format!("Bearer {bearer_token}"))
             .header("MCP-Protocol-Version", "2025-03-26")
             .header("X-Cerebro-MCP-Toolsets", toolsets)
@@ -1262,6 +1265,7 @@ mod tests {
         Json(request): Json<Value>,
     ) -> Json<Value> {
         assert_eq!(headers.get(AUTHORIZATION).unwrap(), "Bearer tenant-token");
+        assert_eq!(headers.get("User-Agent").unwrap(), MCP_USER_AGENT);
         assert_eq!(headers.get("MCP-Protocol-Version").unwrap(), "2025-03-26");
         assert_eq!(headers.get("X-Cerebro-MCP-Toolsets").unwrap(), "task");
         assert_eq!(headers.get("X-Cerebro-Tenant").unwrap(), "tenant-a");
