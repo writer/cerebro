@@ -37,6 +37,7 @@ export * from "./canary-observation.js";
 export * from "./canary-window.js";
 export * from "./canary-gate.js";
 export * from "./canary-action-plan.js";
+export * from "./canary-action-receipt.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";

@@ -5,12 +5,14 @@ import {
   digestAgentGymJson,
   decideAgentGymCanaryGate,
   planAgentGymCanaryAction,
+  recordAgentGymCanaryAction,
   recordAgentGymCanaryObservation,
   sealAgentGymCanaryWindow,
   validateAgentGymCanaryObservation,
   validateAgentGymCanaryWindow,
   validateAgentGymCanaryGateDecision,
   validateAgentGymCanaryActionPlan,
+  validateAgentGymCanaryActionReceipt,
   type AgentGymChampionTransitionV1,
 } from "../src/index.js";
 
@@ -126,6 +128,46 @@ test("rollback decisions cannot increase candidate traffic", () => {
     },
   ), /canary action plan is invalid/u);
 });
+
+test("canary action receipts prove the rollback candidate is active", () => {
+  const receipt = recordAgentGymCanaryAction(rollbackActionPlan(), {
+    completed_at: "2026-08-12T11:22:00.000Z",
+    executor_ref: "agent-gym-executor://canary/default",
+    failure_codes: [],
+    observed_active_candidate_ref: "agent-gym-candidate://nightly/baseline",
+    observed_candidate_traffic_percent: 0,
+    receipt_ref: "agent-gym-canary-action-receipt://nightly/rollback",
+    started_at: "2026-08-12T11:21:00.000Z",
+    status: "applied",
+  });
+  assert.equal(receipt.status, "applied");
+  assert.equal(receipt.observed_candidate_traffic_percent, 0);
+  assert.deepEqual(validateAgentGymCanaryActionReceipt(receipt), receipt);
+});
+
+test("canary action receipts preserve indeterminate state without guessing", () => {
+  const receipt = recordAgentGymCanaryAction(rollbackActionPlan(), {
+    completed_at: "2026-08-12T11:22:00.000Z",
+    executor_ref: "agent-gym-executor://canary/default",
+    failure_codes: ["action.observation_unavailable"],
+    observed_active_candidate_ref: null,
+    observed_candidate_traffic_percent: null,
+    receipt_ref: "agent-gym-canary-action-receipt://nightly/indeterminate",
+    started_at: "2026-08-12T11:21:00.000Z",
+    status: "indeterminate",
+  });
+  assert.equal(receipt.status, "indeterminate");
+  assert.equal(receipt.observed_active_candidate_ref, null);
+});
+
+function rollbackActionPlan() {
+  return planAgentGymCanaryAction(championTransition(), canaryGateDecision(), canaryActionPolicy(), {
+    action_ref: "agent-gym-canary-action://nightly/rollback",
+    expires_at: "2026-08-12T11:30:00.000Z",
+    planned_at: "2026-08-12T11:20:00.000Z",
+    requested_traffic_percent: 0,
+  });
+}
 
 function canaryGateDecision() {
   return decideAgentGymCanaryGate(canaryWindow(), canaryPolicy(), {
