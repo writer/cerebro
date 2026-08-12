@@ -6,9 +6,11 @@ import { validateAgentGymRegressionReplayPlan, type AgentGymRegressionReplayPlan
 export interface AgentGymRegressionReplayRequestPairV1 {
   readonly baseline_candidate_ref: string;
   readonly baseline_messages_digest: string;
+  readonly baseline_max_output_tokens: number;
   readonly baseline_request_digest: string;
   readonly challenger_candidate_ref: string;
   readonly challenger_messages_digest: string;
+  readonly challenger_max_output_tokens: number;
   readonly challenger_request_digest: string;
   readonly pair_digest: string;
   readonly pair_ref: string;
@@ -33,9 +35,11 @@ export function bindAgentGymRegressionReplayRequests(
   const body = {
     baseline_candidate_ref: baseline.candidate_ref,
     baseline_messages_digest: messagesDigest(baseline),
+    baseline_max_output_tokens: baseline.max_output_tokens,
     baseline_request_digest: agentGymModelRequestDigest(baseline),
     challenger_candidate_ref: challenger.candidate_ref,
     challenger_messages_digest: messagesDigest(challenger),
+    challenger_max_output_tokens: challenger.max_output_tokens,
     challenger_request_digest: agentGymModelRequestDigest(challenger),
     pair_ref: pairRef,
     plan_digest: plan.plan_digest,
@@ -52,7 +56,10 @@ export function validateAgentGymRegressionReplayRequestPair(
   for (const item of [value.baseline_messages_digest, value.baseline_request_digest,
     value.challenger_messages_digest, value.challenger_request_digest, value.pair_digest, value.plan_digest]) digest(item);
   if (value.baseline_candidate_ref === value.challenger_candidate_ref
-    || value.baseline_request_digest === value.challenger_request_digest) invalid();
+    || value.baseline_request_digest === value.challenger_request_digest
+    || !Number.isSafeInteger(value.baseline_max_output_tokens) || value.baseline_max_output_tokens < 1
+    || value.baseline_max_output_tokens > 32_768 || !Number.isSafeInteger(value.challenger_max_output_tokens)
+    || value.challenger_max_output_tokens < 1 || value.challenger_max_output_tokens > 32_768) invalid();
   const { pair_digest: _digest, ...body } = value;
   if (digestAgentGymJson(body) !== value.pair_digest) invalid();
   return Object.freeze({ ...value });

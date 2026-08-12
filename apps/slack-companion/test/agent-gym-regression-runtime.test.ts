@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { bindAgentGymRegressionReplayRequests, validateAgentGymRegressionReplayRequestPair } from "../src/agent-gym/regression-replay-request-pair.js";
+import { checkAgentGymRegressionReplayParity, validateAgentGymRegressionReplayParity } from "../src/agent-gym/regression-replay-parity.js";
 import type { AgentGymRegressionReplayPlanV1 } from "../src/agent-gym/regression-replay-plan.js";
 import { digestAgentGymJson } from "../src/agent-gym/canonical-json.js";
 
@@ -36,4 +37,17 @@ test("rejects a request outside the replay plan", () => {
   assert.throws(() => bindAgentGymRegressionReplayRequests(plan(),
     { ...request("baseline"), invocation_ref: "agent-gym-invocation://baseline/other" }, request("challenger"),
     "agent-gym-request-pair://regression/invalid"));
+});
+
+test("requires both candidates to receive the same case and output allowance", () => {
+  const pair = bindAgentGymRegressionReplayRequests(plan(), request("baseline"), request("challenger"), "agent-gym-request-pair://regression/one");
+  const parity = checkAgentGymRegressionReplayParity(pair, { checked_at: "2026-08-12T13:02:00.000Z", report_ref: "agent-gym-parity://regression/one" });
+  assert.equal(validateAgentGymRegressionReplayParity(parity).passed, true);
+  const changed = bindAgentGymRegressionReplayRequests(plan(), request("baseline"), {
+    ...request("challenger"), max_output_tokens: 512,
+    messages: [{ role: "user" as const, text: "Use different evidence." }],
+  }, "agent-gym-request-pair://regression/changed");
+  assert.deepEqual(checkAgentGymRegressionReplayParity(changed, {
+    checked_at: "2026-08-12T13:02:00.000Z", report_ref: "agent-gym-parity://regression/changed",
+  }).blocker_codes, ["case_messages_differ", "max_output_tokens_differ"]);
 });
