@@ -16,6 +16,72 @@ export interface AgentGymModelInvocationRequestV1 {
   readonly system_prompt: string;
 }
 
+export interface AgentGymRecordedModelResponseV1 {
+  readonly invocation_ref: string;
+  readonly latency_ms: number;
+  readonly model_id: string;
+  readonly output_text: string;
+  readonly provider_request_ref?: string;
+  readonly request_digest: `sha256:${string}`;
+  readonly schema_version: "agent-gym-recorded-model-response/v1";
+  readonly stop_reason: "content_filtered" | "end_turn" | "max_tokens";
+  readonly token_usage: {
+    readonly input_tokens: number;
+    readonly output_tokens: number;
+    readonly total_tokens: number;
+  };
+}
+
+/** Validates recorded provider output without trusting it as a live receipt. */
+export function validateAgentGymRecordedModelResponse(
+  response: AgentGymRecordedModelResponseV1,
+): AgentGymRecordedModelResponseV1 {
+  if (response.schema_version !== "agent-gym-recorded-model-response/v1") {
+    invalidResponse();
+  }
+  referenceWith(response.invocation_ref, invalidResponse);
+  boundedWith(response.model_id, 240, invalidResponse);
+  digest(response.request_digest);
+  if (response.provider_request_ref !== undefined) {
+    referenceWith(response.provider_request_ref, invalidResponse);
+  }
+  if (!Number.isSafeInteger(response.latency_ms) || response.latency_ms < 0
+    || response.latency_ms > 60 * 60_000
+    || !["content_filtered", "end_turn", "max_tokens"].includes(response.stop_reason)) {
+    invalidResponse();
+  }
+  if (typeof response.output_text !== "string" || response.output_text.length > 256_000
+    || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(response.output_text)
+    || (response.stop_reason !== "content_filtered" && !response.output_text.trim())) {
+    invalidResponse();
+  }
+  const { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens } =
+    response.token_usage;
+  for (const tokens of [inputTokens, outputTokens, totalTokens]) {
+    if (!Number.isSafeInteger(tokens) || tokens < 0 || tokens > 10_000_000) {
+      invalidResponse();
+    }
+  }
+  if (totalTokens !== inputTokens + outputTokens) invalidResponse();
+  return Object.freeze({
+    invocation_ref: response.invocation_ref,
+    latency_ms: response.latency_ms,
+    model_id: response.model_id,
+    output_text: response.output_text,
+    ...(response.provider_request_ref === undefined
+      ? {}
+      : { provider_request_ref: response.provider_request_ref }),
+    request_digest: response.request_digest,
+    schema_version: "agent-gym-recorded-model-response/v1",
+    stop_reason: response.stop_reason,
+    token_usage: Object.freeze({
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens,
+    }),
+  });
+}
+
 /** Validates and freezes one provider-neutral text-model invocation. */
 export function validateAgentGymModelRequest(
   request: AgentGymModelInvocationRequestV1,
@@ -64,6 +130,20 @@ function reference(value: string): void {
   if (!value.includes("://")) invalidRequest();
 }
 
+function referenceWith(value: string, invalid: () => never): void {
+  boundedWith(value, 240, invalid);
+  if (!value.includes("://")) invalid();
+}
+
+function boundedWith(value: string, maximum: number, invalid: () => never): void {
+  if (typeof value !== "string" || !value.trim() || value.length > maximum
+    || /[\u0000-\u001f\u007f]/u.test(value)) invalid();
+}
+
+function digest(value: string): void {
+  if (!/^sha256:[0-9a-f]{64}$/u.test(value)) invalidResponse();
+}
+
 function text(value: string, maximum: number): void {
   if (typeof value !== "string" || !value.trim() || value.length > maximum
     || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
@@ -73,4 +153,8 @@ function text(value: string, maximum: number): void {
 
 function invalidRequest(): never {
   throw new AgentGymContractError("Agent gym model request is invalid.");
+}
+
+function invalidResponse(): never {
+  throw new AgentGymContractError("Agent gym recorded model response is invalid.");
 }

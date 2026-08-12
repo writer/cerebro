@@ -3,8 +3,40 @@ import test from "node:test";
 
 import {
   agentGymModelRequestDigest,
+  validateAgentGymRecordedModelResponse,
   validateAgentGymModelRequest,
 } from "../src/index.js";
+
+test("recorded model responses retain usage and request identity", () => {
+  const modelRequest = request();
+  const response = validateAgentGymRecordedModelResponse({
+    invocation_ref: modelRequest.invocation_ref,
+    latency_ms: 42,
+    model_id: modelRequest.model_id,
+    output_text: "The current evidence is incomplete.",
+    provider_request_ref: "provider-request://recorded/one",
+    request_digest: agentGymModelRequestDigest(modelRequest),
+    schema_version: "agent-gym-recorded-model-response/v1",
+    stop_reason: "end_turn",
+    token_usage: { input_tokens: 18, output_tokens: 7, total_tokens: 25 },
+  });
+  assert.equal(Object.isFrozen(response.token_usage), true);
+  assert.equal(response.token_usage.total_tokens, 25);
+});
+
+test("recorded model responses reject inconsistent token totals", () => {
+  const modelRequest = request();
+  assert.throws(() => validateAgentGymRecordedModelResponse({
+    invocation_ref: modelRequest.invocation_ref,
+    latency_ms: 42,
+    model_id: modelRequest.model_id,
+    output_text: "The current evidence is incomplete.",
+    request_digest: agentGymModelRequestDigest(modelRequest),
+    schema_version: "agent-gym-recorded-model-response/v1",
+    stop_reason: "end_turn",
+    token_usage: { input_tokens: 18, output_tokens: 7, total_tokens: 24 },
+  }), /recorded model response is invalid/u);
+});
 
 function request() {
   return {
