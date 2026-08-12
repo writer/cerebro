@@ -12,6 +12,7 @@ import {
   defineAgentGymEvaluationSuite,
   defineAgentGymEvaluatorManifest,
   defineAgentGymEvaluatorRubric,
+  estimateAgentGymPairedUncertainty,
   planAgentGymEvaluationRun,
   pairAgentGymEvaluationRuns,
   recordAgentGymCaseEvaluation,
@@ -23,6 +24,7 @@ import {
   validateAgentGymEvaluationSliceReport,
   validateAgentGymPairedEvaluation,
   validateAgentGymPairedCaseDeltaReport,
+  validateAgentGymPairedUncertainty,
 } from "../src/index.js";
 
 test("evaluation suites seal admitted non-training cases", () => {
@@ -193,6 +195,27 @@ test("paired case deltas retain every improvement and regression", () => {
   assert.equal(report.regression_count, 0);
   assert.ok(report.mean_delta > 0);
   assert.deepEqual(validateAgentGymPairedCaseDeltaReport(report), report);
+});
+
+test("paired uncertainty is reproducible from a sealed seed", () => {
+  const comparison = pairedComparisonSetup();
+  const deltas = calculateAgentGymPairedCaseDeltas(
+    comparison.pair,
+    comparison.baseline.result,
+    comparison.candidate.result,
+  );
+  const policy = {
+    confidence_level: 0.95,
+    policy_ref: "agent-gym-bootstrap-policy://nightly/default",
+    resample_count: 1_000,
+    schema_version: "agent-gym-paired-bootstrap-policy/v1" as const,
+    seed_digest: comparison.pair.pair_digest,
+  };
+  const first = estimateAgentGymPairedUncertainty(deltas, policy);
+  const second = estimateAgentGymPairedUncertainty(deltas, policy);
+  assert.deepEqual(first, second);
+  assert.equal(first.probability_positive, 1);
+  assert.deepEqual(validateAgentGymPairedUncertainty(first), first);
 });
 
 function evaluationSetup() {
