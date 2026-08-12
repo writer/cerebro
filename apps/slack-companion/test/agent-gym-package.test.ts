@@ -5,6 +5,7 @@ import {
   AgentGymContractError,
   CEREBRO_AGENT_GYM,
   validateAgentGymCandidateManifest,
+  validateAgentGymComparison,
   validateAgentGymFixtureCase,
   validateAgentGymReplayRun,
   validateAgentGymScorecard,
@@ -17,6 +18,32 @@ test("agent gym exposes a stable public contract identity", () => {
   });
   assert.equal(Object.isFrozen(CEREBRO_AGENT_GYM), true);
   assert.equal(new AgentGymContractError("invalid").name, "AgentGymContractError");
+});
+
+test("comparisons retain paired confidence and protected slice deltas", () => {
+  const comparison = validateAgentGymComparison({
+    baseline_candidate_ref: "candidate://agent-gym/baseline",
+    candidate_ref: "candidate://agent-gym/one",
+    compared_at: "2026-08-12T08:02:00.000Z",
+    comparison_ref: "comparison://agent-gym/one",
+    confidence_interval_95: [0.02, 0.08],
+    paired_case_count: 40,
+    practical_threshold: 0.02,
+    schema_version: "agent-gym-comparison/v1",
+    slices: [{
+      baseline_score: 0.8,
+      candidate_score: 0.85,
+      case_count: 20,
+      delta: 0.05,
+      slice_id: "evidence",
+    }],
+    weighted_score_delta: 0.05,
+  });
+  assert.equal(Object.isFrozen(comparison.confidence_interval_95), true);
+  assert.throws(() => validateAgentGymComparison({
+    ...comparison,
+    confidence_interval_95: [-0.01, 0.08],
+  }), /comparison is invalid/u);
 });
 
 test("scorecards fail closed when deterministic invariants fail", () => {
