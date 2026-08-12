@@ -80,4 +80,20 @@ test("executes the exact pair through one provider-neutral model port", async ()
   }, "2026-08-12T13:03:00.000Z", "agent-gym-model-batch://regression/one");
   assert.deepEqual(seen, [baseline.invocation_ref, challenger.invocation_ref]);
   assert.equal(execution.batch.ledger.invocation_count, 2);
+  assert.equal(execution.aggregate_budget.allowed, true);
+});
+
+test("retains aggregate budget failure across otherwise allowed calls", async () => {
+  const { baseline, challenger, pair, parity } = pairAndParity();
+  const execution = await executeAgentGymRegressionReplay(plan(), pair, parity, baseline, challenger,
+    { ...budget, max_total_tokens: 20 }, {
+      async invoke(modelRequest) {
+        return { invocation_ref: modelRequest.invocation_ref, latency_ms: 10, model_id: modelRequest.model_id,
+          output_text: "bounded answer", request_digest: agentGymModelRequestDigest(modelRequest), response_source: "recorded",
+          schema_version: "agent-gym-model-response/v1", stop_reason: "end_turn",
+          token_usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+      },
+    }, "2026-08-12T13:03:00.000Z", "agent-gym-model-batch://regression/budget");
+  assert.equal(execution.aggregate_budget.allowed, false);
+  assert.deepEqual(execution.aggregate_budget.blockers, ["model_total_tokens_exceeded"]);
 });
