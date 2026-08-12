@@ -1,7 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createAgentGymToolPageFixture } from "../src/index.js";
+import {
+  createAgentGymStaleEvidenceFixture,
+  createAgentGymToolPageFixture,
+} from "../src/index.js";
+
+test("stale evidence fixtures use the replay clock", () => {
+  const fixture = createAgentGymStaleEvidenceFixture({
+    evaluated_at: "2026-08-12T09:05:00.000Z",
+    evidence_ref: "evidence://one",
+    max_age_ms: 60_000,
+    observed_at: "2026-08-12T09:00:00.000Z",
+  });
+  assert.equal(fixture.age_ms, 300_000);
+  assert.equal(fixture.stale, true);
+});
+
+test("stale evidence fixtures reject future observations", () => {
+  assert.throws(() => createAgentGymStaleEvidenceFixture({
+    evaluated_at: "2026-08-12T09:00:00.000Z",
+    evidence_ref: "evidence://one",
+    max_age_ms: 60_000,
+    observed_at: "2026-08-12T09:05:00.000Z",
+  }), /stale evidence fixture is invalid/u);
+});
 
 test("pagination fixtures retain a deterministic continuation boundary", () => {
   const fixture = createAgentGymToolPageFixture({

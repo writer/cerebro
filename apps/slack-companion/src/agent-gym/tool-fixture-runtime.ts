@@ -18,6 +18,45 @@ export interface CreateAgentGymToolPageFixture {
   readonly tool_id: string;
 }
 
+export interface AgentGymStaleEvidenceFixtureV1 {
+  readonly age_ms: number;
+  readonly evaluated_at: string;
+  readonly evidence_ref: string;
+  readonly max_age_ms: number;
+  readonly observed_at: string;
+  readonly schema_version: "agent-gym-stale-evidence-fixture/v1";
+  readonly stale: boolean;
+}
+
+export interface CreateAgentGymStaleEvidenceFixture {
+  readonly evaluated_at: string;
+  readonly evidence_ref: string;
+  readonly max_age_ms: number;
+  readonly observed_at: string;
+}
+
+/** Evaluates evidence age against an explicit replay clock. */
+export function createAgentGymStaleEvidenceFixture(
+  input: CreateAgentGymStaleEvidenceFixture,
+): AgentGymStaleEvidenceFixtureV1 {
+  reference(input.evidence_ref);
+  const observedAt = canonicalTime(input.observed_at);
+  const evaluatedAt = canonicalTime(input.evaluated_at);
+  if (!Number.isSafeInteger(input.max_age_ms) || input.max_age_ms < 1
+    || input.max_age_ms > 365 * 24 * 60 * 60_000
+    || evaluatedAt < observedAt) invalidStaleEvidence();
+  const ageMs = evaluatedAt - observedAt;
+  return Object.freeze({
+    age_ms: ageMs,
+    evaluated_at: input.evaluated_at,
+    evidence_ref: input.evidence_ref,
+    max_age_ms: input.max_age_ms,
+    observed_at: input.observed_at,
+    schema_version: "agent-gym-stale-evidence-fixture/v1",
+    stale: ageMs > input.max_age_ms,
+  });
+}
+
 /** Creates one deterministic page without contacting or advancing a live source. */
 export function createAgentGymToolPageFixture(
   input: CreateAgentGymToolPageFixture,
@@ -54,6 +93,19 @@ function reference(value: string): void {
   if (!value.includes("://")) invalidPage();
 }
 
+function canonicalTime(value: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)) {
+    invalidStaleEvidence();
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) invalidStaleEvidence();
+  return parsed;
+}
+
 function invalidPage(): never {
   throw new AgentGymContractError("Agent gym tool page fixture is invalid.");
+}
+
+function invalidStaleEvidence(): never {
+  throw new AgentGymContractError("Agent gym stale evidence fixture is invalid.");
 }
