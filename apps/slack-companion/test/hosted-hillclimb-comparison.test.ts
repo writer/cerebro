@@ -11,6 +11,7 @@ function receipt(overrides: {
   corpusDigest?: string;
   evaluatedAt?: string;
   repairCount?: number;
+  judgeLatency?: number;
   regressions?: number;
 } = {}): HostedHillclimbReceipt {
   return {
@@ -39,7 +40,7 @@ function receipt(overrides: {
       invocation_count: 1,
       model_id: "us.anthropic.claude-opus-5",
       output_tokens: 5,
-      p95_latency_ms: 200,
+      p95_latency_ms: overrides.judgeLatency ?? 200,
       provider: "aws_bedrock",
       repair_count: overrides.repairCount ?? 0,
       region: "us-east-1",
@@ -85,6 +86,7 @@ test("compares repeat measurements without answer content", () => {
       contextRecall: 1,
       evaluatedAt: "2026-08-12T17:00:00.000Z",
       repairCount: 2,
+      judgeLatency: 350,
       regressions: 2,
     }),
   );
@@ -95,6 +97,7 @@ test("compares repeat measurements without answer content", () => {
   });
   assert.equal(comparison.regression_count_delta, 2);
   assert.equal(comparison.judge_repair_count_delta, 2);
+  assert.equal(comparison.judge_p95_latency_ms_delta, 150);
   assert.equal(comparison.promotion_stable, true);
 });
 
