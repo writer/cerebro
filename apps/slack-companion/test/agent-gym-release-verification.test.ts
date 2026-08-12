@@ -7,7 +7,9 @@ import {
   recordAgentGymCanaryStateObservation,
   verifyAgentGymCanaryAction,
   advanceAgentGymRolloutState,
+  decideAgentGymRolloutCompletion,
   validateAgentGymRolloutState,
+  validateAgentGymRolloutCompletion,
   validateAgentGymCanaryActionVerification,
   validateAgentGymCanaryStateObservation,
   type AgentGymCanaryActionPlanV1,
@@ -94,6 +96,54 @@ test("unverified actions cannot advance rollout state", () => {
     },
   ), /rollout state is invalid/u);
 });
+
+test("rollout completion keeps partial traffic explicitly incomplete", () => {
+  const decision = decideAgentGymRolloutCompletion(canaryRolloutState(), {
+    decided_at: "2026-08-12T11:26:00.000Z",
+    decision_ref: "agent-gym-rollout-completion://nightly/incomplete",
+  });
+  assert.equal(decision.outcome, "incomplete");
+  assert.equal(decision.terminal, false);
+  assert.deepEqual(decision.blocker_codes, ["rollout.canary_in_progress"]);
+});
+
+test("rollout completion accepts independently verified full traffic", () => {
+  const decision = decideAgentGymRolloutCompletion(activeRolloutState(), {
+    decided_at: "2026-08-12T11:26:00.000Z",
+    decision_ref: "agent-gym-rollout-completion://nightly/complete",
+  });
+  assert.equal(decision.outcome, "completed");
+  assert.equal(decision.terminal, true);
+  assert.deepEqual(validateAgentGymRolloutCompletion(decision), decision);
+});
+
+function canaryRolloutState() {
+  return advanceAgentGymRolloutState(
+    actionPlan(), actionReceipt(), independentVerification(), undefined, {
+      effective_at: "2026-08-12T11:25:00.000Z",
+      state_ref: "agent-gym-rollout-state://nightly/one",
+    },
+  );
+}
+
+function activeRolloutState() {
+  const body = {
+    action: "complete_rollout" as const,
+    action_receipt_digest: digest("1"),
+    active_candidate_ref: "agent-gym-candidate://nightly/challenger",
+    candidate_ref: "agent-gym-candidate://nightly/challenger",
+    candidate_traffic_percent: 100,
+    effective_at: "2026-08-12T11:25:00.000Z",
+    phase: "active" as const,
+    previous_state_digest: digest("2"),
+    schema_version: "agent-gym-rollout-state/v1" as const,
+    sequence: 2,
+    state_ref: "agent-gym-rollout-state://nightly/active",
+    target_ref: "agent-gym-target://slack-companion/default",
+    verification_digest: digest("3"),
+  };
+  return { ...body, state_digest: digestAgentGymJson(body) };
+}
 
 function independentVerification() {
   return verifyAgentGymCanaryAction(

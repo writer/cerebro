@@ -41,6 +41,7 @@ export * from "./canary-action-receipt.js";
 export * from "./canary-state-observation.js";
 export * from "./canary-action-verification.js";
 export * from "./rollout-state.js";
+export * from "./rollout-completion.js";
 export * from "./fixture-case.js";
 export * from "./model-runtime.js";
 export * from "./model-budget.js";
