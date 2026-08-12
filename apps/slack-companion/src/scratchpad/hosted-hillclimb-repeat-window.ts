@@ -28,6 +28,7 @@ export interface HostedHillclimbRepeatWindowV1 {
   readonly first_evaluated_at: string;
   readonly last_evaluated_at: string;
   readonly judge_model_id: string;
+  readonly judge_repair_increase_count: number;
   readonly maximum_absolute_judge_p95_latency_ms_delta: number;
   readonly maximum_absolute_model_token_count_delta: number;
   readonly maximum_evaluation_gap_ms: number;
@@ -123,6 +124,9 @@ export function buildHostedHillclimbRepeatWindow(
     first_evaluated_at: comparisons[0]!.previous_evaluated_at,
     last_evaluated_at: comparisons[comparisons.length - 1]!.current_evaluated_at,
     judge_model_id: comparisons[0]!.judge_model_id,
+    judge_repair_increase_count: comparisons.filter(
+      (comparison) => comparison.judge_repair_count_delta > 0,
+    ).length,
     maximum_absolute_judge_p95_latency_ms_delta: maximumAbsolute(comparisons.map(
       (comparison) => comparison.judge_p95_latency_ms_delta,
     )),

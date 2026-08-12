@@ -79,6 +79,7 @@ test("seals a contiguous repeat comparison window", () => {
     first_evaluated_at: "2026-08-12T16:00:00.000Z",
     last_evaluated_at: "2026-08-12T18:00:00.000Z",
     judge_model_id: "us.anthropic.claude-opus-5",
+    judge_repair_increase_count: 0,
     maximum_absolute_judge_p95_latency_ms_delta: 0,
     maximum_absolute_model_token_count_delta: 294,
     maximum_evaluation_gap_ms: 3_600_000,
@@ -130,6 +131,18 @@ test("counts repeats that increase regression volume", () => {
     regression_count_delta: 2,
   }], { maximum_window_span_ms: 3_600_000, minimum_comparison_count: 1 });
   assert.equal(window.regression_increase_count, 1);
+});
+
+test("counts repeats that increase judge repair volume", () => {
+  const measured = comparison(
+    "2026-08-12T16:00:00.000Z",
+    "2026-08-12T17:00:00.000Z",
+  );
+  const window = buildHostedHillclimbRepeatWindow([{
+    ...measured,
+    judge_repair_count_delta: 1,
+  }], { maximum_window_span_ms: 3_600_000, minimum_comparison_count: 1 });
+  assert.equal(window.judge_repair_increase_count, 1);
 });
 
 test("applies an explicit bounded repeat sample policy", () => {
