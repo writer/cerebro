@@ -21,6 +21,7 @@ function comparison(
       p95_inference_latency_ms: 0,
       semantic_state_contract_rate: 0,
     },
+    corpus_digest: `sha256:${"a".repeat(64)}`,
     current_evaluated_at: current,
     efficiency_stable: true,
     judge_p95_latency_ms_delta: 0,
