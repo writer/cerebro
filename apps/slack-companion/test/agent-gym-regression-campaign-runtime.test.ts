@@ -6,6 +6,7 @@ import { evaluateAgentGymRegressionReplay } from "../src/agent-gym/regression-re
 import { sealAgentGymRegressionReplayTrial, validateAgentGymRegressionReplayTrial } from "../src/agent-gym/regression-replay-trial.js";
 import { planAgentGymRegressionCampaign, validateAgentGymRegressionCampaignPlan } from "../src/agent-gym/regression-campaign-plan.js";
 import { invalidAgentGymRegressionCampaignCase, validateAgentGymRegressionCampaignCaseOutput } from "../src/agent-gym/regression-campaign-port.js";
+import { executeAgentGymRegressionCampaign } from "../src/agent-gym/regression-campaign-execution.js";
 
 const sha = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
 
@@ -125,6 +126,29 @@ test("records stable invalid case output without provider error text", () => {
   const output = invalidAgentGymRegressionCampaignCase(replay, "evaluator_output_invalid");
   assert.equal(validateAgentGymRegressionCampaignCaseOutput(campaign, replay, output).status, "invalid");
   assert.equal("message" in output, false);
+});
+
+test("executes campaign cases in order through one portable trial port", async () => {
+  const { campaign, trial } = campaignBundle();
+  const seen: string[] = [];
+  const execution = await executeAgentGymRegressionCampaign(campaign, { async run(_campaign, replay) {
+    seen.push(replay.case_ref);
+    return { case_digest: replay.case_digest, case_ref: replay.case_ref,
+      schema_version: "agent-gym-regression-campaign-case-output/v1", status: "completed", trial };
+  } });
+  assert.deepEqual(seen, campaign.cases.map((entry) => entry.case_ref));
+  assert.equal(execution.completed_case_count, 1);
+  assert.equal(execution.invalid_case_count, 0);
+});
+
+test("keeps provider failures as invalid campaign cases", async () => {
+  const { campaign } = campaignBundle();
+  const execution = await executeAgentGymRegressionCampaign(campaign, { async run() {
+    throw new Error("provider response that must not persist");
+  } });
+  assert.equal(execution.invalid_case_count, 1);
+  assert.equal(execution.outputs[0]?.status, "invalid");
+  assert.equal(JSON.stringify(execution).includes("provider response"), false);
 });
 
 test("rejects a runtime chain whose evaluator binding targets another result", () => {
