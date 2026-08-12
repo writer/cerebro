@@ -134,26 +134,29 @@ test("promotion stops when the candidate drops required evidence context", () =>
 });
 
 test("hosted hillclimb compares baseline and candidate through AWS model ports", async () => {
-  const model = new FakeHostedModel();
+  const generatorModel = new FakeHostedModel();
+  const judgeModel = new FakeHostedModel();
   const receipt = await runHostedSlackWorkingStateHillclimb(
     SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
     {
       generator_model_id: "us.anthropic.claude-opus-4-8",
-      judge_model_id: "us.anthropic.claude-opus-4-8",
+      judge_model_id: "us.anthropic.claude-sonnet-5",
       region: "us-east-1",
     },
-    model,
+    { generator: generatorModel, judge: judgeModel },
     new Date("2026-07-29T12:00:00.000Z"),
   );
 
-  assert.equal(model.generatorCalls, 44);
-  assert.equal(model.judgeCalls, 22);
-  assert.ok(model.generatorRequests.every((request) =>
+  assert.equal(generatorModel.generatorCalls, 44);
+  assert.equal(generatorModel.judgeCalls, 0);
+  assert.equal(judgeModel.generatorCalls, 0);
+  assert.equal(judgeModel.judgeCalls, 22);
+  assert.ok(generatorModel.generatorRequests.every((request) =>
     request.system.includes(
       "Never end a retained-state answer with a question or invitation.",
     )
   ));
-  assert.ok(model.generatorRequests.some((request) =>
+  assert.ok(generatorModel.generatorRequests.some((request) =>
     request.prompt.includes(
       "Do not ask a question, request confirmation, offer choices, or invite",
     )
@@ -161,8 +164,12 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(receipt.generator.provider, "aws_bedrock");
   assert.equal(receipt.generator.model_id, "us.anthropic.claude-opus-4-8");
   assert.equal(receipt.generator.sampling_parameters, "provider_default");
-  assert.equal(receipt.judge.model_id, "us.anthropic.claude-opus-4-8");
+  assert.equal(receipt.judge.model_id, "us.anthropic.claude-sonnet-5");
   assert.equal(receipt.judge.sampling_parameters, "provider_default");
+  assert.deepEqual(receipt.evaluation_independence, {
+    distinct_model_id: true,
+    separate_model_ports: true,
+  });
   assert.equal(receipt.baseline.context_recall_rate, 0);
   assert.equal(receipt.baseline.expected_restatement_turns_per_case, 1);
   assert.equal(receipt.candidate.context_recall_rate, 1);
@@ -179,25 +186,44 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
 });
 
 test("hosted hillclimb rejects a Nova generator before invocation", async () => {
-  const model = new FakeHostedModel();
+  const generatorModel = new FakeHostedModel();
+  const judgeModel = new FakeHostedModel();
   await assert.rejects(
     runHostedSlackWorkingStateHillclimb(
       SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
       {
         generator_model_id: "us.amazon.nova-pro-v1:0",
-        judge_model_id: "us.anthropic.claude-opus-4-8",
+        judge_model_id: "us.anthropic.claude-sonnet-5",
         region: "us-east-1",
       },
-      model,
+      { generator: generatorModel, judge: judgeModel },
     ),
-    /require AWS-hosted Claude Opus models/u,
+    /generation requires an AWS-hosted Claude Opus model/u,
   );
-  assert.equal(model.generatorCalls, 0);
-  assert.equal(model.judgeCalls, 0);
+  assert.equal(generatorModel.generatorCalls, 0);
+  assert.equal(judgeModel.judgeCalls, 0);
 });
 
 test("hosted hillclimb fails closed on an invalid judge receipt", async () => {
-  const model = new FakeHostedModel("not json");
+  const generatorModel = new FakeHostedModel();
+  const judgeModel = new FakeHostedModel("not json");
+  await assert.rejects(
+    runHostedSlackWorkingStateHillclimb(
+      SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
+      {
+        generator_model_id: "us.anthropic.claude-opus-4-8",
+        judge_model_id: "us.anthropic.claude-sonnet-5",
+        region: "us-east-1",
+      },
+      { generator: generatorModel, judge: judgeModel },
+    ),
+    /Hosted judge returned no JSON object/u,
+  );
+});
+
+test("hosted hillclimb rejects a judge that aliases the generator", async () => {
+  const generatorModel = new FakeHostedModel();
+  const judgeModel = new FakeHostedModel();
   await assert.rejects(
     runHostedSlackWorkingStateHillclimb(
       SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
@@ -206,10 +232,30 @@ test("hosted hillclimb fails closed on an invalid judge receipt", async () => {
         judge_model_id: "us.anthropic.claude-opus-4-8",
         region: "us-east-1",
       },
-      model,
+      { generator: generatorModel, judge: judgeModel },
     ),
-    /Hosted judge returned no JSON object/u,
+    /requires a model distinct from generation/u,
   );
+  assert.equal(generatorModel.generatorCalls, 0);
+  assert.equal(judgeModel.judgeCalls, 0);
+});
+
+test("hosted hillclimb rejects a shared generator and judge port", async () => {
+  const sharedModel = new FakeHostedModel();
+  await assert.rejects(
+    runHostedSlackWorkingStateHillclimb(
+      SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
+      {
+        generator_model_id: "us.anthropic.claude-opus-4-8",
+        judge_model_id: "us.anthropic.claude-sonnet-5",
+        region: "us-east-1",
+      },
+      { generator: sharedModel, judge: sharedModel },
+    ),
+    /requires a separate model port/u,
+  );
+  assert.equal(sharedModel.generatorCalls, 0);
+  assert.equal(sharedModel.judgeCalls, 0);
 });
 
 class FakeHostedModel implements HostedModelPort {

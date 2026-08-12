@@ -32,6 +32,11 @@ export interface HostedModelPort {
   converse(request: HostedModelRequest): Promise<HostedModelResponse>;
 }
 
+export interface HostedHillclimbModelPorts {
+  readonly generator: HostedModelPort;
+  readonly judge: HostedModelPort;
+}
+
 export interface HostedHillclimbOptions {
   readonly generator_model_id: string;
   readonly judge_model_id: string;
@@ -92,6 +97,10 @@ export interface HostedHillclimbReceipt {
   readonly candidate: HostedHillclimbSummary;
   readonly corpus_digest: string;
   readonly evaluated_at: string;
+  readonly evaluation_independence: {
+    readonly distinct_model_id: true;
+    readonly separate_model_ports: true;
+  };
   readonly generator: {
     readonly model_id: string;
     readonly provider: "aws_bedrock";
@@ -164,6 +173,7 @@ const MAX_GENERATOR_TOKENS = 320;
 const MAX_JUDGE_TOKENS = 700;
 const MAX_JUDGE_ATTEMPTS = 3;
 const OPUS_MODEL_MARKER = "anthropic.claude-opus-";
+const CLAUDE_MODEL_MARKER = "anthropic.claude-";
 const MINIMUM_CANDIDATE_RATE = 0.9;
 const REQUIRED_AUTHORITY_RATE = 1;
 const MAXIMUM_RESTATEMENT_RATE = 0.1;
@@ -173,10 +183,15 @@ const MAXIMUM_P95_INFERENCE_LATENCY_MS = 10_000;
 export async function runHostedSlackWorkingStateHillclimb(
   cases: readonly SlackWorkingStateEvalCaseV1[],
   options: HostedHillclimbOptions,
-  model: HostedModelPort,
+  models: HostedHillclimbModelPorts,
   evaluatedAt = new Date(),
 ): Promise<HostedHillclimbReceipt> {
   validateOptions(options);
+  if (models.generator === models.judge) {
+    throw new Error(
+      "Cerebro working-state hillclimb judging requires a separate model port.",
+    );
+  }
   const structural = runSlackWorkingStateHillclimb(cases, evaluatedAt);
   if (!structural.promotion.promotion_ready) {
     throw new Error(
@@ -187,15 +202,15 @@ export async function runHostedSlackWorkingStateHillclimb(
   const results: HostedHillclimbCaseResult[] = [];
   for (const evalCase of cases) {
     const [baseline, candidate] = await Promise.all([
-      generateAnswer(evalCase, "baseline", options.generator_model_id, model),
-      generateAnswer(evalCase, "candidate", options.generator_model_id, model),
+      generateAnswer(evalCase, "baseline", options.generator_model_id, models.generator),
+      generateAnswer(evalCase, "candidate", options.generator_model_id, models.generator),
     ]);
     const judge = await judgeAnswers(
       evalCase,
       baseline.output,
       candidate.output,
       options.judge_model_id,
-      model,
+      models.judge,
     );
     const baselinePassed = scorePassed(judge.scores.baseline);
     const candidatePassed = scorePassed(judge.scores.candidate);
@@ -267,6 +282,10 @@ export async function runHostedSlackWorkingStateHillclimb(
     candidate,
     corpus_digest: structural.corpus_digest,
     evaluated_at: evaluatedAt.toISOString(),
+    evaluation_independence: Object.freeze({
+      distinct_model_id: true as const,
+      separate_model_ports: true as const,
+    }),
     generator: Object.freeze({
       model_id: options.generator_model_id,
       provider: "aws_bedrock" as const,
@@ -689,12 +708,19 @@ function validateOptions(options: HostedHillclimbOptions): void {
       throw new Error(`Hosted hillclimb ${label} is missing or unbounded.`);
     }
   }
-  if (
-    !isOpusModelId(options.generator_model_id)
-    || !isOpusModelId(options.judge_model_id)
-  ) {
+  if (!isOpusModelId(options.generator_model_id)) {
     throw new Error(
-      "Cerebro working-state hillclimbs require AWS-hosted Claude Opus models.",
+      "Cerebro working-state hillclimb generation requires an AWS-hosted Claude Opus model.",
+    );
+  }
+  if (!isClaudeModelId(options.judge_model_id)) {
+    throw new Error(
+      "Cerebro working-state hillclimb judging requires an AWS-hosted Claude model.",
+    );
+  }
+  if (options.generator_model_id === options.judge_model_id) {
+    throw new Error(
+      "Cerebro working-state hillclimb judging requires a model distinct from generation.",
     );
   }
 }
@@ -708,6 +734,20 @@ function isOpusModelId(modelId: string): boolean {
     return false;
   }
   const suffix = modelId.slice(markerIndex + OPUS_MODEL_MARKER.length);
+  return suffix.length > 0 && [...suffix].every((character) =>
+    character === "."
+    || character === "-"
+    || character >= "0" && character <= "9"
+    || character >= "a" && character <= "z"
+  );
+}
+
+function isClaudeModelId(modelId: string): boolean {
+  const markerIndex = modelId.indexOf(CLAUDE_MODEL_MARKER);
+  if (markerIndex <= 0 || ![".", "/"].includes(modelId[markerIndex - 1]!)) {
+    return false;
+  }
+  const suffix = modelId.slice(markerIndex + CLAUDE_MODEL_MARKER.length);
   return suffix.length > 0 && [...suffix].every((character) =>
     character === "."
     || character === "-"

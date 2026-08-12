@@ -3,13 +3,15 @@ import { SLACK_WORKING_STATE_HILLCLIMB_CORPUS } from "./hillclimb-corpus.js";
 import { runHostedSlackWorkingStateHillclimb } from "./hosted-hillclimb.js";
 
 const DEPLOYED_OPUS_MODEL_ID = "us.anthropic.claude-opus-4-8";
+const INDEPENDENT_JUDGE_MODEL_ID = "us.anthropic.claude-sonnet-5";
 const region = required("CEREBRO_SLACK_HILLCLIMB_REGION");
 const generatorModelId = optional(
   "CEREBRO_SLACK_HILLCLIMB_GENERATOR_MODEL_ID",
 ) ?? DEPLOYED_OPUS_MODEL_ID;
 const judgeModelId = optional("CEREBRO_SLACK_HILLCLIMB_JUDGE_MODEL_ID")
-  ?? DEPLOYED_OPUS_MODEL_ID;
-const model = new BedrockHostedModel(region);
+  ?? INDEPENDENT_JUDGE_MODEL_ID;
+const generatorModel = new BedrockHostedModel(region);
+const judgeModel = new BedrockHostedModel(region);
 
 try {
   const receipt = await runHostedSlackWorkingStateHillclimb(
@@ -19,12 +21,13 @@ try {
       judge_model_id: judgeModelId,
       region,
     },
-    model,
+    { generator: generatorModel, judge: judgeModel },
   );
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   if (!receipt.promotion.promotion_ready) process.exitCode = 1;
 } finally {
-  model.destroy();
+  generatorModel.destroy();
+  judgeModel.destroy();
 }
 
 function required(name: string): string {
