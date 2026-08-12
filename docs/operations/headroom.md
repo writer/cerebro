@@ -192,8 +192,13 @@ make load-smoke \
 
 Outputs:
 
-- `tmp/load-smoke.json`: machine-readable summary with request counts, latency percentiles, status counts, and threshold failures.
-- `tmp/load-smoke.md`: human-readable artifact for release notes, incidents, or PR comments.
+- `tmp/load-smoke.json`: machine-readable aggregate and per-path request counts, latency percentiles, status counts, and threshold failures.
+- `tmp/load-smoke.md`: human-readable aggregate plus per-path table for release notes, incidents, or PR comments.
+
+Every configured path is evaluated independently against the latency and error
+thresholds. This prevents a cheap health route from hiding a regression in a
+protected or dependency-backed route. Use `--min-requests-per-path` when a
+longer smoke must collect more than the default one sample for each route.
 
 The receipt also records offered requests, started requests, achieved RPS,
 maximum in-flight work, missed request rate, and request-start lag percentiles.
