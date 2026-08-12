@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   agentGymFixtureCaseDigest,
   canonicalAgentGymJson,
+  createAgentGymCorpusInventory,
   createAgentGymCorpusManifest,
   digestAgentGymJson,
 } from "../src/index.js";
@@ -59,12 +60,36 @@ test("corpus manifests reject duplicate case references", () => {
   );
 });
 
-function fixtureCase(caseRef = "agent-gym-case://support/one") {
+test("corpus inventories count every partition and label", () => {
+  const inventory = createAgentGymCorpusInventory([
+    fixtureCase("agent-gym-case://support/one", "train", ["support", "safety"]),
+    fixtureCase("agent-gym-case://support/two", "held_out", ["support"]),
+  ]);
+  assert.deepEqual(inventory.partitions, { held_out: 1, shadow: 0, train: 1 });
+  assert.deepEqual(inventory.labels, [
+    { case_count: 1, label: "safety" },
+    { case_count: 2, label: "support" },
+  ]);
+});
+
+test("corpus inventories bind the manifest digest", () => {
+  const fixtures = [fixtureCase()];
+  assert.equal(
+    createAgentGymCorpusInventory(fixtures).corpus_digest,
+    createAgentGymCorpusManifest(fixtures).corpus_digest,
+  );
+});
+
+function fixtureCase(
+  caseRef = "agent-gym-case://support/one",
+  partition: "held_out" | "shadow" | "train" = "train",
+  labels: readonly string[] = ["support"],
+) {
   return {
     case_ref: caseRef,
     expected_invariants: ["answer-grounded"],
-    labels: ["support"],
-    partition: "train" as const,
+    labels,
+    partition,
     schema_version: "agent-gym-fixture-case/v1" as const,
     slack_events: [{
       event_ref: "slack-event://one",
