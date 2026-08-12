@@ -3061,6 +3061,7 @@ fn validate_catalog_request(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_catalog_relation_request(
     tenant_id: &TenantId,
     agent_key: &str,
