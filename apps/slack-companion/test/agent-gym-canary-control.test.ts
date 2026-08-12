@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   digestAgentGymJson,
   recordAgentGymCanaryObservation,
+  sealAgentGymCanaryWindow,
   validateAgentGymCanaryObservation,
+  validateAgentGymCanaryWindow,
   type AgentGymChampionTransitionV1,
 } from "../src/index.js";
 
@@ -35,6 +37,71 @@ test("passed canary observations require evidence and no blockers", () => {
     sample_ref: "agent-gym-sample://nightly/invalid",
   }), /canary observation is invalid/u);
 });
+
+test("canary windows seal ordered samples and aggregate failures", () => {
+  const window = sealAgentGymCanaryWindow([
+    canaryObservation("two", "2026-08-12T11:17:00.000Z", "failed", 1_100, 0.4),
+    canaryObservation("one", "2026-08-12T11:16:00.000Z", "passed", 800, 0.9),
+  ], {
+    ended_at: "2026-08-12T11:18:00.000Z",
+    started_at: "2026-08-12T11:15:00.000Z",
+    window_ref: "agent-gym-canary-window://nightly/one",
+  });
+  assert.equal(window.observation_count, 2);
+  assert.equal(window.failed_count, 1);
+  assert.equal(window.p95_latency_ms, 1_100);
+  assert.deepEqual(window.blocker_codes, ["answer.missing_evidence"]);
+  assert.deepEqual(validateAgentGymCanaryWindow(window), window);
+});
+
+test("canary windows reject samples from another transition", () => {
+  const changed = { ...championTransition(), transition_ref: "agent-gym-champion-transition://nightly/two" };
+  const { transition_digest: _ignored, ...changedBody } = changed;
+  const other = recordAgentGymCanaryObservation({
+    ...changedBody,
+    transition_digest: digestAgentGymJson(changedBody),
+  }, observationInput("other", "2026-08-12T11:17:00.000Z", "passed", 900, 0.9));
+  assert.throws(() => sealAgentGymCanaryWindow([
+    canaryObservation("one", "2026-08-12T11:16:00.000Z", "passed", 800, 0.9),
+    other,
+  ], {
+    ended_at: "2026-08-12T11:18:00.000Z",
+    started_at: "2026-08-12T11:15:00.000Z",
+    window_ref: "agent-gym-canary-window://nightly/mixed",
+  }), /canary window is invalid/u);
+});
+
+function canaryObservation(
+  id: string,
+  observedAt: string,
+  outcome: "failed" | "passed",
+  latencyMs: number,
+  qualityScore: number,
+) {
+  return recordAgentGymCanaryObservation(
+    championTransition(),
+    observationInput(id, observedAt, outcome, latencyMs, qualityScore),
+  );
+}
+
+function observationInput(
+  id: string,
+  observedAt: string,
+  outcome: "failed" | "passed",
+  latencyMs: number,
+  qualityScore: number,
+) {
+  return {
+    blocker_codes: outcome === "passed" ? [] : ["answer.missing_evidence"],
+    evidence_refs: outcome === "passed" ? [`agent-gym-evidence://canary/${id}`] : [],
+    latency_ms: latencyMs,
+    observation_ref: `agent-gym-canary-observation://nightly/${id}`,
+    observed_at: observedAt,
+    outcome,
+    quality_score: qualityScore,
+    sample_ref: `agent-gym-sample://nightly/${id}`,
+  };
+}
 
 function championTransition(): AgentGymChampionTransitionV1 {
   const body = {
