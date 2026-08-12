@@ -1,7 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { planAgentGymSlackAcknowledgement } from "../src/index.js";
+import {
+  AgentGymSlackEffectIdempotencyLedger,
+  captureAgentGymSlackPostMessage,
+  planAgentGymSlackAcknowledgement,
+} from "../src/index.js";
+
+test("effect idempotency admits once and recognizes exact retries", () => {
+  const ledger = new AgentGymSlackEffectIdempotencyLedger();
+  const effect = captureAgentGymSlackPostMessage({
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:one",
+    text: "Verified answer.",
+  });
+  assert.equal(ledger.admit(effect).disposition, "accepted");
+  assert.equal(ledger.admit(effect).disposition, "duplicate");
+});
+
+test("effect idempotency rejects changed output under one key", () => {
+  const ledger = new AgentGymSlackEffectIdempotencyLedger();
+  const input = {
+    channel_ref: "slack-channel://one",
+    idempotency_key: "answer:one",
+    text: "Verified answer.",
+  };
+  ledger.admit(captureAgentGymSlackPostMessage(input));
+  assert.throws(() => ledger.admit(captureAgentGymSlackPostMessage({
+    ...input,
+    text: "Different answer.",
+  })), /idempotency key changed effect/u);
+});
 
 test("acknowledgement simulation waits for durable admission", () => {
   assert.deepEqual(planAgentGymSlackAcknowledgement({

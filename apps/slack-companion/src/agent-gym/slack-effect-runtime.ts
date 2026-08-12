@@ -1,4 +1,34 @@
 import { AgentGymContractError } from "./index.js";
+import type { AgentGymSlackEffectV1 } from "./slack-effects.js";
+
+export interface AgentGymSlackEffectAdmissionV1 {
+  readonly disposition: "accepted" | "duplicate";
+  readonly effect_ref: string;
+  readonly idempotency_key: string;
+  readonly schema_version: "agent-gym-slack-effect-admission/v1";
+}
+
+/** Enforces exact-effect reuse under one outbound idempotency key. */
+export class AgentGymSlackEffectIdempotencyLedger {
+  readonly #effectByKey = new Map<string, string>();
+
+  admit(effect: AgentGymSlackEffectV1): AgentGymSlackEffectAdmissionV1 {
+    if (effect.schema_version !== "agent-gym-slack-effect/v1") invalidEffect();
+    const prior = this.#effectByKey.get(effect.idempotency_key);
+    if (prior !== undefined && prior !== effect.effect_ref) {
+      throw new AgentGymContractError(
+        "Agent gym Slack idempotency key changed effect.",
+      );
+    }
+    this.#effectByKey.set(effect.idempotency_key, effect.effect_ref);
+    return Object.freeze({
+      disposition: prior === undefined ? "accepted" : "duplicate",
+      effect_ref: effect.effect_ref,
+      idempotency_key: effect.idempotency_key,
+      schema_version: "agent-gym-slack-effect-admission/v1",
+    });
+  }
+}
 
 export interface AgentGymSlackAcknowledgementInputV1 {
   readonly admitted_at?: string;
@@ -50,4 +80,7 @@ function timestamp(value: string): void {
 }
 function invalid(): never {
   throw new AgentGymContractError("Agent gym Slack acknowledgement input is invalid.");
+}
+function invalidEffect(): never {
+  throw new AgentGymContractError("Agent gym Slack effect is invalid.");
 }
