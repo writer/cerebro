@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   agentGymFixtureScenarioDigest,
   auditAgentGymCorpusLeakage,
+  buildAgentGymCorpus,
   decideAgentGymCorpusAdmission,
   evaluateAgentGymCorpusCoverage,
+  recordAgentGymCorpusQuality,
 } from "../src/index.js";
 
 test("scenario digests ignore case metadata and partition", () => {
@@ -107,6 +109,42 @@ test("corpus admission accepts covered and isolated scenarios", () => {
   assert.equal(decision.admitted, true);
   assert.deepEqual(decision.blocker_codes, []);
 });
+
+test("corpus quality receipts bind source build and admission evidence", () => {
+  const fixtures = isolatedCorpus();
+  const receipt = recordAgentGymCorpusQuality(
+    buildAgentGymCorpus(fixtures, buildInput()),
+    decideAgentGymCorpusAdmission(fixtures, coveragePolicy()),
+    { evaluated_at: "2026-08-12T10:30:00.000Z", evaluation_ref: "agent-gym-quality://nightly/one" },
+  );
+  assert.equal(receipt.admitted, true);
+  assert.match(receipt.receipt_digest, /^sha256:[0-9a-f]{64}$/u);
+});
+
+test("corpus quality receipts reject a decision for another corpus", () => {
+  const fixtures = isolatedCorpus();
+  assert.throws(() => recordAgentGymCorpusQuality(
+    buildAgentGymCorpus([fixtureCase("train")], buildInput()),
+    decideAgentGymCorpusAdmission(fixtures, coveragePolicy()),
+    { evaluated_at: "2026-08-12T10:30:00.000Z", evaluation_ref: "agent-gym-quality://nightly/one" },
+  ), /quality receipt is invalid/u);
+});
+
+function isolatedCorpus() {
+  const heldOut = fixtureCase("held-out", "held_out", ["safety"]);
+  return [
+    fixtureCase("train"),
+    { ...heldOut, slack_events: [{ ...heldOut.slack_events[0]!, payload: { text: "Held-out alert." } }] },
+  ];
+}
+
+function buildInput() {
+  return {
+    build_ref: "agent-gym-corpus-build://nightly/quality",
+    built_at: "2026-08-12T10:25:00.000Z",
+    source_revision: "source-revision://cerebro/quality",
+  };
+}
 
 function coveragePolicy() {
   return {
