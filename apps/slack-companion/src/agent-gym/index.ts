@@ -22,6 +22,7 @@ export * from "./run-summary.js";
 export * from "./scorecard.js";
 export * from "./slack-simulator.js";
 export * from "./tool-fixtures.js";
+export * from "./tool-fixture-runtime.js";
 export * from "./slack-delivery.js";
 export * from "./slack-failure.js";
 export * from "./slack-effects.js";
