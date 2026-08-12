@@ -1,5 +1,6 @@
 import type { AgentGymJson } from "./fixture-case.js";
 import { AgentGymContractError } from "./index.js";
+import type { AgentGymToolRegistrySnapshotV1 } from "./tool-fixtures.js";
 
 export interface AgentGymToolPageFixtureV1 {
   readonly call_ref: string;
@@ -50,6 +51,44 @@ export type CreateAgentGymAuthorizationFixture = Omit<
   AgentGymAuthorizationFixtureV1,
   "schema_version"
 >;
+
+export interface AgentGymToolCallV1 {
+  readonly call_ref: string;
+  readonly input: Readonly<Record<string, AgentGymJson>>;
+  readonly tool_id: string;
+}
+
+export interface AgentGymToolCallValidationV1 {
+  readonly call_ref: string;
+  readonly issues: readonly string[];
+  readonly schema_version: "agent-gym-tool-call-validation/v1";
+  readonly tool_id: string;
+  readonly valid: boolean;
+}
+
+/** Validates a replayed call against the frozen registry's JSON Schema subset. */
+export function validateAgentGymToolCall(
+  registry: AgentGymToolRegistrySnapshotV1,
+  call: AgentGymToolCallV1,
+): AgentGymToolCallValidationV1 {
+  reference(call.call_ref, invalidToolCall);
+  toolIdentifier(call.tool_id, invalidToolCall);
+  const definition = registry.tools.find((tool) => tool.tool_id === call.tool_id);
+  const issues: string[] = [];
+  if (definition === undefined) {
+    issues.push("tool.not_registered");
+  } else {
+    validateSchema(definition.input_schema, call.input, "$", issues, 0);
+  }
+  const stableIssues = Object.freeze([...new Set(issues)].sort());
+  return Object.freeze({
+    call_ref: call.call_ref,
+    issues: stableIssues,
+    schema_version: "agent-gym-tool-call-validation/v1",
+    tool_id: call.tool_id,
+    valid: stableIssues.length === 0,
+  });
+}
 
 /** Records a replay-only authorization decision with its policy evidence. */
 export function createAgentGymAuthorizationFixture(
@@ -142,6 +181,91 @@ function code(value: string, maximum: number): void {
     || !/^[a-z0-9][a-z0-9._:-]*$/u.test(value)) invalidAuthorization();
 }
 
+function validateSchema(
+  schema: AgentGymJson,
+  value: AgentGymJson,
+  path: string,
+  issues: string[],
+  depth: number,
+): void {
+  if (issues.length >= 128) return;
+  if (depth > 32 || !jsonRecord(schema) || typeof schema.type !== "string") {
+    issues.push(`${path}:schema.unsupported`);
+    return;
+  }
+  if (!matchesType(schema.type, value)) {
+    issues.push(`${path}:input.type_mismatch`);
+    return;
+  }
+  if (Array.isArray(schema.enum)
+    && !schema.enum.some((candidate) => JSON.stringify(candidate) === JSON.stringify(value))) {
+    issues.push(`${path}:input.enum_mismatch`);
+  }
+  if (schema.type === "object" && jsonRecord(value)) {
+    const properties = schema.properties;
+    if (properties !== undefined && !jsonRecord(properties)) {
+      issues.push(`${path}:schema.unsupported`);
+      return;
+    }
+    const required = schema.required;
+    if (required !== undefined) {
+      if (!Array.isArray(required)) {
+        issues.push(`${path}:schema.unsupported`);
+        return;
+      }
+      for (const name of required) {
+        if (typeof name !== "string") {
+          issues.push(`${path}:schema.unsupported`);
+          return;
+        }
+        if (!(name in value)) issues.push(`${path}.${name}:input.required_missing`);
+      }
+    }
+    if (schema.additionalProperties === false && jsonRecord(properties)) {
+      for (const name of Object.keys(value)) {
+        if (!(name in properties)) issues.push(`${path}.${name}:input.unknown_property`);
+      }
+    }
+    if (jsonRecord(properties)) {
+      for (const [name, propertyValue] of Object.entries(value)) {
+        const propertySchema = properties[name];
+        if (propertySchema !== undefined) {
+          validateSchema(propertySchema, propertyValue, `${path}.${name}`, issues, depth + 1);
+        }
+      }
+    }
+  }
+  const itemSchema = schema.items;
+  if (schema.type === "array" && Array.isArray(value) && itemSchema !== undefined) {
+    for (const [index, item] of value.entries()) {
+      validateSchema(itemSchema, item, `${path}[${index}]`, issues, depth + 1);
+    }
+  }
+}
+
+function matchesType(type: string, value: AgentGymJson): boolean {
+  switch (type) {
+    case "array": return Array.isArray(value);
+    case "boolean": return typeof value === "boolean";
+    case "integer": return typeof value === "number" && Number.isSafeInteger(value);
+    case "null": return value === null;
+    case "number": return typeof value === "number" && Number.isFinite(value);
+    case "object": return jsonRecord(value);
+    case "string": return typeof value === "string";
+    default: return false;
+  }
+}
+
+function jsonRecord(value: AgentGymJson | undefined): value is Readonly<Record<string, AgentGymJson>> {
+  return value !== null && value !== undefined && typeof value === "object"
+    && !Array.isArray(value);
+}
+
+function toolIdentifier(value: string, invalid: () => never): void {
+  if (typeof value !== "string" || !value.trim() || value.length > 160
+    || /[\u0000-\u001f\u007f]/u.test(value)) invalid();
+}
+
 function invalidPage(): never {
   throw new AgentGymContractError("Agent gym tool page fixture is invalid.");
 }
@@ -152,4 +276,8 @@ function invalidStaleEvidence(): never {
 
 function invalidAuthorization(): never {
   throw new AgentGymContractError("Agent gym authorization fixture is invalid.");
+}
+
+function invalidToolCall(): never {
+  throw new AgentGymContractError("Agent gym tool call is invalid.");
 }

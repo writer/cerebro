@@ -5,7 +5,49 @@ import {
   createAgentGymAuthorizationFixture,
   createAgentGymStaleEvidenceFixture,
   createAgentGymToolPageFixture,
+  createAgentGymToolRegistry,
+  validateAgentGymToolCall,
 } from "../src/index.js";
+
+test("tool-call validation reports missing required input", () => {
+  const registry = createAgentGymToolRegistry([{
+    description: "Read current evidence.",
+    input_schema: {
+      additionalProperties: false,
+      properties: { query: { type: "string" } },
+      required: ["query"],
+      type: "object",
+    },
+    tool_id: "cerebro.search",
+  }]);
+  const validation = validateAgentGymToolCall(registry, {
+    call_ref: "tool-call://search/one",
+    input: {},
+    tool_id: "cerebro.search",
+  });
+  assert.equal(validation.valid, false);
+  assert.deepEqual(validation.issues, ["$.query:input.required_missing"]);
+});
+
+test("tool-call validation accepts schema-conforming input", () => {
+  const registry = createAgentGymToolRegistry([{
+    description: "Read current evidence.",
+    input_schema: {
+      additionalProperties: false,
+      properties: { query: { type: "string" } },
+      required: ["query"],
+      type: "object",
+    },
+    tool_id: "cerebro.search",
+  }]);
+  const validation = validateAgentGymToolCall(registry, {
+    call_ref: "tool-call://search/one",
+    input: { query: "current evidence" },
+    tool_id: "cerebro.search",
+  });
+  assert.equal(validation.valid, true);
+  assert.deepEqual(validation.issues, []);
+});
 
 test("authorization fixtures retain the policy evidence for a denial", () => {
   const fixture = createAgentGymAuthorizationFixture({
