@@ -19,7 +19,7 @@ try {
       judge_model_id: judgeModelId,
       region,
     },
-    model,
+    { generator: model, judge: model },
   );
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   if (!receipt.promotion.promotion_ready) process.exitCode = 1;

@@ -32,6 +32,11 @@ export interface HostedModelPort {
   converse(request: HostedModelRequest): Promise<HostedModelResponse>;
 }
 
+export interface HostedHillclimbModelPorts {
+  readonly generator: HostedModelPort;
+  readonly judge: HostedModelPort;
+}
+
 export interface HostedHillclimbOptions {
   readonly generator_model_id: string;
   readonly judge_model_id: string;
@@ -173,7 +178,7 @@ const MAXIMUM_P95_INFERENCE_LATENCY_MS = 10_000;
 export async function runHostedSlackWorkingStateHillclimb(
   cases: readonly SlackWorkingStateEvalCaseV1[],
   options: HostedHillclimbOptions,
-  model: HostedModelPort,
+  models: HostedHillclimbModelPorts,
   evaluatedAt = new Date(),
 ): Promise<HostedHillclimbReceipt> {
   validateOptions(options);
@@ -187,15 +192,15 @@ export async function runHostedSlackWorkingStateHillclimb(
   const results: HostedHillclimbCaseResult[] = [];
   for (const evalCase of cases) {
     const [baseline, candidate] = await Promise.all([
-      generateAnswer(evalCase, "baseline", options.generator_model_id, model),
-      generateAnswer(evalCase, "candidate", options.generator_model_id, model),
+      generateAnswer(evalCase, "baseline", options.generator_model_id, models.generator),
+      generateAnswer(evalCase, "candidate", options.generator_model_id, models.generator),
     ]);
     const judge = await judgeAnswers(
       evalCase,
       baseline.output,
       candidate.output,
       options.judge_model_id,
-      model,
+      models.judge,
     );
     const baselinePassed = scorePassed(judge.scores.baseline);
     const candidatePassed = scorePassed(judge.scores.candidate);
