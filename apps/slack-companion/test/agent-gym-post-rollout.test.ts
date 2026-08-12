@@ -3,12 +3,14 @@ import test from "node:test";
 
 import {
   digestAgentGymJson,
+  decideAgentGymPostRolloutGate,
   openAgentGymRollbackReserve,
   recordAgentGymPostRolloutObservation,
   sealAgentGymPostRolloutWindow,
   validateAgentGymRollbackReserve,
   validateAgentGymPostRolloutObservation,
   validateAgentGymPostRolloutWindow,
+  validateAgentGymPostRolloutGate,
   type AgentGymRolloutSummaryV1,
 } from "../src/index.js";
 
@@ -85,6 +87,50 @@ test("post-rollout windows reject observations presented out of order", () => {
     window_ref: "agent-gym-post-rollout-window://nightly/invalid",
   }), /post-rollout window is invalid/u);
 });
+
+test("post-rollout gates mark a threshold-compliant window healthy", () => {
+  const gate = decideAgentGymPostRolloutGate(liveWindow(), {
+    decided_at: "2026-08-12T11:31:00.000Z",
+    evidence_refs: ["agent-gym-evidence://post-rollout/gate-one"],
+    gate_ref: "agent-gym-post-rollout-gate://nightly/one",
+    policy: postRolloutPolicy(2),
+  });
+  assert.equal(gate.decision, "healthy");
+  assert.deepEqual(validateAgentGymPostRolloutGate(gate), gate);
+});
+
+test("post-rollout gates hold when the evidence window is undersampled", () => {
+  const gate = decideAgentGymPostRolloutGate(liveWindow(), {
+    decided_at: "2026-08-12T11:31:00.000Z",
+    evidence_refs: ["agent-gym-evidence://post-rollout/gate-hold"],
+    gate_ref: "agent-gym-post-rollout-gate://nightly/hold",
+    policy: postRolloutPolicy(3),
+  });
+  assert.equal(gate.decision, "hold");
+  assert.deepEqual(gate.blocker_codes, ["post_rollout_samples_insufficient"]);
+});
+
+function liveWindow() {
+  return sealAgentGymPostRolloutWindow([
+    liveObservation("one", "2026-08-12T11:28:00.000Z", 700, 0.95),
+    liveObservation("two", "2026-08-12T11:29:00.000Z", 1200, 0.85),
+  ], {
+    evidence_refs: ["agent-gym-evidence://post-rollout/window-one"],
+    sealed_at: "2026-08-12T11:30:00.000Z",
+    window_ref: "agent-gym-post-rollout-window://nightly/one",
+  });
+}
+
+function postRolloutPolicy(minimum: number) {
+  return {
+    max_failed_rate: 0,
+    max_p95_latency_ms: 1500,
+    min_mean_quality_score: 0.85,
+    min_observation_count: minimum,
+    policy_ref: "agent-gym-post-rollout-policy://nightly/default",
+    schema_version: "agent-gym-post-rollout-policy/v1" as const,
+  };
+}
 
 function liveObservation(ref: string, observedAt: string, latencyMs: number, qualityScore: number) {
   return recordAgentGymPostRolloutObservation(completedRollout(), {
