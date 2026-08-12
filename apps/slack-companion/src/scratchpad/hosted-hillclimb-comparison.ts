@@ -16,8 +16,10 @@ export interface HostedHillclimbComparisonV1 {
   readonly corpus_digest: string;
   readonly current_evaluated_at: string;
   readonly efficiency_stable: boolean;
+  readonly generator_model_id: string;
   readonly judge_repair_count_delta: number;
   readonly judge_p95_latency_ms_delta: number;
+  readonly judge_model_id: string;
   readonly model_token_count_delta: number;
   readonly previous_evaluated_at: string;
   readonly promotion_stable: boolean;
@@ -87,11 +89,13 @@ export function compareHostedSlackWorkingStateHillclimbs(
     corpus_digest: current.corpus_digest,
     current_evaluated_at: current.evaluated_at,
     efficiency_stable: modelTokenCount(current) <= modelTokenCount(previous),
+    generator_model_id: current.generator.model_id,
     judge_repair_count_delta: current.judge.repair_count - previous.judge.repair_count,
     judge_p95_latency_ms_delta: delta(
       previous.judge.p95_latency_ms,
       current.judge.p95_latency_ms,
     ),
+    judge_model_id: current.judge.model_id,
     model_token_count_delta: modelTokenCount(current) - modelTokenCount(previous),
     previous_evaluated_at: previous.evaluated_at,
     promotion_stable:
