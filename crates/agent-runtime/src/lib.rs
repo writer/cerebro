@@ -1476,7 +1476,9 @@ async fn route_request_decision(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
 ) -> Result<RouteDecision, AgentRuntimeError> {
-    if request_is_unscoped_conversation(&request.message) {
+    if request_is_unscoped_conversation(&request.message)
+        || request_is_explicit_no_live_self_capability(&request.message)
+    {
         return Ok(RouteDecision {
             lane: ExecutionLane::Converse,
             confidence: RouteConfidence::High,
@@ -1863,6 +1865,40 @@ fn request_is_unscoped_conversation(message: &str) -> bool {
             | "what is your role"
             | "what s your role"
     )
+}
+
+fn request_is_explicit_no_live_self_capability(message: &str) -> bool {
+    let normalized = normalized_phrase_text(message);
+    let explicitly_disallows_live_lookup = [
+        " no live lookup ",
+        " without a live lookup ",
+        " without tools ",
+        " do not call tools ",
+        " don t call tools ",
+        " no tools ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let asks_self_capability = [
+        " one thing you can help ",
+        " what you can help ",
+        " what can you help ",
+        " how can you help ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let asks_for_contextual_environment_purpose = [
+        " this environment is for ",
+        " this slack environment is for ",
+        " this sec dev slack environment is for ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+
+    explicitly_disallows_live_lookup
+        && asks_self_capability
+        && asks_for_contextual_environment_purpose
+        && !request_explicitly_requires_current_evidence(message)
 }
 
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
@@ -4057,7 +4093,12 @@ mod grounding_tests {
 
     #[tokio::test]
     async fn unscoped_conversation_routes_before_model_routing() {
-        for message in ["how we doin?", "How's it going?", "what can you do?"] {
+        for message in [
+            "how we doin?",
+            "How's it going?",
+            "what can you do?",
+            "No live lookup this time: in one conversational sentence, tell me what this sec-dev Slack environment is for and one thing you can help an Infosec operator do. Do not call tools.",
+        ] {
             assert_eq!(
                 super::route_request(&RouteMustNotRun, route_request(message))
                     .await
@@ -4071,14 +4112,35 @@ mod grounding_tests {
     #[test]
     fn scoped_questions_do_not_match_unscoped_conversation_guard() {
         for message in [
-            "How is Atlas doing?",
+            "How's Atlas now?",
             "Can you inspect the current runtime?",
-            "What is the current state of the rollout?",
+            "What is the current state of the runtime?",
         ] {
             assert!(
-                !request_is_unscoped_conversation(message),
+                !request_is_unscoped_conversation(message)
+                    && !request_is_explicit_no_live_self_capability(message),
                 "scoped question was treated as unscoped conversation: {message}"
             );
+        }
+    }
+
+    #[test]
+    fn explicit_no_live_self_capability_does_not_downgrade_current_questions() {
+        for message in [
+            "No live lookup this time: is Atlas healthy, and what can you help an Infosec operator do?",
+            "No live lookup this time: tell me what the current Slack runtime status is and one thing you can help an Infosec operator do. Do not call tools.",
+        ] {
+            assert!(request_explicitly_requires_current_evidence(message));
+            assert!(!request_is_explicit_no_live_self_capability(message));
+            let decision = RouteDecision {
+                lane: ExecutionLane::Converse,
+                confidence: RouteConfidence::High,
+                reason: "This is only explanatory.".into(),
+                requires_current_evidence: false,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
+            };
+            assert!(validate_route(&route_request(message), &decision).is_err());
         }
     }
 
