@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  expectedNeighborhoodProof,
   parseArgs,
   parseDemoNeighborhood,
   portableEnvironment,
@@ -62,5 +63,21 @@ describe("Rust product demo helpers", () => {
     expect(() =>
       parseDemoNeighborhood(JSON.stringify({ root: { agent_key: "other" } })),
     ).toThrow("tenant-scoped product root");
+  });
+
+  it("derives receipt counts from the trusted local Rust fixture", () => {
+    expect(
+      expectedNeighborhoodProof({
+        root: { entity_id: "root", label: "Provider identity" },
+        edges: [
+          { from: "root", relation: "represents", to: "person" },
+          { from: "group", relation: "can_access", to: "repository" },
+        ],
+      }),
+    ).toEqual({
+      node_count: 2,
+      relation_count: 1,
+      root_label: "Provider identity",
+    });
   });
 });

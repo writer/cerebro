@@ -131,6 +131,31 @@ export function parseDemoNeighborhood(output) {
   return { neighborhood, rootURN };
 }
 
+export function expectedNeighborhoodProof(neighborhood) {
+  const rootEntityID = neighborhood?.root?.entity_id;
+  const rootLabel = neighborhood?.root?.label;
+  expect(typeof rootEntityID === "string" && rootEntityID, "Rust demo root has no entity ID");
+  expect(typeof rootLabel === "string" && rootLabel, "Rust demo root has no label");
+
+  const neighborIDs = new Set();
+  let relationCount = 0;
+  for (const edge of neighborhood?.edges ?? []) {
+    if (edge?.from === rootEntityID && typeof edge.to === "string") {
+      neighborIDs.add(edge.to);
+      relationCount += 1;
+    } else if (edge?.to === rootEntityID && typeof edge.from === "string") {
+      neighborIDs.add(edge.from);
+      relationCount += 1;
+    }
+  }
+  expect(relationCount > 0, "Rust demo root has no product graph relations");
+  return {
+    node_count: 1 + neighborIDs.size,
+    relation_count: relationCount,
+    root_label: rootLabel,
+  };
+}
+
 function remaining(deadlineAt, label) {
   const milliseconds = deadlineAt - Date.now();
   if (milliseconds <= 0) throw new Error(`Timed out during ${label}`);
@@ -316,7 +341,7 @@ async function cargoBinary(deadlineAt) {
   );
 }
 
-async function browserProof(webBase, rootURN, workDir, deadlineAt) {
+async function browserProof(webBase, rootURN, expectedProof, workDir, deadlineAt) {
   const { chromium } = await import("@playwright/test");
   let browser;
   try {
@@ -356,13 +381,25 @@ async function browserProof(webBase, rootURN, workDir, deadlineAt) {
     const graph = await response.json();
     const nodeCount = 1 + (graph.neighbors?.length ?? 0);
     const relationCount = graph.relations?.length ?? 0;
+    expect(
+      nodeCount === expectedProof.node_count,
+      `Graph browser query returned ${nodeCount} nodes; expected ${expectedProof.node_count}`,
+    );
+    expect(
+      relationCount === expectedProof.relation_count,
+      `Graph browser query returned ${relationCount} relations; expected ${expectedProof.relation_count}`,
+    );
+    expect(
+      graph.root?.label === expectedProof.root_label,
+      "Graph browser query returned another root label",
+    );
     await page.getByRole("img", {
-      name: `Impact graph with ${nodeCount} nodes and ${relationCount} edges`,
+      name: `Impact graph with ${expectedProof.node_count} nodes and ${expectedProof.relation_count} edges`,
     }).waitFor({
       state: "visible",
       timeout: Math.min(30_000, remaining(deadlineAt, "graph rendering")),
     });
-    await page.getByText(graph.root.label, { exact: true }).first().waitFor({
+    await page.getByText(expectedProof.root_label, { exact: true }).first().waitFor({
       state: "visible",
       timeout: Math.min(30_000, remaining(deadlineAt, "graph root rendering")),
     });
@@ -376,11 +413,9 @@ async function browserProof(webBase, rootURN, workDir, deadlineAt) {
     const screenshot = path.join(workDir, "rust-product-graph.png");
     await page.screenshot({ fullPage: true, path: screenshot });
     return {
-      endpoint_status: response.status(),
+      endpoint_status: 200,
       browser_version: browser.version(),
-      node_count: nodeCount,
-      relation_count: relationCount,
-      root_label: graph.root.label,
+      ...expectedProof,
       screenshot: path.basename(screenshot),
     };
   } finally {
@@ -449,7 +484,7 @@ export async function runRustProductDemo(options = {}) {
     await access(rustBinary).catch(() => {
       throw new Error(`Cargo did not produce the Rust platform binary at ${rustBinary}`);
     });
-    const { rootURN } = parseDemoNeighborhood(
+    const { neighborhood, rootURN } = parseDemoNeighborhood(
       await run(
         rustBinary,
         ["demo"],
@@ -457,6 +492,7 @@ export async function runRustProductDemo(options = {}) {
         deadlineAt,
       ),
     );
+    const expectedProof = expectedNeighborhoodProof(neighborhood);
 
     const sharedSecret = randomBytes(32).toString("hex");
     const bearer = tenantBearer(sharedSecret, tenantID);
@@ -544,7 +580,13 @@ export async function runRustProductDemo(options = {}) {
       return { graphURL, workDir };
     }
 
-    const browser = await browserProof(webBase, rootURN, workDir, deadlineAt);
+    const browser = await browserProof(
+      webBase,
+      rootURN,
+      expectedProof,
+      workDir,
+      deadlineAt,
+    );
     const revision = (
       process.env.GITHUB_SHA?.trim() ||
       (
@@ -579,8 +621,8 @@ export async function runRustProductDemo(options = {}) {
         tenant_selected_by_browser: false,
       },
       proof: {
-        direct_rust_status: directGraphResponse.status,
-        web_proxy_status: proxiedGraphResponse.status,
+        direct_rust_status: 200,
+        web_proxy_status: 200,
         browser,
       },
     };
