@@ -986,6 +986,11 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
             ModelDecision::Finish { draft: repaired },
         ]),
     );
+    let mut partial_evidence = evidence(
+        "evidence://source-a",
+        "The bounded source search returned directory and audit evidence.",
+    );
+    partial_evidence.complete = false;
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "graph_search",
@@ -1004,10 +1009,7 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
                     ],
                     "truncated": true
                 }),
-                evidence: vec![evidence(
-                    "evidence://source-a",
-                    "The bounded source search returned directory and audit evidence.",
-                )],
+                evidence: vec![partial_evidence],
                 blocker: Some("Additional matching records were outside the bounded read.".into()),
             },
         )])),
@@ -1394,6 +1396,11 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
             },
         ]),
     );
+    let mut uncertain_effect_evidence = evidence(
+        "evidence://uncertain-effect",
+        "The effect request was transmitted but no terminal receipt was observed.",
+    );
+    uncertain_effect_evidence.complete = false;
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "runtime_config_update",
@@ -1406,10 +1413,7 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
                 state: ToolResultState::OutcomeUnknown,
                 summary: "The provider connection ended before a receipt was returned.".into(),
                 data: json!({}),
-                evidence: vec![evidence(
-                    "evidence://uncertain-effect",
-                    "The effect request was transmitted but no terminal receipt was observed.",
-                )],
+                evidence: vec![uncertain_effect_evidence],
                 blocker: Some("The effect may have happened, so retry is unsafe.".into()),
             },
         )])),

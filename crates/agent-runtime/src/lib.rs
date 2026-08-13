@@ -3555,6 +3555,15 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
     }
     let mut evidence_refs = BTreeSet::new();
     for evidence in &result.evidence {
+        if matches!(
+            result.state,
+            ToolResultState::Partial | ToolResultState::OutcomeUnknown
+        ) && evidence.complete
+        {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "partial or unknown tool result cannot include complete evidence".into(),
+            ));
+        }
         parse_timestamp(&evidence.observed_at).map_err(|_| {
             AgentRuntimeError::InvalidToolCall("evidence observed_at is invalid".into())
         })?;
@@ -4146,6 +4155,17 @@ mod grounding_tests {
         }
     }
 
+    fn validation_evidence(complete: bool) -> EvidenceRecord {
+        EvidenceRecord {
+            evidence_ref: "evidence://validation/result".into(),
+            statement: "The bounded result was observed.".into(),
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: None,
+            complete,
+            atoms: Vec::new(),
+        }
+    }
+
     #[test]
     fn scoped_questions_do_not_match_unscoped_conversation_guard() {
         for message in [
@@ -4210,6 +4230,26 @@ mod grounding_tests {
             Err(AgentRuntimeError::InvalidToolCall(reason))
                 if reason == "tool result fields are invalid"
         ));
+    }
+
+    #[test]
+    fn partial_and_unknown_results_cannot_claim_complete_evidence() {
+        for state in [ToolResultState::Partial, ToolResultState::OutcomeUnknown] {
+            let mut result = validation_result(state, Some("The result is not complete."));
+            result.evidence = vec![validation_evidence(false)];
+            assert!(validate_tool_result(&result).is_ok());
+
+            result.evidence[0].complete = true;
+            assert!(matches!(
+                validate_tool_result(&result),
+                Err(AgentRuntimeError::InvalidToolCall(reason))
+                    if reason == "partial or unknown tool result cannot include complete evidence"
+            ));
+        }
+
+        let mut succeeded = validation_result(ToolResultState::Succeeded, None);
+        succeeded.evidence = vec![validation_evidence(true)];
+        assert!(validate_tool_result(&succeeded).is_ok());
     }
 
     #[test]
