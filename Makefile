@@ -4,7 +4,7 @@
 .PHONY: app-workspace-check web-docker-smoke
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
 .PHONY: rust-event-admission-benchmark rust-organizational-platform-benchmark rust-organizational-store-benchmark sourceruntime-event-admission-generate sourceruntime-event-admission-check
-.PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review post-merge-health land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
+.PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo security-operator-benchmark github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review post-merge-health land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke rust-security-path-properties rust-security-path-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence security-path-evaluator-generate security-path-evaluator-check
 
@@ -105,6 +105,13 @@ LOAD_SMOKE_MAX_SCHEDULE_LAG_MS ?= 60000
 LOAD_SMOKE_MAX_MISSED_REQUEST_RATE ?= 1
 LOAD_SMOKE_JSON_OUT ?= tmp/load-smoke.json
 LOAD_SMOKE_MARKDOWN_OUT ?= tmp/load-smoke.md
+SECURITY_BENCHMARK_BASELINE_URL ?=
+SECURITY_BENCHMARK_CANDIDATE_URL ?=
+SECURITY_BENCHMARK_SCENARIO ?= examples/benchmarks/security-operator.json
+SECURITY_BENCHMARK_SAMPLES ?= 30
+SECURITY_BENCHMARK_CONCURRENCY ?= 2
+SECURITY_BENCHMARK_JSON_OUT ?= tmp/security-operator-benchmark.json
+SECURITY_BENCHMARK_MARKDOWN_OUT ?= tmp/security-operator-benchmark.md
 AGENT_ONBOARD_PLAN ?= examples/onboarding/cerebro-onboarding.yaml
 AGENT_ONBOARD_GITHUB_PLAN ?= examples/onboarding/github-onboarding.yaml
 AGENT_ONBOARD_EFFECTIVE_PLAN = $(if $(PLAN),$(PLAN),$(AGENT_ONBOARD_PLAN))
@@ -752,6 +759,18 @@ changed-check: ## Run validation selected from changed paths.
 	python3 scripts/changed_checks.py --base "$(REVIEW_BASE)" --head "$(REVIEW_HEAD)" --run
 
 secure-business-demo: agent-onboard-e2e ## Start Cerebro locally and write a security onboarding receipt.
+
+security-operator-benchmark: ## Compare two releases through the Infosec risk-to-action workflow.
+	@test -n "$(SECURITY_BENCHMARK_BASELINE_URL)" || { echo "SECURITY_BENCHMARK_BASELINE_URL is required" >&2; exit 2; }
+	@test -n "$(SECURITY_BENCHMARK_CANDIDATE_URL)" || { echo "SECURITY_BENCHMARK_CANDIDATE_URL is required" >&2; exit 2; }
+	python3 scripts/security_operator_benchmark.py \
+		--baseline-url "$(SECURITY_BENCHMARK_BASELINE_URL)" \
+		--candidate-url "$(SECURITY_BENCHMARK_CANDIDATE_URL)" \
+		--scenario "$(SECURITY_BENCHMARK_SCENARIO)" \
+		--samples "$(SECURITY_BENCHMARK_SAMPLES)" \
+		--concurrency "$(SECURITY_BENCHMARK_CONCURRENCY)" \
+		--json-out "$(SECURITY_BENCHMARK_JSON_OUT)" \
+		--markdown-out "$(SECURITY_BENCHMARK_MARKDOWN_OUT)"
 
 agent-onboard: build ## Run an agent onboarding plan and write a redacted receipt.
 	python3 scripts/agent_onboard.py \
