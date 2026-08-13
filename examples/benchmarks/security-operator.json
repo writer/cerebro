@@ -1,0 +1,21 @@
+{
+  "tenant_id": "benchmark",
+  "finding_limit": 25,
+  "attack_path_limit": 25,
+  "asset_limit": 25,
+  "expected": {
+    "finding_rule_id": "benchmark-public-to-privileged",
+    "resource_urn": "urn:cerebro:benchmark:asset:public-workload",
+    "minimum_severity": "HIGH"
+  },
+  "requirements": {
+    "min_open_findings": 1,
+    "min_attack_paths": 1,
+    "min_assets": 1,
+    "require_owned_finding": true,
+    "require_finding_evidence": true,
+    "require_finding_risk": true,
+    "require_path_provenance": true,
+    "require_asset_actions": true
+  }
+}
