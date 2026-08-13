@@ -1,9 +1,12 @@
+import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  authHeadersFor,
   buildCerebroUrl,
   cachedResponseHeaders,
   cerebroProxyCacheKey,
+  configuredOrganizationalGraphTenant,
   fetchCerebro,
   getCerebroPublicConfig,
   isCacheableCerebroPath,
@@ -44,6 +47,23 @@ describe("cerebro proxy cache headers", () => {
 
   it("keeps internal upstream addresses out of the browser config", () => {
     expect(getCerebroPublicConfig().apiBase).toBe("/api/cerebro");
+  });
+
+  it("adds the server-owned tenant header for local Rust shared-secret auth", () => {
+    vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", " tenant-demo ");
+
+    const request = new NextRequest("http://localhost/graph");
+    const headers = new Headers(authHeadersFor(request, "platform/graph/neighborhood"));
+
+    expect(headers.get("x-cerebro-tenant")).toBe("tenant-demo");
+    expect(new Headers(authHeadersFor(request, "user/preferences")).get("x-cerebro-tenant")).toBeNull();
+  });
+
+  it("rejects an invalid server-owned tenant header", () => {
+    expect(() => configuredOrganizationalGraphTenant("tenant-demo\nforged")).toThrow(
+      "is not a valid header value",
+    );
+    expect(configuredOrganizationalGraphTenant("   ")).toBeUndefined();
   });
 
   it("enables Rust authority only through an explicit deployment mode", () => {
@@ -131,6 +151,11 @@ describe("cerebro proxy cache headers", () => {
   it("caches program readiness so audit readiness can stale-serve through transient backend failures", () => {
     expect(isCacheableCerebroPath("/grc/program-readiness")).toBe(true);
     expect(isCacheableCerebroPath("grc/program-readiness")).toBe(true);
+  });
+
+  it("caches the bounded Rust graph neighborhood contract", () => {
+    expect(isCacheableCerebroPath("/platform/graph/neighborhood")).toBe(true);
+    expect(isCacheableCerebroPath("/platform/graph/neighborhood?root_urn=urn%3Acerebro%3Atenant-demo%3Aentity%3Aone")).toBe(true);
   });
 
   it("keeps live finding previews fresh while immutable packets remain cacheable", () => {

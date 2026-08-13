@@ -31,6 +31,8 @@ describe("authenticated Rust web integration helpers", () => {
         {
           HOME: "/tmp/home",
           PATH: "/bin",
+          DDESK_CARGO_EMERGENCY_FREE_BYTES: "17179869184",
+          DDESK_CARGO_RESERVATION_BYTES: "8589934592",
           CEREBRO_API_KEY: "legacy-go-key",
           CEREBRO_HTTP_ADDR: "127.0.0.1:8000",
           UNRELATED_SECRET: "must-not-cross-process-boundary",
@@ -39,6 +41,8 @@ describe("authenticated Rust web integration helpers", () => {
       ),
     ).toEqual({
       CEREBRO_RUST_BIND: "127.0.0.1:8001",
+      DDESK_CARGO_EMERGENCY_FREE_BYTES: "17179869184",
+      DDESK_CARGO_RESERVATION_BYTES: "8589934592",
       HOME: "/tmp/home",
       PATH: "/bin",
     });

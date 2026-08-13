@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const target = buildCerebroUrl(path, url.search);
   const baseAuthHeaders = rustAuthority
     ? signedIdentityHeadersFor(request)
-    : authHeadersFor(request);
+    : authHeadersFor(request, path);
   const authHeaders = rustAuthority
     ? baseAuthHeaders
     : { ...baseAuthHeaders, ...currentUserPreferenceHeaders(currentUser) };
@@ -273,7 +273,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const headers = new Headers(
     rustAuthority
       ? signedIdentityHeadersFor(request)
-      : authHeadersFor(request),
+      : authHeadersFor(request, path),
   );
   if (!rustAuthority) {
     for (const [key, value] of Object.entries(currentUserPreferenceHeaders(currentUser))) {
@@ -370,7 +370,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
   const target = buildCerebroUrl(path, url.search);
   const headers = {
-    ...authHeadersFor(request),
+    ...authHeadersFor(request, path),
     ...currentUserPreferenceHeaders(currentUser),
     "content-type": request.headers.get("content-type") ?? "application/json",
     accept: "application/json, text/plain;q=0.9, */*;q=0.8",
@@ -434,7 +434,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   }
   const target = buildCerebroUrl(path, url.search);
   const headers = {
-    ...authHeadersFor(request),
+    ...authHeadersFor(request, path),
     ...currentUserPreferenceHeaders(currentUser),
     "content-type": request.headers.get("content-type") ?? "application/json",
     accept: "application/json, text/plain;q=0.9, */*;q=0.8",
@@ -492,7 +492,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
   const target = buildCerebroUrl(path, url.search);
   const headers = {
-    ...authHeadersFor(request),
+    ...authHeadersFor(request, path),
     ...currentUserPreferenceHeaders(currentUser),
     accept: "application/json, text/plain;q=0.9, */*;q=0.8",
   };

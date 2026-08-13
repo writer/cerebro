@@ -17,6 +17,14 @@ Use fixture mode when no Cerebro server is running:
 npm run dev:fixtures --workspace @writer/cerebro-web
 ```
 
+Run the browser against the Rust-owned organizational graph without Docker or provider credentials:
+
+```sh
+make rust-product-demo
+```
+
+The command prints a graph explorer URL and stops both local processes on `Ctrl-C`. With Chromium installed, `make rust-product-demo-check` validates the direct Rust response, the web proxy, and the rendered graph, then writes `tmp/rust-product-demo/receipt.json` without the ephemeral authentication secret.
+
 ## Check
 
 ```sh
