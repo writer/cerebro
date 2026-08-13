@@ -381,17 +381,21 @@ impl McpAgentTools {
                     tool.mcp_name
                 )));
             }
+            let guidance = json_rpc_error_guidance(error.code);
             return Ok(ToolResult {
                 state: ToolResultState::Failed,
                 summary: format!("MCP tool {} failed.", tool.mcp_name),
-                data: json!({
-                    "error_code": error.code,
-                    "error_message": bounded_error(&error.message),
-                }),
+                data: with_recovery_guidance(
+                    json!({
+                        "error_code": error.code,
+                        "error_message": bounded_error(&error.message),
+                    }),
+                    guidance,
+                ),
                 evidence: vec![],
                 blocker: Some(format!(
-                    "The {} capability returned an MCP error.",
-                    tool.descriptor.title
+                    "The {} capability returned an MCP error. {}",
+                    tool.descriptor.title, guidance.operator_action
                 )),
             });
         }
@@ -502,10 +506,12 @@ impl McpAgentTools {
                 )),
             });
         }
-        bounded_json(response).await.map_err(|error| McpPostFailure {
-            kind: McpPostFailureKind::InvalidResponse,
-            runtime_error: AgentRuntimeError::InvalidToolCall(error),
-        })
+        bounded_json(response)
+            .await
+            .map_err(|error| McpPostFailure {
+                kind: McpPostFailureKind::InvalidResponse,
+                runtime_error: AgentRuntimeError::InvalidToolCall(error),
+            })
     }
 }
 
@@ -595,13 +601,52 @@ fn tool_error_guidance(data: &Value) -> RecoveryGuidance {
     }
 }
 
+const fn json_rpc_error_guidance(code: i64) -> RecoveryGuidance {
+    match code {
+        -32700 => RecoveryGuidance {
+            error_kind: "rpc_parse_error",
+            retryable: false,
+            operator_action: "Inspect the gateway protocol response before retrying.",
+        },
+        -32600 => RecoveryGuidance {
+            error_kind: "invalid_rpc_request",
+            retryable: false,
+            operator_action: "Correct the gateway request contract before retrying.",
+        },
+        -32601 => RecoveryGuidance {
+            error_kind: "capability_method_unavailable",
+            retryable: false,
+            operator_action: "Refresh the capability catalog before retrying.",
+        },
+        -32602 => RecoveryGuidance {
+            error_kind: "invalid_tool_request",
+            retryable: false,
+            operator_action: "Correct the tool input before retrying.",
+        },
+        -32603 => RecoveryGuidance {
+            error_kind: "provider_internal_error",
+            retryable: true,
+            operator_action: "Retry after the capability provider recovers.",
+        },
+        -32099..=-32000 => RecoveryGuidance {
+            error_kind: "provider_server_error",
+            retryable: true,
+            operator_action: "Retry after the capability provider recovers.",
+        },
+        _ => RecoveryGuidance {
+            error_kind: "provider_rpc_error",
+            retryable: false,
+            operator_action: "Inspect the provider error before retrying.",
+        },
+    }
+}
+
 fn with_recovery_guidance(data: Value, guidance: RecoveryGuidance) -> Value {
     let mut object = match data {
         Value::Object(object) => object,
-        provider_result => serde_json::Map::from_iter([(
-            "provider_result".to_owned(),
-            provider_result,
-        )]),
+        provider_result => {
+            serde_json::Map::from_iter([("provider_result".to_owned(), provider_result)])
+        }
     };
     object.insert("error_kind".into(), json!(guidance.error_kind));
     object.insert("retryable".into(), json!(guidance.retryable));
@@ -1242,7 +1287,10 @@ mod tests {
             true,
         );
         assert_eq!(denied.state, ToolResultState::Failed);
-        assert_eq!(denied.blocker.as_deref(), Some("Tenant access is not authorized."));
+        assert_eq!(
+            denied.blocker.as_deref(),
+            Some("Tenant access is not authorized.")
+        );
         assert_eq!(denied.data["error_kind"], "capability_access_denied");
         assert_eq!(denied.data["retryable"], false);
         assert_eq!(
@@ -1827,6 +1875,93 @@ mod tests {
             "Retry after the capability gateway rate limit resets."
         );
         assert!(result.evidence.is_empty());
+    }
+
+    #[tokio::test]
+    async fn json_rpc_errors_return_stable_recovery_guidance() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route(
+                    "/mcp",
+                    post(|| async {
+                        Json(json!({
+                            "jsonrpc": "2.0",
+                            "id": "search-one",
+                            "error": {
+                                "code": -32602,
+                                "message": "finding_id is required"
+                            }
+                        }))
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        let tools = bind_tools(
+            vec![tool("cerebro.findings.search", true)],
+            &BTreeSet::from(["cerebro.findings.search".into()]),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        )
+        .unwrap();
+        let descriptors = tools.values().map(|tool| tool.descriptor.clone()).collect();
+        let mcp = McpAgentTools {
+            client: Client::new(),
+            endpoint: Url::parse(&format!("http://{address}/mcp")).unwrap(),
+            bearer_token: "tenant-token".into(),
+            selection_signing_key: "host-only-selection-signing-secret".into(),
+            toolsets: "task".into(),
+            descriptors,
+            tools,
+        };
+        let call = ToolCall {
+            call_id: "search-one".into(),
+            tool_id: "mcp.cerebro.findings.search".into(),
+            purpose: "Find current findings.".into(),
+            input: json!({}),
+        };
+
+        let result = mcp.invoke(&turn_request(), &call).await.unwrap();
+        server.abort();
+
+        assert_eq!(result.state, ToolResultState::Failed);
+        assert_eq!(result.data["error_code"], -32602);
+        assert_eq!(result.data["error_message"], "finding_id is required");
+        assert_eq!(result.data["error_kind"], "invalid_tool_request");
+        assert_eq!(result.data["retryable"], false);
+        assert_eq!(
+            result.data["operator_action"],
+            "Correct the tool input before retrying."
+        );
+        assert!(result.evidence.is_empty());
+    }
+
+    #[test]
+    fn classifies_standard_and_provider_json_rpc_errors() {
+        assert_eq!(
+            json_rpc_error_guidance(-32601).error_kind,
+            "capability_method_unavailable"
+        );
+        assert_eq!(
+            json_rpc_error_guidance(-32603),
+            RecoveryGuidance {
+                error_kind: "provider_internal_error",
+                retryable: true,
+                operator_action: "Retry after the capability provider recovers.",
+            }
+        );
+        assert_eq!(
+            json_rpc_error_guidance(-32042).error_kind,
+            "provider_server_error"
+        );
+        assert_eq!(
+            json_rpc_error_guidance(7001).error_kind,
+            "provider_rpc_error"
+        );
     }
 
     #[tokio::test]
