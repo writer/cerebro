@@ -1382,8 +1382,18 @@ fn lifecycle_store_error(error: StoreError) -> ConnectError {
 
 #[cfg(test)]
 mod tests {
-    use std::future;
+    use std::{collections::BTreeMap, future};
 
+    use buffa::{HasMessageView, Message};
+    use cerebro_organizational_store::{
+        EntityCatalogKindCount, EntityCatalogRelation, EntityCatalogRelationCount,
+        ExposureCoverageAccount as StoreExposureAccount,
+        ExposureCoverageCompleteness as StoreExposureCompleteness,
+        ExposureCoverageCorroboratingOnly as StoreExposureCorroboratingOnly,
+        ExposureCoverageCounts as StoreExposureCounts,
+        ExposureCoverageKindCount as StoreExposureKindCount,
+        ExposureCoverageOverlap as StoreExposureOverlap, ExposureCoveragePair as StoreExposurePair,
+    };
     use connectrpc::ErrorCode;
 
     use super::*;
@@ -1590,6 +1600,334 @@ mod tests {
         .into();
         assert_eq!(
             lifecycle_query(&request).unwrap_err().code,
+            ErrorCode::InvalidArgument
+        );
+    }
+
+    fn context_entity(id: &str, kind: &str) -> ContextEntity {
+        ContextEntity {
+            entity_id: EntityId::parse(id).unwrap(),
+            agent_key: format!("urn:cerebro:tenant-a:{kind}:{id}"),
+            entity_kind: kind.to_owned(),
+            authority: serde_json::json!({
+                "authority": "provider",
+                "source_runtime_id": "runtime-a",
+                "provider_kind": kind,
+                "provider_id": id,
+            }),
+            label: format!("{kind} {id}"),
+            properties: BTreeMap::from([("region".to_owned(), "us-west-2".to_owned())]),
+        }
+    }
+
+    fn context_edge(id: &str) -> ContextEdge {
+        ContextEdge {
+            assertion_id: AssertionId::parse(id).unwrap(),
+            from: EntityId::parse("entity-a").unwrap(),
+            relation: "owns".to_owned(),
+            to: EntityId::parse("entity-b").unwrap(),
+            source_runtime_id: "runtime-a".to_owned(),
+            identity_binding: false,
+        }
+    }
+
+    fn exposure_entity(id: &str, kind: &str) -> StoreExposureEntity {
+        StoreExposureEntity {
+            agent_key: format!("urn:cerebro:tenant-a:{kind}:{id}"),
+            entity_kind: kind.to_owned(),
+            label: format!("{kind} {id}"),
+        }
+    }
+
+    #[test]
+    fn exposure_response_preserves_every_bounded_collection_and_completeness_flag() {
+        let primary = exposure_entity("primary", "endpoint");
+        let indicator = exposure_entity("indicator", "indicator.ip");
+        let corroborating = exposure_entity("corroborating", "observation");
+        let account = exposure_entity("account", "account");
+        let response = exposure_coverage_response(StoreExposureResult {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            counts: StoreExposureCounts {
+                primary_entities: 1,
+                indicators: 2,
+                host_indicators: 3,
+                ip_indicators: 4,
+                overlapping_primary_entities: 5,
+                overlapping_indicators: 6,
+                overlapping_corroborating_entities: 7,
+            },
+            type_counts: vec![StoreExposureKindCount {
+                entity_kind: "endpoint".to_owned(),
+                count: 8,
+            }],
+            overlaps: vec![StoreExposureOverlap {
+                primary: primary.clone(),
+                indicator: indicator.clone(),
+                corroborating: corroborating.clone(),
+            }],
+            primary_only: vec![StoreExposurePair {
+                primary: primary.clone(),
+                indicator: indicator.clone(),
+            }],
+            corroborating_only: vec![StoreExposureCorroboratingOnly {
+                corroborating: corroborating.clone(),
+                indicator: indicator.clone(),
+            }],
+            accounts: vec![StoreExposureAccount {
+                account,
+                primary_entities: 9,
+                corroborating_observations: 10,
+            }],
+            completeness: StoreExposureCompleteness {
+                type_counts_truncated: true,
+                overlaps_truncated: true,
+                primary_only_truncated: true,
+                corroborating_only_truncated: true,
+                accounts_truncated: true,
+            },
+        });
+
+        assert_eq!(response.tenant_id, "tenant-a");
+        assert_eq!(response.graph_revision, 42);
+        assert_eq!(response.counts.as_option().unwrap().ip_indicators, 4);
+        assert_eq!(response.type_counts[0].count, 8);
+        assert_eq!(
+            response.overlaps[0].primary.as_option().unwrap().entity_id,
+            primary.agent_key
+        );
+        assert_eq!(response.primary_only.len(), 1);
+        assert_eq!(response.corroborating_only.len(), 1);
+        assert_eq!(response.accounts[0].corroborating_observations, 10);
+        assert!(
+            response
+                .completeness
+                .as_option()
+                .unwrap()
+                .accounts_truncated
+        );
+    }
+
+    #[test]
+    fn catalog_filter_and_pages_preserve_closed_fields_and_cursor_direction() {
+        let filter = EntityCatalogFilter {
+            tenant_id: "tenant-a".to_owned(),
+            source_id: "source-a".to_owned(),
+            runtime_ids: vec!["runtime-a".to_owned()],
+            exact_agent_key: "urn:cerebro:tenant-a:service:one".to_owned(),
+            include_kinds: vec!["service".to_owned()],
+            include_kind_prefixes: vec!["service.".to_owned()],
+            exclude_kinds: vec!["service.retired".to_owned()],
+            exclude_kind_prefixes: vec!["internal.".to_owned()],
+            query: "checkout".to_owned(),
+            expected_graph_revision: 41,
+            query_attributes: true,
+            relation_counts: EntityRelationCountFilter {
+                directions: vec![
+                    EntityRelationDirection::Incoming.into(),
+                    EntityRelationDirection::Outgoing.into(),
+                ],
+                relations: vec!["owns".to_owned()],
+                neighbor_kinds: vec!["team".to_owned()],
+                ..Default::default()
+            }
+            .into(),
+            ..Default::default()
+        };
+        let encoded = filter.encode_to_vec();
+        let view = EntityCatalogFilter::decode_view(&encoded).unwrap();
+        let mapped = catalog_filter(&view);
+        assert_eq!(mapped.source_id, "source-a");
+        assert_eq!(mapped.runtime_ids, ["runtime-a"]);
+        assert_eq!(mapped.include_kind_prefixes, ["service."]);
+        assert_eq!(mapped.exclude_kinds, ["service.retired"]);
+        assert!(mapped.search_attributes);
+        assert_eq!(mapped.expected_graph_revision, 41);
+        assert_eq!(
+            mapped.relation_counts.unwrap().directions,
+            [
+                StoreCatalogDirection::Incoming,
+                StoreCatalogDirection::Outgoing
+            ]
+        );
+
+        let entity = context_entity("entity-a", "service");
+        let page = catalog_page_response(StoreCatalogPage {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            entities: vec![entity.clone()],
+            truncated: true,
+            next_after_agent_key: entity.agent_key.clone(),
+            relation_counts: vec![EntityCatalogRelationCount {
+                agent_key: entity.agent_key.clone(),
+                direction: StoreCatalogDirection::Incoming,
+                relation: "owns".to_owned(),
+                neighbor_kind: "team".to_owned(),
+                count: 3,
+            }],
+        });
+        assert_eq!(page.entities[0].provider_id, "entity-a");
+        assert_eq!(page.relation_counts[0].count, 3);
+        assert_eq!(
+            page.relation_counts[0].direction.as_known(),
+            Some(EntityRelationDirection::Incoming)
+        );
+
+        let kinds = catalog_kind_response(StoreCatalogKindPage {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            counts: vec![EntityCatalogKindCount {
+                entity_kind: "service".to_owned(),
+                count: 4,
+            }],
+            truncated: true,
+            next_after_entity_kind: "service".to_owned(),
+        });
+        assert_eq!(kinds.counts[0].count, 4);
+        assert_eq!(kinds.next_after_entity_kind, "service");
+
+        for direction in [
+            StoreCatalogDirection::Incoming,
+            StoreCatalogDirection::Outgoing,
+        ] {
+            let relations = catalog_relation_response(StoreCatalogRelationPage {
+                tenant_id: "tenant-a".to_owned(),
+                graph_revision: 42,
+                relations: vec![EntityCatalogRelation {
+                    direction,
+                    relation: "owns".to_owned(),
+                    entity: entity.clone(),
+                }],
+                truncated: true,
+                next_after_agent_key: entity.agent_key.clone(),
+                next_after_relation: "owns".to_owned(),
+                next_after_direction: Some(direction),
+            });
+            assert_eq!(
+                relations.relations[0].direction.as_known(),
+                match direction {
+                    StoreCatalogDirection::Incoming => Some(EntityRelationDirection::Incoming),
+                    StoreCatalogDirection::Outgoing => Some(EntityRelationDirection::Outgoing),
+                }
+            );
+            assert_ne!(
+                relations.next_after_direction.as_known(),
+                Some(EntityRelationDirection::Unspecified)
+            );
+        }
+        let first_page = catalog_relation_response(StoreCatalogRelationPage {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            relations: Vec::new(),
+            truncated: false,
+            next_after_agent_key: String::new(),
+            next_after_relation: String::new(),
+            next_after_direction: None,
+        });
+        assert_eq!(
+            first_page.next_after_direction.as_known(),
+            Some(EntityRelationDirection::Unspecified)
+        );
+    }
+
+    #[test]
+    fn graph_projection_helpers_preserve_identity_bindings_and_query_variables() {
+        let entity_a = context_entity("entity-a", "service");
+        let entity_b = context_entity("entity-b", "team");
+        let edge = context_edge("assertion-a");
+
+        let projected_entity = graph_entity(entity_a.clone());
+        assert_eq!(projected_entity.authority, "provider");
+        assert_eq!(projected_entity.source_runtime_id, "runtime-a");
+        assert_eq!(
+            projected_entity
+                .properties
+                .get("region")
+                .map(String::as_str),
+            Some("us-west-2")
+        );
+        let projected_edge = graph_edge(edge.clone());
+        assert_eq!(projected_edge.assertion_id, "assertion-a");
+        assert_eq!(projected_edge.relation, "owns");
+
+        let path = graph_path(ContextPath {
+            entities: vec![entity_a.clone(), entity_b.clone()],
+            edges: vec![edge.clone()],
+        });
+        assert_eq!(path.entities.len(), 2);
+        assert_eq!(path.edges.len(), 1);
+
+        let matched = query_match(ContextQueryMatch {
+            entities: BTreeMap::from([("service".to_owned(), entity_a.clone())]),
+            edges: BTreeMap::from([("ownership".to_owned(), edge.clone())]),
+        });
+        assert_eq!(matched.entities[0].variable, "service");
+        assert_eq!(matched.edges[0].variable, "ownership");
+
+        let expanded = expand_response(Neighborhood {
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            graph_revision: 42,
+            root: entity_a,
+            entities: vec![entity_b],
+            edges: vec![edge],
+            truncated: true,
+        });
+        assert_eq!(expanded.tenant_id, "tenant-a");
+        assert_eq!(expanded.graph_revision, 42);
+        assert!(expanded.truncated);
+        assert_eq!(expanded.entities.len(), 1);
+    }
+
+    #[test]
+    fn rpc_error_mappers_keep_client_faults_distinct_from_backend_failures() {
+        for message in [
+            "invalid exposure coverage profile",
+            "exposure coverage limit must be positive",
+            "exposure coverage requires an indicator",
+        ] {
+            assert_eq!(
+                exposure_store_error(StoreError::Conflict(message.to_owned())).code,
+                ErrorCode::InvalidArgument
+            );
+        }
+        assert_eq!(
+            exposure_store_error(StoreError::Conflict("projection changed".to_owned())).code,
+            ErrorCode::Unavailable
+        );
+
+        for message in [
+            "invalid entity catalog request",
+            "catalog limit must be positive",
+            "filter contains duplicates",
+            "filter exceeds its bound",
+            "catalog cursor is incomplete",
+            "key is not tenant scoped",
+            "catalog directions are invalid",
+        ] {
+            assert_eq!(
+                catalog_store_error(StoreError::Conflict(message.to_owned())).code,
+                ErrorCode::InvalidArgument
+            );
+        }
+        assert_eq!(
+            catalog_store_error(StoreError::Conflict("entity was not found".to_owned())).code,
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            catalog_store_error(StoreError::Conflict("projection changed".to_owned())).code,
+            ErrorCode::Unavailable
+        );
+
+        assert_eq!(
+            context_error(ContextError::EntityNotFound).code,
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            context_error(ContextError::BackendUnavailable("offline".to_owned())).code,
+            ErrorCode::Unavailable
+        );
+        assert_eq!(
+            context_error(ContextError::InvalidLimit).code,
             ErrorCode::InvalidArgument
         );
     }
