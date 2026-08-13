@@ -59,7 +59,10 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 }
 
 func threatInsightEvent(settings settings, record threatInsightRecord) (*primitives.Event, error) {
-	occurredAt := threatInsightOccurredAt(record)
+	occurredAt, err := threatInsightOccurredAt(record)
+	if err != nil {
+		return nil, err
+	}
 	payload, eventID, err := oktaasset.CanonicalThreatInsightMaterial(
 		settings.domain,
 		record.Action,
@@ -88,14 +91,17 @@ func threatInsightEvent(settings settings, record threatInsightRecord) (*primiti
 	}, nil
 }
 
-func threatInsightOccurredAt(record threatInsightRecord) time.Time {
+func threatInsightOccurredAt(record threatInsightRecord) (time.Time, error) {
 	for _, value := range []*time.Time{
 		oktaasset.ParseTime(record.LastUpdated),
 		oktaasset.ParseTime(record.Created),
 	} {
 		if value != nil && !value.IsZero() {
-			return time.UnixMilli(value.UnixMilli()).UTC()
+			normalized := time.UnixMilli(value.UnixMilli()).UTC()
+			if normalized.UnixMilli() > 0 {
+				return normalized, nil
+			}
 		}
 	}
-	return time.Unix(0, 0).UTC()
+	return time.Time{}, fmt.Errorf("okta threat insight requires a positive created or lastUpdated timestamp")
 }

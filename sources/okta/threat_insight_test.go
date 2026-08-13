@@ -62,17 +62,15 @@ func TestThreatInsightEventIdentityBindsCompleteDurableMaterial(t *testing.T) {
 	}
 }
 
-func TestThreatInsightEventMissingTimestampsIsDeterministic(t *testing.T) {
+func TestThreatInsightEventMissingTimestampsFailsClosed(t *testing.T) {
 	settings := settings{domain: "example.okta.test"}
-	first, err := threatInsightEvent(settings, threatInsightRecord{Action: "block"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := threatInsightEvent(settings, threatInsightRecord{Action: "block"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Id != second.Id || first.OccurredAt.AsTime() != second.OccurredAt.AsTime() {
-		t.Fatalf("missing timestamp fallback is not idempotent: first=%#v second=%#v", first, second)
+	for _, record := range []threatInsightRecord{
+		{Action: "block"},
+		{Action: "block", Created: "1970-01-01T00:00:00Z"},
+		{Action: "block", LastUpdated: "invalid", Created: "invalid"},
+	} {
+		if event, err := threatInsightEvent(settings, record); err == nil {
+			t.Fatalf("threatInsightEvent(%#v) = %#v, want timestamp error", record, event)
+		}
 	}
 }

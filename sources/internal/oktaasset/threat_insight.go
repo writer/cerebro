@@ -16,7 +16,7 @@ func CanonicalThreatInsightMaterial(
 	zones []string,
 	occurredAt time.Time,
 ) ([]byte, string, error) {
-	canonicalZones := append([]string(nil), zones...)
+	canonicalZones := append([]string{}, zones...)
 	sort.Strings(canonicalZones)
 	payload, err := json.Marshal(map[string]any{
 		"domain":        domain,

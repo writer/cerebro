@@ -1464,6 +1464,44 @@ func TestMaterializeEventPinsSyncCollectionProvenance(t *testing.T) {
 	}
 }
 
+func TestMaterializeEventKeepsImmutableMaterialAcrossCollections(t *testing.T) {
+	t.Parallel()
+
+	event := runtimeTestEvent("okta-threat-insight-sha256-stable", "okta", "okta.threat_insight")
+	event.TenantId = "provider-tenant"
+	event.Attributes["resource_id"] = "threat_insight_config"
+	first := materializeEvent(
+		&cerebrov1.SourceRuntime{Id: "writer-okta-primary", TenantId: "tenant-a"},
+		"collection-one",
+		event,
+	)
+	second := materializeEvent(
+		&cerebrov1.SourceRuntime{Id: "writer-okta-replacement", TenantId: "tenant-a"},
+		"collection-two",
+		event,
+	)
+
+	if first.GetId() != second.GetId() {
+		t.Fatalf("immutable event ID changed across collections: %q != %q", first.GetId(), second.GetId())
+	}
+	if first.GetTenantId() != "tenant-a" || second.GetTenantId() != "tenant-a" {
+		t.Fatalf("runtime tenant was not authoritative: first=%q second=%q", first.GetTenantId(), second.GetTenantId())
+	}
+	if first.GetAttributes()[ports.EventAttributeSourceRuntimeID] == second.GetAttributes()[ports.EventAttributeSourceRuntimeID] {
+		t.Fatalf("runtime provenance did not advance: first=%v second=%v", first.GetAttributes(), second.GetAttributes())
+	}
+	if first.GetAttributes()[ports.EventAttributeSourceCollectionID] == second.GetAttributes()[ports.EventAttributeSourceCollectionID] {
+		t.Fatalf("collection provenance did not advance: first=%v second=%v", first.GetAttributes(), second.GetAttributes())
+	}
+	delete(first.Attributes, ports.EventAttributeSourceCollectionID)
+	delete(second.Attributes, ports.EventAttributeSourceCollectionID)
+	delete(first.Attributes, ports.EventAttributeSourceRuntimeID)
+	delete(second.Attributes, ports.EventAttributeSourceRuntimeID)
+	if !proto.Equal(first, second) {
+		t.Fatalf("materialized immutable records differ beyond collection provenance: first=%v second=%v", first, second)
+	}
+}
+
 func TestSyncRuntimeOverwritesProviderSourceCollectionIDBeforePersistence(t *testing.T) {
 	event := runtimeTestEvent("spoofed-collection-event", "reserved_collection", "reserved_collection.event")
 	event.Attributes[ports.EventAttributeSourceCollectionID] = "provider-controlled-collection"
