@@ -5447,7 +5447,11 @@ fn failed_tool_result(
     Ok(ToolResult {
         state: ToolResultState::Failed,
         summary: summary.clone(),
-        data: Value::Null,
+        data: json!({
+            "error_kind": "capability_invocation_failed",
+            "retryable": false,
+            "operator_action": "Continue with another bounded capability or inspect provider availability before retrying."
+        }),
         evidence: vec![crate::EvidenceRecord {
             evidence_ref: evidence_ref.clone(),
             statement: summary.clone(),

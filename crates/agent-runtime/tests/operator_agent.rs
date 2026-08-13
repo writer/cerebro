@@ -1147,7 +1147,13 @@ async fn repairs_internal_query_refusals_into_an_operator_facing_boundary() {
             ToolResult {
                 state: ToolResultState::Failed,
                 summary: "Graph reasoning returned a blocked result.".into(),
-                data: json!({"state": "blocked", "reason_code": "validator_refusal"}),
+                data: json!({
+                    "state": "blocked",
+                    "reason_code": "validator_refusal",
+                    "error_kind": "graph_reasoning_blocked",
+                    "retryable": false,
+                    "operator_action": "Continue with another bounded evidence capability."
+                }),
                 evidence: vec![],
                 blocker: Some(
                     "Graph reasoning did not produce a grounded answer. Continue with other bounded evidence capabilities."

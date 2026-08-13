@@ -3555,7 +3555,12 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
             ));
         }
     }
-    validate_recovery_guidance(&result.data)?;
+    let has_recovery_guidance = validate_recovery_guidance(&result.data)?;
+    if result.state == ToolResultState::Failed && !has_recovery_guidance {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "failed tool result requires recovery guidance".into(),
+        ));
+    }
     let mut evidence_refs = BTreeSet::new();
     for evidence in &result.evidence {
         if result.state == ToolResultState::Failed
@@ -3600,13 +3605,13 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
     Ok(())
 }
 
-fn validate_recovery_guidance(data: &Value) -> Result<(), AgentRuntimeError> {
+fn validate_recovery_guidance(data: &Value) -> Result<bool, AgentRuntimeError> {
     let Value::Object(data) = data else {
-        return Ok(());
+        return Ok(false);
     };
     let fields = ["error_kind", "retryable", "operator_action"];
     if !fields.iter().any(|field| data.contains_key(*field)) {
-        return Ok(());
+        return Ok(false);
     }
     let error_kind_valid = data
         .get("error_kind")
@@ -3629,7 +3634,7 @@ fn validate_recovery_guidance(data: &Value) -> Result<(), AgentRuntimeError> {
                     .any(|character| matches!(character, '\n' | '\r' | '\t'))
         });
     if error_kind_valid && retryable_valid && operator_action_valid {
-        Ok(())
+        Ok(true)
     } else {
         Err(AgentRuntimeError::InvalidToolCall(
             "tool result recovery guidance is incomplete or invalid".into(),
@@ -4205,7 +4210,15 @@ mod grounding_tests {
         ToolResult {
             state,
             summary: "The bounded tool call returned.".into(),
-            data: json!({}),
+            data: if state == ToolResultState::Failed {
+                json!({
+                    "error_kind": "bounded_tool_failure",
+                    "retryable": false,
+                    "operator_action": "Inspect the bounded tool failure before retrying."
+                })
+            } else {
+                json!({})
+            },
             evidence: Vec::new(),
             blocker: blocker.map(str::to_owned),
         }
@@ -4360,7 +4373,12 @@ mod grounding_tests {
             ToolResultState::Failed,
             Some("The bounded tool call failed."),
         );
-        assert!(validate_tool_result(&failed).is_ok());
+        failed.data = json!({});
+        assert!(matches!(
+            validate_tool_result(&failed),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "failed tool result requires recovery guidance"
+        ));
 
         failed.data = json!({
             "error_kind": "backend_unavailable",
