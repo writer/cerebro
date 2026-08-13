@@ -3539,6 +3539,20 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
             "tool result fields are invalid".into(),
         ));
     }
+    match (result.state, result.blocker.as_ref()) {
+        (ToolResultState::Succeeded, Some(_)) => {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "succeeded tool result must not include a blocker".into(),
+            ));
+        }
+        (ToolResultState::Succeeded, None) => {}
+        (_, Some(_)) => {}
+        (_, None) => {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "non-succeeded tool result requires a blocker".into(),
+            ));
+        }
+    }
     let mut evidence_refs = BTreeSet::new();
     for evidence in &result.evidence {
         parse_timestamp(&evidence.observed_at).map_err(|_| {
@@ -4122,6 +4136,16 @@ mod grounding_tests {
         }
     }
 
+    fn validation_result(state: ToolResultState, blocker: Option<&str>) -> ToolResult {
+        ToolResult {
+            state,
+            summary: "The bounded tool call returned.".into(),
+            data: json!({}),
+            evidence: Vec::new(),
+            blocker: blocker.map(str::to_owned),
+        }
+    }
+
     #[test]
     fn scoped_questions_do_not_match_unscoped_conversation_guard() {
         for message in [
@@ -4155,6 +4179,37 @@ mod grounding_tests {
             };
             assert!(validate_route(&route_request(message), &decision).is_err());
         }
+    }
+
+    #[test]
+    fn tool_result_blocker_matches_terminal_state() {
+        assert!(validate_tool_result(&validation_result(ToolResultState::Succeeded, None)).is_ok());
+        assert!(
+            validate_tool_result(&validation_result(
+                ToolResultState::Partial,
+                Some("The bounded read omitted additional records."),
+            ))
+            .is_ok()
+        );
+
+        assert!(matches!(
+            validate_tool_result(&validation_result(ToolResultState::Failed, None)),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "non-succeeded tool result requires a blocker"
+        ));
+        assert!(matches!(
+            validate_tool_result(&validation_result(
+                ToolResultState::Succeeded,
+                Some("A stale blocker remained."),
+            )),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "succeeded tool result must not include a blocker"
+        ));
+        assert!(matches!(
+            validate_tool_result(&validation_result(ToolResultState::OutcomeUnknown, Some("   "))),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "tool result fields are invalid"
+        ));
     }
 
     #[test]
