@@ -522,21 +522,34 @@ struct NormalizedToolResult {
 }
 
 fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
-    let declared_state = data.get("state").and_then(Value::as_str);
-    let state = if is_error || declared_state == Some("blocked") {
+    let (declared_state, invalid_state) = match data.get("state") {
+        None => (ToolResultState::Succeeded, false),
+        Some(Value::String(state)) => match state.as_str() {
+            "complete" | "succeeded" => (ToolResultState::Succeeded, false),
+            "partial" => (ToolResultState::Partial, false),
+            "blocked" => (ToolResultState::Failed, false),
+            "outcome_unknown" => (ToolResultState::OutcomeUnknown, false),
+            _ => (ToolResultState::Failed, true),
+        },
+        Some(_) => (ToolResultState::Failed, true),
+    };
+    let state = if is_error {
         ToolResultState::Failed
-    } else if declared_state == Some("partial") {
-        ToolResultState::Partial
-    } else if declared_state == Some("outcome_unknown") {
-        ToolResultState::OutcomeUnknown
     } else {
-        ToolResultState::Succeeded
+        declared_state
     };
     let blocker = (state != ToolResultState::Succeeded)
         .then(|| provider_blocker(&data))
-        .flatten();
+        .flatten()
+        .or_else(|| {
+            invalid_state.then(|| "The provider returned an unsupported result state.".into())
+        });
     let data = if is_error || state == ToolResultState::Failed {
-        let guidance = tool_error_guidance(&data);
+        let guidance = if invalid_state {
+            INVALID_PROVIDER_STATE_GUIDANCE
+        } else {
+            tool_error_guidance(&data)
+        };
         with_recovery_guidance(data, guidance)
     } else {
         data
@@ -554,6 +567,12 @@ struct RecoveryGuidance {
     retryable: bool,
     operator_action: &'static str,
 }
+
+const INVALID_PROVIDER_STATE_GUIDANCE: RecoveryGuidance = RecoveryGuidance {
+    error_kind: "invalid_provider_result_state",
+    retryable: false,
+    operator_action: "Inspect the provider result contract before retrying.",
+};
 
 fn tool_error_guidance(data: &Value) -> RecoveryGuidance {
     let provider_kind = data
@@ -1241,6 +1260,29 @@ mod tests {
 
         assert_eq!(normalized.state, ToolResultState::OutcomeUnknown);
         assert_eq!(normalized.data["operation_ref"], "operation-one");
+    }
+
+    #[test]
+    fn fails_closed_on_invalid_provider_result_states() {
+        for state in [json!("Complete"), json!("future_state"), json!(""), json!(7), Value::Null]
+        {
+            let normalized = normalize_tool_result(json!({"state": state}), false);
+            assert_eq!(normalized.state, ToolResultState::Failed);
+            assert_eq!(
+                normalized.blocker.as_deref(),
+                Some("The provider returned an unsupported result state.")
+            );
+            assert_eq!(
+                normalized.data["error_kind"],
+                "invalid_provider_result_state"
+            );
+            assert_eq!(normalized.data["retryable"], false);
+        }
+
+        let absent = normalize_tool_result(json!({"records": []}), false);
+        assert_eq!(absent.state, ToolResultState::Succeeded);
+        let succeeded = normalize_tool_result(json!({"state": "succeeded"}), false);
+        assert_eq!(succeeded.state, ToolResultState::Succeeded);
     }
 
     #[test]
