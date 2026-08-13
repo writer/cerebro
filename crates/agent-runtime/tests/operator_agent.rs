@@ -961,10 +961,10 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
     let repaired = FinalDraft {
         state: FinalState::Partial,
         headline: "Source visibility is metadata-backed".into(),
-        summary: "I can inspect Source A records that have been collected into Cerebro, including the returned directory and audit evidence. I do not have direct administrative access to Source A from this evidence, and this bounded result does not prove complete source coverage.".into(),
+        summary: "I can inspect Source A records from the partial result collected into Cerebro, including the returned directory and audit evidence. I do not have direct administrative access to Source A from this partial evidence, and this incomplete bounded result does not prove complete source coverage.".into(),
         summary_evidence_refs: vec!["evidence://source-a".into()],
         checked: vec![claim(
-            "The bounded source search returned directory and audit evidence.",
+            "The bounded partial source search returned directory and audit evidence.",
             "evidence://source-a",
         )],
         changed: vec![],
@@ -972,7 +972,7 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
         current_state: vec![],
         next_actions: vec![],
         coverage_notice: Some(
-            "The bounded result does not establish complete source coverage.".into(),
+            "The incomplete bounded result does not establish complete source coverage.".into(),
         ),
         question: None,
     };
@@ -986,6 +986,11 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
             ModelDecision::Finish { draft: repaired },
         ]),
     );
+    let mut partial_evidence = evidence(
+        "evidence://source-a",
+        "The bounded source search returned directory and audit evidence.",
+    );
+    partial_evidence.complete = false;
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "graph_search",
@@ -1004,10 +1009,7 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
                     ],
                     "truncated": true
                 }),
-                evidence: vec![evidence(
-                    "evidence://source-a",
-                    "The bounded source search returned directory and audit evidence.",
-                )],
+                evidence: vec![partial_evidence],
                 blocker: Some("Additional matching records were outside the bounded read.".into()),
             },
         )])),
@@ -1394,6 +1396,11 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
             },
         ]),
     );
+    let mut uncertain_effect_evidence = evidence(
+        "evidence://uncertain-effect",
+        "The effect request was transmitted but no terminal receipt was observed.",
+    );
+    uncertain_effect_evidence.complete = false;
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "runtime_config_update",
@@ -1406,10 +1413,7 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
                 state: ToolResultState::OutcomeUnknown,
                 summary: "The provider connection ended before a receipt was returned.".into(),
                 data: json!({}),
-                evidence: vec![evidence(
-                    "evidence://uncertain-effect",
-                    "The effect request was transmitted but no terminal receipt was observed.",
-                )],
+                evidence: vec![uncertain_effect_evidence],
                 blocker: Some("The effect may have happened, so retry is unsafe.".into()),
             },
         )])),
@@ -1429,6 +1433,63 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
     assert_eq!(tool_call_count, 1);
     assert!(markdown.contains("Outcome not confirmed"));
     assert!(markdown.contains("Reconcile"));
+}
+
+#[tokio::test]
+async fn requests_a_fresh_observation_when_a_read_result_is_unknown() {
+    let lookup = ToolCall {
+        call_id: "lookup".into(),
+        tool_id: "runtime_status".into(),
+        purpose: "Read the current runtime status.".into(),
+        input: json!({"runtime_ref": "runtime://one"}),
+    };
+    let model = scripted(
+        ExecutionLane::Act,
+        VecDeque::from([ModelDecision::InvokeTool {
+            call: lookup.clone(),
+        }]),
+    );
+    let mut uncertain_evidence = evidence(
+        "evidence://uncertain-read",
+        "The observation ended before a current result was returned.",
+    );
+    uncertain_evidence.complete = false;
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            lookup.call_id,
+            ToolResult {
+                state: ToolResultState::OutcomeUnknown,
+                summary: "The observation ended without a confirmed result.".into(),
+                data: json!({}),
+                evidence: vec![uncertain_evidence],
+                blocker: Some("The current runtime status was not returned.".into()),
+            },
+        )])),
+    };
+
+    let outcome = run_turn(&model, &tools, request("Check the current runtime status."))
+        .await
+        .unwrap();
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        tool_call_count,
+        ..
+    } = outcome
+    else {
+        panic!("expected blocked delivered result");
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert_eq!(tool_call_count, 1);
+    assert!(markdown.contains("Result not confirmed"));
+    assert!(markdown.contains("fresh observation"));
+    assert!(!markdown.to_ascii_lowercase().contains("receipt"));
+    assert!(!markdown.to_ascii_lowercase().contains("effect"));
 }
 
 #[tokio::test]

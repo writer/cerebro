@@ -58,6 +58,8 @@ pub const CRITIC_MAX_TOKENS: i32 = 16_384;
 pub const HARD_MAX_GENERATION_TOKENS: i32 = 131_072;
 const MAX_TEXT_BYTES: usize = 16 * 1024;
 const MAX_TOOL_DATA_BYTES: usize = 64 * 1024;
+const MAX_RECOVERY_KIND_BYTES: usize = 64;
+const MAX_RECOVERY_ACTION_BYTES: usize = 1_024;
 const MAX_HEADLINE_BYTES: usize = 160;
 const MAX_SUMMARY_BYTES: usize = 2_400;
 const MAX_SUPPLEMENT_BYTES: usize = 800;
@@ -3539,8 +3541,48 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
             "tool result fields are invalid".into(),
         ));
     }
+    match (result.state, result.blocker.as_ref()) {
+        (ToolResultState::Succeeded, Some(_)) => {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "succeeded tool result must not include a blocker".into(),
+            ));
+        }
+        (ToolResultState::Succeeded, None) => {}
+        (_, Some(_)) => {}
+        (_, None) => {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "non-succeeded tool result requires a blocker".into(),
+            ));
+        }
+    }
+    validate_recovery_guidance(&result.data)?;
     let mut evidence_refs = BTreeSet::new();
     for evidence in &result.evidence {
+        if result.state == ToolResultState::Failed
+            && (evidence.complete
+                || evidence.atoms.iter().any(|atom| {
+                    !matches!(
+                        &atom.assertion,
+                        session::EvidenceAssertion::ToolOutcome {
+                            state: ToolResultState::Failed,
+                            ..
+                        }
+                    )
+                }))
+        {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "failed tool result evidence must only attest the failed outcome".into(),
+            ));
+        }
+        if matches!(
+            result.state,
+            ToolResultState::Partial | ToolResultState::OutcomeUnknown
+        ) && evidence.complete
+        {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "partial or unknown tool result cannot include complete evidence".into(),
+            ));
+        }
         parse_timestamp(&evidence.observed_at).map_err(|_| {
             AgentRuntimeError::InvalidToolCall("evidence observed_at is invalid".into())
         })?;
@@ -3556,6 +3598,43 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
         }
     }
     Ok(())
+}
+
+fn validate_recovery_guidance(data: &Value) -> Result<(), AgentRuntimeError> {
+    let Value::Object(data) = data else {
+        return Ok(());
+    };
+    let fields = ["error_kind", "retryable", "operator_action"];
+    if !fields.iter().any(|field| data.contains_key(*field)) {
+        return Ok(());
+    }
+    let error_kind_valid = data
+        .get("error_kind")
+        .and_then(Value::as_str)
+        .is_some_and(|value| {
+            !value.is_empty()
+                && value.len() <= MAX_RECOVERY_KIND_BYTES
+                && value.chars().all(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+                })
+        });
+    let retryable_valid = data.get("retryable").is_some_and(Value::is_boolean);
+    let operator_action_valid = data
+        .get("operator_action")
+        .and_then(Value::as_str)
+        .is_some_and(|value| {
+            bounded_display_text(value, MAX_RECOVERY_ACTION_BYTES)
+                && !value
+                    .chars()
+                    .any(|character| matches!(character, '\n' | '\r' | '\t'))
+        });
+    if error_kind_valid && retryable_valid && operator_action_valid {
+        Ok(())
+    } else {
+        Err(AgentRuntimeError::InvalidToolCall(
+            "tool result recovery guidance is incomplete or invalid".into(),
+        ))
+    }
 }
 
 fn validate_final(
@@ -3800,17 +3879,30 @@ fn finalize_unknown_effect(
     let observation = observations.last().ok_or_else(|| {
         AgentRuntimeError::InvalidFinal("unknown effect has no observation".into())
     })?;
+    let durable_effect = observation.descriptor.authority_class == ToolAuthorityClass::Actuate
+        || observation.descriptor.effect_class != ToolEffectClass::Read;
+    let (headline, default_blocker, next_step) = if durable_effect {
+        (
+            "Outcome not confirmed",
+            "The effect outcome could not be confirmed.",
+            "Reconcile the existing effect receipt before retrying.",
+        )
+    } else {
+        (
+            "Result not confirmed",
+            "The observation did not return a confirmed result.",
+            "Run a fresh observation to obtain the current result.",
+        )
+    };
     let blocker = observation
         .result
         .blocker
         .as_deref()
-        .unwrap_or("The effect outcome could not be confirmed.");
+        .unwrap_or(default_blocker);
     Ok(AgentTurnOutcome::Delivered {
         schema_version: AGENT_TURN_RESULT_V1,
         lane,
-        markdown: format!(
-            "**Outcome not confirmed**\n\n{blocker}\n\n**Next**\n- Reconcile the existing effect receipt before retrying."
-        ),
+        markdown: format!("**{headline}**\n\n{blocker}\n\n**Next**\n- {next_step}"),
         final_state: FinalState::Blocked,
         evidence_refs: observation
             .result
@@ -4109,6 +4201,41 @@ mod grounding_tests {
         }
     }
 
+    fn validation_result(state: ToolResultState, blocker: Option<&str>) -> ToolResult {
+        ToolResult {
+            state,
+            summary: "The bounded tool call returned.".into(),
+            data: json!({}),
+            evidence: Vec::new(),
+            blocker: blocker.map(str::to_owned),
+        }
+    }
+
+    fn validation_evidence(complete: bool) -> EvidenceRecord {
+        EvidenceRecord {
+            evidence_ref: "evidence://validation/result".into(),
+            statement: "The bounded result was observed.".into(),
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: None,
+            complete,
+            atoms: Vec::new(),
+        }
+    }
+
+    fn validation_outcome_atom(state: ToolResultState) -> session::EvidenceAtom {
+        session::EvidenceAtom {
+            atom_ref: "evidence://validation/result#outcome".into(),
+            subject_ref: None,
+            assertion: session::EvidenceAssertion::ToolOutcome {
+                state,
+                summary: "The bounded tool call returned.".into(),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: None,
+            complete: true,
+        }
+    }
+
     #[test]
     fn scoped_questions_do_not_match_unscoped_conversation_guard() {
         for message in [
@@ -4141,6 +4268,131 @@ mod grounding_tests {
                 future_observation_excerpt: None,
             };
             assert!(validate_route(&route_request(message), &decision).is_err());
+        }
+    }
+
+    #[test]
+    fn tool_result_blocker_matches_terminal_state() {
+        assert!(validate_tool_result(&validation_result(ToolResultState::Succeeded, None)).is_ok());
+        assert!(
+            validate_tool_result(&validation_result(
+                ToolResultState::Partial,
+                Some("The bounded read omitted additional records."),
+            ))
+            .is_ok()
+        );
+
+        assert!(matches!(
+            validate_tool_result(&validation_result(ToolResultState::Failed, None)),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "non-succeeded tool result requires a blocker"
+        ));
+        assert!(matches!(
+            validate_tool_result(&validation_result(
+                ToolResultState::Succeeded,
+                Some("A stale blocker remained."),
+            )),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "succeeded tool result must not include a blocker"
+        ));
+        assert!(matches!(
+            validate_tool_result(&validation_result(ToolResultState::OutcomeUnknown, Some("   "))),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "tool result fields are invalid"
+        ));
+    }
+
+    #[test]
+    fn partial_and_unknown_results_cannot_claim_complete_evidence() {
+        for state in [ToolResultState::Partial, ToolResultState::OutcomeUnknown] {
+            let mut result = validation_result(state, Some("The result is not complete."));
+            result.evidence = vec![validation_evidence(false)];
+            assert!(validate_tool_result(&result).is_ok());
+
+            result.evidence[0].complete = true;
+            assert!(matches!(
+                validate_tool_result(&result),
+                Err(AgentRuntimeError::InvalidToolCall(reason))
+                    if reason == "partial or unknown tool result cannot include complete evidence"
+            ));
+        }
+
+        let mut succeeded = validation_result(ToolResultState::Succeeded, None);
+        succeeded.evidence = vec![validation_evidence(true)];
+        assert!(validate_tool_result(&succeeded).is_ok());
+    }
+
+    #[test]
+    fn failed_results_only_carry_failure_evidence() {
+        let mut failed = validation_result(
+            ToolResultState::Failed,
+            Some("The bounded tool call failed."),
+        );
+        assert!(validate_tool_result(&failed).is_ok());
+
+        failed.evidence = vec![validation_evidence(false)];
+        assert!(validate_tool_result(&failed).is_ok());
+
+        failed.evidence[0].atoms = vec![validation_outcome_atom(ToolResultState::Failed)];
+        assert!(validate_tool_result(&failed).is_ok());
+
+        failed.evidence[0].atoms[0].assertion = session::EvidenceAssertion::Value {
+            predicate: "runtime_status".into(),
+            value: json!("healthy"),
+        };
+        assert!(matches!(
+            validate_tool_result(&failed),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "failed tool result evidence must only attest the failed outcome"
+        ));
+
+        failed.evidence[0].atoms = vec![validation_outcome_atom(ToolResultState::Succeeded)];
+        assert!(validate_tool_result(&failed).is_err());
+
+        failed.evidence[0].atoms = vec![validation_outcome_atom(ToolResultState::Failed)];
+        failed.evidence[0].complete = true;
+        assert!(validate_tool_result(&failed).is_err());
+    }
+
+    #[test]
+    fn recovery_guidance_is_atomic_and_bounded() {
+        let mut failed = validation_result(
+            ToolResultState::Failed,
+            Some("The bounded tool call failed."),
+        );
+        assert!(validate_tool_result(&failed).is_ok());
+
+        failed.data = json!({
+            "error_kind": "backend_unavailable",
+            "retryable": true,
+            "operator_action": "Retry after the backend recovers."
+        });
+        assert!(validate_tool_result(&failed).is_ok());
+
+        for invalid in [
+            json!({"error_kind": "backend_unavailable", "retryable": true}),
+            json!({
+                "error_kind": "Backend Unavailable",
+                "retryable": true,
+                "operator_action": "Retry after the backend recovers."
+            }),
+            json!({
+                "error_kind": "backend_unavailable",
+                "retryable": "true",
+                "operator_action": "Retry after the backend recovers."
+            }),
+            json!({
+                "error_kind": "backend_unavailable",
+                "retryable": true,
+                "operator_action": "Retry now.\nThen inspect the result."
+            }),
+        ] {
+            failed.data = invalid;
+            assert!(matches!(
+                validate_tool_result(&failed),
+                Err(AgentRuntimeError::InvalidToolCall(reason))
+                    if reason == "tool result recovery guidance is incomplete or invalid"
+            ));
         }
     }
 
