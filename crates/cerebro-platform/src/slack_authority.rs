@@ -688,6 +688,31 @@ mod tests {
     #[tokio::test]
     async fn wake_delivery_routes_fail_closed_when_the_agent_is_not_configured() {
         let app = test_router();
+        let progress = app
+            .clone()
+            .oneshot(
+                Request::get(
+                    "/v1/turns/progress?thread_ref=slack-thread%3AT%3AC%3Aone&request_id=request-one",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(progress.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let wake = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/wakes/run")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"worker_ref":"slack-host:test"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(wake.status(), StatusCode::SERVICE_UNAVAILABLE);
+
         let claim = app
             .clone()
             .oneshot(
@@ -741,6 +766,29 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(receipt.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let delivery = app
+            .oneshot(
+                Request::post("/v1/turns/deliveries")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(format!(
+                        r#"{{
+                          "schema_version":"agent-delivery-receipt/v1",
+                          "tenant_id":"writer-sec-dev",
+                          "thread_ref":"slack-thread:T:C:one",
+                          "request_id":"request-one",
+                          "transport":"slack",
+                          "delivery_ref":"slack-message:test",
+                          "payload_digest":"sha256:{}",
+                          "delivered_at":"2026-07-29T20:00:00Z"
+                        }}"#,
+                        "b".repeat(64),
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(delivery.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[test]
@@ -752,8 +800,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_returns_the_rust_authority_decision() {
-        let response = test_router()
+    async fn accepted_answers_report_grounded_and_safe_refusal_counts() {
+        let app = test_router();
+        let safe_refusal = app
+            .clone()
             .oneshot(
                 Request::post("/v1/answers/validate")
                     .header(CONTENT_TYPE, "application/json")
@@ -778,15 +828,59 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(safe_refusal.status(), StatusCode::OK);
         let body: Value = serde_json::from_slice(
-            &to_bytes(response.into_body(), MAX_REQUEST_BYTES)
+            &to_bytes(safe_refusal.into_body(), MAX_REQUEST_BYTES)
                 .await
                 .unwrap(),
         )
         .unwrap();
         assert_eq!(body["disposition"], "safe_refusal");
         assert_eq!(body["verified"], false);
+
+        let grounded = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/answers/validate")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "schema_version":"slack-answer-candidate/v1",
+                          "completed":true,
+                          "markdown":"Current Okta evidence cites two graph rows.",
+                          "trace_id":"trace-grounded",
+                          "citation_validation":{"ok":true,"referenced_urn_count":2,"row_urn_count":2},
+                          "unsupported_query":null
+                        }"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(grounded.status(), StatusCode::OK);
+        let body: Value = serde_json::from_slice(
+            &to_bytes(grounded.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["disposition"], "grounded");
+        assert_eq!(body["verified"], true);
+
+        let status = app
+            .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body: Value = serde_json::from_slice(
+            &to_bytes(status.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["requests_total"], 2);
+        assert_eq!(body["grounded_total"], 1);
+        assert_eq!(body["safe_refusal_total"], 1);
+        assert_eq!(body["rejected_total"], 0);
     }
 
     #[tokio::test]
