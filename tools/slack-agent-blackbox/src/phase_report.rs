@@ -271,6 +271,72 @@ mod tests {
         );
     }
 
+    #[test]
+    fn names_every_endpoint_phase_and_outcome_and_handles_empty_samples() {
+        assert_eq!(
+            percentiles(Vec::new()),
+            PercentilesV2 {
+                p50: 0,
+                p95: 0,
+                p99: 0,
+                max: 0,
+            }
+        );
+        assert_eq!(
+            [
+                TrustedEndpointKindV2::Transport,
+                TrustedEndpointKindV2::World,
+                TrustedEndpointKindV2::Lifecycle,
+                TrustedEndpointKindV2::Operator,
+            ]
+            .map(endpoint_name),
+            ["transport", "world", "lifecycle", "operator"]
+        );
+        assert_eq!(
+            [
+                ExecutionPhaseV2::Ingress,
+                ExecutionPhaseV2::SessionLoad,
+                ExecutionPhaseV2::LeaseAcquire,
+                ExecutionPhaseV2::Route,
+                ExecutionPhaseV2::Operate,
+                ExecutionPhaseV2::Tool,
+                ExecutionPhaseV2::Critique,
+                ExecutionPhaseV2::Present,
+                ExecutionPhaseV2::Journal,
+                ExecutionPhaseV2::Render,
+                ExecutionPhaseV2::Deliver,
+                ExecutionPhaseV2::RestartRecovery,
+                ExecutionPhaseV2::Operator,
+            ]
+            .map(phase_name),
+            [
+                "ingress",
+                "session_load",
+                "lease_acquire",
+                "route",
+                "operate",
+                "tool",
+                "critique",
+                "present",
+                "journal",
+                "render",
+                "deliver",
+                "restart_recovery",
+                "operator",
+            ]
+        );
+        assert_eq!(
+            [
+                PhaseOutcomeV2::Completed,
+                PhaseOutcomeV2::TimedOut,
+                PhaseOutcomeV2::Failed,
+                PhaseOutcomeV2::Cancelled,
+            ]
+            .map(outcome_name),
+            ["completed", "timed_out", "failed", "cancelled"]
+        );
+    }
+
     fn endpoint_telemetry(
         sequence: usize,
         end_to_end_ms: u64,
