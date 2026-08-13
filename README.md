@@ -1,80 +1,30 @@
 # Cerebro
 
-**Agent-readable security and compliance context.**
+**Security evidence that people and coding agents can query.**
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Cerebro turns security, identity, cloud, SaaS, workflow, policy, and compliance data into evidence-backed context for people, coding agents, and automation. It answers questions such as what changed, what is risky, which controls apply, and whether an action is supported by current evidence.
+Cerebro reads cloud, identity, SaaS, engineering, policy, and compliance data. It connects that evidence into tenant-scoped entities, relationships, findings, and controls, then exposes the same context through the web, CLI, HTTP, Connect, and MCP.
 
-This repository is a monorepo because Cerebro is one product with several operator surfaces:
+[Run the product demo](#run-the-product-demo) · [Read a live source](#read-a-live-source) · [Connect an agent](#connect-an-agent) · [Browse the docs](#documentation)
 
-- the Go runtime is the source of truth for evidence, graph, policy, findings, MCP, JSON HTTP, Connect RPC, and CLI behavior;
-- the web app is a browser operator surface over those contracts;
-- the Slack companion is a chat operator surface for durable intake, execution, delivery, and lifecycle status;
-- SDKs, generated schemas, and applications can move together when a contract changes.
+![Cerebro graph explorer showing an organizational entity and its evidence-backed relationships](docs/assets/cerebro-graph-explorer.png)
 
-```mermaid
-flowchart LR
-  Runtime["Go runtime<br/>evidence, graph, policy, MCP, API, CLI"]
-  Contracts["Public contracts<br/>OpenAPI, proto, schemas, SDKs"]
-  Web["apps/web<br/>browser operator surface"]
-  Slack["apps/slack-companion<br/>chat operator surface"]
+## What You Can Do
 
-  Runtime --> Contracts
-  Contracts --> Web
-  Contracts --> Slack
-```
+- Trace a risky asset or identity to its owner, connected services, findings, and applicable controls.
+- Ask what changed and receive the source record, collection time, and graph path supporting the answer.
+- Give coding agents current security and compliance context before they propose or ship a change.
+- Preview a provider directly, or persist source syncs, events, findings, reports, and graph projections for durable workflows.
 
-Cerebro is not a SIEM, SOAR, CSPM replacement, LLM host, or data warehouse. It is the contract and evidence layer that lets those systems, humans, and agents ask grounded questions.
+Cerebro includes more than 800 built-in source definitions and more than 1,500 policy definitions across cloud, identity, endpoint, vulnerability, engineering, AI, and compliance systems. Source definitions describe cataloged capabilities; required configuration and supported records are listed in the [source catalog](docs/reference/sources.md).
 
-## Why The Public Boundary Matters
+## Run The Product Demo
 
-This public repository is authoritative for runtime behavior, portable application behavior, CLI/API contracts, source catalogs, configuration semantics, validation checks, and release artifacts. Environment-specific deployment details, stack configuration, account wiring, hostnames, secret addresses, rollout procedures, and recovery procedures intentionally live outside this public repo.
+The shortest path starts a Rust in-memory organizational graph and the browser explorer. It uses synthetic product data and requires no Docker services or provider credentials.
 
-That split is part of the design, not an afterthought. Public code defines portable behavior, contracts, fixtures, and conformance tests. Private operations bind those contracts to real accounts, networks, routes, secrets, rollout thresholds, and recovery policy.
-
-```mermaid
-flowchart LR
-  Public["writer/cerebro<br/>portable behavior, contracts, tests, release artifacts"]
-  Handoff["release handoff<br/>signed manifest + portable event"]
-  Private["private operations<br/>environment adapters and promotion policy"]
-
-  Public --> Handoff
-  Handoff --> Private
-```
-
-The deployment handoff is the signed product manifest and its topology-neutral consumer event. Deployment automation verifies the manifest, selects its recorded image digests, and renders its own `cerebro-runtime-contract.json` from configuration it owns. See [Monorepo Ownership And Boundaries](docs/engineering/monorepo.md) for ownership rules and [Release Contract](docs/operations/release-contract.md) for the public contracts.
-
-## Runtime Shapes
-
-Cerebro can run in two useful modes:
-
-1. **Live source preview:** run the Go server and call source tools directly. This path can read provider data through the source service without Postgres, NATS, or Neo4j.
-2. **Durable evidence runtime:** add NATS JetStream, Postgres, and Neo4j/Aura to persist source runtime syncs, append-log events, findings, reports, and graph projections.
-
-The same source contracts, API contracts, policy catalogs, and validation tools apply in both modes. Routes that require a durable store fail closed when that store is absent.
-
-```mermaid
-flowchart TB
-  Sources["Provider sources<br/>cloud, SaaS, identity, workflow, compliance"]
-  SourceService["Source service<br/>catalogs and runtime reads"]
-  Live["Live source preview<br/>direct tool/API responses"]
-  AppendLog["Append log<br/>durable events"]
-  Stores["Durable stores<br/>NATS, Postgres, Neo4j"]
-  Context["Evidence context<br/>findings, reports, graph projections"]
-  Surfaces["Surfaces<br/>CLI, HTTP, RPC, MCP, apps"]
-
-  Sources --> SourceService
-  SourceService --> Live
-  SourceService --> AppendLog
-  AppendLog --> Stores
-  Stores --> Context
-  Live --> Surfaces
-  Context --> Surfaces
-```
-
-## Quick Start
+Prerequisites: Node.js 22 or newer and the Rust toolchain declared in `rust-toolchain.toml`.
 
 ```bash
 git clone https://github.com/writer/cerebro.git
@@ -82,76 +32,57 @@ cd cerebro
 make rust-product-demo
 ```
 
-This builds the Rust organizational platform, starts its in-memory product graph, starts the web application, and prints the graph explorer URL. It requires Node.js 22 or newer and the Rust toolchain declared in `rust-toolchain.toml`. It does not require Docker or provider credentials. Press `Ctrl-C` to stop both processes.
+Open the graph explorer URL printed in the terminal. Press `Ctrl-C` to stop both processes.
 
-Validate the browser-to-Rust path and write a redacted receipt when Chromium is installed:
+To verify the browser-to-Rust path and write a redacted receipt:
 
 ```bash
 make rust-product-demo-check
 cat tmp/rust-product-demo/receipt.json
 ```
 
-The receipt records the source revision, Rust contract, graph counts, and browser proof. It does not record the ephemeral local authentication secret.
+The receipt records the source revision, graph contract, graph counts, and browser proof. It does not record the ephemeral local authentication secret.
 
-Run the Go compatibility server when you need its CLI, HTTP, RPC, MCP, or source-runtime surfaces:
+## Read A Live Source
+
+Use the Go compatibility server when you need live provider reads, CLI, HTTP, Connect, MCP, or source-runtime workflows. The public GitHub example does not require the durable data stack.
 
 ```bash
 make serve-dev
-curl -sS http://127.0.0.1:8080/health
-curl -sS http://127.0.0.1:8080/sources
+./bin/cerebro source read github owner=writer repo=cerebro per_page=5
 ```
 
-Build the CLI when you need command-line workflows:
+The same source service is available through the CLI, HTTP API, and MCP tools. Provider-specific authentication and configuration are documented in the [source catalog](docs/reference/sources.md).
 
-```bash
-make build
-./bin/cerebro version
-./bin/cerebro source list
-```
+## Choose A Runtime
 
-Use `make doctor` when you want to validate the full contributor toolchain, including npm and Rust workspace tooling.
-
-## Repository Layout
-
-| Area | Paths | Purpose |
+| Goal | Start with | Data and dependencies |
 | --- | --- | --- |
-| Runtime and CLI | `cmd/cerebro`, `internal/bootstrap` | Go server, CLI, HTTP, Connect RPC, MCP, auth, rate-limit, and route wiring. |
-| Applications | `apps/web`, `apps/slack-companion` | Portable operator surfaces that consume Cerebro contracts. See [Applications](apps/README.md). |
-| Source and evidence contracts | `internal/sourcecdk`, `internal/sourceregistry`, `sources/` | Source contract plus built-in catalog for cloud, SaaS, identity, endpoint, vulnerability, workflow, and compliance signals. |
-| Durable workflows | `internal/appendlog`, `internal/sourceprojection`, `internal/findings`, graph packages | Append-log, runtime sync, finding, report, and graph projection behavior. |
-| Policies and detections | `policies/`, `internal/findingdsl`, `internal/findings` | Policy, control mapping, finding rule, and detection catalogs. |
-| API contracts | `api/openapi.yaml`, `proto/cerebro/v1/bootstrap.proto` | JSON HTTP and Connect RPC contracts. |
-| SDK helpers | `sdk/python`, `sdk/typescript`, `sdk/go/cerebroapi` | Generated and hand-written helpers for public API surfaces. |
-| DevEx and guardrails | `docs/`, `scripts/`, `tools/` | Operating guides, validation checks, generators, and repository-specific structural tests. |
+| Inspect the product locally | `make rust-product-demo` | Synthetic in-memory graph; Node.js and Rust; no credentials or Docker |
+| Read current provider data | `make serve-dev` | Live source preview; provider configuration when the source requires it |
+| Persist evidence and findings | `docker compose up -d` | NATS JetStream, Postgres, Neo4j, and the Go compatibility runtime |
 
-Applications are peers of the Go runtime, not embedded assets and not deployment overlays. The runtime can build, test, and publish its contracts without serving app bundles, and applications can build against those contracts without carrying private topology.
+Routes backed by an unconfigured durable store fail closed. The full local-stack procedure, including volume and password transitions, lives in [Getting started](docs/start/getting-started.md).
 
-Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
+## How Cerebro Produces Context
 
-## Workflows
+```mermaid
+flowchart LR
+  Sources["Cloud, identity, SaaS, engineering, and policy sources"]
+  Runtime["Source reads, event history, policy evaluation, and graph projection"]
+  Context["Evidence, entities, relationships, findings, and controls"]
+  Surfaces["Web, CLI, HTTP, Connect, MCP, and Slack"]
 
-| Goal | Start here |
-| --- | --- |
-| Get the shortest runnable path | [Quick reference](docs/start/quick-reference.md) |
-| Walk through a local end-to-end flow | [Getting started](docs/start/getting-started.md) |
-| Hand setup to a coding agent | [Agent onboarding](docs/start/agent-onboarding.md) |
-| Configure auth, tenancy, stores, MCP, or device auth | [Configuration variables](docs/reference/config-env-vars.md) and [.env.example](.env.example) |
-| Understand runtime shape and stores | [Architecture](docs/reference/architecture.md) |
-| Explore JSON HTTP or Connect APIs | [API reference](docs/reference/api-reference.md), `api/openapi.yaml`, and `proto/cerebro/v1/bootstrap.proto` |
-| Use SDK helpers | [Python SDK](sdk/python/README.md), [TypeScript SDK](sdk/typescript/README.md), and `sdk/go/cerebroapi` |
-| Browse built-in integrations | [Source catalog](docs/reference/sources.md) |
-| Persist and sync source runtimes | [Source runtime guide](docs/domains/source-runtime-guide.md) |
-| Work on graph behavior | [Graph operations](docs/domains/graph-operations.md) |
-| Design persona-specific graph views | [Persona view lenses](docs/domains/persona-view-lenses.md) |
-| Integrate MCP clients | [MCP native Droid setup](docs/domains/mcp-droid-setup.md) |
-| Integrate endpoint telemetry | [Endpoint security platform integration](docs/domains/endpoint-security-platform-integration.md) |
-| Author policies, control mappings, or finding rules | [Policies](docs/domains/policies.md), [compliance controls](docs/domains/compliance-controls.md), `policies/`, `internal/findingdsl`, and `internal/findings` |
-| Host or operate Cerebro | [Hosting](docs/operations/hosting.md), [runtime profiles](docs/operations/runtime-profiles.md), [deployment readiness](docs/operations/deployment-readiness.md), [cloud deployment](docs/operations/cloud-deployment.md), [deployment examples](docs/operations/deployment-examples.md), and [operations runbook](docs/operations/operations-runbook.md) |
-| Contribute code or docs | [Development](docs/engineering/development.md), [non-goals](docs/engineering/non-goals.md), and the Makefile |
+  Sources --> Runtime
+  Runtime --> Context
+  Context --> Surfaces
+```
 
-## Give A Coding Agent Context
+Live source preview calls the source service directly. Durable workflows add NATS JetStream for the append log, Postgres for current state and receipts, and Neo4j/Aura for graph projections. Read [Architecture](docs/reference/architecture.md) for operation-level dependency boundaries.
 
-Start Cerebro, connect an MCP client to the local MCP endpoint, then let the agent read live source data through Cerebro.
+## Connect An Agent
+
+Start the server, register its MCP endpoint with your client, and ask the agent to read a source before making a decision.
 
 ```bash
 make serve-dev
@@ -159,107 +90,71 @@ droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
   --header "Authorization: Bearer local-dev-key"
 ```
 
-Example agent instruction:
+Example instruction:
 
 ```text
-Use Cerebro as security and compliance context for this repo.
-Call cerebro.sources.read with source_id=github and config
-{"owner":"<owner>","repo":"<repo>","per_page":"5"}, then summarize the
-evidence, risks, controls, and follow-up questions that apply before this can
-ship.
-
-Do not commit provider credentials, customer names, tenant-specific hostnames,
-account IDs, or live secret values.
+Use Cerebro as security and compliance context for this repository.
+Read the GitHub source for the repository, then report the evidence, risks,
+applicable controls, owners, and unresolved questions that matter before ship.
+Do not expose or commit provider credentials or secret values.
 ```
 
-The MCP source tools, `cerebro.sources.list`, `cerebro.sources.check`, `cerebro.sources.discover`, and `cerebro.sources.read`, call the same source service used by HTTP and CLI surfaces. For durable graph and evidence context, run `make github-business-demo` with `GITHUB_OWNER`, `GITHUB_REPO`, and `GITHUB_TOKEN`, then hand `tmp/onboarding/github-receipt.json` to the agent.
+The MCP source tools are `cerebro.sources.list`, `cerebro.sources.check`, `cerebro.sources.discover`, and `cerebro.sources.read`. See [Agent onboarding](docs/start/agent-onboarding.md), [MCP setup](docs/domains/mcp-droid-setup.md), and the [agent platform contract](docs/domains/agent-platform-contract.md).
 
-```mermaid
-sequenceDiagram
-  participant Agent as Coding agent
-  participant MCP as Cerebro MCP
-  participant Runtime as Cerebro runtime
-  participant Evidence as Sources and durable stores
+## Product Surfaces
 
-  Agent->>MCP: Ask for security or compliance context
-  MCP->>Runtime: Call typed Cerebro tools
-  Runtime->>Evidence: Read live source data or durable evidence
-  Evidence-->>Runtime: Return grounded facts
-  Runtime-->>MCP: Normalize evidence, controls, risks, and links
-  MCP-->>Agent: Provide context before code or review decisions
-```
-
-See [Agent onboarding](docs/start/agent-onboarding.md), [MCP native Droid setup](docs/domains/mcp-droid-setup.md), and [Agent platform contract](docs/domains/agent-platform-contract.md).
-
-## Durable Local Stack
-
-Use Docker Compose when you need the durable runtime locally.
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-The compose stack runs Cerebro with NATS JetStream, Postgres, Neo4j, and the local bearer key `local-dev-key`. Configuration lives in `.env.example` and `docs/reference/config-env-vars.md`.
-
-Plain Compose initializes the local Postgres volume with the compose-file password. The onboarding Make targets use `tmp/local-postgres-password`. If you switch between those modes, recreate local volumes with `docker compose down -v` or run the Make target with an explicit local Postgres password that matches the existing volume. `docker compose down -v` deletes local stack data.
-
-```mermaid
-flowchart LR
-  Runtime["Cerebro server"]
-  NATS["NATS JetStream<br/>append-log events"]
-  Postgres["Postgres<br/>state and receipts"]
-  Neo4j["Neo4j/Aura<br/>graph projections"]
-
-  Runtime <--> NATS
-  Runtime <--> Postgres
-  Runtime <--> Neo4j
-```
-
-## Common Commands
-
-```bash
-make build                    # compile ./bin/cerebro
-make serve-dev                # run the local server with acknowledged dev-mode opt-out
-make test                     # run Go tests
-make check                    # build, tests, lint, proto lint, structural checks, and arch tests
-make verify                   # CI-parity local verification
-make readme-check             # README formatting and drift checks
-make docs-drift-check         # documentation drift checks
-make oss-audit                # public repository hygiene scan
-make workspace-check          # install dependencies and run declared npm workspace checks
-make workspace-build          # build npm workspaces that declare a build script
-make sdk-test                 # SDK tests and type checks
-make rust-product-demo        # run the Rust graph and browser explorer without provider credentials
-make rust-product-demo-check  # validate the demo in Chromium and write a redacted receipt
-make secure-business-demo     # run local security onboarding and write a receipt
-make github-business-demo     # seed durable graph context from a real GitHub repo
-make agent-onboard            # run an onboarding plan and write a redacted receipt
-make agent-onboard-e2e        # run the Docker-backed local onboarding workflow
-make finding-dsl-check        # validate finding DSL definitions
-make policy-rule-check        # validate policy rule catalog behavior
-make detection-catalog-check  # validate generated detection catalogs
-make control-index-check      # validate compliance control index output
-cerebro deploy preflight      # emit a redacted deployment readiness receipt
-```
-
-When you touch public applications or generated TypeScript helpers, use `make workspace-check` and `make workspace-build`.
-
-Control extension packs are documented in [Compliance controls](docs/domains/compliance-controls.md) and use `--init-extension`, `--extension`, `--profile`, `--output`, and `--write` workflows.
-
-## Stack
-
-| Component | Technology |
+| Surface | Current role |
 | --- | --- |
-| Language | Go 1.26+ with `go1.26.5` toolchain |
-| HTTP server | Go `net/http` `ServeMux` |
-| RPC | Connect |
-| CLI | Standard Go CLI under `cmd/cerebro` |
-| MCP | HTTP MCP endpoint at `/api/v1/mcp` |
-| Append log | NATS JetStream |
-| State store | Postgres |
-| Graph store | Neo4j/Aura |
-| Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, policy-rule checks, control-index checks, README drift checks, OSS audit, custom structural linters, and arch tests |
+| Rust organizational platform | Tenant-scoped graph routes and invariant-heavy authority paths, including the product demo |
+| Go compatibility runtime | Source reads, CLI, HTTP, Connect, MCP, append-log, findings, reports, and compatibility workflows |
+| Web app | Browser workflows over public runtime contracts |
+| Slack companion | Durable intake, execution, delivery, and lifecycle status |
+| SDKs and schemas | Python, TypeScript, Go, OpenAPI, proto, and portable interchange contracts |
+
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
+
+The Go compatibility runtime uses the `go1.26.5` toolchain. Run `make doctor` to check the complete Go, Node.js, Rust, and repository toolchain.
+
+## Documentation
+
+| Task | Guide |
+| --- | --- |
+| Run the shortest local path | [Quick reference](docs/start/quick-reference.md) |
+| Read a source and start the durable stack | [Getting started](docs/start/getting-started.md) |
+| Configure auth, tenancy, stores, MCP, or device auth | [Configuration variables](docs/reference/config-env-vars.md) and [.env.example](.env.example) |
+| Explore APIs | [API reference](docs/reference/api-reference.md), [OpenAPI](api/openapi.yaml), and [Connect proto](proto/cerebro/v1/bootstrap.proto) |
+| Use an SDK | [Python SDK](sdk/python/README.md), [TypeScript SDK](sdk/typescript/README.md), and [Go SDK](sdk/go/cerebroapi) |
+| Browse integrations | [Source catalog](docs/reference/sources.md) |
+| Author policies and controls | [Policies](docs/domains/policies.md) and [compliance controls](docs/domains/compliance-controls.md) |
+| Integrate endpoint telemetry | [Endpoint security platform integration](docs/domains/endpoint-security-platform-integration.md) |
+| Host or operate Cerebro | [Hosting](docs/operations/hosting.md) and [operations runbook](docs/operations/operations-runbook.md) |
+| Contribute | [Development](docs/engineering/development.md) and [non-goals](docs/engineering/non-goals.md) |
+
+## Project Contracts
+
+This public repository is authoritative for runtime behavior, portable application behavior, CLI and API contracts, source catalogs, configuration semantics, validation checks, and release artifacts. Environment-specific deployment details, account wiring, secret addresses, rollout thresholds, and recovery procedures belong to their operational owners outside this repository.
+
+The portable deployment handoff is a signed product manifest and topology-neutral event. Deployment automation verifies the manifest and renders its own `cerebro-runtime-contract.json`. See [Monorepo ownership and boundaries](docs/engineering/monorepo.md) and the [release contract](docs/operations/release-contract.md).
+
+Control extension packs use the workflows documented in [Compliance controls](docs/domains/compliance-controls.md): `--init-extension`, `--extension`, `--profile`, `--output`, and `--write`.
+
+Common validation commands:
+
+```bash
+make build
+make test
+make readme-check
+make docs-drift-check
+make oss-audit
+make control-index-check
+make policy-rule-check
+make detection-catalog-check
+make verify
+```
+
+## Scope
+
+Cerebro is not a SIEM, SOAR, CSPM replacement, LLM host, or data warehouse. It provides the evidence and contract layer those systems, people, and agents can query. The canonical product and architecture boundaries are maintained in [Non-goals](docs/engineering/non-goals.md).
 
 ## License
 
