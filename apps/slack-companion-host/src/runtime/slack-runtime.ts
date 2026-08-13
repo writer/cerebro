@@ -2517,26 +2517,39 @@ function sourceRecoveryAction(state: CerebroAskError["sourceState"]): string {
 }
 
 function agentRuntimeFailureText(state: CerebroAskError["sourceState"]): string {
-  const details: Record<CerebroAskError["sourceState"], string> = {
-    not_configured:
-      "My live operating tools are not configured in this Slack environment.",
-    not_found:
-      "The live operating endpoint was not found in this Slack environment.",
-    timed_out:
-      "I did not finish the current evidence check before its deadline.",
-    unauthorized:
-      "My live operating tools rejected the current read binding.",
-    unavailable:
-      "I cannot reach my live operating tools right now.",
+  const failure: Record<CerebroAskError["sourceState"], {
+    detail: string;
+    nextAction: string;
+  }> = {
+    not_configured: {
+      detail: "The Rust agent runtime is not configured in this Slack environment, so no live check started.",
+      nextAction: "Ask the Cerebro runtime owner to configure the Rust agent endpoint before retrying; repeated Slack retries will not help.",
+    },
+    not_found: {
+      detail: "The Slack host could not find the configured Rust agent endpoint, so no terminal answer was available.",
+      nextAction: "Ask the Cerebro runtime owner to restore the configured endpoint before retrying; repeated Slack retries will not help.",
+    },
+    timed_out: {
+      detail: "The Rust agent turn exceeded its Slack deadline before it returned a terminal answer.",
+      nextAction: "Retry with one named asset, identity, finding, or source. If that narrower request also times out, stop retrying and report this thread timestamp to the Cerebro runtime owner.",
+    },
+    unauthorized: {
+      detail: "The Rust agent runtime rejected the current read binding, so no current-evidence answer was available.",
+      nextAction: "Ask the Cerebro runtime owner to restore the read binding before retrying; repeated Slack retries will not help.",
+    },
+    unavailable: {
+      detail: "The Slack host could not reach the Rust agent runtime, so no terminal answer was available.",
+      nextAction: "Retry once in this thread. If it fails immediately again, stop retrying and report this thread timestamp to the Cerebro runtime owner.",
+    },
   };
   return [
     "**Live check blocked**",
     "",
-    details[state],
+    failure[state].detail,
     "",
-    "I can still use this thread's context, answer general security questions, explain what I would check, and retain the request. I will not claim current system state until a live observation succeeds.",
+    "No current system claim was accepted from this turn. This thread retains your request, but every Cerebro answer still requires the Rust agent runtime.",
     "",
-    "Next action: resume this retained request when the operating runtime is healthy; you do not need to restate it.",
+    `Next action: ${failure[state].nextAction}`,
   ].join("\n");
 }
 

@@ -1594,6 +1594,57 @@ test("Rust agent body timeout is reported as timed out", async () => {
   );
 });
 
+test("Rust runtime failures give operators bounded state-specific recovery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    const failureCases = [
+      {
+        expected: /Retry with one named asset, identity, finding, or source/u,
+        signal: AbortSignal.abort(),
+      },
+      {
+        expected: /Retry once in this thread/u,
+        signal: new AbortController().signal,
+      },
+    ];
+
+    for (const [index, failureCase] of failureCases.entries()) {
+      const service = new AssistantQuestionService(
+        createAssistantTurnHost(new FileOutcomeStore(join(root, String(index)))),
+        new CerebroAskClient({
+          agentRuntimeUrl: "http://127.0.0.1:8091",
+          answerAuthority: testAnswerAuthority,
+          apiKey: "unused",
+          baseUrl: "https://legacy.example.com",
+          fetchImpl: async () => {
+            throw new Error("runtime unavailable");
+          },
+          tenantId: "writer",
+        }),
+        {
+          clock: () => new Date("2026-07-29T20:00:00.000Z"),
+          timeoutSignal: () => failureCase.signal,
+        },
+      );
+
+      const result = await service.answer({
+        actorRef: "slack-user:U-ONE",
+        requestKey: `T-ONE:C-ONE:thread-one:event-${index}`,
+        text: "<@BOT> Identify the current connector risk.",
+        threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+      });
+
+      assert.equal(result.pending.outcome_state, "blocked");
+      assert.match(result.text, failureCase.expected);
+      assert.match(result.text, /every Cerebro answer still requires the Rust agent runtime/u);
+      assert.doesNotMatch(result.text, /I can still use this thread's context/u);
+      assert.doesNotMatch(result.text, /when the operating runtime is healthy/u);
+    }
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("blocked Rust agent turns do not record a useful answer timestamp", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
