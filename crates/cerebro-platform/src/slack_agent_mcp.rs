@@ -445,6 +445,8 @@ fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
         ToolResultState::Failed
     } else if declared_state == Some("partial") {
         ToolResultState::Partial
+    } else if declared_state == Some("outcome_unknown") {
+        ToolResultState::OutcomeUnknown
     } else {
         ToolResultState::Succeeded
     };
@@ -1001,6 +1003,20 @@ mod tests {
         AGENT_SEMANTIC_EVIDENCE_V1, AuthorityBindingState, AuthorityDuty, EvidenceAssertion,
         SemanticEvidenceAssertion,
     };
+
+    #[test]
+    fn preserves_provider_declared_unknown_outcomes() {
+        let normalized = normalize_tool_result(
+            json!({
+                "state": "outcome_unknown",
+                "operation_ref": "operation-one",
+            }),
+            false,
+        );
+
+        assert_eq!(normalized.state, ToolResultState::OutcomeUnknown);
+        assert_eq!(normalized.data["operation_ref"], "operation-one");
+    }
 
     #[test]
     fn parses_and_receipt_binds_versioned_semantic_evidence_metadata() {
