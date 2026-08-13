@@ -36,6 +36,8 @@ use crate::{
 
 const DEFAULT_BIND: &str = "127.0.0.1:8091";
 const MAX_REQUEST_BYTES: usize = 96 * 1024;
+const TURN_RUNTIME_BOUNDARY: &str = "rust_agent_runtime";
+const TURN_RUNTIME_PHASE: &str = "runtime_execution";
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -66,6 +68,83 @@ struct TurnProgressQuery {
     request_id: String,
     #[serde(default)]
     after_sequence: u64,
+}
+
+struct TurnBoundaryReceipt {
+    request_ref: String,
+    started_at: Instant,
+    terminal_emitted: bool,
+}
+
+impl TurnBoundaryReceipt {
+    fn start(request_id: &str) -> Self {
+        let request_ref = turn_request_ref(request_id);
+        println!("{}", turn_boundary_event(&request_ref, "started", 0, None));
+        Self {
+            request_ref,
+            started_at: Instant::now(),
+            terminal_emitted: false,
+        }
+    }
+
+    fn finish(&mut self, state: &'static str) {
+        self.emit_terminal(state);
+    }
+
+    fn emit_terminal(&mut self, state: &'static str) {
+        if self.terminal_emitted {
+            return;
+        }
+        self.terminal_emitted = true;
+        println!(
+            "{}",
+            turn_boundary_event(
+                &self.request_ref,
+                state,
+                self.started_at
+                    .elapsed()
+                    .as_millis()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+                Some(TURN_RUNTIME_BOUNDARY),
+            )
+        );
+    }
+}
+
+impl Drop for TurnBoundaryReceipt {
+    fn drop(&mut self) {
+        self.emit_terminal("interrupted");
+    }
+}
+
+fn turn_request_ref(request_id: &str) -> String {
+    format!(
+        "slack-agent-turn://sha256/{}",
+        Sha256::digest(request_id.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    )
+}
+
+fn turn_boundary_event(
+    request_ref: &str,
+    state: &'static str,
+    phase_elapsed_ms: u64,
+    terminal_boundary: Option<&'static str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "authority": "rust",
+        "component": "slack-answer-authority",
+        "operation": "turn_run",
+        "phase": TURN_RUNTIME_PHASE,
+        "phase_elapsed_ms": phase_elapsed_ms,
+        "request_ref": request_ref,
+        "schema_version": "slack-agent-turn-boundary-receipt/v1",
+        "state": state,
+        "terminal_boundary": terminal_boundary,
+    })
 }
 
 struct AuthorityRuntime {
@@ -358,8 +437,10 @@ async fn run_turn_route(
             }),
         )
     })?;
+    let mut boundary_receipt = TurnBoundaryReceipt::start(&request.request_id);
     match agent.run(request).await {
         Ok(outcome) => {
+            boundary_receipt.finish("completed");
             runtime.agent_turns_total.fetch_add(1, Ordering::Relaxed);
             runtime
                 .agent_tool_calls_total
@@ -367,6 +448,7 @@ async fn run_turn_route(
             Ok(Json(outcome))
         }
         Err(error) => {
+            boundary_receipt.finish("failed");
             runtime
                 .agent_turn_failures_total
                 .fetch_add(1, Ordering::Relaxed);
@@ -648,6 +730,43 @@ mod tests {
             first["runtime_instance_ref"],
             second["runtime_instance_ref"]
         );
+    }
+
+    #[test]
+    fn turn_boundary_receipt_is_opaque_and_provider_neutral() {
+        let request_id = "sensitive-request-value";
+        let request_ref = turn_request_ref(request_id);
+        let event =
+            turn_boundary_event(&request_ref, "failed", 300_001, Some(TURN_RUNTIME_BOUNDARY));
+
+        assert_eq!(
+            event,
+            serde_json::json!({
+                "authority": "rust",
+                "component": "slack-answer-authority",
+                "operation": "turn_run",
+                "phase": "runtime_execution",
+                "phase_elapsed_ms": 300_001,
+                "request_ref": request_ref,
+                "schema_version": "slack-agent-turn-boundary-receipt/v1",
+                "state": "failed",
+                "terminal_boundary": "rust_agent_runtime",
+            })
+        );
+        assert!(!event.to_string().contains(request_id));
+    }
+
+    #[test]
+    fn turn_boundary_receipt_distinguishes_start_from_terminal_exit() {
+        let request_ref = turn_request_ref("request-one");
+        let started = turn_boundary_event(&request_ref, "started", 0, None);
+        let interrupted =
+            turn_boundary_event(&request_ref, "interrupted", 42, Some(TURN_RUNTIME_BOUNDARY));
+
+        assert_eq!(started["terminal_boundary"], Value::Null);
+        assert_eq!(started["phase_elapsed_ms"], 0);
+        assert_eq!(interrupted["terminal_boundary"], "rust_agent_runtime");
+        assert_eq!(interrupted["phase_elapsed_ms"], 42);
     }
 
     #[tokio::test]
