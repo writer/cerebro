@@ -171,7 +171,11 @@ impl DiagnosticIdentity {
         let environment = task
             .family
             .strip_prefix("cerebro-")
-            .and_then(|value| value.strip_suffix("-rust-platform"))
+            .and_then(|value| {
+                value
+                    .strip_suffix("-rust-platform")
+                    .or_else(|| value.strip_suffix("-rust-platform-replay"))
+            })
             .filter(|value| {
                 !value.is_empty()
                     && value.len() <= 64
@@ -1968,31 +1972,51 @@ mod tests {
 
     #[test]
     fn diagnostic_identity_is_derived_from_ecs_metadata() {
-        let identity = DiagnosticIdentity::from_metadata(
-            EcsContainerMetadata {
-                image_id: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                    .to_owned(),
-            },
-            EcsTaskMetadata {
-                task_arn: "arn:aws:ecs:us-east-1:123456789012:task/cerebro-test/task-id".to_owned(),
-                family: "cerebro-test-rust-platform".to_owned(),
-                revision: "28".to_owned(),
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            identity.task_definition,
-            "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-test-rust-platform:28"
-        );
-        assert_eq!(identity.environment, "test");
+        let image_digest =
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        for family in [
+            "cerebro-test-rust-platform",
+            "cerebro-test-rust-platform-replay",
+        ] {
+            let identity = DiagnosticIdentity::from_metadata(
+                EcsContainerMetadata {
+                    image_id: image_digest.to_owned(),
+                },
+                EcsTaskMetadata {
+                    task_arn: "arn:aws:ecs:us-east-1:123456789012:task/cerebro-test/task-id"
+                        .to_owned(),
+                    family: family.to_owned(),
+                    revision: "28".to_owned(),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                identity.task_definition,
+                format!("arn:aws:ecs:us-east-1:123456789012:task-definition/{family}:28")
+            );
+            assert_eq!(identity.environment, "test");
+        }
         assert!(
             DiagnosticIdentity::from_metadata(
                 EcsContainerMetadata {
-                    image_id: identity.image_digest.clone(),
+                    image_id: image_digest.to_owned(),
                 },
                 EcsTaskMetadata {
                     task_arn: "arn:aws:ecs:us-east-1:123456789012:task/other/task-id".to_owned(),
                     family: "unbound-family".to_owned(),
+                    revision: "1".to_owned(),
+                },
+            )
+            .is_err()
+        );
+        assert!(
+            DiagnosticIdentity::from_metadata(
+                EcsContainerMetadata {
+                    image_id: image_digest.to_owned(),
+                },
+                EcsTaskMetadata {
+                    task_arn: "arn:aws:ecs:us-east-1:123456789012:task/other/task-id".to_owned(),
+                    family: "cerebro-test-rust-platform-replay-other".to_owned(),
                     revision: "1".to_owned(),
                 },
             )
