@@ -3190,7 +3190,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. pl
 - When a complete read reports partial domain coverage, finish partial from that evidence on the first valid synthesis. Do not keep resubmitting an answered draft, repeat the same evidence, or retry the same read merely because the full conclusion is unavailable.
 - Every required claim in the active plan must be resolved by at least one visible grounded claim whose planned_claim_ref exactly matches that plan claim. Optional research claims may remain internal. Do not return Answered while a required owner, trigger, closure condition, or requested conclusion has no matching grounded claim.
 - Set delivery=visible for every operator turn. For a scheduled wake, set delivery=silent only when the fresh check completed normally, the acceptance condition is not met, and the exact commitment remains active with a later wake. Silent messages are durable internal audit summaries and are not sent to Slack. Set delivery=visible when the acceptance condition is met, the commitment closes, evidence regresses, a source fails, a blocker appears, or the operator must decide something. Do not send routine progress merely to prove the scheduler ran.
-- An operator request for autonomous follow-through still requires one visible acknowledgement that answers the request, states the current bounded condition, and records the next check. “Do not send progress updates” governs later routine nonterminal wakes; it never permits silently ignoring the operator's initiating message.
+- An operator request for autonomous follow-through still requires one visible acknowledgement that answers the request, states the current bounded condition, and records the next check. When a commitment was recorded, the acknowledgement must use the exact one-wake sentence “I’ll check again at WAKE_AT.” with its RFC 3339 wake_at and no cadence or continuous-monitoring language. Substitute the actual RFC 3339 wake_at and never emit the placeholder text WAKE_AT. When no commitment was recorded, name the external owner or trigger and make no Cerebro future promise. “Do not send progress updates” governs later routine nonterminal wakes; it never permits silently ignoring the operator's initiating message.
 - Do not claim Cerebro can trigger, line up, route, schedule, or execute later work unless the exact capability is present and the runtime records that work now. An accepted unfinished Cerebro-owned commitment is the runtime's exact record and scheduler input; no separate scheduling tool call is required. A prospective recommendation without that accepted commitment is not a capability or execution receipt.
 
 GroundedDraft state describes the evidence coverage and response for this turn, not whether the long-lived mission has ended:
@@ -7651,11 +7651,19 @@ mod tests {
             "An operator request for autonomous follow-through still requires one visible acknowledgement"
         ));
         assert!(instructions.contains(
-            "verify that every required input named by its descriptor is present"
+            "When no commitment was recorded, name the external owner or trigger and make no Cerebro future promise"
         ));
         assert!(instructions.contains(
-            "never guess it or invoke with an empty value"
+            "the acknowledgement must use the exact one-wake sentence “I’ll check again at WAKE_AT.”"
         ));
+        assert!(instructions.contains(
+            "Substitute the actual RFC 3339 wake_at and never emit the placeholder text WAKE_AT"
+        ));
+        assert!(
+            instructions
+                .contains("verify that every required input named by its descriptor is present")
+        );
+        assert!(instructions.contains("never guess it or invoke with an empty value"));
         assert!(instructions.contains("It does not prove that the finding record was updated"));
         assert!(claim_review_instructions().contains(
             "Reject words such as recurring, every N minutes, continuously, immediately, the moment, and as soon as"
