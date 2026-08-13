@@ -961,10 +961,10 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
     let repaired = FinalDraft {
         state: FinalState::Partial,
         headline: "Source visibility is metadata-backed".into(),
-        summary: "I can inspect Source A records that have been collected into Cerebro, including the returned directory and audit evidence. I do not have direct administrative access to Source A from this evidence, and this bounded result does not prove complete source coverage.".into(),
+        summary: "I can inspect Source A records from the partial result collected into Cerebro, including the returned directory and audit evidence. I do not have direct administrative access to Source A from this partial evidence, and this incomplete bounded result does not prove complete source coverage.".into(),
         summary_evidence_refs: vec!["evidence://source-a".into()],
         checked: vec![claim(
-            "The bounded source search returned directory and audit evidence.",
+            "The bounded partial source search returned directory and audit evidence.",
             "evidence://source-a",
         )],
         changed: vec![],
@@ -972,7 +972,7 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
         current_state: vec![],
         next_actions: vec![],
         coverage_notice: Some(
-            "The bounded result does not establish complete source coverage.".into(),
+            "The incomplete bounded result does not establish complete source coverage.".into(),
         ),
         question: None,
     };

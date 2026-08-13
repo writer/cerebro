@@ -58,6 +58,8 @@ pub const CRITIC_MAX_TOKENS: i32 = 16_384;
 pub const HARD_MAX_GENERATION_TOKENS: i32 = 131_072;
 const MAX_TEXT_BYTES: usize = 16 * 1024;
 const MAX_TOOL_DATA_BYTES: usize = 64 * 1024;
+const MAX_RECOVERY_KIND_BYTES: usize = 64;
+const MAX_RECOVERY_ACTION_BYTES: usize = 1_024;
 const MAX_HEADLINE_BYTES: usize = 160;
 const MAX_SUMMARY_BYTES: usize = 2_400;
 const MAX_SUPPLEMENT_BYTES: usize = 800;
@@ -3553,6 +3555,7 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
             ));
         }
     }
+    validate_recovery_guidance(&result.data)?;
     let mut evidence_refs = BTreeSet::new();
     for evidence in &result.evidence {
         if result.state == ToolResultState::Failed
@@ -3595,6 +3598,43 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
         }
     }
     Ok(())
+}
+
+fn validate_recovery_guidance(data: &Value) -> Result<(), AgentRuntimeError> {
+    let Value::Object(data) = data else {
+        return Ok(());
+    };
+    let fields = ["error_kind", "retryable", "operator_action"];
+    if !fields.iter().any(|field| data.contains_key(*field)) {
+        return Ok(());
+    }
+    let error_kind_valid = data
+        .get("error_kind")
+        .and_then(Value::as_str)
+        .is_some_and(|value| {
+            !value.is_empty()
+                && value.len() <= MAX_RECOVERY_KIND_BYTES
+                && value.chars().all(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+                })
+        });
+    let retryable_valid = data.get("retryable").is_some_and(Value::is_boolean);
+    let operator_action_valid = data
+        .get("operator_action")
+        .and_then(Value::as_str)
+        .is_some_and(|value| {
+            bounded_display_text(value, MAX_RECOVERY_ACTION_BYTES)
+                && !value
+                    .chars()
+                    .any(|character| matches!(character, '\n' | '\r' | '\t'))
+        });
+    if error_kind_valid && retryable_valid && operator_action_valid {
+        Ok(())
+    } else {
+        Err(AgentRuntimeError::InvalidToolCall(
+            "tool result recovery guidance is incomplete or invalid".into(),
+        ))
+    }
 }
 
 fn validate_final(
@@ -4312,6 +4352,48 @@ mod grounding_tests {
         failed.evidence[0].atoms = vec![validation_outcome_atom(ToolResultState::Failed)];
         failed.evidence[0].complete = true;
         assert!(validate_tool_result(&failed).is_err());
+    }
+
+    #[test]
+    fn recovery_guidance_is_atomic_and_bounded() {
+        let mut failed = validation_result(
+            ToolResultState::Failed,
+            Some("The bounded tool call failed."),
+        );
+        assert!(validate_tool_result(&failed).is_ok());
+
+        failed.data = json!({
+            "error_kind": "backend_unavailable",
+            "retryable": true,
+            "operator_action": "Retry after the backend recovers."
+        });
+        assert!(validate_tool_result(&failed).is_ok());
+
+        for invalid in [
+            json!({"error_kind": "backend_unavailable", "retryable": true}),
+            json!({
+                "error_kind": "Backend Unavailable",
+                "retryable": true,
+                "operator_action": "Retry after the backend recovers."
+            }),
+            json!({
+                "error_kind": "backend_unavailable",
+                "retryable": "true",
+                "operator_action": "Retry after the backend recovers."
+            }),
+            json!({
+                "error_kind": "backend_unavailable",
+                "retryable": true,
+                "operator_action": "Retry now.\nThen inspect the result."
+            }),
+        ] {
+            failed.data = invalid;
+            assert!(matches!(
+                validate_tool_result(&failed),
+                Err(AgentRuntimeError::InvalidToolCall(reason))
+                    if reason == "tool result recovery guidance is incomplete or invalid"
+            ));
+        }
     }
 
     #[test]

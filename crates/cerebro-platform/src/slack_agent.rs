@@ -5261,7 +5261,11 @@ fn source_runtime_failure() -> ToolResult {
     ToolResult {
         state: ToolResultState::Failed,
         summary: "The Rust source-runtime ledger read failed.".into(),
-        data: json!({"error_kind": "backend_unavailable"}),
+        data: json!({
+            "error_kind": "backend_unavailable",
+            "retryable": true,
+            "operator_action": "Retry after the source-runtime ledger recovers."
+        }),
         evidence: vec![],
         blocker: Some(
             "The source-runtime ledger could not complete this tenant-scoped read.".into(),
@@ -5280,7 +5284,19 @@ fn graph_failure(error: ContextError) -> ToolResult {
             ToolResultState::Succeeded => "The governed graph did not contain that entity.".into(),
             _ => "The governed graph read failed.".into(),
         },
-        data: json!({"error_kind": graph_error_kind(&error)}),
+        data: match state {
+            ToolResultState::Succeeded => json!({"result_kind": "not_found"}),
+            _ => json!({
+                "error_kind": graph_error_kind(&error),
+                "retryable": matches!(&error, ContextError::BackendUnavailable(_)),
+                "operator_action": match &error {
+                    ContextError::BackendUnavailable(_) => {
+                        "Retry after the governed graph backend recovers."
+                    }
+                    _ => "Correct the governed graph read input before retrying.",
+                }
+            }),
+        },
         evidence: vec![],
         blocker: (state == ToolResultState::Failed)
             .then(|| "The governed graph could not complete this bounded read.".into()),
