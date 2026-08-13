@@ -3949,10 +3949,14 @@ where
     })
 }
 
-pub(super) fn capability_describe_result(
+pub(super) fn capability_describe_result<F>(
     catalog: &[ToolDescriptor],
     input: &Value,
-) -> Result<ToolResult, AgentRuntimeError> {
+    mut selection: F,
+) -> Result<ToolResult, AgentRuntimeError>
+where
+    F: FnMut(&ToolDescriptor, &str) -> Result<Option<(String, String)>, AgentRuntimeError>,
+{
     let input: CapabilityDescribeInput = serde_json::from_value(input.clone())
         .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
     if input.tool_ids.is_empty() || input.tool_ids.len() > MAX_CAPABILITY_DESCRIBE_IDS {
@@ -3978,7 +3982,15 @@ pub(super) fn capability_describe_result(
     let mut unavailable = Vec::new();
     for tool_id in &requested {
         if let Some(descriptor) = by_id.get(tool_id.as_str()) {
-            described.push(capability_descriptor_json(descriptor, 0));
+            let mut value = capability_descriptor_json(descriptor, 0);
+            let selection_digest = sha256_digest(&format!("describe:{tool_id}"));
+            if let Some((execution_tool_id, selection_ref)) =
+                selection(descriptor, &selection_digest)?
+            {
+                value["execution_tool_id"] = Value::String(execution_tool_id);
+                value["selection_ref"] = Value::String(selection_ref);
+            }
+            described.push(value);
         } else {
             unavailable.push(tool_id);
         }
@@ -4070,7 +4082,7 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
             ToolDescriptor {
                 tool_id: "capability.describe".into(),
                 title: "Describe exact tools".into(),
-                summary: "Read exact bound tool descriptors, authority and effect policy, and input/result schema references for up to 12 tool ids. Catalog results describe capability only and are not evidence about an external system. Input field: tool_ids string array.".into(),
+                summary: "Read exact bound tool descriptors, authority and effect policy, structured provider input schemas, and executable signed selections for up to 12 tool ids. Catalog results describe capability only and are not evidence about an external system. Input field: tool_ids string array.".into(),
                 authority_class: ToolAuthorityClass::Observe,
                 effect_class: ToolEffectClass::Read,
                 input_schema_ref: "schema://cerebro/capability-describe-input/v1".into(),
@@ -4079,7 +4091,7 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
             ToolDescriptor {
                 tool_id: CAPABILITY_EXECUTE_READ.into(),
                 title: "Execute a selected read capability".into(),
-                summary: "Redeem one host-signed capability selection for its exact read-only provider tool. Input fields: selection_ref string returned by capability.search and input object matching the selected provider schema.".into(),
+                summary: "Redeem one host-signed capability selection for its exact read-only provider tool. Input fields: selection_ref string returned by capability.search or capability.describe and input object matching the selected provider schema.".into(),
                 authority_class: ToolAuthorityClass::Observe,
                 effect_class: ToolEffectClass::Read,
                 input_schema_ref: "schema://cerebro/capability-execute-input/v1".into(),
@@ -4088,7 +4100,7 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
             ToolDescriptor {
                 tool_id: CAPABILITY_EXECUTE_PROPOSAL.into(),
                 title: "Execute a selected proposal capability".into(),
-                summary: "Redeem one host-signed capability selection for its exact proposal-only provider tool. Input fields: selection_ref string returned by capability.search and input object matching the selected provider schema.".into(),
+                summary: "Redeem one host-signed capability selection for its exact proposal-only provider tool. Input fields: selection_ref string returned by capability.search or capability.describe and input object matching the selected provider schema.".into(),
                 authority_class: ToolAuthorityClass::Propose,
                 effect_class: ToolEffectClass::Read,
                 input_schema_ref: "schema://cerebro/capability-execute-input/v1".into(),
@@ -4507,11 +4519,21 @@ impl PlatformAgentTools {
 
     fn describe_capabilities(
         &self,
-        _request: &AgentTurnRequest,
+        request: &AgentTurnRequest,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
         let catalog = self.complete_capability_catalog();
-        capability_describe_result(&catalog, &call.input)
+        capability_describe_result(&catalog, &call.input, |descriptor, query_digest| {
+            let (Some(mcp), Some(executor_tool_id)) =
+                (&self.mcp, capability_executor_tool(descriptor))
+            else {
+                return Ok(None);
+            };
+            let selection_ref = mcp
+                .issue_selection_ref(request, descriptor, query_digest)
+                .map_err(AgentRuntimeError::InvalidToolCall)?;
+            Ok(Some((executor_tool_id.into(), selection_ref)))
+        })
     }
 
     async fn execute_selected_capability(
@@ -5736,6 +5758,37 @@ mod tests {
         assert_eq!(result.data["selection_status"], "tied_top_matches");
         assert_eq!(result.data["top_score_tie_count"], 2);
         assert!(model_instructions().contains("selection_status=tied_top_matches"));
+    }
+
+    #[test]
+    fn capability_describe_returns_an_executable_provider_selection() {
+        let catalog = vec![discovered_tool(
+            "mcp.slack.thread.read",
+            "Read a Slack thread",
+            "Read one conversation.",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )];
+
+        let result = capability_describe_result(
+            &catalog,
+            &json!({"tool_ids": ["mcp.slack.thread.read"]}),
+            |descriptor, digest| {
+                assert_eq!(descriptor.tool_id, "mcp.slack.thread.read");
+                assert!(digest.starts_with("sha256:"));
+                Ok(Some((
+                    CAPABILITY_EXECUTE_READ.into(),
+                    "signed-selection".into(),
+                )))
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.data["tools"][0]["execution_tool_id"],
+            CAPABILITY_EXECUTE_READ
+        );
+        assert_eq!(result.data["tools"][0]["selection_ref"], "signed-selection");
     }
 
     #[test]
