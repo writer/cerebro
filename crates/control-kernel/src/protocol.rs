@@ -7,6 +7,7 @@ use crate::{
     CommitmentId, CommitmentInput, CommitmentTransition, ConversationResolution, DecisionReceipt,
     EncounterProfile, ExecutionDepth, Mission, MissionDirective, MissionId, MissionInput,
     MissionReference, MissionState, PlanRevision, RequestId, SupervisorSnapshot, TenantId,
+    VendorUseApproval, VendorUseDecision, VendorUseObservation, VendorUsePolicy,
     VerificationReceipt, WakeConditionId, WakeConditionKind, WakeSignal,
 };
 
@@ -51,6 +52,17 @@ pub enum ControlCommand {
     Authorize {
         /// Tenant-, actor-, action-, resource-, and time-bound request.
         request: AuthorizationRequest,
+    },
+    /// Evaluates current provider use against one exact vendor approval.
+    EvaluateVendorUse {
+        /// Current provider request or active installation observation.
+        observation: VendorUseObservation,
+        /// Matching approval snapshot, when one was found.
+        approval: Option<VendorUseApproval>,
+        /// Freshness bounds for provider and approval evidence.
+        policy: VendorUsePolicy,
+        /// Non-zero Unix-millisecond time of evaluation.
+        evaluated_at_unix_ms: u64,
     },
     /// Records an approval decision for an exact proposal digest.
     RecordDecision {
@@ -193,6 +205,7 @@ impl ControlCommand {
     pub fn tenant_id(&self) -> &TenantId {
         match self {
             Self::OpenMission { input } => &input.tenant_id,
+            Self::EvaluateVendorUse { observation, .. } => &observation.tenant_id,
             Self::AdvanceMission { tenant_id, .. }
             | Self::RecordDecision { tenant_id, .. }
             | Self::RecordVerification { tenant_id, .. }
@@ -225,6 +238,11 @@ pub enum ControlResponse {
     Authorization {
         /// Decision bound to the exact authorization request.
         decision: AuthorizationDecision,
+    },
+    /// Returns the material, fail-closed vendor-use state.
+    VendorUse {
+        /// Decision bound to the exact provider and approval observations.
+        decision: VendorUseDecision,
     },
     /// Returns deterministic encounter execution depth.
     ExecutionDepth {

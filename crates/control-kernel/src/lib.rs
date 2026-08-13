@@ -18,6 +18,7 @@ mod mission;
 mod plan;
 mod protocol;
 mod supervisor;
+mod vendor_use;
 mod wake;
 
 pub use authority::{
@@ -42,6 +43,11 @@ pub use mission::{Mission, MissionError, MissionInput, MissionState, MissionTran
 pub use plan::{PlanError, PlanRevision, PlanStep};
 pub use protocol::{CommandEnvelope, ControlCommand, ControlResponse, ProtocolError};
 pub use supervisor::{MissionDirective, SupervisorSnapshot, next_directive};
+pub use vendor_use::{
+    ProviderPermission, ProviderPermissionAccess, VendorReviewDecision, VendorUseApproval,
+    VendorUseDecision, VendorUseDenial, VendorUseObservation, VendorUseObservationKind,
+    VendorUsePlatform, VendorUsePolicy, VendorUseState, evaluate_vendor_use,
+};
 pub use wake::{
     WakeCondition, WakeConditionError, WakeConditionKind, WakeConditionState, WakeSignal,
 };
