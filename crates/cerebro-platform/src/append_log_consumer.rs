@@ -1135,19 +1135,19 @@ impl DiagnosticEmitter {
         config: &ConsumerConfig,
         stream_sequence: u64,
         message_sha256: &str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<bool, Box<dyn Error>> {
         if self.retry_emitted {
-            return Ok(());
+            return Ok(false);
         }
         let Some(identity) = self.identity.as_ref() else {
-            return Ok(());
+            return Ok(false);
         };
         println!(
             "{}",
             retry_event(identity, config, stream_sequence, message_sha256)
         );
         self.retry_emitted = true;
-        Ok(())
+        Ok(true)
     }
 }
 
@@ -2146,12 +2146,12 @@ mod tests {
             identity: Some(identity),
             emitted: 0,
             checkpoint_emitted: false,
-            retry_emitted: true,
+            retry_emitted: false,
         };
         assert!(!emitter.retry_emitted);
-        emitter.emit_retry(&config, 42, &digest).unwrap();
+        assert!(emitter.emit_retry(&config, 42, &digest).unwrap());
         assert!(emitter.retry_emitted);
-        emitter.emit_retry(&config, 42, &digest).unwrap();
+        assert!(!emitter.emit_retry(&config, 42, &digest).unwrap());
         assert!(emitter.retry_emitted);
     }
 
