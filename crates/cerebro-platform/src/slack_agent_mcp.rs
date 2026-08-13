@@ -450,11 +450,36 @@ fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
     } else {
         ToolResultState::Succeeded
     };
+    let blocker = (state != ToolResultState::Succeeded)
+        .then(|| provider_blocker(&data))
+        .flatten();
     NormalizedToolResult {
         state,
         data,
-        blocker: None,
+        blocker,
     }
+}
+
+fn provider_blocker(data: &Value) -> Option<String> {
+    for field in ["blocker", "reason"] {
+        if let Some(value) = data.get(field).and_then(Value::as_str) {
+            let value = bounded_error(value);
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    let reasons = data
+        .get("partial_reasons")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    let reasons = bounded_error(&reasons);
+    (!reasons.is_empty()).then_some(reasons)
 }
 
 fn bind_tools(
@@ -1016,6 +1041,37 @@ mod tests {
 
         assert_eq!(normalized.state, ToolResultState::OutcomeUnknown);
         assert_eq!(normalized.data["operation_ref"], "operation-one");
+    }
+
+    #[test]
+    fn preserves_bounded_provider_recovery_reasons() {
+        let blocked = normalize_tool_result(
+            json!({"state": "blocked", "blocker": format!("{}tail", "x".repeat(512))}),
+            false,
+        );
+        assert_eq!(blocked.state, ToolResultState::Failed);
+        assert_eq!(blocked.blocker.as_ref().unwrap().chars().count(), 512);
+        assert!(!blocked.blocker.as_ref().unwrap().contains("tail"));
+
+        let partial = normalize_tool_result(
+            json!({
+                "state": "partial",
+                "partial_reasons": ["Graph projection is unavailable.", "Runtime state is stale."]
+            }),
+            false,
+        );
+        assert_eq!(partial.state, ToolResultState::Partial);
+        assert_eq!(
+            partial.blocker.as_deref(),
+            Some("Graph projection is unavailable.; Runtime state is stale.")
+        );
+
+        let complete = normalize_tool_result(
+            json!({"state": "complete", "blocker": "must not shadow success"}),
+            false,
+        );
+        assert_eq!(complete.state, ToolResultState::Succeeded);
+        assert_eq!(complete.blocker, None);
     }
 
     #[test]
