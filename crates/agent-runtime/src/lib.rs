@@ -3800,17 +3800,30 @@ fn finalize_unknown_effect(
     let observation = observations.last().ok_or_else(|| {
         AgentRuntimeError::InvalidFinal("unknown effect has no observation".into())
     })?;
+    let durable_effect = observation.descriptor.authority_class == ToolAuthorityClass::Actuate
+        || observation.descriptor.effect_class != ToolEffectClass::Read;
+    let (headline, default_blocker, next_step) = if durable_effect {
+        (
+            "Outcome not confirmed",
+            "The effect outcome could not be confirmed.",
+            "Reconcile the existing effect receipt before retrying.",
+        )
+    } else {
+        (
+            "Result not confirmed",
+            "The observation did not return a confirmed result.",
+            "Run a fresh observation to obtain the current result.",
+        )
+    };
     let blocker = observation
         .result
         .blocker
         .as_deref()
-        .unwrap_or("The effect outcome could not be confirmed.");
+        .unwrap_or(default_blocker);
     Ok(AgentTurnOutcome::Delivered {
         schema_version: AGENT_TURN_RESULT_V1,
         lane,
-        markdown: format!(
-            "**Outcome not confirmed**\n\n{blocker}\n\n**Next**\n- Reconcile the existing effect receipt before retrying."
-        ),
+        markdown: format!("**{headline}**\n\n{blocker}\n\n**Next**\n- {next_step}"),
         final_state: FinalState::Blocked,
         evidence_refs: observation
             .result

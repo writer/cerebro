@@ -1432,6 +1432,63 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
 }
 
 #[tokio::test]
+async fn requests_a_fresh_observation_when_a_read_result_is_unknown() {
+    let lookup = ToolCall {
+        call_id: "lookup".into(),
+        tool_id: "runtime_status".into(),
+        purpose: "Read the current runtime status.".into(),
+        input: json!({"runtime_ref": "runtime://one"}),
+    };
+    let model = scripted(
+        ExecutionLane::Act,
+        VecDeque::from([ModelDecision::InvokeTool {
+            call: lookup.clone(),
+        }]),
+    );
+    let mut uncertain_evidence = evidence(
+        "evidence://uncertain-read",
+        "The observation ended before a current result was returned.",
+    );
+    uncertain_evidence.complete = false;
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            lookup.call_id,
+            ToolResult {
+                state: ToolResultState::OutcomeUnknown,
+                summary: "The observation ended without a confirmed result.".into(),
+                data: json!({}),
+                evidence: vec![uncertain_evidence],
+                blocker: Some("The current runtime status was not returned.".into()),
+            },
+        )])),
+    };
+
+    let outcome = run_turn(&model, &tools, request("Check the current runtime status."))
+        .await
+        .unwrap();
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        tool_call_count,
+        ..
+    } = outcome
+    else {
+        panic!("expected blocked delivered result");
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert_eq!(tool_call_count, 1);
+    assert!(markdown.contains("Result not confirmed"));
+    assert!(markdown.contains("fresh observation"));
+    assert!(!markdown.to_ascii_lowercase().contains("receipt"));
+    assert!(!markdown.to_ascii_lowercase().contains("effect"));
+}
+
+#[tokio::test]
 async fn rejects_final_claims_that_cite_unobserved_evidence() {
     let lookup = ToolCall {
         call_id: "lookup".into(),
