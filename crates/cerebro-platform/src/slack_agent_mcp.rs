@@ -566,12 +566,17 @@ fn normalize_tool_result(
             "retryable": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.retryable,
             "operator_action": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.operator_action,
         })
+    } else if invalid_state {
+        json!({
+            "provider_result": data,
+            "error_kind": INVALID_PROVIDER_STATE_GUIDANCE.error_kind,
+            "retryable": INVALID_PROVIDER_STATE_GUIDANCE.retryable,
+            "operator_action": INVALID_PROVIDER_STATE_GUIDANCE.operator_action,
+        })
+    } else if state == ToolResultState::OutcomeUnknown {
+        with_recovery_guidance(data, OUTCOME_UNKNOWN_GUIDANCE)
     } else if is_error || state == ToolResultState::Failed {
-        let guidance = if invalid_state {
-            INVALID_PROVIDER_STATE_GUIDANCE
-        } else {
-            tool_error_guidance(&data)
-        };
+        let guidance = tool_error_guidance(&data);
         with_recovery_guidance(data, guidance)
     } else {
         data
@@ -600,6 +605,12 @@ const INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE: RecoveryGuidance = RecoveryGuidanc
     error_kind: "invalid_provider_error_signal",
     retryable: false,
     operator_action: "Inspect the provider result envelope before retrying.",
+};
+
+const OUTCOME_UNKNOWN_GUIDANCE: RecoveryGuidance = RecoveryGuidance {
+    error_kind: "provider_outcome_unknown",
+    retryable: false,
+    operator_action: "Verify the current provider state before further action.",
 };
 
 fn tool_error_guidance(data: &Value) -> RecoveryGuidance {
@@ -1289,13 +1300,27 @@ mod tests {
 
         assert_eq!(normalized.state, ToolResultState::OutcomeUnknown);
         assert_eq!(normalized.data["operation_ref"], "operation-one");
+        assert_eq!(normalized.data["error_kind"], "provider_outcome_unknown");
+        assert_eq!(normalized.data["retryable"], false);
     }
 
     #[test]
     fn fails_closed_on_invalid_provider_result_states() {
-        for state in [json!("Complete"), json!("future_state"), json!(""), json!(7), Value::Null]
-        {
-            let normalized = normalize_tool_result(json!({"state": state}), false, None);
+        for state in [
+            json!("Complete"),
+            json!("future_state"),
+            json!(""),
+            json!(7),
+            json!(true),
+            json!([]),
+            json!({"value": "complete"}),
+            Value::Null,
+        ] {
+            let normalized = normalize_tool_result(
+                json!({"state": state.clone(), "request_ref": "request-one"}),
+                false,
+                None,
+            );
             assert_eq!(normalized.state, ToolResultState::Failed);
             assert_eq!(
                 normalized.blocker.as_deref(),
@@ -1306,6 +1331,11 @@ mod tests {
                 "invalid_provider_result_state"
             );
             assert_eq!(normalized.data["retryable"], false);
+            assert_eq!(normalized.data["provider_result"]["state"], state);
+            assert_eq!(
+                normalized.data["provider_result"]["request_ref"],
+                "request-one"
+            );
         }
 
         let absent = normalize_tool_result(json!({"records": []}), false, None);
@@ -1316,7 +1346,12 @@ mod tests {
 
     #[test]
     fn fails_closed_on_non_boolean_provider_error_signals() {
-        for invalid in [json!("false"), json!(1), Value::Null, json!({"value": false})] {
+        for invalid in [
+            json!("false"),
+            json!(1),
+            Value::Null,
+            json!({"value": false}),
+        ] {
             let result = json!({"isError": invalid});
             let (is_error, invalid_is_error) = provider_error_signal(&result);
             assert!(!is_error);
@@ -1343,8 +1378,44 @@ mod tests {
             );
         }
 
-        assert_eq!(provider_error_signal(&json!({"isError": true})), (true, None));
+        assert_eq!(
+            provider_error_signal(&json!({"isError": true})),
+            (true, None)
+        );
         assert_eq!(provider_error_signal(&json!({})), (false, None));
+    }
+
+    #[test]
+    fn conservative_error_precedence_is_deterministic() {
+        let signaled_error = normalize_tool_result(
+            json!({"state": "complete", "request_ref": "request-one"}),
+            true,
+            None,
+        );
+        assert_eq!(signaled_error.state, ToolResultState::Failed);
+
+        let blocked = normalize_tool_result(json!({"state": "blocked"}), false, None);
+        assert_eq!(blocked.state, ToolResultState::Failed);
+
+        let unknown = normalize_tool_result(json!({"state": "outcome_unknown"}), false, None);
+        assert_eq!(unknown.state, ToolResultState::OutcomeUnknown);
+        assert_eq!(unknown.data["retryable"], false);
+
+        let both_malformed = normalize_tool_result(
+            json!({"state": "future_state", "request_ref": "request-two"}),
+            false,
+            Some(json!("false")),
+        );
+        assert_eq!(both_malformed.state, ToolResultState::Failed);
+        assert_eq!(
+            both_malformed.data["error_kind"],
+            "invalid_provider_error_signal"
+        );
+        assert_eq!(both_malformed.data["retryable"], false);
+        assert_eq!(
+            both_malformed.data["provider_result"]["request_ref"],
+            "request-two"
+        );
     }
 
     #[test]

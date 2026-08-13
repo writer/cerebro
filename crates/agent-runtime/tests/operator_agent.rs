@@ -1418,7 +1418,11 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
             ToolResult {
                 state: ToolResultState::OutcomeUnknown,
                 summary: "The provider connection ended before a receipt was returned.".into(),
-                data: json!({}),
+                data: json!({
+                    "error_kind": "provider_outcome_unknown",
+                    "retryable": false,
+                    "operator_action": "Reconcile the provider state before any further effect."
+                }),
                 evidence: vec![uncertain_effect_evidence],
                 blocker: Some("The effect may have happened, so retry is unsafe.".into()),
             },
@@ -1471,7 +1475,11 @@ async fn requests_a_fresh_observation_when_a_read_result_is_unknown() {
             ToolResult {
                 state: ToolResultState::OutcomeUnknown,
                 summary: "The observation ended without a confirmed result.".into(),
-                data: json!({}),
+                data: json!({
+                    "error_kind": "observation_outcome_unknown",
+                    "retryable": false,
+                    "operator_action": "Run a fresh bounded observation before drawing a conclusion."
+                }),
                 evidence: vec![uncertain_evidence],
                 blocker: Some("The current runtime status was not returned.".into()),
             },

@@ -5447,7 +5447,7 @@ fn failed_tool_result(
     Ok(ToolResult {
         state: ToolResultState::Failed,
         summary: summary.clone(),
-        data: json!({
+        data: serde_json::json!({
             "error_kind": "capability_invocation_failed",
             "retryable": false,
             "operator_action": "Continue with another bounded capability or inspect provider availability before retrying."
@@ -5493,7 +5493,11 @@ fn uncertain_effect_result(
     ToolResult {
         state: ToolResultState::OutcomeUnknown,
         summary: summary.clone(),
-        data: Value::Null,
+        data: serde_json::json!({
+            "error_kind": "effect_outcome_unknown",
+            "retryable": false,
+            "operator_action": "Reconcile the provider state with a fresh observation before any further effect."
+        }),
         evidence: vec![crate::EvidenceRecord {
             evidence_ref: evidence_ref.clone(),
             statement: summary.clone(),
