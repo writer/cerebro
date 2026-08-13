@@ -500,6 +500,7 @@ fn bind_tools(
             continue;
         };
         let tool_id = format!("mcp.{}", tool.name);
+        validate_input_schema(&tool.name, &tool.input_schema)?;
         let schema =
             serde_json::to_string(&tool.input_schema).map_err(|error| error.to_string())?;
         if schema.len() > MAX_SCHEMA_BYTES {
@@ -528,6 +529,96 @@ fn bind_tools(
         }
     }
     Ok(tools)
+}
+
+fn validate_input_schema(tool_name: &str, schema: &Value) -> Result<(), String> {
+    let schema = schema
+        .as_object()
+        .ok_or_else(|| format!("MCP tool {tool_name} input schema must be an object"))?;
+    if schema.get("type").and_then(Value::as_str) != Some("object") {
+        return Err(format!(
+            "MCP tool {tool_name} input schema must declare an object input"
+        ));
+    }
+    if schema.get("properties").is_some_and(|value| !value.is_object()) {
+        return Err(format!(
+            "MCP tool {tool_name} input schema properties must be an object"
+        ));
+    }
+    for (field, contract) in schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+    {
+        let Some(contract) = contract.as_object() else {
+            if contract.is_boolean() {
+                continue;
+            }
+            return Err(format!(
+                "MCP tool {tool_name} input schema field {field} must be a schema"
+            ));
+        };
+        if let Some(declared_type) = contract.get("type") {
+            let types = match declared_type {
+                Value::String(kind) => vec![kind.as_str()],
+                Value::Array(kinds) if !kinds.is_empty() => {
+                    kinds.iter().filter_map(Value::as_str).collect()
+                }
+                _ => Vec::new(),
+            };
+            let unique = types.iter().copied().collect::<BTreeSet<_>>();
+            if types.is_empty()
+                || types.len() != unique.len()
+                || types.iter().any(|kind| {
+                    !matches!(
+                        *kind,
+                        "array"
+                            | "boolean"
+                            | "integer"
+                            | "null"
+                            | "number"
+                            | "object"
+                            | "string"
+                    )
+                })
+            {
+                return Err(format!(
+                    "MCP tool {tool_name} input schema field {field} has an invalid type"
+                ));
+            }
+        }
+        if contract
+            .get("enum")
+            .is_some_and(|value| !value.is_array())
+        {
+            return Err(format!(
+                "MCP tool {tool_name} input schema field {field} enum must be an array"
+            ));
+        }
+    }
+    if let Some(required) = schema.get("required") {
+        let required = required.as_array().ok_or_else(|| {
+            format!("MCP tool {tool_name} input schema required must be an array")
+        })?;
+        let required_fields = required
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<BTreeSet<_>>();
+        if required_fields.len() != required.len() {
+            return Err(format!(
+                "MCP tool {tool_name} input schema required fields must be unique strings"
+            ));
+        }
+    }
+    if schema.get("additionalProperties").is_some_and(|value| {
+        !value.is_boolean() && !value.is_object()
+    }) {
+        return Err(format!(
+            "MCP tool {tool_name} input schema additionalProperties is invalid"
+        ));
+    }
+    Ok(())
 }
 
 async fn list_tools(
@@ -977,6 +1068,69 @@ mod tests {
             ToolAuthorityClass::Observe
         );
         assert!(!tools.contains_key("mcp.cerebro.write"));
+    }
+
+    #[test]
+    fn rejects_ambiguous_mcp_input_contracts_before_binding() {
+        let mut missing_object_type = tool("cerebro.missing_type", true);
+        missing_object_type.input_schema = json!({"properties": {}});
+        assert!(
+            bind_tools(
+                vec![missing_object_type],
+                &BTreeSet::from(["cerebro.missing_type".into()]),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+            )
+            .is_err()
+        );
+
+        let mut duplicate_required = tool("cerebro.duplicate_required", true);
+        duplicate_required.input_schema = json!({
+            "type": "object",
+            "properties": {"thread_ref": {"type": "string"}},
+            "required": ["thread_ref", "thread_ref"]
+        });
+        assert!(
+            bind_tools(
+                vec![duplicate_required],
+                &BTreeSet::from(["cerebro.duplicate_required".into()]),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+            )
+            .is_err()
+        );
+
+        let mut unknown_property_type = tool("cerebro.unknown_property_type", true);
+        unknown_property_type.input_schema = json!({
+            "type": "object",
+            "properties": {"thread_ref": {"type": "strng"}}
+        });
+        assert!(
+            bind_tools(
+                vec![unknown_property_type],
+                &BTreeSet::from(["cerebro.unknown_property_type".into()]),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+            )
+            .is_err()
+        );
+
+        let mut valid = tool("cerebro.valid", true);
+        valid.input_schema = json!({
+            "type": "object",
+            "properties": {"thread_ref": {"type": "string"}},
+            "required": ["thread_ref"],
+            "additionalProperties": false
+        });
+        assert!(
+            bind_tools(
+                vec![valid],
+                &BTreeSet::from(["cerebro.valid".into()]),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+            )
+            .is_ok()
+        );
     }
 
     #[test]
