@@ -94,6 +94,8 @@ type recordingAppendLog struct {
 	err    error
 }
 
+var stubFindingStoreRunMu sync.Mutex
+
 func (s *recordingAppendLog) Ping(context.Context) error { return nil }
 
 func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
@@ -105,7 +107,6 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 }
 
 type stubFindingStore struct {
-	runMu                     sync.Mutex
 	findings                  map[string]*ports.FindingRecord
 	request                   ports.ListFindingsRequest
 	listFindingsRequests      []ports.ListFindingsRequest
@@ -543,8 +544,8 @@ func (s *stubFindingStore) ListClaims(_ context.Context, request ports.ListClaim
 }
 
 func (s *stubFindingStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
+	stubFindingStoreRunMu.Lock()
+	defer stubFindingStoreRunMu.Unlock()
 	if run == nil {
 		return errors.New("finding evaluation run is required")
 	}
@@ -569,8 +570,8 @@ func (s *stubFindingStore) PutFindingEvaluationRun(_ context.Context, run *cereb
 }
 
 func (s *stubFindingStore) GetFindingEvaluationRun(_ context.Context, id string) (*cerebrov1.FindingEvaluationRun, error) {
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
+	stubFindingStoreRunMu.Lock()
+	defer stubFindingStoreRunMu.Unlock()
 	run, ok := s.runs[id]
 	if !ok {
 		return nil, ports.ErrFindingEvaluationRunNotFound
@@ -579,8 +580,8 @@ func (s *stubFindingStore) GetFindingEvaluationRun(_ context.Context, id string)
 }
 
 func (s *stubFindingStore) ListFindingEvaluationRuns(_ context.Context, request ports.ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error) {
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
+	stubFindingStoreRunMu.Lock()
+	defer stubFindingStoreRunMu.Unlock()
 	s.runList = request
 	runs := make([]*cerebrov1.FindingEvaluationRun, 0, len(s.runs))
 	for _, run := range s.runs {
