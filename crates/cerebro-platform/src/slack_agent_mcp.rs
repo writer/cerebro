@@ -402,16 +402,13 @@ impl McpAgentTools {
         let result = response.result.ok_or_else(|| {
             AgentRuntimeError::InvalidToolCall("MCP tool response omitted its result".into())
         })?;
-        let is_error = result
-            .get("isError")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+        let (is_error, invalid_is_error) = provider_error_signal(&result);
         let semantic_envelope = semantic_evidence_envelope(&result)?;
         let data = result
             .get("structuredContent")
             .cloned()
             .unwrap_or_else(|| result.clone());
-        let normalized = normalize_tool_result(data, is_error);
+        let normalized = normalize_tool_result(data, is_error, invalid_is_error);
         if tool.descriptor.authority_class == ToolAuthorityClass::Actuate
             && normalized.state != ToolResultState::Succeeded
         {
@@ -521,7 +518,19 @@ struct NormalizedToolResult {
     blocker: Option<String>,
 }
 
-fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
+fn provider_error_signal(result: &Value) -> (bool, Option<Value>) {
+    match result.get("isError") {
+        None => (false, None),
+        Some(Value::Bool(is_error)) => (*is_error, None),
+        Some(value) => (false, Some(value.clone())),
+    }
+}
+
+fn normalize_tool_result(
+    data: Value,
+    is_error: bool,
+    invalid_is_error: Option<Value>,
+) -> NormalizedToolResult {
     let (declared_state, invalid_state) = match data.get("state") {
         None => (ToolResultState::Succeeded, false),
         Some(Value::String(state)) => match state.as_str() {
@@ -533,7 +542,7 @@ fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
         },
         Some(_) => (ToolResultState::Failed, true),
     };
-    let state = if is_error {
+    let state = if is_error || invalid_is_error.is_some() {
         ToolResultState::Failed
     } else {
         declared_state
@@ -543,8 +552,21 @@ fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
         .flatten()
         .or_else(|| {
             invalid_state.then(|| "The provider returned an unsupported result state.".into())
+        })
+        .or_else(|| {
+            invalid_is_error
+                .is_some()
+                .then(|| "The provider returned a non-boolean isError signal.".into())
         });
-    let data = if is_error || state == ToolResultState::Failed {
+    let data = if let Some(invalid_is_error) = invalid_is_error {
+        json!({
+            "provider_result": data,
+            "invalid_is_error": invalid_is_error,
+            "error_kind": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.error_kind,
+            "retryable": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.retryable,
+            "operator_action": INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE.operator_action,
+        })
+    } else if is_error || state == ToolResultState::Failed {
         let guidance = if invalid_state {
             INVALID_PROVIDER_STATE_GUIDANCE
         } else {
@@ -572,6 +594,12 @@ const INVALID_PROVIDER_STATE_GUIDANCE: RecoveryGuidance = RecoveryGuidance {
     error_kind: "invalid_provider_result_state",
     retryable: false,
     operator_action: "Inspect the provider result contract before retrying.",
+};
+
+const INVALID_PROVIDER_ERROR_SIGNAL_GUIDANCE: RecoveryGuidance = RecoveryGuidance {
+    error_kind: "invalid_provider_error_signal",
+    retryable: false,
+    operator_action: "Inspect the provider result envelope before retrying.",
 };
 
 fn tool_error_guidance(data: &Value) -> RecoveryGuidance {
@@ -1256,6 +1284,7 @@ mod tests {
                 "operation_ref": "operation-one",
             }),
             false,
+            None,
         );
 
         assert_eq!(normalized.state, ToolResultState::OutcomeUnknown);
@@ -1266,7 +1295,7 @@ mod tests {
     fn fails_closed_on_invalid_provider_result_states() {
         for state in [json!("Complete"), json!("future_state"), json!(""), json!(7), Value::Null]
         {
-            let normalized = normalize_tool_result(json!({"state": state}), false);
+            let normalized = normalize_tool_result(json!({"state": state}), false, None);
             assert_eq!(normalized.state, ToolResultState::Failed);
             assert_eq!(
                 normalized.blocker.as_deref(),
@@ -1279,10 +1308,43 @@ mod tests {
             assert_eq!(normalized.data["retryable"], false);
         }
 
-        let absent = normalize_tool_result(json!({"records": []}), false);
+        let absent = normalize_tool_result(json!({"records": []}), false, None);
         assert_eq!(absent.state, ToolResultState::Succeeded);
-        let succeeded = normalize_tool_result(json!({"state": "succeeded"}), false);
+        let succeeded = normalize_tool_result(json!({"state": "succeeded"}), false, None);
         assert_eq!(succeeded.state, ToolResultState::Succeeded);
+    }
+
+    #[test]
+    fn fails_closed_on_non_boolean_provider_error_signals() {
+        for invalid in [json!("false"), json!(1), Value::Null, json!({"value": false})] {
+            let result = json!({"isError": invalid});
+            let (is_error, invalid_is_error) = provider_error_signal(&result);
+            assert!(!is_error);
+            assert!(invalid_is_error.is_some());
+
+            let normalized = normalize_tool_result(
+                json!({"state": "complete", "records": ["record-one"]}),
+                is_error,
+                invalid_is_error,
+            );
+            assert_eq!(normalized.state, ToolResultState::Failed);
+            assert_eq!(
+                normalized.blocker.as_deref(),
+                Some("The provider returned a non-boolean isError signal.")
+            );
+            assert_eq!(
+                normalized.data["error_kind"],
+                "invalid_provider_error_signal"
+            );
+            assert_eq!(normalized.data["retryable"], false);
+            assert_eq!(
+                normalized.data["provider_result"]["records"],
+                json!(["record-one"])
+            );
+        }
+
+        assert_eq!(provider_error_signal(&json!({"isError": true})), (true, None));
+        assert_eq!(provider_error_signal(&json!({})), (false, None));
     }
 
     #[test]
@@ -1290,6 +1352,7 @@ mod tests {
         let blocked = normalize_tool_result(
             json!({"state": "blocked", "blocker": format!("{}tail", "x".repeat(512))}),
             false,
+            None,
         );
         assert_eq!(blocked.state, ToolResultState::Failed);
         assert_eq!(blocked.blocker.as_ref().unwrap().chars().count(), 512);
@@ -1308,6 +1371,7 @@ mod tests {
                 "request_ref": "request-one"
             }),
             false,
+            None,
         );
         assert_eq!(unavailable.state, ToolResultState::Failed);
         assert_eq!(unavailable.data["error_kind"], "capability_unavailable");
@@ -1320,6 +1384,7 @@ mod tests {
                 "partial_reasons": ["Graph projection is unavailable.", "Runtime state is stale."]
             }),
             false,
+            None,
         );
         assert_eq!(partial.state, ToolResultState::Partial);
         assert_eq!(
@@ -1330,6 +1395,7 @@ mod tests {
         let complete = normalize_tool_result(
             json!({"state": "complete", "blocker": "must not shadow success"}),
             false,
+            None,
         );
         assert_eq!(complete.state, ToolResultState::Succeeded);
         assert_eq!(complete.blocker, None);
@@ -1346,6 +1412,7 @@ mod tests {
                 "request_ref": "request-one"
             }),
             true,
+            None,
         );
         assert_eq!(denied.state, ToolResultState::Failed);
         assert_eq!(
@@ -1363,6 +1430,7 @@ mod tests {
         let unavailable = normalize_tool_result(
             json!({"error": {"kind": "runtime_unavailable", "message": "Runtime is down."}}),
             true,
+            None,
         );
         assert_eq!(unavailable.data["error_kind"], "capability_unavailable");
         assert_eq!(unavailable.data["retryable"], true);
