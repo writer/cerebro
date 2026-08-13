@@ -366,8 +366,10 @@ UNWIND $root_urns AS root_urn
 MATCH (root:Entity {tenant_id: $tenant_id, urn: root_urn})
 CALL {
   WITH root
-  MATCH (root)-[relation:RELATION {tenant_id: $tenant_id}]->(neighbor:Entity {tenant_id: $tenant_id})
+  MATCH (root)-[relation:RELATION]->(neighbor:Entity {tenant_id: $tenant_id})
+  WHERE coalesce(relation.tenant_id, '') IN ['', $tenant_id]
   WITH root, neighbor, relation.relation AS relation_kind,
+       collect(DISTINCT coalesce(relation.tenant_id, '')) AS relation_tenant_ids,
        collect(DISTINCT coalesce(relation.runtime_id, '')) AS typed_runtime_ids,
        collect(DISTINCT coalesce(relation.attributes_json, '{}')) AS relation_properties_values
   RETURN neighbor.urn AS neighbor_urn,
@@ -379,6 +381,7 @@ CALL {
          root.urn AS from_urn,
          relation_kind,
          neighbor.urn AS to_urn,
+         relation_tenant_ids,
          typed_runtime_ids,
          relation_properties_values
   ORDER BY neighbor.urn, relation_kind, neighbor.entity_type, neighbor.label
@@ -386,7 +389,7 @@ CALL {
 }
 RETURN root_urn, neighbor_urn, neighbor_kind, neighbor_label, neighbor_properties,
        neighbor_source_id, neighbor_runtime_id,
-       from_urn, relation_kind, to_urn, typed_runtime_ids, relation_properties_values
+       from_urn, relation_kind, to_urn, relation_tenant_ids, typed_runtime_ids, relation_properties_values
 ORDER BY root_urn, neighbor_urn, relation_kind
 "#;
 
@@ -395,8 +398,10 @@ UNWIND $root_urns AS root_urn
 MATCH (root:Entity {tenant_id: $tenant_id, urn: root_urn})
 CALL {
   WITH root
-  MATCH (neighbor:Entity {tenant_id: $tenant_id})-[relation:RELATION {tenant_id: $tenant_id}]->(root)
+  MATCH (neighbor:Entity {tenant_id: $tenant_id})-[relation:RELATION]->(root)
+  WHERE coalesce(relation.tenant_id, '') IN ['', $tenant_id]
   WITH root, neighbor, relation.relation AS relation_kind,
+       collect(DISTINCT coalesce(relation.tenant_id, '')) AS relation_tenant_ids,
        collect(DISTINCT coalesce(relation.runtime_id, '')) AS typed_runtime_ids,
        collect(DISTINCT coalesce(relation.attributes_json, '{}')) AS relation_properties_values
   RETURN neighbor.urn AS neighbor_urn,
@@ -408,6 +413,7 @@ CALL {
          neighbor.urn AS from_urn,
          relation_kind,
          root.urn AS to_urn,
+         relation_tenant_ids,
          typed_runtime_ids,
          relation_properties_values
   ORDER BY neighbor.urn, relation_kind, neighbor.entity_type, neighbor.label
@@ -415,14 +421,14 @@ CALL {
 }
 RETURN root_urn, neighbor_urn, neighbor_kind, neighbor_label, neighbor_properties,
        neighbor_source_id, neighbor_runtime_id,
-       from_urn, relation_kind, to_urn, typed_runtime_ids, relation_properties_values
+       from_urn, relation_kind, to_urn, relation_tenant_ids, typed_runtime_ids, relation_properties_values
 ORDER BY root_urn, neighbor_urn, relation_kind
 "#;
 
 const LEGACY_NEIGHBOR_SCOPE_STATEMENT: &str = r#"
 UNWIND $root_urns AS root_urn
 MATCH (root:Entity {tenant_id: $tenant_id, urn: root_urn})-[relation:RELATION]-(neighbor:Entity)
-WHERE coalesce(relation.tenant_id, '') <> $tenant_id
+WHERE (coalesce(relation.tenant_id, '') <> '' AND relation.tenant_id <> $tenant_id)
    OR coalesce(neighbor.tenant_id, '') <> $tenant_id
 RETURN count(*) AS violations
 "#;
@@ -1504,6 +1510,7 @@ impl Neo4jProjector {
                     from,
                     relation,
                     to,
+                    row.get("relation_tenant_ids").map_err(context_decode)?,
                     row.get("typed_runtime_ids").map_err(context_decode)?,
                     row.get("relation_properties_values")
                         .map_err(context_decode)?,
@@ -3557,11 +3564,20 @@ fn legacy_context_edge(
     from: String,
     relation: String,
     to: String,
+    relation_tenant_ids: Vec<String>,
     typed_runtime_ids: Vec<String>,
     properties_values: Vec<String>,
 ) -> Result<ContextEdge, ContextError> {
     let expected_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
     if !from.starts_with(&expected_prefix) || !to.starts_with(&expected_prefix) {
+        return Err(ContextError::BackendUnavailable(
+            "legacy graph returned a cross-tenant relation".to_owned(),
+        ));
+    }
+    if relation_tenant_ids
+        .iter()
+        .any(|value| !value.is_empty() && value != tenant_id.as_str())
+    {
         return Err(ContextError::BackendUnavailable(
             "legacy graph returned a cross-tenant relation".to_owned(),
         ));
@@ -3969,7 +3985,7 @@ mod tests {
         graph
             .run(
                 query(
-                    "CREATE (root:Entity {tenant_id: $tenant, urn: $root, entity_type: 'asset', label: 'Root', attributes_json: '{}'}) WITH root UNWIND range(1, 4) AS index CREATE (out:Entity {tenant_id: $tenant, urn: $prefix + 'out-' + toString(index), entity_type: 'finding', label: 'Outgoing', attributes_json: '{}'}), (root)-[:RELATION {tenant_id: $tenant, relation: 'has_finding', runtime_id: 'runtime-a', attributes_json: '{\"source_runtime_id\":\"runtime-a\"}'}]->(out) WITH DISTINCT root CREATE (incoming:Entity {tenant_id: $tenant, urn: $prefix + 'incoming', entity_type: 'identity', label: 'Incoming', attributes_json: '{}'}), (incoming)-[:RELATION {tenant_id: $tenant, relation: 'owns', runtime_id: 'runtime-a', attributes_json: '{\"source_runtime_id\":\"runtime-a\"}'}]->(root)",
+                    "CREATE (root:Entity {tenant_id: $tenant, urn: $root, entity_type: 'asset', label: 'Root', attributes_json: '{}'}) WITH root UNWIND range(1, 4) AS index CREATE (out:Entity {tenant_id: $tenant, urn: $prefix + 'out-' + toString(index), entity_type: 'finding', label: 'Outgoing', attributes_json: '{}'}), (root)-[edge:RELATION {relation: 'has_finding', runtime_id: 'runtime-a', attributes_json: '{\"source_runtime_id\":\"runtime-a\"}'}]->(out) SET edge.tenant_id = CASE WHEN index = 1 THEN null ELSE $tenant END WITH DISTINCT root CREATE (incoming:Entity {tenant_id: $tenant, urn: $prefix + 'incoming', entity_type: 'identity', label: 'Incoming', attributes_json: '{}'}), (incoming)-[:RELATION {tenant_id: $tenant, relation: 'owns', runtime_id: 'runtime-a', attributes_json: '{\"source_runtime_id\":\"runtime-a\"}'}]->(root)",
                 )
                 .param("tenant", tenant.clone())
                 .param("root", root_urn.clone())
@@ -4026,6 +4042,43 @@ mod tests {
             "legacy roots must not silently degrade a deeper traversal to one hop"
         );
 
+        graph
+            .run(
+                query("MATCH (node {tenant_id: $tenant}) DETACH DELETE node")
+                    .param("tenant", tenant),
+            )
+            .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a disposable Neo4j instance"]
+    async fn legacy_root_rejects_explicit_cross_tenant_relation_metadata()
+    -> Result<(), Box<dyn Error>> {
+        let graph = Graph::new(
+            env::var("CEREBRO_TEST_NEO4J_URI")?,
+            env::var("CEREBRO_TEST_NEO4J_USERNAME")?,
+            env::var("CEREBRO_TEST_NEO4J_PASSWORD")?,
+        )
+        .await?;
+        let tenant = format!("tenant-legacy-scope-{}", std::process::id());
+        let root_urn = format!("urn:cerebro:{tenant}:asset:root");
+        graph
+            .run(
+                query("CREATE (root:Entity {tenant_id: $tenant, urn: $root, entity_type: 'asset', label: 'Root', attributes_json: '{}'}), (neighbor:Entity {tenant_id: $tenant, urn: $neighbor, entity_type: 'finding', label: 'Finding', attributes_json: '{}'}), (root)-[:RELATION {tenant_id: 'other', relation: 'has_finding'}]->(neighbor)")
+                    .param("tenant", tenant.clone())
+                    .param("root", root_urn.clone())
+                    .param("neighbor", format!("urn:cerebro:{tenant}:finding:one")),
+            )
+            .await?;
+        let projector = Neo4jProjector::from_graph(graph.clone());
+        let tenant_id = TenantId::parse(tenant.clone())?;
+        assert!(
+            projector
+                .expand_many(&tenant_id, std::slice::from_ref(&root_urn), 1, 10)
+                .await
+                .is_err()
+        );
         graph
             .run(
                 query("MATCH (node {tenant_id: $tenant}) DETACH DELETE node")
@@ -4259,6 +4312,7 @@ mod tests {
             from.to_owned(),
             "represents".to_owned(),
             to.to_owned(),
+            vec![String::new()],
             vec!["runtime-a".to_owned()],
             vec![r#"{"source_runtime_id":"runtime-a","identity_binding":"true"}"#.to_owned()],
         )
@@ -4276,6 +4330,7 @@ mod tests {
                 from.to_owned(),
                 "owns".to_owned(),
                 to.to_owned(),
+                vec!["writer".to_owned()],
                 vec!["runtime-a".to_owned(), "runtime-b".to_owned()],
                 vec!["{}".to_owned()],
             )
@@ -4287,8 +4342,33 @@ mod tests {
                 from.to_owned(),
                 "owns".to_owned(),
                 to.to_owned(),
+                vec!["writer".to_owned()],
                 vec!["runtime-a".to_owned()],
                 vec![r#"{"source_runtime_id":"runtime-b"}"#.to_owned()],
+            )
+            .is_err()
+        );
+        assert!(
+            legacy_context_edge(
+                &tenant_id,
+                from.to_owned(),
+                "owns".to_owned(),
+                to.to_owned(),
+                vec!["other".to_owned()],
+                vec!["runtime-a".to_owned()],
+                vec!["{}".to_owned()],
+            )
+            .is_err()
+        );
+        assert!(
+            legacy_context_edge(
+                &tenant_id,
+                from.to_owned(),
+                "owns".to_owned(),
+                "urn:cerebro:other:finding:two".to_owned(),
+                vec![String::new()],
+                vec!["runtime-a".to_owned()],
+                vec!["{}".to_owned()],
             )
             .is_err()
         );
@@ -4299,13 +4379,17 @@ mod tests {
         assert!(LEGACY_ROOTS_STATEMENT.contains("tenant_id: $tenant_id"));
         for statement in [LEGACY_OUTGOING_STATEMENT, LEGACY_INCOMING_STATEMENT] {
             assert!(statement.contains("Entity {tenant_id: $tenant_id"));
-            assert!(statement.contains("RELATION {tenant_id: $tenant_id}"));
+            assert!(statement.contains("[relation:RELATION]"));
+            assert!(statement.contains("coalesce(relation.tenant_id, '') IN ['', $tenant_id]"));
+            assert!(statement.contains("relation_tenant_ids"));
             assert!(statement.contains("LIMIT $row_limit"));
             assert!(statement.contains("ORDER BY neighbor.urn, relation_kind"));
         }
         assert!(!LEGACY_OUTGOING_STATEMENT.contains("UNION"));
         assert!(!LEGACY_INCOMING_STATEMENT.contains("UNION"));
         assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("relation.tenant_id"));
+        assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("relation.tenant_id <> $tenant_id"));
+        assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("coalesce(relation.tenant_id, '') <> ''"));
         assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("neighbor.tenant_id"));
     }
 
