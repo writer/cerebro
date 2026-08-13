@@ -453,11 +453,84 @@ fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
     let blocker = (state != ToolResultState::Succeeded)
         .then(|| provider_blocker(&data))
         .flatten();
+    let data = if is_error {
+        let guidance = tool_error_guidance(&data);
+        with_recovery_guidance(data, guidance)
+    } else {
+        data
+    };
     NormalizedToolResult {
         state,
         data,
         blocker,
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RecoveryGuidance {
+    error_kind: &'static str,
+    retryable: bool,
+    operator_action: &'static str,
+}
+
+fn tool_error_guidance(data: &Value) -> RecoveryGuidance {
+    let provider_kind = data
+        .pointer("/error/kind")
+        .or_else(|| data.get("error_kind"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    match provider_kind {
+        "not_found" => RecoveryGuidance {
+            error_kind: "target_not_found",
+            retryable: false,
+            operator_action: "Verify the target identifier before retrying.",
+        },
+        "tenant_forbidden" | "forbidden" | "unauthorized" => RecoveryGuidance {
+            error_kind: "capability_access_denied",
+            retryable: false,
+            operator_action: "Restore capability access before retrying.",
+        },
+        "invalid_request" | "invalid_argument" | "invalid_params" => RecoveryGuidance {
+            error_kind: "invalid_tool_request",
+            retryable: false,
+            operator_action: "Correct the tool input before retrying.",
+        },
+        "runtime_unavailable" | "unavailable" | "timeout" => RecoveryGuidance {
+            error_kind: "capability_unavailable",
+            retryable: true,
+            operator_action: "Retry after the capability runtime recovers.",
+        },
+        "conflict" => RecoveryGuidance {
+            error_kind: "capability_conflict",
+            retryable: false,
+            operator_action: "Refresh current state before proposing another call.",
+        },
+        "rate_limited" => RecoveryGuidance {
+            error_kind: "capability_rate_limited",
+            retryable: true,
+            operator_action: "Retry later without changing the request.",
+        },
+        _ => RecoveryGuidance {
+            error_kind: "capability_error",
+            retryable: false,
+            operator_action: "Inspect the provider error before retrying.",
+        },
+    }
+}
+
+fn with_recovery_guidance(data: Value, guidance: RecoveryGuidance) -> Value {
+    let mut object = match data {
+        Value::Object(object) => object,
+        provider_result => serde_json::Map::from_iter([(
+            "provider_result".to_owned(),
+            provider_result,
+        )]),
+    };
+    object.insert("error_kind".into(), json!(guidance.error_kind));
+    object.insert("retryable".into(), json!(guidance.retryable));
+    object.insert("operator_action".into(), json!(guidance.operator_action));
+    Value::Object(object)
 }
 
 fn provider_blocker(data: &Value) -> Option<String> {
@@ -467,6 +540,12 @@ fn provider_blocker(data: &Value) -> Option<String> {
             if !value.is_empty() {
                 return Some(value);
             }
+        }
+    }
+    if let Some(value) = data.pointer("/error/message").and_then(Value::as_str) {
+        let value = bounded_error(value);
+        if !value.is_empty() {
+            return Some(value);
         }
     }
     let reasons = data
@@ -1072,6 +1151,36 @@ mod tests {
         );
         assert_eq!(complete.state, ToolResultState::Succeeded);
         assert_eq!(complete.blocker, None);
+    }
+
+    #[test]
+    fn normalizes_tool_level_errors_into_stable_recovery_guidance() {
+        let denied = normalize_tool_result(
+            json!({
+                "error": {
+                    "kind": "tenant_forbidden",
+                    "message": "Tenant access is not authorized."
+                },
+                "request_ref": "request-one"
+            }),
+            true,
+        );
+        assert_eq!(denied.state, ToolResultState::Failed);
+        assert_eq!(denied.blocker.as_deref(), Some("Tenant access is not authorized."));
+        assert_eq!(denied.data["error_kind"], "capability_access_denied");
+        assert_eq!(denied.data["retryable"], false);
+        assert_eq!(
+            denied.data["operator_action"],
+            "Restore capability access before retrying."
+        );
+        assert_eq!(denied.data["request_ref"], "request-one");
+
+        let unavailable = normalize_tool_result(
+            json!({"error": {"kind": "runtime_unavailable", "message": "Runtime is down."}}),
+            true,
+        );
+        assert_eq!(unavailable.data["error_kind"], "capability_unavailable");
+        assert_eq!(unavailable.data["retryable"], true);
     }
 
     #[test]
