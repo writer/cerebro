@@ -271,6 +271,57 @@ mod tests {
         );
     }
 
+    #[test]
+    fn empty_samples_and_receipts_fail_closed() {
+        assert_eq!(
+            percentiles(Vec::new()),
+            PercentilesV2 {
+                p50: 0,
+                p95: 0,
+                p99: 0,
+                max: 0,
+            }
+        );
+        assert!(summarize(&[]).is_err());
+    }
+
+    #[test]
+    fn report_names_cover_every_closed_wire_variant() {
+        assert_eq!(endpoint_name(TrustedEndpointKindV2::Transport), "transport");
+        assert_eq!(endpoint_name(TrustedEndpointKindV2::World), "world");
+        assert_eq!(endpoint_name(TrustedEndpointKindV2::Lifecycle), "lifecycle");
+        assert_eq!(endpoint_name(TrustedEndpointKindV2::Operator), "operator");
+
+        let phases = [
+            (ExecutionPhaseV2::Ingress, "ingress"),
+            (ExecutionPhaseV2::SessionLoad, "session_load"),
+            (ExecutionPhaseV2::LeaseAcquire, "lease_acquire"),
+            (ExecutionPhaseV2::Route, "route"),
+            (ExecutionPhaseV2::Operate, "operate"),
+            (ExecutionPhaseV2::Tool, "tool"),
+            (ExecutionPhaseV2::Critique, "critique"),
+            (ExecutionPhaseV2::Present, "present"),
+            (ExecutionPhaseV2::Journal, "journal"),
+            (ExecutionPhaseV2::Render, "render"),
+            (ExecutionPhaseV2::Deliver, "deliver"),
+            (ExecutionPhaseV2::RestartRecovery, "restart_recovery"),
+            (ExecutionPhaseV2::Operator, "operator"),
+        ];
+        for (phase, expected) in phases {
+            assert_eq!(phase_name(phase), expected);
+        }
+
+        let outcomes = [
+            (PhaseOutcomeV2::Completed, "completed"),
+            (PhaseOutcomeV2::TimedOut, "timed_out"),
+            (PhaseOutcomeV2::Failed, "failed"),
+            (PhaseOutcomeV2::Cancelled, "cancelled"),
+        ];
+        for (outcome, expected) in outcomes {
+            assert_eq!(outcome_name(outcome), expected);
+        }
+    }
+
     fn endpoint_telemetry(
         sequence: usize,
         end_to_end_ms: u64,
