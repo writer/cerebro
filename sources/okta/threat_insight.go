@@ -3,9 +3,6 @@ package okta
 import (
 	"context"
 	"fmt"
-	"time"
-
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
@@ -59,49 +56,11 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 }
 
 func threatInsightEvent(settings settings, record threatInsightRecord) (*primitives.Event, error) {
-	occurredAt, err := threatInsightOccurredAt(record)
-	if err != nil {
-		return nil, err
-	}
-	payload, eventID, err := oktaasset.CanonicalThreatInsightMaterial(
+	return oktaasset.ThreatInsightEvent(
 		settings.domain,
 		record.Action,
 		record.ExcludeZones,
-		occurredAt,
+		record.LastUpdated,
+		record.Created,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("marshal okta threat insight material: %w", err)
-	}
-	return &primitives.Event{
-		Id:         eventID,
-		TenantId:   settings.domain,
-		SourceId:   "okta",
-		Kind:       "okta.threat_insight",
-		OccurredAt: timestamppb.New(occurredAt),
-		SchemaRef:  "okta/threat_insight/v1",
-		Payload:    payload,
-		Attributes: map[string]string{
-			"action":             record.Action,
-			"domain":             settings.domain,
-			"exclude_zone_count": fmt.Sprintf("%d", len(record.ExcludeZones)),
-			"family":             familyThreatInsight,
-			"resource_id":        "threat_insight_config",
-			"resource_type":      "ThreatInsightConfiguration",
-		},
-	}, nil
-}
-
-func threatInsightOccurredAt(record threatInsightRecord) (time.Time, error) {
-	for _, value := range []*time.Time{
-		oktaasset.ParseTime(record.LastUpdated),
-		oktaasset.ParseTime(record.Created),
-	} {
-		if value != nil && !value.IsZero() {
-			normalized := time.UnixMilli(value.UnixMilli()).UTC()
-			if normalized.UnixMilli() > 0 {
-				return normalized, nil
-			}
-		}
-	}
-	return time.Time{}, fmt.Errorf("okta threat insight requires a positive created or lastUpdated timestamp")
 }

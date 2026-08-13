@@ -6,7 +6,54 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/writer/cerebro/internal/primitives"
 )
+
+// ThreatInsightOccurredAt returns the first positive provider timestamp,
+// normalized to the append log's millisecond precision.
+func ThreatInsightOccurredAt(lastUpdated string, created string) (time.Time, error) {
+	for _, value := range []*time.Time{ParseTime(lastUpdated), ParseTime(created)} {
+		if value != nil && !value.IsZero() {
+			normalized := time.UnixMilli(value.UnixMilli()).UTC()
+			if normalized.UnixMilli() > 0 {
+				return normalized, nil
+			}
+		}
+	}
+	return time.Time{}, fmt.Errorf("okta threat insight requires a positive created or lastUpdated timestamp")
+}
+
+// ThreatInsightEvent builds one immutable threat configuration observation.
+func ThreatInsightEvent(domain string, action string, zones []string, lastUpdated string, created string) (*primitives.Event, error) {
+	occurredAt, err := ThreatInsightOccurredAt(lastUpdated, created)
+	if err != nil {
+		return nil, err
+	}
+	payload, eventID, err := CanonicalThreatInsightMaterial(domain, action, zones, occurredAt)
+	if err != nil {
+		return nil, fmt.Errorf("marshal okta threat insight material: %w", err)
+	}
+	return &primitives.Event{
+		Id:         eventID,
+		TenantId:   domain,
+		SourceId:   "okta",
+		Kind:       "okta.threat_insight",
+		OccurredAt: timestamppb.New(occurredAt),
+		SchemaRef:  "okta/threat_insight/v1",
+		Payload:    payload,
+		Attributes: map[string]string{
+			"action":             action,
+			"domain":             domain,
+			"exclude_zone_count": fmt.Sprintf("%d", len(zones)),
+			"family":             "threat_insight",
+			"resource_id":        "threat_insight_config",
+			"resource_type":      "ThreatInsightConfiguration",
+		},
+	}, nil
+}
 
 // CanonicalThreatInsightMaterial returns the payload and immutable event ID
 // for the complete durable material of one threat configuration observation.
