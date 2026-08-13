@@ -3800,6 +3800,13 @@ fn capability_search_summary(summary: &str) -> &str {
         .unwrap_or(summary)
 }
 
+fn capability_input_schema(descriptor: &ToolDescriptor) -> Option<Value> {
+    descriptor
+        .summary
+        .rsplit_once(" Input JSON Schema:")
+        .and_then(|(_, schema)| serde_json::from_str(schema.trim()).ok())
+}
+
 fn capability_namespace_matches(tool_id: &str, namespace: &str) -> bool {
     let tool_id = tool_id.to_ascii_lowercase();
     let namespace = namespace.trim_start_matches("mcp.");
@@ -3835,16 +3842,19 @@ fn capability_executor_tool(descriptor: &ToolDescriptor) -> Option<&'static str>
 }
 
 fn capability_descriptor_json(descriptor: &ToolDescriptor, score: usize) -> Value {
-    let descriptor_value = json!({
+    let mut descriptor_value = json!({
         "authority_class": descriptor.authority_class,
         "context_kind": "capability_metadata",
         "effect_class": descriptor.effect_class,
         "input_schema_ref": descriptor.input_schema_ref,
         "result_schema_ref": descriptor.result_schema_ref,
-        "summary": descriptor.summary,
+        "summary": capability_search_summary(&descriptor.summary),
         "title": descriptor.title,
         "tool_id": descriptor.tool_id,
     });
+    if let Some(input_schema) = capability_input_schema(descriptor) {
+        descriptor_value["input_schema"] = input_schema;
+    }
     json!({
         "descriptor": descriptor_value,
         "descriptor_digest": sha256_digest(&descriptor_value.to_string()),
@@ -5819,6 +5829,45 @@ mod tests {
         };
 
         assert!(search_capability_catalog(&catalog, &input).is_empty());
+    }
+
+    #[test]
+    fn capability_discovery_returns_provider_input_schema_as_json() {
+        let descriptor = discovered_tool(
+            "mcp.slack.thread.read",
+            "Read a Slack thread",
+            "Read one conversation. Input JSON Schema: {\"type\":\"object\",\"required\":[\"channel_id\",\"thread_ts\"],\"properties\":{\"channel_id\":{\"type\":\"string\"},\"thread_ts\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+
+        let discovered = capability_descriptor_json(&descriptor, 42);
+
+        assert_eq!(
+            discovered["descriptor"]["summary"],
+            "Read one conversation."
+        );
+        assert_eq!(
+            discovered["descriptor"]["input_schema"]["required"],
+            json!(["channel_id", "thread_ts"])
+        );
+        assert_eq!(
+            discovered["descriptor"]["input_schema"]["additionalProperties"],
+            false
+        );
+
+        let delimiter_in_description = discovered_tool(
+            "mcp.slack.search",
+            "Search Slack",
+            "Search literal Input JSON Schema: documentation. Input JSON Schema: {\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}}}",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+        assert_eq!(
+            capability_descriptor_json(&delimiter_in_description, 1)["descriptor"]
+                ["input_schema"]["properties"]["query"]["type"],
+            "string"
+        );
     }
 
     #[test]
