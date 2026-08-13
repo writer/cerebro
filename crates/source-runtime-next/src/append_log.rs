@@ -20,6 +20,7 @@ use sha2::{Digest, Sha256};
 use crate::{CollectedBatch, CollectedScope, SourceRecord};
 
 const SOURCE_RUNTIME_ID_ATTRIBUTE: &str = "source_runtime_id";
+const SOURCE_COLLECTION_ID_ATTRIBUTE: &str = "source_collection_id";
 const CREDENTIAL_EVENT_KIND: &str = "security.credential.lifecycle";
 const CERTIFICATE_EVENT_KIND: &str = "security.certificate.lifecycle";
 const CREDENTIAL_SCHEMA_REF: &str = "cerebro/security/credential-lifecycle/v1";
@@ -283,14 +284,16 @@ impl CommittedSourceEvent {
         &self.payload
     }
 
-    /// Hash all identity, time, metadata, and canonical payload fields.
+    /// Hash all immutable identity, time, metadata, and canonical payload fields.
     ///
     /// Length-prefixing each field prevents concatenation ambiguity. The
     /// resulting lowercase SHA-256 digest is stable across map insertion order.
+    /// Runtime and collection IDs are delivery provenance: materialization adds
+    /// them after a source chooses its immutable observation ID, and later
+    /// redelivery can legitimately use a different runtime or collection.
     pub fn record_digest(&self) -> String {
         let mut hasher = Sha256::new();
         hash_field(&mut hasher, self.tenant_id.as_str().as_bytes());
-        hash_field(&mut hasher, self.source_runtime_id.as_str().as_bytes());
         hash_field(&mut hasher, self.observation_id.as_str().as_bytes());
         hash_field(&mut hasher, self.source_id.as_bytes());
         hash_field(&mut hasher, self.family_id.as_bytes());
@@ -298,6 +301,12 @@ impl CommittedSourceEvent {
         hash_field(&mut hasher, self.schema_ref.as_bytes());
         hash_field(&mut hasher, self.observed_at_unix_ms.to_string().as_bytes());
         for (key, value) in &self.attributes {
+            if matches!(
+                key.as_str(),
+                SOURCE_RUNTIME_ID_ATTRIBUTE | SOURCE_COLLECTION_ID_ATTRIBUTE
+            ) {
+                continue;
+            }
             hash_field(&mut hasher, key.as_bytes());
             hash_field(&mut hasher, value.as_bytes());
         }
@@ -638,6 +647,139 @@ mod tests {
         let second = CommittedSourceEvent::from_input(input).unwrap();
         assert_eq!(first.record_digest(), second.record_digest());
         assert_eq!(first.payload_digest(), second.payload_digest());
+    }
+
+    #[test]
+    fn record_digest_excludes_only_exact_delivery_provenance() {
+        let mut first_wire = source_wire();
+        first_wire.attributes.insert(
+            SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+            "collection-one".to_owned(),
+        );
+        let first = CommittedSourceEvent::decode(&encode(first_wire))
+            .unwrap()
+            .unwrap();
+
+        let mut second_wire = source_wire();
+        second_wire.attributes.insert(
+            SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+            "box-replacement".to_owned(),
+        );
+        second_wire.attributes.insert(
+            SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+            "collection-two".to_owned(),
+        );
+        let second = CommittedSourceEvent::decode(&encode(second_wire))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(first.observation_id(), second.observation_id());
+        assert_ne!(first.source_runtime_id(), second.source_runtime_id());
+        assert_ne!(first.attributes(), second.attributes());
+        assert_ne!(first.attributes_digest(), second.attributes_digest());
+        assert_eq!(first.record_digest(), second.record_digest());
+
+        for key in [
+            "source_runtime",
+            "source_runtime_id_suffix",
+            "source_collection",
+            "source_collection_id_suffix",
+        ] {
+            let mut changed = first.clone();
+            changed
+                .attributes
+                .insert(key.to_owned(), "changed".to_owned());
+            assert_ne!(
+                first.record_digest(),
+                changed.record_digest(),
+                "non-provenance attribute {key:?} was excluded"
+            );
+        }
+    }
+
+    #[test]
+    fn every_immutable_record_field_remains_digest_bound() {
+        let mut wire = source_wire();
+        wire.source_id = "okta".to_owned();
+        wire.kind = "okta.threat_insight".to_owned();
+        wire.schema_ref = "okta/threat_insight/v1".to_owned();
+        wire.payload =
+            br#"{"action":"block","domain":"example.okta.test","exclude_zones":["zone-a"]}"#
+                .to_vec();
+        wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "writer-okta".to_owned(),
+            ),
+            (
+                SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+                "collection-one".to_owned(),
+            ),
+            ("action".to_owned(), "block".to_owned()),
+            ("domain".to_owned(), "example.okta.test".to_owned()),
+            ("exclude_zone_count".to_owned(), "1".to_owned()),
+            ("family".to_owned(), "threat_insight".to_owned()),
+            ("resource_id".to_owned(), "threat_insight_config".to_owned()),
+            (
+                "resource_type".to_owned(),
+                "ThreatInsightConfiguration".to_owned(),
+            ),
+        ]);
+        let original = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+
+        let mut changes: Vec<(&str, CommittedSourceEvent)> = Vec::new();
+        let mut changed = original.clone();
+        changed.tenant_id = TenantId::parse("tenant-b").unwrap();
+        changes.push(("tenant_id", changed));
+        let mut changed = original.clone();
+        changed.observation_id = ObservationId::parse("event-2").unwrap();
+        changes.push(("observation_id", changed));
+        let mut changed = original.clone();
+        changed.source_id = "github".to_owned();
+        changes.push(("source_id", changed));
+        let mut changed = original.clone();
+        changed.family_id = "applications".to_owned();
+        changes.push(("family_id", changed));
+        let mut changed = original.clone();
+        changed.event_kind = "okta.applications".to_owned();
+        changes.push(("event_kind", changed));
+        let mut changed = original.clone();
+        changed.schema_ref = "okta/threat_insight/v2".to_owned();
+        changes.push(("schema_ref", changed));
+        let mut changed = original.clone();
+        changed.observed_at_unix_ms += 1;
+        changes.push(("observed_at", changed));
+        for key in [
+            "action",
+            "domain",
+            "exclude_zone_count",
+            "family",
+            "resource_id",
+            "resource_type",
+        ] {
+            let mut changed = original.clone();
+            changed
+                .attributes
+                .insert(key.to_owned(), format!("changed-{key}"));
+            changes.push((key, changed));
+        }
+        let mut changed = original.clone();
+        changed.payload = serde_json::json!({
+            "action": "none",
+            "domain": "example.okta.test",
+            "exclude_zones": ["zone-a"]
+        });
+        changes.push(("payload", changed));
+
+        for (field, changed) in changes {
+            assert_ne!(
+                original.record_digest(),
+                changed.record_digest(),
+                "changed {field} reused the immutable record digest"
+            );
+        }
     }
 
     #[test]

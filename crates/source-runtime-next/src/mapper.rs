@@ -661,14 +661,39 @@ fn label_for(
         "secret" => &["secret_name", "resource_name", "name"],
         _ => &["resource_name", "name", "display_name"],
     };
-    first(projected, keys)
+    let projected_label = if template == "identity_application" {
+        first_valid_entity_label(projected, keys)
+    } else {
+        first(projected, keys)
+    };
+    projected_label
         .map(str::to_owned)
         .or_else(|| {
             family
                 .name_field()
                 .and_then(|path| scalar_at_path(&record.payload, path))
+                .filter(|label| template != "identity_application" || valid_entity_label(label))
         })
         .unwrap_or_else(|| record.provider_id.clone())
+}
+
+fn first_valid_entity_label<'a>(
+    values: &'a BTreeMap<String, String>,
+    keys: &[&str],
+) -> Option<&'a str> {
+    keys.iter().find_map(|key| {
+        values
+            .get(*key)
+            .map(String::as_str)
+            .filter(|label| valid_entity_label(label))
+    })
+}
+
+fn valid_entity_label(label: &str) -> bool {
+    !label.trim().is_empty()
+        && label.trim() == label
+        && label.len() <= 1_024
+        && !label.chars().any(char::is_control)
 }
 
 fn first<'a>(values: &'a BTreeMap<String, String>, keys: &[&str]) -> Option<&'a str> {
@@ -914,6 +939,65 @@ mod tests {
                 .get("oauth_public_client")
                 .map(String::as_str),
             Some("false")
+        );
+    }
+
+    #[test]
+    fn application_label_selection_continues_to_the_first_valid_candidate() {
+        let keys = ["app_name", "app_label", "name", "app_id"];
+        for (name, fields, expected) in [
+            (
+                "empty",
+                BTreeMap::from([
+                    ("app_name".to_owned(), String::new()),
+                    ("app_label".to_owned(), "Payroll".to_owned()),
+                ]),
+                "Payroll",
+            ),
+            (
+                "whitespace",
+                BTreeMap::from([
+                    ("app_name".to_owned(), "  ".to_owned()),
+                    ("app_label".to_owned(), "Payroll".to_owned()),
+                ]),
+                "Payroll",
+            ),
+            (
+                "overlong",
+                BTreeMap::from([
+                    ("app_name".to_owned(), "x".repeat(1_025)),
+                    ("app_label".to_owned(), "Payroll".to_owned()),
+                ]),
+                "Payroll",
+            ),
+            (
+                "valid-high-priority",
+                BTreeMap::from([
+                    ("app_name".to_owned(), "Workday".to_owned()),
+                    ("app_label".to_owned(), "Payroll".to_owned()),
+                ]),
+                "Workday",
+            ),
+        ] {
+            assert_eq!(
+                first_valid_entity_label(&fields, &keys),
+                Some(expected),
+                "case {name}",
+            );
+        }
+    }
+
+    #[test]
+    fn application_label_selection_returns_none_when_every_candidate_is_invalid() {
+        let fields = BTreeMap::from([
+            ("app_name".to_owned(), String::new()),
+            ("app_label".to_owned(), " leading".to_owned()),
+            ("name".to_owned(), "line\nbreak".to_owned()),
+            ("app_id".to_owned(), "x".repeat(1_025)),
+        ]);
+        assert_eq!(
+            first_valid_entity_label(&fields, &["app_name", "app_label", "name", "app_id"]),
+            None,
         );
     }
 
