@@ -1212,7 +1212,11 @@ fn diagnostic_event<'a>(
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    let hex = Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("sha256:{hex}")
 }
 
 fn checkpoint_message_sha256(message_sha256: &str) -> &str {
@@ -2000,6 +2004,10 @@ mod tests {
     #[test]
     fn diagnostics_are_bounded_payload_free_and_digest_bound() {
         assert!(DIAGNOSTIC_EVENT_LIMIT < 2_000);
+        assert_eq!(
+            digest_bytes(b"abc"),
+            "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
         let identity = DiagnosticIdentity {
             environment: "test".to_owned(),
             task_definition: "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-rust:28"
