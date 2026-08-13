@@ -1476,6 +1476,16 @@ async fn route_request_decision(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
 ) -> Result<RouteDecision, AgentRuntimeError> {
+    if request_is_unscoped_conversation(&request.message) {
+        return Ok(RouteDecision {
+            lane: ExecutionLane::Converse,
+            confidence: RouteConfidence::High,
+            reason: "The operator asked an unscoped conversational question that does not require a current-system observation.".into(),
+            requires_current_evidence: false,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        });
+    }
     if request_reasons_from_supplied_operational_premises(&request.message) {
         return Ok(RouteDecision {
             lane: ExecutionLane::Converse,
@@ -1830,6 +1840,29 @@ pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) 
     .iter()
     .any(|marker| normalized.contains(marker));
     supplies_a_premise && asks_for_reasoning && !asks_for_live_read && !delegates_future_observation
+}
+
+fn request_is_unscoped_conversation(message: &str) -> bool {
+    matches!(
+        normalized_phrase_text(message).trim(),
+        "how are you"
+            | "how are you doing"
+            | "how is it going"
+            | "how s it going"
+            | "how we doing"
+            | "how we doin"
+            | "what s up"
+            | "who are you"
+            | "what are you"
+            | "tell me about you"
+            | "tell me about yourself"
+            | "what can you do"
+            | "how can you help"
+            | "can you help"
+            | "how do you work"
+            | "what is your role"
+            | "what s your role"
+    )
 }
 
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
@@ -3982,7 +4015,28 @@ fn looks_like_user_handback(value: &str) -> bool {
 #[cfg(test)]
 mod grounding_tests {
     use super::*;
+    use async_trait::async_trait;
     use serde_json::json;
+
+    struct RouteMustNotRun;
+
+    #[async_trait]
+    impl AgentModel for RouteMustNotRun {
+        async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+            panic!("the model router must not run for unscoped conversation")
+        }
+
+        async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+            panic!("the operating model must not run in this routing test")
+        }
+
+        async fn critique(
+            &self,
+            _turn: CritiqueTurn,
+        ) -> Result<CritiqueDecision, AgentRuntimeError> {
+            panic!("the critic must not run in this routing test")
+        }
+    }
 
     fn route_request(message: &str) -> AgentTurnRequest {
         AgentTurnRequest {
@@ -3998,6 +4052,33 @@ mod grounding_tests {
             history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn unscoped_conversation_routes_before_model_routing() {
+        for message in ["how we doin?", "How's it going?", "what can you do?"] {
+            assert_eq!(
+                super::route_request(&RouteMustNotRun, route_request(message))
+                    .await
+                    .unwrap(),
+                ExecutionLane::Converse,
+                "unscoped conversation must not enter evidence routing: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn scoped_questions_do_not_match_unscoped_conversation_guard() {
+        for message in [
+            "How is Atlas doing?",
+            "Can you inspect the current runtime?",
+            "What is the current state of the rollout?",
+        ] {
+            assert!(
+                !request_is_unscoped_conversation(message),
+                "scoped question was treated as unscoped conversation: {message}"
+            );
         }
     }
 
