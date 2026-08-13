@@ -1190,15 +1190,8 @@ fn diagnostic_event<'a>(
     message_sha256: &'a str,
     record_digest: Option<&'a str>,
 ) -> DiagnosticEvent<'a> {
-    let event_identity_sha256 = diagnostic_identity_digest(
-        config,
-        stream_sequence,
-        source_id,
-        family_id,
-        outcome,
-        error_category,
-        message_sha256,
-    );
+    let event_identity_sha256 =
+        diagnostic_identity_digest(config, stream_sequence, error_category, message_sha256);
     DiagnosticEvent {
         schema_version: DIAGNOSTIC_SCHEMA_VERSION,
         environment: &identity.environment,
@@ -1230,9 +1223,6 @@ fn checkpoint_message_sha256(message_sha256: &str) -> &str {
 fn diagnostic_identity_digest(
     config: &ConsumerConfig,
     stream_sequence: u64,
-    source_id: &str,
-    family_id: &str,
-    outcome: &str,
     error_category: &str,
     message_sha256: &str,
 ) -> String {
@@ -1241,9 +1231,6 @@ fn diagnostic_identity_digest(
         "consumer_name": config.durable_name,
         "consumer_run_id": config.run_id,
         "stream_sequence": stream_sequence,
-        "source_id": source_id,
-        "family_id": family_id,
-        "outcome": outcome,
         "error_category": error_category,
         "message_sha256": message_sha256,
     });
@@ -2183,30 +2170,12 @@ mod tests {
             max_runtime: None,
         };
         let message = digest_bytes(b"same redelivered message");
-        let first = diagnostic_identity_digest(
-            &config,
-            42,
-            "okta",
-            "application",
-            "projection_rejected",
-            "invalid_entity_label",
-            &message,
-        );
-        let after_restart = diagnostic_identity_digest(
-            &config,
-            42,
-            "okta",
-            "application",
-            "projection_rejected",
-            "invalid_entity_label",
-            &message,
-        );
+        let first = diagnostic_identity_digest(&config, 42, "invalid_entity_label", &message);
+        let after_restart =
+            diagnostic_identity_digest(&config, 42, "invalid_entity_label", &message);
         let conflicting = diagnostic_identity_digest(
             &config,
             42,
-            "okta",
-            "application",
-            "projection_rejected",
             "invalid_entity_label",
             &digest_bytes(b"different redelivery material"),
         );
