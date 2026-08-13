@@ -180,6 +180,18 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Validate credential-free Rust product demo
+        run: npm run demo:rust --workspace @writer/cerebro-web -- --check --timeout-ms 900000 --artifact-dir "${RUNNER_TEMP}/cerebro-rust-product-demo" --receipt "${RUNNER_TEMP}/cerebro-rust-product-demo/receipt.json"
+
+      - name: Upload Rust product demo receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cerebro-rust-product-demo
+          path: ${{ runner.temp }}/cerebro-rust-product-demo
+          if-no-files-found: ignore
+          retention-days: 7
+
   slack-companion:
     runs-on: ubuntu-latest
     needs: ci-scope

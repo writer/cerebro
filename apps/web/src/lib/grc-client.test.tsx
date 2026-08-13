@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiKeyProvider } from "@/components/providers";
 
-import { downloadGRCExport, grcDashboardPath, grcEntityImpactPath, grcExportFilename, grcPath, grcProgramReadinessPath, grcQueryKey, GRC_QUERY_TIMEOUT_MS, grcResponseErrorMessage, grcTimeoutMessage, useGRCMutation } from "./grc-client";
+import { downloadGRCExport, grcDashboardPath, grcEntityImpactPath, grcExportFilename, grcPath, grcProgramReadinessPath, grcQueryKey, GRC_QUERY_TIMEOUT_MS, grcResponseErrorMessage, grcTimeoutMessage, organizationalGraphNeighborhoodPath, useGRCMutation } from "./grc-client";
 
 describe("grc client error copy", () => {
   it("includes status, endpoint, elapsed time, and upstream text", () => {
@@ -56,6 +56,18 @@ describe("grc client paths", () => {
     expect(path).toBe(
       "/grc/entities/urn%3Acerebro%3Awriter%3Agithub_code_repository%3Awriter%2Fcerebro/impact?tenant_id=writer&limit=50",
     );
+  });
+
+  it("addresses the Rust-owned graph contract without a client-selected tenant", () => {
+    const path = organizationalGraphNeighborhoodPath(
+      "urn:cerebro:writer:github_code_repository:writer/cerebro",
+      { limit: 50 },
+    );
+
+    expect(path).toBe(
+      "/platform/graph/neighborhood?root_urn=urn%3Acerebro%3Awriter%3Agithub_code_repository%3Awriter%2Fcerebro&limit=50",
+    );
+    expect(path).not.toContain("tenant_id");
   });
 
   it("requests compact dashboard and readiness responses", () => {

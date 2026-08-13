@@ -79,12 +79,24 @@ flowchart TB
 ```bash
 git clone https://github.com/writer/cerebro.git
 cd cerebro
-make serve-dev
+make rust-product-demo
 ```
 
-The local development server listens on `:8080` by default.
+This builds the Rust organizational platform, starts its in-memory product graph, starts the web application, and prints the graph explorer URL. It requires Node.js 22 or newer and the Rust toolchain declared in `rust-toolchain.toml`. It does not require Docker or provider credentials. Press `Ctrl-C` to stop both processes.
+
+Validate the browser-to-Rust path and write a redacted receipt when Chromium is installed:
 
 ```bash
+make rust-product-demo-check
+cat tmp/rust-product-demo/receipt.json
+```
+
+The receipt records the source revision, Rust contract, graph counts, and browser proof. It does not record the ephemeral local authentication secret.
+
+Run the Go compatibility server when you need its CLI, HTTP, RPC, MCP, or source-runtime surfaces:
+
+```bash
+make serve-dev
 curl -sS http://127.0.0.1:8080/health
 curl -sS http://127.0.0.1:8080/sources
 ```
@@ -218,6 +230,8 @@ make oss-audit                # public repository hygiene scan
 make workspace-check          # install dependencies and run declared npm workspace checks
 make workspace-build          # build npm workspaces that declare a build script
 make sdk-test                 # SDK tests and type checks
+make rust-product-demo        # run the Rust graph and browser explorer without provider credentials
+make rust-product-demo-check  # validate the demo in Chromium and write a redacted receipt
 make secure-business-demo     # run local security onboarding and write a receipt
 make github-business-demo     # seed durable graph context from a real GitHub repo
 make agent-onboard            # run an onboarding plan and write a redacted receipt

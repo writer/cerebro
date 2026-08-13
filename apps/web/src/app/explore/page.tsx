@@ -6,8 +6,8 @@ import AskAboutLink from "@/components/ask/AskAboutLink";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { DataStateBanner, EmptyBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
 import { useApiKey } from "@/components/providers";
-import { GRCEntityImpact, GRCFinding, shortEntity } from "@/lib/grc";
-import { fetchCachedGRC, grcEntityImpactPath, grcPath, grcResponseErrorMessage, grcTimeoutMessage, GRC_QUERY_TIMEOUT_MS, useDebouncedValue, useGRCQuery } from "@/lib/grc-client";
+import { GRCFinding, GRCGraph, shortEntity } from "@/lib/grc";
+import { fetchCachedGRC, grcPath, grcResponseErrorMessage, grcTimeoutMessage, GRC_QUERY_TIMEOUT_MS, organizationalGraphNeighborhoodPath, useDebouncedValue, useGRCQuery } from "@/lib/grc-client";
 import {
   ExploreGraphState,
   emptyExploreState,
@@ -30,24 +30,22 @@ const EXPLORE_NODE_LIMIT = 200;
 const inputClass = "mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400/30";
 const labelClass = "text-[11px] font-medium uppercase tracking-wider text-slate-500";
 
-const impactPath = (urn: string, tenantID: string) =>
-  grcEntityImpactPath(urn, { tenant_id: tenantID, limit: NEIGHBORS_PER_EXPAND });
+const neighborhoodPath = (urn: string) =>
+  organizationalGraphNeighborhoodPath(urn, { limit: NEIGHBORS_PER_EXPAND });
 
 const isLikelyEntityURN = (value: string) => /^urn:[^\s:]+:.+/.test(value.trim());
 
-const graphNodeURNs = (graph: GRCEntityImpact["graph"] | undefined) =>
+const graphNodeURNs = (graph: GRCGraph | undefined) =>
   [graph?.root?.urn, ...(graph?.neighbors ?? []).map((node) => node.urn)].filter((urn): urn is string => Boolean(urn?.trim()));
 
 export default function ExplorePage() {
   const { apiKey } = useApiKey();
-  const [tenantID, setTenantID] = useQueryParamState("tenant_id");
   const [rootURN, setRootURN] = useQueryParamState("root_urn");
-  const debouncedTenantID = useDebouncedValue(tenantID.trim());
   const debouncedRootURN = useDebouncedValue(rootURN.trim());
   const needsFallbackRoot = debouncedRootURN === "";
 
   const fallbackFindings = useGRCQuery<FindingsResponse>(
-    needsFallbackRoot ? grcPath("/grc/findings", { tenant_id: debouncedTenantID, status: "open", limit: 10 }) : null,
+    needsFallbackRoot ? grcPath("/grc/findings", { status: "open", limit: 10 }) : null,
   );
   const fallbackRoot = fallbackFindings.data?.findings?.find((finding) => finding.entity || finding.resource_urns?.[0])?.entity ?? fallbackFindings.data?.findings?.find((finding) => finding.resource_urns?.[0])?.resource_urns?.[0] ?? "";
   const seedValidation = debouncedRootURN && !isLikelyEntityURN(debouncedRootURN) ? "Use a full entity URN, for example urn:cerebro:tenant:asset:id." : "";
@@ -85,13 +83,13 @@ export default function ExplorePage() {
     setRecentlyDiscoveredURNs(new Set());
   }, []);
 
-  const fetchImpact = useCallback(async (path: string, force: boolean, signal?: AbortSignal) => {
+  const fetchNeighborhood = useCallback(async (path: string, force: boolean, signal?: AbortSignal) => {
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener("abort", abort, { once: true });
     const timer = window.setTimeout(() => controller.abort(), GRC_QUERY_TIMEOUT_MS);
     try {
-      return await fetchCachedGRC<GRCEntityImpact>(path, apiKey, force, { signal: controller.signal });
+      return await fetchCachedGRC<GRCGraph>(path, apiKey, force, { signal: controller.signal });
     } catch (err) {
       if (controller.signal.aborted && !signal?.aborted) {
         throw new Error(grcTimeoutMessage(path, GRC_QUERY_TIMEOUT_MS));
@@ -104,22 +102,22 @@ export default function ExplorePage() {
   }, [apiKey]);
 
   const loadSeed = useCallback(
-    async (seed: string, tenant: string, force: boolean, signal: AbortSignal, isCancelled: () => boolean) => {
+    async (seed: string, force: boolean, signal: AbortSignal, isCancelled: () => boolean) => {
       setSeedLoading(true);
       setError(null);
       setExpandNotice(null);
-      const path = impactPath(seed, tenant);
+      const path = neighborhoodPath(seed);
       try {
-        const response = await fetchImpact(path, force, signal);
+        const response = await fetchNeighborhood(path, force, signal);
         if (isCancelled()) return;
         if (!response.ok) {
           setError(grcResponseErrorMessage(path, response.status, response.data));
           setState(emptyExploreState(seed));
           return;
         }
-        setState(mergeNeighborhood(emptyExploreState(seed), seed, response.data?.graph));
+        setState(mergeNeighborhood(emptyExploreState(seed), seed, response.data));
         setLastGraphLoadedAt(Date.now());
-        setRecentlyDiscoveredURNs(new Set(graphNodeURNs(response.data?.graph)));
+        setRecentlyDiscoveredURNs(new Set(graphNodeURNs(response.data)));
       } catch (err) {
         if (isCancelled()) return;
         setError(err instanceof Error ? err.message : "Unable to load graph.");
@@ -128,7 +126,7 @@ export default function ExplorePage() {
         if (!isCancelled()) setSeedLoading(false);
       }
     },
-    [fetchImpact],
+    [fetchNeighborhood],
   );
 
   useEffect(() => {
@@ -141,17 +139,17 @@ export default function ExplorePage() {
         clearSeed();
         return;
       }
-      const loadKey = `${selectedSeed}|${debouncedTenantID}|${reloadToken}`;
+      const loadKey = `${selectedSeed}|${reloadToken}`;
       if (loadKey === loadKeyRef.current) return;
       loadKeyRef.current = loadKey;
-      void loadSeed(selectedSeed, debouncedTenantID, reloadToken > 0, controller.signal, () => cancelled);
+      void loadSeed(selectedSeed, reloadToken > 0, controller.signal, () => cancelled);
     }, 0);
     return () => {
       cancelled = true;
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [clearSeed, debouncedTenantID, loadSeed, reloadToken, selectedSeed]);
+  }, [clearSeed, loadSeed, reloadToken, selectedSeed]);
 
   const expand = useCallback(async (urn: string) => {
     const target = urn.trim();
@@ -160,10 +158,10 @@ export default function ExplorePage() {
     setExpandingURN(target);
     setError(null);
     setExpandNotice(null);
-    const path = impactPath(target, debouncedTenantID);
+    const path = neighborhoodPath(target);
     const controller = new AbortController();
     try {
-      const response = await fetchImpact(path, false, controller.signal);
+      const response = await fetchNeighborhood(path, false, controller.signal);
       if (!response.ok) {
         setError(grcResponseErrorMessage(path, response.status, response.data));
         return;
@@ -171,10 +169,10 @@ export default function ExplorePage() {
       if (!state) return;
       const beforeNodes = exploreNodeCount(state);
       const beforeRelations = exploreRelationCount(state);
-      const next = mergeNeighborhood(state, target, response.data?.graph);
+      const next = mergeNeighborhood(state, target, response.data);
       const addedNodes = Math.max(0, exploreNodeCount(next) - beforeNodes);
       const addedRelations = Math.max(0, exploreRelationCount(next) - beforeRelations);
-      const discovered = new Set([target, ...graphNodeURNs(response.data?.graph)]);
+      const discovered = new Set([target, ...graphNodeURNs(response.data)]);
       setRecentlyDiscoveredURNs(discovered);
       setState(next);
       setLastGraphLoadedAt(Date.now());
@@ -189,7 +187,7 @@ export default function ExplorePage() {
     } finally {
       setExpandingURN(null);
     }
-  }, [debouncedTenantID, fetchImpact, state]);
+  }, [fetchNeighborhood, state]);
 
   const removeNode = useCallback((urn: string) => {
     setState((current) => (current ? removeExploreNode(current, urn) : current));
@@ -265,8 +263,7 @@ export default function ExplorePage() {
       />
 
       <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
-        <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
-          <label className={labelClass}>Tenant<input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="All" className={inputClass} /></label>
+        <div className="grid gap-3">
           <label className={labelClass}>Seed entity<input value={rootURN} onChange={(event) => setRootURN(event.target.value)} placeholder={fallbackRoot || "urn:cerebro:..."} className={inputClass} /></label>
         </div>
         {seedValidation && <div className="mt-2 text-[12px] text-amber-700">{seedValidation}</div>}
@@ -344,7 +341,6 @@ export default function ExplorePage() {
             expandingURN={expandingURN}
             nodeLimit={EXPLORE_NODE_LIMIT}
             pinnedURNs={pinnedURNs}
-            tenantID={debouncedTenantID}
           />
         </Panel>
       )}

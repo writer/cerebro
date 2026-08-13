@@ -217,6 +217,11 @@ export const grcProgramReadinessPath = (params: Record<string, string | number |
 export const grcEntityImpactPath = (rootURN: string, params: Record<string, string | number | undefined> = {}) =>
   grcPath(`/grc/entities/${encodeURIComponent(rootURN)}/impact`, params);
 
+export const organizationalGraphNeighborhoodPath = (
+  rootURN: string,
+  params: Record<string, string | number | undefined> = {},
+) => grcPath("/platform/graph/neighborhood", { root_urn: rootURN, ...params });
+
 export const grcExportFilename = (kind: string) =>
   `cerebro-${kind}-${new Date().toISOString().slice(0, 10)}.csv`;
 

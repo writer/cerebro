@@ -46,6 +46,17 @@ const SERVER_AUTHORIZATION =
     ? `Bearer ${process.env.CEREBRO_BEARER_TOKEN}`
     : undefined);
 
+export const configuredOrganizationalGraphTenant = (
+  value = process.env.CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID,
+) => {
+  const tenantID = value?.trim();
+  if (!tenantID) return undefined;
+  if (tenantID.length > 256 || /[\u0000-\u001f\u007f]/.test(tenantID)) {
+    throw new Error("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID is not a valid header value");
+  }
+  return tenantID;
+};
+
 const forwardRequestAuth =
   parseBooleanEnv(process.env.CEREBRO_FORWARD_AUTH_HEADERS) ??
   !Boolean(SERVER_API_KEY || SERVER_AUTHORIZATION);
@@ -112,7 +123,7 @@ export const buildCerebroUrl = (path: string, search = "") => {
   return base;
 };
 
-export const authHeadersFor = (request: NextRequest): HeadersInit => {
+export const authHeadersFor = (request: NextRequest, upstreamPath = ""): HeadersInit => {
   const headers: Record<string, string> = { Accept: "application/json, text/plain;q=0.9, */*;q=0.8" };
   const requestApiKey =
     request.headers.get("x-cerebro-api-key") ?? request.headers.get("x-api-key");
@@ -128,6 +139,14 @@ export const authHeadersFor = (request: NextRequest): HeadersInit => {
     headers.Authorization = requestAuthorization;
   } else if (SERVER_AUTHORIZATION) {
     headers.Authorization = SERVER_AUTHORIZATION;
+  }
+
+  const organizationalGraphTenant = configuredOrganizationalGraphTenant();
+  if (
+    organizationalGraphTenant &&
+    normalizeProxyPath(upstreamPath) === "platform/graph/neighborhood"
+  ) {
+    headers["X-Cerebro-Tenant"] = organizationalGraphTenant;
   }
 
   return headers;
@@ -148,7 +167,7 @@ export const isCacheableCerebroPath = (path: string) => {
   if (PROXY_CACHE_TTL_MS <= 0) {
     return false;
   }
-  const normalized = path.replace(/^\/+|\/+$/g, "");
+  const normalized = path.replace(/^\/+|\/+$/g, "").split("?", 1)[0];
   return [
     "grc/dashboard",
     "grc/program-readiness",
@@ -162,6 +181,7 @@ export const isCacheableCerebroPath = (path: string) => {
     "grc/inventory/assets/detail",
     "grc/inventory/resource-scope",
     "grc/inventory/asset-reports",
+    "platform/graph/neighborhood",
   ].includes(normalized) || normalized.startsWith("grc/inventory/asset-reports/") || normalized.startsWith("grc/entities/") || normalized.startsWith("grc/audit-packets/");
 };
 

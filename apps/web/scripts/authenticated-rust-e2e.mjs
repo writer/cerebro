@@ -8,7 +8,7 @@ import {
   randomUUID,
 } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -120,6 +120,8 @@ export function portableEnvironment(source = process.env, additions = {}) {
     "TERM",
     "DOCKER_HOST",
     "DOCKER_CONTEXT",
+    "DDESK_CARGO_EMERGENCY_FREE_BYTES",
+    "DDESK_CARGO_RESERVATION_BYTES",
   ];
   return {
     ...Object.fromEntries(
@@ -221,6 +223,10 @@ function startLogged(name, command, args, options, logDir) {
   child.stdout.pipe(log);
   child.stderr.pipe(log);
   child.log = log;
+  child.startError = undefined;
+  child.once("error", (error) => {
+    child.startError = error;
+  });
   return child;
 }
 
@@ -266,6 +272,9 @@ async function stopProcessTree(child) {
 async function waitFor(label, probe, child, deadlineAt) {
   let lastError;
   while (Date.now() < deadlineAt) {
+    if (child?.startError) {
+      throw new Error(`${label} process failed to start: ${child.startError.message}`);
+    }
     if (child && child.exitCode !== null) {
       throw new Error(`${label} process exited with ${child.exitCode}`);
     }
@@ -290,6 +299,14 @@ async function request(url, options = {}) {
 function lifecycleSuccesses(metrics) {
   const match =
     /cerebro_rust_http_requests_total\{operation="security_lifecycle",status_class="success"\} (\d+)/.exec(
+      metrics,
+    );
+  return match ? Number.parseInt(match[1], 10) : 0;
+}
+
+function neighborhoodSuccesses(metrics) {
+  const match =
+    /cerebro_rust_http_requests_total\{operation="neighborhood",status_class="success"\} (\d+)/.exec(
       metrics,
     );
   return match ? Number.parseInt(match[1], 10) : 0;
@@ -338,6 +355,27 @@ function dockerLoopbackPort(output) {
     "Docker returned an invalid Postgres port",
   );
   return port;
+}
+
+async function rustPlatformBinary(deadlineAt) {
+  const metadata = JSON.parse(
+    await run(
+      "cargo",
+      ["metadata", "--locked", "--no-deps", "--format-version", "1"],
+      {
+        capture: "stdout",
+        cwd: repositoryRoot,
+        env: portableEnvironment(),
+      },
+      deadlineAt,
+    ),
+  );
+  expect(typeof metadata.target_directory === "string", "Cargo did not report a target directory");
+  return path.join(
+    metadata.target_directory,
+    "debug",
+    process.platform === "win32" ? "cerebro-platform.exe" : "cerebro-platform",
+  );
 }
 
 async function startPostgres(containerName, deadlineAt) {
@@ -792,12 +830,6 @@ export async function runAuthenticatedRustE2E(options = {}) {
     ]);
     expect(rustPort !== webPort, "Reserved ports collided");
 
-    await run(
-      "cargo",
-      ["build", "--locked", "-p", "cerebro-platform"],
-      { cwd: repositoryRoot },
-      deadlineAt,
-    );
     const fixture = JSON.parse(
       await run(
         "cargo",
@@ -827,15 +859,37 @@ export async function runAuthenticatedRustE2E(options = {}) {
     postgresStarted = true;
     const postgresDSN = await startPostgres(postgresContainer, deadlineAt);
 
+    const rustBinary = await rustPlatformBinary(deadlineAt);
+    await run(
+      "cargo",
+      ["build", "--locked", "-p", "cerebro-platform"],
+      { cwd: repositoryRoot },
+      deadlineAt,
+    );
+    await access(rustBinary).catch(() => {
+      throw new Error(`Cargo did not produce the Rust platform binary at ${rustBinary}`);
+    });
+    const demoNeighborhood = JSON.parse(
+      await run(
+        rustBinary,
+        ["demo"],
+        {
+          capture: "stdout",
+          cwd: repositoryRoot,
+          env: portableEnvironment(),
+        },
+        deadlineAt,
+      ),
+    );
+    const graphRootURN = demoNeighborhood?.root?.agent_key;
+    expect(
+      typeof graphRootURN === "string" && graphRootURN.startsWith(`urn:cerebro:${tenantID}:`),
+      "Rust demo did not expose a tenant-scoped graph root",
+    );
+
     const sharedSecret = `rust-e2e-${randomBytes(32).toString("base64url")}`;
     const providerBearer = `provider-e2e-${randomBytes(32).toString("base64url")}`;
     provider = await startAccessApprovalsProvider(providerBearer);
-    const rustBinary = path.join(
-      repositoryRoot,
-      "target",
-      "debug",
-      process.platform === "win32" ? "cerebro-platform.exe" : "cerebro-platform",
-    );
     const { privateKey, publicKey } = generateKeyPairSync("rsa", {
       modulusLength: 2048,
     });
@@ -890,6 +944,16 @@ export async function runAuthenticatedRustE2E(options = {}) {
       JSON.parse(directIdentity.body).user?.actorId === "rust-e2e-user",
       "Rust did not derive the actor from the signed subject",
     );
+    const graphPath =
+      `/platform/graph/neighborhood?root_urn=${encodeURIComponent(graphRootURN)}&limit=50`;
+    const directGraph = await request(`http://127.0.0.1:${rustPort}${graphPath}`, {
+      headers: { authorization: `Bearer ${bearer}` },
+    });
+    expect(directGraph.status === 200, `Rust graph read returned ${directGraph.status}`);
+    const graphFixture = parsedJSON(directGraph, "Rust graph read");
+    expect(graphFixture.root?.urn === graphRootURN, "Rust graph read returned another root");
+    expect(graphFixture.neighbors?.length > 0, "Rust graph read returned no neighbors");
+    expect(graphFixture.relations?.length > 0, "Rust graph read returned no relations");
 
     const missingScope = signedBearerToken(privateKey, jwks.issuer, Date.now(), {
       scope: "identity:read",
@@ -1023,10 +1087,21 @@ export async function runAuthenticatedRustE2E(options = {}) {
 
     const metricsBefore = await request(`http://127.0.0.1:${rustPort}/metrics`);
     const beforeCount = lifecycleSuccesses(metricsBefore.body);
+    const graphBeforeCount = neighborhoodSuccesses(metricsBefore.body);
     expect(beforeCount >= 1, "Direct Rust lifecycle read was not recorded");
+    expect(graphBeforeCount >= 1, "Direct Rust graph read was not recorded");
 
     const { chromium } = await import("@playwright/test");
-    browser = await withDeadline(chromium.launch({ headless: true }), deadlineAt, "Chromium launch");
+    try {
+      browser = await withDeadline(chromium.launch({ headless: true }), deadlineAt, "Chromium launch");
+    } catch (error) {
+      if (!String(error?.message).includes("Executable doesn't exist")) throw error;
+      browser = await withDeadline(
+        chromium.launch({ channel: "chrome", headless: true }),
+        deadlineAt,
+        "installed Chrome launch",
+      );
+    }
     const context = await browser.newContext({
       extraHTTPHeaders: { Authorization: `Bearer ${bearer}` },
       viewport: { height: 900, width: 1440 },
@@ -1094,17 +1169,67 @@ export async function runAuthenticatedRustE2E(options = {}) {
       path: path.join(workDir, "authenticated-rust-action.png"),
     });
 
+    const graphResponse = page.waitForResponse(
+      (candidate) =>
+        new URL(candidate.url()).pathname ===
+        "/api/cerebro/platform/graph/neighborhood",
+      { timeout: Math.min(30_000, remaining(deadlineAt, "graph browser request")) },
+    );
+    const graphNavigation = await page.goto(
+      `http://127.0.0.1:${webPort}/explore?root_urn=${encodeURIComponent(graphRootURN)}`,
+      {
+        timeout: Math.min(30_000, remaining(deadlineAt, "graph navigation")),
+        waitUntil: "domcontentloaded",
+      },
+    );
+    expect(graphNavigation?.status() === 200, `Graph page returned ${graphNavigation?.status()}`);
+    const graphDataResponse = await graphResponse;
+    expect(graphDataResponse.status() === 200, "Graph browser query did not reach Rust");
+    const browserGraph = await graphDataResponse.json();
+    expect(browserGraph.root?.urn === graphRootURN, "Browser rendered another graph root");
+    const graphNodeCount = 1 + (browserGraph.neighbors?.length ?? 0);
+    const graphRelationCount = browserGraph.relations?.length ?? 0;
+    await page.getByRole("img", {
+      name: `Impact graph with ${graphNodeCount} nodes and ${graphRelationCount} edges`,
+    }).waitFor({
+      state: "visible",
+      timeout: Math.min(30_000, remaining(deadlineAt, "graph rendering")),
+    });
+    await page.getByText(browserGraph.root.label, { exact: true }).first().waitFor({
+      state: "visible",
+      timeout: Math.min(30_000, remaining(deadlineAt, "graph root rendering")),
+    });
+    await page.getByRole("button", { name: "Fit", exact: true }).click();
+    await page.waitForTimeout(250);
+    expect(
+      (await page.locator("label").filter({ hasText: "Tenant" }).count()) === 0,
+      "Graph explorer exposed a client-selected tenant field",
+    );
+    expect(pageErrors.length === 0, `Graph page raised ${pageErrors.at(-1)?.message}`);
+    await page.screenshot({
+      fullPage: true,
+      path: path.join(workDir, "authenticated-rust-graph.png"),
+    });
+
     const metricsAfter = await request(`http://127.0.0.1:${rustPort}/metrics`);
     const afterCount = lifecycleSuccesses(metricsAfter.body);
+    const graphAfterCount = neighborhoodSuccesses(metricsAfter.body);
     expect(
       afterCount > beforeCount,
       `Browser lifecycle read did not reach Rust (${beforeCount} -> ${afterCount})`,
+    );
+    expect(
+      graphAfterCount > graphBeforeCount,
+      `Browser graph read did not reach Rust (${graphBeforeCount} -> ${graphAfterCount})`,
     );
     failed = false;
     return {
       identityConfidence: identity.user.confidence,
       lifecycleRequests: afterCount,
       actionVersion: actionResult.operation.version,
+      graphNodes: graphNodeCount,
+      graphRelations: graphRelationCount,
+      graphRequests: graphAfterCount,
     };
   } finally {
     await browser?.close().catch(() => undefined);
@@ -1144,7 +1269,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runAuthenticatedRustE2E(parseArgs(process.argv.slice(2)))
     .then((result) => {
       console.log(
-        `[e2e:rust-auth:local] passed signed browser identity and Action lifecycle -> Next relay -> Rust/Postgres/provider authority (${result.identityConfidence}, Action version ${result.actionVersion}, ${result.lifecycleRequests} Rust reads)`,
+        `[e2e:rust-auth:local] passed signed browser identity, Graph explorer, and Action lifecycle -> Next relay -> Rust/Postgres/provider authority (${result.identityConfidence}, ${result.graphNodes} graph nodes, ${result.graphRelations} relations, Action version ${result.actionVersion}, ${result.lifecycleRequests} lifecycle reads, ${result.graphRequests} graph reads)`,
       );
     })
     .catch((error) => {

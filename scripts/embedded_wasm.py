@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import json
 import os
 import platform
 import shlex
@@ -45,8 +46,9 @@ class EmbeddedWasmModule:
     canonical_generate_only: bool = True
     canonical_compare_only: bool = True
 
-    def build_path(self, repo: Path) -> Path:
-        return repo / "target" / WASM_TARGET / "release" / self.build_artifact
+    def build_path(self, repo: Path, target_directory: Path | None = None) -> Path:
+        target_directory = target_directory or repo / "target"
+        return target_directory / WASM_TARGET / "release" / self.build_artifact
 
     def embedded_path(self, repo: Path) -> Path:
         return repo / self.embedded_artifact
@@ -185,6 +187,30 @@ def cargo_command() -> list[str]:
     return shlex.split(os.environ.get("CARGO", "cargo"))
 
 
+def cargo_target_directory(repo: Path) -> Path:
+    """Resolve Cargo's effective target directory, including managed wrappers."""
+    configured = os.environ.get("CARGO_TARGET_DIR", "").strip()
+    if configured:
+        target_directory = Path(configured)
+        return target_directory if target_directory.is_absolute() else repo / target_directory
+
+    completed = subprocess.run(
+        [*cargo_command(), "metadata", "--locked", "--no-deps", "--format-version", "1"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    try:
+        value = json.loads(completed.stdout)["target_directory"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise EmbeddedWasmError("cargo metadata did not return target_directory") from exc
+    if not isinstance(value, str) or not value.strip():
+        raise EmbeddedWasmError("cargo metadata returned an invalid target_directory")
+    target_directory = Path(value)
+    return target_directory if target_directory.is_absolute() else repo / target_directory
+
+
 def rustflags(repo: Path) -> str:
     cargo_home = os.environ.get("CARGO_HOME") or str(Path.home() / ".cargo")
     return f"--remap-path-prefix={repo}=/workspace --remap-path-prefix={cargo_home}=/cargo"
@@ -214,22 +240,25 @@ def generate_module(module: EmbeddedWasmModule, repo: Path, *, current_platform:
         raise EmbeddedWasmError(
             f"{module.label} artifact generation requires {CANONICAL_PLATFORM}; current platform is {current_platform}"
         )
+    target_directory = cargo_target_directory(repo)
     build_module(module, repo, lint=False)
     destination = module.embedded_path(repo)
-    shutil.copyfile(module.build_path(repo), destination)
+    shutil.copyfile(module.build_path(repo, target_directory), destination)
     destination.chmod(0o644)
 
 
 def check_module(module: EmbeddedWasmModule, repo: Path, *, current_platform: str | None = None) -> None:
     current_platform = current_platform or host_platform()
-    build_module(module, repo, lint=True)
     if module.canonical_compare_only and current_platform != CANONICAL_PLATFORM:
+        build_module(module, repo, lint=True)
         print(
             f"{module.label} artifact byte comparison runs on {CANONICAL_PLATFORM}; "
             f"current platform is {current_platform}"
         )
         return
-    if not filecmp.cmp(module.build_path(repo), module.embedded_path(repo), shallow=False):
+    target_directory = cargo_target_directory(repo)
+    build_module(module, repo, lint=True)
+    if not filecmp.cmp(module.build_path(repo, target_directory), module.embedded_path(repo), shallow=False):
         platform_instruction = f" on {CANONICAL_PLATFORM}" if module.canonical_generate_only else ""
         raise EmbeddedWasmError(
             f"{module.embedded_artifact} is stale; run make {module.generate_target}{platform_instruction}"

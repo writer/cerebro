@@ -57,7 +57,9 @@ class EmbeddedWasmTests(unittest.TestCase):
                 destination = module.embedded_path(repo)
                 destination.parent.mkdir(parents=True)
 
-                with unittest.mock.patch.object(embedded_wasm.subprocess, "run") as run:
+                with unittest.mock.patch.object(
+                    embedded_wasm, "cargo_target_directory", return_value=repo / "target"
+                ), unittest.mock.patch.object(embedded_wasm.subprocess, "run") as run:
                     embedded_wasm.generate_module(
                         module,
                         repo,
@@ -80,7 +82,9 @@ class EmbeddedWasmTests(unittest.TestCase):
             built.write_bytes(b"module")
             module.embedded_path(repo).parent.mkdir(parents=True)
 
-            with unittest.mock.patch.object(embedded_wasm.subprocess, "run"):
+            with unittest.mock.patch.object(
+                embedded_wasm, "cargo_target_directory", return_value=repo / "target"
+            ), unittest.mock.patch.object(embedded_wasm.subprocess, "run"):
                 embedded_wasm.generate_module(module, repo, current_platform="Darwin-arm64")
 
             self.assertEqual(module.embedded_path(repo).read_bytes(), b"module")
@@ -105,7 +109,9 @@ class EmbeddedWasmTests(unittest.TestCase):
                 embedded.parent.mkdir(parents=True)
                 embedded.write_bytes(b"module")
 
-                with unittest.mock.patch.object(embedded_wasm.subprocess, "run") as run:
+                with unittest.mock.patch.object(
+                    embedded_wasm, "cargo_target_directory", return_value=repo / "target"
+                ), unittest.mock.patch.object(embedded_wasm.subprocess, "run") as run:
                     embedded_wasm.check_module(
                         module,
                         repo,
@@ -142,13 +148,35 @@ class EmbeddedWasmTests(unittest.TestCase):
             embedded.parent.mkdir(parents=True)
             embedded.write_bytes(b"old")
 
-            with unittest.mock.patch.object(embedded_wasm, "build_module"):
+            with unittest.mock.patch.object(embedded_wasm, "build_module"), unittest.mock.patch.object(
+                embedded_wasm, "cargo_target_directory", return_value=repo / "target"
+            ):
                 with self.assertRaisesRegex(embedded_wasm.EmbeddedWasmError, module.generate_target):
                     embedded_wasm.check_module(module, repo, current_platform="Darwin-arm64")
 
     def test_cargo_command_honors_make_override(self):
         with unittest.mock.patch.dict(os.environ, {"CARGO": "/opt/cargo wrapper"}, clear=False):
             self.assertEqual(embedded_wasm.cargo_command(), ["/opt/cargo", "wrapper"])
+
+    def test_cargo_target_directory_uses_metadata_from_managed_wrapper(self):
+        repo = Path("/workspace/cerebro")
+        completed = unittest.mock.Mock(stdout='{"target_directory":"/managed/cargo-target"}')
+        with unittest.mock.patch.dict(os.environ, {}, clear=True), unittest.mock.patch.object(
+            embedded_wasm.subprocess, "run", return_value=completed
+        ) as run:
+            target_directory = embedded_wasm.cargo_target_directory(repo)
+
+        self.assertEqual(target_directory, Path("/managed/cargo-target"))
+        self.assertEqual(
+            run.call_args.args[0],
+            ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
+        )
+        self.assertEqual(run.call_args.kwargs["cwd"], repo)
+
+    def test_cargo_target_directory_honors_relative_environment_override(self):
+        repo = Path("/workspace/cerebro")
+        with unittest.mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": "tmp/cargo"}, clear=True):
+            self.assertEqual(embedded_wasm.cargo_target_directory(repo), repo / "tmp/cargo")
 
     def test_ci_sets_up_rust_and_release_consumes_a_ci_gated_candidate(self):
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
