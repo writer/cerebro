@@ -535,7 +535,7 @@ fn normalize_tool_result(data: Value, is_error: bool) -> NormalizedToolResult {
     let blocker = (state != ToolResultState::Succeeded)
         .then(|| provider_blocker(&data))
         .flatten();
-    let data = if is_error {
+    let data = if is_error || state == ToolResultState::Failed {
         let guidance = tool_error_guidance(&data);
         with_recovery_guidance(data, guidance)
     } else {
@@ -1252,6 +1252,25 @@ mod tests {
         assert_eq!(blocked.state, ToolResultState::Failed);
         assert_eq!(blocked.blocker.as_ref().unwrap().chars().count(), 512);
         assert!(!blocked.blocker.as_ref().unwrap().contains("tail"));
+        assert_eq!(blocked.data["error_kind"], "capability_error");
+        assert_eq!(blocked.data["retryable"], false);
+        assert_eq!(
+            blocked.data["operator_action"],
+            "Inspect the provider error before retrying."
+        );
+
+        let unavailable = normalize_tool_result(
+            json!({
+                "state": "blocked",
+                "error": {"kind": "runtime_unavailable", "message": "Runtime is down."},
+                "request_ref": "request-one"
+            }),
+            false,
+        );
+        assert_eq!(unavailable.state, ToolResultState::Failed);
+        assert_eq!(unavailable.data["error_kind"], "capability_unavailable");
+        assert_eq!(unavailable.data["retryable"], true);
+        assert_eq!(unavailable.data["request_ref"], "request-one");
 
         let partial = normalize_tool_result(
             json!({
