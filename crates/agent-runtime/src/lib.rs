@@ -3555,7 +3555,24 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
             ));
         }
     }
-    validate_recovery_guidance(&result.data)?;
+    let has_recovery_guidance = validate_recovery_guidance(&result.data)?;
+    if result.state == ToolResultState::Failed && !has_recovery_guidance {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "failed tool result requires recovery guidance".into(),
+        ));
+    }
+    if result.state == ToolResultState::OutcomeUnknown {
+        if !has_recovery_guidance {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "outcome-unknown tool result requires recovery guidance".into(),
+            ));
+        }
+        if result.data.get("retryable").and_then(Value::as_bool) != Some(false) {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "outcome-unknown recovery guidance must not be retryable".into(),
+            ));
+        }
+    }
     let mut evidence_refs = BTreeSet::new();
     for evidence in &result.evidence {
         if result.state == ToolResultState::Failed
@@ -3600,13 +3617,13 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
     Ok(())
 }
 
-fn validate_recovery_guidance(data: &Value) -> Result<(), AgentRuntimeError> {
+fn validate_recovery_guidance(data: &Value) -> Result<bool, AgentRuntimeError> {
     let Value::Object(data) = data else {
-        return Ok(());
+        return Ok(false);
     };
     let fields = ["error_kind", "retryable", "operator_action"];
     if !fields.iter().any(|field| data.contains_key(*field)) {
-        return Ok(());
+        return Ok(false);
     }
     let error_kind_valid = data
         .get("error_kind")
@@ -3629,7 +3646,7 @@ fn validate_recovery_guidance(data: &Value) -> Result<(), AgentRuntimeError> {
                     .any(|character| matches!(character, '\n' | '\r' | '\t'))
         });
     if error_kind_valid && retryable_valid && operator_action_valid {
-        Ok(())
+        Ok(true)
     } else {
         Err(AgentRuntimeError::InvalidToolCall(
             "tool result recovery guidance is incomplete or invalid".into(),
@@ -4205,7 +4222,19 @@ mod grounding_tests {
         ToolResult {
             state,
             summary: "The bounded tool call returned.".into(),
-            data: json!({}),
+            data: match state {
+                ToolResultState::Failed => json!({
+                    "error_kind": "bounded_tool_failure",
+                    "retryable": false,
+                    "operator_action": "Inspect the bounded tool failure before retrying."
+                }),
+                ToolResultState::OutcomeUnknown => json!({
+                    "error_kind": "bounded_outcome_unknown",
+                    "retryable": false,
+                    "operator_action": "Verify the current provider state before further action."
+                }),
+                _ => json!({}),
+            },
             evidence: Vec::new(),
             blocker: blocker.map(str::to_owned),
         }
@@ -4360,7 +4389,12 @@ mod grounding_tests {
             ToolResultState::Failed,
             Some("The bounded tool call failed."),
         );
-        assert!(validate_tool_result(&failed).is_ok());
+        failed.data = json!({});
+        assert!(matches!(
+            validate_tool_result(&failed),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "failed tool result requires recovery guidance"
+        ));
 
         failed.data = json!({
             "error_kind": "backend_unavailable",
@@ -4394,6 +4428,29 @@ mod grounding_tests {
                     if reason == "tool result recovery guidance is incomplete or invalid"
             ));
         }
+    }
+
+    #[test]
+    fn unknown_outcomes_require_non_retryable_recovery_guidance() {
+        let mut unknown = validation_result(
+            ToolResultState::OutcomeUnknown,
+            Some("The provider outcome was not confirmed."),
+        );
+        assert!(validate_tool_result(&unknown).is_ok());
+
+        unknown.data["retryable"] = json!(true);
+        assert!(matches!(
+            validate_tool_result(&unknown),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "outcome-unknown recovery guidance must not be retryable"
+        ));
+
+        unknown.data = json!({});
+        assert!(matches!(
+            validate_tool_result(&unknown),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "outcome-unknown tool result requires recovery guidance"
+        ));
     }
 
     #[test]
