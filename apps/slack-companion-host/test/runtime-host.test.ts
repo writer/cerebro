@@ -662,6 +662,134 @@ test("Slack delivers model-authored Rust progress while the turn is running", as
   );
 });
 
+test("Slack replaces unavailable Rust progress with recurring bounded liveness", async () => {
+  let now = new Date("2026-08-11T07:00:00Z");
+  let finishTurn: (() => void) | undefined;
+  const turnCanFinish = new Promise<void>((resolve) => {
+    finishTurn = resolve;
+  });
+  const updates: string[] = [];
+  const client = new CerebroAskClient({
+    agentRuntimeUrl: "http://127.0.0.1:8091",
+    answerAuthority: testAnswerAuthority,
+    apiKey: "unused",
+    baseUrl: "https://legacy.example.com",
+    fetchImpl: async (input) => {
+      if (new URL(String(input)).pathname === "/v1/turns/progress") {
+        return new Response(null, { status: 503 });
+      }
+      await turnCanFinish;
+      return Response.json({
+        evidence_refs: ["evidence://graph/current"],
+        final_state: "answered",
+        lane: "investigate",
+        markdown: "The current identity risk is verified.",
+        outcome: "delivered",
+        schema_version: "agent-turn-result/v1",
+        tool_call_count: 2,
+      });
+    },
+    progressWatchdog: {
+      clock: () => now,
+      heartbeatIntervalMs: 30_000,
+      pollIntervalMs: 10_000,
+      wait: async (milliseconds) => {
+        now = new Date(now.getTime() + milliseconds);
+      },
+    },
+    tenantId: "writer",
+  });
+
+  await client.runAgentTurn({
+    actorRef: "slack-user:U-ONE",
+    assessmentAt: "2026-08-11T07:00:00Z",
+    deadlineAt: "2026-08-11T07:05:00Z",
+    onProgress: async (update) => {
+      updates.push(update.status);
+      if (updates.length === 2) finishTurn?.();
+    },
+    question: "What is scariest in production?",
+    requestId: "request-progress-watchdog",
+    signal: new AbortController().signal,
+    threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+  });
+
+  assert.deepEqual(updates, [
+    "Still working — 30s elapsed. This turn will stop in 4m 30s if it does not finish.",
+    "Still working — 1m elapsed. This turn will stop in 4m if it does not finish.",
+  ]);
+});
+
+test("new Rust progress resets the Slack liveness watchdog", async () => {
+  let now = new Date("2026-08-11T07:00:00Z");
+  let progressRequests = 0;
+  let finishTurn: (() => void) | undefined;
+  const turnCanFinish = new Promise<void>((resolve) => {
+    finishTurn = resolve;
+  });
+  const updates: string[] = [];
+  const client = new CerebroAskClient({
+    agentRuntimeUrl: "http://127.0.0.1:8091",
+    answerAuthority: testAnswerAuthority,
+    apiKey: "unused",
+    baseUrl: "https://legacy.example.com",
+    fetchImpl: async (input) => {
+      if (new URL(String(input)).pathname === "/v1/turns/progress") {
+        progressRequests += 1;
+        return Response.json({
+          latest_sequence: 1,
+          schema_version: "agent-turn-progress/v1",
+          updates: progressRequests === 2
+            ? [{
+                occurred_at: "2026-08-11T07:00:20Z",
+                phase: "working",
+                sequence: 1,
+                status: "Checking the current access path.",
+              }]
+            : [],
+        });
+      }
+      await turnCanFinish;
+      return Response.json({
+        evidence_refs: ["evidence://graph/current"],
+        final_state: "answered",
+        lane: "investigate",
+        markdown: "The current access path is verified.",
+        outcome: "delivered",
+        schema_version: "agent-turn-result/v1",
+        tool_call_count: 2,
+      });
+    },
+    progressWatchdog: {
+      clock: () => now,
+      heartbeatIntervalMs: 30_000,
+      pollIntervalMs: 10_000,
+      wait: async (milliseconds) => {
+        now = new Date(now.getTime() + milliseconds);
+      },
+    },
+    tenantId: "writer",
+  });
+
+  await client.runAgentTurn({
+    actorRef: "slack-user:U-ONE",
+    assessmentAt: "2026-08-11T07:00:00Z",
+    onProgress: async (update) => {
+      updates.push(update.status);
+      if (updates.length === 2) finishTurn?.();
+    },
+    question: "Check the access path.",
+    requestId: "request-progress-reset",
+    signal: new AbortController().signal,
+    threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+  });
+
+  assert.deepEqual(updates, [
+    "Checking the current access path.",
+    "Still working — 50s elapsed. This turn remains bounded by its deadline.",
+  ]);
+});
+
 test("Slack acknowledges a pending Rust response only after transport delivery", async () => {
   const requests: Request[] = [];
   const client = new CerebroAskClient({

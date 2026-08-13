@@ -308,6 +308,9 @@ export class AssistantQuestionService {
           : undefined;
         const turnRequestId = resumingApproval?.requestId ?? requestId;
         const turnQuestion = resumingApproval?.question ?? currentRequest;
+        const deadlineAt = new Date(
+          openedAt.getTime() + budget.latency_budget_ms,
+        ).toISOString();
         const answer = await this.askClient.runAgentTurn({
           actorRef: input.actorRef,
           assessmentAt: openedAt.toISOString(),
@@ -329,6 +332,7 @@ export class AssistantQuestionService {
           requestId: turnRequestId,
           signal: this.timeoutSignal(budget.latency_budget_ms),
           threadRef: input.threadRef,
+          deadlineAt,
           ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
           ...(input.workingState === undefined
             ? {}

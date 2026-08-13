@@ -76,6 +76,12 @@ export interface CerebroAskClientOptions {
   apiKey: string;
   baseUrl: string;
   fetchImpl?: typeof fetch;
+  progressWatchdog?: {
+    clock?: () => Date;
+    heartbeatIntervalMs?: number;
+    pollIntervalMs?: number;
+    wait?: (milliseconds: number) => Promise<void>;
+  };
   tenantId: string;
 }
 
@@ -98,9 +104,25 @@ export class CerebroAnswerRejectedError extends Error {
 
 export class CerebroAskClient {
   private readonly fetchImpl: typeof fetch;
+  private readonly progressClock: () => Date;
+  private readonly progressHeartbeatIntervalMs: number;
+  private readonly progressPollIntervalMs: number;
+  private readonly progressWait: (milliseconds: number) => Promise<void>;
 
   constructor(private readonly options: CerebroAskClientOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.progressClock = options.progressWatchdog?.clock ?? (() => new Date());
+    this.progressHeartbeatIntervalMs = positiveInterval(
+      options.progressWatchdog?.heartbeatIntervalMs,
+      30_000,
+      "progress heartbeat interval",
+    );
+    this.progressPollIntervalMs = positiveInterval(
+      options.progressWatchdog?.pollIntervalMs,
+      750,
+      "progress poll interval",
+    );
+    this.progressWait = options.progressWatchdog?.wait ?? delay;
   }
 
   get usesRustAgent(): boolean {
@@ -117,6 +139,7 @@ export class CerebroAskClient {
     requestId: string;
     signal: AbortSignal;
     threadRef: string;
+    deadlineAt?: string;
     onProgress?: (update: RustAgentProgressUpdate) => Promise<void>;
     workingState?: {
       active_lane?: CerebroAskResult["executionLane"];
@@ -276,6 +299,7 @@ export class CerebroAskClient {
 
   private async followAgentTurnProgress(
     input: {
+      deadlineAt?: string;
       onProgress?: (update: RustAgentProgressUpdate) => Promise<void>;
       requestId: string;
       signal: AbortSignal;
@@ -286,6 +310,8 @@ export class CerebroAskClient {
     if (!this.options.agentRuntimeUrl || !input.onProgress) return;
     let afterSequence = 0;
     let lastStatus = "";
+    const startedAt = this.progressClock();
+    let lastVisibleProgressAt = startedAt;
     const poll = async (): Promise<void> => {
       const query = new URLSearchParams({
         after_sequence: String(afterSequence),
@@ -299,24 +325,49 @@ export class CerebroAskClient {
       if (!response.ok) return;
       const progress = parseAgentTurnProgress(await response.json());
       afterSequence = progress.latestSequence;
+      let visibleProgress = false;
       for (const update of progress.updates) {
         if (update.status === lastStatus) continue;
         try {
           await input.onProgress?.(update);
           lastStatus = update.status;
+          visibleProgress = true;
         } catch {
           // A failed progress edit must not discard the terminal answer.
         }
       }
+      if (visibleProgress) {
+        lastVisibleProgressAt = this.progressClock();
+      }
+    };
+    const emitHeartbeatIfDue = async (): Promise<void> => {
+      const observedAt = this.progressClock();
+      if (
+        observedAt.getTime() - lastVisibleProgressAt.getTime()
+          >= this.progressHeartbeatIntervalMs
+      ) {
+        try {
+          await input.onProgress?.({
+            occurredAt: observedAt.toISOString(),
+            phase: "working",
+            sequence: afterSequence,
+            status: progressHeartbeatStatus(startedAt, observedAt, input.deadlineAt),
+          });
+          lastVisibleProgressAt = observedAt;
+        } catch {
+          // A failed liveness edit must not discard the terminal answer.
+        }
+      }
     };
     while (!turnComplete() && !input.signal.aborted) {
-      await delay(750);
+      await this.progressWait(this.progressPollIntervalMs);
       if (turnComplete() || input.signal.aborted) break;
       try {
         await poll();
       } catch {
         // Progress polling is best-effort; the exact turn remains authoritative.
       }
+      await emitHeartbeatIfDue();
     }
     if (!input.signal.aborted) {
       try {
@@ -668,6 +719,39 @@ function parseAgentTurnProgress(value: unknown): {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function positiveInterval(value: number | undefined, fallback: number, label: string): number {
+  const interval = value ?? fallback;
+  if (!Number.isSafeInteger(interval) || interval <= 0) {
+    throw new TypeError(`The ${label} must be a positive integer.`);
+  }
+  return interval;
+}
+
+function progressHeartbeatStatus(
+  startedAt: Date,
+  observedAt: Date,
+  deadlineAt?: string,
+): string {
+  const elapsedMs = Math.max(0, observedAt.getTime() - startedAt.getTime());
+  const elapsed = progressDuration(elapsedMs);
+  if (deadlineAt !== undefined) {
+    const remainingMs = new Date(deadlineAt).getTime() - observedAt.getTime();
+    if (Number.isFinite(remainingMs) && remainingMs > 0) {
+      return `Still working — ${elapsed} elapsed. This turn will stop in ${progressDuration(remainingMs)} if it does not finish.`;
+    }
+  }
+  return `Still working — ${elapsed} elapsed. This turn remains bounded by its deadline.`;
+}
+
+function progressDuration(milliseconds: number): string {
+  const seconds = Math.max(1, Math.ceil(milliseconds / 1_000));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  if (remainingSeconds === 0) return `${minutes}m`;
+  return `${minutes}m ${remainingSeconds}s`;
 }
 
 function parseWakeRunResponse(value: unknown): RustWakeExecutionReceipt | undefined {
