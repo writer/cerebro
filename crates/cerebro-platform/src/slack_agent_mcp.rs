@@ -63,6 +63,58 @@ struct JsonRpcError {
     message: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum McpPostFailureKind {
+    Timeout,
+    Unavailable,
+    AccessDenied,
+    RateLimited,
+    Rejected,
+    InvalidResponse,
+}
+
+struct McpPostFailure {
+    kind: McpPostFailureKind,
+    runtime_error: AgentRuntimeError,
+}
+
+impl McpPostFailureKind {
+    const fn guidance(self) -> RecoveryGuidance {
+        match self {
+            Self::Timeout => RecoveryGuidance {
+                error_kind: "capability_gateway_timeout",
+                retryable: true,
+                operator_action: "Retry after the capability gateway responds again.",
+            },
+            Self::Unavailable => RecoveryGuidance {
+                error_kind: "capability_gateway_unavailable",
+                retryable: true,
+                operator_action: "Retry after the capability gateway recovers.",
+            },
+            Self::AccessDenied => RecoveryGuidance {
+                error_kind: "capability_gateway_access_denied",
+                retryable: false,
+                operator_action: "Restore capability gateway access before retrying.",
+            },
+            Self::RateLimited => RecoveryGuidance {
+                error_kind: "capability_gateway_rate_limited",
+                retryable: true,
+                operator_action: "Retry after the capability gateway rate limit resets.",
+            },
+            Self::Rejected => RecoveryGuidance {
+                error_kind: "capability_gateway_rejected",
+                retryable: false,
+                operator_action: "Correct the gateway request or configuration before retrying.",
+            },
+            Self::InvalidResponse => RecoveryGuidance {
+                error_kind: "capability_gateway_invalid_response",
+                retryable: false,
+                operator_action: "Inspect the gateway response contract before retrying.",
+            },
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct McpToolWire {
     name: String,
@@ -306,17 +358,18 @@ impl McpAgentTools {
         {
             Ok(response) => response,
             Err(error) if tool.descriptor.authority_class == ToolAuthorityClass::Actuate => {
-                return Err(error);
+                return Err(error.runtime_error);
             }
-            Err(_) => {
+            Err(error) => {
+                let guidance = error.kind.guidance();
                 return Ok(ToolResult {
                     state: ToolResultState::Failed,
-                    summary: format!("MCP tool {} was unavailable.", tool.mcp_name),
-                    data: json!({"error_kind": "capability_gateway_unavailable"}),
+                    summary: format!("MCP tool {} could not complete the call.", tool.mcp_name),
+                    data: with_recovery_guidance(json!({}), guidance),
                     evidence: vec![],
                     blocker: Some(format!(
-                        "The {} capability gateway could not complete this call.",
-                        tool.descriptor.title
+                        "The {} capability gateway could not complete this call. {}",
+                        tool.descriptor.title, guidance.operator_action
                     )),
                 });
             }
@@ -407,7 +460,7 @@ impl McpAgentTools {
         &self,
         request: &AgentTurnRequest,
         body: Value,
-    ) -> Result<JsonRpcResponse, AgentRuntimeError> {
+    ) -> Result<JsonRpcResponse, McpPostFailure> {
         let response = self
             .client
             .post(self.endpoint.clone())
@@ -420,16 +473,39 @@ impl McpAgentTools {
             .json(&body)
             .send()
             .await
-            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
+            .map_err(|error| McpPostFailure {
+                kind: if error.is_timeout() {
+                    McpPostFailureKind::Timeout
+                } else {
+                    McpPostFailureKind::Unavailable
+                },
+                runtime_error: AgentRuntimeError::ModelUnavailable(error.to_string()),
+            })?;
         if !response.status().is_success() {
-            return Err(AgentRuntimeError::ModelUnavailable(format!(
-                "MCP gateway returned status {}",
-                response.status()
-            )));
+            let status = response.status();
+            let kind = if matches!(
+                status,
+                reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+            ) {
+                McpPostFailureKind::AccessDenied
+            } else if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                McpPostFailureKind::RateLimited
+            } else if status.is_server_error() {
+                McpPostFailureKind::Unavailable
+            } else {
+                McpPostFailureKind::Rejected
+            };
+            return Err(McpPostFailure {
+                kind,
+                runtime_error: AgentRuntimeError::ModelUnavailable(format!(
+                    "MCP gateway returned status {status}"
+                )),
+            });
         }
-        bounded_json(response)
-            .await
-            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))
+        bounded_json(response).await.map_err(|error| McpPostFailure {
+            kind: McpPostFailureKind::InvalidResponse,
+            runtime_error: AgentRuntimeError::InvalidToolCall(error),
+        })
     }
 }
 
@@ -1702,6 +1778,55 @@ mod tests {
             result,
             Err(AgentRuntimeError::ModelUnavailable(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn non_actuation_transport_failures_return_stable_recovery_guidance() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route("/mcp", post(|| async { StatusCode::TOO_MANY_REQUESTS })),
+            )
+            .await
+            .unwrap();
+        });
+        let tools = bind_tools(
+            vec![tool("cerebro.findings.search", true)],
+            &BTreeSet::from(["cerebro.findings.search".into()]),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        )
+        .unwrap();
+        let descriptors = tools.values().map(|tool| tool.descriptor.clone()).collect();
+        let mcp = McpAgentTools {
+            client: Client::new(),
+            endpoint: Url::parse(&format!("http://{address}/mcp")).unwrap(),
+            bearer_token: "tenant-token".into(),
+            selection_signing_key: "host-only-selection-signing-secret".into(),
+            toolsets: "task".into(),
+            descriptors,
+            tools,
+        };
+        let call = ToolCall {
+            call_id: "search-one".into(),
+            tool_id: "mcp.cerebro.findings.search".into(),
+            purpose: "Find current findings.".into(),
+            input: json!({}),
+        };
+
+        let result = mcp.invoke(&turn_request(), &call).await.unwrap();
+        server.abort();
+
+        assert_eq!(result.state, ToolResultState::Failed);
+        assert_eq!(result.data["error_kind"], "capability_gateway_rate_limited");
+        assert_eq!(result.data["retryable"], true);
+        assert_eq!(
+            result.data["operator_action"],
+            "Retry after the capability gateway rate limit resets."
+        );
+        assert!(result.evidence.is_empty());
     }
 
     #[tokio::test]
