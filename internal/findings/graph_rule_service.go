@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -47,6 +48,28 @@ type EvaluateGraphRulesResult struct {
 
 // ErrGraphRuntimeUnavailable indicates that the graph query boundary is not configured.
 var ErrGraphRuntimeUnavailable = fmt.Errorf("%w: graph query boundary is not configured", ErrRuntimeUnavailable)
+
+const graphRuleReadConcurrency = 4
+
+type graphRulePersistenceTurn struct {
+	ready   <-chan struct{}
+	next    chan struct{}
+	release sync.Once
+}
+
+func (t *graphRulePersistenceTurn) wait() {
+	if t != nil && t.ready != nil {
+		<-t.ready
+	}
+}
+
+func (t *graphRulePersistenceTurn) finish() {
+	if t == nil {
+		return
+	}
+	t.wait()
+	t.release.Do(func() { close(t.next) })
+}
 
 // EvaluateSourceRuntimeGraphRules runs every registered GraphRule that supports one runtime.
 //
@@ -97,20 +120,39 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 		Runtime:     runtime,
 		Evaluations: make([]*GraphRuleEvaluationResult, 0, len(candidates)),
 	}
+	evaluations := make([]*GraphRuleEvaluationResult, len(candidates))
+	errorsByRule := make([]error, len(candidates))
+	for start := 0; start < len(candidates); start += graphRuleReadConcurrency {
+		end := min(start+graphRuleReadConcurrency, len(candidates))
+		ready := make(chan struct{})
+		close(ready)
+		var group sync.WaitGroup
+		for index := start; index < end; index++ {
+			next := make(chan struct{})
+			turn := &graphRulePersistenceTurn{ready: ready, next: next}
+			ready = next
+			group.Add(1)
+			go func(index int, rule GraphRule, turn *graphRulePersistenceTurn) {
+				defer group.Done()
+				evaluations[index], errorsByRule[index] = s.evaluateGraphRule(ctx, runtime, rule, startedAt, dependencyRuntimes, turn)
+			}(index, candidates[index], turn)
+		}
+		group.Wait()
+	}
 	var firstErr error
-	for _, rule := range candidates {
-		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt, dependencyRuntimes)
+	for index, evaluation := range evaluations {
 		if evaluation != nil {
 			result.Evaluations = append(result.Evaluations, evaluation)
 		}
-		if err != nil && firstErr == nil {
-			firstErr = err
+		if errorsByRule[index] != nil && firstErr == nil {
+			firstErr = errorsByRule[index]
 		}
 	}
 	return result, firstErr
 }
 
-func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time, dependencyRuntimes []*cerebrov1.SourceRuntime) (evaluation *GraphRuleEvaluationResult, err error) {
+func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time, dependencyRuntimes []*cerebrov1.SourceRuntime, persistenceTurn *graphRulePersistenceTurn) (evaluation *GraphRuleEvaluationResult, err error) {
+	defer persistenceTurn.finish()
 	spec := rule.Spec()
 	ctx, span := telemetry.Start(ctx, "graph_rule.evaluate", telemetry.Attrs(
 		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(spec.GetId())},
@@ -172,8 +214,11 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	if strings.TrimSpace(queryRequest.Query) != "" {
 		run.GraphRowLimit = proto.Uint32(boundedUint32(effectiveGraphRowLimit(queryRequest)))
 	}
-	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
-		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+	s.graphRuleRunMu.Lock()
+	runPersistErr := s.runStore.PutFindingEvaluationRun(ctx, run)
+	s.graphRuleRunMu.Unlock()
+	if runPersistErr != nil {
+		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), runPersistErr)
 	}
 	result := &GraphRuleEvaluationResult{
 		Rule: spec,
@@ -202,6 +247,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 	}
+	persistenceTurn.wait()
 	s.verifyGraphEvaluationSourceSnapshots(ctx, run)
 	result.RowsRead = boundedUint32(len(rows))
 	rowLimitTruncated := cypherRowsTruncated(queryRequest, len(rows))

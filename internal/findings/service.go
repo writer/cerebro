@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -82,6 +83,7 @@ type Service struct {
 	tombstoneEventStore       ports.FindingTombstoneEventStore
 	closeoutHeartbeatInterval time.Duration
 	graphRuleQueryTimeout     time.Duration
+	graphRuleRunMu            sync.Mutex
 	findingEvaluationLeaseTTL time.Duration
 	rules                     *Registry
 	ttlClock                  ttlClock
