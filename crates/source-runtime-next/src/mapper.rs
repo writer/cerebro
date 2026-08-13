@@ -270,7 +270,10 @@ impl CatalogGraphMapper {
                 .get(&record.family)
                 .ok_or_else(|| CatalogMapperError::UnknownFamily(record.family.clone()))?;
             let family = &self.source.families()[plan.index];
-            let projected = projected_fields(family, &plan.projected_paths, record);
+            let mut projected = projected_fields(family, &plan.projected_paths, record);
+            if self.source.id() == "okta" && family.id() == "application" {
+                normalize_okta_application_labels(&mut projected, &record.provider_id);
+            }
             match family.projection().template() {
                 "group_membership" | "identity_group_membership" => {
                     let provenance = self.assertion_provenance(batch, record)?;
@@ -671,6 +674,30 @@ fn label_for(
         .unwrap_or_else(|| record.provider_id.clone())
 }
 
+fn normalize_okta_application_labels(projected: &mut BTreeMap<String, String>, fallback: &str) {
+    for key in ["app_name", "app_label", "name"] {
+        let Some(value) = projected.get_mut(key) else {
+            continue;
+        };
+        let cleaned = value
+            .chars()
+            .map(|character| {
+                if character.is_control() {
+                    ' '
+                } else {
+                    character
+                }
+            })
+            .collect::<String>();
+        let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+        *value = if cleaned.is_empty() || cleaned.len() > 1_024 {
+            fallback.to_owned()
+        } else {
+            cleaned
+        };
+    }
+}
+
 fn first<'a>(values: &'a BTreeMap<String, String>, keys: &[&str]) -> Option<&'a str> {
     keys.iter()
         .find_map(|key| values.get(*key).map(String::as_str))
@@ -914,6 +941,59 @@ mod tests {
                 .get("oauth_public_client")
                 .map(String::as_str),
             Some("false")
+        );
+    }
+
+    #[test]
+    fn okta_application_normalizes_provider_control_characters() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("okta").unwrap().clone();
+        let collection = CompleteCollection::new(
+            TenantId::parse("tenant-a").unwrap(),
+            SourceRuntimeId::parse("okta-prod").unwrap(),
+            CollectionId::parse("collection-okta-application-control-label").unwrap(),
+            "okta.application",
+            10,
+        )
+        .unwrap();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(collection),
+            records: vec![SourceRecord {
+                observation_id: ObservationId::parse("observation-okta-application-control-label")
+                    .unwrap(),
+                family: "application".to_owned(),
+                provider_kind: "okta.application".to_owned(),
+                provider_id: "app-1".to_owned(),
+                fields: BTreeMap::from([
+                    ("app_id".to_owned(), "app-1".to_owned()),
+                    ("app_name".to_owned(), " Payroll\n\tConsole ".to_owned()),
+                    ("app_label".to_owned(), " Payroll\n\tConsole ".to_owned()),
+                    ("name".to_owned(), " payroll\rconsole ".to_owned()),
+                ]),
+                payload: serde_json::json!({"id": "app-1"}),
+            }],
+            next_cursor: None,
+        };
+
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+
+        let application = &delta.entities()[0];
+        assert_eq!(application.label(), "Payroll Console");
+        assert_eq!(
+            application.properties().get("app_name").map(String::as_str),
+            Some("Payroll Console")
+        );
+        assert_eq!(
+            application.properties().get("name").map(String::as_str),
+            Some("payroll console")
         );
     }
 

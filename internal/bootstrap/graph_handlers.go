@@ -141,6 +141,12 @@ func (a *App) handleReplayWorkflowEvents(w http.ResponseWriter, r *http.Request)
 }
 
 func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request) {
+	var err error
+	r, err = withParityCorrelation(r)
+	if err != nil {
+		writeGraphQueryError(w, fmt.Errorf("%w: %w", graphquery.ErrInvalidRequest, err))
+		return
+	}
 	request := &cerebrov1.GetEntityNeighborhoodRequest{}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)

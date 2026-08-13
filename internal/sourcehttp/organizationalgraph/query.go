@@ -25,6 +25,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/observability"
+	"github.com/writer/cerebro/internal/parityrun"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/telemetry"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
@@ -806,6 +807,7 @@ func comparisonStatus(legacy any, legacyErr error, rust any, rustErr error) stri
 }
 
 func logComparisonReceipt(ctx context.Context, operation, status string, legacy, rust any, comparisonErr error) {
+	parity := parityrun.FromContext(ctx)
 	legacyDigest, legacyShape := comparisonReceipt(legacy)
 	rustDigest, rustShape := comparisonReceipt(rust)
 	errorDigest := ""
@@ -815,6 +817,8 @@ func logComparisonReceipt(ctx context.Context, operation, status string, legacy,
 	telemetry.Event(ctx, "organizational_graph.parity_receipt", telemetry.Attrs(
 		telemetry.Field{Key: "operation", Value: operation},
 		telemetry.Field{Key: "status", Value: status},
+		telemetry.Field{Key: "parity_run_id", Value: parity.RunID},
+		telemetry.Field{Key: "parity_observation_id", Value: parity.ObservationID},
 		telemetry.Field{Key: "legacy_sha256", Value: legacyDigest},
 		telemetry.Field{Key: "rust_sha256", Value: rustDigest},
 		telemetry.Field{Key: "legacy_shape", Value: legacyShape},

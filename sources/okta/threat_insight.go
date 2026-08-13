@@ -2,7 +2,6 @@ package okta
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -44,31 +43,9 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 			if err := s.getJSONWithRetry(ctx, settings, "/api/v1/threats/configuration", nil, &record, nil); err != nil {
 				return sourcecdk.Pull{}, wrapLookupError(oktaLabel("okta threat insight", settings), err)
 			}
-			occurredAt := firstRecordTime(oktaasset.ParseTime(record.LastUpdated), oktaasset.ParseTime(record.Created))
-			payload, err := json.Marshal(map[string]any{
-				"domain":        settings.domain,
-				"action":        record.Action,
-				"exclude_zones": record.ExcludeZones,
-			})
+			event, err := threatInsightEvent(settings, record)
 			if err != nil {
-				return sourcecdk.Pull{}, fmt.Errorf("marshal okta threat insight payload: %w", err)
-			}
-			event := &primitives.Event{
-				Id:         fmt.Sprintf("okta-threat-insight-%s-%d", settings.domain, occurredAt.UnixMilli()),
-				TenantId:   settings.domain,
-				SourceId:   "okta",
-				Kind:       "okta.threat_insight",
-				OccurredAt: timestamppb.New(occurredAt),
-				SchemaRef:  "okta/threat_insight/v1",
-				Payload:    payload,
-				Attributes: map[string]string{
-					"action":             record.Action,
-					"domain":             settings.domain,
-					"exclude_zone_count": fmt.Sprintf("%d", len(record.ExcludeZones)),
-					"family":             familyThreatInsight,
-					"resource_id":        "threat_insight_config",
-					"resource_type":      "ThreatInsightConfiguration",
-				},
+				return sourcecdk.Pull{}, err
 			}
 			return sourcecdk.Pull{
 				Events: []*primitives.Event{event},
@@ -78,4 +55,28 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 			}, nil
 		},
 	}
+}
+
+func threatInsightEvent(settings settings, record threatInsightRecord) (*primitives.Event, error) {
+	payload, stateID, err := oktaasset.CanonicalThreatInsightState(settings.domain, record.Action, record.ExcludeZones)
+	if err != nil {
+		return nil, fmt.Errorf("marshal okta threat insight payload: %w", err)
+	}
+	return &primitives.Event{
+		Id:         stateID,
+		TenantId:   settings.domain,
+		SourceId:   "okta",
+		Kind:       "okta.threat_insight",
+		OccurredAt: timestamppb.New(firstRecordTime(oktaasset.ParseTime(record.LastUpdated), oktaasset.ParseTime(record.Created))),
+		SchemaRef:  "okta/threat_insight/v1",
+		Payload:    payload,
+		Attributes: map[string]string{
+			"action":             record.Action,
+			"domain":             settings.domain,
+			"exclude_zone_count": fmt.Sprintf("%d", len(record.ExcludeZones)),
+			"family":             familyThreatInsight,
+			"resource_id":        "threat_insight_config",
+			"resource_type":      "ThreatInsightConfiguration",
+		},
+	}, nil
 }

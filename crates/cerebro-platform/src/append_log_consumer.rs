@@ -13,7 +13,7 @@ use async_nats::jetstream::{
 use cerebro_organizational_store::{ConsumerMessageOutcome, ConsumerRunProgress, PostgresLedger};
 use cerebro_source_runtime_next::{AppendLogDecodeError, CommittedSourceEvent};
 use futures_util::StreamExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{ProjectionAuthority, ProjectionRuntime};
@@ -25,6 +25,8 @@ const ACK_WAIT: Duration = Duration::from_secs(120);
 const RETRY_DELAY: Duration = Duration::from_secs(30);
 const DEFAULT_REPLAY_MAX_MESSAGES: u64 = 100_000;
 const DEFAULT_REPLAY_MAX_RUNTIME_SECONDS: u64 = 3_600;
+const DIAGNOSTIC_SCHEMA_VERSION: &str = "cerebro.organizational-diagnostic/v1";
+const ECS_METADATA_PREFIX: &str = "http://169.254.170.2/";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,6 +95,114 @@ struct ConsumerConfig {
     end_sequence_override: Option<u64>,
     max_messages: Option<u64>,
     max_runtime: Option<Duration>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DiagnosticIdentity {
+    environment: String,
+    task_definition: String,
+    image_digest: String,
+}
+
+#[derive(Deserialize)]
+struct EcsContainerMetadata {
+    #[serde(rename = "ImageID")]
+    image_id: String,
+}
+
+#[derive(Deserialize)]
+struct EcsTaskMetadata {
+    #[serde(rename = "TaskARN")]
+    task_arn: String,
+    #[serde(rename = "Family")]
+    family: String,
+    #[serde(rename = "Revision")]
+    revision: String,
+}
+
+impl DiagnosticIdentity {
+    async fn resolve() -> Result<Option<Self>, Box<dyn Error>> {
+        let (environment, metadata_uri) = match (
+            env::var("CEREBRO_DEPLOYMENT_ENVIRONMENT").ok(),
+            env::var("ECS_CONTAINER_METADATA_URI_V4").ok(),
+        ) {
+            (None, None) => return Ok(None),
+            (Some(environment), Some(metadata_uri)) => (environment, metadata_uri),
+            _ => {
+                return Err(
+                    "deployment diagnostics require both environment and ECS metadata".into(),
+                );
+            }
+        };
+        if environment.len() > 64
+            || !environment
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        {
+            return Err("CEREBRO_DEPLOYMENT_ENVIRONMENT is invalid".into());
+        }
+        if !metadata_uri.starts_with(ECS_METADATA_PREFIX)
+            || metadata_uri.len() > 256
+            || metadata_uri.contains('?')
+            || metadata_uri.contains('#')
+        {
+            return Err("ECS_CONTAINER_METADATA_URI_V4 is invalid".into());
+        }
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()?;
+        let container = client
+            .get(metadata_uri.trim_end_matches('/'))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<EcsContainerMetadata>()
+            .await?;
+        let task = client
+            .get(format!("{}/task", metadata_uri.trim_end_matches('/')))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<EcsTaskMetadata>()
+            .await?;
+        Self::from_metadata(environment, container, task).map(Some)
+    }
+
+    fn from_metadata(
+        environment: String,
+        container: EcsContainerMetadata,
+        task: EcsTaskMetadata,
+    ) -> Result<Self, Box<dyn Error>> {
+        let image_digest = container.image_id;
+        if image_digest.len() != 71
+            || !image_digest.starts_with("sha256:")
+            || !image_digest[7..]
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err("ECS container image digest is invalid".into());
+        }
+        validate_identity("task definition family", &task.family)?;
+        if task.revision.is_empty() || !task.revision.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("ECS task definition revision is invalid".into());
+        }
+        let (arn_prefix, _) = task
+            .task_arn
+            .split_once(":task/")
+            .ok_or("ECS task ARN is invalid")?;
+        let task_definition = format!(
+            "{arn_prefix}:task-definition/{}:{}",
+            task.family, task.revision
+        );
+        if task_definition.len() > 512 {
+            return Err("ECS task definition ARN is too long".into());
+        }
+        Ok(Self {
+            environment,
+            task_definition,
+            image_digest,
+        })
+    }
 }
 
 impl ConsumerConfig {
@@ -225,6 +335,7 @@ fn validate_identity(label: &str, value: &str) -> Result<(), Box<dyn Error>> {
 
 pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn Error>> {
     let config = ConsumerConfig::from_env()?;
+    let diagnostic_identity = DiagnosticIdentity::resolve().await?;
     let client = async_nats::connect(&config.nats_url).await?;
     let jetstream = async_nats::jetstream::new(client);
     let mut stream = jetstream.get_stream(&config.stream).await?;
@@ -261,6 +372,7 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
     let start_sequence = stored_fence.start_sequence;
     let end_sequence = stored_fence.end_sequence;
     let mut counters = ConsumerCounters::default();
+    let mut checkpoint_emitted = false;
     let persisted = load_counters(&runtime, &config).await?;
     let next_unprocessed =
         next_unprocessed_sequence(start_sequence, persisted.last_delivered_sequence);
@@ -395,6 +507,12 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                 &mut counters,
             )
             .await?;
+            emit_checkpoint(
+                diagnostic_identity.as_ref(),
+                &config,
+                stream_sequence,
+                &mut checkpoint_emitted,
+            )?;
             message.double_ack().await.map_err(consumer_io)?;
             if replay_drained(&config, end_sequence, stream_sequence, pending) {
                 return finish_replay(
@@ -427,6 +545,12 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     &mut counters,
                 )
                 .await?;
+                emit_checkpoint(
+                    diagnostic_identity.as_ref(),
+                    &config,
+                    stream_sequence,
+                    &mut checkpoint_emitted,
+                )?;
                 message.double_ack().await.map_err(consumer_io)?;
                 if replay_drained(&config, end_sequence, stream_sequence, pending) {
                     return finish_replay(
@@ -444,13 +568,6 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                 if let Some(reason) =
                     legacy_decode_skip(config.mode, subject_source, subject_family, &error)
                 {
-                    let phase = match config.mode {
-                        ConsumerMode::Forward => "forward",
-                        ConsumerMode::Replay => "replay",
-                    };
-                    eprintln!(
-                        "organizational append-log {phase} compatibility skip subject={subject} reason={reason}"
-                    );
                     record_progress(
                         &runtime,
                         &config,
@@ -461,6 +578,15 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                         &mut counters,
                     )
                     .await?;
+                    emit_diagnostic(
+                        diagnostic_identity.as_ref(),
+                        &config,
+                        stream_sequence,
+                        subject_source,
+                        subject_family,
+                        "compatibility_skip",
+                        decode_skip_category(reason),
+                    )?;
                     message.double_ack().await.map_err(consumer_io)?;
                     if replay_drained(&config, end_sequence, stream_sequence, pending) {
                         return finish_replay(
@@ -474,7 +600,6 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     }
                     continue;
                 }
-                eprintln!("organizational append-log message rejected: {error}");
                 record_progress(
                     &runtime,
                     &config,
@@ -485,6 +610,19 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     &mut counters,
                 )
                 .await?;
+                if let Some(category) = decode_error_category(&error) {
+                    emit_diagnostic(
+                        diagnostic_identity.as_ref(),
+                        &config,
+                        stream_sequence,
+                        subject_source,
+                        subject_family,
+                        "message_rejected",
+                        category,
+                    )?;
+                } else {
+                    eprintln!("organizational append-log message rejected: {error}");
+                }
                 message.double_ack().await.map_err(consumer_io)?;
                 if replay_drained(&config, end_sequence, stream_sequence, pending) {
                     return finish_replay(
@@ -518,6 +656,12 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     &mut counters,
                 )
                 .await?;
+                emit_checkpoint(
+                    diagnostic_identity.as_ref(),
+                    &config,
+                    stream_sequence,
+                    &mut checkpoint_emitted,
+                )?;
                 message.double_ack().await.map_err(consumer_io)?;
                 if response.authority == ProjectionAuthority::Rust {
                     println!(
@@ -550,15 +694,9 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                         .map_err(consumer_io)?;
                 }
                 FailureDisposition::Reject => {
-                    if let Some(reason) = replay_legacy_projection_skip(
-                        config.mode,
-                        &event_source,
-                        &event_family,
-                        &error,
-                    ) {
-                        eprintln!(
-                            "organizational append-log replay compatibility skip subject={subject} reason={reason}"
-                        );
+                    if let Some(reason) =
+                        legacy_projection_skip(config.mode, &event_source, &event_family, &error)
+                    {
                         record_progress(
                             &runtime,
                             &config,
@@ -569,6 +707,16 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                             &mut counters,
                         )
                         .await?;
+                        emit_diagnostic(
+                            diagnostic_identity.as_ref(),
+                            &config,
+                            stream_sequence,
+                            &event_source,
+                            &event_family,
+                            "compatibility_skip",
+                            projection_error_category(&event_source, &event_family, &error)
+                                .unwrap_or("unsupported_legacy_record"),
+                        )?;
                         message.double_ack().await.map_err(consumer_io)?;
                         if replay_drained(&config, end_sequence, stream_sequence, pending) {
                             return finish_replay(
@@ -582,9 +730,6 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                         }
                         continue;
                     }
-                    eprintln!(
-                        "organizational append-log projection rejected subject={subject} error={error}"
-                    );
                     record_progress(
                         &runtime,
                         &config,
@@ -595,6 +740,23 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                         &mut counters,
                     )
                     .await?;
+                    if let Some(category) =
+                        projection_error_category(&event_source, &event_family, &error)
+                    {
+                        emit_diagnostic(
+                            diagnostic_identity.as_ref(),
+                            &config,
+                            stream_sequence,
+                            &event_source,
+                            &event_family,
+                            "projection_rejected",
+                            category,
+                        )?;
+                    } else {
+                        eprintln!(
+                            "organizational append-log projection rejected subject={subject} error={error}"
+                        );
+                    }
                     message.double_ack().await.map_err(consumer_io)?;
                     if replay_drained(&config, end_sequence, stream_sequence, pending) {
                         return finish_replay(
@@ -910,6 +1072,163 @@ fn mode_name(mode: ConsumerMode) -> &'static str {
     }
 }
 
+#[derive(Serialize)]
+struct DiagnosticEvent<'a> {
+    schema_version: &'static str,
+    environment: &'a str,
+    mode: &'static str,
+    consumer_name: &'a str,
+    consumer_run_id: &'a str,
+    task_definition: &'a str,
+    image_digest: &'a str,
+    source_id: &'a str,
+    family_id: &'a str,
+    outcome: &'a str,
+    error_category: &'a str,
+    stream_sequence: u64,
+    message_sha256: String,
+}
+
+fn emit_diagnostic(
+    identity: Option<&DiagnosticIdentity>,
+    config: &ConsumerConfig,
+    stream_sequence: u64,
+    source_id: &str,
+    family_id: &str,
+    outcome: &str,
+    error_category: &str,
+) -> Result<(), Box<dyn Error>> {
+    let Some(identity) = identity else {
+        return Ok(());
+    };
+    println!(
+        "{}",
+        serde_json::to_string(&diagnostic_event(
+            identity,
+            config,
+            stream_sequence,
+            source_id,
+            family_id,
+            outcome,
+            error_category,
+        ))?
+    );
+    Ok(())
+}
+
+fn diagnostic_event<'a>(
+    identity: &'a DiagnosticIdentity,
+    config: &'a ConsumerConfig,
+    stream_sequence: u64,
+    source_id: &'a str,
+    family_id: &'a str,
+    outcome: &'a str,
+    error_category: &'a str,
+) -> DiagnosticEvent<'a> {
+    let mut hasher = Sha256::new();
+    for field in [
+        identity.environment.as_str(),
+        mode_name(config.mode),
+        config.durable_name.as_str(),
+        config.run_id.as_str(),
+        identity.task_definition.as_str(),
+        identity.image_digest.as_str(),
+        source_id,
+        family_id,
+        outcome,
+        error_category,
+    ] {
+        hasher.update((field.len() as u64).to_be_bytes());
+        hasher.update(field.as_bytes());
+    }
+    hasher.update(stream_sequence.to_be_bytes());
+    let message_sha256 = format!("sha256:{:x}", hasher.finalize());
+    DiagnosticEvent {
+        schema_version: DIAGNOSTIC_SCHEMA_VERSION,
+        environment: &identity.environment,
+        mode: mode_name(config.mode),
+        consumer_name: &config.durable_name,
+        consumer_run_id: &config.run_id,
+        task_definition: &identity.task_definition,
+        image_digest: &identity.image_digest,
+        source_id,
+        family_id,
+        outcome,
+        error_category,
+        stream_sequence,
+        message_sha256,
+    }
+}
+
+fn emit_checkpoint(
+    identity: Option<&DiagnosticIdentity>,
+    config: &ConsumerConfig,
+    stream_sequence: u64,
+    checkpoint_emitted: &mut bool,
+) -> Result<(), Box<dyn Error>> {
+    let Some(identity) = identity else {
+        return Ok(());
+    };
+    if *checkpoint_emitted {
+        return Ok(());
+    }
+    emit_diagnostic(
+        Some(identity),
+        config,
+        stream_sequence,
+        "cerebro",
+        "append_log_checkpoint",
+        "run_checkpoint",
+        "none",
+    )?;
+    *checkpoint_emitted = true;
+    Ok(())
+}
+
+fn decode_skip_category(reason: &str) -> &'static str {
+    match reason {
+        "legacy_invalid_observation_id" => "invalid_observation_id",
+        _ => "unsupported_legacy_record",
+    }
+}
+
+fn decode_error_category(error: &EventDecodeError) -> Option<&'static str> {
+    match error {
+        EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(message))
+            if message == "observation id is invalid" =>
+        {
+            Some("invalid_observation_id")
+        }
+        _ => None,
+    }
+}
+
+fn projection_error_category(
+    source_id: &str,
+    family_id: &str,
+    error: &crate::ProjectionFailure,
+) -> Option<&'static str> {
+    match error {
+        crate::ProjectionFailure::Store(cerebro_organizational_store::StoreError::Conflict(
+            message,
+        )) if source_id == "okta"
+            && family_id == "threat_insight"
+            && message.starts_with("source event ")
+            && message.ends_with(" conflicts with the stored record") =>
+        {
+            Some("stored_record_conflict")
+        }
+        crate::ProjectionFailure::Invalid(message)
+            if source_id == "okta"
+                && family_id == "application"
+                && message == "catalog projection is invalid: entity label is invalid" =>
+        {
+            Some("invalid_entity_label")
+        }
+        _ => None,
+    }
+}
+
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
@@ -984,7 +1303,9 @@ fn legacy_decode_skip(
             "aws",
             "public_endpoint",
             EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(message)),
-        ) if mode == ConsumerMode::Replay && message == "observation id is invalid" => {
+        ) if matches!(mode, ConsumerMode::Forward | ConsumerMode::Replay)
+            && message == "observation id is invalid" =>
+        {
             Some("legacy_invalid_observation_id")
         }
         (
@@ -998,16 +1319,27 @@ fn legacy_decode_skip(
     }
 }
 
-fn replay_legacy_projection_skip(
+fn legacy_projection_skip(
     mode: ConsumerMode,
     source_id: &str,
     family_id: &str,
-    _error: &crate::ProjectionFailure,
+    error: &crate::ProjectionFailure,
 ) -> Option<&'static str> {
-    if mode == ConsumerMode::Replay && source_id == "okta" && family_id == "threat_insight" {
-        Some("legacy_retired_family_projection_incompatible")
-    } else {
-        None
+    if source_id != "okta" || family_id != "threat_insight" {
+        return None;
+    }
+    match error {
+        crate::ProjectionFailure::Invalid(message)
+            if mode == ConsumerMode::Replay
+                && matches!(
+                    message.as_str(),
+                    "family okta.threat_insight is not in the compiled catalog"
+                        | "historical threat insight shape cannot be projected"
+                ) =>
+        {
+            Some("legacy_retired_family_projection_incompatible")
+        }
+        _ => None,
     }
 }
 
@@ -1282,17 +1614,9 @@ mod tests {
                 legacy_decode_skip(ConsumerMode::Replay, source, family, &error),
                 Some(reason)
             );
-            let forward_reason = if matches!(
-                (source, family),
-                ("asset", "data_sensitivity") | ("cerebro", "health.jetstream_canary")
-            ) {
-                Some(reason)
-            } else {
-                None
-            };
             assert_eq!(
                 legacy_decode_skip(ConsumerMode::Forward, source, family, &error),
-                forward_reason
+                Some(reason)
             );
         }
     }
@@ -1353,7 +1677,7 @@ mod tests {
             "historical threat insight shape cannot be projected".to_owned(),
         );
         assert_eq!(
-            replay_legacy_projection_skip(
+            legacy_projection_skip(
                 ConsumerMode::Replay,
                 "okta",
                 "threat_insight",
@@ -1362,7 +1686,7 @@ mod tests {
             Some("legacy_retired_family_projection_incompatible")
         );
         assert_eq!(
-            replay_legacy_projection_skip(
+            legacy_projection_skip(
                 ConsumerMode::Replay,
                 "okta",
                 "threat_insight",
@@ -1371,7 +1695,7 @@ mod tests {
             Some("legacy_retired_family_projection_incompatible")
         );
         assert_eq!(
-            replay_legacy_projection_skip(
+            legacy_projection_skip(
                 ConsumerMode::Forward,
                 "okta",
                 "threat_insight",
@@ -1380,7 +1704,7 @@ mod tests {
             None
         );
         assert_eq!(
-            replay_legacy_projection_skip(
+            legacy_projection_skip(
                 ConsumerMode::Replay,
                 "okta",
                 "group_membership",
@@ -1389,7 +1713,7 @@ mod tests {
             None
         );
         assert_eq!(
-            replay_legacy_projection_skip(
+            legacy_projection_skip(
                 ConsumerMode::Replay,
                 "okta",
                 "application",
@@ -1397,6 +1721,92 @@ mod tests {
             ),
             None
         );
+        assert_eq!(
+            legacy_projection_skip(
+                ConsumerMode::Replay,
+                "okta",
+                "threat_insight",
+                &crate::ProjectionFailure::Invalid("unrelated permanent failure".to_owned()),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diagnostic_identity_is_derived_from_ecs_metadata() {
+        let identity = DiagnosticIdentity::from_metadata(
+            "test".to_owned(),
+            EcsContainerMetadata {
+                image_id: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_owned(),
+            },
+            EcsTaskMetadata {
+                task_arn: "arn:aws:ecs:us-east-1:123456789012:task/cerebro-test/task-id"
+                    .to_owned(),
+                family: "cerebro-test-rust-platform".to_owned(),
+                revision: "28".to_owned(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            identity.task_definition,
+            "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-test-rust-platform:28"
+        );
+        assert_eq!(identity.environment, "test");
+    }
+
+    #[test]
+    fn checkpoint_diagnostic_is_payload_free_and_run_bound() {
+        let identity = DiagnosticIdentity {
+            environment: "test".to_owned(),
+            task_definition: "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-rust:28"
+                .to_owned(),
+            image_digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_owned(),
+        };
+        let config = ConsumerConfig {
+            nats_url: "nats://localhost:4222".to_owned(),
+            stream: DEFAULT_STREAM.to_owned(),
+            subject_prefix: DEFAULT_SUBJECT_PREFIX.to_owned(),
+            durable_name: "organizational-graph-forward".to_owned(),
+            deliver_policy: DeliverPolicy::New,
+            mode: ConsumerMode::Forward,
+            run_id: "forward-cutover-v4".to_owned(),
+            end_sequence_override: None,
+            max_messages: None,
+            max_runtime: None,
+        };
+        let value = serde_json::to_value(diagnostic_event(
+            &identity,
+            &config,
+            42,
+            "cerebro",
+            "append_log_checkpoint",
+            "run_checkpoint",
+            "none",
+        ))
+        .unwrap();
+        assert_eq!(value["schema_version"], DIAGNOSTIC_SCHEMA_VERSION);
+        assert_eq!(value["consumer_name"], config.durable_name);
+        assert_eq!(value["consumer_run_id"], config.run_id);
+        assert_eq!(value["stream_sequence"], 42);
+        assert_eq!(value["outcome"], "run_checkpoint");
+        assert_eq!(value["error_category"], "none");
+        assert!(
+            value["message_sha256"]
+                .as_str()
+                .is_some_and(|digest| digest.len() == 71 && digest.starts_with("sha256:"))
+        );
+        for forbidden in [
+            "tenant_id",
+            "payload",
+            "authorization",
+            "root_urn",
+            "raw_error",
+            "record_digest",
+        ] {
+            assert!(value.get(forbidden).is_none(), "unexpected {forbidden}");
+        }
     }
 
     #[test]
