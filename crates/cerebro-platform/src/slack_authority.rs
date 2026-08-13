@@ -726,6 +726,7 @@ mod tests {
         assert_eq!(claim.status(), StatusCode::SERVICE_UNAVAILABLE);
 
         let receipt = app
+            .clone()
             .oneshot(
                 Request::post("/v1/wakes/deliveries")
                     .header(CONTENT_TYPE, "application/json")
