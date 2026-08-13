@@ -3178,7 +3178,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. pl
 - When the requested lane is converse and the operator is appraising this exchange, answer the human question directly and candidly from the conversation. Do not replace it with a security-graph boundary, a capability inventory, a current-state lookup, or a generic invitation. Measurement, scoring, simulation, or observation of behavior is not itself a change to the deployed prompt, bound tools, planner, or runtime. A passing measurement proves only the measured candidate and result; do not describe operative behavior as improved until the changed artifact is identified and current evidence establishes its deployed state. Describe no release, deployment, integration, tool binding, verified improvement, or completed work without current evidence.
 - Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. user_visible_work is authored by you, not by the Rust host. Write two to four concise, chronological Slack updates that communicate the work rather than model or tool mechanics: what you are narrowing to, why that slice is decision-relevant, what evidence dimension you are checking next and why, and what material dimension remains outside the current pass. For a broad or ambiguous request, make the first item a natural-language scope note that states the chosen slice, why it best answers the operator's question, and the excluded material dimension. After the first evidence batch on a broad or ambiguous request, establish one materially revised plan whose first user_visible_work item says whether the evidence confirmed or changed the focus, why, and what you will examine next. Do not put tool names, query syntax, row limits, schemas, internal lifecycle terms, or unsupported findings in any progress update. Select at least one available read tool, and give every required claim at least one source_candidate drawn from selected_tools. An Answered operating plan always requires successful, complete, fresh same-turn evidence for every required claim; when that proof is unavailable, use Partial or Blocked. When the accepted semantic route records delegated future observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch. notify_on_change contains exact scalar or string values whose transition materially changes the operator's next safe action and which the operator asked to hear about; it is not routine progress reporting. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
 - “Set up,” “schedule,” or “arrange” a re-inspection, recheck, or follow-up check is explicit future delegation even when the same sentence also says “keep going” or “take it as far as you can.” Perform the useful baseline read now and persist the bounded follow_through; an immediate read alone does not answer that request.
-- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. Use capability.describe only when the matching descriptor does not make its input contract clear. Before invoking a discovered provider tool, verify that every required input named by its descriptor is present in resolved entities, current operator text, or current observations. If a required input remains missing after capability.describe, finish needs_input with one question for that exact identifier; never guess it or invoke with an empty value. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. A host-admitted external effect remains visible as its exact MCP tool id and may run only in an Act plan through the ordinary exact-input approval boundary. Never substitute graph.search for a missing or undiscovered provider capability.
+- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. When selection_status=tied_top_matches, describe the tied top candidates and select only the descriptor whose concrete scope and input contract uniquely fit the request; if an identifier is still required to distinguish them, ask one exact question instead of guessing. Use capability.describe only when the matching descriptor does not make its input contract clear. Before invoking a discovered provider tool, verify that every required input named by its descriptor is present in resolved entities, current operator text, or current observations. If a required input remains missing after capability.describe, finish needs_input with one question for that exact identifier; never guess it or invoke with an empty value. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. A host-admitted external effect remains visible as its exact MCP tool id and may run only in an Act plan through the ordinary exact-input approval boundary. Never substitute graph.search for a missing or undiscovered provider capability.
 - capability.search, capability.describe, and capability.overview describe the bound catalog and its authority policy. Catalog metadata never establishes a fact about Slack, GitHub, a deployment, a web page, or any other external system. Invoke the discovered provider tool before making a current claim. If no matching tool is bound, state that exact capability gap instead of querying an unrelated source.
 - This Rust session loop is the only reasoning agent. Never discover or invoke a nested Ask agent, graph-reasoning agent, or tool that asks another model to answer the operator. Use the bounded evidence tools directly, decide which observations matter, and synthesize the answer here.
 - For a broad current-risk question such as “what's scariest in prod right now?”, choose a bounded scope yourself, then use the findings, risk, asset, investigation, and graph evidence capabilities needed to rank the supported risks. Preserve operator constraints such as avoiding APOC, but do not ask the operator to narrow the question, design a query, or supply internal query mechanics. In the final reply, briefly explain the scope you chose, why it is the most decision-relevant first pass, how the evidence changed or confirmed that focus, and what meaningful risk dimension remains outside the pass. This is useful reasoning transparency, not a tool transcript.
@@ -3320,7 +3320,7 @@ Operate, do not merely describe a query:
 - Inspect current state with the smallest useful tool calls.
 - Give every tool invocation a new call_id that has not appeared earlier in the current turn. After duplicate-call repair feedback, use the existing observation or finish; never resend the same call identity.
 - Use capability.overview when the user asks what Cerebro can currently do or when a requested capability may not be bound. The available tool catalog is the exact capability boundary for this turn.
-- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, use capability.search with the user's intent, then capability.describe only if the input contract remains unclear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and invoke it with the returned selection_ref and provider input. A host-admitted external effect uses its exact MCP tool id and remains subject to an Act plan and exact-input approval. Catalog metadata is capability evidence only. It is never evidence about the provider's current state.
+- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, use capability.search with the user's intent, then capability.describe only if the input contract remains unclear. When selection_status=tied_top_matches, compare the tied descriptors and invoke only a uniquely matching contract; otherwise ask for the one identifier that disambiguates them. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and invoke it with the returned selection_ref and provider input. A host-admitted external effect uses its exact MCP tool id and remains subject to an Act plan and exact-input approval. Catalog metadata is capability evidence only. It is never evidence about the provider's current state.
 - Never substitute graph.search for a Slack, GitHub, code, deployment, web, or company-knowledge request. If capability.search returns no relevant provider tool, report the exact missing capability instead of filling the turn with an unrelated graph or source inventory.
 - Use the bound MCP task tools for findings, assets, evidence packets, investigation context, risk explanation, source health, action planning, and any other domain whose descriptor matches the request. Do not reduce a domain request to graph search when a more specific capability is available.
 - The Rust agent is the sole reasoning loop. Never select a nested Ask or graph-reasoning agent. For broad current-risk questions, choose a bounded scope yourself and combine the relevant findings, risk, asset, investigation, and graph observations; do not ask the operator to design or narrow an internal query.
@@ -3800,6 +3800,13 @@ fn capability_search_summary(summary: &str) -> &str {
         .unwrap_or(summary)
 }
 
+fn capability_input_schema(descriptor: &ToolDescriptor) -> Option<Value> {
+    descriptor
+        .summary
+        .rsplit_once(" Input JSON Schema:")
+        .and_then(|(_, schema)| serde_json::from_str(schema.trim()).ok())
+}
+
 fn capability_namespace_matches(tool_id: &str, namespace: &str) -> bool {
     let tool_id = tool_id.to_ascii_lowercase();
     let namespace = namespace.trim_start_matches("mcp.");
@@ -3835,16 +3842,19 @@ fn capability_executor_tool(descriptor: &ToolDescriptor) -> Option<&'static str>
 }
 
 fn capability_descriptor_json(descriptor: &ToolDescriptor, score: usize) -> Value {
-    let descriptor_value = json!({
+    let mut descriptor_value = json!({
         "authority_class": descriptor.authority_class,
         "context_kind": "capability_metadata",
         "effect_class": descriptor.effect_class,
         "input_schema_ref": descriptor.input_schema_ref,
         "result_schema_ref": descriptor.result_schema_ref,
-        "summary": descriptor.summary,
+        "summary": capability_search_summary(&descriptor.summary),
         "title": descriptor.title,
         "tool_id": descriptor.tool_id,
     });
+    if let Some(input_schema) = capability_input_schema(descriptor) {
+        descriptor_value["input_schema"] = input_schema;
+    }
     json!({
         "descriptor": descriptor_value,
         "descriptor_digest": sha256_digest(&descriptor_value.to_string()),
@@ -3887,6 +3897,17 @@ where
     }
     let matches = search_capability_catalog(catalog, &input);
     let total_matches = matches.len();
+    let top_score_tie_count = matches.first().map_or(0, |(top_score, _)| {
+        matches
+            .iter()
+            .take_while(|(score, _)| score == top_score)
+            .count()
+    });
+    let selection_status = match top_score_tie_count {
+        0 => "no_match",
+        1 => "unique_top_match",
+        _ => "tied_top_matches",
+    };
     let query_digest = sha256_digest(query);
     let page = matches
         .into_iter()
@@ -3919,6 +3940,8 @@ where
             "query": query,
             "query_digest": query_digest,
             "schema_version": "capability-search-result/v1",
+            "selection_status": selection_status,
+            "top_score_tie_count": top_score_tie_count,
             "total_matches": total_matches,
         }),
         evidence: vec![],
@@ -3926,10 +3949,14 @@ where
     })
 }
 
-pub(super) fn capability_describe_result(
+pub(super) fn capability_describe_result<F>(
     catalog: &[ToolDescriptor],
     input: &Value,
-) -> Result<ToolResult, AgentRuntimeError> {
+    mut selection: F,
+) -> Result<ToolResult, AgentRuntimeError>
+where
+    F: FnMut(&ToolDescriptor, &str) -> Result<Option<(String, String)>, AgentRuntimeError>,
+{
     let input: CapabilityDescribeInput = serde_json::from_value(input.clone())
         .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
     if input.tool_ids.is_empty() || input.tool_ids.len() > MAX_CAPABILITY_DESCRIBE_IDS {
@@ -3955,7 +3982,15 @@ pub(super) fn capability_describe_result(
     let mut unavailable = Vec::new();
     for tool_id in &requested {
         if let Some(descriptor) = by_id.get(tool_id.as_str()) {
-            described.push(capability_descriptor_json(descriptor, 0));
+            let mut value = capability_descriptor_json(descriptor, 0);
+            let selection_digest = sha256_digest(&format!("describe:{tool_id}"));
+            if let Some((execution_tool_id, selection_ref)) =
+                selection(descriptor, &selection_digest)?
+            {
+                value["execution_tool_id"] = Value::String(execution_tool_id);
+                value["selection_ref"] = Value::String(selection_ref);
+            }
+            described.push(value);
         } else {
             unavailable.push(tool_id);
         }
@@ -4047,7 +4082,7 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
             ToolDescriptor {
                 tool_id: "capability.describe".into(),
                 title: "Describe exact tools".into(),
-                summary: "Read exact bound tool descriptors, authority and effect policy, and input/result schema references for up to 12 tool ids. Catalog results describe capability only and are not evidence about an external system. Input field: tool_ids string array.".into(),
+                summary: "Read exact bound tool descriptors, authority and effect policy, structured provider input schemas, and executable signed selections for up to 12 tool ids. Catalog results describe capability only and are not evidence about an external system. Input field: tool_ids string array.".into(),
                 authority_class: ToolAuthorityClass::Observe,
                 effect_class: ToolEffectClass::Read,
                 input_schema_ref: "schema://cerebro/capability-describe-input/v1".into(),
@@ -4056,7 +4091,7 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
             ToolDescriptor {
                 tool_id: CAPABILITY_EXECUTE_READ.into(),
                 title: "Execute a selected read capability".into(),
-                summary: "Redeem one host-signed capability selection for its exact read-only provider tool. Input fields: selection_ref string returned by capability.search and input object matching the selected provider schema.".into(),
+                summary: "Redeem one host-signed capability selection for its exact read-only provider tool. Input fields: selection_ref string returned by capability.search or capability.describe and input object matching the selected provider schema.".into(),
                 authority_class: ToolAuthorityClass::Observe,
                 effect_class: ToolEffectClass::Read,
                 input_schema_ref: "schema://cerebro/capability-execute-input/v1".into(),
@@ -4065,7 +4100,7 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
             ToolDescriptor {
                 tool_id: CAPABILITY_EXECUTE_PROPOSAL.into(),
                 title: "Execute a selected proposal capability".into(),
-                summary: "Redeem one host-signed capability selection for its exact proposal-only provider tool. Input fields: selection_ref string returned by capability.search and input object matching the selected provider schema.".into(),
+                summary: "Redeem one host-signed capability selection for its exact proposal-only provider tool. Input fields: selection_ref string returned by capability.search or capability.describe and input object matching the selected provider schema.".into(),
                 authority_class: ToolAuthorityClass::Propose,
                 effect_class: ToolEffectClass::Read,
                 input_schema_ref: "schema://cerebro/capability-execute-input/v1".into(),
@@ -4484,11 +4519,21 @@ impl PlatformAgentTools {
 
     fn describe_capabilities(
         &self,
-        _request: &AgentTurnRequest,
+        request: &AgentTurnRequest,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
         let catalog = self.complete_capability_catalog();
-        capability_describe_result(&catalog, &call.input)
+        capability_describe_result(&catalog, &call.input, |descriptor, query_digest| {
+            let (Some(mcp), Some(executor_tool_id)) =
+                (&self.mcp, capability_executor_tool(descriptor))
+            else {
+                return Ok(None);
+            };
+            let selection_ref = mcp
+                .issue_selection_ref(request, descriptor, query_digest)
+                .map_err(AgentRuntimeError::InvalidToolCall)?;
+            Ok(Some((executor_tool_id.into(), selection_ref)))
+        })
     }
 
     async fn execute_selected_capability(
@@ -5685,6 +5730,65 @@ mod tests {
     }
 
     #[test]
+    fn capability_search_marks_tied_top_matches_for_disambiguation() {
+        let catalog = vec![
+            discovered_tool(
+                "mcp.chat.alpha.read",
+                "Read message",
+                "Read one message.",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            discovered_tool(
+                "mcp.chat.bravo.read",
+                "Read message",
+                "Read one message.",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+        ];
+
+        let result =
+            capability_search_result(&catalog, &json!({"query": "message"}), |_, _| Ok(None))
+                .unwrap();
+
+        assert_eq!(result.data["selection_status"], "tied_top_matches");
+        assert_eq!(result.data["top_score_tie_count"], 2);
+        assert!(model_instructions().contains("selection_status=tied_top_matches"));
+    }
+
+    #[test]
+    fn capability_describe_returns_an_executable_provider_selection() {
+        let catalog = vec![discovered_tool(
+            "mcp.slack.thread.read",
+            "Read a Slack thread",
+            "Read one conversation.",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )];
+
+        let result = capability_describe_result(
+            &catalog,
+            &json!({"tool_ids": ["mcp.slack.thread.read"]}),
+            |descriptor, digest| {
+                assert_eq!(descriptor.tool_id, "mcp.slack.thread.read");
+                assert!(digest.starts_with("sha256:"));
+                Ok(Some((
+                    CAPABILITY_EXECUTE_READ.into(),
+                    "signed-selection".into(),
+                )))
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.data["tools"][0]["execution_tool_id"],
+            CAPABILITY_EXECUTE_READ
+        );
+        assert_eq!(result.data["tools"][0]["selection_ref"], "signed-selection");
+    }
+
+    #[test]
     fn capability_search_never_returns_its_own_discovery_plumbing() {
         let mut catalog = built_in_capability_catalog();
         catalog.push(discovered_tool(
@@ -5819,6 +5923,45 @@ mod tests {
         };
 
         assert!(search_capability_catalog(&catalog, &input).is_empty());
+    }
+
+    #[test]
+    fn capability_discovery_returns_provider_input_schema_as_json() {
+        let descriptor = discovered_tool(
+            "mcp.slack.thread.read",
+            "Read a Slack thread",
+            "Read one conversation. Input JSON Schema: {\"type\":\"object\",\"required\":[\"channel_id\",\"thread_ts\"],\"properties\":{\"channel_id\":{\"type\":\"string\"},\"thread_ts\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+
+        let discovered = capability_descriptor_json(&descriptor, 42);
+
+        assert_eq!(
+            discovered["descriptor"]["summary"],
+            "Read one conversation."
+        );
+        assert_eq!(
+            discovered["descriptor"]["input_schema"]["required"],
+            json!(["channel_id", "thread_ts"])
+        );
+        assert_eq!(
+            discovered["descriptor"]["input_schema"]["additionalProperties"],
+            false
+        );
+
+        let delimiter_in_description = discovered_tool(
+            "mcp.slack.search",
+            "Search Slack",
+            "Search literal Input JSON Schema: documentation. Input JSON Schema: {\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}}}",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+        assert_eq!(
+            capability_descriptor_json(&delimiter_in_description, 1)["descriptor"]["input_schema"]
+                ["properties"]["query"]["type"],
+            "string"
+        );
     }
 
     #[test]
