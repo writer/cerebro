@@ -46,6 +46,7 @@ pub struct McpAgentTools {
 struct BoundMcpTool {
     mcp_name: String,
     descriptor: ToolDescriptor,
+    input_schema: Value,
 }
 
 #[derive(Deserialize)]
@@ -286,6 +287,8 @@ impl McpAgentTools {
             .tools
             .get(&call.tool_id)
             .ok_or_else(|| AgentRuntimeError::ToolUnavailable(call.tool_id.clone()))?;
+        validate_provider_input(&tool.input_schema, &call.input)
+            .map_err(AgentRuntimeError::InvalidToolCall)?;
         let response = match self
             .post(
                 request,
@@ -521,6 +524,7 @@ fn bind_tools(
                 BoundMcpTool {
                     mcp_name: tool.name,
                     descriptor,
+                    input_schema: tool.input_schema,
                 },
             )
             .is_some()
@@ -529,6 +533,89 @@ fn bind_tools(
         }
     }
     Ok(tools)
+}
+
+fn validate_provider_input(schema: &Value, input: &Value) -> Result<(), String> {
+    let schema = schema
+        .as_object()
+        .ok_or_else(|| "provider input contract is unavailable".to_owned())?;
+    let input = input
+        .as_object()
+        .ok_or_else(|| "provider input must be an object".to_owned())?;
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    let missing = required
+        .iter()
+        .filter(|field| !input.contains_key(**field))
+        .copied()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(format!(
+            "provider input is missing required fields: {}",
+            missing.join(", ")
+        ));
+    }
+    let properties = schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if schema.get("additionalProperties").and_then(Value::as_bool) == Some(false) {
+        let unknown = input
+            .keys()
+            .filter(|field| !properties.contains_key(*field))
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if !unknown.is_empty() {
+            return Err(format!(
+                "provider input contains unsupported fields: {}",
+                unknown.join(", ")
+            ));
+        }
+    }
+    for (field, value) in input {
+        let Some(contract) = properties.get(field).and_then(Value::as_object) else {
+            continue;
+        };
+        if let Some(allowed) = contract.get("enum").and_then(Value::as_array)
+            && !allowed.contains(value)
+        {
+            return Err(format!(
+                "provider input field {field} is outside its allowed values"
+            ));
+        }
+        let accepted_types = match contract.get("type") {
+            Some(Value::String(kind)) => vec![kind.as_str()],
+            Some(Value::Array(kinds)) => kinds.iter().filter_map(Value::as_str).collect(),
+            _ => Vec::new(),
+        };
+        if !accepted_types.is_empty()
+            && !accepted_types
+                .iter()
+                .any(|kind| provider_value_matches_type(value, kind))
+        {
+            return Err(format!("provider input field {field} has an invalid type"));
+        }
+    }
+    Ok(())
+}
+
+fn provider_value_matches_type(value: &Value, kind: &str) -> bool {
+    match kind {
+        "array" => value.is_array(),
+        "boolean" => value.is_boolean(),
+        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+        "null" => value.is_null(),
+        "number" => value.is_number(),
+        "object" => value.is_object(),
+        "string" => value.is_string(),
+        _ => false,
+    }
 }
 
 fn validate_input_schema(tool_name: &str, schema: &Value) -> Result<(), String> {
@@ -540,7 +627,10 @@ fn validate_input_schema(tool_name: &str, schema: &Value) -> Result<(), String> 
             "MCP tool {tool_name} input schema must declare an object input"
         ));
     }
-    if schema.get("properties").is_some_and(|value| !value.is_object()) {
+    if schema
+        .get("properties")
+        .is_some_and(|value| !value.is_object())
+    {
         return Err(format!(
             "MCP tool {tool_name} input schema properties must be an object"
         ));
@@ -573,13 +663,7 @@ fn validate_input_schema(tool_name: &str, schema: &Value) -> Result<(), String> 
                 || types.iter().any(|kind| {
                     !matches!(
                         *kind,
-                        "array"
-                            | "boolean"
-                            | "integer"
-                            | "null"
-                            | "number"
-                            | "object"
-                            | "string"
+                        "array" | "boolean" | "integer" | "null" | "number" | "object" | "string"
                     )
                 })
             {
@@ -588,10 +672,7 @@ fn validate_input_schema(tool_name: &str, schema: &Value) -> Result<(), String> 
                 ));
             }
         }
-        if contract
-            .get("enum")
-            .is_some_and(|value| !value.is_array())
-        {
+        if contract.get("enum").is_some_and(|value| !value.is_array()) {
             return Err(format!(
                 "MCP tool {tool_name} input schema field {field} enum must be an array"
             ));
@@ -611,9 +692,10 @@ fn validate_input_schema(tool_name: &str, schema: &Value) -> Result<(), String> 
             ));
         }
     }
-    if schema.get("additionalProperties").is_some_and(|value| {
-        !value.is_boolean() && !value.is_object()
-    }) {
+    if schema
+        .get("additionalProperties")
+        .is_some_and(|value| !value.is_boolean() && !value.is_object())
+    {
         return Err(format!(
             "MCP tool {tool_name} input schema additionalProperties is invalid"
         ));
@@ -1134,6 +1216,49 @@ mod tests {
     }
 
     #[test]
+    fn validates_provider_input_before_mcp_dispatch() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "channel_id": {"type": "string"},
+                "limit": {"type": "integer"},
+                "mode": {"type": "string", "enum": ["recent", "thread"]}
+            },
+            "required": ["channel_id"],
+            "additionalProperties": false
+        });
+
+        assert!(
+            validate_provider_input(
+                &schema,
+                &json!({"channel_id": "C123", "limit": 25, "mode": "thread"})
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            validate_provider_input(&schema, &json!({"limit": 25})).unwrap_err(),
+            "provider input is missing required fields: channel_id"
+        );
+        assert_eq!(
+            validate_provider_input(&schema, &json!({"channel_id": 123})).unwrap_err(),
+            "provider input field channel_id has an invalid type"
+        );
+        assert_eq!(
+            validate_provider_input(&schema, &json!({"channel_id": "C123", "mode": "archive"}))
+                .unwrap_err(),
+            "provider input field mode is outside its allowed values"
+        );
+        assert_eq!(
+            validate_provider_input(
+                &schema,
+                &json!({"channel_id": "C123", "workspace": "wrong"})
+            )
+            .unwrap_err(),
+            "provider input contains unsupported fields: workspace"
+        );
+    }
+
+    #[test]
     fn provider_read_only_annotations_cannot_grant_observe_authority() {
         let tools = bind_tools(
             vec![tool("cerebro.read", true)],
@@ -1355,8 +1480,18 @@ mod tests {
             .await
             .unwrap();
         });
+        let mut send_tool = tool("slack.message.send", false);
+        send_tool.input_schema = json!({
+            "type": "object",
+            "properties": {
+                "channel_id": {"type": "string"},
+                "text": {"type": "string"}
+            },
+            "required": ["channel_id", "text"],
+            "additionalProperties": false
+        });
         let tools = bind_tools(
-            vec![tool("slack.message.send", false)],
+            vec![send_tool],
             &BTreeSet::new(),
             &BTreeSet::new(),
             &BTreeSet::from(["slack.message.send".into()]),

@@ -5748,12 +5748,9 @@ mod tests {
             ),
         ];
 
-        let result = capability_search_result(
-            &catalog,
-            &json!({"query": "message"}),
-            |_, _| Ok(None),
-        )
-        .unwrap();
+        let result =
+            capability_search_result(&catalog, &json!({"query": "message"}), |_, _| Ok(None))
+                .unwrap();
 
         assert_eq!(result.data["selection_status"], "tied_top_matches");
         assert_eq!(result.data["top_score_tie_count"], 2);
@@ -5961,8 +5958,8 @@ mod tests {
             ToolEffectClass::Read,
         );
         assert_eq!(
-            capability_descriptor_json(&delimiter_in_description, 1)["descriptor"]
-                ["input_schema"]["properties"]["query"]["type"],
+            capability_descriptor_json(&delimiter_in_description, 1)["descriptor"]["input_schema"]
+                ["properties"]["query"]["type"],
             "string"
         );
     }

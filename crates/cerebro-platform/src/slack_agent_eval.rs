@@ -1619,55 +1619,64 @@ impl EvalTools {
     ) -> Result<ToolResult, AgentRuntimeError> {
         let catalog = self.complete_capability_catalog();
         capability_search_result(&catalog, &call.input, |descriptor, query_digest| {
-            if !descriptor.tool_id.starts_with("mcp.")
-                || !matches!(
-                    (descriptor.authority_class, descriptor.effect_class),
-                    (ToolAuthorityClass::Observe, ToolEffectClass::Read)
-                        | (ToolAuthorityClass::Propose, ToolEffectClass::Read)
-                )
-            {
-                return Ok(None);
-            }
-            let descriptor_digest = capability_descriptor_binding_digest(descriptor);
-            let selection_ref = format!(
-                "selection://sha256/{}",
-                sha256_hex(
-                    format!(
-                        "{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
-                        self.case_ref,
-                        request.tenant_id,
-                        request.actor_ref,
-                        request.thread_ref,
-                        request.context_scope_ref.as_deref().unwrap_or(""),
-                        descriptor.tool_id,
-                        descriptor_digest,
-                        query_digest,
-                    )
-                    .as_bytes()
-                )
-            );
-            self.capability_selections
-                .lock()
-                .expect("evaluation capability selection poisoned")
-                .insert(
-                    selection_ref.clone(),
-                    EvalCapabilitySelection {
-                        tool_id: descriptor.tool_id.clone(),
-                        query_digest: query_digest.into(),
-                        descriptor_digest,
-                        tenant_id: request.tenant_id.clone(),
-                        actor_ref: request.actor_ref.clone(),
-                        thread_ref: request.thread_ref.clone(),
-                        context_scope_ref: request.context_scope_ref.clone(),
-                    },
-                );
-            let executor = if descriptor.authority_class == ToolAuthorityClass::Propose {
-                CAPABILITY_EXECUTE_PROPOSAL
-            } else {
-                CAPABILITY_EXECUTE_READ
-            };
-            Ok(Some((executor.into(), selection_ref)))
+            self.issue_capability_selection(request, descriptor, query_digest)
         })
+    }
+
+    fn issue_capability_selection(
+        &self,
+        request: &AgentTurnRequest,
+        descriptor: &ToolDescriptor,
+        query_digest: &str,
+    ) -> Result<Option<(String, String)>, AgentRuntimeError> {
+        if !descriptor.tool_id.starts_with("mcp.")
+            || !matches!(
+                (descriptor.authority_class, descriptor.effect_class),
+                (ToolAuthorityClass::Observe, ToolEffectClass::Read)
+                    | (ToolAuthorityClass::Propose, ToolEffectClass::Read)
+            )
+        {
+            return Ok(None);
+        }
+        let descriptor_digest = capability_descriptor_binding_digest(descriptor);
+        let selection_ref = format!(
+            "selection://sha256/{}",
+            sha256_hex(
+                format!(
+                    "{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
+                    self.case_ref,
+                    request.tenant_id,
+                    request.actor_ref,
+                    request.thread_ref,
+                    request.context_scope_ref.as_deref().unwrap_or(""),
+                    descriptor.tool_id,
+                    descriptor_digest,
+                    query_digest,
+                )
+                .as_bytes()
+            )
+        );
+        self.capability_selections
+            .lock()
+            .expect("evaluation capability selection poisoned")
+            .insert(
+                selection_ref.clone(),
+                EvalCapabilitySelection {
+                    tool_id: descriptor.tool_id.clone(),
+                    query_digest: query_digest.into(),
+                    descriptor_digest,
+                    tenant_id: request.tenant_id.clone(),
+                    actor_ref: request.actor_ref.clone(),
+                    thread_ref: request.thread_ref.clone(),
+                    context_scope_ref: request.context_scope_ref.clone(),
+                },
+            );
+        let executor = if descriptor.authority_class == ToolAuthorityClass::Propose {
+            CAPABILITY_EXECUTE_PROPOSAL
+        } else {
+            CAPABILITY_EXECUTE_READ
+        };
+        Ok(Some((executor.into(), selection_ref)))
     }
 
     fn resolve_selected_capability(
@@ -1760,7 +1769,13 @@ impl AgentTools for EvalTools {
                 .lock()
                 .expect("evaluation capability discovery receipt poisoned")
                 .push(call.tool_id.clone());
-            return capability_describe_result(&self.complete_capability_catalog(), &call.input);
+            return capability_describe_result(
+                &self.complete_capability_catalog(),
+                &call.input,
+                |descriptor, query_digest| {
+                    self.issue_capability_selection(request, descriptor, query_digest)
+                },
+            );
         }
         let selected_call;
         let call = if matches!(
