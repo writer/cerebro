@@ -3555,6 +3555,22 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
     }
     let mut evidence_refs = BTreeSet::new();
     for evidence in &result.evidence {
+        if result.state == ToolResultState::Failed
+            && (evidence.complete
+                || evidence.atoms.iter().any(|atom| {
+                    !matches!(
+                        &atom.assertion,
+                        session::EvidenceAssertion::ToolOutcome {
+                            state: ToolResultState::Failed,
+                            ..
+                        }
+                    )
+                }))
+        {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "failed tool result evidence must only attest the failed outcome".into(),
+            ));
+        }
         if matches!(
             result.state,
             ToolResultState::Partial | ToolResultState::OutcomeUnknown
@@ -4166,6 +4182,20 @@ mod grounding_tests {
         }
     }
 
+    fn validation_outcome_atom(state: ToolResultState) -> session::EvidenceAtom {
+        session::EvidenceAtom {
+            atom_ref: "evidence://validation/result#outcome".into(),
+            subject_ref: None,
+            assertion: session::EvidenceAssertion::ToolOutcome {
+                state,
+                summary: "The bounded tool call returned.".into(),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: None,
+            complete: true,
+        }
+    }
+
     #[test]
     fn scoped_questions_do_not_match_unscoped_conversation_guard() {
         for message in [
@@ -4250,6 +4280,38 @@ mod grounding_tests {
         let mut succeeded = validation_result(ToolResultState::Succeeded, None);
         succeeded.evidence = vec![validation_evidence(true)];
         assert!(validate_tool_result(&succeeded).is_ok());
+    }
+
+    #[test]
+    fn failed_results_only_carry_failure_evidence() {
+        let mut failed = validation_result(
+            ToolResultState::Failed,
+            Some("The bounded tool call failed."),
+        );
+        assert!(validate_tool_result(&failed).is_ok());
+
+        failed.evidence = vec![validation_evidence(false)];
+        assert!(validate_tool_result(&failed).is_ok());
+
+        failed.evidence[0].atoms = vec![validation_outcome_atom(ToolResultState::Failed)];
+        assert!(validate_tool_result(&failed).is_ok());
+
+        failed.evidence[0].atoms[0].assertion = session::EvidenceAssertion::Value {
+            predicate: "runtime_status".into(),
+            value: json!("healthy"),
+        };
+        assert!(matches!(
+            validate_tool_result(&failed),
+            Err(AgentRuntimeError::InvalidToolCall(reason))
+                if reason == "failed tool result evidence must only attest the failed outcome"
+        ));
+
+        failed.evidence[0].atoms = vec![validation_outcome_atom(ToolResultState::Succeeded)];
+        assert!(validate_tool_result(&failed).is_err());
+
+        failed.evidence[0].atoms = vec![validation_outcome_atom(ToolResultState::Failed)];
+        failed.evidence[0].complete = true;
+        assert!(validate_tool_result(&failed).is_err());
     }
 
     #[test]
