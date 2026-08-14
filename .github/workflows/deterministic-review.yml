@@ -158,7 +158,7 @@ jobs:
           cache: true
 
       - name: Run reachable vulnerability scan
-        run: python3 scripts/govulncheck_gate.py
+        run: python3 scripts/govulncheck_gate.py ./...
 
   deterministic-review:
     name: deterministic-review
