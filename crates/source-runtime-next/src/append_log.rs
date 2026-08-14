@@ -475,24 +475,38 @@ fn decode_observation_id(
 
     match ObservationId::parse(event_id) {
         Ok(observation_id) => Ok(observation_id),
-        Err(_)
-            if is_compatible_legacy_invalid_id(
-                event_id, source_id, event_kind, schema_ref, attributes, payload,
-            ) =>
-        {
-            let mut hasher = Sha256::new();
-            hash_field(
-                &mut hasher,
-                b"cerebro.compat-observation-id.invalid-character/v1",
-            );
-            hash_field(&mut hasher, tenant_id.as_str().as_bytes());
-            hash_field(&mut hasher, source_id.as_bytes());
-            hash_field(&mut hasher, event_kind.as_bytes());
-            hash_field(&mut hasher, schema_ref.as_bytes());
-            hash_field(&mut hasher, event_id.as_bytes());
-            compatibility_observation_id(hasher)
-        }
-        Err(error) => Err(model_error(error)),
+        Err(error) => match compatible_legacy_invalid_identity(
+            event_id, source_id, event_kind, schema_ref, attributes, payload,
+        ) {
+            Some(LegacyInvalidIdentity::PreservedEventId) => {
+                let mut hasher = Sha256::new();
+                hash_field(
+                    &mut hasher,
+                    b"cerebro.compat-observation-id.invalid-character/v1",
+                );
+                hash_field(&mut hasher, tenant_id.as_str().as_bytes());
+                hash_field(&mut hasher, source_id.as_bytes());
+                hash_field(&mut hasher, event_kind.as_bytes());
+                hash_field(&mut hasher, schema_ref.as_bytes());
+                hash_field(&mut hasher, event_id.as_bytes());
+                compatibility_observation_id(hasher)
+            }
+            Some(LegacyInvalidIdentity::AwsPublicEndpoint(raw_identity)) => {
+                let mut hasher = Sha256::new();
+                hash_field(
+                    &mut hasher,
+                    b"cerebro.compat-observation-id.aws-public-endpoint/v1",
+                );
+                hash_field(&mut hasher, tenant_id.as_str().as_bytes());
+                hash_field(&mut hasher, source_id.as_bytes());
+                hash_field(&mut hasher, event_kind.as_bytes());
+                hash_field(&mut hasher, schema_ref.as_bytes());
+                hash_field(&mut hasher, raw_identity.as_bytes());
+                hash_field(&mut hasher, event_id.as_bytes());
+                compatibility_observation_id(hasher)
+            }
+            None => Err(model_error(error)),
+        },
     }
 }
 
@@ -537,73 +551,92 @@ fn is_bounded_provider_domain(value: &str) -> bool {
             .is_some_and(u8::is_ascii_alphanumeric)
 }
 
-fn is_compatible_legacy_invalid_id(
+enum LegacyInvalidIdentity<'a> {
+    PreservedEventId,
+    AwsPublicEndpoint(&'a str),
+}
+
+fn compatible_legacy_invalid_identity<'a>(
     event_id: &str,
     source_id: &str,
     event_kind: &str,
     schema_ref: &str,
-    attributes: &HashMap<String, String>,
-    payload: &serde_json::Value,
-) -> bool {
+    attributes: &'a HashMap<String, String>,
+    payload: &'a serde_json::Value,
+) -> Option<LegacyInvalidIdentity<'a>> {
     if event_id.is_empty() {
-        return false;
+        return None;
     }
     match (source_id, event_kind, schema_ref) {
-        ("gcp", "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1") => event_id
-            .strip_prefix("gcp-iam-role-assignment-")
-            .is_some_and(|suffix| {
-                event_id.len() <= 256
-                    && !suffix.is_empty()
-                    && event_id.contains('@')
-                    && event_id
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
-            }),
-        ("gcp", "gcp.effective_permission", "gcp/effective_permission/v1") => event_id
-            .strip_prefix("gcp-effective-permission-")
-            .is_some_and(|suffix| {
-                event_id.len() <= 256
-                    && !suffix.is_empty()
-                    && event_id.contains('@')
-                    && event_id
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
-            }),
-        ("aws", "aws.public_endpoint", "aws/public_endpoint/v1") => {
-            is_compatible_legacy_aws_public_endpoint_id(event_id, attributes, payload)
+        ("gcp", "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1")
+            if event_id
+                .strip_prefix("gcp-iam-role-assignment-")
+                .is_some_and(|suffix| {
+                    event_id.len() <= 256
+                        && !suffix.is_empty()
+                        && event_id.contains('@')
+                        && event_id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
+                }) =>
+        {
+            Some(LegacyInvalidIdentity::PreservedEventId)
         }
-        _ => false,
+        ("gcp", "gcp.effective_permission", "gcp/effective_permission/v1")
+            if event_id
+                .strip_prefix("gcp-effective-permission-")
+                .is_some_and(|suffix| {
+                    event_id.len() <= 256
+                        && !suffix.is_empty()
+                        && event_id.contains('@')
+                        && event_id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
+                }) =>
+        {
+            Some(LegacyInvalidIdentity::PreservedEventId)
+        }
+        ("aws", "aws.public_endpoint", "aws/public_endpoint/v1") => {
+            let raw_identity =
+                compatible_legacy_aws_public_endpoint_identity(event_id, attributes, payload)?;
+            if preserves_existing_aws_wildcard_identity(event_id, raw_identity) {
+                Some(LegacyInvalidIdentity::PreservedEventId)
+            } else {
+                Some(LegacyInvalidIdentity::AwsPublicEndpoint(raw_identity))
+            }
+        }
+        _ => None,
     }
 }
 
-fn is_compatible_legacy_aws_public_endpoint_id(
+fn compatible_legacy_aws_public_endpoint_identity<'a>(
     event_id: &str,
-    attributes: &HashMap<String, String>,
-    payload: &serde_json::Value,
-) -> bool {
+    attributes: &'a HashMap<String, String>,
+    payload: &'a serde_json::Value,
+) -> Option<&'a str> {
     const LEGACY_EVENT_ID_PREFIX: &str = "aws-public-endpoint-";
     const MAX_LEGACY_IDENTITY_LEN: usize = 2_048;
     if !event_id.starts_with(LEGACY_EVENT_ID_PREFIX)
         || event_id.len() > LEGACY_EVENT_ID_PREFIX.len() + MAX_LEGACY_IDENTITY_LEN
     {
-        return false;
+        return None;
     }
     let account_id = match payload
         .get("account_id")
         .and_then(serde_json::Value::as_str)
     {
         Some(account_id) if !account_id.trim().is_empty() => account_id.trim(),
-        _ => return false,
+        _ => return None,
     };
     if attributes.get("domain").map(String::as_str) != Some(account_id) {
-        return false;
+        return None;
     }
     let endpoint = match payload
         .get("endpoint")
         .and_then(serde_json::Value::as_object)
     {
         Some(endpoint) => endpoint,
-        None => return false,
+        None => return None,
     };
     let identity_fields = [
         ("endpoint_id", "EndpointID"),
@@ -615,11 +648,11 @@ fn is_compatible_legacy_aws_public_endpoint_id(
     for (attribute_key, payload_key) in identity_fields {
         let payload_value = match trimmed_json_string(endpoint, payload_key) {
             Some(value) => value,
-            None => return false,
+            None => return None,
         };
         let attribute_value = attributes.get(attribute_key).map(String::as_str);
         if attribute_value != (!payload_value.is_empty()).then_some(payload_value) {
-            return false;
+            return None;
         }
         if identity.is_none() && !payload_value.is_empty() {
             identity = Some(payload_value);
@@ -629,21 +662,31 @@ fn is_compatible_legacy_aws_public_endpoint_id(
     {
         let payload_value = match trimmed_json_string(endpoint, payload_key) {
             Some(value) => value,
-            None => return false,
+            None => return None,
         };
         if attributes.get(attribute_key).map(String::as_str)
             != (!payload_value.is_empty()).then_some(payload_value)
         {
-            return false;
+            return None;
         }
     }
     let Some(identity) = identity else {
-        return false;
+        return None;
     };
     if identity.len() > MAX_LEGACY_IDENTITY_LEN {
-        return false;
+        return None;
     }
-    event_id == sanitize_legacy_aws_event_id(&format!("{LEGACY_EVENT_ID_PREFIX}{identity}"))
+    (event_id == sanitize_legacy_aws_event_id(&format!("{LEGACY_EVENT_ID_PREFIX}{identity}")))
+        .then_some(identity)
+}
+
+fn preserves_existing_aws_wildcard_identity(event_id: &str, raw_identity: &str) -> bool {
+    event_id.len() <= 256
+        && event_id.contains('*')
+        && event_id.strip_prefix("aws-public-endpoint-") == Some(raw_identity)
+        && event_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/*".contains(&byte))
 }
 
 fn trimmed_json_string<'a>(
@@ -947,7 +990,10 @@ mod tests {
         let event = CommittedSourceEvent::decode(&encode(wire))
             .unwrap()
             .unwrap();
-        assert!(event.observation_id().as_str().starts_with("compat:v1:"));
+        assert_eq!(
+            event.observation_id().as_str(),
+            "compat:v1:c5346b4c728737c7f4a0a7b103df9c9daca8527f8c2e11a63bb3e0968c621c27"
+        );
     }
 
     #[test]
@@ -995,6 +1041,19 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_ne!(first.observation_id(), other_tenant.observation_id());
+    }
+
+    #[test]
+    fn legacy_aws_endpoint_identity_distinguishes_sanitizer_collisions() {
+        let slash = CommittedSourceEvent::decode(&encode(legacy_aws_endpoint_wire("blue/edge@id")))
+            .unwrap()
+            .unwrap();
+        let colon = CommittedSourceEvent::decode(&encode(legacy_aws_endpoint_wire("blue:edge@id")))
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(slash.observation_id(), colon.observation_id());
+        assert_ne!(slash.record_digest(), colon.record_digest());
     }
 
     #[test]
