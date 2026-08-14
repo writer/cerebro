@@ -59,6 +59,8 @@ class EmbeddedWasmTests(unittest.TestCase):
 
                 with unittest.mock.patch.object(
                     embedded_wasm, "cargo_target_directory", return_value=repo / "target"
+                ), unittest.mock.patch.object(
+                    embedded_wasm, "rust_library_source_remap", return_value=None
                 ), unittest.mock.patch.object(embedded_wasm.subprocess, "run") as run:
                     embedded_wasm.generate_module(
                         module,
@@ -84,6 +86,8 @@ class EmbeddedWasmTests(unittest.TestCase):
 
             with unittest.mock.patch.object(
                 embedded_wasm, "cargo_target_directory", return_value=repo / "target"
+            ), unittest.mock.patch.object(
+                embedded_wasm, "rust_library_source_remap", return_value=None
             ), unittest.mock.patch.object(embedded_wasm.subprocess, "run"):
                 embedded_wasm.generate_module(module, repo, current_platform="Darwin-arm64")
 
@@ -111,6 +115,8 @@ class EmbeddedWasmTests(unittest.TestCase):
 
                 with unittest.mock.patch.object(
                     embedded_wasm, "cargo_target_directory", return_value=repo / "target"
+                ), unittest.mock.patch.object(
+                    embedded_wasm, "rust_library_source_remap", return_value=None
                 ), unittest.mock.patch.object(embedded_wasm.subprocess, "run") as run:
                     embedded_wasm.check_module(
                         module,
@@ -158,6 +164,10 @@ class EmbeddedWasmTests(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"CARGO": "/opt/cargo wrapper"}, clear=False):
             self.assertEqual(embedded_wasm.cargo_command(), ["/opt/cargo", "wrapper"])
 
+    def test_rustc_command_honors_environment_override(self):
+        with unittest.mock.patch.dict(os.environ, {"RUSTC": "/opt/rustc wrapper"}, clear=False):
+            self.assertEqual(embedded_wasm.rustc_command(), ["/opt/rustc", "wrapper"])
+
     def test_cargo_target_directory_uses_metadata_from_managed_wrapper(self):
         repo = Path("/workspace/cerebro")
         completed = unittest.mock.Mock(stdout='{"target_directory":"/managed/cargo-target"}')
@@ -178,18 +188,64 @@ class EmbeddedWasmTests(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": "tmp/cargo"}, clear=True):
             self.assertEqual(embedded_wasm.cargo_target_directory(repo), repo / "tmp/cargo")
 
-    def test_rustflags_remap_workspace_cargo_and_rustup_paths(self):
+    def test_rust_library_source_remap_uses_sysroot_and_commit(self):
+        commit = "01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf"
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            sysroot = Path(tmp) / "rustup" / "toolchain"
+            source = sysroot / "lib" / "rustlib" / "src" / "rust" / "library"
+            source.mkdir(parents=True)
+            completed = (
+                unittest.mock.Mock(stdout=f"{sysroot}\n"),
+                unittest.mock.Mock(stdout=f"rustc 1.93.1\ncommit-hash: {commit}\n"),
+            )
+            with unittest.mock.patch.object(
+                embedded_wasm.subprocess, "run", side_effect=completed
+            ) as run:
+                self.assertEqual(
+                    embedded_wasm.rust_library_source_remap(repo),
+                    (source, f"/rustc/{commit}/library"),
+                )
+
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args_list[0].args[0], ["rustc", "--print", "sysroot"])
+        self.assertEqual(run.call_args_list[1].args[0], ["rustc", "--version", "--verbose"])
+
+    def test_rust_library_source_remap_is_absent_without_rust_src(self):
+        commit = "01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf"
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            sysroot = Path(tmp) / "minimal-toolchain"
+            completed = (
+                unittest.mock.Mock(stdout=f"{sysroot}\n"),
+                unittest.mock.Mock(stdout=f"rustc 1.93.1\ncommit-hash: {commit}\n"),
+            )
+            with unittest.mock.patch.object(
+                embedded_wasm.subprocess, "run", side_effect=completed
+            ):
+                self.assertIsNone(embedded_wasm.rust_library_source_remap(repo))
+
+    def test_rustflags_remap_workspace_cargo_rustup_and_rust_source_paths(self):
         repo = Path("/work/cerebro")
+        rust_source = Path("/managed/rustup/toolchains/1.93.1/lib/rustlib/src/rust/library")
+        commit = "01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf"
         with unittest.mock.patch.dict(
             os.environ,
             {"CARGO_HOME": "/managed/cargo", "RUSTUP_HOME": "/managed/rustup"},
             clear=True,
+        ), unittest.mock.patch.object(
+            embedded_wasm,
+            "rust_library_source_remap",
+            return_value=(rust_source, f"/rustc/{commit}/library"),
         ):
             self.assertEqual(
                 embedded_wasm.rustflags(repo),
                 "--remap-path-prefix=/work/cerebro=/workspace "
                 "--remap-path-prefix=/managed/cargo=/cargo "
-                "--remap-path-prefix=/managed/rustup=/rustup",
+                "--remap-path-prefix=/managed/rustup=/rustup "
+                f"--remap-path-prefix={rust_source}=/rustc/{commit}/library",
             )
 
     def test_ci_sets_up_rust_and_release_consumes_a_ci_gated_candidate(self):

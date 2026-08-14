@@ -8,6 +8,7 @@ import filecmp
 import json
 import os
 import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -187,6 +188,10 @@ def cargo_command() -> list[str]:
     return shlex.split(os.environ.get("CARGO", "cargo"))
 
 
+def rustc_command() -> list[str]:
+    return shlex.split(os.environ.get("RUSTC", "rustc"))
+
+
 def cargo_target_directory(repo: Path) -> Path:
     """Resolve Cargo's effective target directory, including managed wrappers."""
     configured = os.environ.get("CARGO_TARGET_DIR", "").strip()
@@ -211,14 +216,57 @@ def cargo_target_directory(repo: Path) -> Path:
     return target_directory if target_directory.is_absolute() else repo / target_directory
 
 
+def rust_library_source_remap(repo: Path) -> tuple[Path, str] | None:
+    rustc = rustc_command()
+    sysroot = subprocess.run(
+        [*rustc, "--print", "sysroot"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if not sysroot or not Path(sysroot).is_absolute():
+        raise EmbeddedWasmError("rustc returned an invalid sysroot")
+
+    verbose_version = subprocess.run(
+        [*rustc, "--version", "--verbose"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    commit = next(
+        (
+            line.removeprefix("commit-hash:").strip()
+            for line in verbose_version.splitlines()
+            if line.startswith("commit-hash:")
+        ),
+        "",
+    )
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise EmbeddedWasmError("rustc returned an invalid commit hash")
+
+    rust_library_source = Path(sysroot) / "lib" / "rustlib" / "src" / "rust" / "library"
+    if not rust_library_source.is_dir():
+        return None
+    return rust_library_source, f"/rustc/{commit}/library"
+
+
 def rustflags(repo: Path) -> str:
     cargo_home = os.environ.get("CARGO_HOME") or str(Path.home() / ".cargo")
     rustup_home = os.environ.get("RUSTUP_HOME") or str(Path.home() / ".rustup")
-    return (
-        f"--remap-path-prefix={repo}=/workspace "
-        f"--remap-path-prefix={cargo_home}=/cargo "
-        f"--remap-path-prefix={rustup_home}=/rustup"
-    )
+    flags = [
+        f"--remap-path-prefix={repo}=/workspace",
+        f"--remap-path-prefix={cargo_home}=/cargo",
+        f"--remap-path-prefix={rustup_home}=/rustup",
+    ]
+    rust_source_remap = rust_library_source_remap(repo)
+    if rust_source_remap is not None:
+        source, destination = rust_source_remap
+        # rustc applies the last matching remap. Keep this more-specific source
+        # mapping after the broader Rustup-home mapping.
+        flags.append(f"--remap-path-prefix={source}={destination}")
+    return " ".join(flags)
 
 
 def build_module(module: EmbeddedWasmModule, repo: Path, *, lint: bool) -> None:
