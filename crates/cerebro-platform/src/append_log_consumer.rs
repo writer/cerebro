@@ -410,8 +410,7 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
         start_sequence,
         end_sequence,
         persisted_counters.covered_sequence,
-        &persisted_counters,
-        &persisted.skip_categories,
+        &persisted,
         None,
     )?;
     let expected = config.pull_config();
@@ -459,8 +458,7 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                 start_sequence,
                 end_sequence,
                 persisted_counters.covered_sequence,
-                &persisted_counters,
-                &persisted.skip_categories,
+                &persisted,
                 None,
             )?;
             return Ok(());
@@ -480,8 +478,7 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     start_sequence,
                     end_sequence,
                     persisted_counters.covered_sequence,
-                    &persisted_counters,
-                    &persisted.skip_categories,
+                    &persisted,
                     None,
                 )?;
                 return Ok(());
@@ -950,8 +947,7 @@ async fn finish_replay(
                 start_sequence,
                 Some(end_sequence),
                 persisted_before_finish_counters.covered_sequence,
-                &persisted_before_finish_counters,
-                &persisted_before_finish.skip_categories,
+                &persisted_before_finish,
                 Some("retention_gap"),
             )?;
             return Err(format!(
@@ -994,8 +990,7 @@ async fn finish_replay(
         } else {
             persisted_counters.covered_sequence
         },
-        &persisted_counters,
-        &persisted.skip_categories,
+        &persisted,
         Some(completion_basis),
     )?;
     if status == "completed" {
@@ -1036,10 +1031,11 @@ fn emit_receipt(
     start_sequence: u64,
     end_sequence: Option<u64>,
     covered_sequence: u64,
-    counters: &ConsumerCounters,
-    skip_categories: &BTreeMap<String, u64>,
+    state: &ConsumerRunReceiptState,
     completion_basis: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
+    let counters = ConsumerCounters::from(state);
+    let skip_categories = &state.skip_categories;
     validate_receipt_skip_categories(counters.messages_skipped, skip_categories)?;
     println!(
         "{}",
@@ -1056,7 +1052,7 @@ fn emit_receipt(
             covered_sequence,
             last_delivered_sequence: counters.last_delivered_sequence,
             completion_basis,
-            counters,
+            counters: &counters,
             skip_categories,
         })?
     );
