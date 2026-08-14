@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  deterministic-review:
-    name: deterministic-review
+  review:
+    name: deterministic-review-core
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -108,9 +108,6 @@ jobs:
             --sarif \
             --output semgrep.sarif
 
-      - name: Run reachable vulnerability scan
-        run: make govulncheck
-
       - name: Run changed-range leak scan
         shell: bash
         run: ./scripts/leak_check.sh range "${REVIEW_BASE}...${REVIEW_HEAD}"
@@ -142,3 +139,42 @@ jobs:
           path: |
             tmp/review-invariants.json
             semgrep.sarif
+
+  vulnerability_review:
+    name: deterministic-review-vulnerability
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run reachable vulnerability scan
+        run: make govulncheck
+
+  deterministic-review:
+    name: deterministic-review
+    if: ${{ always() }}
+    needs:
+      - review
+      - vulnerability_review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enforce deterministic review results
+        env:
+          REVIEW_RESULT: ${{ needs.review.result }}
+          VULNERABILITY_RESULT: ${{ needs.vulnerability_review.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${REVIEW_RESULT}" = success
+          test "${VULNERABILITY_RESULT}" = success
