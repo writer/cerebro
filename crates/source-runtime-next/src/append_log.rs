@@ -25,6 +25,11 @@ const CREDENTIAL_EVENT_KIND: &str = "security.credential.lifecycle";
 const CERTIFICATE_EVENT_KIND: &str = "security.certificate.lifecycle";
 const CREDENTIAL_SCHEMA_REF: &str = "cerebro/security/credential-lifecycle/v1";
 const CERTIFICATE_SCHEMA_REF: &str = "cerebro/security/certificate-lifecycle/v1";
+const OKTA_THREAT_INSIGHT_KIND: &str = "okta.threat_insight";
+const OKTA_THREAT_INSIGHT_SCHEMA_REF: &str = "okta/threat_insight/v1";
+const LEGACY_OKTA_THREAT_INSIGHT_PREFIX: &str = "okta-threat-insight-";
+const CURRENT_OKTA_THREAT_INSIGHT_PREFIX: &str = "okta-threat-insight-sha256-";
+const COMPATIBILITY_OBSERVATION_ID_PREFIX: &str = "compat:v1:";
 
 #[derive(Clone, PartialEq, Message)]
 struct CommittedSourceWire {
@@ -214,7 +219,16 @@ impl CommittedSourceEvent {
         let tenant_id = TenantId::parse(tenant).map_err(model_error)?;
         let source_runtime_id =
             SourceRuntimeId::parse(required(runtime, "source_runtime_id")?).map_err(model_error)?;
-        let observation_id = ObservationId::parse(event_id).map_err(model_error)?;
+        let observation_id = decode_observation_id(
+            event_id,
+            &tenant_id,
+            &source_id,
+            kind,
+            wire.schema_ref.trim(),
+            observed_at_unix_ms,
+            &wire.attributes,
+            &payload,
+        )?;
         Ok(Some(Self {
             tenant_id,
             source_runtime_id,
@@ -310,7 +324,7 @@ impl CommittedSourceEvent {
             hash_field(&mut hasher, key.as_bytes());
             hash_field(&mut hasher, value.as_bytes());
         }
-        let payload = canonical_payload_bytes(&self.payload);
+        let payload = self.canonical_payload_bytes();
         hash_field(&mut hasher, &payload);
         finish_digest(hasher)
     }
@@ -328,7 +342,7 @@ impl CommittedSourceEvent {
     /// Hash only the canonical JSON payload.
     pub fn payload_digest(&self) -> String {
         let mut hasher = Sha256::new();
-        let payload = canonical_payload_bytes(&self.payload);
+        let payload = self.canonical_payload_bytes();
         hash_field(&mut hasher, &payload);
         finish_digest(hasher)
     }
@@ -339,6 +353,15 @@ impl CommittedSourceEvent {
     /// portable lifecycle projectors consume these preserved bytes instead.
     pub fn raw_payload(&self) -> &[u8] {
         &self.raw_payload
+    }
+
+    fn canonical_payload_bytes(&self) -> Vec<u8> {
+        canonical_event_payload_bytes(
+            &self.source_id,
+            &self.event_kind,
+            &self.schema_ref,
+            &self.payload,
+        )
     }
 
     /// Return whether this event is an accepted portable security lifecycle event.
@@ -391,6 +414,169 @@ impl CommittedSourceEvent {
 fn hash_field(hasher: &mut Sha256, value: &[u8]) {
     hasher.update(value.len().to_be_bytes());
     hasher.update(value);
+}
+
+#[allow(clippy::too_many_arguments)]
+// Translate only source contracts whose historical producer IDs cannot cross
+// the organizational-model boundary. Hashing the original coordinates avoids
+// lossy character replacement and keeps redelivery identity stable.
+fn decode_observation_id(
+    event_id: &str,
+    tenant_id: &TenantId,
+    source_id: &str,
+    event_kind: &str,
+    schema_ref: &str,
+    observed_at_unix_ms: i64,
+    attributes: &HashMap<String, String>,
+    payload: &serde_json::Value,
+) -> Result<ObservationId, AppendLogDecodeError> {
+    if is_legacy_okta_threat_insight_id(
+        event_id,
+        tenant_id,
+        event_kind,
+        schema_ref,
+        observed_at_unix_ms,
+    ) {
+        let mut hasher = Sha256::new();
+        hash_field(
+            &mut hasher,
+            b"cerebro.compat-observation-id.okta-threat-insight/v1",
+        );
+        hash_field(&mut hasher, tenant_id.as_str().as_bytes());
+        hash_field(&mut hasher, source_id.as_bytes());
+        hash_field(&mut hasher, event_kind.as_bytes());
+        hash_field(&mut hasher, schema_ref.as_bytes());
+        hash_field(&mut hasher, observed_at_unix_ms.to_string().as_bytes());
+        let mut attributes = attributes.iter().collect::<Vec<_>>();
+        attributes.sort_unstable_by(|left, right| left.0.cmp(right.0));
+        for (key, value) in attributes {
+            if matches!(
+                key.as_str(),
+                SOURCE_RUNTIME_ID_ATTRIBUTE | SOURCE_COLLECTION_ID_ATTRIBUTE
+            ) {
+                continue;
+            }
+            hash_field(&mut hasher, key.as_bytes());
+            hash_field(&mut hasher, value.as_bytes());
+        }
+        hash_field(
+            &mut hasher,
+            &canonical_event_payload_bytes(source_id, event_kind, schema_ref, payload),
+        );
+        return compatibility_observation_id(hasher);
+    }
+
+    match ObservationId::parse(event_id) {
+        Ok(observation_id) => Ok(observation_id),
+        Err(_) if is_compatible_legacy_invalid_id(event_id, source_id, event_kind, schema_ref) => {
+            let mut hasher = Sha256::new();
+            hash_field(
+                &mut hasher,
+                b"cerebro.compat-observation-id.invalid-character/v1",
+            );
+            hash_field(&mut hasher, tenant_id.as_str().as_bytes());
+            hash_field(&mut hasher, source_id.as_bytes());
+            hash_field(&mut hasher, event_kind.as_bytes());
+            hash_field(&mut hasher, schema_ref.as_bytes());
+            hash_field(&mut hasher, event_id.as_bytes());
+            compatibility_observation_id(hasher)
+        }
+        Err(error) => Err(model_error(error)),
+    }
+}
+
+fn is_legacy_okta_threat_insight_id(
+    event_id: &str,
+    tenant_id: &TenantId,
+    event_kind: &str,
+    schema_ref: &str,
+    observed_at_unix_ms: i64,
+) -> bool {
+    // The historical timestamp ID omitted action and excluded zones. Re-key it
+    // from canonical immutable material so two configurations cannot share a
+    // receipt key and an existing receipt under the old ID remains untouched.
+    event_kind == OKTA_THREAT_INSIGHT_KIND
+        && schema_ref == OKTA_THREAT_INSIGHT_SCHEMA_REF
+        && event_id.starts_with(LEGACY_OKTA_THREAT_INSIGHT_PREFIX)
+        && !event_id.starts_with(CURRENT_OKTA_THREAT_INSIGHT_PREFIX)
+        && event_id
+            == format!("{LEGACY_OKTA_THREAT_INSIGHT_PREFIX}{tenant_id}-{observed_at_unix_ms}")
+}
+
+fn is_compatible_legacy_invalid_id(
+    event_id: &str,
+    source_id: &str,
+    event_kind: &str,
+    schema_ref: &str,
+) -> bool {
+    if event_id.len() > 256 || event_id.is_empty() {
+        return false;
+    }
+    match (source_id, event_kind, schema_ref) {
+        ("gcp", "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1") => event_id
+            .strip_prefix("gcp-iam-role-assignment-")
+            .is_some_and(|suffix| {
+                !suffix.is_empty()
+                    && event_id.contains('@')
+                    && event_id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
+            }),
+        ("gcp", "gcp.effective_permission", "gcp/effective_permission/v1") => event_id
+            .strip_prefix("gcp-effective-permission-")
+            .is_some_and(|suffix| {
+                !suffix.is_empty()
+                    && event_id.contains('@')
+                    && event_id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
+            }),
+        ("aws", "aws.public_endpoint", "aws/public_endpoint/v1") => event_id
+            .strip_prefix("aws-public-endpoint-")
+            .is_some_and(|suffix| {
+                !suffix.is_empty()
+                    && event_id.contains('*')
+                    && event_id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/*".contains(&byte))
+            }),
+        _ => false,
+    }
+}
+
+fn compatibility_observation_id(hasher: Sha256) -> Result<ObservationId, AppendLogDecodeError> {
+    ObservationId::parse(format!(
+        "{COMPATIBILITY_OBSERVATION_ID_PREFIX}{}",
+        finish_digest(hasher)
+    ))
+    .map_err(model_error)
+}
+
+fn canonical_event_payload_bytes(
+    source_id: &str,
+    event_kind: &str,
+    schema_ref: &str,
+    payload: &serde_json::Value,
+) -> Vec<u8> {
+    let mut payload = payload.clone();
+    // The v1 API models excluded zones as a set. Its historical producer kept
+    // provider order, so equivalent deliveries need one semantic digest.
+    if source_id == "okta"
+        && event_kind == OKTA_THREAT_INSIGHT_KIND
+        && schema_ref == OKTA_THREAT_INSIGHT_SCHEMA_REF
+        && let Some(zones) = payload
+            .as_object_mut()
+            .and_then(|object| object.get_mut("exclude_zones"))
+            .and_then(serde_json::Value::as_array_mut)
+        && zones.iter().all(serde_json::Value::is_string)
+    {
+        zones.sort_unstable_by(|left, right| {
+            left.as_str()
+                .expect("checked string zone")
+                .cmp(right.as_str().expect("checked string zone"))
+        });
+    }
+    canonical_payload_bytes(&payload)
 }
 
 fn canonical_payload_bytes(value: &serde_json::Value) -> Vec<u8> {
@@ -493,6 +679,121 @@ mod tests {
         assert_eq!(event.observed_at_unix_ms(), 1_720_000_000_123);
         assert_eq!(event.attributes()["provider_id"], "file-1");
         assert_eq!(event.payload()["name"], "board.pdf");
+    }
+
+    #[test]
+    fn compatible_legacy_observation_id_decodes_to_stable_identity() {
+        let mut wire = source_wire();
+        wire.source_id = "gcp".to_owned();
+        wire.kind = "gcp.iam_role_assignment".to_owned();
+        wire.schema_ref = "gcp/iam_role_assignment/v1".to_owned();
+        wire.id = "gcp-iam-role-assignment-user+alias@example.test-roles-owner".to_owned();
+
+        let first = CommittedSourceEvent::decode(&encode(wire.clone()))
+            .expect("legacy compatibility ID should decode")
+            .expect("source event");
+        let second = CommittedSourceEvent::decode(&encode(wire))
+            .expect("redelivery should decode")
+            .expect("source event");
+
+        assert_eq!(first.observation_id(), second.observation_id());
+        assert_ne!(
+            first.observation_id().as_str(),
+            "gcp-iam-role-assignment-user+alias@example.test-roles-owner"
+        );
+        assert!(first.observation_id().as_str().starts_with("compat:v1:"));
+    }
+
+    #[test]
+    fn compatibility_identity_binds_tenant_and_contract_not_delivery_provenance() {
+        let mut first_wire = source_wire();
+        first_wire.source_id = "gcp".to_owned();
+        first_wire.kind = "gcp.effective_permission".to_owned();
+        first_wire.schema_ref = "gcp/effective_permission/v1".to_owned();
+        first_wire.id = "gcp-effective-permission-user@example.test-roles-owner".to_owned();
+        let first = CommittedSourceEvent::decode(&encode(first_wire.clone()))
+            .unwrap()
+            .unwrap();
+
+        let mut redelivery_wire = first_wire.clone();
+        redelivery_wire.attributes.insert(
+            SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+            "gcp-replacement".to_owned(),
+        );
+        redelivery_wire.attributes.insert(
+            SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+            "replacement-collection".to_owned(),
+        );
+        let redelivery = CommittedSourceEvent::decode(&encode(redelivery_wire))
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.observation_id(), redelivery.observation_id());
+        assert_eq!(first.record_digest(), redelivery.record_digest());
+        assert_ne!(first.attributes_digest(), redelivery.attributes_digest());
+
+        let mut other_tenant_wire = first_wire;
+        other_tenant_wire.tenant_id = "tenant-b".to_owned();
+        let other_tenant = CommittedSourceEvent::decode(&encode(other_tenant_wire))
+            .unwrap()
+            .unwrap();
+        assert_ne!(first.observation_id(), other_tenant.observation_id());
+        assert_ne!(first.record_digest(), other_tenant.record_digest());
+    }
+
+    #[test]
+    fn compatibility_identity_boundary_stays_closed() {
+        let cases = [
+            (
+                "box",
+                "box.content_assets",
+                "box/content_assets/v1",
+                "user@example.test",
+            ),
+            (
+                "gcp",
+                "gcp.project_bindings",
+                "gcp/project_bindings/v1",
+                "gcp-iam-role-assignment-user@example.test-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user\\alias@example.test-roles-owner",
+            ),
+            (
+                "aws",
+                "aws.public_endpoint",
+                "aws/public_endpoint/v1",
+                "aws-public-endpoint-host@example.test",
+            ),
+        ];
+        for (source, kind, schema, id) in cases {
+            let mut wire = source_wire();
+            wire.source_id = source.to_owned();
+            wire.kind = kind.to_owned();
+            wire.schema_ref = schema.to_owned();
+            wire.id = id.to_owned();
+            assert!(matches!(
+                CommittedSourceEvent::decode(&encode(wire)),
+                Err(AppendLogDecodeError::InvalidModel(message))
+                    if message == "observation id is invalid"
+            ));
+        }
+    }
+
+    #[test]
+    fn legacy_aws_wildcard_endpoint_gets_a_collision_resistant_identity() {
+        let mut wire = source_wire();
+        wire.source_id = "aws".to_owned();
+        wire.kind = "aws.public_endpoint".to_owned();
+        wire.schema_ref = "aws/public_endpoint/v1".to_owned();
+        wire.id = "aws-public-endpoint-*.example.test".to_owned();
+
+        let event = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+        assert!(event.observation_id().as_str().starts_with("compat:v1:"));
     }
 
     #[test]
@@ -650,6 +951,107 @@ mod tests {
     }
 
     #[test]
+    fn legacy_threat_insight_zone_order_is_idempotent() {
+        let mut first_wire = source_wire();
+        first_wire.id = "okta-threat-insight-example.okta.test-1720000000123".to_owned();
+        first_wire.tenant_id = "example.okta.test".to_owned();
+        first_wire.source_id = "okta".to_owned();
+        first_wire.kind = "okta.threat_insight".to_owned();
+        first_wire.schema_ref = "okta/threat_insight/v1".to_owned();
+        first_wire.payload = br#"{"action":"block","domain":"example.okta.test","exclude_zones":["zone-b","zone-a"]}"#.to_vec();
+        first_wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "okta-runtime".to_owned(),
+            ),
+            ("action".to_owned(), "block".to_owned()),
+            ("domain".to_owned(), "example.okta.test".to_owned()),
+            ("exclude_zone_count".to_owned(), "2".to_owned()),
+            ("family".to_owned(), "threat_insight".to_owned()),
+            ("resource_id".to_owned(), "threat_insight_config".to_owned()),
+            (
+                "resource_type".to_owned(),
+                "ThreatInsightConfiguration".to_owned(),
+            ),
+        ]);
+
+        let mut second_wire = first_wire.clone();
+        second_wire.payload = br#"{"exclude_zones":["zone-a","zone-b"],"domain":"example.okta.test","action":"block"}"#.to_vec();
+
+        let first = CommittedSourceEvent::decode(&encode(first_wire))
+            .unwrap()
+            .unwrap();
+        let second = CommittedSourceEvent::decode(&encode(second_wire))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(first.observation_id(), second.observation_id());
+        assert!(first.observation_id().as_str().starts_with("compat:v1:"));
+        assert_eq!(first.record_digest(), second.record_digest());
+        assert_eq!(first.payload_digest(), second.payload_digest());
+    }
+
+    #[test]
+    fn legacy_threat_insight_conflicting_material_remains_distinct() {
+        let mut first_wire = source_wire();
+        first_wire.id = "okta-threat-insight-example.okta.test-1720000000123".to_owned();
+        first_wire.tenant_id = "example.okta.test".to_owned();
+        first_wire.source_id = "okta".to_owned();
+        first_wire.kind = OKTA_THREAT_INSIGHT_KIND.to_owned();
+        first_wire.schema_ref = OKTA_THREAT_INSIGHT_SCHEMA_REF.to_owned();
+        first_wire.payload =
+            br#"{"action":"block","domain":"example.okta.test","exclude_zones":["zone-a"]}"#
+                .to_vec();
+        first_wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "okta-runtime".to_owned(),
+            ),
+            ("action".to_owned(), "block".to_owned()),
+            ("domain".to_owned(), "example.okta.test".to_owned()),
+            ("exclude_zone_count".to_owned(), "1".to_owned()),
+            ("family".to_owned(), "threat_insight".to_owned()),
+            ("resource_id".to_owned(), "threat_insight_config".to_owned()),
+            (
+                "resource_type".to_owned(),
+                "ThreatInsightConfiguration".to_owned(),
+            ),
+        ]);
+        let mut conflicting_wire = first_wire.clone();
+        conflicting_wire.payload =
+            br#"{"action":"block","domain":"example.okta.test","exclude_zones":["zone-b"]}"#
+                .to_vec();
+
+        let first = CommittedSourceEvent::decode(&encode(first_wire))
+            .unwrap()
+            .unwrap();
+        let conflicting = CommittedSourceEvent::decode(&encode(conflicting_wire))
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(first.observation_id(), conflicting.observation_id());
+        assert_ne!(first.record_digest(), conflicting.record_digest());
+    }
+
+    #[test]
+    fn current_threat_insight_content_identity_is_preserved() {
+        let mut wire = source_wire();
+        wire.id = format!("{CURRENT_OKTA_THREAT_INSIGHT_PREFIX}{}", "a".repeat(64));
+        wire.tenant_id = "example.okta.test".to_owned();
+        wire.source_id = "okta".to_owned();
+        wire.kind = OKTA_THREAT_INSIGHT_KIND.to_owned();
+        wire.schema_ref = OKTA_THREAT_INSIGHT_SCHEMA_REF.to_owned();
+
+        let event = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            event.observation_id().as_str(),
+            format!("{CURRENT_OKTA_THREAT_INSIGHT_PREFIX}{}", "a".repeat(64))
+        );
+    }
+
+    #[test]
     fn record_digest_excludes_only_exact_delivery_provenance() {
         let mut first_wire = source_wire();
         first_wire.attributes.insert(
@@ -695,6 +1097,21 @@ mod tests {
                 "non-provenance attribute {key:?} was excluded"
             );
         }
+    }
+
+    #[test]
+    fn reused_current_observation_id_with_different_material_conflicts() {
+        let first = CommittedSourceEvent::decode(&encode(source_wire()))
+            .unwrap()
+            .unwrap();
+        let mut conflicting_wire = source_wire();
+        conflicting_wire.payload = br#"{"id":"file-1","name":"different-board.pdf"}"#.to_vec();
+        let conflicting = CommittedSourceEvent::decode(&encode(conflicting_wire))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(first.observation_id(), conflicting.observation_id());
+        assert_ne!(first.record_digest(), conflicting.record_digest());
     }
 
     #[test]

@@ -685,45 +685,6 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                         .map_err(consumer_io)?;
                 }
                 FailureDisposition::Reject => {
-                    if let Some(reason) = replay_legacy_projection_skip(
-                        config.mode,
-                        &event_source,
-                        &event_family,
-                        &error,
-                    ) {
-                        record_progress(
-                            &runtime,
-                            &config,
-                            stream_sequence,
-                            ConsumerMessageOutcome::Skipped(skip_category(reason)),
-                            Some((&event_source, &event_family)),
-                            None,
-                            &mut counters,
-                        )
-                        .await?;
-                        diagnostics.emit(
-                            &config,
-                            stream_sequence,
-                            &event_source,
-                            &event_family,
-                            "compatibility_skip",
-                            projection_skip_category(reason),
-                            &message_sha256,
-                            Some(&record_digest),
-                        )?;
-                        message.double_ack().await.map_err(consumer_io)?;
-                        if replay_drained(&config, end_sequence, stream_sequence, pending) {
-                            return finish_replay(
-                                &runtime,
-                                &config,
-                                start_sequence,
-                                end_sequence.expect("replay has an end fence"),
-                                &counters,
-                            )
-                            .await;
-                        }
-                        continue;
-                    }
                     record_progress(
                         &runtime,
                         &config,
@@ -1293,10 +1254,6 @@ fn decode_skip_category(reason: &str) -> &'static str {
     }
 }
 
-fn projection_skip_category(_reason: &str) -> &'static str {
-    "unsupported_legacy_record"
-}
-
 fn skip_category(reason: &str) -> ConsumerSkipCategory {
     match reason {
         "legacy_invalid_observation_id" => ConsumerSkipCategory::LegacyInvalidObservationId,
@@ -1414,18 +1371,6 @@ fn legacy_decode_skip(
             Some("legacy_missing_source_owned_kind")
         }
         (
-            "gcp",
-            "iam_role_assignment" | "effective_permission",
-            EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(message)),
-        )
-        | (
-            "aws",
-            "public_endpoint",
-            EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(message)),
-        ) if mode == ConsumerMode::Replay && message == "observation id is invalid" => {
-            Some("legacy_invalid_observation_id")
-        }
-        (
             "cerebro",
             "health.jetstream_canary",
             EventDecodeError::CatalogOwnedWithoutEnvelope { .. },
@@ -1433,19 +1378,6 @@ fn legacy_decode_skip(
             Some("legacy_catalog_canary_without_source_envelope")
         }
         _ => None,
-    }
-}
-
-fn replay_legacy_projection_skip(
-    mode: ConsumerMode,
-    source_id: &str,
-    family_id: &str,
-    _error: &crate::ProjectionFailure,
-) -> Option<&'static str> {
-    if mode == ConsumerMode::Replay && source_id == "okta" && family_id == "threat_insight" {
-        Some("legacy_retired_family_projection_incompatible")
-    } else {
-        None
     }
 }
 
@@ -1683,30 +1615,6 @@ mod tests {
                 "legacy_missing_source_owned_kind",
             ),
             (
-                "gcp",
-                "iam_role_assignment",
-                EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
-                    "observation id is invalid".to_owned(),
-                )),
-                "legacy_invalid_observation_id",
-            ),
-            (
-                "gcp",
-                "effective_permission",
-                EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
-                    "observation id is invalid".to_owned(),
-                )),
-                "legacy_invalid_observation_id",
-            ),
-            (
-                "aws",
-                "public_endpoint",
-                EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
-                    "observation id is invalid".to_owned(),
-                )),
-                "legacy_invalid_observation_id",
-            ),
-            (
                 "cerebro",
                 "health.jetstream_canary",
                 EventDecodeError::CatalogOwnedWithoutEnvelope {
@@ -1720,17 +1628,9 @@ mod tests {
                 legacy_decode_skip(ConsumerMode::Replay, source, family, &error),
                 Some(reason)
             );
-            let forward_reason = if matches!(
-                (source, family),
-                ("asset", "data_sensitivity") | ("cerebro", "health.jetstream_canary")
-            ) {
-                Some(reason)
-            } else {
-                None
-            };
             assert_eq!(
                 legacy_decode_skip(ConsumerMode::Forward, source, family, &error),
-                forward_reason
+                Some(reason)
             );
         }
         assert_eq!(
@@ -1749,6 +1649,27 @@ mod tests {
             skip_category("legacy_retired_family_projection_incompatible"),
             ConsumerSkipCategory::LegacyRetiredFamilyProjectionIncompatible
         );
+    }
+
+    #[test]
+    fn invalid_observation_ids_are_not_replay_only_skips() {
+        let error = EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
+            "observation id is invalid".to_owned(),
+        ));
+        for (source, family) in [
+            ("gcp", "iam_role_assignment"),
+            ("gcp", "effective_permission"),
+            ("aws", "public_endpoint"),
+        ] {
+            assert_eq!(
+                legacy_decode_skip(ConsumerMode::Replay, source, family, &error),
+                None
+            );
+            assert_eq!(
+                legacy_decode_skip(ConsumerMode::Forward, source, family, &error),
+                None
+            );
+        }
     }
 
     #[test]
@@ -1793,61 +1714,6 @@ mod tests {
                 &EventDecodeError::Boundary(AppendLogDecodeError::Protobuf(
                     "invalid wire type".to_owned(),
                 )),
-            ),
-            None
-        );
-    }
-
-    #[test]
-    fn replay_skips_permanent_failures_only_for_the_retired_okta_family() {
-        let missing_catalog = crate::ProjectionFailure::Invalid(
-            "family okta.threat_insight is not in the compiled catalog".to_owned(),
-        );
-        let historical_shape = crate::ProjectionFailure::Invalid(
-            "historical threat insight shape cannot be projected".to_owned(),
-        );
-        assert_eq!(
-            replay_legacy_projection_skip(
-                ConsumerMode::Replay,
-                "okta",
-                "threat_insight",
-                &missing_catalog,
-            ),
-            Some("legacy_retired_family_projection_incompatible")
-        );
-        assert_eq!(
-            replay_legacy_projection_skip(
-                ConsumerMode::Replay,
-                "okta",
-                "threat_insight",
-                &historical_shape,
-            ),
-            Some("legacy_retired_family_projection_incompatible")
-        );
-        assert_eq!(
-            replay_legacy_projection_skip(
-                ConsumerMode::Forward,
-                "okta",
-                "threat_insight",
-                &missing_catalog,
-            ),
-            None
-        );
-        assert_eq!(
-            replay_legacy_projection_skip(
-                ConsumerMode::Replay,
-                "okta",
-                "group_membership",
-                &missing_catalog,
-            ),
-            None
-        );
-        assert_eq!(
-            replay_legacy_projection_skip(
-                ConsumerMode::Replay,
-                "okta",
-                "application",
-                &missing_catalog,
             ),
             None
         );
