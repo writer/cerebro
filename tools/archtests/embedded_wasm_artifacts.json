@@ -12,56 +12,56 @@
     {
       "name": "graphagent-static-validator",
       "path": "internal/graphagent/staticvalidator.wasm",
-      "sha256": "98d2feff264a86336b04a4e469893520cc7e2a3b885056ff551d2ae525c2418a",
-      "size_bytes": 672777,
+      "sha256": "b382d80b5703ece33e594d12a05f6131eebb76c8073eff20fbbb43bc1580af26",
+      "size_bytes": 672633,
       "max_size_bytes": 700000,
       "abi_version": 2
     },
     {
       "name": "sourcecoverage-evaluator",
       "path": "internal/sourcecoverage/evaluator.wasm",
-      "sha256": "23f01a583337aeab76cf93b0bdf412977adefd3f5a32d1df24be2b7a0f48933b",
-      "size_bytes": 150866,
+      "sha256": "d2cf15699785c50ccb3e4522a0cd9e2007d7646d6d5e70e685866acaeaafb06b",
+      "size_bytes": 150810,
       "max_size_bytes": 175000,
       "abi_version": 1
     },
     {
       "name": "panopticon-resource-extractor",
       "path": "internal/sourceprojection/panopticonresources.wasm",
-      "sha256": "760efd2240f4cc2ca01b66a2b02276c1dfd1a787ec3bcf7a94709b5f4b57ee48",
-      "size_bytes": 134680,
+      "sha256": "585a45402299cca8685abdc7fc993101c9590cc683dc69eedd4761b6c27ee084",
+      "size_bytes": 134632,
       "max_size_bytes": 160000,
       "abi_version": 2
     },
     {
       "name": "mitre-context-evaluator",
       "path": "internal/mitre/evaluator.wasm",
-      "sha256": "523e2df99a5496e8af1134da57a8acae1a091497002b5f63ab2ecc5ce3df7c66",
-      "size_bytes": 738700,
+      "sha256": "50f7e9580e572de6e92cb50555389a66af70883ad7476d09868794c98d7647cb",
+      "size_bytes": 738540,
       "max_size_bytes": 800000,
       "abi_version": 1
     },
     {
       "name": "sourceruntime-event-admission",
       "path": "internal/sourceruntime/eventadmission/eventadmission.wasm",
-      "sha256": "0a0e1b31cad3471a5d5ab65db0e2bf881deb0956663cb5a54ddc2e7334dfa808",
-      "size_bytes": 262710,
+      "sha256": "70cba49b9150ae6c650c3de093b5029d4296898ef82ade32af71ea10dc69af1e",
+      "size_bytes": 262646,
       "max_size_bytes": 265000,
       "abi_version": 2
     },
     {
       "name": "sourceruntime-record-kernel",
       "path": "internal/sourceruntime/recordkernel/recordkernel.wasm",
-      "sha256": "a67310d70335f95db43502d1b61cca79284bf5ea365f655fbd80570f2935d73b",
-      "size_bytes": 169042,
+      "sha256": "0798f5707e8e33dd033a2642c6f2fcd2e67ceedc45e9468b2cdbb987b17072f4",
+      "size_bytes": 168954,
       "max_size_bytes": 200000,
       "abi_version": 1
     },
     {
       "name": "security-path-evaluator",
       "path": "internal/securitypathdelta/evaluator.wasm",
-      "sha256": "e8f76d47291d5f37626a4c3f445b43f56ff00eece1710c5b18b05ce21536304e",
-      "size_bytes": 346187,
+      "sha256": "c996b6b9018b86ccb407541bf0e0827828e24b76f95751e65c18c4fa264b7f30",
+      "size_bytes": 346091,
       "max_size_bytes": 400000,
       "abi_version": 1
     }

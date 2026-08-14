@@ -213,7 +213,12 @@ def cargo_target_directory(repo: Path) -> Path:
 
 def rustflags(repo: Path) -> str:
     cargo_home = os.environ.get("CARGO_HOME") or str(Path.home() / ".cargo")
-    return f"--remap-path-prefix={repo}=/workspace --remap-path-prefix={cargo_home}=/cargo"
+    rustup_home = os.environ.get("RUSTUP_HOME") or str(Path.home() / ".rustup")
+    return (
+        f"--remap-path-prefix={repo}=/workspace "
+        f"--remap-path-prefix={cargo_home}=/cargo "
+        f"--remap-path-prefix={rustup_home}=/rustup"
+    )
 
 
 def build_module(module: EmbeddedWasmModule, repo: Path, *, lint: bool) -> None:

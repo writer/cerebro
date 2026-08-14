@@ -178,6 +178,20 @@ class EmbeddedWasmTests(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": "tmp/cargo"}, clear=True):
             self.assertEqual(embedded_wasm.cargo_target_directory(repo), repo / "tmp/cargo")
 
+    def test_rustflags_remap_workspace_cargo_and_rustup_paths(self):
+        repo = Path("/work/cerebro")
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"CARGO_HOME": "/managed/cargo", "RUSTUP_HOME": "/managed/rustup"},
+            clear=True,
+        ):
+            self.assertEqual(
+                embedded_wasm.rustflags(repo),
+                "--remap-path-prefix=/work/cerebro=/workspace "
+                "--remap-path-prefix=/managed/cargo=/cargo "
+                "--remap-path-prefix=/managed/rustup=/rustup",
+            )
+
     def test_ci_sets_up_rust_and_release_consumes_a_ci_gated_candidate(self):
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn(
