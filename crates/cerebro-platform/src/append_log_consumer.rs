@@ -644,7 +644,7 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
         };
         let event_source = event.source_id().to_owned();
         let event_family = event.family_id().to_owned();
-        let record_digest = event.record_digest();
+        let record_digest = diagnostic_record_digest(&event);
         match runtime.project_committed_shadow(event).await {
             Ok(response) => {
                 if !response.projected {
@@ -1219,6 +1219,10 @@ fn digest_bytes(bytes: &[u8]) -> String {
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     format!("sha256:{hex}")
+}
+
+fn diagnostic_record_digest(event: &CommittedSourceEvent) -> String {
+    format!("sha256:{}", event.record_digest())
 }
 
 fn checkpoint_message_sha256(message_sha256: &str) -> &str {
@@ -2073,6 +2077,28 @@ mod tests {
         ] {
             assert!(!encoded.contains(forbidden), "unexpected {forbidden}");
         }
+    }
+
+    #[test]
+    fn committed_record_digest_uses_the_diagnostic_sha256_contract() {
+        let event = CommittedSourceEvent::decode(&encoded_event(
+            "box",
+            "box.content_assets",
+            "box/content_assets/v1",
+            br#"{"id":"file-1"}"#.to_vec(),
+        ))
+        .unwrap()
+        .unwrap();
+
+        let digest = diagnostic_record_digest(&event);
+        assert_eq!(digest, format!("sha256:{}", event.record_digest()));
+        assert_eq!(digest.len(), 71);
+        assert!(digest.starts_with("sha256:"));
+        assert!(
+            digest[7..]
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        );
     }
 
     #[test]

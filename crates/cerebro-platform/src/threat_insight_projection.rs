@@ -54,9 +54,6 @@ pub(crate) fn project(event: CommittedSourceEvent) -> Result<(CollectedBatch, Gr
     require_attribute(&event, "action", &action)?;
     require_attribute(&event, "resource_id", RESOURCE_ID)?;
     require_attribute(&event, "resource_type", RESOURCE_TYPE)?;
-    if domain != tenant_id.as_str() {
-        return Err("Okta ThreatInsight domain does not match the event tenant".to_owned());
-    }
     let exclude_zone_count = event
         .attributes()
         .get("exclude_zone_count")
@@ -198,12 +195,19 @@ mod tests {
     use super::*;
 
     fn event(zones: serde_json::Value) -> CommittedSourceEvent {
-        event_with("example.okta.test", "block", "example.okta.test", zones)
+        event_with(
+            "example.okta.test",
+            "block",
+            "example.okta.test",
+            "example.okta.test",
+            zones,
+        )
     }
 
     fn event_with(
         tenant: &str,
         attribute_action: &str,
+        attribute_domain: &str,
         payload_domain: &str,
         zones: serde_json::Value,
     ) -> CommittedSourceEvent {
@@ -219,7 +223,7 @@ mod tests {
             observed_at_unix_ms: 1_720_000_000_123,
             attributes: BTreeMap::from([
                 ("action".to_owned(), attribute_action.to_owned()),
-                ("domain".to_owned(), tenant.to_owned()),
+                ("domain".to_owned(), attribute_domain.to_owned()),
                 ("exclude_zone_count".to_owned(), count.to_string()),
                 ("family".to_owned(), FAMILY_ID.to_owned()),
                 ("resource_id".to_owned(), RESOURCE_ID.to_owned()),
@@ -259,10 +263,27 @@ mod tests {
     }
 
     #[test]
+    fn provider_domain_can_differ_from_the_authoritative_runtime_tenant() {
+        let event = event_with(
+            "tenant-a",
+            "block",
+            "example.okta.test",
+            "example.okta.test",
+            serde_json::json!(["zone-a"]),
+        );
+        let (batch, delta) = project(event).unwrap();
+
+        assert_eq!(batch.scope.receipt().tenant_id().as_str(), "tenant-a");
+        assert_eq!(delta.entities().len(), 3);
+        assert_eq!(delta.assertions().len(), 3);
+    }
+
+    #[test]
     fn tenant_and_provenance_mismatches_fail_closed() {
         let wrong_domain = event_with(
             "example.okta.test",
             "block",
+            "example.okta.test",
             "other.okta.test",
             serde_json::json!(["zone-a"]),
         );
@@ -271,6 +292,7 @@ mod tests {
         let wrong_action = event_with(
             "example.okta.test",
             "audit",
+            "example.okta.test",
             "example.okta.test",
             serde_json::json!(["zone-a"]),
         );
