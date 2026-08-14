@@ -12,8 +12,8 @@
     {
       "name": "graphagent-static-validator",
       "path": "internal/graphagent/staticvalidator.wasm",
-      "sha256": "64cbd053b4f00d7573f42f083e5f72f71de941baded829347fc762177efe86bc",
-      "size_bytes": 672297,
+      "sha256": "98d2feff264a86336b04a4e469893520cc7e2a3b885056ff551d2ae525c2418a",
+      "size_bytes": 672777,
       "max_size_bytes": 700000,
       "abi_version": 2
     },
