@@ -330,6 +330,21 @@ CREATE TABLE IF NOT EXISTS organizational_consumer_family_progress (
     REFERENCES organizational_consumer_runs (consumer_name, run_id)
     ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS organizational_consumer_skip_categories (
+  consumer_name TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN (
+    'legacy_retired_family',
+    'legacy_invalid_observation_id',
+    'legacy_canary'
+  )),
+  messages_skipped BIGINT NOT NULL DEFAULT 0 CHECK (messages_skipped > 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (consumer_name, run_id, category),
+  FOREIGN KEY (consumer_name, run_id)
+    REFERENCES organizational_consumer_runs (consumer_name, run_id)
+    ON DELETE CASCADE
+);
 CREATE INDEX IF NOT EXISTS organizational_projection_pending_idx
   ON organizational_projection_outbox (graph_revision)
   WHERE projected_at IS NULL;
@@ -621,8 +636,77 @@ pub struct SourceEventReceipt {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConsumerMessageOutcome {
     Projected,
-    Skipped,
+    Skipped(ConsumerSkipCategory),
     Rejected,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConsumerSkipCategory {
+    LegacyRetiredFamily,
+    LegacyInvalidObservationId,
+    LegacyCanary,
+}
+
+impl ConsumerSkipCategory {
+    const ALL: [Self; 3] = [
+        Self::LegacyRetiredFamily,
+        Self::LegacyInvalidObservationId,
+        Self::LegacyCanary,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LegacyRetiredFamily => "legacy_retired_family",
+            Self::LegacyInvalidObservationId => "legacy_invalid_observation_id",
+            Self::LegacyCanary => "legacy_canary",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, StoreError> {
+        match value {
+            "legacy_retired_family" => Ok(Self::LegacyRetiredFamily),
+            "legacy_invalid_observation_id" => Ok(Self::LegacyInvalidObservationId),
+            "legacy_canary" => Ok(Self::LegacyCanary),
+            _ => Err(StoreError::Conflict(
+                "stored consumer skip category is invalid".to_owned(),
+            )),
+        }
+    }
+}
+
+fn validate_skip_categories(
+    messages_skipped: u64,
+    rows: Vec<(String, u64)>,
+) -> Result<BTreeMap<String, u64>, StoreError> {
+    if rows.len() > ConsumerSkipCategory::ALL.len() {
+        return Err(StoreError::Conflict(
+            "stored consumer skip category cardinality exceeds the closed catalog".to_owned(),
+        ));
+    }
+    let mut categories = BTreeMap::new();
+    let mut categorized = 0_u64;
+    for (name, count) in rows {
+        let category = ConsumerSkipCategory::parse(&name)?;
+        if count == 0
+            || categories
+                .insert(category.as_str().to_owned(), count)
+                .is_some()
+        {
+            return Err(StoreError::Conflict(
+                "stored consumer skip category counter is invalid".to_owned(),
+            ));
+        }
+        categorized = categorized.checked_add(count).ok_or_else(|| {
+            StoreError::Conflict("stored consumer skip category total overflowed".to_owned())
+        })?;
+    }
+    if categorized != messages_skipped {
+        return Err(StoreError::Conflict(
+            "stored consumer skip categories do not reconcile with messages_skipped".to_owned(),
+        ));
+    }
+    Ok(categories)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -639,6 +723,12 @@ pub struct ConsumerRunProgress {
     pub messages_projected: u64,
     pub messages_skipped: u64,
     pub messages_rejected: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConsumerRunReceiptState {
+    pub progress: ConsumerRunProgress,
+    pub skip_categories: BTreeMap<String, u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -665,6 +755,7 @@ pub struct ConsumerRunInspection {
     pub updated_at_unix_ms: u64,
     pub completed_at_unix_ms: Option<u64>,
     pub progress: ConsumerRunProgress,
+    pub skip_categories: BTreeMap<String, u64>,
     pub families: Vec<ConsumerFamilyProgress>,
 }
 
@@ -865,11 +956,12 @@ impl PostgresLedger {
     ) -> Result<(), StoreError> {
         let stream_sequence = sequence_i64(stream_sequence)?;
         let graph_revision = graph_revision.map(sequence_i64).transpose()?;
-        let (projected, skipped, rejected): (i64, i64, i64) = match outcome {
-            ConsumerMessageOutcome::Projected => (1, 0, 0),
-            ConsumerMessageOutcome::Skipped => (0, 1, 0),
-            ConsumerMessageOutcome::Rejected => (0, 0, 1),
-        };
+        let (projected, skipped, rejected, skip_category): (i64, i64, i64, Option<&str>) =
+            match outcome {
+                ConsumerMessageOutcome::Projected => (1, 0, 0, None),
+                ConsumerMessageOutcome::Skipped(category) => (0, 1, 0, Some(category.as_str())),
+                ConsumerMessageOutcome::Rejected => (0, 0, 1, None),
+            };
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
         let changed = transaction
@@ -898,9 +990,10 @@ impl PostgresLedger {
                     "consumer run {consumer_name}/{run_id} rejected sequence {stream_sequence}"
                 )));
             }
-        } else if let Some((source_id, family_id)) = source_family {
-            transaction
-                .execute(
+        } else {
+            if let Some((source_id, family_id)) = source_family {
+                transaction
+                    .execute(
                     "INSERT INTO organizational_consumer_family_progress (consumer_name, run_id, source_id, family_id, messages_seen, messages_projected, messages_skipped, messages_rejected, last_sequence, latest_graph_revision) VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, $9) ON CONFLICT (consumer_name, run_id, source_id, family_id) DO UPDATE SET messages_seen = organizational_consumer_family_progress.messages_seen + 1, messages_projected = organizational_consumer_family_progress.messages_projected + EXCLUDED.messages_projected, messages_skipped = organizational_consumer_family_progress.messages_skipped + EXCLUDED.messages_skipped, messages_rejected = organizational_consumer_family_progress.messages_rejected + EXCLUDED.messages_rejected, last_sequence = EXCLUDED.last_sequence, latest_graph_revision = COALESCE(EXCLUDED.latest_graph_revision, organizational_consumer_family_progress.latest_graph_revision), updated_at = NOW() WHERE organizational_consumer_family_progress.last_sequence < EXCLUDED.last_sequence",
                     &[
                         &consumer_name,
@@ -913,8 +1006,17 @@ impl PostgresLedger {
                         &stream_sequence,
                         &graph_revision,
                     ],
-                )
-                .await?;
+                    )
+                    .await?;
+            }
+            if let Some(category) = skip_category {
+                transaction
+                    .execute(
+                        "INSERT INTO organizational_consumer_skip_categories (consumer_name, run_id, category, messages_skipped) VALUES ($1, $2, $3, 1) ON CONFLICT (consumer_name, run_id, category) DO UPDATE SET messages_skipped = organizational_consumer_skip_categories.messages_skipped + 1, updated_at = NOW()",
+                        &[&consumer_name, &run_id, &category],
+                    )
+                    .await?;
+            }
         }
         transaction.commit().await?;
         Ok(())
@@ -955,23 +1057,56 @@ impl PostgresLedger {
         consumer_name: &str,
         run_id: &str,
     ) -> Result<ConsumerRunProgress, StoreError> {
-        let row = self
-            .client
-            .lock()
-            .await
+        Ok(self
+            .consumer_run_receipt_state(consumer_name, run_id)
+            .await?
+            .progress)
+    }
+
+    pub async fn consumer_run_receipt_state(
+        &self,
+        consumer_name: &str,
+        run_id: &str,
+    ) -> Result<ConsumerRunReceiptState, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        let row = transaction
             .query_opt(
                 "SELECT last_delivered_sequence, covered_sequence, messages_seen, messages_projected, messages_skipped, messages_rejected FROM organizational_consumer_runs WHERE consumer_name = $1 AND run_id = $2",
                 &[&consumer_name, &run_id],
             )
             .await?
             .ok_or_else(|| StoreError::Conflict("consumer run was not found".to_owned()))?;
-        Ok(ConsumerRunProgress {
+        let skip_rows = transaction
+            .query(
+                "SELECT category, messages_skipped FROM organizational_consumer_skip_categories WHERE consumer_name = $1 AND run_id = $2 ORDER BY category",
+                &[&consumer_name, &run_id],
+            )
+            .await?;
+        transaction.commit().await?;
+        let progress = ConsumerRunProgress {
             last_delivered_sequence: stored_u64(&row, 0, "last_delivered_sequence")?,
             covered_sequence: stored_u64(&row, 1, "covered_sequence")?,
             messages_seen: stored_u64(&row, 2, "messages_seen")?,
             messages_projected: stored_u64(&row, 3, "messages_projected")?,
             messages_skipped: stored_u64(&row, 4, "messages_skipped")?,
             messages_rejected: stored_u64(&row, 5, "messages_rejected")?,
+        };
+        let skip_categories = validate_skip_categories(
+            progress.messages_skipped,
+            skip_rows
+                .into_iter()
+                .map(|row| {
+                    Ok((
+                        row.get::<_, String>(0),
+                        stored_u64(&row, 1, "category messages_skipped")?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?,
+        )?;
+        Ok(ConsumerRunReceiptState {
+            progress,
+            skip_categories,
         })
     }
 
@@ -992,6 +1127,12 @@ impl PostgresLedger {
         let family_rows = transaction
             .query(
                 "SELECT source_id, family_id, messages_seen, messages_projected, messages_skipped, messages_rejected, last_sequence, latest_graph_revision FROM organizational_consumer_family_progress WHERE consumer_name = $1 AND run_id = $2 ORDER BY source_id, family_id",
+                &[&consumer_name, &run_id],
+            )
+            .await?;
+        let skip_rows = transaction
+            .query(
+                "SELECT category, messages_skipped FROM organizational_consumer_skip_categories WHERE consumer_name = $1 AND run_id = $2 ORDER BY category",
                 &[&consumer_name, &run_id],
             )
             .await?;
@@ -1019,6 +1160,26 @@ impl PostgresLedger {
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
         let end_sequence: Option<i64> = row.get(2);
+        let progress = ConsumerRunProgress {
+            last_delivered_sequence: stored_u64(&row, 7, "last_delivered_sequence")?,
+            covered_sequence: stored_u64(&row, 8, "covered_sequence")?,
+            messages_seen: stored_u64(&row, 9, "messages_seen")?,
+            messages_projected: stored_u64(&row, 10, "messages_projected")?,
+            messages_skipped: stored_u64(&row, 11, "messages_skipped")?,
+            messages_rejected: stored_u64(&row, 12, "messages_rejected")?,
+        };
+        let skip_categories = validate_skip_categories(
+            progress.messages_skipped,
+            skip_rows
+                .into_iter()
+                .map(|row| {
+                    Ok((
+                        row.get::<_, String>(0),
+                        stored_u64(&row, 1, "category messages_skipped")?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?,
+        )?;
         Ok(ConsumerRunInspection {
             consumer_name: consumer_name.to_owned(),
             run_id: run_id.to_owned(),
@@ -1038,14 +1199,8 @@ impl PostgresLedger {
                 .map_err(|_| {
                     StoreError::Conflict("stored completed timestamp is invalid".to_owned())
                 })?,
-            progress: ConsumerRunProgress {
-                last_delivered_sequence: stored_u64(&row, 7, "last_delivered_sequence")?,
-                covered_sequence: stored_u64(&row, 8, "covered_sequence")?,
-                messages_seen: stored_u64(&row, 9, "messages_seen")?,
-                messages_projected: stored_u64(&row, 10, "messages_projected")?,
-                messages_skipped: stored_u64(&row, 11, "messages_skipped")?,
-                messages_rejected: stored_u64(&row, 12, "messages_rejected")?,
-            },
+            progress,
+            skip_categories,
             families,
         })
     }
@@ -2988,6 +3143,7 @@ mod tests {
             "organizational_source_collection_latest_idx",
             "organizational_consumer_runs",
             "organizational_consumer_family_progress",
+            "organizational_consumer_skip_categories",
             "last_delivered_sequence BIGINT NOT NULL DEFAULT 0",
             "current_setting(''cerebro.tenant_id'', true)",
             "DEFERRABLE INITIALLY DEFERRED",
@@ -3044,6 +3200,81 @@ mod tests {
                 "claim replacement query missing {required}"
             );
         }
+    }
+
+    #[test]
+    fn consumer_skip_categories_are_closed_and_reconciled() {
+        let categories = validate_skip_categories(
+            4,
+            vec![
+                ("legacy_canary".to_owned(), 1),
+                ("legacy_invalid_observation_id".to_owned(), 2),
+                ("legacy_retired_family".to_owned(), 1),
+            ],
+        )
+        .unwrap();
+        assert_eq!(categories.values().sum::<u64>(), 4);
+        assert_eq!(categories.len(), ConsumerSkipCategory::ALL.len());
+
+        for rows in [
+            Vec::new(),
+            vec![("legacy_canary".to_owned(), 1)],
+            vec![("unknown".to_owned(), 2)],
+            vec![
+                ("legacy_canary".to_owned(), 1),
+                ("legacy_invalid_observation_id".to_owned(), 1),
+                ("legacy_retired_family".to_owned(), 1),
+                ("legacy_canary".to_owned(), 1),
+            ],
+        ] {
+            assert!(validate_skip_categories(2, rows).is_err());
+        }
+        assert!(validate_skip_categories(0, Vec::new()).is_ok());
+    }
+
+    #[test]
+    fn consumer_run_inspection_serializes_durable_skip_categories() {
+        let inspection = ConsumerRunInspection {
+            consumer_name: "organizational-graph-replay".to_owned(),
+            run_id: "replay-proof".to_owned(),
+            mode: "replay".to_owned(),
+            start_sequence: 1,
+            end_sequence: Some(50),
+            status: "completed".to_owned(),
+            started_at_unix_ms: 1,
+            updated_at_unix_ms: 2,
+            completed_at_unix_ms: Some(2),
+            progress: ConsumerRunProgress {
+                last_delivered_sequence: 50,
+                covered_sequence: 50,
+                messages_seen: 3,
+                messages_projected: 1,
+                messages_skipped: 2,
+                messages_rejected: 0,
+            },
+            skip_categories: BTreeMap::from([
+                ("legacy_canary".to_owned(), 1),
+                ("legacy_retired_family".to_owned(), 1),
+            ]),
+            families: Vec::new(),
+        };
+        let value = serde_json::to_value(inspection).unwrap();
+        assert_eq!(
+            value["skip_categories"],
+            serde_json::json!({
+                "legacy_canary": 1,
+                "legacy_retired_family": 1,
+            })
+        );
+        assert_eq!(
+            value["progress"]["messages_skipped"],
+            value["skip_categories"]
+                .as_object()
+                .unwrap()
+                .values()
+                .map(|count| count.as_u64().unwrap())
+                .sum::<u64>()
+        );
     }
 
     #[test]

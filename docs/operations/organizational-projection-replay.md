@@ -83,8 +83,13 @@ without a source envelope, and permanent projection failures for the retired
 collector events project through exact compiled native relationship and
 application templates. Replay compatibility applies only in replay mode. The
 forward consumer continues to reject every legacy shape.
-Inspect the completed run and review the per-source-family skipped counters as
-the durable evidence for these records.
+Every skipped message is also recorded in one closed, payload-free category:
+`legacy_retired_family`, `legacy_invalid_observation_id`, or `legacy_canary`.
+The terminal run receipt and `inspect-consumer-run` output expose these durable
+category counters as `skip_categories`. Their sum must equal
+`messages_skipped`; a missing, unknown, zero, or mismatched category counter
+fails receipt generation closed. Per-source-family progress remains available
+for additional diagnosis, but it does not replace the categorized total.
 
 ## Repair an active-family rejection
 
@@ -136,7 +141,9 @@ consumer name, run ID, and start sequence.
 ## Completion and authority prerequisite
 
 The process emits `cerebro.organizational-consumer-run/v1` JSON and persists the
-same progress in `organizational_consumer_runs`.
+same progress in `organizational_consumer_runs`. The additive `skip_categories`
+object comes from `organizational_consumer_skip_categories`, which is updated in
+the same transaction as the cumulative skipped-message counter.
 
 A replay is materialization-complete only when all of these are true:
 
@@ -148,10 +155,11 @@ A replay is materialization-complete only when all of these are true:
   `start_sequence = end_sequence + 1`.
 - the replay `completed_at` precedes the forward run `started_at`.
 
-`messages_skipped` is explicit. It includes retained events outside the
-portable organizational projection contract and must be reviewed before using
-the replay as parity evidence. Service health, Neo4j connectivity, messages
-seen, or a drained consumer alone are not authority-readiness signals.
+`messages_skipped` is explicit and fully categorized. It includes retained
+events outside the portable organizational projection contract and must be
+reviewed before using the replay as parity evidence. Service health, Neo4j
+connectivity, messages seen, or a drained consumer alone are not
+authority-readiness signals.
 
 Emit the inspection payload from the same candidate:
 
