@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     env,
     error::Error,
     io,
@@ -10,7 +11,9 @@ use async_nats::jetstream::{
     AckKind,
     consumer::{AckPolicy, DeliverPolicy, pull},
 };
-use cerebro_organizational_store::{ConsumerMessageOutcome, ConsumerRunProgress, PostgresLedger};
+use cerebro_organizational_store::{
+    ConsumerMessageOutcome, ConsumerRunReceiptState, ConsumerSkipCategory, PostgresLedger,
+};
 use cerebro_source_runtime_next::{AppendLogDecodeError, CommittedSourceEvent};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -386,9 +389,10 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
     let start_sequence = stored_fence.start_sequence;
     let end_sequence = stored_fence.end_sequence;
     let mut counters = ConsumerCounters::default();
-    let persisted = load_counters(&runtime, &config).await?;
+    let persisted = load_receipt_state(&runtime, &config).await?;
+    let persisted_counters = ConsumerCounters::from(&persisted);
     let next_unprocessed =
-        next_unprocessed_sequence(start_sequence, persisted.last_delivered_sequence);
+        next_unprocessed_sequence(start_sequence, persisted_counters.last_delivered_sequence);
     if retention_gap(stream_state.first_sequence, next_unprocessed, end_sequence) {
         runtime
             .authority
@@ -405,7 +409,7 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
         &config,
         start_sequence,
         end_sequence,
-        persisted.covered_sequence,
+        persisted_counters.covered_sequence,
         &persisted,
         None,
     )?;
@@ -446,13 +450,14 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                 .authority
                 .finish_consumer_run(&config.durable_name, &config.run_id, "stopped", None)
                 .await?;
-            let persisted = load_counters(&runtime, &config).await?;
+            let persisted = load_receipt_state(&runtime, &config).await?;
+            let persisted_counters = ConsumerCounters::from(&persisted);
             emit_receipt(
                 "stopped",
                 &config,
                 start_sequence,
                 end_sequence,
-                persisted.covered_sequence,
+                persisted_counters.covered_sequence,
                 &persisted,
                 None,
             )?;
@@ -465,13 +470,14 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     .authority
                     .finish_consumer_run(&config.durable_name, &config.run_id, "stopped", None)
                     .await?;
-                let persisted = load_counters(&runtime, &config).await?;
+                let persisted = load_receipt_state(&runtime, &config).await?;
+                let persisted_counters = ConsumerCounters::from(&persisted);
                 emit_receipt(
                     "stopped",
                     &config,
                     start_sequence,
                     end_sequence,
-                    persisted.covered_sequence,
+                    persisted_counters.covered_sequence,
                     &persisted,
                     None,
                 )?;
@@ -508,7 +514,9 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                 &runtime,
                 &config,
                 stream_sequence,
-                ConsumerMessageOutcome::Skipped,
+                ConsumerMessageOutcome::Skipped(
+                    ConsumerSkipCategory::SubjectOutsideProjectionContract,
+                ),
                 None,
                 None,
                 &mut counters,
@@ -540,7 +548,9 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     &runtime,
                     &config,
                     stream_sequence,
-                    ConsumerMessageOutcome::Skipped,
+                    ConsumerMessageOutcome::Skipped(
+                        ConsumerSkipCategory::SourceOutsideCompiledCatalog,
+                    ),
                     Some((subject_source, subject_family)),
                     None,
                     &mut counters,
@@ -567,7 +577,7 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                         &runtime,
                         &config,
                         stream_sequence,
-                        ConsumerMessageOutcome::Skipped,
+                        ConsumerMessageOutcome::Skipped(skip_category(reason)),
                         Some((subject_source, subject_family)),
                         None,
                         &mut counters,
@@ -637,11 +647,10 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
         let record_digest = event.record_digest();
         match runtime.project_committed_shadow(event).await {
             Ok(response) => {
-                let outcome = if response.projected {
-                    ConsumerMessageOutcome::Projected
-                } else {
-                    ConsumerMessageOutcome::Skipped
-                };
+                if !response.projected {
+                    return Err("recognized append-log event was not projected".into());
+                }
+                let outcome = ConsumerMessageOutcome::Projected;
                 record_progress(
                     &runtime,
                     &config,
@@ -686,7 +695,7 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                             &runtime,
                             &config,
                             stream_sequence,
-                            ConsumerMessageOutcome::Skipped,
+                            ConsumerMessageOutcome::Skipped(skip_category(reason)),
                             Some((&event_source, &event_family)),
                             None,
                             &mut counters,
@@ -848,28 +857,27 @@ struct ConsumerCounters {
     messages_rejected: u64,
 }
 
-impl From<ConsumerRunProgress> for ConsumerCounters {
-    fn from(value: ConsumerRunProgress) -> Self {
+impl From<&ConsumerRunReceiptState> for ConsumerCounters {
+    fn from(value: &ConsumerRunReceiptState) -> Self {
         Self {
-            last_delivered_sequence: value.last_delivered_sequence,
-            covered_sequence: value.covered_sequence,
-            messages_seen: value.messages_seen,
-            messages_projected: value.messages_projected,
-            messages_skipped: value.messages_skipped,
-            messages_rejected: value.messages_rejected,
+            last_delivered_sequence: value.progress.last_delivered_sequence,
+            covered_sequence: value.progress.covered_sequence,
+            messages_seen: value.progress.messages_seen,
+            messages_projected: value.progress.messages_projected,
+            messages_skipped: value.progress.messages_skipped,
+            messages_rejected: value.progress.messages_rejected,
         }
     }
 }
 
-async fn load_counters(
+async fn load_receipt_state(
     runtime: &ProjectionRuntime,
     config: &ConsumerConfig,
-) -> Result<ConsumerCounters, Box<dyn Error>> {
+) -> Result<ConsumerRunReceiptState, Box<dyn Error>> {
     Ok(runtime
         .authority
-        .consumer_run_progress(&config.durable_name, &config.run_id)
-        .await?
-        .into())
+        .consumer_run_receipt_state(&config.durable_name, &config.run_id)
+        .await?)
 }
 
 async fn record_progress(
@@ -897,7 +905,7 @@ async fn record_progress(
     counters.messages_seen += 1;
     match outcome {
         ConsumerMessageOutcome::Projected => counters.messages_projected += 1,
-        ConsumerMessageOutcome::Skipped => counters.messages_skipped += 1,
+        ConsumerMessageOutcome::Skipped(_) => counters.messages_skipped += 1,
         ConsumerMessageOutcome::Rejected => counters.messages_rejected += 1,
     }
     Ok(())
@@ -920,12 +928,13 @@ async fn finish_replay(
     end_sequence: u64,
     _counters: &ConsumerCounters,
 ) -> Result<(), Box<dyn Error>> {
-    let persisted_before_finish = load_counters(runtime, config).await?;
-    if persisted_before_finish.last_delivered_sequence < end_sequence {
+    let persisted_before_finish = load_receipt_state(runtime, config).await?;
+    let persisted_before_finish_counters = ConsumerCounters::from(&persisted_before_finish);
+    if persisted_before_finish_counters.last_delivered_sequence < end_sequence {
         let first_retained_sequence = current_first_sequence(config).await?;
         let next_unprocessed = next_unprocessed_sequence(
             start_sequence,
-            persisted_before_finish.last_delivered_sequence,
+            persisted_before_finish_counters.last_delivered_sequence,
         );
         if retention_gap(
             first_retained_sequence,
@@ -941,7 +950,7 @@ async fn finish_replay(
                 config,
                 start_sequence,
                 Some(end_sequence),
-                persisted_before_finish.covered_sequence,
+                persisted_before_finish_counters.covered_sequence,
                 &persisted_before_finish,
                 Some("retention_gap"),
             )?;
@@ -951,13 +960,14 @@ async fn finish_replay(
             .into());
         }
     }
-    let completion_basis = if persisted_before_finish.last_delivered_sequence >= end_sequence {
-        "delivered_end_sequence"
-    } else {
-        "zero_eligible_pending"
-    };
-    let status = if persisted_before_finish.messages_rejected == 0
-        && persisted_before_finish.messages_projected > 0
+    let completion_basis =
+        if persisted_before_finish_counters.last_delivered_sequence >= end_sequence {
+            "delivered_end_sequence"
+        } else {
+            "zero_eligible_pending"
+        };
+    let status = if persisted_before_finish_counters.messages_rejected == 0
+        && persisted_before_finish_counters.messages_projected > 0
     {
         "completed"
     } else {
@@ -972,7 +982,8 @@ async fn finish_replay(
             (status == "completed").then_some(end_sequence),
         )
         .await?;
-    let persisted = load_counters(runtime, config).await?;
+    let persisted = load_receipt_state(runtime, config).await?;
+    let persisted_counters = ConsumerCounters::from(&persisted);
     emit_receipt(
         status,
         config,
@@ -981,7 +992,7 @@ async fn finish_replay(
         if status == "completed" {
             end_sequence
         } else {
-            persisted.covered_sequence
+            persisted_counters.covered_sequence
         },
         &persisted,
         Some(completion_basis),
@@ -1015,6 +1026,7 @@ struct ConsumerReceipt<'a> {
     last_delivered_sequence: u64,
     completion_basis: Option<&'a str>,
     counters: &'a ConsumerCounters,
+    skip_categories: &'a BTreeMap<String, u64>,
 }
 
 fn emit_receipt(
@@ -1023,9 +1035,12 @@ fn emit_receipt(
     start_sequence: u64,
     end_sequence: Option<u64>,
     covered_sequence: u64,
-    counters: &ConsumerCounters,
+    state: &ConsumerRunReceiptState,
     completion_basis: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
+    let counters = ConsumerCounters::from(state);
+    let skip_categories = &state.skip_categories;
+    validate_receipt_skip_categories(counters.messages_skipped, skip_categories)?;
     println!(
         "{}",
         serde_json::to_string(&ConsumerReceipt {
@@ -1041,9 +1056,31 @@ fn emit_receipt(
             covered_sequence,
             last_delivered_sequence: counters.last_delivered_sequence,
             completion_basis,
-            counters,
+            counters: &counters,
+            skip_categories,
         })?
     );
+    Ok(())
+}
+
+fn validate_receipt_skip_categories(
+    messages_skipped: u64,
+    categories: &BTreeMap<String, u64>,
+) -> Result<(), Box<dyn Error>> {
+    if categories.len() > ConsumerSkipCategory::ALL.len()
+        || categories.keys().any(|category| {
+            !ConsumerSkipCategory::ALL
+                .iter()
+                .any(|known| known.as_str() == category)
+        })
+        || categories.values().any(|count| *count == 0)
+        || categories
+            .values()
+            .try_fold(0_u64, |total, count| total.checked_add(*count))
+            != Some(messages_skipped)
+    {
+        return Err("consumer skip categories do not match messages_skipped".into());
+    }
     Ok(())
 }
 
@@ -1258,6 +1295,20 @@ fn decode_skip_category(reason: &str) -> &'static str {
 
 fn projection_skip_category(_reason: &str) -> &'static str {
     "unsupported_legacy_record"
+}
+
+fn skip_category(reason: &str) -> ConsumerSkipCategory {
+    match reason {
+        "legacy_invalid_observation_id" => ConsumerSkipCategory::LegacyInvalidObservationId,
+        "legacy_catalog_canary_without_source_envelope" => {
+            ConsumerSkipCategory::LegacyCatalogCanaryWithoutSourceEnvelope
+        }
+        "legacy_missing_source_owned_kind" => ConsumerSkipCategory::LegacyMissingSourceOwnedKind,
+        "legacy_retired_family_projection_incompatible" => {
+            ConsumerSkipCategory::LegacyRetiredFamilyProjectionIncompatible
+        }
+        _ => unreachable!("closed legacy skip reason"),
+    }
 }
 
 fn decode_error_category(error: &EventDecodeError) -> Option<&'static str> {
@@ -1682,6 +1733,22 @@ mod tests {
                 forward_reason
             );
         }
+        assert_eq!(
+            skip_category("legacy_missing_source_owned_kind"),
+            ConsumerSkipCategory::LegacyMissingSourceOwnedKind
+        );
+        assert_eq!(
+            skip_category("legacy_invalid_observation_id"),
+            ConsumerSkipCategory::LegacyInvalidObservationId
+        );
+        assert_eq!(
+            skip_category("legacy_catalog_canary_without_source_envelope"),
+            ConsumerSkipCategory::LegacyCatalogCanaryWithoutSourceEnvelope
+        );
+        assert_eq!(
+            skip_category("legacy_retired_family_projection_incompatible"),
+            ConsumerSkipCategory::LegacyRetiredFamilyProjectionIncompatible
+        );
     }
 
     #[test]
@@ -1947,6 +2014,10 @@ mod tests {
             messages_skipped: 2,
             messages_rejected: 0,
         };
+        let skip_categories = BTreeMap::from([
+            ("legacy_invalid_observation_id".to_owned(), 1),
+            ("legacy_missing_source_owned_kind".to_owned(), 1),
+        ]);
         let receipt = ConsumerReceipt {
             schema_version: "cerebro.organizational-consumer-run/v1",
             status: "completed",
@@ -1961,6 +2032,7 @@ mod tests {
             last_delivered_sequence: 41,
             completion_basis: Some("zero_eligible_pending"),
             counters: &counters,
+            skip_categories: &skip_categories,
         };
         let value = serde_json::to_value(receipt).unwrap();
         assert_eq!(value["status"], "completed");
@@ -1968,6 +2040,53 @@ mod tests {
         assert_eq!(value["covered_sequence"], 50);
         assert_eq!(value["counters"]["messages_skipped"], 2);
         assert_eq!(value["counters"]["messages_rejected"], 0);
+        assert_eq!(
+            value["skip_categories"],
+            serde_json::json!({
+                "legacy_invalid_observation_id": 1,
+                "legacy_missing_source_owned_kind": 1,
+            })
+        );
+    }
+
+    #[test]
+    fn run_receipt_skip_categories_fail_closed() {
+        let cases = [
+            (2, BTreeMap::new()),
+            (
+                2,
+                BTreeMap::from([(
+                    "legacy_catalog_canary_without_source_envelope".to_owned(),
+                    1,
+                )]),
+            ),
+            (1, BTreeMap::from([("unknown".to_owned(), 1)])),
+            (
+                4,
+                BTreeMap::from([
+                    (
+                        "legacy_catalog_canary_without_source_envelope".to_owned(),
+                        1,
+                    ),
+                    ("legacy_invalid_observation_id".to_owned(), 1),
+                    ("legacy_missing_source_owned_kind".to_owned(), 1),
+                    (
+                        "legacy_retired_family_projection_incompatible".to_owned(),
+                        1,
+                    ),
+                    ("source_outside_compiled_catalog".to_owned(), 1),
+                    ("subject_outside_projection_contract".to_owned(), 1),
+                    ("unknown".to_owned(), 1),
+                ]),
+            ),
+        ];
+        for (messages_skipped, categories) in cases {
+            assert!(
+                validate_receipt_skip_categories(messages_skipped, &categories).is_err(),
+                "unexpected categories {categories:?}"
+            );
+        }
+        assert!(validate_receipt_skip_categories(0, &BTreeMap::new()).is_ok());
     }
 
     #[test]
@@ -2093,7 +2212,9 @@ mod tests {
     #[test]
     fn checkpoint_is_only_eligible_after_a_recognized_projection() {
         assert!(checkpoint_eligible(ConsumerMessageOutcome::Projected));
-        assert!(!checkpoint_eligible(ConsumerMessageOutcome::Skipped));
+        assert!(!checkpoint_eligible(ConsumerMessageOutcome::Skipped(
+            ConsumerSkipCategory::LegacyMissingSourceOwnedKind,
+        )));
         assert!(!checkpoint_eligible(ConsumerMessageOutcome::Rejected));
         let raw = b"projected append-log bytes";
         let actual = digest_bytes(raw);
