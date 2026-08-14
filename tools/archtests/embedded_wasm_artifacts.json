@@ -20,48 +20,48 @@
     {
       "name": "sourcecoverage-evaluator",
       "path": "internal/sourcecoverage/evaluator.wasm",
-      "sha256": "c75ec4e8058290928e3064fbead877b3f9a4f0666fd858b73b7b832ff10e787c",
-      "size_bytes": 150666,
+      "sha256": "23f01a583337aeab76cf93b0bdf412977adefd3f5a32d1df24be2b7a0f48933b",
+      "size_bytes": 150866,
       "max_size_bytes": 175000,
       "abi_version": 1
     },
     {
       "name": "panopticon-resource-extractor",
       "path": "internal/sourceprojection/panopticonresources.wasm",
-      "sha256": "b6267ff1b957dcd750099e8cedbf6d109019127b141c4664c07b5d9b5ea76f99",
-      "size_bytes": 134512,
+      "sha256": "760efd2240f4cc2ca01b66a2b02276c1dfd1a787ec3bcf7a94709b5f4b57ee48",
+      "size_bytes": 134680,
       "max_size_bytes": 160000,
       "abi_version": 2
     },
     {
       "name": "mitre-context-evaluator",
       "path": "internal/mitre/evaluator.wasm",
-      "sha256": "f20a62d247c2ae494ef9ce7c128ca7d1b8bf8f2b30ea02e9bdb6bfc9104f0026",
-      "size_bytes": 738188,
+      "sha256": "523e2df99a5496e8af1134da57a8acae1a091497002b5f63ab2ecc5ce3df7c66",
+      "size_bytes": 738700,
       "max_size_bytes": 800000,
       "abi_version": 1
     },
     {
       "name": "sourceruntime-event-admission",
       "path": "internal/sourceruntime/eventadmission/eventadmission.wasm",
-      "sha256": "a4ae94649e42247480f8dbc9da4d26163e8d5a1de356e841b64c8a2d2754a6ec",
-      "size_bytes": 262502,
+      "sha256": "0a0e1b31cad3471a5d5ab65db0e2bf881deb0956663cb5a54ddc2e7334dfa808",
+      "size_bytes": 262710,
       "max_size_bytes": 265000,
       "abi_version": 2
     },
     {
       "name": "sourceruntime-record-kernel",
       "path": "internal/sourceruntime/recordkernel/recordkernel.wasm",
-      "sha256": "7a83481aef0cf123815737ab2afddfaafaeee2c8fe718e08edb59ed8635784b5",
-      "size_bytes": 168738,
+      "sha256": "a67310d70335f95db43502d1b61cca79284bf5ea365f655fbd80570f2935d73b",
+      "size_bytes": 169042,
       "max_size_bytes": 200000,
       "abi_version": 1
     },
     {
       "name": "security-path-evaluator",
       "path": "internal/securitypathdelta/evaluator.wasm",
-      "sha256": "573f3d3ee6cfdf586e8db2371a2875889214d4e6f21e013ac5937cdda75c0cba",
-      "size_bytes": 345851,
+      "sha256": "e8f76d47291d5f37626a4c3f445b43f56ff00eece1710c5b18b05ce21536304e",
+      "size_bytes": 346187,
       "max_size_bytes": 400000,
       "abi_version": 1
     }
