@@ -4,7 +4,7 @@ This document describes the current bootstrap service on `main`. Historical ware
 
 ## Prerequisites
 
-- Go 1.26+; the repository pins `go1.26.5` in `go.mod`.
+- Go 1.26+; the repository pins `go1.26.6` in `go.mod`.
 - Rust 1.93.1 with Cargo; `rust-toolchain.toml` installs the pinned toolchain, rustfmt, Clippy, and the Wasm build target.
 - `cargo-deny` 0.20.2 for local Rust dependency-policy checks.
 - The `nightly-2026-06-09` toolchain and `cargo-fuzz` 0.13.1 only when running the static validator fuzz target locally.

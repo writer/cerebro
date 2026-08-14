@@ -8,12 +8,26 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TOOL = "golang.org/x/vuln/cmd/govulncheck@v1.1.4"
+DEFAULT_GO_MEMORY_LIMIT = "4GiB"
+DEFAULT_GO_MAX_PROCS = "2"
+
+
+def govulncheck_environment(source: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ if source is None else source)
+    env["GOFLAGS"] = ""
+    env["GOTOOLCHAIN"] = env.get("GOTOOLCHAIN", "go1.26.6")
+    env["GOMEMLIMIT"] = DEFAULT_GO_MEMORY_LIMIT
+    env["GOMAXPROCS"] = DEFAULT_GO_MAX_PROCS
+    return env
+
+
 def parse_ignore_file(path: Path) -> tuple[set[str], list[str]]:
     ignored: set[str] = set()
     errors: list[str] = []
@@ -70,11 +84,21 @@ def is_reachable_finding(finding: dict[str, Any]) -> bool:
 
 
 def run_govulncheck(patterns: list[str]) -> tuple[int, str, str]:
-    env = os.environ.copy()
-    env["GOFLAGS"] = ""
-    env["GOTOOLCHAIN"] = env.get("GOTOOLCHAIN", "go1.26.5")
+    env = govulncheck_environment()
     command = ["go", "run", DEFAULT_TOOL, "-format", "json", *patterns]
+    started_at = time.monotonic()
+    print(
+        "govulncheck: starting "
+        f"tool={DEFAULT_TOOL} patterns={len(patterns)} "
+        f"gomemlimit={env['GOMEMLIMIT']} gomaxprocs={env['GOMAXPROCS']}",
+        flush=True,
+    )
     completed = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, check=False)
+    elapsed_seconds = time.monotonic() - started_at
+    print(
+        f"govulncheck: completed exit_code={completed.returncode} elapsed_seconds={elapsed_seconds:.1f}",
+        flush=True,
+    )
     return completed.returncode, completed.stdout, completed.stderr
 
 
