@@ -334,9 +334,12 @@ CREATE TABLE IF NOT EXISTS organizational_consumer_skip_categories (
   consumer_name TEXT NOT NULL,
   run_id TEXT NOT NULL,
   category TEXT NOT NULL CHECK (category IN (
-    'legacy_retired_family',
+    'subject_outside_projection_contract',
+    'source_outside_compiled_catalog',
+    'legacy_missing_source_owned_kind',
     'legacy_invalid_observation_id',
-    'legacy_canary'
+    'legacy_catalog_canary_without_source_envelope',
+    'legacy_retired_family_projection_incompatible'
   )),
   messages_skipped BIGINT NOT NULL DEFAULT 0 CHECK (messages_skipped > 0),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -643,31 +646,51 @@ pub enum ConsumerMessageOutcome {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConsumerSkipCategory {
-    LegacyRetiredFamily,
+    SubjectOutsideProjectionContract,
+    SourceOutsideCompiledCatalog,
+    LegacyMissingSourceOwnedKind,
     LegacyInvalidObservationId,
-    LegacyCanary,
+    LegacyCatalogCanaryWithoutSourceEnvelope,
+    LegacyRetiredFamilyProjectionIncompatible,
 }
 
 impl ConsumerSkipCategory {
-    const ALL: [Self; 3] = [
-        Self::LegacyRetiredFamily,
+    pub const ALL: [Self; 6] = [
+        Self::SubjectOutsideProjectionContract,
+        Self::SourceOutsideCompiledCatalog,
+        Self::LegacyMissingSourceOwnedKind,
         Self::LegacyInvalidObservationId,
-        Self::LegacyCanary,
+        Self::LegacyCatalogCanaryWithoutSourceEnvelope,
+        Self::LegacyRetiredFamilyProjectionIncompatible,
     ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::LegacyRetiredFamily => "legacy_retired_family",
+            Self::SubjectOutsideProjectionContract => "subject_outside_projection_contract",
+            Self::SourceOutsideCompiledCatalog => "source_outside_compiled_catalog",
+            Self::LegacyMissingSourceOwnedKind => "legacy_missing_source_owned_kind",
             Self::LegacyInvalidObservationId => "legacy_invalid_observation_id",
-            Self::LegacyCanary => "legacy_canary",
+            Self::LegacyCatalogCanaryWithoutSourceEnvelope => {
+                "legacy_catalog_canary_without_source_envelope"
+            }
+            Self::LegacyRetiredFamilyProjectionIncompatible => {
+                "legacy_retired_family_projection_incompatible"
+            }
         }
     }
 
     fn parse(value: &str) -> Result<Self, StoreError> {
         match value {
-            "legacy_retired_family" => Ok(Self::LegacyRetiredFamily),
+            "subject_outside_projection_contract" => Ok(Self::SubjectOutsideProjectionContract),
+            "source_outside_compiled_catalog" => Ok(Self::SourceOutsideCompiledCatalog),
+            "legacy_missing_source_owned_kind" => Ok(Self::LegacyMissingSourceOwnedKind),
             "legacy_invalid_observation_id" => Ok(Self::LegacyInvalidObservationId),
-            "legacy_canary" => Ok(Self::LegacyCanary),
+            "legacy_catalog_canary_without_source_envelope" => {
+                Ok(Self::LegacyCatalogCanaryWithoutSourceEnvelope)
+            }
+            "legacy_retired_family_projection_incompatible" => {
+                Ok(Self::LegacyRetiredFamilyProjectionIncompatible)
+            }
             _ => Err(StoreError::Conflict(
                 "stored consumer skip category is invalid".to_owned(),
             )),
@@ -3205,26 +3228,47 @@ mod tests {
     #[test]
     fn consumer_skip_categories_are_closed_and_reconciled() {
         let categories = validate_skip_categories(
-            4,
+            7,
             vec![
-                ("legacy_canary".to_owned(), 1),
+                (
+                    "legacy_catalog_canary_without_source_envelope".to_owned(),
+                    1,
+                ),
                 ("legacy_invalid_observation_id".to_owned(), 2),
-                ("legacy_retired_family".to_owned(), 1),
+                ("legacy_missing_source_owned_kind".to_owned(), 1),
+                (
+                    "legacy_retired_family_projection_incompatible".to_owned(),
+                    1,
+                ),
+                ("source_outside_compiled_catalog".to_owned(), 1),
+                ("subject_outside_projection_contract".to_owned(), 1),
             ],
         )
         .unwrap();
-        assert_eq!(categories.values().sum::<u64>(), 4);
+        assert_eq!(categories.values().sum::<u64>(), 7);
         assert_eq!(categories.len(), ConsumerSkipCategory::ALL.len());
 
         for rows in [
             Vec::new(),
-            vec![("legacy_canary".to_owned(), 1)],
+            vec![(
+                "legacy_catalog_canary_without_source_envelope".to_owned(),
+                1,
+            )],
             vec![("unknown".to_owned(), 2)],
             vec![
-                ("legacy_canary".to_owned(), 1),
+                (
+                    "legacy_catalog_canary_without_source_envelope".to_owned(),
+                    1,
+                ),
                 ("legacy_invalid_observation_id".to_owned(), 1),
-                ("legacy_retired_family".to_owned(), 1),
-                ("legacy_canary".to_owned(), 1),
+                ("legacy_missing_source_owned_kind".to_owned(), 1),
+                (
+                    "legacy_retired_family_projection_incompatible".to_owned(),
+                    1,
+                ),
+                ("source_outside_compiled_catalog".to_owned(), 1),
+                ("subject_outside_projection_contract".to_owned(), 1),
+                ("subject_outside_projection_contract".to_owned(), 1),
             ],
         ] {
             assert!(validate_skip_categories(2, rows).is_err());
@@ -3253,8 +3297,11 @@ mod tests {
                 messages_rejected: 0,
             },
             skip_categories: BTreeMap::from([
-                ("legacy_canary".to_owned(), 1),
-                ("legacy_retired_family".to_owned(), 1),
+                (
+                    "legacy_catalog_canary_without_source_envelope".to_owned(),
+                    1,
+                ),
+                ("legacy_missing_source_owned_kind".to_owned(), 1),
             ]),
             families: Vec::new(),
         };
@@ -3262,8 +3309,8 @@ mod tests {
         assert_eq!(
             value["skip_categories"],
             serde_json::json!({
-                "legacy_canary": 1,
-                "legacy_retired_family": 1,
+                "legacy_catalog_canary_without_source_envelope": 1,
+                "legacy_missing_source_owned_kind": 1,
             })
         );
         assert_eq!(

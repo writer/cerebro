@@ -514,7 +514,9 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                 &runtime,
                 &config,
                 stream_sequence,
-                ConsumerMessageOutcome::Skipped(ConsumerSkipCategory::LegacyRetiredFamily),
+                ConsumerMessageOutcome::Skipped(
+                    ConsumerSkipCategory::SubjectOutsideProjectionContract,
+                ),
                 None,
                 None,
                 &mut counters,
@@ -546,7 +548,9 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     &runtime,
                     &config,
                     stream_sequence,
-                    ConsumerMessageOutcome::Skipped(ConsumerSkipCategory::LegacyRetiredFamily),
+                    ConsumerMessageOutcome::Skipped(
+                        ConsumerSkipCategory::SourceOutsideCompiledCatalog,
+                    ),
                     Some((subject_source, subject_family)),
                     None,
                     &mut counters,
@@ -1063,12 +1067,11 @@ fn validate_receipt_skip_categories(
     messages_skipped: u64,
     categories: &BTreeMap<String, u64>,
 ) -> Result<(), Box<dyn Error>> {
-    if categories.len() > 3
+    if categories.len() > ConsumerSkipCategory::ALL.len()
         || categories.keys().any(|category| {
-            !matches!(
-                category.as_str(),
-                "legacy_retired_family" | "legacy_invalid_observation_id" | "legacy_canary"
-            )
+            !ConsumerSkipCategory::ALL
+                .iter()
+                .any(|known| known.as_str() == category)
         })
         || categories.values().any(|count| *count == 0)
         || categories
@@ -1297,9 +1300,12 @@ fn projection_skip_category(_reason: &str) -> &'static str {
 fn skip_category(reason: &str) -> ConsumerSkipCategory {
     match reason {
         "legacy_invalid_observation_id" => ConsumerSkipCategory::LegacyInvalidObservationId,
-        "legacy_catalog_canary_without_source_envelope" => ConsumerSkipCategory::LegacyCanary,
-        "legacy_missing_source_owned_kind" | "legacy_retired_family_projection_incompatible" => {
-            ConsumerSkipCategory::LegacyRetiredFamily
+        "legacy_catalog_canary_without_source_envelope" => {
+            ConsumerSkipCategory::LegacyCatalogCanaryWithoutSourceEnvelope
+        }
+        "legacy_missing_source_owned_kind" => ConsumerSkipCategory::LegacyMissingSourceOwnedKind,
+        "legacy_retired_family_projection_incompatible" => {
+            ConsumerSkipCategory::LegacyRetiredFamilyProjectionIncompatible
         }
         _ => unreachable!("closed legacy skip reason"),
     }
@@ -1729,7 +1735,7 @@ mod tests {
         }
         assert_eq!(
             skip_category("legacy_missing_source_owned_kind"),
-            ConsumerSkipCategory::LegacyRetiredFamily
+            ConsumerSkipCategory::LegacyMissingSourceOwnedKind
         );
         assert_eq!(
             skip_category("legacy_invalid_observation_id"),
@@ -1737,11 +1743,11 @@ mod tests {
         );
         assert_eq!(
             skip_category("legacy_catalog_canary_without_source_envelope"),
-            ConsumerSkipCategory::LegacyCanary
+            ConsumerSkipCategory::LegacyCatalogCanaryWithoutSourceEnvelope
         );
         assert_eq!(
             skip_category("legacy_retired_family_projection_incompatible"),
-            ConsumerSkipCategory::LegacyRetiredFamily
+            ConsumerSkipCategory::LegacyRetiredFamilyProjectionIncompatible
         );
     }
 
@@ -2010,7 +2016,7 @@ mod tests {
         };
         let skip_categories = BTreeMap::from([
             ("legacy_invalid_observation_id".to_owned(), 1),
-            ("legacy_retired_family".to_owned(), 1),
+            ("legacy_missing_source_owned_kind".to_owned(), 1),
         ]);
         let receipt = ConsumerReceipt {
             schema_version: "cerebro.organizational-consumer-run/v1",
@@ -2038,7 +2044,7 @@ mod tests {
             value["skip_categories"],
             serde_json::json!({
                 "legacy_invalid_observation_id": 1,
-                "legacy_retired_family": 1,
+                "legacy_missing_source_owned_kind": 1,
             })
         );
     }
@@ -2047,14 +2053,29 @@ mod tests {
     fn run_receipt_skip_categories_fail_closed() {
         let cases = [
             (2, BTreeMap::new()),
-            (2, BTreeMap::from([("legacy_canary".to_owned(), 1)])),
+            (
+                2,
+                BTreeMap::from([(
+                    "legacy_catalog_canary_without_source_envelope".to_owned(),
+                    1,
+                )]),
+            ),
             (1, BTreeMap::from([("unknown".to_owned(), 1)])),
             (
                 4,
                 BTreeMap::from([
-                    ("legacy_canary".to_owned(), 1),
+                    (
+                        "legacy_catalog_canary_without_source_envelope".to_owned(),
+                        1,
+                    ),
                     ("legacy_invalid_observation_id".to_owned(), 1),
-                    ("legacy_retired_family".to_owned(), 1),
+                    ("legacy_missing_source_owned_kind".to_owned(), 1),
+                    (
+                        "legacy_retired_family_projection_incompatible".to_owned(),
+                        1,
+                    ),
+                    ("source_outside_compiled_catalog".to_owned(), 1),
+                    ("subject_outside_projection_contract".to_owned(), 1),
                     ("unknown".to_owned(), 1),
                 ]),
             ),
@@ -2192,7 +2213,7 @@ mod tests {
     fn checkpoint_is_only_eligible_after_a_recognized_projection() {
         assert!(checkpoint_eligible(ConsumerMessageOutcome::Projected));
         assert!(!checkpoint_eligible(ConsumerMessageOutcome::Skipped(
-            ConsumerSkipCategory::LegacyRetiredFamily,
+            ConsumerSkipCategory::LegacyMissingSourceOwnedKind,
         )));
         assert!(!checkpoint_eligible(ConsumerMessageOutcome::Rejected));
         let raw = b"projected append-log bytes";

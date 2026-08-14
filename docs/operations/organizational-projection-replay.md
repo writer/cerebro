@@ -84,7 +84,10 @@ collector events project through exact compiled native relationship and
 application templates. Replay compatibility applies only in replay mode. The
 forward consumer continues to reject every legacy shape.
 Every skipped message is also recorded in one closed, payload-free category:
-`legacy_retired_family`, `legacy_invalid_observation_id`, or `legacy_canary`.
+`subject_outside_projection_contract`, `source_outside_compiled_catalog`,
+`legacy_missing_source_owned_kind`, `legacy_invalid_observation_id`,
+`legacy_catalog_canary_without_source_envelope`, or
+`legacy_retired_family_projection_incompatible`.
 The terminal run receipt and `inspect-consumer-run` output expose these durable
 category counters as `skip_categories`. Their sum must equal
 `messages_skipped`; a missing, unknown, zero, or mismatched category counter
