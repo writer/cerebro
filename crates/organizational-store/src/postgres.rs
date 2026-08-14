@@ -419,6 +419,17 @@ const START_CONSUMER_RUN_QUERY: &str = "INSERT INTO organizational_consumer_runs
 
 const SOURCE_COLLECTION_MANIFEST_QUERY: &str = "SELECT manifest_json FROM organizational_source_collection_receipts WHERE tenant_id = $1 AND source_runtime_id = $2 AND collection_id = $3";
 
+const RECORD_SOURCE_EVENT_QUERY: &str = r#"
+INSERT INTO organizational_source_event_receipts (
+  tenant_id, event_id, source_runtime_id, source_id, family_id, event_kind,
+  schema_ref, observed_at_unix_ms, attributes_digest, payload_digest, record_digest
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (tenant_id, event_id) DO UPDATE
+SET record_digest = EXCLUDED.record_digest
+WHERE organizational_source_event_receipts.record_digest = EXCLUDED.record_digest
+RETURNING record_digest
+"#;
+
 const IDENTITY_CLAIM_REPLACEMENT_QUERY: &str = r#"
 SELECT assertion_id
 FROM organizational_assertions
@@ -1484,7 +1495,7 @@ WHERE id = $1
         set_tenant(&transaction, tenant_id).await?;
         let row = transaction
             .query_opt(
-                "INSERT INTO organizational_source_event_receipts (tenant_id, event_id, source_runtime_id, source_id, family_id, event_kind, schema_ref, observed_at_unix_ms, attributes_digest, payload_digest, record_digest) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (tenant_id, event_id) DO UPDATE SET record_digest = EXCLUDED.record_digest WHERE organizational_source_event_receipts.record_digest = EXCLUDED.record_digest RETURNING record_digest",
+                RECORD_SOURCE_EVENT_QUERY,
                 &[
                     &tenant_id,
                     &event_id,
@@ -3405,6 +3416,15 @@ mod tests {
                 "source collection lookup omitted {required}"
             );
         }
+    }
+
+    #[test]
+    fn source_event_receipts_remain_fail_closed_on_conflicting_records() {
+        assert!(RECORD_SOURCE_EVENT_QUERY.contains("ON CONFLICT (tenant_id, event_id)"));
+        assert!(RECORD_SOURCE_EVENT_QUERY.contains(
+            "WHERE organizational_source_event_receipts.record_digest = EXCLUDED.record_digest"
+        ));
+        assert!(RECORD_SOURCE_EVENT_QUERY.contains("RETURNING record_digest"));
     }
 
     #[test]

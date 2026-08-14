@@ -12,6 +12,7 @@ mod slack_agent_mcp;
 mod slack_agent_session;
 mod slack_authority;
 mod slack_mrkdwn;
+mod threat_insight_projection;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -821,6 +822,24 @@ impl ProjectionRuntime {
         {
             return Ok(ProjectEventResponse {
                 authority: ProjectionAuthority::Rust,
+                projected: true,
+                graph_revision: Some(receipt.graph_revision),
+                entities_upserted: receipt.entities_upserted,
+                assertions_upserted: receipt.assertions_upserted,
+            });
+        }
+        if threat_insight_projection::matches(&event) {
+            let (batch, delta) =
+                threat_insight_projection::project(event).map_err(ProjectionFailure::Invalid)?;
+            let receipt = self
+                .store
+                .lock()
+                .await
+                .apply(&batch, delta)
+                .await
+                .map_err(ProjectionFailure::Store)?;
+            return Ok(ProjectEventResponse {
+                authority: authority.authority,
                 projected: true,
                 graph_revision: Some(receipt.graph_revision),
                 entities_upserted: receipt.entities_upserted,
