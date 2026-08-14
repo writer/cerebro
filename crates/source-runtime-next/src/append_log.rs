@@ -631,13 +631,9 @@ fn compatible_legacy_aws_public_endpoint_identity<'a>(
     if attributes.get("domain").map(String::as_str) != Some(account_id) {
         return None;
     }
-    let endpoint = match payload
+    let endpoint = payload
         .get("endpoint")
-        .and_then(serde_json::Value::as_object)
-    {
-        Some(endpoint) => endpoint,
-        None => return None,
-    };
+        .and_then(serde_json::Value::as_object)?;
     let identity_fields = [
         ("endpoint_id", "EndpointID"),
         ("resource_id", "ResourceID"),
@@ -646,10 +642,7 @@ fn compatible_legacy_aws_public_endpoint_identity<'a>(
     ];
     let mut identity = None;
     for (attribute_key, payload_key) in identity_fields {
-        let payload_value = match trimmed_json_string(endpoint, payload_key) {
-            Some(value) => value,
-            None => return None,
-        };
+        let payload_value = trimmed_json_string(endpoint, payload_key)?;
         let attribute_value = attributes.get(attribute_key).map(String::as_str);
         if attribute_value != (!payload_value.is_empty()).then_some(payload_value) {
             return None;
@@ -660,19 +653,14 @@ fn compatible_legacy_aws_public_endpoint_identity<'a>(
     }
     for (attribute_key, payload_key) in [("service", "Service"), ("resource_type", "ResourceType")]
     {
-        let payload_value = match trimmed_json_string(endpoint, payload_key) {
-            Some(value) => value,
-            None => return None,
-        };
+        let payload_value = trimmed_json_string(endpoint, payload_key)?;
         if attributes.get(attribute_key).map(String::as_str)
             != (!payload_value.is_empty()).then_some(payload_value)
         {
             return None;
         }
     }
-    let Some(identity) = identity else {
-        return None;
-    };
+    let identity = identity?;
     if identity.len() > MAX_LEGACY_IDENTITY_LEN {
         return None;
     }
