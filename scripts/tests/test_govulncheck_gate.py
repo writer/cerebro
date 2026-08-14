@@ -6,6 +6,25 @@ import scripts.govulncheck_gate as gate
 
 
 class GovulncheckGateTests(unittest.TestCase):
+    def test_scanner_environment_applies_default_resource_bounds(self):
+        env = gate.govulncheck_environment({"PATH": "/bin"})
+        self.assertEqual(env["GOFLAGS"], "")
+        self.assertEqual(env["GOTOOLCHAIN"], "go1.26.5")
+        self.assertEqual(env["GOMEMLIMIT"], "4GiB")
+        self.assertEqual(env["GOMAXPROCS"], "2")
+
+    def test_scanner_environment_accepts_explicit_resource_bounds(self):
+        env = gate.govulncheck_environment(
+            {
+                "GOTOOLCHAIN": "local",
+                "CEREBRO_GOVULNCHECK_GOMEMLIMIT": "3GiB",
+                "CEREBRO_GOVULNCHECK_GOMAXPROCS": "1",
+            }
+        )
+        self.assertEqual(env["GOTOOLCHAIN"], "local")
+        self.assertEqual(env["GOMEMLIMIT"], "3GiB")
+        self.assertEqual(env["GOMAXPROCS"], "1")
+
     def test_ignore_file_requires_justification(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / ".govulncheck-ignore"
