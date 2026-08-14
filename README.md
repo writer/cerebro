@@ -113,7 +113,7 @@ The MCP source tools are `cerebro.sources.list`, `cerebro.sources.check`, `cereb
 
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
-The Go compatibility runtime uses the `go1.26.5` toolchain. Run `make doctor` to check the complete Go, Node.js, Rust, and repository toolchain.
+The Go compatibility runtime uses the `go1.26.6` toolchain. Run `make doctor` to check the complete Go, Node.js, Rust, and repository toolchain.
 
 ## Documentation
 

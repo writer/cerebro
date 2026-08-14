@@ -6,6 +6,41 @@ import scripts.govulncheck_gate as gate
 
 
 class GovulncheckGateTests(unittest.TestCase):
+    def test_scanner_environment_applies_default_resource_bounds(self):
+        env = gate.govulncheck_environment({"PATH": "/bin"})
+        self.assertEqual(env["GOFLAGS"], "")
+        self.assertEqual(env["GOTOOLCHAIN"], "go1.26.6")
+        self.assertEqual(env["GOMEMLIMIT"], "4GiB")
+        self.assertEqual(env["GOMAXPROCS"], "2")
+
+    def test_scanner_environment_replaces_invalid_or_unbounded_values(self):
+        cases = [
+            {
+                "GOMEMLIMIT": "off",
+                "GOMAXPROCS": "128",
+                "CEREBRO_GOVULNCHECK_GOMEMLIMIT": "100GiB",
+                "CEREBRO_GOVULNCHECK_GOMAXPROCS": "0",
+            },
+            {
+                "GOMEMLIMIT": "",
+                "GOMAXPROCS": "",
+                "CEREBRO_GOVULNCHECK_GOMEMLIMIT": "",
+                "CEREBRO_GOVULNCHECK_GOMAXPROCS": "",
+            },
+            {
+                "GOMEMLIMIT": "not-a-limit",
+                "GOMAXPROCS": "many",
+                "CEREBRO_GOVULNCHECK_GOMEMLIMIT": "malformed",
+                "CEREBRO_GOVULNCHECK_GOMAXPROCS": "malformed",
+            },
+        ]
+        for source in cases:
+            with self.subTest(source=source):
+                env = gate.govulncheck_environment({"GOTOOLCHAIN": "local", **source})
+                self.assertEqual(env["GOTOOLCHAIN"], "local")
+                self.assertEqual(env["GOMEMLIMIT"], "4GiB")
+                self.assertEqual(env["GOMAXPROCS"], "2")
+
     def test_ignore_file_requires_justification(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / ".govulncheck-ignore"
