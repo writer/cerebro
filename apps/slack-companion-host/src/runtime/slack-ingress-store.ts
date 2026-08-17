@@ -98,12 +98,15 @@ export class FileSlackIngressQueue {
     const cutoff = this.clock().getTime() - MESSAGE_BINDING_RETENTION_MS;
     this.transaction((database) => {
       database.prepare("DELETE FROM slack_message_bindings WHERE bound_at_ms < ?").run(cutoff);
+      // Bindings are keyed by (request_key, client_message_id) so one Slack
+      // request can bind multiple delivered parts. Evict the oldest individual
+      // rows beyond the cap rather than whole request keys.
       database.prepare(`
         DELETE FROM slack_message_bindings
-        WHERE request_key IN (
-          SELECT request_key
+        WHERE rowid IN (
+          SELECT rowid
           FROM slack_message_bindings
-          ORDER BY bound_at_ms DESC, request_key DESC
+          ORDER BY bound_at_ms DESC, request_key DESC, client_message_id DESC
           LIMIT -1 OFFSET ?
         )
       `).run(MAX_MESSAGE_BINDINGS);
@@ -152,8 +155,8 @@ export class FileSlackIngressQueue {
     const row = this.database().prepare(`
       SELECT binding_json
       FROM slack_message_bindings
-      WHERE request_key = ?
-    `).get(requestKey) as { binding_json: string } | undefined;
+      WHERE request_key = ? AND client_message_id = ?
+    `).get(requestKey, clientMessageId) as { binding_json: string } | undefined;
     if (!row) return undefined;
     const binding = JSON.parse(row.binding_json) as SlackMessageBinding;
     validateMessageBinding(binding, requestKey, clientMessageId);
@@ -184,8 +187,8 @@ export class FileSlackIngressQueue {
       const row = database.prepare(`
         SELECT binding_json
         FROM slack_message_bindings
-        WHERE request_key = ?
-      `).get(requestKey) as { binding_json: string } | undefined;
+        WHERE request_key = ? AND client_message_id = ?
+      `).get(requestKey, clientMessageId) as { binding_json: string } | undefined;
       if (row) {
         const existing = JSON.parse(row.binding_json) as SlackMessageBinding;
         validateMessageBinding(existing, requestKey, clientMessageId);
@@ -539,11 +542,12 @@ export class FileSlackIngressQueue {
         dead_letter_json TEXT NOT NULL
       ) STRICT;
       CREATE TABLE IF NOT EXISTS slack_message_bindings (
-        request_key TEXT PRIMARY KEY,
+        request_key TEXT NOT NULL,
         client_message_id TEXT NOT NULL,
         message_ts TEXT NOT NULL,
         bound_at_ms INTEGER NOT NULL,
-        binding_json TEXT NOT NULL
+        binding_json TEXT NOT NULL,
+        PRIMARY KEY (request_key, client_message_id)
       ) STRICT;
       INSERT OR IGNORE INTO slack_ingress_order (record_ref)
       SELECT record_ref
@@ -558,6 +562,7 @@ export class FileSlackIngressQueue {
       SELECT record_ref, 0, 0, NULL
       FROM slack_ingress_events;
     `);
+    this.migrateMessageBindings(database);
     await chmod(this.databasePath(), 0o600);
     const gate = new DatabaseSync(this.executionGatePath());
     try {
@@ -574,6 +579,41 @@ export class FileSlackIngressQueue {
       gate.close();
     }
     await chmod(this.executionGatePath(), 0o600);
+  }
+
+  // The v1 message binding table keyed rows on request_key alone, so a single
+  // Slack request could only bind one delivered message and the multipart
+  // delivery threw when it tried to bind a second part. v2 keys on
+  // (request_key, client_message_id) so each delivered part gets its own
+  // binding. Recreate the table in place when the legacy single-column primary
+  // key is present; existing bindings are preserved.
+  private migrateMessageBindings(database: DatabaseSync): void {
+    const columns = database.prepare(
+      "PRAGMA table_info(slack_message_bindings)",
+    ).all() as Array<{ name: string; pk: number }>;
+    const clientIdColumn = columns.find((column) => column.name === "client_message_id");
+    if (clientIdColumn === undefined || clientIdColumn.pk > 0) return;
+    database.exec(`
+      ALTER TABLE slack_message_bindings RENAME TO slack_message_bindings_v1_legacy;
+      CREATE TABLE slack_message_bindings (
+        request_key TEXT NOT NULL,
+        client_message_id TEXT NOT NULL,
+        message_ts TEXT NOT NULL,
+        bound_at_ms INTEGER NOT NULL,
+        binding_json TEXT NOT NULL,
+        PRIMARY KEY (request_key, client_message_id)
+      ) STRICT;
+      INSERT INTO slack_message_bindings (
+        request_key,
+        client_message_id,
+        message_ts,
+        bound_at_ms,
+        binding_json
+      )
+      SELECT request_key, client_message_id, message_ts, bound_at_ms, binding_json
+      FROM slack_message_bindings_v1_legacy;
+      DROP TABLE slack_message_bindings_v1_legacy;
+    `);
   }
 
   private database(): DatabaseSync {

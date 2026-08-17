@@ -1687,14 +1687,22 @@ export async function handleSlackMention(input: {
       deliveredParts.push({ sequence, text: partText, ts: continuation.ts });
     }
     const feedbackPart = deliveredParts[deliveredParts.length - 1]!;
+    // Feedback controls live on the last part, so the answer reference and the
+    // pending outcome's delivered_message_ts must identify that part: the Slack
+    // action handler recomputes the reference from the ts of the message that
+    // hosts the button, and FileOutcomeStore.recordFeedback matches the pending
+    // record by delivered_message_ts. Anchoring either on the first/progress
+    // message ts makes feedback on a multi-part answer silently no-op.
     const answerRef = slackAnswerRef(
       input.event.teamId,
       input.event.channel,
-      deliveredMessageTs,
+      feedbackPart.ts,
     );
     for (const part of deliveredParts) {
       const carriesFeedback = part.sequence === feedbackPart.sequence;
-      if (part.sequence > 1 && !carriesFeedback) continue;
+      // Update every part with its current text so a continuation message that
+      // was recovered from a previous attempt (and still carries stale text) is
+      // rewritten. Only the feedback part carries the answer feedback controls.
       await input.leaseGuard?.();
       await input.client.chat.update({
         ...(carriesFeedback
@@ -1815,7 +1823,7 @@ export async function handleSlackMention(input: {
     await fenceMutation();
     await input.outcomes.recordPending({
       ...result.pending,
-      delivered_message_ts: deliveredMessageTs,
+      delivered_message_ts: feedbackPart.ts,
     });
     pendingOutcomeRecorded = true;
     await fenceMutation();
