@@ -82,6 +82,8 @@ import {
   archetypeUnavailableHome,
 } from "./archetype-workspace.js";
 
+/** Widest lane envelope a routed Rust turn may occupy before its lane is known. */
+const AGENT_TURN_ENVELOPE_LANE: AssistantExecutionLane = "act";
 const GRAPH_CAPABILITY = "cerebro:graph_read";
 const GRAPH_SOURCE_REF = "source/cerebro/grc-ask";
 const GRAPH_TOOL_ID = "cerebro.grc_ask";
@@ -240,6 +242,15 @@ export class AssistantQuestionService {
     this.timeoutSignal = options.timeoutSignal ?? ((milliseconds) => AbortSignal.timeout(milliseconds));
   }
 
+  /** Reads a lane's policy budget so the recorded KPI matches the lane that ran. */
+  private laneBudgetMs(lane: AssistantExecutionLane): number {
+    return this.host.enforceBudget({
+      execution_lane: lane,
+      planned_tool_call_count: 0,
+      selected_capability_count: 0,
+    }).latency_budget_ms;
+  }
+
   async answer(input: AssistantQuestionInput): Promise<AssistantQuestionResult> {
     const openedAt = this.clock();
     const requestId = `slack-request-${digest(input.requestKey)}`;
@@ -268,16 +279,17 @@ export class AssistantQuestionService {
     );
     if (this.askClient.usesRustAgent) {
       const budget = this.host.enforceBudget({
-        execution_lane: "act",
-        planned_tool_call_count: 12,
-        selected_capability_count: 12,
+        execution_lane: AGENT_TURN_ENVELOPE_LANE,
+        planned_tool_call_count: 0,
+        selected_capability_count: 0,
       });
       try {
         const pendingApproval = await this.approvalStore?.read(input.threadRef);
         const approvalCommand = /^approve(?:\s+([a-f0-9]{12}))?$/iu.exec(currentRequest);
+        const approvalReplyBudgetMs = this.laneBudgetMs("converse");
         if (approvalCommand && !pendingApproval) {
           return approvalCommandResult(
-            budget.latency_budget_ms,
+            approvalReplyBudgetMs,
             openedAt,
             requestId,
             "There is no pending Cerebro operation to approve in this thread.",
@@ -285,7 +297,7 @@ export class AssistantQuestionService {
         }
         if (approvalCommand && pendingApproval?.actorRef !== input.actorRef) {
           return approvalCommandResult(
-            budget.latency_budget_ms,
+            approvalReplyBudgetMs,
             openedAt,
             requestId,
             "This operation must be approved by the person who requested it.",
@@ -297,7 +309,7 @@ export class AssistantQuestionService {
           && approvalCommand[1]?.toLowerCase() !== approvalCommandCode(pendingApproval.approvalRef)
         ) {
           return approvalCommandResult(
-            budget.latency_budget_ms,
+            approvalReplyBudgetMs,
             openedAt,
             requestId,
             `That approval code does not match the pending operation. Reply \`approve ${approvalCommandCode(pendingApproval.approvalRef)}\` to run it.`,
@@ -396,7 +408,7 @@ export class AssistantQuestionService {
               }
             : {}),
           pending: pendingOutcome({
-            budgetMs: budget.latency_budget_ms,
+            budgetMs: this.laneBudgetMs(answer.executionLane),
             executionLane: answer.executionLane,
             openedAt,
             outcomeState: agentOutcomeState(answer.finalState),
@@ -444,7 +456,7 @@ export class AssistantQuestionService {
         return {
           pending: pendingOutcome({
             budgetMs: budget.latency_budget_ms,
-            executionLane: "investigate",
+            executionLane: AGENT_TURN_ENVELOPE_LANE,
             openedAt,
             outcomeState: "blocked",
             requestId,
@@ -577,7 +589,7 @@ export class AssistantQuestionService {
       this.recordSourceResult(true, Math.max(0, usefulAnswerAt.getTime() - sourceStartedAt));
       return {
         pending: pendingOutcome({
-          budgetMs: budget.latency_budget_ms,
+          budgetMs: this.laneBudgetMs(answer.executionLane),
           executionLane: answer.executionLane,
           openedAt,
           outcomeState: "completed",

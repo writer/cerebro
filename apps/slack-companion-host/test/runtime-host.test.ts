@@ -2229,6 +2229,59 @@ test("question service preflights one governed graph lookup and returns its veri
   }
 });
 
+test("the recorded KPI budget follows the lane the Rust agent routed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-lane-budget-"));
+  try {
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        agentRuntimeUrl: "http://127.0.0.1:8091",
+        answerAuthority: {
+          async authorizeQuestion() {
+            throw new Error("legacy question authorization must not run");
+          },
+          async validate() {
+            throw new Error("legacy answer validation must not run");
+          },
+        },
+        apiKey: "unused",
+        baseUrl: "https://legacy.example.com",
+        fetchImpl: async () =>
+          Response.json({
+            evidence_refs: ["evidence://graph/current"],
+            final_state: "answered",
+            lane: "investigate",
+            markdown: "The current graph state is verified.",
+            outcome: "delivered",
+            schema_version: "agent-turn-result/v1",
+            tool_call_count: 6,
+          }),
+        tenantId: "writer",
+      }),
+      {
+        clock: () => new Date("2026-07-29T18:25:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+
+    const result = await service.answer({
+      actorRef: "slack-user:U-ONE",
+      requestKey: "T-ONE:C-ONE:thread-one:event-lane",
+      text: "<@BOT> Investigate the connector failure.",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+
+    assert.equal(result.pending.execution_lane, "investigate");
+    assert.equal(
+      result.pending.latency_budget_ms,
+      180_000,
+      "the KPI must be measured against the routed lane, not the request envelope",
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("question service keeps self status on the Rust conversational lane", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
