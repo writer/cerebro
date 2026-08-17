@@ -87,6 +87,9 @@ const GRAPH_SOURCE_REF = "source/cerebro/grc-ask";
 const GRAPH_TOOL_ID = "cerebro.grc_ask";
 const GRAPH_TOOL_VERSION = "1.0.0";
 const MAX_SLACK_TEXT = 3_500;
+const MAX_SLACK_ANSWER_PARTS = 8;
+const MAX_SLACK_ANSWER_TEXT = MAX_SLACK_TEXT * MAX_SLACK_ANSWER_PARTS;
+const MIN_SLACK_ANSWER_PART_TEXT = Math.floor(MAX_SLACK_TEXT / 2);
 const MAX_AGENT_HISTORY_MESSAGE_BYTES = 16 * 1024;
 const MAX_THREAD_CONTEXT_BYTES = 1_048_576;
 const MAX_THREAD_MESSAGES = 200;
@@ -375,7 +378,7 @@ export class AssistantQuestionService {
           answer.finalState === "answered" || answer.finalState === "partial"
             ? this.clock()
             : undefined;
-        const slackText = boundedSlackText(answer.markdown);
+        const slackText = boundedSlackAnswer(answer.markdown);
         if (answer.deliveryAckRequired && slackText !== answer.markdown) {
           throw new CerebroAskError(
             "unavailable",
@@ -511,7 +514,7 @@ export class AssistantQuestionService {
           usefulAnswerAt,
           verified: true,
         }),
-        text: boundedSlackText(answer.markdown),
+        text: boundedSlackAnswer(answer.markdown),
         workingTurn: {
           currentRequest,
           outcome: "completed",
@@ -582,7 +585,7 @@ export class AssistantQuestionService {
           usefulAnswerAt,
           verified: answer.citationValidationPassed,
         }),
-        text: boundedSlackText(answer.markdown),
+        text: boundedSlackAnswer(answer.markdown),
         workingTurn: {
           currentRequest,
           outcome: "completed",
@@ -1630,7 +1633,7 @@ export async function handleSlackMention(input: {
     });
     const deliveredText = result.agentDelivery
       ? result.text
-      : formatEnvironmentMessage(input.config, result.text);
+      : formatEnvironmentAnswer(input.config, result.text);
     const deliveredPayloadDigest = `sha256:${digest(deliveredText)}`;
     if (
       result.agentDelivery
@@ -1660,22 +1663,55 @@ export async function handleSlackMention(input: {
         threadRef: result.agentDelivery.threadRef,
       });
     }
-    await input.leaseGuard?.();
-    await input.client.chat.update({
-      blocks: answerFeedbackBlocks({
-        answerRef: slackAnswerRef(
-          input.event.teamId,
-          input.event.channel,
-          deliveredMessageTs,
-        ),
-        deliveredAt,
-        deliveredText,
-        feedbackKey: requestKey,
-      }),
-      channel: input.event.channel,
-      text: deliveredText,
-      ts: deliveredMessageTs,
-    });
+    const answerParts = splitSlackAnswerParts(deliveredText);
+    const deliveredParts: { sequence: number; text: string; ts: string }[] = [];
+    for (const [offset, partText] of answerParts.entries()) {
+      const sequence = offset + 1;
+      if (sequence === 1) {
+        deliveredParts.push({ sequence, text: partText, ts: deliveredMessageTs });
+        continue;
+      }
+      await input.leaseGuard?.();
+      const continuation = await postOrRecoverSlackMessage(input.client, {
+        bindings: input.ingressQueue,
+        botUserId: input.event.botUserId,
+        channel: input.event.channel,
+        clientMessageId: slackClientMessageId(`${requestId}:part:${sequence}`),
+        leaseGuard: input.leaseGuard,
+        priorDeliveryAttempt: input.priorDeliveryAttempt,
+        reconciliationOldestTs: input.event.eventTs,
+        requestKey,
+        text: partText,
+        threadTs: input.event.threadTs,
+      });
+      deliveredParts.push({ sequence, text: partText, ts: continuation.ts });
+    }
+    const feedbackPart = deliveredParts[deliveredParts.length - 1]!;
+    const answerRef = slackAnswerRef(
+      input.event.teamId,
+      input.event.channel,
+      deliveredMessageTs,
+    );
+    for (const part of deliveredParts) {
+      const carriesFeedback = part.sequence === feedbackPart.sequence;
+      if (part.sequence > 1 && !carriesFeedback) continue;
+      await input.leaseGuard?.();
+      await input.client.chat.update({
+        ...(carriesFeedback
+          ? {
+              blocks: answerFeedbackBlocks({
+                answerRef,
+                deliveredAt,
+                deliveredText: part.text,
+                feedbackKey: requestKey,
+              }),
+            }
+          : {}),
+        channel: input.event.channel,
+        text: part.text,
+        ts: part.ts,
+      });
+    }
     if (outboxRecord) {
       await fenceMutation();
       await input.agentDeliveries?.markSlackDelivered(outboxRecord.recordRef);
@@ -1704,16 +1740,18 @@ export async function handleSlackMention(input: {
       created_at: result.pending.opened_at,
       delivery_id: `slack-delivery-${requestDigest}`,
       destination_ref: references.destinationRef,
-      parts: [{
+      parts: deliveredParts.map((part) => ({
         delivered_at: deliveredAt,
-        destination_receipt: references.destinationReceipt,
-        idempotency_key: `slack-delivery-${requestDigest}:part:1`,
-        part_id: "answer",
-        payload_digest: deliveredPayloadDigest,
-        payload_ref: references.payloadRef,
-        sequence: 1,
-        state: "delivered",
-      }],
+        destination_receipt: `slack-message://sha256/${
+          digest(`${input.event.channel}:${part.ts}`)
+        }`,
+        idempotency_key: `slack-delivery-${requestDigest}:part:${part.sequence}`,
+        part_id: `answer-${part.sequence}`,
+        payload_digest: `sha256:${digest(part.text)}`,
+        payload_ref: `content://sha256/${digest(part.text)}`,
+        sequence: part.sequence,
+        state: "delivered" as const,
+      })),
       run_id: runId,
       schema_version: "delivery-receipt/v1",
       state: "completed",
@@ -1951,6 +1989,17 @@ export function formatEnvironmentMessage(
   return boundedSlackText(`🧪 *${environment.appName} · ${environment.environmentLabel}*\n${text}`);
 }
 
+/** Answers keep the environment banner but use the multi-message envelope. */
+export function formatEnvironmentAnswer(
+  environment: Pick<SlackRuntimeConfig, "appName" | "environmentLabel" | "production">,
+  text: string,
+): string {
+  if (environment.production) return boundedSlackAnswer(text);
+  return boundedSlackAnswer(
+    `🧪 *${environment.appName} · ${environment.environmentLabel}*\n${text}`,
+  );
+}
+
 export function environmentHomeView(
   environment: Pick<SlackRuntimeConfig, "appName" | "environmentLabel" | "production">,
 ): HomeView {
@@ -2168,7 +2217,7 @@ function agentWorkingOutcome(
 }
 
 function renderOutput(output: ReturnType<typeof buildAssistantTurnEvidenceFallback>): string {
-  return boundedSlackText([
+  return boundedSlackAnswer([
     output.answer,
     output.coverage_notice,
     output.next_action,
@@ -2179,6 +2228,50 @@ function renderOutput(output: ReturnType<typeof buildAssistantTurnEvidenceFallba
 function boundedSlackText(value: string): string {
   if (Array.from(value).length <= MAX_SLACK_TEXT) return value;
   return `${Array.from(value).slice(0, MAX_SLACK_TEXT - 70).join("")}\n\nResponse shortened. Open Cerebro for the complete result.`;
+}
+
+/** Bounds one answer to the multi-message Slack envelope instead of a single message. */
+function boundedSlackAnswer(value: string): string {
+  if (Array.from(value).length <= MAX_SLACK_ANSWER_TEXT) return value;
+  return `${
+    Array.from(value).slice(0, MAX_SLACK_ANSWER_TEXT - 70).join("")
+  }\n\nResponse shortened. Open Cerebro for the complete result.`;
+}
+
+/**
+ * Splits one bounded answer into ordered Slack message payloads without losing or
+ * rewriting a single character, so `parts.join("")` is the delivered answer.
+ */
+export function splitSlackAnswerParts(value: string): string[] {
+  const characters = Array.from(value);
+  if (characters.length === 0) return ["No answer was delivered."];
+  if (characters.length <= MAX_SLACK_TEXT) return [value];
+  const parts: string[] = [];
+  let index = 0;
+  while (index < characters.length) {
+    const remaining = characters.length - index;
+    if (remaining <= MAX_SLACK_TEXT) {
+      parts.push(characters.slice(index).join(""));
+      break;
+    }
+    const window = characters.slice(index, index + MAX_SLACK_TEXT);
+    const boundary = answerPartBoundary(window);
+    parts.push(window.slice(0, boundary).join(""));
+    index += boundary;
+  }
+  return parts;
+}
+
+/** Prefers the last paragraph, then line, break that keeps a part usefully large. */
+function answerPartBoundary(window: readonly string[]): number {
+  const text = window.join("");
+  for (const separator of ["\n\n", "\n"]) {
+    const found = text.lastIndexOf(separator);
+    if (found < 0) continue;
+    const boundary = Array.from(text.slice(0, found + separator.length)).length;
+    if (boundary >= MIN_SLACK_ANSWER_PART_TEXT) return boundary;
+  }
+  return window.length;
 }
 
 function boundedUtf8(

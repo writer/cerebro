@@ -33,12 +33,14 @@ import {
   createAssistantTurnHost,
   dispatchSlackEnvelopeDurably,
   environmentHomeView,
+  formatEnvironmentAnswer,
   formatEnvironmentMessage,
   formatSlackThreadContext,
   handleSlackMention,
   humanSlackThreadReply,
   readSlackThreadContext,
   slackDeliveryReferences,
+  splitSlackAnswerParts,
 } from "../src/runtime/slack-runtime.js";
 
 async function withIngressExecution<T>(
@@ -3253,6 +3255,101 @@ test("an ambiguous Slack post is recovered by metadata-bound delivery identity",
   }
 });
 
+test("one long answer splits into ordered Slack parts without losing content", () => {
+  assert.deepEqual(splitSlackAnswerParts("short answer"), ["short answer"]);
+  const paragraph = `${"e".repeat(1_200)}\n\n`;
+  const answer = paragraph.repeat(8);
+  const parts = splitSlackAnswerParts(answer);
+  assert.ok(parts.length > 1, "a long answer must use more than one Slack message");
+  assert.equal(parts.join(""), answer);
+  for (const part of parts) {
+    assert.ok(Array.from(part).length <= 3_500);
+  }
+  assert.ok(parts.slice(0, -1).every((part) => part.endsWith("\n\n")));
+});
+
+test("a long agent answer is delivered as ordered Slack parts with one delivery receipt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-multipart-"));
+  try {
+    const markdown = `${"Verified evidence line.\n\n".repeat(400)}Done.`;
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root, {
+      markdown,
+    });
+    const posted: { text: string; ts: string }[] = [];
+    const updated: { text: string; ts: string; withBlocks: boolean }[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          const ts = `1710000000.00000${posted.length + 2}`;
+          posted.push({ text: input.text, ts });
+          return { ts };
+        },
+        update: async (
+          input: { blocks?: unknown; text: string; ts: string },
+        ) => {
+          updated.push({
+            text: input.text,
+            ts: input.ts,
+            withBlocks: input.blocks !== undefined,
+          });
+        },
+      },
+      conversations: {
+        replies: async () => {
+          throw new Error("a first successful delivery must not scan Slack history");
+        },
+      },
+    };
+
+    assert.equal(
+      await handleSlackMention({ client, config, event, host, outcomes, questions }),
+      true,
+    );
+    const parts = splitSlackAnswerParts(formatEnvironmentAnswer(config, markdown));
+    assert.ok(parts.length > 2, "the fixture answer must exceed one Slack message");
+    assert.equal(
+      posted.length,
+      parts.length,
+      "one progress message plus one message per continuation part",
+    );
+    const finalTextByTs = new Map<string, { text: string; withBlocks: boolean }>(
+      posted.map((message) => [message.ts, { text: message.text, withBlocks: false }]),
+    );
+    for (const update of updated) {
+      finalTextByTs.set(update.ts, { text: update.text, withBlocks: update.withBlocks });
+    }
+    assert.deepEqual(
+      posted.map((message) => finalTextByTs.get(message.ts)!.text),
+      parts,
+      "the thread reads as the exact answer in order",
+    );
+    const feedbackTs = posted[posted.length - 1]!.ts;
+    assert.equal(
+      finalTextByTs.get(feedbackTs)!.withBlocks,
+      true,
+      "feedback controls follow the last part",
+    );
+    assert.ok(
+      posted.slice(0, -1).every((message) => !finalTextByTs.get(message.ts)!.withBlocks),
+      "earlier parts carry no duplicate feedback controls",
+    );
+    const deliveryFiles = await readdir(join(root, "delivery"));
+    assert.equal(deliveryFiles.length, 1);
+    const delivery = JSON.parse(
+      await readFile(join(root, "delivery", deliveryFiles[0]!), "utf8"),
+    );
+    assert.equal(delivery.part_count, parts.length);
+    assert.equal(delivery.accepted_part_count, parts.length);
+    assert.equal(delivery.undelivered_part_count, 0);
+    assert.deepEqual(
+      delivery.parts.map((part: { sequence: number }) => part.sequence),
+      parts.map((_part, index) => index + 1),
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("a first Slack delivery posts without scanning thread history", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-first-delivery-"));
   try {
@@ -3950,8 +4047,11 @@ function sseResponse(events: ReadonlyArray<readonly [string, unknown]>): Respons
   });
 }
 
-function slackDeliveryTestFixture(root: string) {
+function slackDeliveryTestFixture(root: string, options: { markdown?: string } = {}) {
   const config = loadSlackRuntimeConfig({
+    ...(options.markdown === undefined
+      ? {}
+      : { CEREBRO_SLACK_AGENT_ENABLED: "true" }),
     CEREBRO_BASE_URL: "https://cerebro.example.com",
     CEREBRO_READ_API_KEY: "bound-at-runtime",
     CEREBRO_SLACK_APP_NAME: "Cerebro Development",
@@ -3980,8 +4080,20 @@ function slackDeliveryTestFixture(root: string) {
       answerAuthority: testAnswerAuthority,
       apiKey: "bound-at-runtime",
       baseUrl: "https://cerebro.example.com",
-      fetchImpl: async () => sseResponse([]),
+      fetchImpl: async () =>
+        options.markdown === undefined ? sseResponse([]) : Response.json({
+          evidence_refs: ["evidence://graph/current"],
+          final_state: "answered",
+          lane: "investigate",
+          markdown: options.markdown,
+          outcome: "delivered",
+          schema_version: "agent-turn-result/v1",
+          tool_call_count: 2,
+        }),
       tenantId: "writer",
+      ...(options.markdown === undefined
+        ? {}
+        : { agentRuntimeUrl: config.slackAnswerAuthorityUrl }),
     }),
   );
   return { config, event, host, outcomes, questions };
