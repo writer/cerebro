@@ -1239,10 +1239,8 @@ export class SlackCompanionRuntime {
       try {
         let current = record;
         if (current.state === "prepared") {
-          await this.app.client.chat.update({
-            channel: current.channel,
-            text: current.text,
-            ts: current.messageTs,
+          await replayPreparedAgentDelivery(this.app.client, current, {
+            bindings: this.ingressQueue,
           });
           current = await this.agentDeliveries.markSlackDelivered(current.recordRef);
         }
@@ -1653,73 +1651,38 @@ export async function handleSlackMention(input: {
     if (result.agentDelivery && input.agentDeliveries) {
       await fenceMutation();
       outboxRecord = await input.agentDeliveries.prepare({
+        botUserId: input.event.botUserId,
         channel: input.event.channel,
         deliveredAt,
         deliveryRef: references.destinationReceipt,
+        eventTs: input.event.eventTs,
         messageTs: deliveredMessageTs,
         payloadDigest: deliveredPayloadDigest,
         requestId: result.agentDelivery.requestId,
+        requestKey,
+        teamId: input.event.teamId,
         text: deliveredText,
         threadRef: result.agentDelivery.threadRef,
-      });
-    }
-    const answerParts = splitSlackAnswerParts(deliveredText);
-    const deliveredParts: { sequence: number; text: string; ts: string }[] = [];
-    for (const [offset, partText] of answerParts.entries()) {
-      const sequence = offset + 1;
-      if (sequence === 1) {
-        deliveredParts.push({ sequence, text: partText, ts: deliveredMessageTs });
-        continue;
-      }
-      await input.leaseGuard?.();
-      const continuation = await postOrRecoverSlackMessage(input.client, {
-        bindings: input.ingressQueue,
-        botUserId: input.event.botUserId,
-        channel: input.event.channel,
-        clientMessageId: slackClientMessageId(`${requestId}:part:${sequence}`),
-        leaseGuard: input.leaseGuard,
-        priorDeliveryAttempt: input.priorDeliveryAttempt,
-        reconciliationOldestTs: input.event.eventTs,
-        requestKey,
-        text: partText,
         threadTs: input.event.threadTs,
       });
-      deliveredParts.push({ sequence, text: partText, ts: continuation.ts });
     }
+    const deliveredParts = await deliverSlackAnswerParts(input.client, {
+      bindings: input.ingressQueue,
+      botUserId: input.event.botUserId,
+      channel: input.event.channel,
+      deliveredAt,
+      feedbackKey: requestKey,
+      leaseGuard: input.leaseGuard,
+      priorDeliveryAttempt: input.priorDeliveryAttempt,
+      progressMessageTs: deliveredMessageTs,
+      reconciliationOldestTs: input.event.eventTs,
+      requestId,
+      requestKey,
+      teamId: input.event.teamId,
+      text: deliveredText,
+      threadTs: input.event.threadTs,
+    });
     const feedbackPart = deliveredParts[deliveredParts.length - 1]!;
-    // Feedback controls live on the last part, so the answer reference and the
-    // pending outcome's delivered_message_ts must identify that part: the Slack
-    // action handler recomputes the reference from the ts of the message that
-    // hosts the button, and FileOutcomeStore.recordFeedback matches the pending
-    // record by delivered_message_ts. Anchoring either on the first/progress
-    // message ts makes feedback on a multi-part answer silently no-op.
-    const answerRef = slackAnswerRef(
-      input.event.teamId,
-      input.event.channel,
-      feedbackPart.ts,
-    );
-    for (const part of deliveredParts) {
-      const carriesFeedback = part.sequence === feedbackPart.sequence;
-      // Update every part with its current text so a continuation message that
-      // was recovered from a previous attempt (and still carries stale text) is
-      // rewritten. Only the feedback part carries the answer feedback controls.
-      await input.leaseGuard?.();
-      await input.client.chat.update({
-        ...(carriesFeedback
-          ? {
-              blocks: answerFeedbackBlocks({
-                answerRef,
-                deliveredAt,
-                deliveredText: part.text,
-                feedbackKey: requestKey,
-              }),
-            }
-          : {}),
-        channel: input.event.channel,
-        text: part.text,
-        ts: part.ts,
-      });
-    }
     if (outboxRecord) {
       await fenceMutation();
       await input.agentDeliveries?.markSlackDelivered(outboxRecord.recordRef);
@@ -1911,6 +1874,127 @@ async function postOrRecoverSlackMessage(
     return { ts: recovered };
   }
   throw postError;
+}
+
+/**
+ * Delivers one bounded answer to Slack as ordered thread parts. The first part
+ * reuses the already-posted progress message (`progressMessageTs`); each later
+ * part is posted or recovered by its deterministic client message id. Every
+ * part is then rewritten with its current text (so a continuation recovered
+ * from a previous attempt cannot keep stale content), and only the last part
+ * carries the answer feedback controls. Returns the delivered parts in order.
+ */
+export async function deliverSlackAnswerParts(
+  client: SlackMentionClient,
+  input: {
+    bindings?: FileSlackIngressQueue;
+    botUserId?: string;
+    channel: string;
+    deliveredAt: string;
+    feedbackKey: string;
+    leaseGuard?: () => Promise<void>;
+    priorDeliveryAttempt?: boolean;
+    progressMessageTs: string;
+    reconciliationOldestTs: string;
+    requestId: string;
+    requestKey: string;
+    teamId: string;
+    text: string;
+    threadTs: string;
+  },
+): Promise<{ sequence: number; text: string; ts: string }[]> {
+  const answerParts = splitSlackAnswerParts(input.text);
+  const deliveredParts: { sequence: number; text: string; ts: string }[] = [];
+  for (const [offset, partText] of answerParts.entries()) {
+    const sequence = offset + 1;
+    if (sequence === 1) {
+      deliveredParts.push({ sequence, text: partText, ts: input.progressMessageTs });
+      continue;
+    }
+    await input.leaseGuard?.();
+    const continuation = await postOrRecoverSlackMessage(client, {
+      bindings: input.bindings,
+      botUserId: input.botUserId,
+      channel: input.channel,
+      clientMessageId: slackClientMessageId(`${input.requestId}:part:${sequence}`),
+      leaseGuard: input.leaseGuard,
+      priorDeliveryAttempt: input.priorDeliveryAttempt,
+      reconciliationOldestTs: input.reconciliationOldestTs,
+      requestKey: input.requestKey,
+      text: partText,
+      threadTs: input.threadTs,
+    });
+    deliveredParts.push({ sequence, text: partText, ts: continuation.ts });
+  }
+  const feedbackPart = deliveredParts[deliveredParts.length - 1]!;
+  // Feedback controls live on the last part, so the answer reference and the
+  // pending outcome's delivered_message_ts must identify that part: the Slack
+  // action handler recomputes the reference from the ts of the message that
+  // hosts the button, and FileOutcomeStore.recordFeedback matches the pending
+  // record by delivered_message_ts.
+  const answerRef = slackAnswerRef(input.teamId, input.channel, feedbackPart.ts);
+  for (const part of deliveredParts) {
+    const carriesFeedback = part.sequence === feedbackPart.sequence;
+    await input.leaseGuard?.();
+    await client.chat.update({
+      ...(carriesFeedback
+        ? {
+            blocks: answerFeedbackBlocks({
+              answerRef,
+              deliveredAt: input.deliveredAt,
+              deliveredText: part.text,
+              feedbackKey: input.feedbackKey,
+            }),
+          }
+        : {}),
+      channel: input.channel,
+      text: part.text,
+      ts: part.ts,
+    });
+  }
+  return deliveredParts;
+}
+
+/**
+ * Replays a prepared agent delivery record to Slack. Multipart-capable records
+ * (carrying team/thread/event identity and a request key) re-derive their parts
+ * and post/recover each one, mirroring the live delivery path so a crash between
+ * continuation posts no longer relies on Slack reconciliation alone. Legacy v1
+ * records without the multipart identity fall back to the single-message update.
+ */
+export async function replayPreparedAgentDelivery(
+  client: SlackMentionClient,
+  record: AgentDeliveryOutboxRecord,
+  options: { bindings?: FileSlackIngressQueue },
+): Promise<void> {
+  if (
+    record.teamId !== undefined
+    && record.threadTs !== undefined
+    && record.eventTs !== undefined
+    && record.requestKey !== undefined
+  ) {
+    await deliverSlackAnswerParts(client, {
+      bindings: options.bindings,
+      botUserId: record.botUserId,
+      channel: record.channel,
+      deliveredAt: record.deliveredAt,
+      feedbackKey: record.requestKey,
+      priorDeliveryAttempt: true,
+      progressMessageTs: record.messageTs,
+      reconciliationOldestTs: record.eventTs,
+      requestId: record.requestId,
+      requestKey: record.requestKey,
+      teamId: record.teamId,
+      text: record.text,
+      threadTs: record.threadTs,
+    });
+    return;
+  }
+  await client.chat.update({
+    channel: record.channel,
+    text: record.text,
+    ts: record.messageTs,
+  });
 }
 
 async function findSlackMessageByDeliveryMetadata(

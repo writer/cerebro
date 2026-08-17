@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { FileAgentApprovalStore } from "../src/runtime/agent-approval-store.js";
-import { FileAgentDeliveryOutbox } from "../src/runtime/agent-delivery-outbox.js";
+import { FileAgentDeliveryOutbox, type AgentDeliveryOutboxRecord } from "../src/runtime/agent-delivery-outbox.js";
 import {
   CerebroAskClient,
   CerebroAskError,
@@ -40,6 +40,7 @@ import {
   handleSlackMention,
   humanSlackThreadReply,
   readSlackThreadContext,
+  replayPreparedAgentDelivery,
   slackDeliveryReferences,
   splitSlackAnswerParts,
 } from "../src/runtime/slack-runtime.js";
@@ -1248,6 +1249,131 @@ test("Slack agent delivery outbox survives restart until both delivery boundarie
     assert.deepEqual(await thirdProcess.list(), [slackDelivered]);
     await thirdProcess.complete(prepared.recordRef);
     assert.deepEqual(await thirdProcess.list(), []);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a prepared multipart agent delivery replays every part to Slack from the outbox", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-agent-delivery-replay-multipart-"));
+  try {
+    const text = `${"Verified evidence line.\n\n".repeat(400)}Done.`;
+    const parts = splitSlackAnswerParts(text);
+    assert.ok(parts.length > 2, "the fixture answer must exceed one Slack message");
+    const ingressQueue = new FileSlackIngressQueue(root);
+    const outbox = new FileAgentDeliveryOutbox(root);
+    const prepared = await outbox.prepare({
+      botUserId: "U-BOT",
+      channel: "C-ONE",
+      deliveredAt: "2026-07-31T20:01:00.000Z",
+      deliveryRef: "slack-message://sha256/receipt",
+      eventTs: "1710000000.000001",
+      messageTs: "1710000000.000002",
+      payloadDigest: `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`,
+      requestId: "slack-request-replay",
+      requestKey: "T-ONE:C-ONE:1710000000.000001:1710000000.000001",
+      teamId: "T-ONE",
+      text,
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+      threadTs: "1710000000.000001",
+    });
+
+    const posted: { text: string; ts: string }[] = [];
+    const updated: { blocks?: unknown; text: string; ts: string; withBlocks: boolean }[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          const ts = `1710000000.0000${10 + posted.length}`;
+          posted.push({ text: input.text, ts });
+          return { ts };
+        },
+        update: async (input: { blocks?: unknown; text: string; ts: string }) => {
+          updated.push({
+            blocks: input.blocks,
+            text: input.text,
+            ts: input.ts,
+            withBlocks: input.blocks !== undefined,
+          });
+        },
+      },
+      conversations: {
+        replies: async () => ({ messages: [] }),
+      },
+    };
+
+    // The progress message (part 1) was already posted before the crash, so the
+    // replay only posts the continuations and rewrites every part. Before the
+    // outbox modeled parts, this replay crammed the whole answer into one
+    // chat.update on the progress message and dropped every continuation.
+    await replayPreparedAgentDelivery(client, prepared, { bindings: ingressQueue });
+
+    assert.equal(posted.length, parts.length - 1, "only continuations are posted");
+    assert.equal(updated.length, parts.length, "every part is rewritten");
+    const feedbackUpdate = updated.find((update) => update.withBlocks);
+    assert.ok(feedbackUpdate, "the last part carries the feedback controls");
+    assert.equal(
+      updated[updated.length - 1]!.withBlocks,
+      true,
+      "feedback controls follow the last part",
+    );
+    assert.ok(
+      updated.slice(0, -1).every((update) => !update.withBlocks),
+      "earlier parts carry no feedback controls",
+    );
+    // The thread reads as the exact answer in order: part 1 at the progress ts,
+    // then each posted continuation in order.
+    const finalTextByTs = new Map<string, string>();
+    finalTextByTs.set(prepared.messageTs, updated.find((u) => u.ts === prepared.messageTs)!.text);
+    for (const [index, message] of posted.entries()) {
+      const ts = message.ts;
+      finalTextByTs.set(ts, updated.find((u) => u.ts === ts)!.text);
+      assert.equal(finalTextByTs.get(ts), parts[index + 1]);
+    }
+    assert.equal(finalTextByTs.get(prepared.messageTs), parts[0]);
+    // Each continuation is durably bound so a further retry recovers without
+    // posting again.
+    await replayPreparedAgentDelivery(client, prepared, { bindings: ingressQueue });
+    assert.equal(posted.length, parts.length - 1, "the second replay recovers without posting");
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a prepared legacy single-message agent delivery replays as one chat update", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-agent-delivery-replay-legacy-"));
+  try {
+    const outbox = new FileAgentDeliveryOutbox(root);
+    // A v1 record carries no multipart identity, so the replay must fall back to
+    // the single-message update rather than splitting or posting continuations.
+    const prepared = await outbox.prepare({
+      channel: "C-ONE",
+      deliveredAt: "2026-07-31T20:01:00.000Z",
+      deliveryRef: "slack-message://sha256/receipt",
+      messageTs: "1753992060.000100",
+      payloadDigest: `sha256:${"d".repeat(64)}`,
+      requestId: "request-pending",
+      text: "The current graph state is verified.",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+    const posted: { text: string; ts: string }[] = [];
+    const updated: { text: string; ts: string }[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          posted.push({ text: input.text, ts: "unexpected" });
+          return { ts: "unexpected" };
+        },
+        update: async (input: { text: string; ts: string }) => {
+          updated.push({ text: input.text, ts: input.ts });
+        },
+      },
+      conversations: {
+        replies: async () => ({ messages: [] }),
+      },
+    };
+    await replayPreparedAgentDelivery(client, prepared, {});
+    assert.equal(posted.length, 0, "a legacy replay never posts continuations");
+    assert.deepEqual(updated, [{ text: prepared.text, ts: prepared.messageTs }]);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
