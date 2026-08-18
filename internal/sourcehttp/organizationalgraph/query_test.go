@@ -19,6 +19,7 @@ import (
 
 	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
 	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
+	"github.com/writer/cerebro/internal/parityrun"
 	"github.com/writer/cerebro/internal/ports"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
@@ -1303,7 +1304,13 @@ func TestComparisonReceiptEmitsSuccessfulBoundedEvidence(t *testing.T) {
 	value := &ports.EntityNeighborhood{
 		Root: &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:root"},
 	}
-	logComparisonReceipt(context.Background(), "expand", "match", value, value, nil)
+	const parityRunID = "cutover-run-2026-08-13"
+	const observationID = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	ctx, err := parityrun.WithIDs(context.Background(), parityRunID, observationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logComparisonReceipt(ctx, "expand", "match", value, value, nil)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -1320,6 +1327,12 @@ func TestComparisonReceiptEmitsSuccessfulBoundedEvidence(t *testing.T) {
 	}
 	if receipt["operation"] != "expand" || receipt["status"] != "match" {
 		t.Fatalf("unexpected receipt scope: %#v", receipt)
+	}
+	if receipt["parity_run_id"] != parityRunID {
+		t.Fatalf("parity_run_id = %#v, want %q", receipt["parity_run_id"], parityRunID)
+	}
+	if receipt["parity_observation_id"] != observationID {
+		t.Fatalf("parity_observation_id = %#v, want %q", receipt["parity_observation_id"], observationID)
 	}
 	if receipt["legacy_sha256"] == "" || receipt["legacy_sha256"] != receipt["rust_sha256"] {
 		t.Fatalf("unexpected receipt digests: %#v", receipt)
