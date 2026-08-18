@@ -1,13 +1,14 @@
 package bootstrap
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/writer/cerebro/internal/parityrun"
 )
 
-func withParityCorrelation(r *http.Request) (*http.Request, error) {
+func withParityCorrelation(r *http.Request) (context.Context, error) {
 	runValues := r.Header.Values(parityrun.HeaderName)
 	observationValues := r.Header.Values(parityrun.ObservationHeaderName)
 	if len(runValues) > 1 || len(observationValues) > 1 {
@@ -24,5 +25,5 @@ func withParityCorrelation(r *http.Request) (*http.Request, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
 	}
-	return r.WithContext(ctx), nil
+	return ctx, nil
 }

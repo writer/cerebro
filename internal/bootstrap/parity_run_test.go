@@ -17,7 +17,7 @@ func TestWithParityCorrelationPropagatesValidatedHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("withParityCorrelation() error = %v", err)
 	}
-	if values := parityrun.FromContext(got.Context()); values.RunID != "cutover-run-2026-08-13" || values.ObservationID == "" {
+	if values := parityrun.FromContext(got); values.RunID != "cutover-run-2026-08-13" || values.ObservationID == "" {
 		t.Fatalf("parityrun.FromContext() = %#v", values)
 	}
 }
