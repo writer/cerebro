@@ -49,9 +49,9 @@ pub use parity::{
 };
 pub use postgres::{
     ConsumerFamilyProgress, ConsumerMessageOutcome, ConsumerRunFence, ConsumerRunInspection,
-    ConsumerRunProgress, LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger,
-    SourceCollectionReceipt, SourceEventReceipt, SourceRuntimeCollectionObservation,
-    SourceRuntimeObservation, StoredSourceRuntime,
+    ConsumerRunProgress, ConsumerRunReceiptState, ConsumerSkipCategory, LegacyProjectionReceipt,
+    POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt, SourceEventReceipt,
+    SourceRuntimeCollectionObservation, SourceRuntimeObservation, StoredSourceRuntime,
 };
 
 use std::{error::Error, fmt};

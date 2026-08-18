@@ -1878,7 +1878,13 @@ impl AgentTools for EvalTools {
                 summary:
                     "This capability has no subject-bound observation for the current request."
                         .into(),
-                data: json!({"available": false, "subject_bound": false}),
+                data: json!({
+                    "available": false,
+                    "subject_bound": false,
+                    "error_kind": "subject_bound_observation_unavailable",
+                    "retryable": false,
+                    "operator_action": "Continue with another bounded capability that can observe the exact request subject."
+                }),
             }
         } else if autonomy_input_mismatch {
             EvaluationFixture {
@@ -1887,7 +1893,10 @@ impl AgentTools for EvalTools {
                 data: json!({
                     "available": false,
                     "input_matched": false,
-                    "required_input": "exact operator-named subject identifier"
+                    "required_input": "exact operator-named subject identifier",
+                    "error_kind": "operator_subject_input_mismatch",
+                    "retryable": true,
+                    "operator_action": "Retry the same bounded runtime read with the exact operator-named subject identifier."
                 }),
             }
         } else if self.case_ref.contains("diagnose-source")
@@ -1958,7 +1967,9 @@ impl AgentTools for EvalTools {
                 |fixture| fixture.state,
             )
         };
-        let complete = if retained_slack_context {
+        let complete = if state == ToolResultState::Failed {
+            false
+        } else if retained_slack_context {
             !retained_context_has_more
         } else {
             autonomy_fixture.as_ref().map_or(
@@ -2069,7 +2080,19 @@ impl AgentTools for EvalTools {
                     )
                 },
                 complete,
-                atoms: if retained_slack_context {
+                atoms: if state == ToolResultState::Failed {
+                    vec![cerebro_agent_runtime::session::EvidenceAtom {
+                        atom_ref: format!("{evidence_ref}#tool-outcome"),
+                        subject_ref: subject_ref.clone(),
+                        assertion: cerebro_agent_runtime::session::EvidenceAssertion::ToolOutcome {
+                            state: ToolResultState::Failed,
+                            summary: summary.clone(),
+                        },
+                        observed_at: request.assessment_at.clone(),
+                        fresh_until: None,
+                        complete: false,
+                    }]
+                } else if retained_slack_context {
                     Vec::new()
                 } else {
                     evidence_atoms_from_json(EvidenceAtomization {
@@ -7417,6 +7440,53 @@ fn accepted_route(
 mod tests {
     use super::*;
 
+    struct FailedObservationModel {
+        next_calls: std::sync::atomic::AtomicUsize,
+    }
+
+    #[async_trait]
+    impl AgentModel for FailedObservationModel {
+        async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+            Ok(RouteDecision {
+                lane: ExecutionLane::Investigate,
+                confidence: cerebro_agent_runtime::RouteConfidence::High,
+                reason: "The request requires a current bounded observation.".into(),
+                requires_current_evidence: true,
+                future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
+                future_observation_excerpt: None,
+            })
+        }
+
+        async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+            if self
+                .next_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                == 0
+            {
+                return Ok(ModelDecision::InvokeTool {
+                    call: ToolCall {
+                        call_id: "call:wrong-subject-through-runtime".into(),
+                        tool_id: "source_runtime.inspect".into(),
+                        purpose: "Read the exact current source subject.".into(),
+                        input: json!({"query": "F-9999"}),
+                    },
+                });
+            }
+            Err(AgentRuntimeError::ModelUnavailable(
+                "failed observation reached the next model step".into(),
+            ))
+        }
+
+        async fn critique(
+            &self,
+            _turn: CritiqueTurn,
+        ) -> Result<CritiqueDecision, AgentRuntimeError> {
+            Err(AgentRuntimeError::ModelUnavailable(
+                "critique is not reached in this regression".into(),
+            ))
+        }
+    }
+
     #[test]
     fn corpus_has_independent_partitions_and_false_converse_negatives() {
         let cases = eval_cases();
@@ -7738,7 +7808,14 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(wrong_authority.state, ToolResultState::Failed);
+        assert!(!wrong_authority.evidence[0].complete);
         assert_eq!(wrong_authority.data["available"], false);
+        assert_eq!(
+            wrong_authority.data["error_kind"],
+            "subject_bound_observation_unavailable"
+        );
+        assert_eq!(wrong_authority.data["retryable"], false);
+        assert!(wrong_authority.data["operator_action"].is_string());
         let wrong_subject = AgentTools::invoke(
             &tools,
             &request,
@@ -7752,7 +7829,20 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(wrong_subject.state, ToolResultState::Failed);
+        assert!(!wrong_subject.evidence[0].complete);
+        assert!(
+            wrong_subject.evidence[0]
+                .atoms
+                .iter()
+                .all(|atom| !atom.complete)
+        );
         assert_eq!(wrong_subject.data["input_matched"], false);
+        assert_eq!(
+            wrong_subject.data["error_kind"],
+            "operator_subject_input_mismatch"
+        );
+        assert_eq!(wrong_subject.data["retryable"], true);
+        assert!(wrong_subject.data["operator_action"].is_string());
         assert_eq!(
             wrong_subject.data["required_input"],
             "exact operator-named subject identifier"
@@ -7776,6 +7866,72 @@ mod tests {
         assert_eq!(unavailable.state, ToolResultState::Failed);
         assert!(!unavailable.evidence[0].complete);
         assert_eq!(unavailable.data["available"], false);
+        assert_eq!(
+            unavailable.data["error_kind"],
+            "subject_bound_observation_unavailable"
+        );
+        assert_eq!(unavailable.data["retryable"], false);
+        assert!(unavailable.data["operator_action"].is_string());
+    }
+
+    #[tokio::test]
+    async fn bounded_eval_failure_survives_runtime_result_validation() {
+        let tools = EvalTools::for_autonomy(
+            "case://external/hidden-runtime-validation",
+            "2026-07-31T00:00:00Z".into(),
+            vec![AutonomyPhaseFixture {
+                observations: BTreeMap::from([(
+                    "source_runtime.inspect".into(),
+                    AutonomyToolFixture {
+                        summary: "The hidden receipt is current.".into(),
+                        data: json!({"finding_ref": "F-1234", "receipt_state": "current"}),
+                        state: ToolResultState::Succeeded,
+                        complete: true,
+                        blocker: None,
+                        freshness_seconds: 300,
+                    },
+                )]),
+            }],
+            vec![AutonomyAuthorityGroup {
+                fixture_tool_id: "source_runtime.inspect".into(),
+                accepted_tool_ids: vec!["source_runtime.inspect".into()],
+            }],
+        );
+        let model = FailedObservationModel {
+            next_calls: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let request = AgentTurnRequest {
+            schema_version: AGENT_TURN_REQUEST_V1.into(),
+            tenant_id: "tenant:runtime-validation".into(),
+            request_id: "request:runtime-validation".into(),
+            thread_ref: "thread:runtime-validation".into(),
+            context_scope_ref: None,
+            actor_ref: "operator:runtime-validation".into(),
+            assessment_at: "2026-07-31T00:00:00Z".into(),
+            message: "Check the current source record for F-1234.".into(),
+            history: Vec::new(),
+            history_metadata: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        };
+
+        let error = run_turn(&model, &tools, request).await.unwrap_err();
+        assert_eq!(
+            error,
+            AgentRuntimeError::ModelUnavailable(
+                "failed observation reached the next model step".into()
+            )
+        );
+        let observations = tools.observations();
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].state, ToolResultState::Failed);
+        assert!(!observations[0].complete);
+        assert_eq!(
+            observations[0].data["error_kind"],
+            "operator_subject_input_mismatch"
+        );
+        assert_eq!(observations[0].data["retryable"], true);
+        assert!(observations[0].data["operator_action"].is_string());
     }
 
     #[tokio::test]

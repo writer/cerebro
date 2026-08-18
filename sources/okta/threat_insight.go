@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
-
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -58,25 +56,11 @@ func (s *Source) threatInsightFamily() sourcecdk.Family[settings] {
 }
 
 func threatInsightEvent(settings settings, record threatInsightRecord) (*primitives.Event, error) {
-	payload, stateID, err := oktaasset.CanonicalThreatInsightState(settings.domain, record.Action, record.ExcludeZones)
-	if err != nil {
-		return nil, fmt.Errorf("marshal okta threat insight payload: %w", err)
-	}
-	return &primitives.Event{
-		Id:         stateID,
-		TenantId:   settings.domain,
-		SourceId:   "okta",
-		Kind:       "okta.threat_insight",
-		OccurredAt: timestamppb.New(firstRecordTime(oktaasset.ParseTime(record.LastUpdated), oktaasset.ParseTime(record.Created))),
-		SchemaRef:  "okta/threat_insight/v1",
-		Payload:    payload,
-		Attributes: map[string]string{
-			"action":             record.Action,
-			"domain":             settings.domain,
-			"exclude_zone_count": fmt.Sprintf("%d", len(record.ExcludeZones)),
-			"family":             familyThreatInsight,
-			"resource_id":        "threat_insight_config",
-			"resource_type":      "ThreatInsightConfiguration",
-		},
-	}, nil
+	return oktaasset.ThreatInsightEvent(
+		settings.domain,
+		record.Action,
+		record.ExcludeZones,
+		record.LastUpdated,
+		record.Created,
+	)
 }

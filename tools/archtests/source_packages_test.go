@@ -36,7 +36,7 @@ var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"github":          2009,
 	"googleworkspace": 814,
 	"grc":             1195,
-	"okta":            2254,
+	"okta":            2239,
 	"panopticon":      763,
 	"sentinelone":     2096,
 	"vulnview":        1002,

@@ -547,16 +547,16 @@ fn normalize_tool_result(
     } else {
         declared_state
     };
-    let blocker = (state != ToolResultState::Succeeded)
-        .then(|| provider_blocker(&data))
-        .flatten()
+    let blocker = invalid_is_error
+        .is_some()
+        .then(|| "The provider returned a non-boolean isError signal.".into())
         .or_else(|| {
             invalid_state.then(|| "The provider returned an unsupported result state.".into())
         })
         .or_else(|| {
-            invalid_is_error
-                .is_some()
-                .then(|| "The provider returned a non-boolean isError signal.".into())
+            (state != ToolResultState::Succeeded)
+                .then(|| provider_blocker(&data))
+                .flatten()
         });
     let data = if let Some(invalid_is_error) = invalid_is_error {
         json!({
@@ -1402,7 +1402,13 @@ mod tests {
         assert_eq!(unknown.data["retryable"], false);
 
         let both_malformed = normalize_tool_result(
-            json!({"state": "future_state", "request_ref": "request-two"}),
+            json!({
+                "state": "future_state",
+                "request_ref": "request-two",
+                "blocker": "Provider-controlled blocker text.",
+                "reason": "Provider-controlled reason text.",
+                "error": {"message": "Provider-controlled error text."}
+            }),
             false,
             Some(json!("false")),
         );
@@ -1413,8 +1419,20 @@ mod tests {
         );
         assert_eq!(both_malformed.data["retryable"], false);
         assert_eq!(
+            both_malformed.blocker.as_deref(),
+            Some("The provider returned a non-boolean isError signal.")
+        );
+        assert_eq!(
             both_malformed.data["provider_result"]["request_ref"],
             "request-two"
+        );
+        assert_eq!(
+            both_malformed.data["provider_result"]["reason"],
+            "Provider-controlled reason text."
+        );
+        assert_eq!(
+            both_malformed.data["provider_result"]["error"]["message"],
+            "Provider-controlled error text."
         );
     }
 

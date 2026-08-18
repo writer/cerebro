@@ -20,10 +20,16 @@ use sha2::{Digest, Sha256};
 use crate::{CollectedBatch, CollectedScope, SourceRecord};
 
 const SOURCE_RUNTIME_ID_ATTRIBUTE: &str = "source_runtime_id";
+const SOURCE_COLLECTION_ID_ATTRIBUTE: &str = "source_collection_id";
 const CREDENTIAL_EVENT_KIND: &str = "security.credential.lifecycle";
 const CERTIFICATE_EVENT_KIND: &str = "security.certificate.lifecycle";
 const CREDENTIAL_SCHEMA_REF: &str = "cerebro/security/credential-lifecycle/v1";
 const CERTIFICATE_SCHEMA_REF: &str = "cerebro/security/certificate-lifecycle/v1";
+const OKTA_THREAT_INSIGHT_KIND: &str = "okta.threat_insight";
+const OKTA_THREAT_INSIGHT_SCHEMA_REF: &str = "okta/threat_insight/v1";
+const LEGACY_OKTA_THREAT_INSIGHT_PREFIX: &str = "okta-threat-insight-";
+const CURRENT_OKTA_THREAT_INSIGHT_PREFIX: &str = "okta-threat-insight-sha256-";
+const COMPATIBILITY_OBSERVATION_ID_PREFIX: &str = "compat:v1:";
 
 #[derive(Clone, PartialEq, Message)]
 struct CommittedSourceWire {
@@ -213,7 +219,16 @@ impl CommittedSourceEvent {
         let tenant_id = TenantId::parse(tenant).map_err(model_error)?;
         let source_runtime_id =
             SourceRuntimeId::parse(required(runtime, "source_runtime_id")?).map_err(model_error)?;
-        let observation_id = ObservationId::parse(event_id).map_err(model_error)?;
+        let observation_id = decode_observation_id(
+            event_id,
+            &tenant_id,
+            &source_id,
+            kind,
+            wire.schema_ref.trim(),
+            observed_at_unix_ms,
+            &wire.attributes,
+            &payload,
+        )?;
         Ok(Some(Self {
             tenant_id,
             source_runtime_id,
@@ -283,14 +298,16 @@ impl CommittedSourceEvent {
         &self.payload
     }
 
-    /// Hash all identity, time, metadata, and canonical payload fields.
+    /// Hash all immutable identity, time, metadata, and canonical payload fields.
     ///
     /// Length-prefixing each field prevents concatenation ambiguity. The
     /// resulting lowercase SHA-256 digest is stable across map insertion order.
+    /// Runtime and collection IDs are delivery provenance: materialization adds
+    /// them after a source chooses its immutable observation ID, and later
+    /// redelivery can legitimately use a different runtime or collection.
     pub fn record_digest(&self) -> String {
         let mut hasher = Sha256::new();
         hash_field(&mut hasher, self.tenant_id.as_str().as_bytes());
-        hash_field(&mut hasher, self.source_runtime_id.as_str().as_bytes());
         hash_field(&mut hasher, self.observation_id.as_str().as_bytes());
         hash_field(&mut hasher, self.source_id.as_bytes());
         hash_field(&mut hasher, self.family_id.as_bytes());
@@ -298,10 +315,16 @@ impl CommittedSourceEvent {
         hash_field(&mut hasher, self.schema_ref.as_bytes());
         hash_field(&mut hasher, self.observed_at_unix_ms.to_string().as_bytes());
         for (key, value) in &self.attributes {
+            if matches!(
+                key.as_str(),
+                SOURCE_RUNTIME_ID_ATTRIBUTE | SOURCE_COLLECTION_ID_ATTRIBUTE
+            ) {
+                continue;
+            }
             hash_field(&mut hasher, key.as_bytes());
             hash_field(&mut hasher, value.as_bytes());
         }
-        let payload = canonical_payload_bytes(&self.payload);
+        let payload = self.canonical_payload_bytes();
         hash_field(&mut hasher, &payload);
         finish_digest(hasher)
     }
@@ -319,7 +342,7 @@ impl CommittedSourceEvent {
     /// Hash only the canonical JSON payload.
     pub fn payload_digest(&self) -> String {
         let mut hasher = Sha256::new();
-        let payload = canonical_payload_bytes(&self.payload);
+        let payload = self.canonical_payload_bytes();
         hash_field(&mut hasher, &payload);
         finish_digest(hasher)
     }
@@ -330,6 +353,15 @@ impl CommittedSourceEvent {
     /// portable lifecycle projectors consume these preserved bytes instead.
     pub fn raw_payload(&self) -> &[u8] {
         &self.raw_payload
+    }
+
+    fn canonical_payload_bytes(&self) -> Vec<u8> {
+        canonical_event_payload_bytes(
+            &self.source_id,
+            &self.event_kind,
+            &self.schema_ref,
+            &self.payload,
+        )
     }
 
     /// Return whether this event is an accepted portable security lifecycle event.
@@ -382,6 +414,325 @@ impl CommittedSourceEvent {
 fn hash_field(hasher: &mut Sha256, value: &[u8]) {
     hasher.update(value.len().to_be_bytes());
     hasher.update(value);
+}
+
+#[allow(clippy::too_many_arguments)]
+// Translate only source contracts whose historical producer IDs cannot cross
+// the organizational-model boundary. Hashing the original coordinates avoids
+// lossy character replacement and keeps redelivery identity stable.
+fn decode_observation_id(
+    event_id: &str,
+    tenant_id: &TenantId,
+    source_id: &str,
+    event_kind: &str,
+    schema_ref: &str,
+    observed_at_unix_ms: i64,
+    attributes: &HashMap<String, String>,
+    payload: &serde_json::Value,
+) -> Result<ObservationId, AppendLogDecodeError> {
+    if is_legacy_okta_threat_insight_candidate(event_id, source_id, event_kind, schema_ref) {
+        let provider_domain =
+            okta_threat_insight_provider_domain(attributes, payload).ok_or_else(|| {
+                AppendLogDecodeError::InvalidModel(
+                    "legacy Okta threat insight identity is inconsistent".to_owned(),
+                )
+            })?;
+        if event_id
+            != format!("{LEGACY_OKTA_THREAT_INSIGHT_PREFIX}{provider_domain}-{observed_at_unix_ms}")
+        {
+            return Err(AppendLogDecodeError::InvalidModel(
+                "legacy Okta threat insight identity is inconsistent".to_owned(),
+            ));
+        }
+        let mut hasher = Sha256::new();
+        hash_field(
+            &mut hasher,
+            b"cerebro.compat-observation-id.okta-threat-insight/v1",
+        );
+        hash_field(&mut hasher, tenant_id.as_str().as_bytes());
+        hash_field(&mut hasher, source_id.as_bytes());
+        hash_field(&mut hasher, event_kind.as_bytes());
+        hash_field(&mut hasher, schema_ref.as_bytes());
+        hash_field(&mut hasher, observed_at_unix_ms.to_string().as_bytes());
+        let mut attributes = attributes.iter().collect::<Vec<_>>();
+        attributes.sort_unstable_by(|left, right| left.0.cmp(right.0));
+        for (key, value) in attributes {
+            if matches!(
+                key.as_str(),
+                SOURCE_RUNTIME_ID_ATTRIBUTE | SOURCE_COLLECTION_ID_ATTRIBUTE
+            ) {
+                continue;
+            }
+            hash_field(&mut hasher, key.as_bytes());
+            hash_field(&mut hasher, value.as_bytes());
+        }
+        hash_field(
+            &mut hasher,
+            &canonical_event_payload_bytes(source_id, event_kind, schema_ref, payload),
+        );
+        return compatibility_observation_id(hasher);
+    }
+
+    match ObservationId::parse(event_id) {
+        Ok(observation_id) => Ok(observation_id),
+        Err(error) => match compatible_legacy_invalid_identity(
+            event_id, source_id, event_kind, schema_ref, attributes, payload,
+        ) {
+            Some(LegacyInvalidIdentity::PreservedEventId) => {
+                let mut hasher = Sha256::new();
+                hash_field(
+                    &mut hasher,
+                    b"cerebro.compat-observation-id.invalid-character/v1",
+                );
+                hash_field(&mut hasher, tenant_id.as_str().as_bytes());
+                hash_field(&mut hasher, source_id.as_bytes());
+                hash_field(&mut hasher, event_kind.as_bytes());
+                hash_field(&mut hasher, schema_ref.as_bytes());
+                hash_field(&mut hasher, event_id.as_bytes());
+                compatibility_observation_id(hasher)
+            }
+            Some(LegacyInvalidIdentity::AwsPublicEndpoint(raw_identity)) => {
+                let mut hasher = Sha256::new();
+                hash_field(
+                    &mut hasher,
+                    b"cerebro.compat-observation-id.aws-public-endpoint/v1",
+                );
+                hash_field(&mut hasher, tenant_id.as_str().as_bytes());
+                hash_field(&mut hasher, source_id.as_bytes());
+                hash_field(&mut hasher, event_kind.as_bytes());
+                hash_field(&mut hasher, schema_ref.as_bytes());
+                hash_field(&mut hasher, raw_identity.as_bytes());
+                hash_field(&mut hasher, event_id.as_bytes());
+                compatibility_observation_id(hasher)
+            }
+            None => Err(model_error(error)),
+        },
+    }
+}
+
+fn is_legacy_okta_threat_insight_candidate(
+    event_id: &str,
+    source_id: &str,
+    event_kind: &str,
+    schema_ref: &str,
+) -> bool {
+    source_id == "okta"
+        && event_kind == OKTA_THREAT_INSIGHT_KIND
+        && schema_ref == OKTA_THREAT_INSIGHT_SCHEMA_REF
+        && event_id.starts_with(LEGACY_OKTA_THREAT_INSIGHT_PREFIX)
+        && !event_id.starts_with(CURRENT_OKTA_THREAT_INSIGHT_PREFIX)
+}
+
+fn okta_threat_insight_provider_domain(
+    attributes: &HashMap<String, String>,
+    payload: &serde_json::Value,
+) -> Option<String> {
+    let attribute_domain = attributes.get("domain")?.trim();
+    let payload_domain = payload.get("domain")?.as_str()?.trim();
+    if attribute_domain != payload_domain || !is_bounded_provider_domain(attribute_domain) {
+        return None;
+    }
+    Some(attribute_domain.to_owned())
+}
+
+fn is_bounded_provider_domain(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 253
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        && value
+            .as_bytes()
+            .last()
+            .is_some_and(u8::is_ascii_alphanumeric)
+}
+
+enum LegacyInvalidIdentity<'a> {
+    PreservedEventId,
+    AwsPublicEndpoint(&'a str),
+}
+
+fn compatible_legacy_invalid_identity<'a>(
+    event_id: &str,
+    source_id: &str,
+    event_kind: &str,
+    schema_ref: &str,
+    attributes: &'a HashMap<String, String>,
+    payload: &'a serde_json::Value,
+) -> Option<LegacyInvalidIdentity<'a>> {
+    if event_id.is_empty() {
+        return None;
+    }
+    match (source_id, event_kind, schema_ref) {
+        ("gcp", "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1")
+            if event_id
+                .strip_prefix("gcp-iam-role-assignment-")
+                .is_some_and(|suffix| {
+                    event_id.len() <= 256
+                        && !suffix.is_empty()
+                        && event_id.contains('@')
+                        && event_id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
+                }) =>
+        {
+            Some(LegacyInvalidIdentity::PreservedEventId)
+        }
+        ("gcp", "gcp.effective_permission", "gcp/effective_permission/v1")
+            if event_id
+                .strip_prefix("gcp-effective-permission-")
+                .is_some_and(|suffix| {
+                    event_id.len() <= 256
+                        && !suffix.is_empty()
+                        && event_id.contains('@')
+                        && event_id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
+                }) =>
+        {
+            Some(LegacyInvalidIdentity::PreservedEventId)
+        }
+        ("aws", "aws.public_endpoint", "aws/public_endpoint/v1") => {
+            let raw_identity =
+                compatible_legacy_aws_public_endpoint_identity(event_id, attributes, payload)?;
+            if preserves_existing_aws_wildcard_identity(event_id, raw_identity) {
+                Some(LegacyInvalidIdentity::PreservedEventId)
+            } else {
+                Some(LegacyInvalidIdentity::AwsPublicEndpoint(raw_identity))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn compatible_legacy_aws_public_endpoint_identity<'a>(
+    event_id: &str,
+    attributes: &'a HashMap<String, String>,
+    payload: &'a serde_json::Value,
+) -> Option<&'a str> {
+    const LEGACY_EVENT_ID_PREFIX: &str = "aws-public-endpoint-";
+    const MAX_LEGACY_IDENTITY_LEN: usize = 2_048;
+    if !event_id.starts_with(LEGACY_EVENT_ID_PREFIX)
+        || event_id.len() > LEGACY_EVENT_ID_PREFIX.len() + MAX_LEGACY_IDENTITY_LEN
+    {
+        return None;
+    }
+    let account_id = match payload
+        .get("account_id")
+        .and_then(serde_json::Value::as_str)
+    {
+        Some(account_id) if !account_id.trim().is_empty() => account_id.trim(),
+        _ => return None,
+    };
+    if attributes.get("domain").map(String::as_str) != Some(account_id) {
+        return None;
+    }
+    let endpoint = payload
+        .get("endpoint")
+        .and_then(serde_json::Value::as_object)?;
+    let identity_fields = [
+        ("endpoint_id", "EndpointID"),
+        ("resource_id", "ResourceID"),
+        ("ip", "IP"),
+        ("host", "Host"),
+    ];
+    let mut identity = None;
+    for (attribute_key, payload_key) in identity_fields {
+        let payload_value = trimmed_json_string(endpoint, payload_key)?;
+        let attribute_value = attributes.get(attribute_key).map(String::as_str);
+        if attribute_value != (!payload_value.is_empty()).then_some(payload_value) {
+            return None;
+        }
+        if identity.is_none() && !payload_value.is_empty() {
+            identity = Some(payload_value);
+        }
+    }
+    for (attribute_key, payload_key) in [("service", "Service"), ("resource_type", "ResourceType")]
+    {
+        let payload_value = trimmed_json_string(endpoint, payload_key)?;
+        if attributes.get(attribute_key).map(String::as_str)
+            != (!payload_value.is_empty()).then_some(payload_value)
+        {
+            return None;
+        }
+    }
+    let identity = identity?;
+    if identity.len() > MAX_LEGACY_IDENTITY_LEN {
+        return None;
+    }
+    (event_id == sanitize_legacy_aws_event_id(&format!("{LEGACY_EVENT_ID_PREFIX}{identity}")))
+        .then_some(identity)
+}
+
+fn preserves_existing_aws_wildcard_identity(event_id: &str, raw_identity: &str) -> bool {
+    event_id.len() <= 256
+        && event_id.contains('*')
+        && event_id.strip_prefix("aws-public-endpoint-") == Some(raw_identity)
+        && event_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/*".contains(&byte))
+}
+
+fn trimmed_json_string<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<&'a str> {
+    match object.get(key) {
+        None => Some(""),
+        Some(serde_json::Value::String(value)) => Some(value.trim()),
+        Some(_) => None,
+    }
+}
+
+fn sanitize_legacy_aws_event_id(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| match character {
+            ' ' | '/' | ':' => '-',
+            other => other,
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_owned()
+}
+
+fn compatibility_observation_id(hasher: Sha256) -> Result<ObservationId, AppendLogDecodeError> {
+    ObservationId::parse(format!(
+        "{COMPATIBILITY_OBSERVATION_ID_PREFIX}{}",
+        finish_digest(hasher)
+    ))
+    .map_err(model_error)
+}
+
+fn canonical_event_payload_bytes(
+    source_id: &str,
+    event_kind: &str,
+    schema_ref: &str,
+    payload: &serde_json::Value,
+) -> Vec<u8> {
+    let mut payload = payload.clone();
+    // The v1 API models excluded zones as a set. Its historical producer kept
+    // provider order, so equivalent deliveries need one semantic digest.
+    if source_id == "okta"
+        && event_kind == OKTA_THREAT_INSIGHT_KIND
+        && schema_ref == OKTA_THREAT_INSIGHT_SCHEMA_REF
+        && let Some(zones) = payload
+            .as_object_mut()
+            .and_then(|object| object.get_mut("exclude_zones"))
+            .and_then(serde_json::Value::as_array_mut)
+        && zones.iter().all(serde_json::Value::is_string)
+    {
+        zones.sort_unstable_by(|left, right| {
+            left.as_str()
+                .expect("checked string zone")
+                .cmp(right.as_str().expect("checked string zone"))
+        });
+    }
+    canonical_payload_bytes(&payload)
 }
 
 fn canonical_payload_bytes(value: &serde_json::Value) -> Vec<u8> {
@@ -468,6 +819,39 @@ mod tests {
         }
     }
 
+    fn legacy_aws_endpoint_wire(identity: &str) -> CommittedSourceWire {
+        let identity = identity.trim();
+        let mut wire = source_wire();
+        wire.tenant_id = "tenant-a".to_owned();
+        wire.source_id = "aws".to_owned();
+        wire.kind = "aws.public_endpoint".to_owned();
+        wire.schema_ref = "aws/public_endpoint/v1".to_owned();
+        wire.id = sanitize_legacy_aws_event_id(&format!("aws-public-endpoint-{identity}"));
+        wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "aws-runtime".to_owned(),
+            ),
+            ("domain".to_owned(), "123456789012".to_owned()),
+            ("endpoint_id".to_owned(), identity.to_owned()),
+            ("resource_type".to_owned(), "route53_record".to_owned()),
+            ("service".to_owned(), "route53".to_owned()),
+        ]);
+        wire.payload = serde_json::to_vec(&serde_json::json!({
+            "account_id": "123456789012",
+            "endpoint": {
+                "EndpointID": identity,
+                "ResourceID": "",
+                "IP": "",
+                "Host": "",
+                "ResourceType": "route53_record",
+                "Service": "route53"
+            }
+        }))
+        .unwrap();
+        wire
+    }
+
     #[test]
     fn canonical_source_event_becomes_a_sealed_committed_event() {
         let event = CommittedSourceEvent::decode(&encode(source_wire()))
@@ -484,6 +868,253 @@ mod tests {
         assert_eq!(event.observed_at_unix_ms(), 1_720_000_000_123);
         assert_eq!(event.attributes()["provider_id"], "file-1");
         assert_eq!(event.payload()["name"], "board.pdf");
+    }
+
+    #[test]
+    fn compatible_legacy_observation_id_decodes_to_stable_identity() {
+        let mut wire = source_wire();
+        wire.source_id = "gcp".to_owned();
+        wire.kind = "gcp.iam_role_assignment".to_owned();
+        wire.schema_ref = "gcp/iam_role_assignment/v1".to_owned();
+        wire.id = "gcp-iam-role-assignment-user+alias@example.test-roles-owner".to_owned();
+
+        let first = CommittedSourceEvent::decode(&encode(wire.clone()))
+            .expect("legacy compatibility ID should decode")
+            .expect("source event");
+        let second = CommittedSourceEvent::decode(&encode(wire))
+            .expect("redelivery should decode")
+            .expect("source event");
+
+        assert_eq!(first.observation_id(), second.observation_id());
+        assert_ne!(
+            first.observation_id().as_str(),
+            "gcp-iam-role-assignment-user+alias@example.test-roles-owner"
+        );
+        assert!(first.observation_id().as_str().starts_with("compat:v1:"));
+    }
+
+    #[test]
+    fn compatibility_identity_binds_tenant_and_contract_not_delivery_provenance() {
+        let mut first_wire = source_wire();
+        first_wire.source_id = "gcp".to_owned();
+        first_wire.kind = "gcp.effective_permission".to_owned();
+        first_wire.schema_ref = "gcp/effective_permission/v1".to_owned();
+        first_wire.id = "gcp-effective-permission-user@example.test-roles-owner".to_owned();
+        let first = CommittedSourceEvent::decode(&encode(first_wire.clone()))
+            .unwrap()
+            .unwrap();
+
+        let mut redelivery_wire = first_wire.clone();
+        redelivery_wire.attributes.insert(
+            SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+            "gcp-replacement".to_owned(),
+        );
+        redelivery_wire.attributes.insert(
+            SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+            "replacement-collection".to_owned(),
+        );
+        let redelivery = CommittedSourceEvent::decode(&encode(redelivery_wire))
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.observation_id(), redelivery.observation_id());
+        assert_eq!(first.record_digest(), redelivery.record_digest());
+        assert_ne!(first.attributes_digest(), redelivery.attributes_digest());
+
+        let mut other_tenant_wire = first_wire;
+        other_tenant_wire.tenant_id = "tenant-b".to_owned();
+        let other_tenant = CommittedSourceEvent::decode(&encode(other_tenant_wire))
+            .unwrap()
+            .unwrap();
+        assert_ne!(first.observation_id(), other_tenant.observation_id());
+        assert_ne!(first.record_digest(), other_tenant.record_digest());
+    }
+
+    #[test]
+    fn compatibility_identity_boundary_stays_closed() {
+        let cases = [
+            (
+                "box",
+                "box.content_assets",
+                "box/content_assets/v1",
+                "user@example.test",
+            ),
+            (
+                "gcp",
+                "gcp.project_bindings",
+                "gcp/project_bindings/v1",
+                "gcp-iam-role-assignment-user@example.test-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user\\alias@example.test-roles-owner",
+            ),
+            (
+                "aws",
+                "aws.public_endpoint",
+                "aws/public_endpoint/v1",
+                "aws-public-endpoint-host@example.test",
+            ),
+        ];
+        for (source, kind, schema, id) in cases {
+            let mut wire = source_wire();
+            wire.source_id = source.to_owned();
+            wire.kind = kind.to_owned();
+            wire.schema_ref = schema.to_owned();
+            wire.id = id.to_owned();
+            assert!(matches!(
+                CommittedSourceEvent::decode(&encode(wire)),
+                Err(AppendLogDecodeError::InvalidModel(message))
+                    if message == "observation id is invalid"
+            ));
+        }
+    }
+
+    #[test]
+    fn legacy_aws_wildcard_endpoint_gets_a_collision_resistant_identity() {
+        let wire = legacy_aws_endpoint_wire("*.example.test");
+
+        let event = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            event.observation_id().as_str(),
+            "compat:v1:c5346b4c728737c7f4a0a7b103df9c9daca8527f8c2e11a63bb3e0968c621c27"
+        );
+    }
+
+    #[test]
+    fn legacy_aws_endpoint_identity_requires_exact_source_material() {
+        let mut wire = legacy_aws_endpoint_wire("blue@edge");
+
+        let event = CommittedSourceEvent::decode(&encode(wire.clone()))
+            .expect("producer-bound legacy endpoint should decode")
+            .expect("source event");
+        assert!(event.observation_id().as_str().starts_with("compat:v1:"));
+
+        wire.payload = serde_json::to_vec(&serde_json::json!({
+            "account_id": "123456789012",
+            "endpoint": {
+                "EndpointID": "other@edge",
+                "ResourceID": "",
+                "IP": "",
+                "Host": "",
+                "ResourceType": "route53_record",
+                "Service": "route53"
+            }
+        }))
+        .unwrap();
+        assert!(matches!(
+            CommittedSourceEvent::decode(&encode(wire)),
+            Err(AppendLogDecodeError::InvalidModel(message))
+                if message == "observation id is invalid"
+        ));
+    }
+
+    #[test]
+    fn legacy_aws_endpoint_identity_replays_stably_and_remains_tenant_scoped() {
+        let wire = legacy_aws_endpoint_wire("weighted@edge");
+        let first = CommittedSourceEvent::decode(&encode(wire.clone()))
+            .unwrap()
+            .unwrap();
+        let redelivery = CommittedSourceEvent::decode(&encode(wire.clone()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.observation_id(), redelivery.observation_id());
+
+        let mut other_tenant = wire;
+        other_tenant.tenant_id = "tenant-b".to_owned();
+        let other_tenant = CommittedSourceEvent::decode(&encode(other_tenant))
+            .unwrap()
+            .unwrap();
+        assert_ne!(first.observation_id(), other_tenant.observation_id());
+    }
+
+    #[test]
+    fn legacy_aws_endpoint_identity_distinguishes_sanitizer_collisions() {
+        let slash = CommittedSourceEvent::decode(&encode(legacy_aws_endpoint_wire("blue/edge@id")))
+            .unwrap()
+            .unwrap();
+        let colon = CommittedSourceEvent::decode(&encode(legacy_aws_endpoint_wire("blue:edge@id")))
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(slash.observation_id(), colon.observation_id());
+        assert_ne!(slash.record_digest(), colon.record_digest());
+    }
+
+    #[test]
+    fn legacy_aws_endpoint_identity_matches_go_trimming_and_sanitization() {
+        let mut wire = legacy_aws_endpoint_wire("weighted @ edge:/");
+        wire.id = "aws-public-endpoint-weighted-@-edge".to_owned();
+        wire.payload = serde_json::to_vec(&serde_json::json!({
+            "account_id": "123456789012",
+            "endpoint": {
+                "EndpointID": " weighted @ edge:/ ",
+                "ResourceID": "", "IP": "", "Host": "",
+                "ResourceType": "route53_record", "Service": "route53"
+            }
+        }))
+        .unwrap();
+        let event = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+        assert!(event.observation_id().as_str().starts_with("compat:v1:"));
+    }
+
+    #[test]
+    fn legacy_aws_endpoint_identity_requires_account_and_endpoint_metadata_binding() {
+        let baseline = legacy_aws_endpoint_wire("weighted@edge");
+        let cases = [
+            (
+                "account",
+                serde_json::json!({
+                    "account_id": "210987654321",
+                    "endpoint": {
+                        "EndpointID": "weighted@edge",
+                        "ResourceID": "", "IP": "", "Host": "",
+                        "ResourceType": "route53_record", "Service": "route53"
+                    }
+                }),
+            ),
+            (
+                "service",
+                serde_json::json!({
+                    "account_id": "123456789012",
+                    "endpoint": {
+                        "EndpointID": "weighted@edge",
+                        "ResourceID": "", "IP": "", "Host": "",
+                        "ResourceType": "route53_record", "Service": "other"
+                    }
+                }),
+            ),
+            (
+                "missing endpoint",
+                serde_json::json!({"account_id": "123456789012"}),
+            ),
+        ];
+        for (field, payload) in cases {
+            let mut wire = baseline.clone();
+            wire.payload = serde_json::to_vec(&payload).unwrap();
+            assert!(
+                CommittedSourceEvent::decode(&encode(wire)).is_err(),
+                "changed {field} escaped producer binding"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_aws_endpoint_identity_has_an_explicit_producer_bound() {
+        let maximum = format!("@{}", "a".repeat(2_047));
+        assert!(CommittedSourceEvent::decode(&encode(legacy_aws_endpoint_wire(&maximum))).is_ok());
+
+        let oversized = format!("@{}", "a".repeat(2_048));
+        assert!(matches!(
+            CommittedSourceEvent::decode(&encode(legacy_aws_endpoint_wire(&oversized))),
+            Err(AppendLogDecodeError::InvalidModel(message))
+                if message == "observation id is invalid"
+        ));
     }
 
     #[test]
@@ -638,6 +1269,281 @@ mod tests {
         let second = CommittedSourceEvent::from_input(input).unwrap();
         assert_eq!(first.record_digest(), second.record_digest());
         assert_eq!(first.payload_digest(), second.payload_digest());
+    }
+
+    #[test]
+    fn legacy_threat_insight_zone_order_is_idempotent() {
+        let mut first_wire = source_wire();
+        first_wire.id = "okta-threat-insight-example.okta.test-1720000000123".to_owned();
+        first_wire.tenant_id = "tenant-a".to_owned();
+        first_wire.source_id = "okta".to_owned();
+        first_wire.kind = "okta.threat_insight".to_owned();
+        first_wire.schema_ref = "okta/threat_insight/v1".to_owned();
+        first_wire.payload = br#"{"action":"block","domain":"example.okta.test","exclude_zones":["zone-b","zone-a"]}"#.to_vec();
+        first_wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "okta-runtime".to_owned(),
+            ),
+            ("action".to_owned(), "block".to_owned()),
+            ("domain".to_owned(), "example.okta.test".to_owned()),
+            ("exclude_zone_count".to_owned(), "2".to_owned()),
+            ("family".to_owned(), "threat_insight".to_owned()),
+            ("resource_id".to_owned(), "threat_insight_config".to_owned()),
+            (
+                "resource_type".to_owned(),
+                "ThreatInsightConfiguration".to_owned(),
+            ),
+        ]);
+
+        let mut second_wire = first_wire.clone();
+        second_wire.payload = br#"{"exclude_zones":["zone-a","zone-b"],"domain":"example.okta.test","action":"block"}"#.to_vec();
+
+        let first = CommittedSourceEvent::decode(&encode(first_wire))
+            .unwrap()
+            .unwrap();
+        let second = CommittedSourceEvent::decode(&encode(second_wire))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(first.observation_id(), second.observation_id());
+        assert!(first.observation_id().as_str().starts_with("compat:v1:"));
+        assert_eq!(first.record_digest(), second.record_digest());
+        assert_eq!(first.payload_digest(), second.payload_digest());
+    }
+
+    #[test]
+    fn legacy_threat_insight_conflicting_material_remains_distinct() {
+        let mut first_wire = source_wire();
+        first_wire.id = "okta-threat-insight-example.okta.test-1720000000123".to_owned();
+        first_wire.tenant_id = "tenant-a".to_owned();
+        first_wire.source_id = "okta".to_owned();
+        first_wire.kind = OKTA_THREAT_INSIGHT_KIND.to_owned();
+        first_wire.schema_ref = OKTA_THREAT_INSIGHT_SCHEMA_REF.to_owned();
+        first_wire.payload =
+            br#"{"action":"block","domain":"example.okta.test","exclude_zones":["zone-a"]}"#
+                .to_vec();
+        first_wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "okta-runtime".to_owned(),
+            ),
+            ("action".to_owned(), "block".to_owned()),
+            ("domain".to_owned(), "example.okta.test".to_owned()),
+            ("exclude_zone_count".to_owned(), "1".to_owned()),
+            ("family".to_owned(), "threat_insight".to_owned()),
+            ("resource_id".to_owned(), "threat_insight_config".to_owned()),
+            (
+                "resource_type".to_owned(),
+                "ThreatInsightConfiguration".to_owned(),
+            ),
+        ]);
+        let mut conflicting_wire = first_wire.clone();
+        conflicting_wire.payload =
+            br#"{"action":"block","domain":"example.okta.test","exclude_zones":["zone-b"]}"#
+                .to_vec();
+
+        let first = CommittedSourceEvent::decode(&encode(first_wire))
+            .unwrap()
+            .unwrap();
+        let conflicting = CommittedSourceEvent::decode(&encode(conflicting_wire))
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(first.observation_id(), conflicting.observation_id());
+        assert_ne!(first.record_digest(), conflicting.record_digest());
+    }
+
+    #[test]
+    fn legacy_threat_insight_requires_matching_provider_domains() {
+        let mut wire = source_wire();
+        wire.id = "okta-threat-insight-example.okta.test-1720000000123".to_owned();
+        wire.tenant_id = "tenant-a".to_owned();
+        wire.source_id = "okta".to_owned();
+        wire.kind = OKTA_THREAT_INSIGHT_KIND.to_owned();
+        wire.schema_ref = OKTA_THREAT_INSIGHT_SCHEMA_REF.to_owned();
+        wire.payload =
+            br#"{"action":"block","domain":"other.okta.test","exclude_zones":[]}"#.to_vec();
+        wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "okta-runtime".to_owned(),
+            ),
+            ("domain".to_owned(), "example.okta.test".to_owned()),
+            ("family".to_owned(), "threat_insight".to_owned()),
+        ]);
+
+        assert!(matches!(
+            CommittedSourceEvent::decode(&encode(wire)),
+            Err(AppendLogDecodeError::InvalidModel(message))
+                if message == "legacy Okta threat insight identity is inconsistent"
+        ));
+    }
+
+    #[test]
+    fn current_threat_insight_content_identity_is_preserved() {
+        let mut wire = source_wire();
+        wire.id = format!("{CURRENT_OKTA_THREAT_INSIGHT_PREFIX}{}", "a".repeat(64));
+        wire.tenant_id = "example.okta.test".to_owned();
+        wire.source_id = "okta".to_owned();
+        wire.kind = OKTA_THREAT_INSIGHT_KIND.to_owned();
+        wire.schema_ref = OKTA_THREAT_INSIGHT_SCHEMA_REF.to_owned();
+
+        let event = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            event.observation_id().as_str(),
+            format!("{CURRENT_OKTA_THREAT_INSIGHT_PREFIX}{}", "a".repeat(64))
+        );
+    }
+
+    #[test]
+    fn record_digest_excludes_only_exact_delivery_provenance() {
+        let mut first_wire = source_wire();
+        first_wire.attributes.insert(
+            SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+            "collection-one".to_owned(),
+        );
+        let first = CommittedSourceEvent::decode(&encode(first_wire))
+            .unwrap()
+            .unwrap();
+
+        let mut second_wire = source_wire();
+        second_wire.attributes.insert(
+            SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+            "box-replacement".to_owned(),
+        );
+        second_wire.attributes.insert(
+            SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+            "collection-two".to_owned(),
+        );
+        let second = CommittedSourceEvent::decode(&encode(second_wire))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(first.observation_id(), second.observation_id());
+        assert_ne!(first.source_runtime_id(), second.source_runtime_id());
+        assert_ne!(first.attributes(), second.attributes());
+        assert_ne!(first.attributes_digest(), second.attributes_digest());
+        assert_eq!(first.record_digest(), second.record_digest());
+
+        for key in [
+            "source_runtime",
+            "source_runtime_id_suffix",
+            "source_collection",
+            "source_collection_id_suffix",
+        ] {
+            let mut changed = first.clone();
+            changed
+                .attributes
+                .insert(key.to_owned(), "changed".to_owned());
+            assert_ne!(
+                first.record_digest(),
+                changed.record_digest(),
+                "non-provenance attribute {key:?} was excluded"
+            );
+        }
+    }
+
+    #[test]
+    fn reused_current_observation_id_with_different_material_conflicts() {
+        let first = CommittedSourceEvent::decode(&encode(source_wire()))
+            .unwrap()
+            .unwrap();
+        let mut conflicting_wire = source_wire();
+        conflicting_wire.payload = br#"{"id":"file-1","name":"different-board.pdf"}"#.to_vec();
+        let conflicting = CommittedSourceEvent::decode(&encode(conflicting_wire))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(first.observation_id(), conflicting.observation_id());
+        assert_ne!(first.record_digest(), conflicting.record_digest());
+    }
+
+    #[test]
+    fn every_immutable_record_field_remains_digest_bound() {
+        let mut wire = source_wire();
+        wire.source_id = "okta".to_owned();
+        wire.kind = "okta.threat_insight".to_owned();
+        wire.schema_ref = "okta/threat_insight/v1".to_owned();
+        wire.payload =
+            br#"{"action":"block","domain":"example.okta.test","exclude_zones":["zone-a"]}"#
+                .to_vec();
+        wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "writer-okta".to_owned(),
+            ),
+            (
+                SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+                "collection-one".to_owned(),
+            ),
+            ("action".to_owned(), "block".to_owned()),
+            ("domain".to_owned(), "example.okta.test".to_owned()),
+            ("exclude_zone_count".to_owned(), "1".to_owned()),
+            ("family".to_owned(), "threat_insight".to_owned()),
+            ("resource_id".to_owned(), "threat_insight_config".to_owned()),
+            (
+                "resource_type".to_owned(),
+                "ThreatInsightConfiguration".to_owned(),
+            ),
+        ]);
+        let original = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+
+        let mut changes: Vec<(&str, CommittedSourceEvent)> = Vec::new();
+        let mut changed = original.clone();
+        changed.tenant_id = TenantId::parse("tenant-b").unwrap();
+        changes.push(("tenant_id", changed));
+        let mut changed = original.clone();
+        changed.observation_id = ObservationId::parse("event-2").unwrap();
+        changes.push(("observation_id", changed));
+        let mut changed = original.clone();
+        changed.source_id = "github".to_owned();
+        changes.push(("source_id", changed));
+        let mut changed = original.clone();
+        changed.family_id = "applications".to_owned();
+        changes.push(("family_id", changed));
+        let mut changed = original.clone();
+        changed.event_kind = "okta.applications".to_owned();
+        changes.push(("event_kind", changed));
+        let mut changed = original.clone();
+        changed.schema_ref = "okta/threat_insight/v2".to_owned();
+        changes.push(("schema_ref", changed));
+        let mut changed = original.clone();
+        changed.observed_at_unix_ms += 1;
+        changes.push(("observed_at", changed));
+        for key in [
+            "action",
+            "domain",
+            "exclude_zone_count",
+            "family",
+            "resource_id",
+            "resource_type",
+        ] {
+            let mut changed = original.clone();
+            changed
+                .attributes
+                .insert(key.to_owned(), format!("changed-{key}"));
+            changes.push((key, changed));
+        }
+        let mut changed = original.clone();
+        changed.payload = serde_json::json!({
+            "action": "none",
+            "domain": "example.okta.test",
+            "exclude_zones": ["zone-a"]
+        });
+        changes.push(("payload", changed));
+
+        for (field, changed) in changes {
+            assert_ne!(
+                original.record_digest(),
+                changed.record_digest(),
+                "changed {field} reused the immutable record digest"
+            );
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Build stage - use buildx cross-compilation (no QEMU needed)
-ARG GO_VERSION=1.26.5
+ARG GO_VERSION=1.26.6
 ARG RUST_VERSION=1.93.1
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
