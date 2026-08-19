@@ -11,6 +11,7 @@ use cerebro_organizational_store::{
     EntityCatalogDirection as StoreCatalogDirection, EntityCatalogFilter as StoreCatalogFilter,
     EntityCatalogKindPage as StoreCatalogKindPage, EntityCatalogPage as StoreCatalogPage,
     EntityCatalogRelationCountFilter as StoreCatalogRelationCountFilter,
+    EntityCatalogRelationKindPage as StoreCatalogRelationKindPage,
     EntityCatalogRelationPage as StoreCatalogRelationPage,
     ExposureCoverageEntity as StoreExposureEntity, ExposureCoverageProfile as StoreExposureProfile,
     ExposureCoverageQuery as StoreExposureQuery, ExposureCoverageResult as StoreExposureResult,
@@ -634,6 +635,32 @@ impl OrganizationalGraphService for GraphRpc {
         Response::ok(catalog_kind_response(result))
     }
 
+    async fn count_relations(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, CountRelationsRequest>,
+    ) -> ServiceResult<CountRelationsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.count_catalog_relations(
+                &tenant,
+                limit,
+                request.after_relation,
+                request.expected_graph_revision,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Relation count read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(catalog_relation_kind_response(result))
+    }
+
     async fn list_entity_relations(
         &self,
         context: RequestContext,
@@ -1239,6 +1266,25 @@ fn catalog_kind_response(page: StoreCatalogKindPage) -> CountEntityKindsResponse
     }
 }
 
+fn catalog_relation_kind_response(page: StoreCatalogRelationKindPage) -> CountRelationsResponse {
+    CountRelationsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        counts: page
+            .counts
+            .into_iter()
+            .map(|value| RelationCount {
+                relation: value.relation,
+                count: value.count,
+                ..Default::default()
+            })
+            .collect(),
+        truncated: page.truncated,
+        next_after_relation: page.next_after_relation,
+        ..Default::default()
+    }
+}
+
 fn catalog_relation_response(page: StoreCatalogRelationPage) -> ListEntityRelationsResponse {
     let next_after_direction = match page.next_after_direction {
         Some(StoreCatalogDirection::Incoming) => EntityRelationDirection::Incoming,
@@ -1785,6 +1831,22 @@ mod tests {
         });
         assert_eq!(kinds.counts[0].count, 4);
         assert_eq!(kinds.next_after_entity_kind, "service");
+
+        let relation_kinds = catalog_relation_kind_response(StoreCatalogRelationKindPage {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            counts: vec![
+                cerebro_organizational_store::EntityCatalogRelationKindCount {
+                    relation: "has_finding".to_owned(),
+                    count: 5,
+                },
+            ],
+            truncated: true,
+            next_after_relation: "has_finding".to_owned(),
+        });
+        assert_eq!(relation_kinds.counts[0].relation, "has_finding");
+        assert_eq!(relation_kinds.counts[0].count, 5);
+        assert_eq!(relation_kinds.next_after_relation, "has_finding");
 
         for direction in [
             StoreCatalogDirection::Incoming,

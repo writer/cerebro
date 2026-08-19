@@ -37,7 +37,8 @@ pub use cutover::{
 pub use neo4j::{
     EntityCatalogDirection, EntityCatalogFilter, EntityCatalogKindCount, EntityCatalogKindPage,
     EntityCatalogPage, EntityCatalogRelation, EntityCatalogRelationCount,
-    EntityCatalogRelationCountFilter, EntityCatalogRelationPage, ExposureCoverageAccount,
+    EntityCatalogRelationCountFilter, EntityCatalogRelationKindCount,
+    EntityCatalogRelationKindPage, EntityCatalogRelationPage, ExposureCoverageAccount,
     ExposureCoverageCompleteness, ExposureCoverageCorroboratingOnly, ExposureCoverageCounts,
     ExposureCoverageEntity, ExposureCoverageKindCount, ExposureCoverageOverlap,
     ExposureCoveragePair, ExposureCoverageProfile, ExposureCoverageQuery, ExposureCoverageResult,

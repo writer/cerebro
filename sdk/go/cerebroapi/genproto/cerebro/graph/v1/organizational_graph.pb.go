@@ -2197,6 +2197,202 @@ func (x *CountEntityKindsResponse) GetNextAfterEntityKind() string {
 	return ""
 }
 
+type RelationCount struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Relation      string                 `protobuf:"bytes,1,opt,name=relation,proto3" json:"relation,omitempty"`
+	Count         uint64                 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelationCount) Reset() {
+	*x = RelationCount{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelationCount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelationCount) ProtoMessage() {}
+
+func (x *RelationCount) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelationCount.ProtoReflect.Descriptor instead.
+func (*RelationCount) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *RelationCount) GetRelation() string {
+	if x != nil {
+		return x.Relation
+	}
+	return ""
+}
+
+func (x *RelationCount) GetCount() uint64 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+type CountRelationsRequest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	TenantId              string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Limit                 uint32                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	AfterRelation         string                 `protobuf:"bytes,3,opt,name=after_relation,json=afterRelation,proto3" json:"after_relation,omitempty"`
+	ExpectedGraphRevision uint64                 `protobuf:"varint,4,opt,name=expected_graph_revision,json=expectedGraphRevision,proto3" json:"expected_graph_revision,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *CountRelationsRequest) Reset() {
+	*x = CountRelationsRequest{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CountRelationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CountRelationsRequest) ProtoMessage() {}
+
+func (x *CountRelationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CountRelationsRequest.ProtoReflect.Descriptor instead.
+func (*CountRelationsRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *CountRelationsRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *CountRelationsRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *CountRelationsRequest) GetAfterRelation() string {
+	if x != nil {
+		return x.AfterRelation
+	}
+	return ""
+}
+
+func (x *CountRelationsRequest) GetExpectedGraphRevision() uint64 {
+	if x != nil {
+		return x.ExpectedGraphRevision
+	}
+	return 0
+}
+
+type CountRelationsResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	TenantId          string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	GraphRevision     uint64                 `protobuf:"varint,2,opt,name=graph_revision,json=graphRevision,proto3" json:"graph_revision,omitempty"`
+	Counts            []*RelationCount       `protobuf:"bytes,3,rep,name=counts,proto3" json:"counts,omitempty"`
+	Truncated         bool                   `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	NextAfterRelation string                 `protobuf:"bytes,5,opt,name=next_after_relation,json=nextAfterRelation,proto3" json:"next_after_relation,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CountRelationsResponse) Reset() {
+	*x = CountRelationsResponse{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CountRelationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CountRelationsResponse) ProtoMessage() {}
+
+func (x *CountRelationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CountRelationsResponse.ProtoReflect.Descriptor instead.
+func (*CountRelationsResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *CountRelationsResponse) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *CountRelationsResponse) GetGraphRevision() uint64 {
+	if x != nil {
+		return x.GraphRevision
+	}
+	return 0
+}
+
+func (x *CountRelationsResponse) GetCounts() []*RelationCount {
+	if x != nil {
+		return x.Counts
+	}
+	return nil
+}
+
+func (x *CountRelationsResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *CountRelationsResponse) GetNextAfterRelation() string {
+	if x != nil {
+		return x.NextAfterRelation
+	}
+	return ""
+}
+
 type ListEntityRelationsRequest struct {
 	state                 protoimpl.MessageState    `protogen:"open.v1"`
 	TenantId              string                    `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
@@ -2215,7 +2411,7 @@ type ListEntityRelationsRequest struct {
 
 func (x *ListEntityRelationsRequest) Reset() {
 	*x = ListEntityRelationsRequest{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[31]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2227,7 +2423,7 @@ func (x *ListEntityRelationsRequest) String() string {
 func (*ListEntityRelationsRequest) ProtoMessage() {}
 
 func (x *ListEntityRelationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[31]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2240,7 +2436,7 @@ func (x *ListEntityRelationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntityRelationsRequest.ProtoReflect.Descriptor instead.
 func (*ListEntityRelationsRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{31}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ListEntityRelationsRequest) GetTenantId() string {
@@ -2324,7 +2520,7 @@ type EntityRelation struct {
 
 func (x *EntityRelation) Reset() {
 	*x = EntityRelation{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[32]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2336,7 +2532,7 @@ func (x *EntityRelation) String() string {
 func (*EntityRelation) ProtoMessage() {}
 
 func (x *EntityRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[32]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2349,7 +2545,7 @@ func (x *EntityRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityRelation.ProtoReflect.Descriptor instead.
 func (*EntityRelation) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{32}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *EntityRelation) GetDirection() EntityRelationDirection {
@@ -2388,7 +2584,7 @@ type ListEntityRelationsResponse struct {
 
 func (x *ListEntityRelationsResponse) Reset() {
 	*x = ListEntityRelationsResponse{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[33]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2400,7 +2596,7 @@ func (x *ListEntityRelationsResponse) String() string {
 func (*ListEntityRelationsResponse) ProtoMessage() {}
 
 func (x *ListEntityRelationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[33]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2413,7 +2609,7 @@ func (x *ListEntityRelationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntityRelationsResponse.ProtoReflect.Descriptor instead.
 func (*ListEntityRelationsResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{33}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ListEntityRelationsResponse) GetTenantId() string {
@@ -2475,7 +2671,7 @@ type GetSourceSummaryRequest struct {
 
 func (x *GetSourceSummaryRequest) Reset() {
 	*x = GetSourceSummaryRequest{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[34]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2487,7 +2683,7 @@ func (x *GetSourceSummaryRequest) String() string {
 func (*GetSourceSummaryRequest) ProtoMessage() {}
 
 func (x *GetSourceSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[34]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2500,7 +2696,7 @@ func (x *GetSourceSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSourceSummaryRequest.ProtoReflect.Descriptor instead.
 func (*GetSourceSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{34}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *GetSourceSummaryRequest) GetTenantId() string {
@@ -2525,7 +2721,7 @@ type GetSourceSummaryResponse struct {
 
 func (x *GetSourceSummaryResponse) Reset() {
 	*x = GetSourceSummaryResponse{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[35]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2537,7 +2733,7 @@ func (x *GetSourceSummaryResponse) String() string {
 func (*GetSourceSummaryResponse) ProtoMessage() {}
 
 func (x *GetSourceSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[35]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2550,7 +2746,7 @@ func (x *GetSourceSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSourceSummaryResponse.ProtoReflect.Descriptor instead.
 func (*GetSourceSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{35}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *GetSourceSummaryResponse) GetSources() uint64 {
@@ -2612,7 +2808,7 @@ type ExposureCoverageProfile struct {
 
 func (x *ExposureCoverageProfile) Reset() {
 	*x = ExposureCoverageProfile{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[36]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2624,7 +2820,7 @@ func (x *ExposureCoverageProfile) String() string {
 func (*ExposureCoverageProfile) ProtoMessage() {}
 
 func (x *ExposureCoverageProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[36]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2637,7 +2833,7 @@ func (x *ExposureCoverageProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageProfile.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageProfile) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{36}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ExposureCoverageProfile) GetPrimarySourceId() string {
@@ -2706,7 +2902,7 @@ type CompareExposureCoverageRequest struct {
 
 func (x *CompareExposureCoverageRequest) Reset() {
 	*x = CompareExposureCoverageRequest{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[37]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2718,7 +2914,7 @@ func (x *CompareExposureCoverageRequest) String() string {
 func (*CompareExposureCoverageRequest) ProtoMessage() {}
 
 func (x *CompareExposureCoverageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[37]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2731,7 +2927,7 @@ func (x *CompareExposureCoverageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompareExposureCoverageRequest.ProtoReflect.Descriptor instead.
 func (*CompareExposureCoverageRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{37}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CompareExposureCoverageRequest) GetTenantId() string {
@@ -2791,7 +2987,7 @@ type ExposureCoverageCounts struct {
 
 func (x *ExposureCoverageCounts) Reset() {
 	*x = ExposureCoverageCounts{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[38]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2803,7 +2999,7 @@ func (x *ExposureCoverageCounts) String() string {
 func (*ExposureCoverageCounts) ProtoMessage() {}
 
 func (x *ExposureCoverageCounts) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[38]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2816,7 +3012,7 @@ func (x *ExposureCoverageCounts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageCounts.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageCounts) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{38}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ExposureCoverageCounts) GetPrimaryEntities() uint64 {
@@ -2878,7 +3074,7 @@ type ExposureCoverageKindCount struct {
 
 func (x *ExposureCoverageKindCount) Reset() {
 	*x = ExposureCoverageKindCount{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[39]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2890,7 +3086,7 @@ func (x *ExposureCoverageKindCount) String() string {
 func (*ExposureCoverageKindCount) ProtoMessage() {}
 
 func (x *ExposureCoverageKindCount) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[39]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2903,7 +3099,7 @@ func (x *ExposureCoverageKindCount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageKindCount.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageKindCount) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{39}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ExposureCoverageKindCount) GetEntityKind() string {
@@ -2931,7 +3127,7 @@ type ExposureCoverageOverlap struct {
 
 func (x *ExposureCoverageOverlap) Reset() {
 	*x = ExposureCoverageOverlap{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[40]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2943,7 +3139,7 @@ func (x *ExposureCoverageOverlap) String() string {
 func (*ExposureCoverageOverlap) ProtoMessage() {}
 
 func (x *ExposureCoverageOverlap) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[40]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2956,7 +3152,7 @@ func (x *ExposureCoverageOverlap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageOverlap.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageOverlap) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{40}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ExposureCoverageOverlap) GetPrimary() *GraphEntity {
@@ -2990,7 +3186,7 @@ type ExposureCoveragePair struct {
 
 func (x *ExposureCoveragePair) Reset() {
 	*x = ExposureCoveragePair{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[41]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3002,7 +3198,7 @@ func (x *ExposureCoveragePair) String() string {
 func (*ExposureCoveragePair) ProtoMessage() {}
 
 func (x *ExposureCoveragePair) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[41]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3015,7 +3211,7 @@ func (x *ExposureCoveragePair) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoveragePair.ProtoReflect.Descriptor instead.
 func (*ExposureCoveragePair) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{41}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ExposureCoveragePair) GetPrimary() *GraphEntity {
@@ -3042,7 +3238,7 @@ type ExposureCoverageCorroboratingOnly struct {
 
 func (x *ExposureCoverageCorroboratingOnly) Reset() {
 	*x = ExposureCoverageCorroboratingOnly{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[42]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3054,7 +3250,7 @@ func (x *ExposureCoverageCorroboratingOnly) String() string {
 func (*ExposureCoverageCorroboratingOnly) ProtoMessage() {}
 
 func (x *ExposureCoverageCorroboratingOnly) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[42]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3067,7 +3263,7 @@ func (x *ExposureCoverageCorroboratingOnly) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ExposureCoverageCorroboratingOnly.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageCorroboratingOnly) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{42}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ExposureCoverageCorroboratingOnly) GetCorroborating() *GraphEntity {
@@ -3095,7 +3291,7 @@ type ExposureCoverageAccount struct {
 
 func (x *ExposureCoverageAccount) Reset() {
 	*x = ExposureCoverageAccount{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[43]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3107,7 +3303,7 @@ func (x *ExposureCoverageAccount) String() string {
 func (*ExposureCoverageAccount) ProtoMessage() {}
 
 func (x *ExposureCoverageAccount) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[43]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3120,7 +3316,7 @@ func (x *ExposureCoverageAccount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageAccount.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageAccount) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{43}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ExposureCoverageAccount) GetAccount() *GraphEntity {
@@ -3157,7 +3353,7 @@ type ExposureCoverageCompleteness struct {
 
 func (x *ExposureCoverageCompleteness) Reset() {
 	*x = ExposureCoverageCompleteness{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[44]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3169,7 +3365,7 @@ func (x *ExposureCoverageCompleteness) String() string {
 func (*ExposureCoverageCompleteness) ProtoMessage() {}
 
 func (x *ExposureCoverageCompleteness) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[44]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3182,7 +3378,7 @@ func (x *ExposureCoverageCompleteness) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageCompleteness.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageCompleteness) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{44}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ExposureCoverageCompleteness) GetTypeCountsTruncated() bool {
@@ -3239,7 +3435,7 @@ type CompareExposureCoverageResponse struct {
 
 func (x *CompareExposureCoverageResponse) Reset() {
 	*x = CompareExposureCoverageResponse{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[45]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3251,7 +3447,7 @@ func (x *CompareExposureCoverageResponse) String() string {
 func (*CompareExposureCoverageResponse) ProtoMessage() {}
 
 func (x *CompareExposureCoverageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[45]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3264,7 +3460,7 @@ func (x *CompareExposureCoverageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompareExposureCoverageResponse.ProtoReflect.Descriptor instead.
 func (*CompareExposureCoverageResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{45}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *CompareExposureCoverageResponse) GetTenantId() string {
@@ -3501,7 +3697,21 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x129\n" +
 	"\x06counts\x18\x03 \x03(\v2!.cerebro.graph.v1.EntityKindCountR\x06counts\x12\x1c\n" +
 	"\ttruncated\x18\x04 \x01(\bR\ttruncated\x123\n" +
-	"\x16next_after_entity_kind\x18\x05 \x01(\tR\x13nextAfterEntityKind\"\xd7\x03\n" +
+	"\x16next_after_entity_kind\x18\x05 \x01(\tR\x13nextAfterEntityKind\"A\n" +
+	"\rRelationCount\x12\x1a\n" +
+	"\brelation\x18\x01 \x01(\tR\brelation\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x04R\x05count\"\xa9\x01\n" +
+	"\x15CountRelationsRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\rR\x05limit\x12%\n" +
+	"\x0eafter_relation\x18\x03 \x01(\tR\rafterRelation\x126\n" +
+	"\x17expected_graph_revision\x18\x04 \x01(\x04R\x15expectedGraphRevision\"\xe3\x01\n" +
+	"\x16CountRelationsResponse\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
+	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x127\n" +
+	"\x06counts\x18\x03 \x03(\v2\x1f.cerebro.graph.v1.RelationCountR\x06counts\x12\x1c\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\x12.\n" +
+	"\x13next_after_relation\x18\x05 \x01(\tR\x11nextAfterRelation\"\xd7\x03\n" +
 	"\x1aListEntityRelationsRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tagent_key\x18\x02 \x01(\tR\bagentKey\x12I\n" +
@@ -3608,7 +3818,8 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x17EntityRelationDirection\x12)\n" +
 	"%ENTITY_RELATION_DIRECTION_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ENTITY_RELATION_DIRECTION_INCOMING\x10\x01\x12&\n" +
-	"\"ENTITY_RELATION_DIRECTION_OUTGOING\x10\x022\xab\t\n" +
+	"\"ENTITY_RELATION_DIRECTION_OUTGOING\x10\x022\x90\n" +
+	"\n" +
 	"\x1aOrganizationalGraphService\x12K\n" +
 	"\x06Search\x12\x1f.cerebro.graph.v1.SearchRequest\x1a .cerebro.graph.v1.SearchResponse\x12T\n" +
 	"\tGetEntity\x12\".cerebro.graph.v1.GetEntityRequest\x1a#.cerebro.graph.v1.GetEntityResponse\x12K\n" +
@@ -3620,7 +3831,8 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"QueryFacts\x12#.cerebro.graph.v1.QueryFactsRequest\x1a$.cerebro.graph.v1.QueryFactsResponse\x12~\n" +
 	"\x17CompareExposureCoverage\x120.cerebro.graph.v1.CompareExposureCoverageRequest\x1a1.cerebro.graph.v1.CompareExposureCoverageResponse\x12]\n" +
 	"\fListEntities\x12%.cerebro.graph.v1.ListEntitiesRequest\x1a&.cerebro.graph.v1.ListEntitiesResponse\x12i\n" +
-	"\x10CountEntityKinds\x12).cerebro.graph.v1.CountEntityKindsRequest\x1a*.cerebro.graph.v1.CountEntityKindsResponse\x12r\n" +
+	"\x10CountEntityKinds\x12).cerebro.graph.v1.CountEntityKindsRequest\x1a*.cerebro.graph.v1.CountEntityKindsResponse\x12c\n" +
+	"\x0eCountRelations\x12'.cerebro.graph.v1.CountRelationsRequest\x1a(.cerebro.graph.v1.CountRelationsResponse\x12r\n" +
 	"\x13ListEntityRelations\x12,.cerebro.graph.v1.ListEntityRelationsRequest\x1a-.cerebro.graph.v1.ListEntityRelationsResponse\x12i\n" +
 	"\x10GetSourceSummary\x12).cerebro.graph.v1.GetSourceSummaryRequest\x1a*.cerebro.graph.v1.GetSourceSummaryResponseB\xe1\x01\n" +
 	"\x14com.cerebro.graph.v1B\x18OrganizationalGraphProtoP\x01ZMgithub.com/writer/cerebro/sdk/go/cerebroapi/genproto/cerebro/graph/v1;graphv1\xa2\x02\x03CGX\xaa\x02\x10Cerebro.Graph.V1\xca\x02\x10Cerebro\\Graph\\V1\xe2\x02\x1cCerebro\\Graph\\V1\\GPBMetadata\xea\x02\x12Cerebro::Graph::V1b\x06proto3"
@@ -3638,7 +3850,7 @@ func file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP() []byte {
 }
 
 var file_cerebro_graph_v1_organizational_graph_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
+var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
 var file_cerebro_graph_v1_organizational_graph_proto_goTypes = []any{
 	(QueryDirection)(0),                       // 0: cerebro.graph.v1.QueryDirection
 	(EntityRelationDirection)(0),              // 1: cerebro.graph.v1.EntityRelationDirection
@@ -3673,27 +3885,30 @@ var file_cerebro_graph_v1_organizational_graph_proto_goTypes = []any{
 	(*EntityKindCount)(nil),                   // 30: cerebro.graph.v1.EntityKindCount
 	(*CountEntityKindsRequest)(nil),           // 31: cerebro.graph.v1.CountEntityKindsRequest
 	(*CountEntityKindsResponse)(nil),          // 32: cerebro.graph.v1.CountEntityKindsResponse
-	(*ListEntityRelationsRequest)(nil),        // 33: cerebro.graph.v1.ListEntityRelationsRequest
-	(*EntityRelation)(nil),                    // 34: cerebro.graph.v1.EntityRelation
-	(*ListEntityRelationsResponse)(nil),       // 35: cerebro.graph.v1.ListEntityRelationsResponse
-	(*GetSourceSummaryRequest)(nil),           // 36: cerebro.graph.v1.GetSourceSummaryRequest
-	(*GetSourceSummaryResponse)(nil),          // 37: cerebro.graph.v1.GetSourceSummaryResponse
-	(*ExposureCoverageProfile)(nil),           // 38: cerebro.graph.v1.ExposureCoverageProfile
-	(*CompareExposureCoverageRequest)(nil),    // 39: cerebro.graph.v1.CompareExposureCoverageRequest
-	(*ExposureCoverageCounts)(nil),            // 40: cerebro.graph.v1.ExposureCoverageCounts
-	(*ExposureCoverageKindCount)(nil),         // 41: cerebro.graph.v1.ExposureCoverageKindCount
-	(*ExposureCoverageOverlap)(nil),           // 42: cerebro.graph.v1.ExposureCoverageOverlap
-	(*ExposureCoveragePair)(nil),              // 43: cerebro.graph.v1.ExposureCoveragePair
-	(*ExposureCoverageCorroboratingOnly)(nil), // 44: cerebro.graph.v1.ExposureCoverageCorroboratingOnly
-	(*ExposureCoverageAccount)(nil),           // 45: cerebro.graph.v1.ExposureCoverageAccount
-	(*ExposureCoverageCompleteness)(nil),      // 46: cerebro.graph.v1.ExposureCoverageCompleteness
-	(*CompareExposureCoverageResponse)(nil),   // 47: cerebro.graph.v1.CompareExposureCoverageResponse
-	nil,                                       // 48: cerebro.graph.v1.GraphEntity.PropertiesEntry
-	nil,                                       // 49: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
-	nil,                                       // 50: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	(*RelationCount)(nil),                     // 33: cerebro.graph.v1.RelationCount
+	(*CountRelationsRequest)(nil),             // 34: cerebro.graph.v1.CountRelationsRequest
+	(*CountRelationsResponse)(nil),            // 35: cerebro.graph.v1.CountRelationsResponse
+	(*ListEntityRelationsRequest)(nil),        // 36: cerebro.graph.v1.ListEntityRelationsRequest
+	(*EntityRelation)(nil),                    // 37: cerebro.graph.v1.EntityRelation
+	(*ListEntityRelationsResponse)(nil),       // 38: cerebro.graph.v1.ListEntityRelationsResponse
+	(*GetSourceSummaryRequest)(nil),           // 39: cerebro.graph.v1.GetSourceSummaryRequest
+	(*GetSourceSummaryResponse)(nil),          // 40: cerebro.graph.v1.GetSourceSummaryResponse
+	(*ExposureCoverageProfile)(nil),           // 41: cerebro.graph.v1.ExposureCoverageProfile
+	(*CompareExposureCoverageRequest)(nil),    // 42: cerebro.graph.v1.CompareExposureCoverageRequest
+	(*ExposureCoverageCounts)(nil),            // 43: cerebro.graph.v1.ExposureCoverageCounts
+	(*ExposureCoverageKindCount)(nil),         // 44: cerebro.graph.v1.ExposureCoverageKindCount
+	(*ExposureCoverageOverlap)(nil),           // 45: cerebro.graph.v1.ExposureCoverageOverlap
+	(*ExposureCoveragePair)(nil),              // 46: cerebro.graph.v1.ExposureCoveragePair
+	(*ExposureCoverageCorroboratingOnly)(nil), // 47: cerebro.graph.v1.ExposureCoverageCorroboratingOnly
+	(*ExposureCoverageAccount)(nil),           // 48: cerebro.graph.v1.ExposureCoverageAccount
+	(*ExposureCoverageCompleteness)(nil),      // 49: cerebro.graph.v1.ExposureCoverageCompleteness
+	(*CompareExposureCoverageResponse)(nil),   // 50: cerebro.graph.v1.CompareExposureCoverageResponse
+	nil,                                       // 51: cerebro.graph.v1.GraphEntity.PropertiesEntry
+	nil,                                       // 52: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	nil,                                       // 53: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
 }
 var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
-	48, // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
+	51, // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
 	2,  // 1: cerebro.graph.v1.GraphPath.entities:type_name -> cerebro.graph.v1.GraphEntity
 	3,  // 2: cerebro.graph.v1.GraphPath.edges:type_name -> cerebro.graph.v1.GraphEdge
 	2,  // 3: cerebro.graph.v1.SearchResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
@@ -3701,7 +3916,7 @@ var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
 	2,  // 5: cerebro.graph.v1.ExpandResponse.root:type_name -> cerebro.graph.v1.GraphEntity
 	2,  // 6: cerebro.graph.v1.ExpandResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
 	3,  // 7: cerebro.graph.v1.ExpandResponse.edges:type_name -> cerebro.graph.v1.GraphEdge
-	49, // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	52, // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
 	4,  // 9: cerebro.graph.v1.FindPathsResponse.paths:type_name -> cerebro.graph.v1.GraphPath
 	3,  // 10: cerebro.graph.v1.ExplainAssertionResponse.edge:type_name -> cerebro.graph.v1.GraphEdge
 	0,  // 11: cerebro.graph.v1.QueryAbsentEdgePattern.direction:type_name -> cerebro.graph.v1.QueryDirection
@@ -3721,59 +3936,62 @@ var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
 	1,  // 25: cerebro.graph.v1.EntityRelationCount.direction:type_name -> cerebro.graph.v1.EntityRelationDirection
 	25, // 26: cerebro.graph.v1.CountEntityKindsRequest.filter:type_name -> cerebro.graph.v1.EntityCatalogFilter
 	30, // 27: cerebro.graph.v1.CountEntityKindsResponse.counts:type_name -> cerebro.graph.v1.EntityKindCount
-	1,  // 28: cerebro.graph.v1.ListEntityRelationsRequest.directions:type_name -> cerebro.graph.v1.EntityRelationDirection
-	1,  // 29: cerebro.graph.v1.ListEntityRelationsRequest.after_direction:type_name -> cerebro.graph.v1.EntityRelationDirection
-	1,  // 30: cerebro.graph.v1.EntityRelation.direction:type_name -> cerebro.graph.v1.EntityRelationDirection
-	2,  // 31: cerebro.graph.v1.EntityRelation.entity:type_name -> cerebro.graph.v1.GraphEntity
-	34, // 32: cerebro.graph.v1.ListEntityRelationsResponse.relations:type_name -> cerebro.graph.v1.EntityRelation
-	1,  // 33: cerebro.graph.v1.ListEntityRelationsResponse.next_after_direction:type_name -> cerebro.graph.v1.EntityRelationDirection
-	50, // 34: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
-	38, // 35: cerebro.graph.v1.CompareExposureCoverageRequest.profile:type_name -> cerebro.graph.v1.ExposureCoverageProfile
-	2,  // 36: cerebro.graph.v1.ExposureCoverageOverlap.primary:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 37: cerebro.graph.v1.ExposureCoverageOverlap.indicator:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 38: cerebro.graph.v1.ExposureCoverageOverlap.corroborating:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 39: cerebro.graph.v1.ExposureCoveragePair.primary:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 40: cerebro.graph.v1.ExposureCoveragePair.indicator:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 41: cerebro.graph.v1.ExposureCoverageCorroboratingOnly.corroborating:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 42: cerebro.graph.v1.ExposureCoverageCorroboratingOnly.indicator:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 43: cerebro.graph.v1.ExposureCoverageAccount.account:type_name -> cerebro.graph.v1.GraphEntity
-	40, // 44: cerebro.graph.v1.CompareExposureCoverageResponse.counts:type_name -> cerebro.graph.v1.ExposureCoverageCounts
-	41, // 45: cerebro.graph.v1.CompareExposureCoverageResponse.type_counts:type_name -> cerebro.graph.v1.ExposureCoverageKindCount
-	42, // 46: cerebro.graph.v1.CompareExposureCoverageResponse.overlaps:type_name -> cerebro.graph.v1.ExposureCoverageOverlap
-	43, // 47: cerebro.graph.v1.CompareExposureCoverageResponse.primary_only:type_name -> cerebro.graph.v1.ExposureCoveragePair
-	44, // 48: cerebro.graph.v1.CompareExposureCoverageResponse.corroborating_only:type_name -> cerebro.graph.v1.ExposureCoverageCorroboratingOnly
-	45, // 49: cerebro.graph.v1.CompareExposureCoverageResponse.accounts:type_name -> cerebro.graph.v1.ExposureCoverageAccount
-	46, // 50: cerebro.graph.v1.CompareExposureCoverageResponse.completeness:type_name -> cerebro.graph.v1.ExposureCoverageCompleteness
-	10, // 51: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
-	5,  // 52: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
-	7,  // 53: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
-	9,  // 54: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
-	11, // 55: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
-	13, // 56: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
-	15, // 57: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
-	20, // 58: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:input_type -> cerebro.graph.v1.QueryFactsRequest
-	39, // 59: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:input_type -> cerebro.graph.v1.CompareExposureCoverageRequest
-	27, // 60: cerebro.graph.v1.OrganizationalGraphService.ListEntities:input_type -> cerebro.graph.v1.ListEntitiesRequest
-	31, // 61: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:input_type -> cerebro.graph.v1.CountEntityKindsRequest
-	33, // 62: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:input_type -> cerebro.graph.v1.ListEntityRelationsRequest
-	36, // 63: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
-	6,  // 64: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
-	8,  // 65: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
-	10, // 66: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
-	12, // 67: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
-	14, // 68: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
-	16, // 69: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
-	24, // 70: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:output_type -> cerebro.graph.v1.QueryFactsResponse
-	47, // 71: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:output_type -> cerebro.graph.v1.CompareExposureCoverageResponse
-	28, // 72: cerebro.graph.v1.OrganizationalGraphService.ListEntities:output_type -> cerebro.graph.v1.ListEntitiesResponse
-	32, // 73: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:output_type -> cerebro.graph.v1.CountEntityKindsResponse
-	35, // 74: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:output_type -> cerebro.graph.v1.ListEntityRelationsResponse
-	37, // 75: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
-	64, // [64:76] is the sub-list for method output_type
-	52, // [52:64] is the sub-list for method input_type
-	52, // [52:52] is the sub-list for extension type_name
-	52, // [52:52] is the sub-list for extension extendee
-	0,  // [0:52] is the sub-list for field type_name
+	33, // 28: cerebro.graph.v1.CountRelationsResponse.counts:type_name -> cerebro.graph.v1.RelationCount
+	1,  // 29: cerebro.graph.v1.ListEntityRelationsRequest.directions:type_name -> cerebro.graph.v1.EntityRelationDirection
+	1,  // 30: cerebro.graph.v1.ListEntityRelationsRequest.after_direction:type_name -> cerebro.graph.v1.EntityRelationDirection
+	1,  // 31: cerebro.graph.v1.EntityRelation.direction:type_name -> cerebro.graph.v1.EntityRelationDirection
+	2,  // 32: cerebro.graph.v1.EntityRelation.entity:type_name -> cerebro.graph.v1.GraphEntity
+	37, // 33: cerebro.graph.v1.ListEntityRelationsResponse.relations:type_name -> cerebro.graph.v1.EntityRelation
+	1,  // 34: cerebro.graph.v1.ListEntityRelationsResponse.next_after_direction:type_name -> cerebro.graph.v1.EntityRelationDirection
+	53, // 35: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	41, // 36: cerebro.graph.v1.CompareExposureCoverageRequest.profile:type_name -> cerebro.graph.v1.ExposureCoverageProfile
+	2,  // 37: cerebro.graph.v1.ExposureCoverageOverlap.primary:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 38: cerebro.graph.v1.ExposureCoverageOverlap.indicator:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 39: cerebro.graph.v1.ExposureCoverageOverlap.corroborating:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 40: cerebro.graph.v1.ExposureCoveragePair.primary:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 41: cerebro.graph.v1.ExposureCoveragePair.indicator:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 42: cerebro.graph.v1.ExposureCoverageCorroboratingOnly.corroborating:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 43: cerebro.graph.v1.ExposureCoverageCorroboratingOnly.indicator:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 44: cerebro.graph.v1.ExposureCoverageAccount.account:type_name -> cerebro.graph.v1.GraphEntity
+	43, // 45: cerebro.graph.v1.CompareExposureCoverageResponse.counts:type_name -> cerebro.graph.v1.ExposureCoverageCounts
+	44, // 46: cerebro.graph.v1.CompareExposureCoverageResponse.type_counts:type_name -> cerebro.graph.v1.ExposureCoverageKindCount
+	45, // 47: cerebro.graph.v1.CompareExposureCoverageResponse.overlaps:type_name -> cerebro.graph.v1.ExposureCoverageOverlap
+	46, // 48: cerebro.graph.v1.CompareExposureCoverageResponse.primary_only:type_name -> cerebro.graph.v1.ExposureCoveragePair
+	47, // 49: cerebro.graph.v1.CompareExposureCoverageResponse.corroborating_only:type_name -> cerebro.graph.v1.ExposureCoverageCorroboratingOnly
+	48, // 50: cerebro.graph.v1.CompareExposureCoverageResponse.accounts:type_name -> cerebro.graph.v1.ExposureCoverageAccount
+	49, // 51: cerebro.graph.v1.CompareExposureCoverageResponse.completeness:type_name -> cerebro.graph.v1.ExposureCoverageCompleteness
+	10, // 52: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
+	5,  // 53: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
+	7,  // 54: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
+	9,  // 55: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
+	11, // 56: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
+	13, // 57: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
+	15, // 58: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
+	20, // 59: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:input_type -> cerebro.graph.v1.QueryFactsRequest
+	42, // 60: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:input_type -> cerebro.graph.v1.CompareExposureCoverageRequest
+	27, // 61: cerebro.graph.v1.OrganizationalGraphService.ListEntities:input_type -> cerebro.graph.v1.ListEntitiesRequest
+	31, // 62: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:input_type -> cerebro.graph.v1.CountEntityKindsRequest
+	34, // 63: cerebro.graph.v1.OrganizationalGraphService.CountRelations:input_type -> cerebro.graph.v1.CountRelationsRequest
+	36, // 64: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:input_type -> cerebro.graph.v1.ListEntityRelationsRequest
+	39, // 65: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
+	6,  // 66: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
+	8,  // 67: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
+	10, // 68: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
+	12, // 69: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
+	14, // 70: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
+	16, // 71: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
+	24, // 72: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:output_type -> cerebro.graph.v1.QueryFactsResponse
+	50, // 73: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:output_type -> cerebro.graph.v1.CompareExposureCoverageResponse
+	28, // 74: cerebro.graph.v1.OrganizationalGraphService.ListEntities:output_type -> cerebro.graph.v1.ListEntitiesResponse
+	32, // 75: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:output_type -> cerebro.graph.v1.CountEntityKindsResponse
+	35, // 76: cerebro.graph.v1.OrganizationalGraphService.CountRelations:output_type -> cerebro.graph.v1.CountRelationsResponse
+	38, // 77: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:output_type -> cerebro.graph.v1.ListEntityRelationsResponse
+	40, // 78: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
+	66, // [66:79] is the sub-list for method output_type
+	53, // [53:66] is the sub-list for method input_type
+	53, // [53:53] is the sub-list for extension type_name
+	53, // [53:53] is the sub-list for extension extendee
+	0,  // [0:53] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_graph_v1_organizational_graph_proto_init() }
@@ -3787,7 +4005,7 @@ func file_cerebro_graph_v1_organizational_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_graph_v1_organizational_graph_proto_rawDesc), len(file_cerebro_graph_v1_organizational_graph_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   49,
+			NumMessages:   52,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

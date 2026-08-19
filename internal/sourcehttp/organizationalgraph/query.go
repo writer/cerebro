@@ -530,6 +530,48 @@ func (s *QueryStore) CountEntityKinds(ctx context.Context, request ports.EntityK
 	return page, nil
 }
 
+func (s *QueryStore) CountRelations(ctx context.Context, request ports.RelationCountRequest) (*ports.RelationCountPage, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("relation count tenant_id is required")
+	}
+	if request.Limit < 1 || request.Limit > 500 {
+		return nil, errors.New("relation count limit must be between 1 and 500")
+	}
+	message := connect.NewRequest(&cerebrographv1.CountRelationsRequest{
+		TenantId:              tenantID,
+		Limit:                 uint32(request.Limit), // #nosec G115 -- validated above to 1..500.
+		AfterRelation:         strings.TrimSpace(request.AfterRelation),
+		ExpectedGraphRevision: request.ExpectedRevision,
+	})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.CountRelations(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("count relations", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetCounts()) > request.Limit {
+		return nil, errors.New("rust relation counts returned an invalid tenant or bound")
+	}
+	page := &ports.RelationCountPage{
+		TenantID:          tenantID,
+		GraphRevision:     response.Msg.GetGraphRevision(),
+		Truncated:         response.Msg.GetTruncated(),
+		NextAfterRelation: response.Msg.GetNextAfterRelation(),
+	}
+	for _, count := range response.Msg.GetCounts() {
+		if count == nil || strings.TrimSpace(count.GetRelation()) == "" {
+			return nil, errors.New("rust relation counts returned an invalid relation")
+		}
+		page.Counts = append(page.Counts, ports.RelationCount{Relation: count.GetRelation(), Count: count.GetCount()})
+	}
+	if page.Truncated && (page.NextAfterRelation == "" || len(page.Counts) != request.Limit) {
+		return nil, errors.New("rust relation counts returned an invalid continuation")
+	}
+	return page, nil
+}
+
 func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {

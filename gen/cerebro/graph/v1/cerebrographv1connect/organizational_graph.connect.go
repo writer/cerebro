@@ -64,6 +64,9 @@ const (
 	// OrganizationalGraphServiceCountEntityKindsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's CountEntityKinds RPC.
 	OrganizationalGraphServiceCountEntityKindsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/CountEntityKinds"
+	// OrganizationalGraphServiceCountRelationsProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's CountRelations RPC.
+	OrganizationalGraphServiceCountRelationsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/CountRelations"
 	// OrganizationalGraphServiceListEntityRelationsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's ListEntityRelations RPC.
 	OrganizationalGraphServiceListEntityRelationsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListEntityRelations"
@@ -96,6 +99,8 @@ type OrganizationalGraphServiceClient interface {
 	ListEntities(context.Context, *connect.Request[v1.ListEntitiesRequest]) (*connect.Response[v1.ListEntitiesResponse], error)
 	// CountEntityKinds returns bounded entity-kind counts from the tenant catalog.
 	CountEntityKinds(context.Context, *connect.Request[v1.CountEntityKindsRequest]) (*connect.Response[v1.CountEntityKindsResponse], error)
+	// CountRelations returns bounded relation counts from the tenant legacy graph projection.
+	CountRelations(context.Context, *connect.Request[v1.CountRelationsRequest]) (*connect.Response[v1.CountRelationsResponse], error)
 	// ListEntityRelations returns filtered direct relations for one catalog entity.
 	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
@@ -174,6 +179,12 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("CountEntityKinds")),
 			connect.WithClientOptions(opts...),
 		),
+		countRelations: connect.NewClient[v1.CountRelationsRequest, v1.CountRelationsResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceCountRelationsProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("CountRelations")),
+			connect.WithClientOptions(opts...),
+		),
 		listEntityRelations: connect.NewClient[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse](
 			httpClient,
 			baseURL+OrganizationalGraphServiceListEntityRelationsProcedure,
@@ -201,6 +212,7 @@ type organizationalGraphServiceClient struct {
 	compareExposureCoverage *connect.Client[v1.CompareExposureCoverageRequest, v1.CompareExposureCoverageResponse]
 	listEntities            *connect.Client[v1.ListEntitiesRequest, v1.ListEntitiesResponse]
 	countEntityKinds        *connect.Client[v1.CountEntityKindsRequest, v1.CountEntityKindsResponse]
+	countRelations          *connect.Client[v1.CountRelationsRequest, v1.CountRelationsResponse]
 	listEntityRelations     *connect.Client[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse]
 	getSourceSummary        *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
 }
@@ -256,6 +268,11 @@ func (c *organizationalGraphServiceClient) CountEntityKinds(ctx context.Context,
 	return c.countEntityKinds.CallUnary(ctx, req)
 }
 
+// CountRelations calls cerebro.graph.v1.OrganizationalGraphService.CountRelations.
+func (c *organizationalGraphServiceClient) CountRelations(ctx context.Context, req *connect.Request[v1.CountRelationsRequest]) (*connect.Response[v1.CountRelationsResponse], error) {
+	return c.countRelations.CallUnary(ctx, req)
+}
+
 // ListEntityRelations calls cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations.
 func (c *organizationalGraphServiceClient) ListEntityRelations(ctx context.Context, req *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error) {
 	return c.listEntityRelations.CallUnary(ctx, req)
@@ -290,6 +307,8 @@ type OrganizationalGraphServiceHandler interface {
 	ListEntities(context.Context, *connect.Request[v1.ListEntitiesRequest]) (*connect.Response[v1.ListEntitiesResponse], error)
 	// CountEntityKinds returns bounded entity-kind counts from the tenant catalog.
 	CountEntityKinds(context.Context, *connect.Request[v1.CountEntityKindsRequest]) (*connect.Response[v1.CountEntityKindsResponse], error)
+	// CountRelations returns bounded relation counts from the tenant legacy graph projection.
+	CountRelations(context.Context, *connect.Request[v1.CountRelationsRequest]) (*connect.Response[v1.CountRelationsResponse], error)
 	// ListEntityRelations returns filtered direct relations for one catalog entity.
 	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
@@ -363,6 +382,12 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("CountEntityKinds")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceCountRelationsHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceCountRelationsProcedure,
+		svc.CountRelations,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("CountRelations")),
+		connect.WithHandlerOptions(opts...),
+	)
 	organizationalGraphServiceListEntityRelationsHandler := connect.NewUnaryHandler(
 		OrganizationalGraphServiceListEntityRelationsProcedure,
 		svc.ListEntityRelations,
@@ -397,6 +422,8 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceListEntitiesHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceCountEntityKindsProcedure:
 			organizationalGraphServiceCountEntityKindsHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceCountRelationsProcedure:
+			organizationalGraphServiceCountRelationsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceListEntityRelationsProcedure:
 			organizationalGraphServiceListEntityRelationsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceGetSourceSummaryProcedure:
@@ -448,6 +475,10 @@ func (UnimplementedOrganizationalGraphServiceHandler) ListEntities(context.Conte
 
 func (UnimplementedOrganizationalGraphServiceHandler) CountEntityKinds(context.Context, *connect.Request[v1.CountEntityKindsRequest]) (*connect.Response[v1.CountEntityKindsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) CountRelations(context.Context, *connect.Request[v1.CountRelationsRequest]) (*connect.Response[v1.CountRelationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.CountRelations is not implemented"))
 }
 
 func (UnimplementedOrganizationalGraphServiceHandler) ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error) {

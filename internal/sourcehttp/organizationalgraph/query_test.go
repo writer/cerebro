@@ -36,9 +36,10 @@ type assertionQueryStoreStub struct {
 
 type graphServiceStub struct {
 	cerebrographv1connect.UnimplementedOrganizationalGraphServiceHandler
-	expand       func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
-	expandBatch  func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
-	listEntities func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
+	expand         func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
+	expandBatch    func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
+	listEntities   func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
+	countRelations func(context.Context, *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error)
 }
 
 func (s graphServiceStub) ListEntities(ctx context.Context, request *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error) {
@@ -51,6 +52,10 @@ func (s graphServiceStub) Expand(ctx context.Context, request *connect.Request[c
 
 func (s graphServiceStub) ExpandBatch(ctx context.Context, request *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error) {
 	return s.expandBatch(ctx, request)
+}
+
+func (s graphServiceStub) CountRelations(ctx context.Context, request *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error) {
+	return s.countRelations(ctx, request)
 }
 
 func newGraphTestServer(t *testing.T, service graphServiceStub) *httptest.Server {
@@ -149,6 +154,12 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 			}
 			return connect.NewResponse(&cerebrographv1.ListEntitiesResponse{TenantId: "tenant-a", GraphRevision: 9, Entities: []*cerebrographv1.GraphEntity{{AgentKey: "urn:cerebro:tenant-a:vendor:one", EntityKind: "vendor", Label: "One"}}, RelationCounts: []*cerebrographv1.EntityRelationCount{{AgentKey: "urn:cerebro:tenant-a:vendor:one", Direction: cerebrographv1.EntityRelationDirection_ENTITY_RELATION_DIRECTION_INCOMING, Relation: "associated_with", NeighborKind: "contract", Count: 2}}}), nil
 		},
+		countRelations: func(_ context.Context, request *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetLimit() != 10 {
+				t.Fatalf("relation count request missing tenant/bounds: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.CountRelationsResponse{TenantId: "tenant-a", GraphRevision: 9, Counts: []*cerebrographv1.RelationCount{{Relation: "has_finding", Count: 4}}}), nil
+		},
 	})
 	defer server.Close()
 	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
@@ -161,6 +172,13 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 	}
 	if page.GraphRevision != 9 || len(page.Entities) != 1 || len(page.RelationCounts) != 1 || page.RelationCounts[0].Count != 2 {
 		t.Fatalf("page = %#v", page)
+	}
+	relations, err := store.CountRelations(context.Background(), ports.RelationCountRequest{TenantID: "tenant-a", Limit: 10})
+	if err != nil {
+		t.Fatalf("CountRelations() error = %v", err)
+	}
+	if relations.GraphRevision != 9 || len(relations.Counts) != 1 || relations.Counts[0].Relation != "has_finding" || relations.Counts[0].Count != 4 {
+		t.Fatalf("relations = %#v", relations)
 	}
 }
 

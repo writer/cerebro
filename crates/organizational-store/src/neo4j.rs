@@ -593,6 +593,30 @@ pub struct EntityCatalogKindPage {
     pub next_after_entity_kind: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Aggregate count for one legacy relation kind.
+pub struct EntityCatalogRelationKindCount {
+    /// Stored relation kind.
+    pub relation: String,
+    /// Tenant-scoped relation count.
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded relation-count page.
+pub struct EntityCatalogRelationKindPage {
+    /// Tenant whose catalog was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Counts ordered by relation kind.
+    pub counts: Vec<EntityCatalogRelationKindCount>,
+    /// Whether another page exists.
+    pub truncated: bool,
+    /// Relation kind after which the next page begins.
+    pub next_after_relation: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 /// Direction of a direct entity-catalog relation.
 pub enum EntityCatalogDirection {
@@ -963,6 +987,57 @@ impl Neo4jProjector {
             counts,
             truncated,
             next_after_entity_kind,
+        })
+    }
+
+    /// Counts relation kinds in one revision-bound catalog page.
+    pub async fn count_catalog_relations(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        after_relation: &str,
+        expected_graph_revision: u64,
+    ) -> Result<EntityCatalogRelationKindPage, StoreError> {
+        if !(1..=500).contains(&limit) {
+            return Err(StoreError::Conflict(
+                "entity catalog relation-count limit must be between 1 and 500".to_owned(),
+            ));
+        }
+        validate_catalog_text("after_relation", after_relation, 128, false)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(expected_graph_revision, revision)?;
+        let statement = "MATCH (:Entity {tenant_id: $tenant_id})-[edge:RELATION {tenant_id: $tenant_id}]->(:Entity {tenant_id: $tenant_id}) WITH coalesce(edge.relation, 'unknown') AS relation WHERE relation > $after_relation RETURN relation, count(edge) AS relation_count ORDER BY relation LIMIT $row_limit";
+        let mut rows = transaction
+            .execute(
+                query(statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("after_relation", after_relation)
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut counts = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            counts.push(EntityCatalogRelationKindCount {
+                relation: catalog_row_string(&row, "relation")?,
+                count: catalog_row_u64(&row, "relation_count")?,
+            });
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut counts, limit);
+        let next_after_relation = truncated
+            .then(|| counts.last().map(|count| count.relation.clone()))
+            .flatten()
+            .unwrap_or_default();
+        Ok(EntityCatalogRelationKindPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            counts,
+            truncated,
+            next_after_relation,
         })
     }
 

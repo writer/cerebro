@@ -75,6 +75,34 @@ type EntityKindCountPage struct {
 	NextAfterEntityKind string
 }
 
+type EntityKindCountStore interface {
+	CountEntityKinds(context.Context, EntityKindCountRequest) (*EntityKindCountPage, error)
+}
+
+type RelationCount struct {
+	Relation string
+	Count    uint64
+}
+
+type RelationCountRequest struct {
+	TenantID         string
+	Limit            int
+	AfterRelation    string
+	ExpectedRevision uint64
+}
+
+type RelationCountPage struct {
+	TenantID          string
+	GraphRevision     uint64
+	Counts            []RelationCount
+	Truncated         bool
+	NextAfterRelation string
+}
+
+type RelationCountStore interface {
+	CountRelations(context.Context, RelationCountRequest) (*RelationCountPage, error)
+}
+
 type EntityRelationDirection string
 
 const (
