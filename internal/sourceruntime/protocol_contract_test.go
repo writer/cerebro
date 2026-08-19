@@ -155,7 +155,7 @@ func TestSourceFamilyAuthorityReadiness(t *testing.T) {
 		CursorCheckpointProof:      "cursor:go-compatible",
 		FencingRecoveryProof:       "fence:rejected-stale",
 		WorkerBuildID:              "source-runtime-next:test",
-		PromotionReceipt:           "promotion:test",
+		PromotionReceipt:           "sig:promotion:test",
 	}
 	if err := ValidateSourceFamilyAuthorityEvidence(complete); err != nil {
 		t.Fatalf("complete evidence rejected: %v", err)
@@ -179,6 +179,38 @@ func TestSourceFamilyAuthorityReadiness(t *testing.T) {
 func TestAuthorityPromotionRequiresEvidence(t *testing.T) {
 	if err := ValidateSourceFamilyAuthorityEvidence(SourceFamilyAuthorityEvidence{}); !errors.Is(err, errAuthorityEvidenceMissing) {
 		t.Fatalf("empty evidence accepted or wrong error: %v", err)
+	}
+}
+
+func TestAuthorityEvidenceRejectsMalformedDigestAndUnsignedPromotionReceipt(t *testing.T) {
+	evidence := SourceFamilyAuthorityEvidence{
+		PlanDigest:                 strings.Repeat("a", 64),
+		FixtureCorpusRevision:      "fixture-corpus:v1",
+		SupportedAuthModes:         []string{"api_key"},
+		SupportedPaginationGrammar: []string{"cursor"},
+		SupportedProviderErrors:    []string{"401", "429", "5xx"},
+		EgressAllowlist:            []string{"https://provider.example.invalid"},
+		ResponseLimits:             "body=1048576,decompression=4x",
+		CredentialLeaseMode:        "one_operation",
+		ProjectionDependency:       "go_projection_dependency",
+		RollbackReceipt:            "rollback:test",
+		ParityStatus:               "passed",
+		CanonicalDigestVectors:     []string{"plan", "request_intent", "worker_receipt"},
+		ConfigSafetyProof:          "config:redacted",
+		CursorCheckpointProof:      "cursor:go-compatible",
+		FencingRecoveryProof:       "fence:rejected-stale",
+		WorkerBuildID:              "source-runtime-next:test",
+		PromotionReceipt:           "sig:promotion:test",
+	}
+	badDigest := evidence
+	badDigest.PlanDigest = "not-a-sha256"
+	if err := ValidateSourceFamilyAuthorityEvidence(badDigest); !errors.Is(err, errAuthorityEvidenceMissing) || !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("bad digest error = %v, want SHA-256 rejection", err)
+	}
+	unsigned := evidence
+	unsigned.PromotionReceipt = "promotion:test"
+	if err := ValidateSourceFamilyAuthorityEvidence(unsigned); !errors.Is(err, errAuthorityEvidenceMissing) || !strings.Contains(err.Error(), "signed or authenticated") {
+		t.Fatalf("unsigned promotion error = %v, want auth rejection", err)
 	}
 }
 

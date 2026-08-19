@@ -15,6 +15,12 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod authority_evidence;
+pub use authority_evidence::{
+    AuthorityDecisionKind, AuthorityEvidenceError, AuthorityEvidenceRecord,
+    AuthorityEvidenceStream, validate_authority_evidence_record,
+};
+
 const MAX_PAGE_SIZE: usize = 1_000;
 
 #[derive(Clone, Debug, Eq, PartialEq)]

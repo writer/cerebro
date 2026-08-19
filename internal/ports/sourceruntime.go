@@ -34,6 +34,14 @@ type SourceRuntimePageAttempt struct {
 	RecordsScanned uint32
 	Events         []*cerebrov1.EventEnvelope
 	Admission      SourceRuntimePageAdmission
+	Authority      SourceRuntimeAuthorityEvidenceRef
+}
+
+// SourceRuntimeAuthorityEvidenceRef binds a page or deposit receipt to the
+// append-only source-family authority evidence that allowed the work.
+type SourceRuntimeAuthorityEvidenceRef struct {
+	DecisionID string
+	Epoch      uint64
 }
 
 // SourceRuntimePageAdmission records the exact kernel decision made before append.

@@ -6,6 +6,7 @@
 mod append_log;
 mod aws_secret_store;
 mod credential_lease;
+mod deposit;
 mod egress;
 mod fixture_parity;
 mod http;
@@ -23,6 +24,9 @@ pub use aws_secret_store::{
 pub use credential_lease::{
     CredentialLeaseError, CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus,
     LeaseClock, OperationScopedCredentialLease,
+};
+pub use deposit::{
+    DepositIngestError, DepositIngestReceipt, DepositIngestRequest, build_deposit_receipt,
 };
 pub use egress::{
     EgressDecision, EgressDecisionKind, EgressMode, EgressPolicy, EgressPolicyError,

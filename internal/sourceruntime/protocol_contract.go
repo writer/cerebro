@@ -404,6 +404,12 @@ func ValidateSourceFamilyAuthorityEvidence(evidence SourceFamilyAuthorityEvidenc
 	if len(missing) > 0 {
 		return fmt.Errorf("%w: %s", errAuthorityEvidenceMissing, strings.Join(missing, ", "))
 	}
+	if !validSHA256Hex(evidence.PlanDigest) {
+		return fmt.Errorf("%w: compiled_plan_digest must be SHA-256 hex", errAuthorityEvidenceMissing)
+	}
+	if !authenticatedPromotionReceipt(evidence.PromotionReceipt) {
+		return fmt.Errorf("%w: promotion_receipt must be signed or authenticated", errAuthorityEvidenceMissing)
+	}
 	return nil
 }
 
@@ -472,4 +478,18 @@ func nonemptyStrings(values []string) []string {
 		}
 	}
 	return out
+}
+
+func validSHA256Hex(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+func authenticatedPromotionReceipt(value string) bool {
+	value = strings.TrimSpace(value)
+	return strings.HasPrefix(value, "sig:") || strings.HasPrefix(value, "auth:")
 }

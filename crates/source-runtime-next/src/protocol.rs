@@ -162,6 +162,10 @@ pub enum ProtocolError {
     RawSecretField(String),
     /// Authority evidence is incomplete.
     MissingAuthorityEvidence(Vec<&'static str>),
+    /// Authority proof digest is not a SHA-256 hexadecimal digest.
+    InvalidAuthorityDigest(&'static str),
+    /// Promotion receipt is neither signed nor authenticated.
+    UnauthenticatedPromotionReceipt,
 }
 
 /// Validate a source-runtime envelope.
@@ -234,11 +238,18 @@ pub fn validate_envelope_json(value: &serde_json::Value) -> Result<(), ProtocolE
 /// Validate complete provider proof before authority promotion.
 pub fn validate_authority_evidence(evidence: &AuthorityEvidence) -> Result<(), ProtocolError> {
     let missing = missing_authority_evidence(evidence);
-    if missing.is_empty() {
-        Ok(())
-    } else {
-        Err(ProtocolError::MissingAuthorityEvidence(missing))
+    if !missing.is_empty() {
+        return Err(ProtocolError::MissingAuthorityEvidence(missing));
     }
+    if !is_sha256_hex(&evidence.plan_digest) {
+        return Err(ProtocolError::InvalidAuthorityDigest(
+            "compiled_plan_digest",
+        ));
+    }
+    if !authenticated_promotion_receipt(&evidence.promotion_receipt) {
+        return Err(ProtocolError::UnauthenticatedPromotionReceipt);
+    }
+    Ok(())
 }
 
 /// Return canonical SHA-256 hex for a serializable JSON/protobuf-shaped value.
@@ -516,6 +527,16 @@ fn missing_authority_evidence(evidence: &AuthorityEvidence) -> Vec<&'static str>
     missing
 }
 
+fn is_sha256_hex(value: &str) -> bool {
+    let value = value.trim();
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn authenticated_promotion_receipt(value: &str) -> bool {
+    let value = value.trim();
+    value.starts_with("sig:") || value.starts_with("auth:")
+}
+
 #[cfg(test)]
 pub(crate) fn fixture_envelope(operation: SourceRuntimeOperation) -> SourceRuntimeEnvelope {
     SourceRuntimeEnvelope {
@@ -754,7 +775,7 @@ mod tests {
             cursor_checkpoint_proof: "cursor:go-compatible".to_owned(),
             fencing_recovery_proof: "fence:rejected-stale".to_owned(),
             worker_build_id: "source-runtime-next:test".to_owned(),
-            promotion_receipt: "promotion:test".to_owned(),
+            promotion_receipt: "sig:promotion:test".to_owned(),
         };
         validate_authority_evidence(&complete).unwrap();
 
@@ -768,6 +789,48 @@ mod tests {
         };
         assert!(missing.contains(&"egress_allowlist"));
         assert!(missing.contains(&"rollback_receipt"));
+    }
+
+    #[test]
+    fn authority_evidence_rejects_malformed_digest_and_unsigned_promotion_receipt() {
+        let complete = AuthorityEvidence {
+            plan_digest: "a".repeat(64),
+            fixture_corpus_revision: "fixture-corpus:v1".to_owned(),
+            supported_auth_modes: vec!["api_key".to_owned()],
+            supported_pagination_grammar: vec!["cursor".to_owned()],
+            supported_provider_errors: vec!["401".to_owned(), "429".to_owned(), "5xx".to_owned()],
+            egress_allowlist: vec!["https://provider.example.invalid".to_owned()],
+            response_limits: "body=1048576,decompression=4x".to_owned(),
+            credential_lease_mode: "one_operation".to_owned(),
+            projection_dependency: "go_projection_dependency".to_owned(),
+            rollback_receipt: "rollback:test".to_owned(),
+            parity_status: "passed".to_owned(),
+            canonical_digest_vectors: vec![
+                "plan".to_owned(),
+                "request_intent".to_owned(),
+                "worker_receipt".to_owned(),
+            ],
+            config_safety_proof: "config:redacted".to_owned(),
+            cursor_checkpoint_proof: "cursor:go-compatible".to_owned(),
+            fencing_recovery_proof: "fence:rejected-stale".to_owned(),
+            worker_build_id: "source-runtime-next:test".to_owned(),
+            promotion_receipt: "sig:promotion:test".to_owned(),
+        };
+        let mut bad_digest = complete.clone();
+        bad_digest.plan_digest = "not-a-sha256".to_owned();
+        assert_eq!(
+            validate_authority_evidence(&bad_digest),
+            Err(ProtocolError::InvalidAuthorityDigest(
+                "compiled_plan_digest"
+            ))
+        );
+
+        let mut unsigned = complete;
+        unsigned.promotion_receipt = "promotion:test".to_owned();
+        assert_eq!(
+            validate_authority_evidence(&unsigned),
+            Err(ProtocolError::UnauthenticatedPromotionReceipt)
+        );
     }
 
     fn raw_secret_sentinel_field_names() -> &'static [&'static str] {
