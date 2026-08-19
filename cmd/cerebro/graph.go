@@ -56,10 +56,6 @@ type graphQueryStore interface {
 	Ping(context.Context) error
 	GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error)
 	ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error)
-	ListEntities(context.Context, ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error)
-	CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error)
-	ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error)
-	CompareExposureCoverage(context.Context, ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error)
 }
 
 type graphPathStore interface {

@@ -419,14 +419,14 @@ func TestCollectGraphProbeCachesTenantCounts(t *testing.T) {
 	}
 	request := AskRequest{TenantID: "writer", Question: "What is risky?"}
 
-	first := collectGraphProbe(context.Background(), store, request, askParams(request))
+	first := collectGraphProbe(context.Background(), store, store, request, askParams(request))
 	if first.SourceCount != 3 {
 		t.Fatalf("first probe source count = %d, want 3", first.SourceCount)
 	}
 	if len(store.requests) != 2 {
 		t.Fatalf("store requests after first probe = %d, want 2", len(store.requests))
 	}
-	second := collectGraphProbe(context.Background(), store, request, askParams(request))
+	second := collectGraphProbe(context.Background(), store, store, request, askParams(request))
 	if second.SourceCount != 3 {
 		t.Fatalf("second probe source count = %d, want cached 3", second.SourceCount)
 	}

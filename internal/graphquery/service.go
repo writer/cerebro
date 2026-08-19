@@ -22,20 +22,10 @@ var (
 	ErrInvalidRequest = errors.New("invalid graph query request")
 )
 
-// Store is the narrowed graph read capability surface consumed by the graph
-// query service: Rust authority typed reads (neighborhoods, entity catalog,
-// exposure coverage) plus the retained raw-Cypher compatibility surface.
-type Store interface {
-	ports.RawCypherQueryStore
-	ports.GraphNeighborhoodStore
-	ports.EntityCatalogStore
-	ports.ExposureCoverageStore
-}
-
 // Service exposes the first bounded graph neighborhood query.
 type Service struct {
-	rawCypher     ports.RawCypherQueryStore
 	neighborhoods ports.GraphNeighborhoodStore
+	rawCypher     ports.RawCypherQueryStore
 	catalog       ports.EntityCatalogStore
 	exposure      ports.ExposureCoverageStore
 }
@@ -47,13 +37,18 @@ type NeighborhoodRequest struct {
 }
 
 // New constructs a bounded graph neighborhood service.
-func New(store Store) *Service {
-	return &Service{
-		rawCypher:     store,
-		neighborhoods: store,
-		catalog:       store,
-		exposure:      store,
+func New(store ports.GraphNeighborhoodStore) *Service {
+	service := &Service{neighborhoods: store}
+	if rawCypher, ok := store.(ports.RawCypherQueryStore); ok {
+		service.rawCypher = rawCypher
 	}
+	if catalog, ok := store.(ports.EntityCatalogStore); ok {
+		service.catalog = catalog
+	}
+	if exposure, ok := store.(ports.ExposureCoverageStore); ok {
+		service.exposure = exposure
+	}
+	return service
 }
 
 // GetEntityNeighborhood loads one bounded root-centered graph neighborhood.

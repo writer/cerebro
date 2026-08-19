@@ -42,18 +42,6 @@ func (s *awsExposureStubStore) CompareExposureCoverage(_ context.Context, reques
 	return s.result, s.err
 }
 
-func (s *awsExposureStubStore) ListEntities(context.Context, ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
-	return nil, nil
-}
-
-func (s *awsExposureStubStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
-	return nil, nil
-}
-
-func (s *awsExposureStubStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
-	return nil, nil
-}
-
 func TestGetAWSPublicEndpointInsightsRequiresTenant(t *testing.T) {
 	_, err := New(&awsExposureStubStore{}).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{})
 	if !errors.Is(err, ErrInvalidRequest) {
@@ -110,7 +98,8 @@ func TestGetAWSPublicEndpointInsightsUsesOneTypedBoundedRead(t *testing.T) {
 }
 
 func TestGetAWSPublicEndpointInsightsFailsClosedWithoutTypedStore(t *testing.T) {
-	_, err := New(nil).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{TenantID: "writer"})
+	store := struct{ ports.GraphQueryStore }{}
+	_, err := New(store).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{TenantID: "writer"})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("GetAWSPublicEndpointInsights() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}

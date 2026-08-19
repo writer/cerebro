@@ -249,9 +249,16 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	if strings.Contains(graphAgentAsk, "func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore") {
 		t.Error("graph agent scoped neighborhood restored full graph query dependency")
 	}
+	if strings.Contains(graphAgentAsk, "store     ports.GraphQueryStore") {
+		t.Error("graph agent service restored stored full graph query dependency")
+	}
+	if strings.Contains(graphAgentAsk, "func NewService(store ports.GraphQueryStore") || strings.Contains(graphAgentAsk, "func NewServiceWithOptions(store ports.GraphQueryStore") {
+		t.Error("graph agent service restored full graph query constructor dependency")
+	}
+
 	graphQueryService := readText(t, filepath.Join(root, "internal/graphquery/service.go"))
-	if strings.Contains(graphQueryService, "ports.GraphQueryStore") {
-		t.Error("graph query service restored transitional composite graph query dependency")
+	if strings.Contains(graphQueryService, "store ports.GraphQueryStore") || strings.Contains(graphQueryService, "func New(store ports.GraphQueryStore") {
+		t.Error("graphquery service restored full graph query dependency")
 	}
 	bootstrapApp := readText(t, filepath.Join(root, "internal/bootstrap/app.go"))
 	if strings.Contains(bootstrapApp, "ports.GraphQueryStore") {

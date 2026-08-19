@@ -112,9 +112,8 @@ func (s *Service) ListInventoryCategories(ctx context.Context, request Inventory
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	store := s.catalog
 	filter := inventoryCatalogFilter(tenantID, request.SourceID, request.Surface)
-	page, err := store.CountEntityKinds(ctx, ports.EntityKindCountRequest{Filter: filter, Limit: maxInventoryLimit})
+	page, err := s.catalog.CountEntityKinds(ctx, ports.EntityKindCountRequest{Filter: filter, Limit: maxInventoryLimit})
 	if err != nil {
 		return nil, err
 	}
@@ -170,14 +169,13 @@ func (s *Service) ListInventoryAssets(ctx context.Context, request InventoryAsse
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	store := s.catalog
 	filter := inventoryCatalogFilter(tenantID, request.SourceID, request.Surface)
 	filter.Query = strings.TrimSpace(request.Query)
 	if len(entityTypes) > 0 {
 		filter.IncludeKinds = entityTypes
 		filter.IncludeKindPrefixes = nil
 	}
-	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: normalizeInventoryLimit(request.Limit)})
+	page, err := s.catalog.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: normalizeInventoryLimit(request.Limit)})
 	if err != nil {
 		return nil, err
 	}
@@ -205,9 +203,8 @@ func (s *Service) GetInventoryAsset(ctx context.Context, request InventoryAssetD
 	if err := validateCerebroURN(urn); err != nil {
 		return nil, err
 	}
-	store := s.catalog
 	tenantID := cerebrourn.TenantID(urn)
-	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn}, Limit: 1})
+	page, err := s.catalog.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn}, Limit: 1})
 	if err != nil {
 		return nil, err
 	}

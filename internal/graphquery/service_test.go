@@ -26,22 +26,6 @@ func (s *stubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequ
 	return nil, nil
 }
 
-func (s *stubStore) ListEntities(context.Context, ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
-	return nil, nil
-}
-
-func (s *stubStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
-	return nil, nil
-}
-
-func (s *stubStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
-	return nil, nil
-}
-
-func (s *stubStore) CompareExposureCoverage(context.Context, ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
-	return nil, nil
-}
-
 func TestGetEntityNeighborhoodNormalizesLimit(t *testing.T) {
 	store := &stubStore{
 		neighborhood: &ports.EntityNeighborhood{

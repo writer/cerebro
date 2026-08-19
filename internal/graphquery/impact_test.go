@@ -50,22 +50,6 @@ func (s *impactStubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQue
 	return nil, nil
 }
 
-func (s *impactStubStore) ListEntities(context.Context, ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
-	return nil, nil
-}
-
-func (s *impactStubStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
-	return nil, nil
-}
-
-func (s *impactStubStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
-	return nil, nil
-}
-
-func (s *impactStubStore) CompareExposureCoverage(context.Context, ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
-	return nil, nil
-}
-
 func TestSortedImpactRelationsOrdersByRelationFields(t *testing.T) {
 	relations := map[string]*ports.NeighborhoodRelation{
 		"shuffled-1": rel("urn:cerebro:writer:asset:b", "depends_on", "urn:cerebro:writer:asset:a"),
