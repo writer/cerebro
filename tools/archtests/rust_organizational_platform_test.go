@@ -189,12 +189,12 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	}
 
 	goNeo4jStore := readText(t, filepath.Join(root, "internal/graphstore/neo4j/store.go"))
-	for _, rollbackCompatibility := range []string{
+	for _, removedTypedRead := range []string{
 		"func (s *Store) GetEntityNeighborhood(",
 		"func (s *Store) GetEntityNeighborhoods(",
 	} {
-		if !strings.Contains(goNeo4jStore, rollbackCompatibility) {
-			t.Errorf("Go Neo4j store removed required rollback compatibility %q", rollbackCompatibility)
+		if strings.Contains(goNeo4jStore, removedTypedRead) {
+			t.Errorf("Go Neo4j store retained removed typed read %q", removedTypedRead)
 		}
 	}
 	for _, retained := range []string{

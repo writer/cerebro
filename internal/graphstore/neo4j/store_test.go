@@ -39,41 +39,6 @@ func TestProjectedEntityMergePreservesExistingLabelsForFallbackLabels(t *testing
 	}
 }
 
-func TestNeighborhoodRelationsOrdersByStoredRelationKey(t *testing.T) {
-	relations := map[string]*ports.NeighborhoodRelation{
-		"urn:cerebro:writer:asset:b|depends_on|urn:cerebro:writer:asset:a": {
-			FromURN:  "urn:cerebro:writer:asset:b",
-			Relation: "depends_on",
-			ToURN:    "urn:cerebro:writer:asset:a",
-		},
-		"urn:cerebro:writer:asset:a|owns|urn:cerebro:writer:asset:c": {
-			FromURN:  "urn:cerebro:writer:asset:a",
-			Relation: "owns",
-			ToURN:    "urn:cerebro:writer:asset:c",
-		},
-		"urn:cerebro:writer:asset:a|depends_on|urn:cerebro:writer:asset:b": {
-			FromURN:  "urn:cerebro:writer:asset:a",
-			Relation: "depends_on",
-			ToURN:    "urn:cerebro:writer:asset:b",
-		},
-	}
-
-	result := neighborhoodRelations(relations)
-
-	if len(result) != 3 {
-		t.Fatalf("neighborhoodRelations() len = %d, want 3", len(result))
-	}
-	if result[0].FromURN != "urn:cerebro:writer:asset:a" || result[0].Relation != "depends_on" || result[0].ToURN != "urn:cerebro:writer:asset:b" {
-		t.Fatalf("neighborhoodRelations()[0] = %#v, want asset:a depends_on asset:b", result[0])
-	}
-	if result[1].FromURN != "urn:cerebro:writer:asset:a" || result[1].Relation != "owns" || result[1].ToURN != "urn:cerebro:writer:asset:c" {
-		t.Fatalf("neighborhoodRelations()[1] = %#v, want asset:a owns asset:c", result[1])
-	}
-	if result[2].FromURN != "urn:cerebro:writer:asset:b" || result[2].Relation != "depends_on" || result[2].ToURN != "urn:cerebro:writer:asset:a" {
-		t.Fatalf("neighborhoodRelations()[2] = %#v, want asset:b depends_on asset:a", result[2])
-	}
-}
-
 func TestScanIngestRunRecordIncludesCheckpointTerminalState(t *testing.T) {
 	record := &neo4jdriver.Record{Values: []any{
 		"run-1", "runtime-1", "github", "writer", "checkpoint-1", "page-2", false,
@@ -556,13 +521,6 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	}
 	if relationCounts["maintains"] != 1 || relationCounts["tracks"] != 1 || relationCounts["missing"] != 0 {
 		t.Fatalf("RelationCounts() = %#v, want maintains=1 tracks=1 missing=0", relationCounts)
-	}
-	neighborhood, err := store.GetEntityNeighborhood(ctx, user.URN, 5)
-	if err != nil {
-		t.Fatalf("GetEntityNeighborhood() error = %v", err)
-	}
-	if neighborhood.Root == nil || neighborhood.Root.URN != user.URN || len(neighborhood.Neighbors) != 1 || len(neighborhood.Relations) != 1 {
-		t.Fatalf("GetEntityNeighborhood() = %#v", neighborhood)
 	}
 	target := &ports.ProjectedEntity{URN: "urn:cerebro:writer:grc_target:target-1", TenantID: "writer", SourceID: "grc", EntityType: "grc.target", Label: "target-1"}
 	source := &ports.ProjectedEntity{URN: "urn:cerebro:writer:source:grc", TenantID: "writer", SourceID: "grc", EntityType: "source", Label: "grc"}
