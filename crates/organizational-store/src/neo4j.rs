@@ -617,6 +617,34 @@ pub struct EntityCatalogRelationKindPage {
     pub next_after_relation: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One person-to-access-target path from the legacy projection.
+pub struct PersonAccessPath {
+    /// Human subject whose access was resolved.
+    pub person: ContextEntity,
+    /// Identity bound to the person.
+    pub identity: ContextEntity,
+    /// Principal that represents the identity.
+    pub principal: ContextEntity,
+    /// Reached access target.
+    pub access_target: ContextEntity,
+    /// Ordered relationship kinds from principal to target.
+    pub relation_chain: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded page of person access paths.
+pub struct PersonAccessPathPage {
+    /// Tenant whose graph was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Bounded paths ordered by person, principal, and target label.
+    pub paths: Vec<PersonAccessPath>,
+    /// Whether another path exists beyond the requested limit.
+    pub truncated: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 /// Direction of a direct entity-catalog relation.
 pub enum EntityCatalogDirection {
@@ -1038,6 +1066,78 @@ impl Neo4jProjector {
             counts,
             truncated,
             next_after_relation,
+        })
+    }
+
+    /// Lists bounded person access paths using a Rust-owned legacy projection query.
+    pub async fn list_person_access_paths(
+        &self,
+        tenant_id: &TenantId,
+        person_urn: &str,
+        person_query: &str,
+        limit: usize,
+        depth: usize,
+        expected_graph_revision: u64,
+    ) -> Result<PersonAccessPathPage, StoreError> {
+        validate_person_access_request(tenant_id, person_urn, person_query, limit, depth)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(expected_graph_revision, revision)?;
+        let access_relations = vec![
+            "assigned_to".to_owned(),
+            "member_of".to_owned(),
+            "can_admin".to_owned(),
+            "can_perform".to_owned(),
+            "can_assume".to_owned(),
+            "can_impersonate".to_owned(),
+            "runs_as".to_owned(),
+        ];
+        let statement = format!(
+            "MATCH (person:Entity {{tenant_id: $tenant_id, entity_type: 'person'}}) WHERE ($person_urn = '' OR person.urn = $person_urn) AND ($person_query = '' OR toLower(coalesce(person.label, '')) CONTAINS $person_query OR toLower(coalesce(person.attributes_json, '')) CONTAINS $person_query) MATCH (person)-[person_identity:RELATION {{relation: 'same_actor'}}]-(identity:Entity {{tenant_id: $tenant_id}}) MATCH (principal:Entity {{tenant_id: $tenant_id}})-[principal_identity:RELATION {{relation: 'represents_identity'}}]->(identity) MATCH path = (principal)-[:RELATION*1..{depth}]->(target:Entity {{tenant_id: $tenant_id}}) WHERE person_identity.tenant_id = $tenant_id AND principal_identity.tenant_id = $tenant_id AND all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $access_relations) AND target.urn <> person.urn AND target.urn <> identity.urn RETURN person.urn AS person_key, coalesce(person.entity_type, 'unknown') AS person_kind, coalesce(person.label, person.urn) AS person_label, coalesce(person.attributes_json, '{{}}') AS person_properties, coalesce(person.source_id, '') AS person_source_id, coalesce(person.runtime_id, '') AS person_runtime_id, identity.urn AS identity_key, coalesce(identity.entity_type, 'unknown') AS identity_kind, coalesce(identity.label, identity.urn) AS identity_label, coalesce(identity.attributes_json, '{{}}') AS identity_properties, coalesce(identity.source_id, '') AS identity_source_id, coalesce(identity.runtime_id, '') AS identity_runtime_id, principal.urn AS principal_key, coalesce(principal.entity_type, 'unknown') AS principal_kind, coalesce(principal.label, principal.urn) AS principal_label, coalesce(principal.attributes_json, '{{}}') AS principal_properties, coalesce(principal.source_id, '') AS principal_source_id, coalesce(principal.runtime_id, '') AS principal_runtime_id, target.urn AS target_key, coalesce(target.entity_type, 'unknown') AS target_kind, coalesce(target.label, target.urn) AS target_label, coalesce(target.attributes_json, '{{}}') AS target_properties, coalesce(target.source_id, '') AS target_source_id, coalesce(target.runtime_id, '') AS target_runtime_id, [rel IN relationships(path) | rel.relation] AS relation_chain ORDER BY person.label, principal.label, target.label LIMIT $row_limit"
+        );
+        let mut rows = transaction
+            .execute(
+                query(&statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("person_urn", person_urn)
+                    .param("person_query", person_query)
+                    .param("access_relations", string_list(&access_relations))
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut paths = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            let relation_chain: Vec<String> = row
+                .get("relation_chain")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            if relation_chain.is_empty()
+                || relation_chain.len() > depth
+                || relation_chain
+                    .iter()
+                    .any(|relation| !access_relations.contains(relation))
+            {
+                return Err(StoreError::Conflict(
+                    "person access path relation chain is invalid".to_owned(),
+                ));
+            }
+            paths.push(PersonAccessPath {
+                person: legacy_context_entity_from_row_prefix(tenant_id, &row, "person")?,
+                identity: legacy_context_entity_from_row_prefix(tenant_id, &row, "identity")?,
+                principal: legacy_context_entity_from_row_prefix(tenant_id, &row, "principal")?,
+                access_target: legacy_context_entity_from_row_prefix(tenant_id, &row, "target")?,
+                relation_chain,
+            });
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut paths, limit);
+        Ok(PersonAccessPathPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            paths,
+            truncated,
         })
     }
 
@@ -3195,6 +3295,40 @@ fn validate_catalog_relation_request(
     Ok(())
 }
 
+fn validate_person_access_request(
+    tenant_id: &TenantId,
+    person_urn: &str,
+    person_query: &str,
+    limit: usize,
+    depth: usize,
+) -> Result<(), StoreError> {
+    if !(1..=100).contains(&limit) {
+        return Err(StoreError::Conflict(
+            "person access path limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    if !(1..=4).contains(&depth) {
+        return Err(StoreError::Conflict(
+            "person access path depth must be between 1 and 4".to_owned(),
+        ));
+    }
+    validate_catalog_text("person_urn", person_urn, 4096, false)?;
+    validate_catalog_text("person_query", person_query, 512, false)?;
+    if person_urn.is_empty() && person_query.is_empty() {
+        return Err(StoreError::Conflict(
+            "person access path selector is required".to_owned(),
+        ));
+    }
+    if !person_urn.is_empty()
+        && !person_urn.starts_with(&format!("urn:cerebro:{}:", tenant_id.as_str()))
+    {
+        return Err(StoreError::Conflict(
+            "person access path person_urn is not tenant scoped".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_catalog_list(name: &str, values: &[String], max: usize) -> Result<(), StoreError> {
     if values.len() > max {
         return Err(StoreError::Conflict(format!(
@@ -3632,6 +3766,23 @@ fn legacy_context_entity(
         label,
         properties,
     })
+}
+
+fn legacy_context_entity_from_row_prefix(
+    tenant_id: &TenantId,
+    row: &Row,
+    prefix: &str,
+) -> Result<ContextEntity, StoreError> {
+    legacy_context_entity(
+        tenant_id,
+        &catalog_row_string(row, &format!("{prefix}_key"))?,
+        catalog_row_string(row, &format!("{prefix}_kind"))?,
+        catalog_row_string(row, &format!("{prefix}_label"))?,
+        catalog_row_string(row, &format!("{prefix}_properties"))?,
+        catalog_row_string(row, &format!("{prefix}_source_id"))?,
+        catalog_row_string(row, &format!("{prefix}_runtime_id"))?,
+    )
+    .map_err(|error| StoreError::Conflict(error.to_string()))
 }
 
 fn legacy_context_edge(

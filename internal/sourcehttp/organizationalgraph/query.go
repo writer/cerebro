@@ -572,6 +572,85 @@ func (s *QueryStore) CountRelations(ctx context.Context, request ports.RelationC
 	return page, nil
 }
 
+func (s *QueryStore) ListPersonAccessPaths(ctx context.Context, request ports.PersonAccessPathRequest) (*ports.PersonAccessPathResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("person access tenant_id is required")
+	}
+	if request.Limit < 1 || request.Limit > 100 {
+		return nil, errors.New("person access limit must be between 1 and 100")
+	}
+	if request.Depth < 1 || request.Depth > 4 {
+		return nil, errors.New("person access depth must be between 1 and 4")
+	}
+	personURN := strings.TrimSpace(request.PersonURN)
+	personQuery := strings.ToLower(strings.TrimSpace(request.PersonQuery))
+	if personURN == "" && personQuery == "" {
+		return nil, errors.New("person access person_urn or person_query is required")
+	}
+	if personURN != "" && !cerebrourn.SameTenant(personURN, tenantID) {
+		return nil, errors.New("person access person_urn must match tenant_id")
+	}
+	message := connect.NewRequest(&cerebrographv1.ListPersonAccessPathsRequest{
+		TenantId:              tenantID,
+		PersonUrn:             personURN,
+		PersonQuery:           personQuery,
+		Limit:                 uint32(request.Limit), // #nosec G115 -- validated above to 1..100.
+		MaxDepth:              uint32(request.Depth), // #nosec G115 -- validated above to 1..4.
+		ExpectedGraphRevision: request.ExpectedRevision,
+	})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListPersonAccessPaths(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("list person access paths", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetPaths()) > request.Limit {
+		return nil, errors.New("rust person access returned an invalid tenant or bound")
+	}
+	result := &ports.PersonAccessPathResult{
+		TenantID:      tenantID,
+		GraphRevision: response.Msg.GetGraphRevision(),
+		Truncated:     response.Msg.GetTruncated(),
+	}
+	for _, path := range response.Msg.GetPaths() {
+		if path == nil || len(path.GetRelationChain()) == 0 || len(path.GetRelationChain()) > request.Depth {
+			return nil, errors.New("rust person access returned an invalid path")
+		}
+		person, err := catalogEntity(tenantID, path.GetPerson())
+		if err != nil {
+			return nil, err
+		}
+		identity, err := catalogEntity(tenantID, path.GetIdentity())
+		if err != nil {
+			return nil, err
+		}
+		principal, err := catalogEntity(tenantID, path.GetPrincipal())
+		if err != nil {
+			return nil, err
+		}
+		accessTarget, err := catalogEntity(tenantID, path.GetAccessTarget())
+		if err != nil {
+			return nil, err
+		}
+		if person.EntityType != "person" {
+			return nil, errors.New("rust person access returned a non-person subject")
+		}
+		result.Paths = append(result.Paths, ports.PersonAccessPath{
+			Person:        person,
+			Identity:      identity,
+			Principal:     principal,
+			AccessTarget:  accessTarget,
+			RelationChain: append([]string(nil), path.GetRelationChain()...),
+		})
+	}
+	if result.Truncated && len(result.Paths) != request.Limit {
+		return nil, errors.New("rust person access returned an invalid truncation")
+	}
+	return result, nil
+}
+
 func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {

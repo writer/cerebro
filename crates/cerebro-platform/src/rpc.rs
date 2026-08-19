@@ -15,7 +15,7 @@ use cerebro_organizational_store::{
     EntityCatalogRelationPage as StoreCatalogRelationPage,
     ExposureCoverageEntity as StoreExposureEntity, ExposureCoverageProfile as StoreExposureProfile,
     ExposureCoverageQuery as StoreExposureQuery, ExposureCoverageResult as StoreExposureResult,
-    Neo4jProjector, StoreError,
+    Neo4jProjector, PersonAccessPathPage as StorePersonAccessPathPage, StoreError,
 };
 use cerebro_security_lifecycle::{
     LifecycleQuery, LifecycleState, ProjectedResource, QueryResult as LifecycleQueryResult,
@@ -661,6 +661,36 @@ impl OrganizationalGraphService for GraphRpc {
         Response::ok(catalog_relation_kind_response(result))
     }
 
+    async fn list_person_access_paths(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListPersonAccessPathsRequest>,
+    ) -> ServiceResult<ListPersonAccessPathsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let depth = usize::try_from(request.max_depth)
+            .map_err(|_| ConnectError::invalid_argument("max_depth exceeds usize"))?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.list_person_access_paths(
+                &tenant,
+                request.person_urn,
+                request.person_query,
+                limit,
+                depth,
+                request.expected_graph_revision,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Person access path read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(person_access_path_response(result))
+    }
+
     async fn list_entity_relations(
         &self,
         context: RequestContext,
@@ -1285,6 +1315,27 @@ fn catalog_relation_kind_response(page: StoreCatalogRelationKindPage) -> CountRe
     }
 }
 
+fn person_access_path_response(page: StorePersonAccessPathPage) -> ListPersonAccessPathsResponse {
+    ListPersonAccessPathsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        paths: page
+            .paths
+            .into_iter()
+            .map(|path| PersonAccessPath {
+                person: graph_entity(path.person).into(),
+                identity: graph_entity(path.identity).into(),
+                principal: graph_entity(path.principal).into(),
+                access_target: graph_entity(path.access_target).into(),
+                relation_chain: path.relation_chain,
+                ..Default::default()
+            })
+            .collect(),
+        truncated: page.truncated,
+        ..Default::default()
+    }
+}
+
 fn catalog_relation_response(page: StoreCatalogRelationPage) -> ListEntityRelationsResponse {
     let next_after_direction = match page.next_after_direction {
         Some(StoreCatalogDirection::Incoming) => EntityRelationDirection::Incoming,
@@ -1439,6 +1490,7 @@ mod tests {
         ExposureCoverageCounts as StoreExposureCounts,
         ExposureCoverageKindCount as StoreExposureKindCount,
         ExposureCoverageOverlap as StoreExposureOverlap, ExposureCoveragePair as StoreExposurePair,
+        PersonAccessPath as StorePersonAccessPath,
     };
     use connectrpc::ErrorCode;
 
@@ -1847,6 +1899,23 @@ mod tests {
         assert_eq!(relation_kinds.counts[0].relation, "has_finding");
         assert_eq!(relation_kinds.counts[0].count, 5);
         assert_eq!(relation_kinds.next_after_relation, "has_finding");
+
+        let access_paths = person_access_path_response(StorePersonAccessPathPage {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            paths: vec![StorePersonAccessPath {
+                person: context_entity("person-a", "person"),
+                identity: context_entity("identity-a", "identity.email"),
+                principal: context_entity("principal-a", "okta.user"),
+                access_target: context_entity("target-a", "aws.role"),
+                relation_chain: vec!["assigned_to".to_owned()],
+            }],
+            truncated: true,
+        });
+        assert_eq!(access_paths.graph_revision, 42);
+        assert_eq!(access_paths.paths[0].access_target.entity_kind, "aws.role");
+        assert_eq!(access_paths.paths[0].relation_chain, ["assigned_to"]);
+        assert!(access_paths.truncated);
 
         for direction in [
             StoreCatalogDirection::Incoming,

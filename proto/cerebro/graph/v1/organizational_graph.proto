@@ -29,6 +29,8 @@ service OrganizationalGraphService {
   rpc CountEntityKinds(CountEntityKindsRequest) returns (CountEntityKindsResponse);
   // CountRelations returns bounded relation counts from the tenant legacy graph projection.
   rpc CountRelations(CountRelationsRequest) returns (CountRelationsResponse);
+  // ListPersonAccessPaths returns bounded person-to-access-target paths from the legacy graph projection.
+  rpc ListPersonAccessPaths(ListPersonAccessPathsRequest) returns (ListPersonAccessPathsResponse);
   // ListEntityRelations returns filtered direct relations for one catalog entity.
   rpc ListEntityRelations(ListEntityRelationsRequest) returns (ListEntityRelationsResponse);
   // GetSourceSummary returns the catalog coverage compiled into the running Rust service.
@@ -295,6 +297,30 @@ message CountRelationsResponse {
   repeated RelationCount counts = 3;
   bool truncated = 4;
   string next_after_relation = 5;
+}
+
+message PersonAccessPath {
+  GraphEntity person = 1;
+  GraphEntity identity = 2;
+  GraphEntity principal = 3;
+  GraphEntity access_target = 4;
+  repeated string relation_chain = 5;
+}
+
+message ListPersonAccessPathsRequest {
+  string tenant_id = 1;
+  string person_urn = 2;
+  string person_query = 3;
+  uint32 limit = 4;
+  uint32 max_depth = 5;
+  uint64 expected_graph_revision = 6;
+}
+
+message ListPersonAccessPathsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated PersonAccessPath paths = 3;
+  bool truncated = 4;
 }
 
 enum EntityRelationDirection {

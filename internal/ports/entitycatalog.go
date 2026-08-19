@@ -103,6 +103,34 @@ type RelationCountStore interface {
 	CountRelations(context.Context, RelationCountRequest) (*RelationCountPage, error)
 }
 
+type PersonAccessPathRequest struct {
+	TenantID         string
+	PersonURN        string
+	PersonQuery      string
+	Limit            int
+	Depth            int
+	ExpectedRevision uint64
+}
+
+type PersonAccessPath struct {
+	Person        CatalogEntity
+	Identity      CatalogEntity
+	Principal     CatalogEntity
+	AccessTarget  CatalogEntity
+	RelationChain []string
+}
+
+type PersonAccessPathResult struct {
+	TenantID      string
+	GraphRevision uint64
+	Paths         []PersonAccessPath
+	Truncated     bool
+}
+
+type PersonAccessPathStore interface {
+	ListPersonAccessPaths(context.Context, PersonAccessPathRequest) (*PersonAccessPathResult, error)
+}
+
 type EntityRelationDirection string
 
 const (

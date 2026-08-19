@@ -28,6 +28,7 @@ type Service struct {
 	rawCypher     ports.RawCypherQueryStore
 	catalog       ports.EntityCatalogStore
 	exposure      ports.ExposureCoverageStore
+	personAccess  ports.PersonAccessPathStore
 }
 
 // NeighborhoodRequest scopes one bounded root-centered graph query.
@@ -43,15 +44,21 @@ func New(store ports.GraphNeighborhoodStore) *Service {
 		graphRawCypherCapability(store),
 		graphCatalogCapability(store),
 		graphExposureCapability(store),
+		graphPersonAccessCapability(store),
 	)
 }
 
-func NewWithCapabilities(neighborhoods ports.GraphNeighborhoodStore, rawCypher ports.RawCypherQueryStore, catalog ports.EntityCatalogStore, exposure ports.ExposureCoverageStore) *Service {
+func NewWithCapabilities(neighborhoods ports.GraphNeighborhoodStore, rawCypher ports.RawCypherQueryStore, catalog ports.EntityCatalogStore, exposure ports.ExposureCoverageStore, personAccess ...ports.PersonAccessPathStore) *Service {
+	personAccessStore := firstPersonAccessCapability(personAccess)
+	if personAccessStore == nil {
+		personAccessStore = graphPersonAccessCapability(neighborhoods, rawCypher, catalog, exposure)
+	}
 	return &Service{
 		neighborhoods: neighborhoods,
 		rawCypher:     rawCypher,
 		catalog:       catalog,
 		exposure:      exposure,
+		personAccess:  personAccessStore,
 	}
 }
 
@@ -72,6 +79,24 @@ func graphCatalogCapability(store ports.GraphNeighborhoodStore) ports.EntityCata
 func graphExposureCapability(store ports.GraphNeighborhoodStore) ports.ExposureCoverageStore {
 	if exposure, ok := store.(ports.ExposureCoverageStore); ok {
 		return exposure
+	}
+	return nil
+}
+
+func graphPersonAccessCapability(stores ...any) ports.PersonAccessPathStore {
+	for _, store := range stores {
+		if personAccess, ok := store.(ports.PersonAccessPathStore); ok {
+			return personAccess
+		}
+	}
+	return nil
+}
+
+func firstPersonAccessCapability(stores []ports.PersonAccessPathStore) ports.PersonAccessPathStore {
+	for _, store := range stores {
+		if store != nil {
+			return store
+		}
 	}
 	return nil
 }
