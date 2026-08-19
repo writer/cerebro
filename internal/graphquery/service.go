@@ -38,17 +38,42 @@ type NeighborhoodRequest struct {
 
 // New constructs a bounded graph neighborhood service.
 func New(store ports.GraphNeighborhoodStore) *Service {
-	service := &Service{neighborhoods: store}
+	return NewWithCapabilities(
+		store,
+		graphRawCypherCapability(store),
+		graphCatalogCapability(store),
+		graphExposureCapability(store),
+	)
+}
+
+func NewWithCapabilities(neighborhoods ports.GraphNeighborhoodStore, rawCypher ports.RawCypherQueryStore, catalog ports.EntityCatalogStore, exposure ports.ExposureCoverageStore) *Service {
+	return &Service{
+		neighborhoods: neighborhoods,
+		rawCypher:     rawCypher,
+		catalog:       catalog,
+		exposure:      exposure,
+	}
+}
+
+func graphRawCypherCapability(store ports.GraphNeighborhoodStore) ports.RawCypherQueryStore {
 	if rawCypher, ok := store.(ports.RawCypherQueryStore); ok {
-		service.rawCypher = rawCypher
+		return rawCypher
 	}
+	return nil
+}
+
+func graphCatalogCapability(store ports.GraphNeighborhoodStore) ports.EntityCatalogStore {
 	if catalog, ok := store.(ports.EntityCatalogStore); ok {
-		service.catalog = catalog
+		return catalog
 	}
+	return nil
+}
+
+func graphExposureCapability(store ports.GraphNeighborhoodStore) ports.ExposureCoverageStore {
 	if exposure, ok := store.(ports.ExposureCoverageStore); ok {
-		service.exposure = exposure
+		return exposure
 	}
-	return service
+	return nil
 }
 
 // GetEntityNeighborhood loads one bounded root-centered graph neighborhood.

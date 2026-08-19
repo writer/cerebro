@@ -1179,7 +1179,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 		},
 	}
 	appendLog := &recordingAppendLog{}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, GraphQueries: graphStore, AppendLog: appendLog}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore), AppendLog: appendLog}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -1495,7 +1495,7 @@ func TestGRCEntityImpactResolvesLegacyGitHubRepoURN(t *testing.T) {
 			},
 		},
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, GraphQueries: graphStore}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 

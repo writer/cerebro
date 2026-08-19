@@ -1224,13 +1224,9 @@ func (app *App) mcpAssetSearchResults(r *http.Request, args map[string]any) ([]m
 	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
 		return nil, err
 	}
-	store := dependencyGraphQueryStore(app.deps)
+	store := app.deps.GraphReads.Catalog
 	if store == nil {
 		return nil, graphquery.ErrRuntimeUnavailable
-	}
-	typed, ok := store.(ports.EntityCatalogStore)
-	if !ok {
-		return nil, ports.ErrGraphTypedOperationRequired
 	}
 	filter := ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn, Query: query}
 	if runtimeID != "" {
@@ -1239,7 +1235,7 @@ func (app *App) mcpAssetSearchResults(r *http.Request, args map[string]any) ([]m
 	if entityType != "" {
 		filter.IncludeKinds = []string{entityType}
 	}
-	page, err := typed.ListEntities(r.Context(), ports.EntityCatalogPageRequest{Filter: filter, Limit: limit})
+	page, err := store.ListEntities(r.Context(), ports.EntityCatalogPageRequest{Filter: filter, Limit: limit})
 	if err != nil {
 		return nil, err
 	}
@@ -1469,7 +1465,7 @@ func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mc
 		}
 		riskConfig = &config
 	}
-	if graphStore := dependencyGraphQueryStore(app.deps); graphStore != nil {
+	if graphStore := app.deps.GraphReads.Neighborhoods; graphStore != nil {
 		graphEvidenceStatus = mcpGraphEvidenceIncluded
 		targetURNs := riskplan.TargetURNs(findings, riskplan.Options{
 			TenantID:          tenantID,
