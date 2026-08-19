@@ -325,6 +325,40 @@ product reads; `ExecuteReadCypher` and `ExplainReadCypher` stay until their
 callers are migrated. Rollback uses the last retained-Go image rather than a
 live read mode in the current image.
 
+## Remaining compatibility callers
+
+The raw-Cypher compatibility port serves the callers below. None are
+expressible through `QueryFacts` today, and each migrates only after the
+listed capability lands in the Rust read API.
+
+One structural prerequisite applies to every caller: `QueryFacts` and
+`FindPaths` run against the organizational graph (`OrganizationalEntity` /
+`ORGANIZATIONAL_RELATION`, closed kind and relation vocabularies, sealed
+`EntityId` endpoints), while every caller targets the legacy projection
+(`Entity` / `RELATION`, keyed by `urn` and `entity_type` with
+`attributes_json` payloads). Migrating any caller requires mapping its entity
+kinds and relations into the organizational schema first, and path callers
+additionally need URN-keyed (or `agent_key`) `FindPaths` endpoints because
+Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
+
+| Caller | Query shape | Required Rust capability |
+| --- | --- | --- |
+| `internal/attackpath` | variable-length paths with counts and samples | relation-filtered variable-length traversal, aggregations, attribute substring predicates, optional ownership match |
+| `internal/graphquery` person access | person anchor to reachable targets | variable-length traversal with relation whitelist, label/attribute substring anchor lookup |
+| `internal/graphquery` effective access | fixed-arity fifteen-way union | union variants, substring predicates (`CONTAINS`/`ENDS WITH`) |
+| `internal/graphquery` crown jewel ranking | seed scan plus per-root bounded traversal | attribute substring seed predicates, batched relation-whitelisted traversal |
+| `internal/complianceimpact` | single-key fact lookup, dependency list/count, paged dependents | organizational kinds/relations for compliance facts, edge properties in results, keyset cursors, count aggregate |
+| `internal/policycandidate` grounding | closed key re-resolution of declared evidence | organizational schema mapping, edge properties in results |
+| `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
+| `internal/grcpolicylifecycle` | per-type entity scan plus relation scan | attribute substring predicates, per-type subqueries |
+| `internal/workflowprojection` pruning | keyset-paged edge enumeration | keyset cursors, organizational mapping for finding kinds |
+| `internal/graphagent` probe counts | entity-kind and relation counts | relation-count aggregate RPC (entity-kind counts map to the existing `CountEntityKinds`) |
+
+Two callers are permanent residents of the compatibility port because their
+query text is authored at runtime rather than in code: the `graphagent` ask
+flow (LLM-drafted Cypher) and `policycandidate` shadow/experiment evaluation
+(`rule.Spec.Graph.Query`). The port exists for them; it is not migrated away.
+
 The append-log consumer defaults to new events. A rebuild uses
 `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff
 uses `by_start_sequence` plus
