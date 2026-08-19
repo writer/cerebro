@@ -1601,7 +1601,7 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 		store,
 		store,
 		registry,
-	).WithGraphStore(graph).WithGraphQueryStore(graph)
+	).WithGraphStore(graph).WithRawCypherQueryStore(graph)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
 		RuntimeID: "writer-okta-audit",
@@ -5034,7 +5034,7 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 		},
 	}
 	appendLog := &recordingAppendLog{}
-	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithGraphQueryStore(graphStore).WithAppendLog(appendLog)
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithRawCypherQueryStore(graphStore).WithAppendLog(appendLog)
 	finding, err := service.ResolveFinding(context.Background(), "finding-1", workflowevents.FindingStatusReasonNoLongerEmitted)
 	if err != nil {
 		t.Fatalf("ResolveFinding() error = %v", err)

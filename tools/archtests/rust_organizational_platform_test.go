@@ -225,6 +225,10 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	if strings.Contains(policyCandidateGrounding, "graph ports.GraphQueryStore") {
 		t.Error("policy candidate grounding restored full graph query dependency")
 	}
+	findingsService := readText(t, filepath.Join(root, "internal/findings/service.go"))
+	if strings.Contains(findingsService, "WithGraphQueryStore") || strings.Contains(findingsService, "graphQuery                ports.RawCypherQueryStore") {
+		t.Error("findings service restored graph query naming for raw-Cypher dependency")
+	}
 	grcVendorService := readText(t, filepath.Join(root, "internal/grcvendor/service.go"))
 	if strings.Contains(grcVendorService, "store ports.GraphQueryStore") {
 		t.Error("GRC vendor service restored full graph query dependency")

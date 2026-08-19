@@ -74,7 +74,7 @@ type Service struct {
 	evidenceStore             ports.FindingEvidenceStore
 	candidateStore            ports.FindingCandidateStore
 	claimStore                ports.ClaimStore
-	graphQuery                ports.RawCypherQueryStore
+	rawCypher                 ports.RawCypherQueryStore
 	graphRunStore             GraphIngestRunStore
 	requireTrustedResolution  bool
 	graph                     ports.ProjectionGraphStore
@@ -250,13 +250,13 @@ func (s *Service) WithGraphStore(graph ports.ProjectionGraphStore) *Service {
 	return s
 }
 
-// WithGraphQueryStore wires one optional graph query boundary used by workflow bridges.
-func (s *Service) WithGraphQueryStore(graphQuery ports.RawCypherQueryStore) *Service {
+// WithRawCypherQueryStore wires one optional raw-Cypher compatibility boundary used by workflow bridges.
+func (s *Service) WithRawCypherQueryStore(rawCypher ports.RawCypherQueryStore) *Service {
 	if s == nil {
 		return nil
 	}
-	s.graphQuery = graphQuery
-	if graphRuns, ok := graphQuery.(GraphIngestRunStore); ok {
+	s.rawCypher = rawCypher
+	if graphRuns, ok := rawCypher.(GraphIngestRunStore); ok {
 		s.graphRunStore = graphRuns
 	}
 	return s

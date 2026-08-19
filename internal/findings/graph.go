@@ -265,7 +265,7 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 	if pruneGraph {
 		return nil
 	}
-	if s.graph == nil || s.graphQuery == nil {
+	if s.graph == nil || s.rawCypher == nil {
 		return nil
 	}
 	workflowMetadata := map[string]any{

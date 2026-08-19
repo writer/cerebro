@@ -144,7 +144,7 @@ func newFindingCandidateFeatureService(deps findingFeatureDeps) *findings.Servic
 func newFindingWorkflowFeatureService(deps findingFeatureDeps) *findings.Service {
 	return newFindingCandidateFeatureService(deps).
 		WithGraphStore(deps.ProjectionGraph).
-		WithGraphQueryStore(deps.GraphRawCypher).WithTrustedSourceResolution().
+		WithRawCypherQueryStore(deps.GraphRawCypher).WithTrustedSourceResolution().
 		WithAppendLog(deps.AppendLog)
 }
 

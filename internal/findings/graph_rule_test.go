@@ -82,7 +82,7 @@ func TestEvaluateSourceRuntimeGraphRulesExcludesNamedRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 
 	// Excluding rule-a leaves only rule-b (coverage for the other rule is kept).
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta", ExcludeRuleIDs: []string{"rule-a"}})
@@ -186,7 +186,7 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -273,7 +273,7 @@ func TestEvaluateSourceRuntimeGraphRulesTruncatedSkipsStaleResolution(t *testing
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -341,7 +341,7 @@ func TestEvaluateSourceRuntimeGraphRulesCapSignalSkipsStaleResolution(t *testing
 			if err != nil {
 				t.Fatalf("NewRegistry() error = %v", err)
 			}
-			service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+			service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 			result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
 			if err != nil {
 				t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -421,7 +421,7 @@ func TestEvaluateSourceRuntimeGraphRulesCapAwareStaleResolutionResolvesCompleteS
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-aws"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -494,7 +494,7 @@ func TestEvaluateSourceRuntimeGraphRulesCapAwareResolutionSkippedOnRowLimit(t *t
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-aws"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -533,7 +533,7 @@ func TestEvaluateSourceRuntimeGraphRulesPropagatesCypherFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
 	if err == nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() expected error")
@@ -570,7 +570,7 @@ func TestEvaluateSourceRuntimeGraphRulesContinuesAfterRuleFailure(t *testing.T) 
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
 	if err == nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() expected error from failing rule")
@@ -616,7 +616,7 @@ func TestEvaluateSourceRuntimeGraphRulesSelectsByRuleID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta", RuleIDs: []string{"selected"}})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -767,7 +767,7 @@ func TestEvaluateSourceRuntimeGraphRulesPinsFindingButRecordsEvidencePerRuntime(
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(runtimeStore, &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(runtimeStore, &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 
 	oktaResult, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: oktaRuntime.GetId()})
 	if err != nil {
@@ -844,7 +844,7 @@ func TestEvaluateSourceRuntimeGraphRulesPersistsRunWithoutEventLimit(t *testing.
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(runtimeStore, &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(runtimeStore, &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -882,7 +882,7 @@ func TestEvaluateSourceRuntimeGraphRulesRecordsGraphTelemetry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -922,7 +922,7 @@ func TestEvaluateSourceRuntimeGraphRulesEmptyQueryPersistsGraphRuleFlag(t *testi
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	if _, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()}); err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
 	}
@@ -958,7 +958,7 @@ func TestEvaluateSourceRuntimeGraphRulesRetiredEmptyQueryResolvesOpenFindings(t 
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(&stubGraphStore{})
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(&stubGraphStore{})
 	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
@@ -994,7 +994,7 @@ func TestEvaluateSourceRuntimeGraphRulesFailedRunPreservesGraphTelemetry(t *test
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 	if _, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()}); err == nil {
 		t.Fatal("EvaluateSourceRuntimeGraphRules() error = nil, want failure")
 	}
