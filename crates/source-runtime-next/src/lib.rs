@@ -5,6 +5,7 @@
 
 mod append_log;
 mod aws_secret_store;
+mod fixture_parity;
 mod http;
 mod mapper;
 mod protocol;
@@ -15,6 +16,12 @@ pub use aws_secret_store::{
     AwsSecretReadError, AwsSecretReader, AwsSecretReference, AwsSecretResolutionError,
     AwsSecretValue, contains_aws_secret_references, parse_aws_secret_reference,
     resolve_aws_secret_references,
+};
+pub use fixture_parity::{
+    FixtureParityComparison, FixtureParityDuplicate, FixtureParityEvent, FixtureParityInput,
+    FixtureParityMatrix, FixtureParityOperation, FixtureParityPage, FixtureParityQuarantine,
+    FixtureParityReceipt, build_fixture_parity_matrix, compare_fixture_parity,
+    execute_fixture_parity_page, fixture_excluded_family_reasons,
 };
 pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
