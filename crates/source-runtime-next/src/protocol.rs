@@ -197,9 +197,48 @@ pub fn validate_authority_evidence(evidence: &AuthorityEvidence) -> Result<(), P
 
 /// Return canonical SHA-256 hex for a serializable JSON/protobuf-shaped value.
 pub fn canonical_digest(value: &impl Serialize) -> String {
-    let bytes = serde_json::to_vec(value).expect("canonical value serializes");
+    let value = serde_json::to_value(value).expect("canonical value serializes");
+    let mut bytes = Vec::new();
+    write_canonical_json(&value, &mut bytes);
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn write_canonical_json(value: &serde_json::Value, out: &mut Vec<u8>) {
+    match value {
+        serde_json::Value::Null => out.extend_from_slice(b"null"),
+        serde_json::Value::Bool(value) => {
+            out.extend_from_slice(if *value { b"true" } else { b"false" });
+        }
+        serde_json::Value::Number(value) => out.extend_from_slice(value.to_string().as_bytes()),
+        serde_json::Value::String(value) => {
+            serde_json::to_writer(out, value).expect("canonical string serializes");
+        }
+        serde_json::Value::Array(values) => {
+            out.push(b'[');
+            for (idx, value) in values.iter().enumerate() {
+                if idx > 0 {
+                    out.push(b',');
+                }
+                write_canonical_json(value, out);
+            }
+            out.push(b']');
+        }
+        serde_json::Value::Object(values) => {
+            out.push(b'{');
+            let mut keys: Vec<_> = values.keys().collect();
+            keys.sort();
+            for (idx, key) in keys.into_iter().enumerate() {
+                if idx > 0 {
+                    out.push(b',');
+                }
+                serde_json::to_writer(&mut *out, key).expect("canonical object key serializes");
+                out.push(b':');
+                write_canonical_json(&values[key], out);
+            }
+            out.push(b'}');
+        }
+    }
 }
 
 /// Return the canonical digest vectors shared with the Go conformance tests.
