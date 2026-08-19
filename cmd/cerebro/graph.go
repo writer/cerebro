@@ -52,12 +52,6 @@ type graphRelationCountsStore interface {
 	RelationCounts(context.Context, []string) (graphstore.RelationCounts, error)
 }
 
-type graphQueryStore interface {
-	Ping(context.Context) error
-	GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error)
-	ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error)
-}
-
 type graphPathStore interface {
 	PathPatterns(context.Context, int) ([]graphstore.PathPattern, error)
 	SampleTraversals(context.Context, int) ([]graphstore.Traversal, error)
@@ -493,9 +487,9 @@ func runGraphInspect(args []string) error {
 		if err != nil {
 			return err
 		}
-		store, ok := deps.GraphStore.(graphQueryStore)
-		if !ok {
-			return fmt.Errorf("graph store does not support neighborhoods")
+		store := dependencyGraphQueryStore(deps)
+		if store == nil {
+			return fmt.Errorf("graph read store is required for neighborhoods")
 		}
 		neighborhood, err := store.GetEntityNeighborhood(ctx, rootURN, limit)
 		if err != nil {
@@ -817,9 +811,9 @@ func runGraphImpact(args []string) error {
 		return err
 	}
 	defer logClose(closeDeps)
-	store, ok := deps.GraphStore.(graphQueryStore)
-	if !ok {
-		return fmt.Errorf("graph store does not support impact traversals")
+	store := dependencyGraphQueryStore(deps)
+	if store == nil {
+		return fmt.Errorf("graph read store is required for impact traversals")
 	}
 	result, err := graphquery.New(store).GetImpact(ctx, request)
 	if err != nil {
