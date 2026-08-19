@@ -44,6 +44,11 @@ type AskRequest struct {
 
 type Emitter func(Event) error
 
+type Store interface {
+	ports.RawCypherQueryStore
+	ports.GraphNeighborhoodStore
+}
+
 type Service struct {
 	rawCypher     ports.RawCypherQueryStore
 	neighborhoods ports.GraphNeighborhoodStore
@@ -52,11 +57,11 @@ type Service struct {
 	options       ServiceOptions
 }
 
-func NewService(store ports.GraphQueryStore, llm LLMClient, options ValidatorOptions) *Service {
+func NewService(store Store, llm LLMClient, options ValidatorOptions) *Service {
 	return NewServiceWithOptions(store, llm, options, ServiceOptions{})
 }
 
-func NewServiceWithOptions(store ports.GraphQueryStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
+func NewServiceWithOptions(store Store, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
 	return &Service{
 		rawCypher:     store,
 		neighborhoods: store,
