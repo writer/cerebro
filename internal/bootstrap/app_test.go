@@ -2920,7 +2920,7 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
-	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, registry)
+	app := New(cfg, Dependencies{GraphStore: graph, GraphQueries: graph, StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -3071,7 +3071,7 @@ func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
-	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, registry)
+	app := New(cfg, Dependencies{GraphStore: graph, GraphQueries: graph, StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -3191,7 +3191,7 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 			},
 		},
 	}
-	app := New(cfg, Dependencies{GraphStore: graph}, nil)
+	app := New(cfg, Dependencies{GraphStore: graph, GraphQueries: graph}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4069,7 +4069,7 @@ func TestGraphPackageImpactEndpointReturnsCanonicalPackageRoot(t *testing.T) {
 			},
 		},
 	}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphQueries: graph}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4122,7 +4122,7 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 			Corroborating: ports.ExposureCoverageEntity{URN: "urn:cerebro:writer:external_asset:app.example.com", EntityType: "external.asset", Label: "app.example.com"},
 		}},
 	}}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphQueries: graph}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4178,7 +4178,7 @@ func TestGraphPersonAccessPathsEndpoint(t *testing.T) {
 			"relation_chain":        []any{"assigned_to"},
 		}}},
 	}}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphQueries: graph}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4294,7 +4294,7 @@ func TestGraphEffectiveAccessPathsEndpoint(t *testing.T) {
 			},
 		}}},
 	}}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphQueries: graph}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4363,7 +4363,7 @@ func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
 			"to_label":         "prod-secrets",
 		}}},
 	}}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphQueries: graph}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -5398,8 +5398,9 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	}}
 	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		StateStore: runtimeStore,
-		GraphStore: graphStore,
+		StateStore:   runtimeStore,
+		GraphStore:   graphStore,
+		GraphQueries: graphStore,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -5610,8 +5611,9 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 	}}
 	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		StateStore: runtimeStore,
-		GraphStore: graphStore,
+		StateStore:   runtimeStore,
+		GraphStore:   graphStore,
+		GraphQueries: graphStore,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -5972,9 +5974,10 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		AppendLog:  appendLog,
-		StateStore: runtimeStore,
-		GraphStore: graphStore,
+		AppendLog:    appendLog,
+		StateStore:   runtimeStore,
+		GraphStore:   graphStore,
+		GraphQueries: graphStore,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -7448,7 +7451,7 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 func TestPlatformKnowledgeDecisionRequiresDurableAppendLog(t *testing.T) {
 	targetURN := "urn:cerebro:writer:resource:service-1"
 	graphStore := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphQueries: graphStore}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -7470,7 +7473,7 @@ func TestPlatformKnowledgeDecisionReturnsDurableProjectionFailure(t *testing.T) 
 	targetURN := "urn:cerebro:writer:resource:service-1"
 	graphStore := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}, err: errors.New("graph unavailable")}
 	appendLog := &recordingAppendLog{}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, AppendLog: appendLog}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphQueries: graphStore, AppendLog: appendLog}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -7902,9 +7905,10 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 		},
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		AppendLog:  &recordingAppendLog{},
-		StateStore: &stubRuntimeStore{},
-		GraphStore: graphStore,
+		AppendLog:    &recordingAppendLog{},
+		StateStore:   &stubRuntimeStore{},
+		GraphStore:   graphStore,
+		GraphQueries: graphStore,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -8046,9 +8050,10 @@ func TestReportEndpoints(t *testing.T) {
 		},
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		AppendLog:  &recordingAppendLog{},
-		StateStore: runtimeStore,
-		GraphStore: graphStore,
+		AppendLog:    &recordingAppendLog{},
+		StateStore:   runtimeStore,
+		GraphStore:   graphStore,
+		GraphQueries: graphStore,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()

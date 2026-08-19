@@ -185,6 +185,32 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadLeavesRustGraphReadsUnconfiguredWithoutEndpoint(t *testing.T) {
+	clearDependencyEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OrganizationalGraph.ReadMode != "" || cfg.OrganizationalGraph.ReadBaseURL != "" {
+		t.Fatalf("OrganizationalGraph = %#v, want reads unconfigured without endpoint", cfg.OrganizationalGraph)
+	}
+}
+
+func TestLoadDefaultsRustGraphReadModeToAuthorityWhenEndpointConfigured(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OrganizationalGraph.ReadMode != "authority" {
+		t.Fatalf("ReadMode = %q, want authority", cfg.OrganizationalGraph.ReadMode)
+	}
+}
+
 func TestLoadSeparatesRustGraphReadAndProjectionEndpoints(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")

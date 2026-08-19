@@ -13,8 +13,9 @@ import (
 
 func TestComplianceImpactServiceComposition(t *testing.T) {
 	t.Parallel()
+	graph := &impactGraphStub{}
 	app := &App{deps: Dependencies{
-		StateStore: &monitorStateStub{}, GraphStore: &impactGraphStub{}, AppendLog: bootstrapAppendOnlyLog{},
+		StateStore: &monitorStateStub{}, GraphStore: graph, GraphQueries: graph, AppendLog: bootstrapAppendOnlyLog{},
 	}}
 	monitors, projector, scheduler := app.newComplianceImpactServices(nil, nil)
 	if monitors == nil || projector == nil || scheduler == nil {
@@ -22,13 +23,16 @@ func TestComplianceImpactServiceComposition(t *testing.T) {
 	}
 
 	app.deps.GraphStore = nil
+	app.deps.GraphQueries = nil
 	monitors, projector, scheduler = app.newComplianceImpactServices(nil, nil)
 	if monitors == nil || projector != nil || scheduler != nil {
 		t.Fatalf("without graph monitors=%v projector=%v scheduler=%v", monitors != nil, projector != nil, scheduler != nil)
 	}
 
 	app.deps.StateStore = nonEvidenceStateStub{}
-	app.deps.GraphStore = &impactGraphStub{}
+	graph = &impactGraphStub{}
+	app.deps.GraphStore = graph
+	app.deps.GraphQueries = graph
 	monitors, projector, scheduler = app.newComplianceImpactServices(nil, nil)
 	if monitors != nil || projector == nil || scheduler != nil {
 		t.Fatalf("without monitor store monitors=%v projector=%v scheduler=%v", monitors != nil, projector != nil, scheduler != nil)

@@ -95,6 +95,9 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	if readBaseURL == "" {
 		readBaseURL = cfg.OrganizationalGraph.BaseURL
 	}
+	if cfg.OrganizationalGraph.ReadMode != "" && readBaseURL == "" {
+		return fail(fmt.Errorf("organizational graph read endpoint is required in %s mode", cfg.OrganizationalGraph.ReadMode))
+	}
 	if projectionBaseURL != "" {
 		projectionClient, err := organizationalgraph.NewProjectionClient(projectionBaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
 		if err != nil {
