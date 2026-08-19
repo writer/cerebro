@@ -50,7 +50,7 @@ type PersonAccessPath struct {
 }
 
 func (s *Service) GetPersonAccessPaths(ctx context.Context, request PersonAccessPathRequest) (*PersonAccessPathResult, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.rawCypher == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
@@ -78,7 +78,7 @@ func (s *Service) GetPersonAccessPaths(ctx context.Context, request PersonAccess
 		"sample_limit":     int64(limit),
 		"tenant_id":        tenantID,
 	}
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+	rows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query:    personAccessPathQuery(normalizePersonAccessPathDepth(request.Depth)),
 		Params:   params,
 		RowLimit: limit,

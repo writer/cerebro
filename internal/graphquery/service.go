@@ -24,7 +24,10 @@ var (
 
 // Service exposes the first bounded graph neighborhood query.
 type Service struct {
-	store ports.GraphQueryStore
+	neighborhoods ports.GraphNeighborhoodStore
+	rawCypher     ports.RawCypherQueryStore
+	catalog       ports.EntityCatalogStore
+	exposure      ports.ExposureCoverageStore
 }
 
 // NeighborhoodRequest scopes one bounded root-centered graph query.
@@ -34,13 +37,23 @@ type NeighborhoodRequest struct {
 }
 
 // New constructs a bounded graph neighborhood service.
-func New(store ports.GraphQueryStore) *Service {
-	return &Service{store: store}
+func New(store ports.GraphNeighborhoodStore) *Service {
+	service := &Service{neighborhoods: store}
+	if rawCypher, ok := store.(ports.RawCypherQueryStore); ok {
+		service.rawCypher = rawCypher
+	}
+	if catalog, ok := store.(ports.EntityCatalogStore); ok {
+		service.catalog = catalog
+	}
+	if exposure, ok := store.(ports.ExposureCoverageStore); ok {
+		service.exposure = exposure
+	}
+	return service
 }
 
 // GetEntityNeighborhood loads one bounded root-centered graph neighborhood.
 func (s *Service) GetEntityNeighborhood(ctx context.Context, request NeighborhoodRequest) (*ports.EntityNeighborhood, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.neighborhoods == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	if strings.TrimSpace(request.RootURN) == "" {
@@ -50,7 +63,7 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 	if err := validateCerebroURN(rootURN); err != nil {
 		return nil, err
 	}
-	return s.store.GetEntityNeighborhood(ctx, rootURN, normalizeNeighborhoodLimit(request.Limit))
+	return s.neighborhoods.GetEntityNeighborhood(ctx, rootURN, normalizeNeighborhoodLimit(request.Limit))
 }
 
 // validateCerebroURN rejects malformed root URN inputs so the API can surface
