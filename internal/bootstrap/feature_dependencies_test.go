@@ -69,3 +69,26 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 		t.Fatalf("graph reasoning queries = %#v, want configured authority", got)
 	}
 }
+
+func TestProductReadDependencyBundlesDoNotFallbackToLegacyGraphStore(t *testing.T) {
+	deps := Dependencies{
+		GraphStore:    &stubGraphStore{},
+		GraphAgentLLM: graphagent.NewStubLLMClient(),
+	}
+
+	if got := newReportFeatureDeps(deps).GraphQueries; got != nil {
+		t.Fatalf("report graph queries = %#v, want nil without configured authority", got)
+	}
+	if got := newFindingFeatureDeps(deps).GraphQueries; got != nil {
+		t.Fatalf("finding graph queries = %#v, want nil without configured authority", got)
+	}
+	if got := newKnowledgeFeatureDeps(deps).GraphQueries; got != nil {
+		t.Fatalf("knowledge graph queries = %#v, want nil without configured authority", got)
+	}
+	if got := newGraphQueryFeatureDeps(deps).GraphQueries; got != nil {
+		t.Fatalf("graph query service = %#v, want nil without configured authority", got)
+	}
+	if got := newGraphReasoningFeatureDeps(deps).GraphQueries; got != nil {
+		t.Fatalf("graph reasoning queries = %#v, want nil without configured authority", got)
+	}
+}
