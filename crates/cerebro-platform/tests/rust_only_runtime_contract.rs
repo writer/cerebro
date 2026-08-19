@@ -131,6 +131,9 @@ fn graph_qualification_stays_on_retired_rust_authority_path() {
     }
     for forbidden in [
         "CEREBRO_RUST_READ_MODE=canary",
+        "CEREBRO_RUST_SHADOW_PERCENT",
+        "CEREBRO_RUST_AUTHORITY_PERCENT",
+        "CEREBRO_RUST_CANARY_VERIFY_PERCENT",
         "go_canary",
         "rust_canary",
         "CEREBRO_RUST_CANARY_API_KEYS",

@@ -155,7 +155,6 @@ type OrganizationalGraphConfig struct {
 	ReadBaseURL       string
 	ProjectionBaseURL string
 	ReadMode          string
-	ShadowPercent     int
 	SharedSecret      string
 	Timeout           time.Duration
 }
@@ -695,30 +694,19 @@ func Load() (Config, error) {
 	if cfg.OrganizationalGraph.ReadMode == "" && cfg.OrganizationalGraph.ReadBaseURL != "" {
 		cfg.OrganizationalGraph.ReadMode = "authority"
 	}
-	if cfg.OrganizationalGraph.ReadMode != "legacy" &&
-		cfg.OrganizationalGraph.ReadMode != "authority" &&
-		cfg.OrganizationalGraph.ReadMode != "shadow" &&
-		cfg.OrganizationalGraph.ReadMode != "" {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be legacy, shadow, or authority")
-	}
-	if cfg.OrganizationalGraph.ShadowPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", 0); err != nil {
-		return Config{}, err
-	}
-	if cfg.OrganizationalGraph.ShadowPercent < 0 || cfg.OrganizationalGraph.ShadowPercent > 100 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be between 0 and 100")
-	}
-	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ReadBaseURL == "" {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in shadow mode")
+	if cfg.OrganizationalGraph.ReadMode != "authority" && cfg.OrganizationalGraph.ReadMode != "" {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be authority")
 	}
 	if cfg.OrganizationalGraph.ReadMode == "authority" &&
 		cfg.OrganizationalGraph.ReadBaseURL == "" {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in authority mode")
 	}
-	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ShadowPercent == 0 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be greater than zero in shadow mode")
+	shadowPercent, err := parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", 0)
+	if err != nil {
+		return Config{}, err
 	}
-	if cfg.OrganizationalGraph.ReadMode != "shadow" && cfg.OrganizationalGraph.ShadowPercent != 0 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be zero unless read mode is shadow")
+	if shadowPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT is no longer supported")
 	}
 	authorityPercent, err := parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", 0)
 	if err != nil {

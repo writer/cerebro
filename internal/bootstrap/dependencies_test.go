@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -43,7 +42,7 @@ func TestOpenDependenciesRejectsGraphReadModeWithoutEndpoint(t *testing.T) {
 			t.Fatalf("closeAll() error = %v", closeErr)
 		}
 	}
-	if err == nil || !strings.Contains(err.Error(), "organizational graph read endpoint is required in authority mode") {
+	if !errors.Is(err, errOrganizationalGraphReadEndpointRequired) {
 		t.Fatalf("OpenDependencies() error = %v, want missing authority endpoint", err)
 	}
 }

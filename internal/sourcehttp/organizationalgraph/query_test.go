@@ -2,16 +2,11 @@ package organizationalgraph
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,7 +14,6 @@ import (
 
 	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
 	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
-	"github.com/writer/cerebro/internal/parityrun"
 	"github.com/writer/cerebro/internal/ports"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
@@ -31,17 +25,6 @@ type queryStoreStub struct {
 
 type rawCypherOnlyStub struct {
 	rows []ports.CypherRow
-}
-
-type countingQueryStoreStub struct {
-	queryStoreStub
-	requests atomic.Int64
-	mu       sync.RWMutex
-}
-
-type blockingQueryStoreStub struct {
-	queryStoreStub
-	started chan struct{}
 }
 
 type assertionQueryStoreStub struct {
@@ -91,32 +74,6 @@ func (s rawCypherOnlyStub) ExecuteReadCypher(context.Context, ports.CypherQueryR
 
 func (s queryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return s.neighborhood, nil
-}
-
-func (s *countingQueryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
-	s.requests.Add(1)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.neighborhood, s.err
-}
-
-func (s *countingQueryStoreStub) requestCount() int {
-	return int(s.requests.Load())
-}
-
-func (s *countingQueryStoreStub) setError(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.err = err
-}
-
-func (s *blockingQueryStoreStub) GetEntityNeighborhood(ctx context.Context, _ string, _ int) (*ports.EntityNeighborhood, error) {
-	select {
-	case s.started <- struct{}{}:
-	default:
-	}
-	<-ctx.Done()
-	return nil, ctx.Err()
 }
 
 func (s queryStoreStub) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
@@ -293,13 +250,11 @@ func TestAuthorityKeepsRawCypherWithoutGoTypedReads(t *testing.T) {
 
 	raw := rawCypherOnlyStub{rows: []ports.CypherRow{{Values: map[string]any{"compatibility": "go"}}}}
 	store, err := NewConfiguredQueryStoreWithCompatibility(
-		nil,
 		raw,
 		server.URL,
 		testSharedSecret,
 		time.Second,
 		"authority",
-		0,
 	)
 	if err != nil {
 		t.Fatalf("NewConfiguredQueryStoreWithCompatibility() error = %v", err)
@@ -318,15 +273,13 @@ func TestAuthorityKeepsRawCypherWithoutGoTypedReads(t *testing.T) {
 	}
 
 	if _, err := NewConfiguredQueryStoreWithCompatibility(
-		nil,
 		raw,
 		server.URL,
 		testSharedSecret,
 		time.Second,
 		"legacy",
-		0,
 	); err == nil {
-		t.Fatal("legacy mode without Go typed reads error = nil")
+		t.Fatal("legacy mode error = nil")
 	}
 }
 
@@ -344,138 +297,16 @@ func TestQueryStoreFailsClosedWhenRustIsUnavailable(t *testing.T) {
 	}
 }
 
-func TestShadowQueryStoreReturnsLegacyWhenRustIsUnavailable(t *testing.T) {
-	rootURN := "urn:cerebro:tenant-a:runtime_file:asset-1"
-	legacy := &ports.EntityNeighborhood{
-		Root: &ports.NeighborhoodNode{URN: rootURN, Label: "Legacy"},
-	}
-	store, err := NewShadowQueryStore(
-		queryStoreStub{neighborhood: legacy},
-		"http://127.0.0.1:1",
-		testSharedSecret,
-		10*time.Millisecond,
-		100,
-	)
-	if err != nil {
-		t.Fatalf("NewShadowQueryStore() error = %v", err)
-	}
-	got, err := store.GetEntityNeighborhood(context.Background(), rootURN, 10)
-	if err != nil {
-		t.Fatalf("GetEntityNeighborhood() error = %v", err)
-	}
-	if got != legacy {
-		t.Fatalf("GetEntityNeighborhood() = %#v, want legacy response", got)
-	}
-	if err := store.Ping(context.Background()); err != nil {
-		t.Fatalf("Ping() error = %v, shadow readiness must use legacy authority", err)
-	}
-}
-
-func TestShadowComparisonDoesNotDelayLegacyResponse(t *testing.T) {
-	rustStarted := make(chan struct{}, 1)
-	rustCanceled := make(chan struct{}, 1)
-	server := newGraphTestServer(t, graphServiceStub{
-		expand: func(ctx context.Context, _ *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
-			rustStarted <- struct{}{}
-			<-ctx.Done()
-			rustCanceled <- struct{}{}
-			return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
-		},
-	})
-	defer server.Close()
-
-	legacy := &ports.EntityNeighborhood{Root: &ports.NeighborhoodNode{URN: "legacy"}}
-	store, err := NewShadowQueryStore(
-		queryStoreStub{neighborhood: legacy},
-		server.URL,
-		testSharedSecret,
-		500*time.Millisecond,
-		100,
-	)
-	if err != nil {
-		t.Fatalf("NewShadowQueryStore() error = %v", err)
-	}
-
-	started := time.Now()
-	got, err := store.GetEntityNeighborhood(
-		context.Background(),
-		"urn:cerebro:tenant-a:runtime_file:asset-1",
-		10,
-	)
-	if err != nil {
-		t.Fatalf("GetEntityNeighborhood() error = %v", err)
-	}
-	if got != legacy {
-		t.Fatalf("GetEntityNeighborhood() = %#v, want legacy", got)
-	}
-	if elapsed := time.Since(started); elapsed >= 250*time.Millisecond {
-		t.Fatalf("legacy response waited %s for a 500ms Rust timeout", elapsed)
-	}
-	select {
-	case <-rustStarted:
-	case <-time.After(time.Second):
-		t.Fatal("background Rust comparison did not start")
-	}
-	select {
-	case <-rustCanceled:
-	case <-time.After(time.Second):
-		t.Fatal("background Rust comparison did not respect its timeout")
-	}
-}
-
-func TestShadowComparisonConcurrencyIsBounded(t *testing.T) {
-	server := newGraphTestServer(t, graphServiceStub{
-		expand: func(ctx context.Context, _ *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
-			<-ctx.Done()
-			return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
-		},
-	})
-	defer server.Close()
-
-	store, err := NewShadowQueryStore(
-		queryStoreStub{neighborhood: &ports.EntityNeighborhood{}},
-		server.URL,
-		testSharedSecret,
-		time.Second,
-		100,
-	)
-	if err != nil {
-		t.Fatalf("NewShadowQueryStore() error = %v", err)
-	}
-
-	started := time.Now()
-	for index := 0; index < maxConcurrentComparisons+64; index++ {
-		root := fmt.Sprintf("urn:cerebro:tenant-a:runtime_file:asset-%d", index)
-		if _, err := store.GetEntityNeighborhood(context.Background(), root, 10); err != nil {
-			t.Fatalf("GetEntityNeighborhood(%d) error = %v", index, err)
-		}
-	}
-	if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
-		t.Fatalf("bounded shadow scheduling delayed legacy traffic by %s", elapsed)
-	}
-	if got := len(store.comparisons); got != maxConcurrentComparisons {
-		t.Fatalf("in-flight comparisons = %d, want %d", got, maxConcurrentComparisons)
-	}
-}
-
-func TestShadowQueryStoreRequiresCompatibilityAndBoundedSampling(t *testing.T) {
-	if _, err := NewShadowQueryStore(nil, "http://127.0.0.1:1", testSharedSecret, time.Second, 100); err == nil {
-		t.Fatal("NewShadowQueryStore(nil) error = nil")
-	}
-	if _, err := NewShadowQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, 0); err == nil {
-		t.Fatal("NewShadowQueryStore(0%) error = nil")
-	}
-	if _, err := NewShadowQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, 101); err == nil {
-		t.Fatal("NewShadowQueryStore(101%) error = nil")
-	}
-}
-
-func TestConfiguredQueryStoreRejectsCanaryMode(t *testing.T) {
-	if _, err := NewConfiguredQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, "canary", 0); err == nil {
-		t.Fatal("NewConfiguredQueryStore(canary) error = nil")
-	}
-	if _, err := NewConfiguredQueryStoreWithCompatibility(queryStoreStub{}, queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, "canary", 0); err == nil {
-		t.Fatal("NewConfiguredQueryStoreWithCompatibility(canary) error = nil")
+func TestConfiguredQueryStoreRejectsRemovedReadModes(t *testing.T) {
+	for _, mode := range []string{"legacy", "shadow", "canary"} {
+		t.Run(mode, func(t *testing.T) {
+			if _, err := NewConfiguredQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, mode); err == nil {
+				t.Fatalf("NewConfiguredQueryStore(%s) error = nil", mode)
+			}
+			if _, err := NewConfiguredQueryStoreWithCompatibility(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, mode); err == nil {
+				t.Fatalf("NewConfiguredQueryStoreWithCompatibility(%s) error = nil", mode)
+			}
+		})
 	}
 }
 
@@ -534,45 +365,6 @@ func TestAuthorityHealthRequiresOnlyRust(t *testing.T) {
 	}
 	if got := ReadinessStore(compatibility, store); got != store {
 		t.Fatalf("ReadinessStore(compatibility, authority) = %#v", got)
-	}
-}
-
-func TestLegacyModeIsExplicitGoAuthorityAndDoesNotCallRust(t *testing.T) {
-	rustRequests := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		rustRequests++
-		http.Error(w, "must not be called", http.StatusInternalServerError)
-	}))
-	defer server.Close()
-
-	legacy := &countingQueryStoreStub{
-		queryStoreStub: queryStoreStub{
-			neighborhood: &ports.EntityNeighborhood{Root: &ports.NeighborhoodNode{URN: "legacy"}},
-		},
-	}
-	store, err := NewConfiguredQueryStore(
-		legacy,
-		server.URL,
-		testSharedSecret,
-		time.Second,
-		"legacy",
-		0,
-	)
-	if err != nil {
-		t.Fatalf("NewConfiguredQueryStore(legacy) error = %v", err)
-	}
-	if err := store.Ping(context.Background()); err != nil {
-		t.Fatalf("Ping(legacy) error = %v", err)
-	}
-	got, err := store.GetEntityNeighborhood(context.Background(), "urn:cerebro:tenant-a:resource:one", 10)
-	if err != nil {
-		t.Fatalf("GetEntityNeighborhood(legacy) error = %v", err)
-	}
-	if got == nil || got.Root == nil || got.Root.URN != "legacy" {
-		t.Fatalf("GetEntityNeighborhood(legacy) = %#v", got)
-	}
-	if legacy.requestCount() != 1 || rustRequests != 0 {
-		t.Fatalf("legacy requests = %d, Rust requests = %d", legacy.requestCount(), rustRequests)
 	}
 }
 
@@ -792,88 +584,6 @@ func TestProductNeighborhoodRejectsAmbiguousRustIdentity(t *testing.T) {
 				t.Fatalf("productNeighborhood() error = %v, want %v", err, test.want)
 			}
 		})
-	}
-}
-
-func TestComparisonIgnoresSetOrderingButDetectsContentChanges(t *testing.T) {
-	root := &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:root"}
-	nodeOne := &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:one", Label: "One"}
-	nodeTwo := &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:two", Label: "Two"}
-	relationOne := &ports.NeighborhoodRelation{FromURN: root.URN, Relation: "contains", ToURN: nodeOne.URN}
-	relationTwo := &ports.NeighborhoodRelation{FromURN: root.URN, Relation: "contains", ToURN: nodeTwo.URN}
-	legacy := &ports.EntityNeighborhood{
-		Root:      root,
-		Neighbors: []*ports.NeighborhoodNode{nodeOne, nodeTwo},
-		Relations: []*ports.NeighborhoodRelation{relationOne, relationTwo},
-	}
-	rust := &ports.EntityNeighborhood{
-		Root:      root,
-		Neighbors: []*ports.NeighborhoodNode{nodeTwo, nodeOne},
-		Relations: []*ports.NeighborhoodRelation{relationTwo, relationOne},
-	}
-	if status := comparisonStatus(legacy, nil, rust, nil); status != "match" {
-		t.Fatalf("comparisonStatus(reordered) = %q, want match", status)
-	}
-	legacyDigest, _ := comparisonReceipt(legacy)
-	rustDigest, _ := comparisonReceipt(rust)
-	if legacyDigest != rustDigest {
-		t.Fatalf("reordered digests differ: %s != %s", legacyDigest, rustDigest)
-	}
-	rust.Neighbors[0] = &ports.NeighborhoodNode{URN: nodeTwo.URN, Label: "Changed"}
-	if status := comparisonStatus(legacy, nil, rust, nil); status != "mismatch" {
-		t.Fatalf("comparisonStatus(changed) = %q, want mismatch", status)
-	}
-}
-
-func TestComparisonReceiptEmitsSuccessfulBoundedEvidence(t *testing.T) {
-	oldStderr := os.Stderr
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stderr = writer
-	defer func() {
-		os.Stderr = oldStderr
-	}()
-
-	value := &ports.EntityNeighborhood{
-		Root: &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:root"},
-	}
-	const parityRunID = "cutover-run-2026-08-13"
-	const observationID = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	ctx, err := parityrun.WithIDs(context.Background(), parityRunID, observationID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	logComparisonReceipt(ctx, "expand", "match", value, value, nil)
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	encoded, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var receipt map[string]any
-	if err := json.Unmarshal(encoded, &receipt); err != nil {
-		t.Fatalf("unmarshal receipt %q: %v", encoded, err)
-	}
-	if receipt["kind"] != "event" || receipt["name"] != "organizational_graph.parity_receipt" {
-		t.Fatalf("unexpected receipt identity: %#v", receipt)
-	}
-	if receipt["operation"] != "expand" || receipt["status"] != "match" {
-		t.Fatalf("unexpected receipt scope: %#v", receipt)
-	}
-	if receipt["parity_run_id"] != parityRunID {
-		t.Fatalf("parity_run_id = %#v, want %q", receipt["parity_run_id"], parityRunID)
-	}
-	if receipt["parity_observation_id"] != observationID {
-		t.Fatalf("parity_observation_id = %#v, want %q", receipt["parity_observation_id"], observationID)
-	}
-	if receipt["legacy_sha256"] == "" || receipt["legacy_sha256"] != receipt["rust_sha256"] {
-		t.Fatalf("unexpected receipt digests: %#v", receipt)
-	}
-	if _, found := receipt["tenant_id"]; found {
-		t.Fatalf("receipt must not contain tenant identifiers: %#v", receipt)
 	}
 }
 
