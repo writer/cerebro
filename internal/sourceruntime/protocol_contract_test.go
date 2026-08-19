@@ -30,6 +30,7 @@ func TestSourceRuntimeProtocolContract(t *testing.T) {
 		"missing_family":       withProtocolIdentity(validProtocolEnvelope(sourceRuntimeReadPage), "family_id", ""),
 		"missing_attempt":      withProtocolIdentity(validProtocolEnvelope(sourceRuntimeReadPage), "attempt_id", ""),
 		"worker_sync_rejected": withProtocolOperation(validProtocolEnvelope(sourceRuntimeReadPage), "Sync"),
+		"unknown_operation":    withProtocolOperation(validProtocolEnvelope(sourceRuntimeReadPage), "Commit"),
 	}
 	for id, envelope := range invalid {
 		if err := ValidateSourceRuntimeEnvelope(envelope); !errors.Is(err, errProtocolInvalid) {
@@ -40,26 +41,45 @@ func TestSourceRuntimeProtocolContract(t *testing.T) {
 }
 
 func TestSourceRuntimeProtocolRejectsRawCredentials(t *testing.T) {
-	for name, mutate := range map[string]func(SourceRuntimeEnvelope) SourceRuntimeEnvelope{
-		"public_config_token": func(envelope SourceRuntimeEnvelope) SourceRuntimeEnvelope {
-			envelope.PublicConfig["api_token"] = "sentinel"
-			return envelope
-		},
-		"diagnostic_cookie": func(envelope SourceRuntimeEnvelope) SourceRuntimeEnvelope {
-			envelope.Error = &SourceRuntimeErrorShape{Code: "provider_error", Category: "provider", Diagnostics: map[string]string{"cookie": "sentinel"}}
-			return envelope
-		},
-		"raw_provider_payload": func(envelope SourceRuntimeEnvelope) SourceRuntimeEnvelope {
-			envelope.Result = &SourceRuntimeResult{Diagnostics: map[string]string{"raw_provider_payload": "sentinel"}}
-			return envelope
-		},
-		"client_secret": func(envelope SourceRuntimeEnvelope) SourceRuntimeEnvelope {
-			envelope.PublicConfig["client_secret"] = "sentinel"
-			return envelope
-		},
+	for _, field := range rawSecretSentinelFieldNames() {
+		for surface, mutate := range map[string]func(SourceRuntimeEnvelope) SourceRuntimeEnvelope{
+			"public_config": func(envelope SourceRuntimeEnvelope) SourceRuntimeEnvelope {
+				envelope.PublicConfig[field] = "sentinel"
+				return envelope
+			},
+			"result_diagnostics": func(envelope SourceRuntimeEnvelope) SourceRuntimeEnvelope {
+				envelope.Result.Diagnostics[field] = "sentinel"
+				return envelope
+			},
+			"error_diagnostics": func(envelope SourceRuntimeEnvelope) SourceRuntimeEnvelope {
+				envelope.Error.Diagnostics[field] = "sentinel"
+				return envelope
+			},
+		} {
+			name := surface + "." + field
+			if err := ValidateSourceRuntimeEnvelope(mutate(validProtocolEnvelope(sourceRuntimeReadPage))); !errors.Is(err, errProtocolSecretField) {
+				t.Fatalf("%s accepted or returned wrong error: %v", name, err)
+			}
+		}
+	}
+}
+
+func TestSourceRuntimeProtocolRejectsRawCredentialAliases(t *testing.T) {
+	for _, field := range []string{
+		"apiKey",
+		"API-SECRET-KEY",
+		"Authorization",
+		"bearerToken",
+		"access-token",
+		"setCookie",
+		"rawProviderRequest",
+		"providerResponseBody",
+		"provider-error-body",
 	} {
-		if err := ValidateSourceRuntimeEnvelope(mutate(validProtocolEnvelope(sourceRuntimeReadPage))); !errors.Is(err, errProtocolSecretField) {
-			t.Fatalf("%s accepted or returned wrong error: %v", name, err)
+		envelope := validProtocolEnvelope(sourceRuntimeReadPage)
+		envelope.PublicConfig[field] = "sentinel"
+		if err := ValidateSourceRuntimeEnvelope(envelope); !errors.Is(err, errProtocolSecretField) {
+			t.Fatalf("%s accepted or returned wrong error: %v", field, err)
 		}
 	}
 }
@@ -264,4 +284,28 @@ func formatDigestVectors(vectors map[string]string) string {
 		parts = append(parts, fmt.Sprintf("%s=%s", key, vectors[key]))
 	}
 	return strings.Join(parts, " ")
+}
+
+func rawSecretSentinelFieldNames() []string {
+	return []string{
+		"api_key",
+		"api_secret_key",
+		"password",
+		"authorization",
+		"bearer_token",
+		"access_token",
+		"refresh_token",
+		"api_token",
+		"client_secret",
+		"cookie",
+		"set_cookie",
+		"raw_provider_request",
+		"raw_provider_response",
+		"raw_provider_error",
+		"raw_provider_payload",
+		"provider_payload",
+		"provider_request_body",
+		"provider_response_body",
+		"provider_error_body",
+	}
 }

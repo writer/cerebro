@@ -1,6 +1,7 @@
 package sourceruntime
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -108,12 +109,79 @@ func ValidateSourceRuntimeEnvelope(envelope SourceRuntimeEnvelope) error {
 }
 
 func CanonicalSourceRuntimeDigest(value any) (string, error) {
-	bytes, err := json.Marshal(value)
+	raw, err := json.Marshal(value)
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(bytes)
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return "", err
+	}
+	canonical := new(bytes.Buffer)
+	if err := writeCanonicalJSON(canonical, decoded); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(canonical.Bytes())
 	return hex.EncodeToString(sum[:]), nil
+}
+
+func writeCanonicalJSON(out *bytes.Buffer, value any) error {
+	switch typed := value.(type) {
+	case nil:
+		out.WriteString("null")
+	case bool:
+		if typed {
+			out.WriteString("true")
+		} else {
+			out.WriteString("false")
+		}
+	case json.Number:
+		out.WriteString(typed.String())
+	case string:
+		encoded, err := json.Marshal(typed)
+		if err != nil {
+			return err
+		}
+		out.Write(encoded)
+	case []any:
+		out.WriteByte('[')
+		for index, item := range typed {
+			if index > 0 {
+				out.WriteByte(',')
+			}
+			if err := writeCanonicalJSON(out, item); err != nil {
+				return err
+			}
+		}
+		out.WriteByte(']')
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		out.WriteByte('{')
+		for index, key := range keys {
+			if index > 0 {
+				out.WriteByte(',')
+			}
+			encoded, err := json.Marshal(key)
+			if err != nil {
+				return err
+			}
+			out.Write(encoded)
+			out.WriteByte(':')
+			if err := writeCanonicalJSON(out, typed[key]); err != nil {
+				return err
+			}
+		}
+		out.WriteByte('}')
+	default:
+		return fmt.Errorf("unsupported canonical JSON value %T", value)
+	}
+	return nil
 }
 
 func CanonicalSourceRuntimeDigestVectors() (map[string]string, error) {
@@ -232,25 +300,83 @@ func firstRawSecretField(path string, value any) string {
 }
 
 func rawSecretFieldName(name string) bool {
-	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(name, "-", "_"), " ", "_"))
+	normalized := normalizeProtocolFieldName(name)
 	for _, marker := range []string{
+		"api_key",
+		"api_secret_key",
+		"password",
+		"authorization",
+		"authorization_header",
+		"bearer_token",
+		"access_token",
+		"refresh_token",
+		"api_token",
+		"client_secret",
+		"cookie",
+		"set_cookie",
 		"raw_credential",
 		"credential_value",
 		"secret",
 		"token",
-		"cookie",
-		"authorization_header",
-		"client_secret",
+		"raw_provider_request",
+		"raw_provider_response",
+		"raw_provider_error",
 		"raw_provider_http_request_body",
 		"raw_provider_http_response_body",
 		"raw_provider_error_body",
 		"raw_provider_payload",
+		"provider_payload",
+		"provider_request_body",
+		"provider_response_body",
+		"provider_error_body",
 	} {
 		if strings.Contains(normalized, marker) {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeProtocolFieldName(name string) string {
+	runes := []rune(name)
+	var builder strings.Builder
+	wroteSeparator := false
+	for index, current := range runes {
+		switch current {
+		case '-', ' ', '.', '/':
+			if builder.Len() > 0 && !wroteSeparator {
+				builder.WriteByte('_')
+				wroteSeparator = true
+			}
+			continue
+		}
+		var previous, next rune
+		if index > 0 {
+			previous = runes[index-1]
+		}
+		if index+1 < len(runes) {
+			next = runes[index+1]
+		}
+		if index > 0 && current >= 'A' && current <= 'Z' && !wroteSeparator &&
+			(isProtocolLowerOrDigit(previous) || (isProtocolUpper(previous) && isProtocolLower(next))) {
+			builder.WriteByte('_')
+		}
+		builder.WriteRune([]rune(strings.ToLower(string(current)))[0])
+		wroteSeparator = false
+	}
+	return strings.Trim(builder.String(), "_")
+}
+
+func isProtocolLowerOrDigit(value rune) bool {
+	return (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9')
+}
+
+func isProtocolUpper(value rune) bool {
+	return value >= 'A' && value <= 'Z'
+}
+
+func isProtocolLower(value rune) bool {
+	return value >= 'a' && value <= 'z'
 }
 
 type SourceFamilyAuthorityEvidence struct {

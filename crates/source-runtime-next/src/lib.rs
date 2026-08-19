@@ -22,6 +22,7 @@ pub use protocol::{
     AuthorityEvidence, ProtocolError, SourceRuntimeEnvelope, SourceRuntimeErrorShape,
     SourceRuntimeOperation, SourceRuntimeReceipt, SourceRuntimeResult, canonical_digest,
     canonical_digest_vectors, validate_authority_evidence, validate_envelope,
+    validate_envelope_json,
 };
 pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,

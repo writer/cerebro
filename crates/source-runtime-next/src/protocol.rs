@@ -154,6 +154,8 @@ pub struct AuthorityEvidence {
 pub enum ProtocolError {
     /// Unknown schema revision.
     UnknownRevision(u16),
+    /// Unsupported or worker-only operation.
+    UnsupportedOperation(String),
     /// Required identity was absent.
     MissingIdentity(&'static str),
     /// Raw-secret capable field was present.
@@ -180,6 +182,50 @@ pub fn validate_envelope(envelope: &SourceRuntimeEnvelope) -> Result<(), Protoco
     }
     let value = serde_json::to_value(envelope).expect("source-runtime envelope serializes");
     if let Some(path) = first_raw_secret_field("", &value) {
+        return Err(ProtocolError::RawSecretField(path));
+    }
+    Ok(())
+}
+
+/// Validate a decoded JSON source-runtime envelope before typed callers accept it.
+///
+/// This gives downstream Rust callers an observable fail-closed path for
+/// invalid protocol envelopes that cannot be represented by the typed
+/// `SourceRuntimeEnvelope`, such as worker `Sync` operations or unknown
+/// operation strings.
+pub fn validate_envelope_json(value: &serde_json::Value) -> Result<(), ProtocolError> {
+    let revision = value
+        .get("revision")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .unwrap_or_default();
+    if revision != PROTOCOL_REVISION {
+        return Err(ProtocolError::UnknownRevision(revision));
+    }
+    let operation = value
+        .get("operation")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    match operation {
+        "DescribePlan" | "Check" | "Discover" | "ReadPage" => {}
+        other => return Err(ProtocolError::UnsupportedOperation(other.to_owned())),
+    }
+    for field in [
+        "tenant_id",
+        "runtime_id",
+        "source_id",
+        "family_id",
+        "attempt_id",
+    ] {
+        let present = value
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty());
+        if !present {
+            return Err(ProtocolError::MissingIdentity(field));
+        }
+    }
+    if let Some(path) = first_raw_secret_field("", value) {
         return Err(ProtocolError::RawSecretField(path));
     }
     Ok(())
@@ -330,22 +376,72 @@ fn first_raw_secret_field(path: &str, value: &serde_json::Value) -> Option<Strin
 }
 
 fn raw_secret_field_name(name: &str) -> bool {
-    let normalized = name.to_ascii_lowercase().replace(['-', ' '], "_");
+    let normalized = normalize_protocol_field_name(name);
     [
+        "api_key",
+        "api_secret_key",
+        "password",
+        "authorization",
+        "authorization_header",
+        "bearer_token",
+        "access_token",
+        "refresh_token",
+        "api_token",
+        "client_secret",
+        "cookie",
+        "set_cookie",
         "raw_credential",
         "credential_value",
         "secret",
         "token",
-        "cookie",
-        "authorization_header",
-        "client_secret",
+        "raw_provider_request",
+        "raw_provider_response",
+        "raw_provider_error",
         "raw_provider_http_request_body",
         "raw_provider_http_response_body",
         "raw_provider_error_body",
         "raw_provider_payload",
+        "provider_payload",
+        "provider_request_body",
+        "provider_response_body",
+        "provider_error_body",
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
+}
+
+fn normalize_protocol_field_name(name: &str) -> String {
+    let chars: Vec<char> = name.chars().collect();
+    let mut normalized = String::new();
+    let mut wrote_separator = false;
+    for (index, current) in chars.iter().copied().enumerate() {
+        if matches!(current, '-' | ' ' | '.' | '/') {
+            if !normalized.is_empty() && !wrote_separator {
+                normalized.push('_');
+                wrote_separator = true;
+            }
+            continue;
+        }
+        let previous = index.checked_sub(1).and_then(|idx| chars.get(idx)).copied();
+        let next = chars.get(index + 1).copied();
+        if index > 0
+            && current.is_ascii_uppercase()
+            && !wrote_separator
+            && previous.is_some_and(|value| {
+                value.is_ascii_lowercase()
+                    || value.is_ascii_digit()
+                    || (value.is_ascii_uppercase()
+                        && next.is_some_and(|next| next.is_ascii_lowercase()))
+            })
+        {
+            normalized.push('_');
+        }
+        for lower in current.to_lowercase() {
+            normalized.push(lower);
+        }
+        wrote_separator = false;
+    }
+    normalized.trim_matches('_').to_owned()
 }
 
 fn missing_authority_evidence(evidence: &AuthorityEvidence) -> Vec<&'static str> {
@@ -494,23 +590,119 @@ mod tests {
             Err(ProtocolError::UnknownRevision(99))
         );
 
-        let mut missing_tenant = fixture_envelope(SourceRuntimeOperation::ReadPage);
-        missing_tenant.tenant_id.clear();
-        assert_eq!(
-            validate_envelope(&missing_tenant),
-            Err(ProtocolError::MissingIdentity("tenant_id"))
-        );
+        for (field, mutate) in [
+            (
+                "tenant_id",
+                (|envelope: &mut SourceRuntimeEnvelope| envelope.tenant_id.clear())
+                    as fn(&mut SourceRuntimeEnvelope),
+            ),
+            (
+                "runtime_id",
+                (|envelope: &mut SourceRuntimeEnvelope| envelope.runtime_id.clear())
+                    as fn(&mut SourceRuntimeEnvelope),
+            ),
+            (
+                "source_id",
+                (|envelope: &mut SourceRuntimeEnvelope| envelope.source_id.clear())
+                    as fn(&mut SourceRuntimeEnvelope),
+            ),
+            (
+                "family_id",
+                (|envelope: &mut SourceRuntimeEnvelope| envelope.family_id.clear())
+                    as fn(&mut SourceRuntimeEnvelope),
+            ),
+            (
+                "attempt_id",
+                (|envelope: &mut SourceRuntimeEnvelope| envelope.attempt_id.clear())
+                    as fn(&mut SourceRuntimeEnvelope),
+            ),
+        ] {
+            let mut envelope = fixture_envelope(SourceRuntimeOperation::ReadPage);
+            mutate(&mut envelope);
+            assert_eq!(
+                validate_envelope(&envelope),
+                Err(ProtocolError::MissingIdentity(field))
+            );
+        }
 
-        let mut raw_secret = fixture_envelope(SourceRuntimeOperation::ReadPage);
-        raw_secret
-            .public_config
-            .insert("api_token".to_owned(), "sentinel".to_owned());
-        assert!(matches!(
-            validate_envelope(&raw_secret),
-            Err(ProtocolError::RawSecretField(path)) if path == "public_config.api_token"
-        ));
+        for operation in ["Sync", "Commit"] {
+            let mut envelope =
+                serde_json::to_value(fixture_envelope(SourceRuntimeOperation::ReadPage)).unwrap();
+            envelope["operation"] = serde_json::Value::String(operation.to_owned());
+            assert!(matches!(
+                validate_envelope_json(&envelope),
+                Err(ProtocolError::UnsupportedOperation(found)) if found == operation
+            ));
+        }
+
+        for &field in raw_secret_sentinel_field_names() {
+            for surface in ["public_config", "result", "error"] {
+                let mut envelope = fixture_envelope(SourceRuntimeOperation::ReadPage);
+                match surface {
+                    "public_config" => {
+                        envelope
+                            .public_config
+                            .insert(field.to_owned(), "sentinel".to_owned());
+                    }
+                    "result" => {
+                        envelope.result = Some(SourceRuntimeResult {
+                            events_scanned: 1,
+                            events_accepted: 0,
+                            next_cursor: String::new(),
+                            diagnostics: BTreeMap::from([(
+                                field.to_owned(),
+                                "sentinel".to_owned(),
+                            )]),
+                        });
+                    }
+                    "error" => {
+                        envelope.error = Some(SourceRuntimeErrorShape {
+                            code: "provider_error".to_owned(),
+                            category: "provider".to_owned(),
+                            retryable: true,
+                            diagnostics: BTreeMap::from([(
+                                field.to_owned(),
+                                "sentinel".to_owned(),
+                            )]),
+                        });
+                    }
+                    _ => unreachable!(),
+                }
+                assert!(
+                    matches!(
+                        validate_envelope(&envelope),
+                        Err(ProtocolError::RawSecretField(_))
+                    ),
+                    "{surface}.{field} accepted"
+                );
+            }
+        }
+
+        for field in [
+            "apiKey",
+            "API-SECRET-KEY",
+            "Authorization",
+            "bearerToken",
+            "access-token",
+            "setCookie",
+            "rawProviderRequest",
+            "providerResponseBody",
+            "provider-error-body",
+        ] {
+            let mut envelope = fixture_envelope(SourceRuntimeOperation::ReadPage);
+            envelope
+                .public_config
+                .insert(field.to_owned(), "sentinel".to_owned());
+            assert!(
+                matches!(
+                    validate_envelope(&envelope),
+                    Err(ProtocolError::RawSecretField(_))
+                ),
+                "{field} accepted"
+            );
+        }
         println!(
-            "source_runtime_protocol_contract accepted=DescribePlan,Check,Discover,ReadPage rejected=unknown_revision,missing_tenant,raw_secret raw_secret_fields=[]"
+            "source_runtime_protocol_contract accepted=DescribePlan,Check,Discover,ReadPage rejected=unknown_revision,missing_tenant,missing_runtime,missing_source,missing_family,missing_attempt,worker_sync_rejected,unknown_operation,raw_secret raw_secret_fields=[]"
         );
     }
 
@@ -576,5 +768,29 @@ mod tests {
         };
         assert!(missing.contains(&"egress_allowlist"));
         assert!(missing.contains(&"rollback_receipt"));
+    }
+
+    fn raw_secret_sentinel_field_names() -> &'static [&'static str] {
+        &[
+            "api_key",
+            "api_secret_key",
+            "password",
+            "authorization",
+            "bearer_token",
+            "access_token",
+            "refresh_token",
+            "api_token",
+            "client_secret",
+            "cookie",
+            "set_cookie",
+            "raw_provider_request",
+            "raw_provider_response",
+            "raw_provider_error",
+            "raw_provider_payload",
+            "provider_payload",
+            "provider_request_body",
+            "provider_response_body",
+            "provider_error_body",
+        ]
     }
 }
