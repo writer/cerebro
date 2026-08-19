@@ -45,10 +45,11 @@ type AskRequest struct {
 type Emitter func(Event) error
 
 type Service struct {
-	store     ports.GraphQueryStore
-	llm       LLMClient
-	validator *Validator
-	options   ServiceOptions
+	rawCypher     ports.RawCypherQueryStore
+	neighborhoods ports.GraphNeighborhoodStore
+	llm           LLMClient
+	validator     *Validator
+	options       ServiceOptions
 }
 
 func NewService(store ports.GraphQueryStore, llm LLMClient, options ValidatorOptions) *Service {
@@ -57,10 +58,11 @@ func NewService(store ports.GraphQueryStore, llm LLMClient, options ValidatorOpt
 
 func NewServiceWithOptions(store ports.GraphQueryStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
 	return &Service{
-		store:     store,
-		llm:       llm,
-		validator: NewValidator(store, validatorOptions),
-		options:   normalizeServiceOptions(serviceOptions),
+		rawCypher:     store,
+		neighborhoods: store,
+		llm:           llm,
+		validator:     NewValidator(store, validatorOptions),
+		options:       normalizeServiceOptions(serviceOptions),
 	}
 }
 
@@ -71,7 +73,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err := ValidateRequest(request); err != nil {
 		return err
 	}
-	if s == nil || s.store == nil || s.llm == nil || s.validator == nil {
+	if s == nil || s.rawCypher == nil || s.neighborhoods == nil || s.llm == nil || s.validator == nil {
 		return ErrRuntimeUnavailable
 	}
 	started := time.Now()
@@ -95,7 +97,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 			return err
 		}
 		probeStarted := time.Now()
-		collected := collectGraphProbe(ctx, s.store, request, params)
+		collected := collectGraphProbe(ctx, s.rawCypher, s.neighborhoods, request, params)
 		timings.ProbeMS = time.Since(probeStarted).Milliseconds()
 		probe = &collected
 		if err := emit(Event{Name: EventGraphProbe, Data: GraphProbeEvent{Probe: collected}}); err != nil {
@@ -180,7 +182,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	execStarted := time.Now()
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+	rows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query:    cypher,
 		Params:   params,
 		RowLimit: rowLimit,
@@ -212,7 +214,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	}
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
-		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
+		Graph:  scopedNeighborhood(ctx, s.neighborhoods, request.ScopeURN),
 		ExecMS: timings.ExecuteMS,
 	}
 	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {

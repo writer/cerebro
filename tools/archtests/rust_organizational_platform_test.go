@@ -249,6 +249,9 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	if strings.Contains(graphAgentAsk, "func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore") {
 		t.Error("graph agent scoped neighborhood restored full graph query dependency")
 	}
+	if strings.Contains(graphAgentAsk, "store     ports.GraphQueryStore") {
+		t.Error("graph agent service restored stored full graph query dependency")
+	}
 
 	goNeo4jStore := readText(t, filepath.Join(root, "internal/graphstore/neo4j/store.go"))
 	for _, removedTypedRead := range []string{

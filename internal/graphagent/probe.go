@@ -46,21 +46,26 @@ type GraphProbeCount struct {
 	Count int64  `json:"count"`
 }
 
-func collectGraphProbe(ctx context.Context, store ports.GraphQueryStore, request AskRequest, params map[string]any) GraphProbe {
+func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, request AskRequest, params map[string]any) GraphProbe {
 	probe := GraphProbe{ScopeURN: strings.TrimSpace(request.ScopeURN)}
-	if store == nil {
+	if rawCypher == nil && neighborhoods == nil {
 		probe.Warnings = append(probe.Warnings, "graph_store_unavailable")
 		return probe
 	}
 	if probe.ScopeURN != "" {
-		neighborhood, err := store.GetEntityNeighborhood(ctx, probe.ScopeURN, 10)
-		if err != nil {
+		if neighborhoods == nil {
+			probe.Warnings = append(probe.Warnings, "scope_not_found")
+		} else if neighborhood, err := neighborhoods.GetEntityNeighborhood(ctx, probe.ScopeURN, 10); err != nil {
 			probe.Warnings = append(probe.Warnings, "scope_not_found")
 		} else if neighborhood != nil && neighborhood.Root != nil {
 			probe.ScopeFound = true
 			probe.ScopeType = neighborhood.Root.EntityType
 			probe.ScopeLabel = neighborhood.Root.Label
 		}
+	}
+	if rawCypher == nil {
+		probe.Warnings = append(probe.Warnings, "graph_store_unavailable")
+		return probe
 	}
 	if cached, ok := cachedGraphProbeCounts(request.TenantID); ok {
 		probe.EntityTypes = cached.EntityTypes
@@ -70,11 +75,11 @@ func collectGraphProbe(ctx context.Context, store ports.GraphQueryStore, request
 		return probe
 	}
 	warningsBeforeCounts := len(probe.Warnings)
-	probe.EntityTypes = probeCounts(ctx, store, params, `MATCH (n:Entity {tenant_id: $tenant_id})
+	probe.EntityTypes = probeCounts(ctx, rawCypher, params, `MATCH (n:Entity {tenant_id: $tenant_id})
 RETURN n.entity_type AS name, count(n) AS count
 ORDER BY count DESC, name
 LIMIT 20`, &probe)
-	probe.Relations = probeCounts(ctx, store, params, `MATCH (:Entity {tenant_id: $tenant_id})-[r:RELATION]->(:Entity {tenant_id: $tenant_id})
+	probe.Relations = probeCounts(ctx, rawCypher, params, `MATCH (:Entity {tenant_id: $tenant_id})-[r:RELATION]->(:Entity {tenant_id: $tenant_id})
 RETURN r.relation AS name, count(r) AS count
 ORDER BY count DESC, name
 LIMIT 20`, &probe)
