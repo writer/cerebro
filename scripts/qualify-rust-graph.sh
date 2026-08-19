@@ -33,8 +33,6 @@ mkdir -p "${output_dir}"
 export COMPOSE_PROJECT_NAME="${compose_project}"
 export CEREBRO_RUST_COMMAND=serve-neo4j-consumer
 export CEREBRO_RUST_READ_MODE=authority
-export CEREBRO_RUST_SHADOW_PERCENT=0
-export CEREBRO_RUST_AUTHORITY_PERCENT=0
 export CEREBRO_RUST_GRAPH_SECRET="${graph_secret}"
 
 cleanup() {
@@ -191,9 +189,6 @@ test "$(jq -r .status "${organizational_receipt}")" = passed
 test "$(jq '[.checks[] | select(.status == "passed")] | length' "${organizational_receipt}")" -eq 14
 
 export CEREBRO_RUST_READ_MODE=authority
-export CEREBRO_RUST_SHADOW_PERCENT=0
-export CEREBRO_RUST_AUTHORITY_PERCENT=0
-export CEREBRO_RUST_CANARY_VERIFY_PERCENT=0
 docker compose "${compose_files[@]}" up -d --force-recreate --wait cerebro
 assert_status 200 readiness-authority "${output_dir}/readiness.json" http://127.0.0.1:8080/health
 assert_status 200 graph-authority "${output_dir}/authority-graph-response.json" "${graph_url}"

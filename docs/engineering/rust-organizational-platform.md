@@ -295,17 +295,13 @@ Go projector                Rust mapper
 
 `cerebro-platform evaluate-family` evaluates stored parity receipts without changing authority. `cerebro-platform promote-family` repeats that evaluation and records Rust authority. `cerebro-platform show-authority` reads the effective record. These commands use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
 
-`cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for pre-cutover shadow and read canaries. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
+`cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for the authority read endpoint. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
 
-Read promotion uses four explicit states. `legacy` is the retained-Go rollback
-state and does not call Rust. `shadow` always returns Go and compares a stable
-sample with Rust. `canary` assigns each tenant to Rust or Go with a stable
-hash; readiness requires both authorities, and a Rust-tenant failure fails
-closed without retrying against Go. `authority` returns Rust for every typed
-read and does not depend on Go health.
+Read promotion has completed. `authority` is the only supported product read
+mode: every typed read goes to Rust, readiness uses Rust health, and a Rust read
+failure fails closed without retrying through Go.
 
-The promotion sequence is `legacy` or `shadow` -> `canary` -> `authority`.
-Moving forward requires all of these receipts against the same candidate and
+Keeping authority enabled requires these receipts against the same candidate and
 stream fence:
 
 - a completed bounded replay using the original persisted upper fence;
@@ -313,42 +309,22 @@ stream fence:
   forward-consumer checkpoint at or beyond that fence;
 - a separate receipt proving the compatibility deltas were materialized into
   the Rust `OrganizationalEntity` and assertion projection;
-- a fresh, nonzero typed-read comparison window with zero mismatches, Rust
-  errors, encoding errors, or dropped comparisons;
+- a fresh, nonzero typed-read authority probe window with zero Rust errors or
+  encoding errors;
 - the exact task definition and image rollout receipt; and
-- a tested rollback receipt naming `legacy` as the expected read mode.
+- a tested rollback receipt naming the retained-Go image.
 
 Process liveness, Neo4j connectivity, consumer acknowledgement, and an empty
-projection are not authority evidence. A failed Rust request in `canary` or
-`authority` remains failed; the router never retries it through Go.
+projection are not authority evidence. A failed Rust request remains failed; the
+router never retries it through Go.
 
 Raw Cypher is a separate compatibility port. It remains delegated to the Go
 Neo4j reader until each caller has a typed Rust operation. The Go
 `GetEntityNeighborhood` and `GetEntityNeighborhoods` implementation may be
 deleted after the authority burn-in because typed neighborhood reads no longer
 need it; `ExecuteReadCypher` and `ExplainReadCypher` stay until their callers
-are migrated. After that deletion, rollback uses the last retained-Go image in
-`legacy` mode rather than pretending the current image still contains a Go
-typed reader.
-
-The canary percentage controls tenant allocation, not a random share of
-requests. Monitor `cerebro.organizational_graph.canary.routes` by `authority`,
-`status`, `operation`, and `configured_percent` to compare the configured
-tenant cohort with actual Go and Rust request volume. These labels are bounded
-and never contain tenant or graph identifiers.
-
-During the first low-volume canary, set
-`CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT=100`. Every selected
-Rust-authority read remains Rust-authoritative and is also compared with Go.
-The Go verification runs outside the request path under the same bounded
-comparison ceiling. Mismatch, Go-oracle failure, or saturation changes only
-the verification receipt; it does not delay, replace, or retry the Rust result
-through Go. Monitor
-`cerebro.organizational_graph.canary.verifications` for `match`, `mismatch`,
-`legacy_error`, `comparison_error`, and `dropped`, and compare
-`cerebro.organizational_graph.canary.duration` by authority before increasing
-the Rust cohort. Reduce the verification percentage independently when the
-duplicate Go load is no longer justified.
+are migrated. Rollback uses the last retained-Go image rather than a live read
+mode in the current image.
 
 The append-log consumer defaults to new events. A rebuild uses
 `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff

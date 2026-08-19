@@ -154,13 +154,16 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 			t.Errorf("Rust graph read adapter restored handwritten wire contract %q", forbidden)
 		}
 	}
-	for _, required := range []string{
+	for _, forbidden := range []string{
 		"NewShadowQueryStore",
-		"return legacy, nil",
+		"NewLegacyQueryStore",
+		"readModeShadow",
+		"readModeLegacy",
 		"RecordOrganizationalGraphShadow",
+		"return legacy, nil",
 	} {
-		if !strings.Contains(queryAdapter, required) {
-			t.Errorf("bounded shadow comparison missing enforced safety boundary %q", required)
+		if strings.Contains(queryAdapter, forbidden) {
+			t.Errorf("Rust graph read adapter retained removed compatibility mode %q", forbidden)
 		}
 	}
 

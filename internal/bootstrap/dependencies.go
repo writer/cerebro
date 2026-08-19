@@ -20,6 +20,8 @@ import (
 
 const dependencyPingTimeout = 15 * time.Second
 
+var errOrganizationalGraphReadEndpointRequired = errors.New("organizational graph read endpoint is required")
+
 type closer func(context.Context) error
 
 // OpenDependencies dials the configured append-log and current-state drivers.
@@ -96,7 +98,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		readBaseURL = cfg.OrganizationalGraph.BaseURL
 	}
 	if cfg.OrganizationalGraph.ReadMode != "" && readBaseURL == "" {
-		return fail(fmt.Errorf("organizational graph read endpoint is required in %s mode", cfg.OrganizationalGraph.ReadMode))
+		return fail(fmt.Errorf("%w in %s mode", errOrganizationalGraphReadEndpointRequired, cfg.OrganizationalGraph.ReadMode))
 	}
 	if projectionBaseURL != "" {
 		projectionClient, err := organizationalgraph.NewProjectionClient(projectionBaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
@@ -107,18 +109,13 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		deps.SourceCollectionReceipts = projectionClient
 	}
 	if readBaseURL != "" {
-		var compatibility ports.GraphNeighborhoodStore
-		if reader, ok := deps.GraphStore.(ports.GraphNeighborhoodStore); ok && !isNilInterface(reader) {
-			compatibility = reader
-		}
 		var rawCypher ports.RawCypherQueryStore
 		if reader, ok := deps.GraphStore.(ports.RawCypherQueryStore); ok && !isNilInterface(reader) {
 			rawCypher = reader
 		}
 		queryStore, err := organizationalgraph.NewConfiguredQueryStoreWithCompatibility(
-			compatibility, rawCypher, readBaseURL, cfg.OrganizationalGraph.SharedSecret,
+			rawCypher, readBaseURL, cfg.OrganizationalGraph.SharedSecret,
 			cfg.OrganizationalGraph.Timeout, cfg.OrganizationalGraph.ReadMode,
-			cfg.OrganizationalGraph.ShadowPercent,
 		)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))

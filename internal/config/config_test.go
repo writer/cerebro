@@ -214,8 +214,7 @@ func TestLoadDefaultsRustGraphReadModeToAuthorityWhenEndpointConfigured(t *testi
 func TestLoadSeparatesRustGraphReadAndProjectionEndpoints(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
-	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "shadow")
-	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", "25")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "authority")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
 
 	cfg, err := Load()
@@ -228,56 +227,23 @@ func TestLoadSeparatesRustGraphReadAndProjectionEndpoints(t *testing.T) {
 	if cfg.OrganizationalGraph.ProjectionBaseURL != "" {
 		t.Fatalf("ProjectionBaseURL = %q, want disabled", cfg.OrganizationalGraph.ProjectionBaseURL)
 	}
-	if cfg.OrganizationalGraph.ReadMode != "shadow" || cfg.OrganizationalGraph.ShadowPercent != 25 {
+	if cfg.OrganizationalGraph.ReadMode != "authority" {
 		t.Fatalf("OrganizationalGraph = %#v", cfg.OrganizationalGraph)
 	}
 }
 
-func TestLoadRejectsUnsafeRustGraphShadowConfiguration(t *testing.T) {
-	for name, value := range map[string]string{
-		"missing endpoint": "",
-		"zero sampling":    "0",
-		"excess sampling":  "101",
-	} {
-		t.Run(name, func(t *testing.T) {
+func TestLoadRejectsRemovedRustGraphReadModes(t *testing.T) {
+	for _, mode := range []string{"legacy", "shadow", "canary"} {
+		t.Run(mode, func(t *testing.T) {
 			clearDependencyEnv(t)
-			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "shadow")
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", mode)
 			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
-			if name != "missing endpoint" {
-				t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
-			}
-			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", value)
+
 			if _, err := Load(); err == nil {
 				t.Fatal("Load() error = nil")
 			}
 		})
-	}
-}
-
-func TestLoadRejectsRustGraphCanaryMode(t *testing.T) {
-	clearDependencyEnv(t)
-	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
-	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "canary")
-	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
-
-	if _, err := Load(); err == nil {
-		t.Fatal("Load() error = nil")
-	}
-}
-
-func TestLoadAcceptsExplicitLegacyGraphRollbackMode(t *testing.T) {
-	clearDependencyEnv(t)
-	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
-	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "legacy")
-	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.OrganizationalGraph.ReadMode != "legacy" ||
-		cfg.OrganizationalGraph.ShadowPercent != 0 {
-		t.Fatalf("OrganizationalGraph = %#v", cfg.OrganizationalGraph)
 	}
 }
 
@@ -290,8 +256,9 @@ func TestLoadRejectsExplicitRustAuthorityWithoutReadEndpoint(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsRemovedRustGraphCanaryControls(t *testing.T) {
+func TestLoadRejectsRemovedRustGraphReadControls(t *testing.T) {
 	for name, env := range map[string]map[string]string{
+		"shadow percent":    {"CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT": "25"},
 		"authority percent": {"CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT": "10"},
 		"verify percent":    {"CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT": "100"},
 	} {
