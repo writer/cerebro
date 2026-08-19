@@ -4,7 +4,7 @@
 //! bytes and explicitly state that failed attempts do not advance cursor,
 //! checkpoint, append publication, projection, or last-synced state.
 
-use std::time::Duration;
+use std::{error::Error, fmt, time::Duration};
 
 use reqwest::StatusCode;
 
@@ -62,6 +62,18 @@ pub struct ProviderFailureClassification {
     /// Safe diagnostic code, never provider body text.
     pub diagnostic_code: &'static str,
 }
+
+impl fmt::Display for ProviderFailureClassification {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} ({:?}, retryable={})",
+            self.diagnostic_code, self.category, self.retryable
+        )
+    }
+}
+
+impl Error for ProviderFailureClassification {}
 
 /// Classify a provider failure without allowing progress advancement.
 pub fn classify_provider_failure(
@@ -158,7 +170,10 @@ pub fn classify_http_connector_failure(
         )),
         HttpConnectorError::InvalidConfiguration(_)
         | HttpConnectorError::InvalidUrl(_)
-        | HttpConnectorError::Domain(_) => None,
+        | HttpConnectorError::Domain(_)
+        | HttpConnectorError::MissingProviderAccess
+        | HttpConnectorError::CredentialLease(_)
+        | HttpConnectorError::EgressDenied(_) => None,
     }
 }
 

@@ -198,6 +198,16 @@ impl OperationScopedCredentialLease {
         }
     }
 
+    /// Return the opaque, non-secret reference bound to this lease.
+    pub fn reference(&self) -> &CredentialLeaseReference {
+        &self.reference
+    }
+
+    /// Return whether this operation lease has already been consumed.
+    pub fn is_consumed(&self) -> bool {
+        self.consumed
+    }
+
     /// Validate the reference, then deterministically revoke it for reuse.
     pub fn consume_for(
         &mut self,

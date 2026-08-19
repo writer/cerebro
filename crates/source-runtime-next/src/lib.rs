@@ -38,7 +38,7 @@ pub use fixture_parity::{
     FixtureParityReceipt, build_fixture_parity_matrix, compare_fixture_parity,
     execute_fixture_parity_page, fixture_excluded_family_reasons,
 };
-pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
+pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 pub use protocol::{
     AuthorityEvidence, ProtocolError, SourceRuntimeEnvelope, SourceRuntimeErrorShape,

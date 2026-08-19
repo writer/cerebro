@@ -38,7 +38,13 @@ use sha2::{Digest, Sha256, Sha512};
 use time::OffsetDateTime;
 use zeroize::Zeroize;
 
-use crate::{CollectedBatch, CollectedScope, CollectionRequest, SourceConnector, SourceRecord};
+use crate::{
+    CollectedBatch, CollectedScope, CollectionRequest, CredentialLeaseError,
+    CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus, EgressPolicy,
+    EgressPolicyError, EgressRequestContext, OperationScopedCredentialLease,
+    ProviderFailureClassification, SourceConnector, SourceRecord, SourceRuntimeOperation,
+    classify_http_connector_failure,
+};
 
 const MAX_PAGES: usize = 10_000;
 const MAX_FANOUT_SCOPES: usize = 1_000;
@@ -224,6 +230,12 @@ pub enum HttpConnectorError {
     Domain(ModelError),
     /// Pagination exceeded the runtime page limit.
     PageLimit,
+    /// Provider access was attempted without an operation-scoped lease and egress policy.
+    MissingProviderAccess,
+    /// Credential lease validation failed before provider access.
+    CredentialLease(CredentialLeaseError),
+    /// Provider egress policy rejected a URL before network access.
+    EgressDenied(EgressPolicyError),
 }
 
 impl fmt::Display for HttpConnectorError {
@@ -239,6 +251,11 @@ impl fmt::Display for HttpConnectorError {
             }
             Self::Domain(error) => write!(formatter, "invalid collection receipt: {error}"),
             Self::PageLimit => formatter.write_str("provider pagination exceeded the page limit"),
+            Self::MissingProviderAccess => formatter.write_str(
+                "provider access requires tenant, family, operation, request intent, egress policy, and credential lease",
+            ),
+            Self::CredentialLease(error) => write!(formatter, "credential lease rejected: {error}"),
+            Self::EgressDenied(error) => write!(formatter, "provider egress denied: {error}"),
         }
     }
 }
@@ -251,6 +268,14 @@ impl From<ModelError> for HttpConnectorError {
     }
 }
 
+impl HttpConnectorError {
+    /// Return a safe no-progress provider-failure classification when this
+    /// error came from provider transport, status, pagination, or body parsing.
+    pub fn provider_failure_classification(&self) -> Option<ProviderFailureClassification> {
+        classify_http_connector_failure(self)
+    }
+}
+
 /// Generic collector for the checked-in definition grammar. Bespoke sources
 /// implement `SourceConnector` directly but still cross the same graph mapper.
 pub struct HttpSourceConnector {
@@ -260,6 +285,60 @@ pub struct HttpSourceConnector {
     base_url: Url,
     config: BTreeMap<String, String>,
     auth: ResolvedAuth,
+    provider_access: Option<HttpProviderAccess>,
+}
+
+/// Provider-access proof required by the real HTTP request path.
+///
+/// The lease reference is opaque credential-broker authority, not credential
+/// material. The cloned egress reference lets every URL decision verify the
+/// original operation scope after the one-operation lease has been consumed.
+#[derive(Clone, Debug)]
+pub struct HttpProviderAccess {
+    context: EgressRequestContext,
+    egress_policy: EgressPolicy,
+    credential_lease: OperationScopedCredentialLease,
+    egress_reference: CredentialLeaseReference,
+    clock_millis: Option<i64>,
+}
+
+impl HttpProviderAccess {
+    /// Build live provider-access proof using the system clock.
+    pub fn new(
+        context: EgressRequestContext,
+        egress_policy: EgressPolicy,
+        credential_lease: OperationScopedCredentialLease,
+    ) -> Self {
+        let egress_reference = credential_lease.reference().clone();
+        Self {
+            context,
+            egress_policy,
+            credential_lease,
+            egress_reference,
+            clock_millis: None,
+        }
+    }
+
+    /// Build provider-access proof with a deterministic test clock.
+    pub fn new_with_clock(
+        context: EgressRequestContext,
+        egress_policy: EgressPolicy,
+        credential_lease: OperationScopedCredentialLease,
+        clock_millis: i64,
+    ) -> Self {
+        let egress_reference = credential_lease.reference().clone();
+        Self {
+            context,
+            egress_policy,
+            credential_lease,
+            egress_reference,
+            clock_millis: Some(clock_millis),
+        }
+    }
+
+    fn now_millis(&self) -> Result<i64, HttpConnectorError> {
+        self.clock_millis.map_or_else(unix_millis, Ok)
+    }
 }
 
 struct RequestScope {
@@ -325,7 +404,74 @@ impl HttpSourceConnector {
             base_url,
             config,
             auth,
+            provider_access: None,
         })
+    }
+
+    /// Attach operation-scoped provider-access proof to this connector.
+    #[must_use]
+    pub fn with_provider_access(mut self, provider_access: HttpProviderAccess) -> Self {
+        self.provider_access = Some(provider_access);
+        self
+    }
+
+    fn validate_provider_access(
+        &mut self,
+        request: &CollectionRequest,
+    ) -> Result<CredentialLeaseScope, HttpConnectorError> {
+        let access = self
+            .provider_access
+            .as_mut()
+            .ok_or(HttpConnectorError::MissingProviderAccess)?;
+        if access.context.tenant_id != request.tenant_id.as_str()
+            || access.context.runtime_id != request.source_runtime_id.as_str()
+            || access.context.source_id != self.source.id()
+            || access.context.family_id != self.family.id()
+            || access.context.operation != SourceRuntimeOperation::ReadPage
+        {
+            return Err(HttpConnectorError::EgressDenied(
+                EgressPolicyError::ContextMismatch,
+            ));
+        }
+        let scope = access
+            .context
+            .lease_scope()
+            .map_err(HttpConnectorError::CredentialLease)?;
+        let now = access.now_millis()?;
+        match access.credential_lease.status_for(&scope, &now) {
+            CredentialLeaseStatus::Valid => Ok(scope),
+            CredentialLeaseStatus::Rejected(error) => {
+                Err(HttpConnectorError::CredentialLease(error))
+            }
+        }
+    }
+
+    fn authorize_provider_url(&mut self, url: &Url) -> Result<(), HttpConnectorError> {
+        let access = self
+            .provider_access
+            .as_mut()
+            .ok_or(HttpConnectorError::MissingProviderAccess)?;
+        let scope = access
+            .context
+            .lease_scope()
+            .map_err(HttpConnectorError::CredentialLease)?;
+        let now = access.now_millis()?;
+        let decision = access.egress_policy.decide(
+            url.as_str(),
+            &access.context,
+            &access.egress_reference,
+            &now,
+        );
+        if let Some(reason) = decision.reason {
+            return Err(HttpConnectorError::EgressDenied(reason));
+        }
+        if !access.credential_lease.is_consumed() {
+            access
+                .credential_lease
+                .consume_for(&scope, &now)
+                .map_err(HttpConnectorError::CredentialLease)?;
+        }
+        Ok(())
     }
 
     fn request_scopes(&self) -> Result<Vec<RequestScope>, HttpConnectorError> {
@@ -537,6 +683,7 @@ impl SourceConnector for HttpSourceConnector {
 
     async fn collect(&mut self, request: CollectionRequest) -> Result<CollectedBatch, Self::Error> {
         let observed_at = unix_millis()?;
+        let _lease_scope = self.validate_provider_access(&request)?;
         let request_scopes = self.request_scopes()?;
         let initial_cursor = effective_cursor(self.family.pagination(), request.cursor.as_deref());
         if request.cursor.is_some() && request_scopes.len() > 1 {
@@ -573,6 +720,7 @@ impl SourceConnector for HttpSourceConnector {
                     page,
                     offset,
                 );
+                self.authorize_provider_url(&url)?;
                 let mut builder = match self.family.method() {
                     HttpMethod::Get => self.client.get(url.clone()),
                     HttpMethod::Post => self.client.post(url.clone()),
@@ -706,6 +854,7 @@ impl SourceConnector for HttpSourceConnector {
                             exhausted = true;
                             break;
                         };
+                        self.authorize_provider_url(&next)?;
                         ensure_same_origin(&self.base_url, &next)?;
                         url = next;
                     }
@@ -718,6 +867,7 @@ impl SourceConnector for HttpSourceConnector {
                             exhausted = true;
                             break;
                         };
+                        self.authorize_provider_url(&next)?;
                         ensure_same_origin(&self.base_url, &next)?;
                         url = next;
                     }
@@ -1695,7 +1845,7 @@ mod tests {
     use cerebro_source_catalog::SourceCatalog;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    use crate::{CatalogGraphMapper, GraphMapper};
+    use crate::{CatalogGraphMapper, GraphMapper, ProviderFailureKind};
 
     use super::*;
 
@@ -1704,6 +1854,224 @@ mod tests {
             .join("../..")
             .canonicalize()
             .unwrap()
+    }
+
+    fn request_intent_digest() -> String {
+        "a".repeat(64)
+    }
+
+    fn with_test_provider_access(
+        connector: HttpSourceConnector,
+        tenant_id: &str,
+        runtime_id: &str,
+        base_url: &str,
+    ) -> HttpSourceConnector {
+        let context = EgressRequestContext {
+            tenant_id: tenant_id.to_owned(),
+            runtime_id: runtime_id.to_owned(),
+            source_id: connector.source.id().to_owned(),
+            family_id: connector.family.id().to_owned(),
+            operation: SourceRuntimeOperation::ReadPage,
+            request_intent_digest: request_intent_digest(),
+            logical_page_id: "page-0001".to_owned(),
+            source_generation: 1,
+            authority_epoch: 1,
+        };
+        let scope = context.lease_scope().unwrap();
+        let lease = OperationScopedCredentialLease::new(
+            CredentialLeaseReference::new("lease-ref-1", scope, 1_000, 1_000).unwrap(),
+        );
+        let policy = EgressPolicy::live(
+            &context.tenant_id,
+            &context.family_id,
+            &context.request_intent_digest,
+            [base_url],
+        )
+        .unwrap();
+        connector.with_provider_access(HttpProviderAccess::new_with_clock(
+            context, policy, lease, 1_500,
+        ))
+    }
+
+    fn test_provider_access_with_policy(
+        connector: &HttpSourceConnector,
+        tenant_id: &str,
+        runtime_id: &str,
+        policy: EgressPolicy,
+    ) -> HttpProviderAccess {
+        let context = EgressRequestContext {
+            tenant_id: tenant_id.to_owned(),
+            runtime_id: runtime_id.to_owned(),
+            source_id: connector.source.id().to_owned(),
+            family_id: connector.family.id().to_owned(),
+            operation: SourceRuntimeOperation::ReadPage,
+            request_intent_digest: request_intent_digest(),
+            logical_page_id: "page-0001".to_owned(),
+            source_generation: 1,
+            authority_epoch: 1,
+        };
+        let scope = context.lease_scope().unwrap();
+        let lease = OperationScopedCredentialLease::new(
+            CredentialLeaseReference::new("lease-ref-1", scope, 1_000, 1_000).unwrap(),
+        );
+        HttpProviderAccess::new_with_clock(context, policy, lease, 1_500)
+    }
+
+    fn box_users_connector(base_url: &str) -> HttpSourceConnector {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        HttpSourceConnector::new(
+            catalog.get("box").unwrap().clone(),
+            "users",
+            base_url,
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn connector_path_requires_provider_access_before_network() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut connector = box_users_connector(&format!("http://{address}"));
+        let error = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(error, HttpConnectorError::MissingProviderAccess));
+    }
+
+    #[tokio::test]
+    async fn fixture_policy_is_offline_through_connector_collect() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let base_url = format!("http://{address}");
+        let connector = box_users_connector(&base_url);
+        let policy = EgressPolicy::fixture("tenant-a", "users", request_intent_digest());
+        let access = test_provider_access_with_policy(&connector, "tenant-a", "box-prod", policy);
+        let mut connector = connector.with_provider_access(access);
+        let error = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            HttpConnectorError::EgressDenied(EgressPolicyError::OfflineMode)
+        ));
+    }
+
+    #[tokio::test]
+    async fn pagination_next_url_is_checked_by_egress_policy_before_network() {
+        let first_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let first_address = first_listener.local_addr().unwrap();
+        let second_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let second_address = second_listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = first_listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            let body = r#"[{"id":"24","type":"mention","group_key":"safe","account":{"id":"116387030920493064","acct":"admin","url":"https://mastodon.example/@admin"},"status":null}]"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nlink: <http://{second_address}/api/v1/notifications?max_id=24&limit=80>; rel=\"next\"\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("mastodon")
+        .unwrap()
+        .clone();
+        let first_url = format!("http://{first_address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "notification",
+                &first_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "mastodon-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "mastodon-prod",
+            &first_url,
+        );
+        let error = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("mastodon-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap_err();
+        server.await.unwrap();
+        drop(second_listener);
+        assert!(matches!(
+            error,
+            HttpConnectorError::EgressDenied(EgressPolicyError::HostNotAllowed)
+                | HttpConnectorError::InvalidResponse(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn provider_failure_is_classified_and_redacted_through_collect() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            let body = "secret-sentinel provider error body";
+            let response = format!(
+                "HTTP/1.1 502 Bad Gateway\r\ncontent-type: text/plain\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            box_users_connector(&base_url),
+            "tenant-a",
+            "box-prod",
+            &base_url,
+        );
+        let error = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: Some("go-cursor-input".to_owned()),
+            })
+            .await
+            .unwrap_err();
+        server.await.unwrap();
+        let classification = error.provider_failure_classification().unwrap();
+        assert_eq!(classification.kind, ProviderFailureKind::Http5xx);
+        assert!(!classification.advances_progress);
+        assert!(!format!("{error:?}").contains("secret-sentinel"));
+        assert!(!format!("{classification:?}").contains("secret-sentinel"));
     }
 
     #[test]
@@ -2192,16 +2560,22 @@ mod tests {
             root.join("sources"),
         )
         .unwrap();
-        let mut connector = HttpSourceConnector::new(
-            catalog.get("box").unwrap().clone(),
-            "users",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Bearer {
-                token: "token".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("box").unwrap().clone(),
+                "users",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "token".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "box-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2284,14 +2658,20 @@ mod tests {
             ]),
         };
         assert!(!format!("{malformed_auth:?}").contains("account-secret"));
-        let mut malformed = HttpSourceConnector::new(
-            source.clone(),
-            "attribute_group_list_json",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            malformed_auth,
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut malformed = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "attribute_group_list_json",
+                &base_url,
+                BTreeMap::new(),
+                malformed_auth,
+            )
+            .unwrap(),
+            "tenant-a",
+            "api2cart-malformed",
+            &base_url,
+        );
         assert!(matches!(
             malformed
                 .collect(CollectionRequest {
@@ -2317,14 +2697,19 @@ mod tests {
         assert!(request.headers()["x-api-key"].is_sensitive());
         assert!(request.headers()["x-store-key"].is_sensitive());
 
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "attribute_group_list_json",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            auth,
-        )
-        .unwrap();
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "attribute_group_list_json",
+                &base_url,
+                BTreeMap::new(),
+                auth,
+            )
+            .unwrap(),
+            "tenant-a",
+            "api2cart-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2420,20 +2805,26 @@ mod tests {
             .request_scopes(),
             Err(HttpConnectorError::InvalidConfiguration(_))
         ));
-        let mut connector = HttpSourceConnector::new(
-            source.clone(),
-            "reports",
-            &format!("http://{address}"),
-            BTreeMap::from([
-                ("ip_address".to_owned(), "203.0.113.9".to_owned()),
-                ("max_age_in_days".to_owned(), "90".to_owned()),
-            ]),
-            ResolvedAuth::Header {
-                name: "Key".to_owned(),
-                value: "abuseipdb-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "reports",
+                &base_url,
+                BTreeMap::from([
+                    ("ip_address".to_owned(), "203.0.113.9".to_owned()),
+                    ("max_age_in_days".to_owned(), "90".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "Key".to_owned(),
+                    value: "abuseipdb-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "abuseipdb-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2502,20 +2893,26 @@ mod tests {
         .get("abuseipdb")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "ip_addresses",
-            &format!("http://{address}"),
-            BTreeMap::from([
-                ("confidence_minimum".to_owned(), "75".to_owned()),
-                ("ip_version".to_owned(), "6".to_owned()),
-            ]),
-            ResolvedAuth::Header {
-                name: "Key".to_owned(),
-                value: "abuseipdb-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "ip_addresses",
+                &base_url,
+                BTreeMap::from([
+                    ("confidence_minimum".to_owned(), "75".to_owned()),
+                    ("ip_version".to_owned(), "6".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "Key".to_owned(),
+                    value: "abuseipdb-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "abuseipdb-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2590,21 +2987,27 @@ mod tests {
             Err(HttpConnectorError::InvalidConfiguration(_))
         ));
 
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "out_of_config",
-            &format!("http://{address}"),
-            BTreeMap::from([
-                ("analysis_slug".to_owned(), "20260728".to_owned()),
-                ("project_slug".to_owned(), "project".to_owned()),
-                ("username".to_owned(), "owner".to_owned()),
-            ]),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Token botify-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "out_of_config",
+                &base_url,
+                BTreeMap::from([
+                    ("analysis_slug".to_owned(), "20260728".to_owned()),
+                    ("project_slug".to_owned(), "project".to_owned()),
+                    ("username".to_owned(), "owner".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Token botify-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "botify-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2657,16 +3060,22 @@ mod tests {
             source.authority(),
             cerebro_source_catalog::CollectionAuthority::Authoritative
         );
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "verify_credential",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Bearer {
-                token: "mastodon-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "verify_credential",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "mastodon-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "mastodon-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2720,16 +3129,22 @@ mod tests {
         .get("mastodon")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "activity",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Bearer {
-                token: "mastodon-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "activity",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "mastodon-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "mastodon-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2800,16 +3215,22 @@ mod tests {
         .get("mastodon")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "notification",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Bearer {
-                token: "mastodon-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "notification",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "mastodon-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "mastodon-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2906,17 +3327,23 @@ mod tests {
                 Err(HttpConnectorError::InvalidConfiguration(_))
             ));
         }
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "accesspolicy",
-            &format!("http://{address}"),
-            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Bearer meraki-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "accesspolicy",
+                &base_url,
+                BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer meraki-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "meraki-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2962,17 +3389,23 @@ mod tests {
         .get("meraki")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "eventtype",
-            &format!("http://{address}"),
-            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Bearer meraki-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "eventtype",
+                &base_url,
+                BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer meraki-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "meraki-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3034,17 +3467,23 @@ mod tests {
         .get("meraki")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "organization",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Bearer meraki-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "organization",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer meraki-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "meraki-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3097,17 +3536,23 @@ mod tests {
         .get("meraki")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "merakiauthuser",
-            &format!("http://{address}"),
-            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Bearer meraki-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "merakiauthuser",
+                &base_url,
+                BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer meraki-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "meraki-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3224,14 +3669,20 @@ mod tests {
             Err(HttpConnectorError::InvalidConfiguration(_))
         ));
         assert!(invalid_name.url().query().is_none());
-        let mut connector = HttpSourceConnector::new(
-            catalog.get("alchemer").unwrap().clone(),
-            "account",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            auth,
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("alchemer").unwrap().clone(),
+                "account",
+                &base_url,
+                BTreeMap::new(),
+                auth,
+            )
+            .unwrap(),
+            "tenant-a",
+            "alchemer-prod",
+            &base_url,
+        );
         assert!(connector.config.is_empty());
         let batch = connector
             .collect(CollectionRequest {
@@ -3248,19 +3699,25 @@ mod tests {
         let closed_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let closed_address = closed_listener.local_addr().unwrap();
         drop(closed_listener);
-        let mut failing = HttpSourceConnector::new(
-            catalog.get("alchemer").unwrap().clone(),
-            "account",
-            &format!("http://{closed_address}"),
-            BTreeMap::new(),
-            ResolvedAuth::QueryParameters {
-                parameters: BTreeMap::from([
-                    ("api_token".to_owned(), "token&admin=true".to_owned()),
-                    ("api_token_secret".to_owned(), "secret#fragment".to_owned()),
-                ]),
-            },
-        )
-        .unwrap();
+        let closed_base_url = format!("http://{closed_address}");
+        let mut failing = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("alchemer").unwrap().clone(),
+                "account",
+                &closed_base_url,
+                BTreeMap::new(),
+                ResolvedAuth::QueryParameters {
+                    parameters: BTreeMap::from([
+                        ("api_token".to_owned(), "token&admin=true".to_owned()),
+                        ("api_token_secret".to_owned(), "secret#fragment".to_owned()),
+                    ]),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "alchemer-prod",
+            &closed_base_url,
+        );
         let error = failing
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3339,14 +3796,20 @@ mod tests {
             parameters: BTreeMap::from([("token".to_owned(), "body-secret".to_owned())]),
         };
         assert!(!format!("{auth:?}").contains("body-secret"));
-        let mut connector = HttpSourceConnector::new(
-            catalog.get("akeyless").unwrap().clone(),
-            "items",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            auth,
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("akeyless").unwrap().clone(),
+                "items",
+                &base_url,
+                BTreeMap::new(),
+                auth,
+            )
+            .unwrap(),
+            "tenant-a",
+            "akeyless-prod",
+            &base_url,
+        );
         assert!(connector.config.is_empty());
         let batch = connector
             .collect(CollectionRequest {
@@ -3393,19 +3856,25 @@ mod tests {
         )
         .unwrap();
         let source = catalog.get("box").unwrap().clone();
-        let mut connector = HttpSourceConnector::new(
-            source.clone(),
-            "group_memberships",
-            &format!("http://{address}"),
-            BTreeMap::from([(
-                "group_ids".to_owned(),
-                " group-a, group-a, group/b ".to_owned(),
-            )]),
-            ResolvedAuth::Bearer {
-                token: "token".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "group_memberships",
+                &base_url,
+                BTreeMap::from([(
+                    "group_ids".to_owned(),
+                    " group-a, group-a, group/b ".to_owned(),
+                )]),
+                ResolvedAuth::Bearer {
+                    token: "token".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "box-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3464,17 +3933,23 @@ mod tests {
         )
         .unwrap();
         let source = catalog.get("jira").unwrap().clone();
-        let mut connector = HttpSourceConnector::new(
-            source.clone(),
-            "group_members",
-            &format!("http://{address}"),
-            BTreeMap::from([("group_ids".to_owned(), "group-a,group/b".to_owned())]),
-            ResolvedAuth::Basic {
-                username: "user@example.test".to_owned(),
-                password: "token".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "group_members",
+                &base_url,
+                BTreeMap::from([("group_ids".to_owned(), "group-a,group/b".to_owned())]),
+                ResolvedAuth::Basic {
+                    username: "user@example.test".to_owned(),
+                    password: "token".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "jira-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3626,17 +4101,23 @@ mod tests {
             root.join("sources"),
         )
         .unwrap();
-        let mut connector = HttpSourceConnector::new(
-            catalog.get("duo").unwrap().clone(),
-            "user",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::DuoHmacV5 {
-                integration_key: "integration-example".to_owned(),
-                secret_key: "secret-example".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("duo").unwrap().clone(),
+                "user",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::DuoHmacV5 {
+                    integration_key: "integration-example".to_owned(),
+                    secret_key: "secret-example".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "duo-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),

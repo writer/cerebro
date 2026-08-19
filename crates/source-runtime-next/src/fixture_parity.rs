@@ -221,7 +221,7 @@ pub struct FixtureParityMatrix {
 /// Build a parity matrix for every checked-in source API fixture.
 pub fn build_fixture_parity_matrix(repo_root: &Path) -> Result<FixtureParityMatrix, String> {
     let mut inputs = load_fixture_inputs(repo_root)?;
-    inputs.sort_by(|left, right| fixture_input_key(left).cmp(&fixture_input_key(right)));
+    inputs.sort_by_key(fixture_input_key);
     let corpus_revision = fixture_corpus_revision(&inputs);
     let oracle = load_go_fixture_oracle(repo_root)?;
     if oracle.schema_version != FIXTURE_PARITY_SCHEMA_VERSION {

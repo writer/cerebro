@@ -77,9 +77,11 @@ use cerebro_security_lifecycle::{
 use cerebro_source_catalog::{AuthModel, CatalogSummary, ProjectionClass, SourceCatalog};
 use cerebro_source_runtime_next::{
     AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CollectionRequest,
-    CommittedSourceEvent, GraphMapper, GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
-    SourceRuntimeLeaseFence, contains_aws_secret_references, contains_credential_references,
-    resolve_aws_secret_references, resolve_environment_references,
+    CommittedSourceEvent, CredentialLeaseReference, EgressPolicy, EgressRequestContext,
+    GraphMapper, GraphSink, HttpProviderAccess, HttpSourceConnector,
+    OperationScopedCredentialLease, ResolvedAuth, SourceRuntime, SourceRuntimeLeaseFence,
+    SourceRuntimeOperation, canonical_digest, contains_aws_secret_references,
+    contains_credential_references, resolve_aws_secret_references, resolve_environment_references,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -1640,9 +1642,59 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         source.auth_json_body_parameters(),
         &mut config,
     )?;
-    let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?;
     let lease_ttl_millis = source_runtime_lease_ttl_millis()?;
     let lease_owner = source_runtime_lease_owner();
+    let fence = lease_ledger
+        .acquire_source_runtime_lease(&tenant_id, &runtime_id, &lease_owner, lease_ttl_millis)
+        .await?
+        .ok_or("source runtime is missing, belongs to another tenant, or is already leased")?;
+    let request_intent_digest = canonical_digest(&serde_json::json!({
+        "operation": "ReadPage",
+        "tenant_id": tenant_id.as_str(),
+        "runtime_id": runtime_id.as_str(),
+        "source_id": source_id,
+        "family_id": family_id,
+        "cursor": cursor,
+        "lease_generation": fence.generation(),
+    }));
+    let access_context = EgressRequestContext {
+        tenant_id: tenant_id.as_str().to_owned(),
+        runtime_id: runtime_id.as_str().to_owned(),
+        source_id: source_id.clone(),
+        family_id: family_id.clone(),
+        operation: SourceRuntimeOperation::ReadPage,
+        request_intent_digest: request_intent_digest.clone(),
+        logical_page_id: format!(
+            "page:{}:{}:{}",
+            runtime_id.as_str(),
+            family_id,
+            fence.generation()
+        ),
+        source_generation: fence.generation(),
+        authority_epoch: 1,
+    };
+    let lease_scope = access_context.lease_scope()?;
+    let issued_at_millis =
+        i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)?;
+    let credential_lease_ttl_millis = i64::try_from(lease_ttl_millis)?;
+    let credential_lease = OperationScopedCredentialLease::new(CredentialLeaseReference::new(
+        format!("lease:{}", &request_intent_digest[..16]),
+        lease_scope,
+        issued_at_millis,
+        credential_lease_ttl_millis,
+    )?);
+    let egress_policy = EgressPolicy::live(
+        tenant_id.as_str(),
+        &family_id,
+        &request_intent_digest,
+        [&base_url],
+    )?;
+    let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?
+        .with_provider_access(HttpProviderAccess::new(
+            access_context,
+            egress_policy,
+            credential_lease,
+        ));
 
     let ledger = PostgresLedger::connect_tls(&postgres_dsn).await?;
     ledger.migrate().await?;
@@ -1653,10 +1705,6 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
     projector.migrate().await?;
     let store = DurableGraphStore::new(ledger, projector);
     let mut runtime = SourceRuntime::new(connector, mapper, store);
-    let fence = lease_ledger
-        .acquire_source_runtime_lease(&tenant_id, &runtime_id, &lease_owner, lease_ttl_millis)
-        .await?
-        .ok_or("source runtime is missing, belongs to another tenant, or is already leased")?;
     let request = CollectionRequest {
         tenant_id,
         source_runtime_id: runtime_id,
