@@ -47,7 +47,7 @@ type ImpactResult struct {
 }
 
 func (s *Service) GetImpact(ctx context.Context, request ImpactRequest) (*ImpactResult, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.neighborhoods == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	rootURN, err := impactRootURN(request)
@@ -138,7 +138,7 @@ func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth 
 
 func (s *Service) collectImpactNeighborhoods(ctx context.Context, roots []string, limit int) ([]*ports.EntityNeighborhood, error) {
 	results := make([]*ports.EntityNeighborhood, len(roots))
-	if batchStore, ok := s.store.(ports.GraphNeighborhoodBatchStore); ok {
+	if batchStore, ok := s.neighborhoods.(ports.GraphNeighborhoodBatchStore); ok {
 		neighborhoods, err := batchStore.GetEntityNeighborhoods(ctx, roots, limit)
 		if err != nil {
 			return nil, err
@@ -153,7 +153,7 @@ func (s *Service) collectImpactNeighborhoods(ctx context.Context, roots []string
 		return results, nil
 	}
 	if len(roots) == 1 {
-		neighborhood, err := s.store.GetEntityNeighborhood(ctx, roots[0], limit)
+		neighborhood, err := s.neighborhoods.GetEntityNeighborhood(ctx, roots[0], limit)
 		if err != nil {
 			return nil, err
 		}
@@ -165,7 +165,7 @@ func (s *Service) collectImpactNeighborhoods(ctx context.Context, roots []string
 	for index, urn := range roots {
 		index, urn := index, urn
 		group.Go(func() error {
-			neighborhood, err := s.store.GetEntityNeighborhood(groupCtx, urn, limit)
+			neighborhood, err := s.neighborhoods.GetEntityNeighborhood(groupCtx, urn, limit)
 			if err != nil {
 				return err
 			}

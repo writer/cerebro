@@ -321,7 +321,7 @@ func EffectiveAccessPathRequestFromQuery(values url.Values) (EffectiveAccessPath
 }
 
 func (s *Service) GetEffectiveAccessPaths(ctx context.Context, request EffectiveAccessPathRequest) (*EffectiveAccessPathResult, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.rawCypher == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
@@ -352,7 +352,7 @@ func (s *Service) GetEffectiveAccessPaths(ctx context.Context, request Effective
 		capabilityID = normalizeEffectiveCapabilityID(capability)
 	}
 	limit := normalizeEffectiveAccessPathLimit(request.Limit)
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+	rows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query: effectiveAccessPathQuery,
 		Params: map[string]any{
 			"application_urn": applicationURN,
