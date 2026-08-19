@@ -13,6 +13,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 const MAX_PAGE_SIZE: usize = 1_000;
 
@@ -241,6 +242,7 @@ pub struct CompiledFamily {
     projection: Projection,
     authoritative: bool,
     projection_authoritative: bool,
+    unsupported_reasons: Vec<UnsupportedReasonCode>,
 }
 
 impl CompiledFamily {
@@ -317,6 +319,10 @@ impl CompiledFamily {
     pub fn is_projection_authoritative(&self) -> bool {
         self.projection_authoritative
     }
+
+    pub fn unsupported_reasons(&self) -> &[UnsupportedReasonCode] {
+        &self.unsupported_reasons
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -383,6 +389,76 @@ pub struct CatalogSummary {
     pub authoritative_families: usize,
     pub shadow_only_sources: usize,
     pub projection_classes: BTreeMap<ProjectionClass, usize>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogFamilyClassification {
+    RustAuthoritative,
+    ShadowOnly,
+    ProjectionOnly,
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnsupportedReasonCode {
+    UnsupportedAuthModel,
+    MissingProviderProof,
+    UnboundPathConfigParameter,
+    UnboundConfigQueryParameter,
+    UnboundConfigAttribute,
+    UnsupportedProjectionTemplate,
+    UnsupportedPaginationGrammar,
+    BespokeRuntime,
+    IncompleteRuntimeFamilyProof,
+    MissingProviderAuthorityEvidence,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct UnsupportedFeatureFamilyReport {
+    pub source_id: String,
+    pub family_id: String,
+    pub classification: CatalogFamilyClassification,
+    pub reason_codes: Vec<UnsupportedReasonCode>,
+    pub safe_detail: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct UnsupportedFeatureReport {
+    pub total_sources: usize,
+    pub total_families: usize,
+    pub rust_authoritative_families: usize,
+    pub shadow_only_families: usize,
+    pub projection_only_families: usize,
+    pub unsupported_families: usize,
+    pub reason_code_counts: BTreeMap<UnsupportedReasonCode, usize>,
+    pub missing_family_reports: Vec<String>,
+    pub families: Vec<UnsupportedFeatureFamilyReport>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct AuthorityReadinessFamilyReport {
+    pub source_id: String,
+    pub family_id: String,
+    pub engine: String,
+    pub authority_epoch: u64,
+    pub plan_digest: String,
+    pub proof_revision: String,
+    pub fixture_revision: String,
+    pub parity_status: String,
+    pub rollback_status: String,
+    pub projection_status: String,
+    pub promotion_decision_id: String,
+    pub blocking_reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct AuthorityReadinessReport {
+    pub total_families: usize,
+    pub rust_authoritative_families: usize,
+    pub shadow_or_go_families: usize,
+    pub families: Vec<AuthorityReadinessFamilyReport>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -456,6 +532,126 @@ impl SourceCatalog {
             authoritative_families,
             shadow_only_sources: self.sources.len() - authoritative_sources,
             projection_classes,
+        }
+    }
+
+    pub fn unsupported_feature_report(&self) -> UnsupportedFeatureReport {
+        let mut families = Vec::new();
+        let mut reason_code_counts = BTreeMap::new();
+        let mut rust_authoritative_families = 0usize;
+        let mut shadow_only_families = 0usize;
+        let mut projection_only_families = 0usize;
+        let mut unsupported_families = 0usize;
+        for source in self.sources() {
+            for family in source.families() {
+                let mut reason_codes = family.unsupported_reasons().to_vec();
+                if family.is_authoritative() {
+                    reason_codes.push(UnsupportedReasonCode::MissingProviderAuthorityEvidence);
+                }
+                reason_codes.sort();
+                reason_codes.dedup();
+                let classification = if family.is_authoritative()
+                    && !reason_codes
+                        .contains(&UnsupportedReasonCode::MissingProviderAuthorityEvidence)
+                {
+                    rust_authoritative_families += 1;
+                    CatalogFamilyClassification::RustAuthoritative
+                } else if family.is_projection_authoritative() {
+                    projection_only_families += 1;
+                    CatalogFamilyClassification::ProjectionOnly
+                } else if source.authority() == CollectionAuthority::ShadowOnly {
+                    shadow_only_families += 1;
+                    CatalogFamilyClassification::ShadowOnly
+                } else {
+                    unsupported_families += 1;
+                    CatalogFamilyClassification::Unsupported
+                };
+                if classification != CatalogFamilyClassification::RustAuthoritative {
+                    if reason_codes.is_empty() {
+                        reason_codes.push(UnsupportedReasonCode::IncompleteRuntimeFamilyProof);
+                    }
+                    for reason in &reason_codes {
+                        *reason_code_counts.entry(*reason).or_insert(0) += 1;
+                    }
+                }
+                families.push(UnsupportedFeatureFamilyReport {
+                    source_id: source.id().to_owned(),
+                    family_id: family.id().to_owned(),
+                    classification,
+                    reason_codes,
+                    safe_detail: format!(
+                        "source={} family={} classification={classification:?}",
+                        source.id(),
+                        family.id()
+                    ),
+                });
+            }
+        }
+        let total_families = families.len();
+        UnsupportedFeatureReport {
+            total_sources: self.sources.len(),
+            total_families,
+            rust_authoritative_families,
+            shadow_only_families,
+            projection_only_families,
+            unsupported_families,
+            reason_code_counts,
+            missing_family_reports: Vec::new(),
+            families,
+        }
+    }
+
+    pub fn authority_readiness_report(&self) -> AuthorityReadinessReport {
+        let mut families = Vec::new();
+        for source in self.sources() {
+            for family in source.families() {
+                let plan_digest = family_plan_digest(source, family);
+                let mut blocking_reasons = vec![
+                    "fixture_corpus_revision".to_owned(),
+                    "supported_auth_modes".to_owned(),
+                    "supported_pagination_grammar".to_owned(),
+                    "supported_provider_error_modes".to_owned(),
+                    "egress_allowlist".to_owned(),
+                    "response_decompression_limits".to_owned(),
+                    "credential_lease_mode".to_owned(),
+                    "rollback_receipt".to_owned(),
+                    "fixture_parity_status".to_owned(),
+                    "canonical_digest_vectors".to_owned(),
+                    "credential_config_safety_proof".to_owned(),
+                    "cursor_checkpoint_rollback_proof".to_owned(),
+                    "operational_fencing_recovery_proof".to_owned(),
+                    "worker_runtime_build_identity".to_owned(),
+                    "promotion_receipt".to_owned(),
+                ];
+                if !family.is_projection_authoritative() {
+                    blocking_reasons.push("projection_intent_readiness".to_owned());
+                }
+                blocking_reasons.sort();
+                families.push(AuthorityReadinessFamilyReport {
+                    source_id: source.id().to_owned(),
+                    family_id: family.id().to_owned(),
+                    engine: "go_or_shadow_only".to_owned(),
+                    authority_epoch: 0,
+                    plan_digest,
+                    proof_revision: "provider-proof:incomplete".to_owned(),
+                    fixture_revision: String::new(),
+                    parity_status: "missing".to_owned(),
+                    rollback_status: "missing".to_owned(),
+                    projection_status: if family.is_projection_authoritative() {
+                        "go_projection_dependency".to_owned()
+                    } else {
+                        "missing".to_owned()
+                    },
+                    promotion_decision_id: String::new(),
+                    blocking_reasons,
+                });
+            }
+        }
+        AuthorityReadinessReport {
+            total_families: families.len(),
+            rust_authoritative_families: 0,
+            shadow_or_go_families: families.len(),
+            families,
         }
     }
 }
@@ -557,7 +753,7 @@ struct FamilyReadWire {
     scalar_record_field: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct PaginationWire {
     #[serde(default)]
     r#type: String,
@@ -1040,14 +1236,45 @@ fn compile_family(
             path,
         ))
     });
+    let authoritative = generic_runtime_supported
+        && provider_contract_verified
+        && path_parameters_configured
+        && config_query_configured
+        && config_attributes_configured;
+    let projection_authoritative =
+        provider_contract_verified && projection_class.can_be_authoritative();
+    let mut unsupported_reasons = Vec::new();
+    if !generic_runtime_supported {
+        unsupported_reasons.push(UnsupportedReasonCode::UnsupportedAuthModel);
+    }
+    if !provider_contract_verified {
+        unsupported_reasons.push(UnsupportedReasonCode::MissingProviderProof);
+        unsupported_reasons.push(UnsupportedReasonCode::IncompleteRuntimeFamilyProof);
+    }
+    if !path_parameters_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundPathConfigParameter);
+    }
+    if !config_query_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigQueryParameter);
+    }
+    if !config_attributes_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigAttribute);
+    }
+    if !projection_class.can_be_authoritative() {
+        unsupported_reasons.push(UnsupportedReasonCode::BespokeRuntime);
+        unsupported_reasons.push(UnsupportedReasonCode::UnsupportedProjectionTemplate);
+    }
+    if matches!(
+        compile_pagination(path, family.pagination.as_ref().cloned())?,
+        Pagination::NextUrl { .. }
+    ) {
+        unsupported_reasons.push(UnsupportedReasonCode::UnsupportedPaginationGrammar);
+    }
+    unsupported_reasons.sort();
+    unsupported_reasons.dedup();
     Ok(CompiledFamily {
-        authoritative: generic_runtime_supported
-            && provider_contract_verified
-            && path_parameters_configured
-            && config_query_configured
-            && config_attributes_configured,
-        projection_authoritative: provider_contract_verified
-            && projection_class.can_be_authoritative(),
+        authoritative,
+        projection_authoritative,
         id: nonempty(path, "family id", family.id)?,
         method,
         path: family.path,
@@ -1068,6 +1295,7 @@ fn compile_family(
             fields: projection.fields,
             static_fields: projection.static_fields,
         },
+        unsupported_reasons,
     })
 }
 
@@ -1250,6 +1478,27 @@ fn verified_families(proof: Option<&ProofManifestWire>) -> BTreeSet<(String, Str
             })
         })
         .collect()
+}
+
+fn family_plan_digest(source: &CompiledSource, family: &CompiledFamily) -> String {
+    let payload = serde_json::json!({
+        "source_id": source.id(),
+        "family_id": family.id(),
+        "method": match family.method() {
+            HttpMethod::Get => "GET",
+            HttpMethod::Post => "POST",
+        },
+        "path": family.path(),
+        "record_selector": family.record_selector(),
+        "id_field": family.id_field(),
+        "projection_template": family.projection().template(),
+        "static_query": family.static_query(),
+        "config_query": family.config_query().keys().collect::<Vec<_>>(),
+        "path_parameters": family.path_parameters().keys().collect::<Vec<_>>(),
+    });
+    let bytes = serde_json::to_vec(&payload).expect("family plan digest payload serializes");
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn canonical_path_template(path: &str) -> Option<String> {
@@ -2346,5 +2595,116 @@ mod tests {
         );
         assert_eq!(canonical_path_template("/accounts/prefix-{id}/users"), None);
         assert_eq!(canonical_path_template("/accounts/${config.id/users"), None);
+    }
+
+    #[test]
+    fn unsupported_feature_report_classifies_every_family_with_reason_codes() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let report = catalog.unsupported_feature_report();
+        assert_eq!(report.total_sources, 794);
+        assert_eq!(report.total_families, 3_894);
+        assert_eq!(report.families.len(), report.total_families);
+        assert!(report.missing_family_reports.is_empty());
+        assert_eq!(
+            report.total_families,
+            report.rust_authoritative_families
+                + report.shadow_only_families
+                + report.projection_only_families
+                + report.unsupported_families
+        );
+        for family in &report.families {
+            if family.classification != CatalogFamilyClassification::RustAuthoritative {
+                assert!(
+                    !family.reason_codes.is_empty(),
+                    "{}:{} lacks unsupported reason codes",
+                    family.source_id,
+                    family.family_id
+                );
+            }
+            assert!(!family.safe_detail.contains("sentinel-secret-value"));
+            assert!(!family.safe_detail.contains("sentinel-token-value"));
+        }
+        assert!(
+            report
+                .reason_code_counts
+                .contains_key(&UnsupportedReasonCode::MissingProviderAuthorityEvidence)
+        );
+        println!(
+            "unsupported_feature_report total_sources={} total_families={} rust_authoritative={} shadow_only={} projection_only={} unsupported={} missing_family_reports={:?} reason_code_counts={:?}",
+            report.total_sources,
+            report.total_families,
+            report.rust_authoritative_families,
+            report.shadow_only_families,
+            report.projection_only_families,
+            report.unsupported_families,
+            report.missing_family_reports,
+            report.reason_code_counts
+        );
+    }
+
+    #[test]
+    fn authority_readiness_defaults_to_shadow_until_provider_proof_is_complete() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let report = catalog.authority_readiness_report();
+        assert_eq!(report.total_families, 3_894);
+        assert_eq!(report.rust_authoritative_families, 0);
+        assert_eq!(report.shadow_or_go_families, report.total_families);
+        let aws_bedrock = report
+            .families
+            .iter()
+            .find(|family| family.source_id == "aws_bedrock")
+            .expect("aws_bedrock readiness row");
+        assert_eq!(aws_bedrock.engine, "go_or_shadow_only");
+        assert_eq!(aws_bedrock.authority_epoch, 0);
+        assert_eq!(aws_bedrock.plan_digest.len(), 64);
+        for required in [
+            "fixture_corpus_revision",
+            "rollback_receipt",
+            "promotion_receipt",
+            "worker_runtime_build_identity",
+        ] {
+            assert!(
+                aws_bedrock.blocking_reasons.contains(&required.to_owned()),
+                "{required}"
+            );
+        }
+        println!(
+            "authority_readiness total_families={} rust_authoritative={} shadow_or_go={} sample_plan_digest={}",
+            report.total_families,
+            report.rust_authoritative_families,
+            report.shadow_or_go_families,
+            aws_bedrock.plan_digest
+        );
+    }
+
+    #[test]
+    fn canonical_digest_vectors_are_stable_for_catalog_plans() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("okta").unwrap();
+        let family = source
+            .families()
+            .iter()
+            .find(|family| family.id() == "group_membership")
+            .unwrap();
+        let first = family_plan_digest(source, family);
+        let second = family_plan_digest(source, family);
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 64);
+        println!("canonical_digest okta/group_membership plan={first}");
     }
 }

@@ -7,6 +7,7 @@ mod append_log;
 mod aws_secret_store;
 mod http;
 mod mapper;
+mod protocol;
 mod runtime_config;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
@@ -17,6 +18,11 @@ pub use aws_secret_store::{
 };
 pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
+pub use protocol::{
+    AuthorityEvidence, ProtocolError, SourceRuntimeEnvelope, SourceRuntimeErrorShape,
+    SourceRuntimeOperation, SourceRuntimeReceipt, SourceRuntimeResult, canonical_digest,
+    canonical_digest_vectors, validate_authority_evidence,
+};
 pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,
     resolve_environment_references,
