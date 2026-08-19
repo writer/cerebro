@@ -13,6 +13,28 @@ README = ROOT / "README.md"
 SOURCE_CATALOG = ROOT / "docs" / "reference" / "sources.md"
 CONTROL_INDEX_DOC_FLAGS = {"init-extension", "extension", "profile", "output", "write", "check"}
 CONTROL_INDEX_README_FLAGS = {"init-extension", "extension", "profile", "output", "write"}
+RUNTIME_VALIDATION_COMMANDS = [
+    "make rust-fmt-check",
+    "make rust-clippy",
+    "make rust-test",
+    "make projection-parity-test",
+    "make source-fixture-check",
+    "make mcp-contract-check",
+    "make mcp-sdk-compat",
+    "make openapi-check",
+    "make openapi-lint",
+    "make sdk-test",
+    "make verify",
+    "make rust-product-demo-check",
+    "make graph-rebuild-dryrun",
+]
+RUNTIME_AUTHORITY_SNIPPETS = [
+    "Rust product demo",
+    "Go compatibility runtime",
+    "NATS JetStream, Postgres, and Neo4j",
+    "fail closed",
+    "No in-memory or SQLite production fallback",
+]
 
 
 def read(path: Path) -> str:
@@ -121,8 +143,29 @@ def require_contains(readme: str, snippets: list[str]) -> None:
         fail("README missing required text: " + ", ".join(missing))
 
 
+def require_runtime_authority_docs(readme: str, runtime_profiles: str) -> None:
+    combined = readme + "\n" + runtime_profiles
+    missing_commands = [command for command in RUNTIME_VALIDATION_COMMANDS if command not in combined]
+    if missing_commands:
+        fail("runtime docs missing validation commands: " + ", ".join(missing_commands))
+
+    missing_snippets = [
+        snippet
+        for snippet in RUNTIME_AUTHORITY_SNIPPETS
+        if snippet not in readme or snippet not in runtime_profiles
+    ]
+    if missing_snippets:
+        fail("runtime authority docs missing required text: " + ", ".join(missing_snippets))
+
+    if "CEREBRO_POSTGRES_DSN=<postgres-dsn-with-tls>" not in runtime_profiles:
+        fail("runtime profiles must document the Postgres DSN as a placeholder")
+    if "CEREBRO_CAPABILITY_TOKEN_SECRETS=<hmac-secret-1>,<hmac-secret-2>" not in runtime_profiles:
+        fail("runtime profiles must document capability token secrets as placeholders")
+
+
 def main() -> int:
     readme = read(README)
+    runtime_profiles = read(ROOT / "docs" / "operations" / "runtime-profiles.md")
 
     toolchain = go_toolchain()
     if toolchain not in readme:
@@ -167,6 +210,7 @@ def main() -> int:
             "make readme-check",
         ],
     )
+    require_runtime_authority_docs(readme, runtime_profiles)
 
     print("readme-check: clean")
     return 0

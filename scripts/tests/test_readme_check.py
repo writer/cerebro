@@ -39,6 +39,41 @@ class ReadmeCheckTests(unittest.TestCase):
                 {"style_a", "style_b"},
             )
 
+    def test_require_runtime_authority_docs_rejects_missing_command(self):
+        readme = "\n".join(
+            [
+                *readme_check.RUNTIME_AUTHORITY_SNIPPETS,
+                *readme_check.RUNTIME_VALIDATION_COMMANDS[:-1],
+            ]
+        )
+        runtime_profiles = "\n".join(
+            [
+                *readme_check.RUNTIME_AUTHORITY_SNIPPETS,
+                "CEREBRO_POSTGRES_DSN=<postgres-dsn-with-tls>",
+                "CEREBRO_CAPABILITY_TOKEN_SECRETS=<hmac-secret-1>,<hmac-secret-2>",
+            ]
+        )
+
+        with self.assertRaisesRegex(SystemExit, "make graph-rebuild-dryrun"):
+            readme_check.require_runtime_authority_docs(readme, runtime_profiles)
+
+    def test_require_runtime_authority_docs_accepts_placeholder_only_boundary(self):
+        readme = "\n".join(
+            [
+                *readme_check.RUNTIME_AUTHORITY_SNIPPETS,
+                *readme_check.RUNTIME_VALIDATION_COMMANDS,
+            ]
+        )
+        runtime_profiles = "\n".join(
+            [
+                *readme_check.RUNTIME_AUTHORITY_SNIPPETS,
+                "CEREBRO_POSTGRES_DSN=<postgres-dsn-with-tls>",
+                "CEREBRO_CAPABILITY_TOKEN_SECRETS=<hmac-secret-1>,<hmac-secret-2>",
+            ]
+        )
+
+        readme_check.require_runtime_authority_docs(readme, runtime_profiles)
+
 
 if __name__ == "__main__":
     unittest.main()

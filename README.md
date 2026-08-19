@@ -22,7 +22,7 @@ Cerebro includes more than 800 built-in source definitions and more than 1,500 p
 
 ## Run The Product Demo
 
-The shortest path starts a Rust in-memory organizational graph and the browser explorer. It uses synthetic product data and requires no Docker services or provider credentials.
+The shortest path starts the Rust product demo, an in-memory organizational graph and the browser explorer. It uses synthetic product data and requires no Docker services or provider credentials.
 
 Prerequisites: Node.js 22 or newer and the Rust toolchain declared in `rust-toolchain.toml`.
 
@@ -58,11 +58,11 @@ The same source service is available through the CLI, HTTP API, and MCP tools. P
 
 | Goal | Start with | Data and dependencies |
 | --- | --- | --- |
-| Inspect the product locally | `make rust-product-demo` | Synthetic in-memory graph; Node.js and Rust; no credentials or Docker |
-| Read current provider data | `make serve-dev` | Live source preview; provider configuration when the source requires it |
-| Persist evidence and findings | `docker compose up -d` | NATS JetStream, Postgres, Neo4j, and the Go compatibility runtime |
+| Inspect the product locally | `make rust-product-demo` | Rust product demo; synthetic in-memory graph; Node.js and Rust; no credentials or Docker |
+| Read current provider data | `make serve-dev` | Go compatibility runtime; live source preview; provider configuration when the source requires it |
+| Persist evidence and findings | `docker compose up -d` | NATS JetStream, Postgres, and Neo4j plus the Go compatibility runtime |
 
-Routes backed by an unconfigured durable store fail closed. The full local-stack procedure, including volume and password transitions, lives in [Getting started](docs/start/getting-started.md).
+Routes backed by an unconfigured durable store fail closed. No in-memory or SQLite production fallback is used for durable routes. The full local-stack procedure, including volume and password transitions, lives in [Getting started](docs/start/getting-started.md). Runtime profile selection, secret placeholders, and preflight checks are documented in [Runtime profiles](docs/operations/runtime-profiles.md).
 
 ## How Cerebro Produces Context
 
@@ -87,7 +87,7 @@ Start the server, register its MCP endpoint with your client, and ask the agent 
 ```bash
 make serve-dev
 droid mcp add cerebro-local http://127.0.0.1:8080/api/v1/mcp --type http \
-  --header "Authorization: Bearer local-dev-key"
+  --header "Authorization: Bearer <local-dev-key>"
 ```
 
 Example instruction:
@@ -103,13 +103,18 @@ The MCP source tools are `cerebro.sources.list`, `cerebro.sources.check`, `cereb
 
 ## Product Surfaces
 
-| Surface | Current role |
-| --- | --- |
-| Rust organizational platform | Tenant-scoped graph routes and invariant-heavy authority paths, including the product demo |
-| Go compatibility runtime | Source reads, CLI, HTTP, Connect, MCP, append-log, findings, reports, and compatibility workflows |
-| Web app | Browser workflows over public runtime contracts |
-| Slack companion | Durable intake, execution, delivery, and lifecycle status |
-| SDKs and schemas | Python, TypeScript, Go, OpenAPI, proto, and portable interchange contracts |
+Current authority map:
+
+| Surface | Current role | Required evidence before deleting Go compatibility |
+| --- | --- | --- |
+| Rust organizational platform | Rust-authoritative tenant-scoped graph routes and invariant-heavy authority paths, including the Rust product demo | Typed graph tests, readiness/fail-closed receipts, product-shape compatibility, rollback evidence |
+| Go compatibility runtime | Go compatibility runtime for source reads, CLI, HTTP, Connect, MCP, append-log, findings, reports, and compatibility workflows | Source/runtime parity, durable fencing, rollback receipts, OpenAPI/proto/SDK/MCP compatibility gates |
+| Durable evidence stores | NATS JetStream, Postgres, and Neo4j are required for persisted evidence, append-log replay, receipts, findings, reports, graph projection, and graph queries | Preflight, health/readiness, projection and replay receipts; unconfigured routes must fail closed |
+| Web app | Browser workflows over public runtime contracts; the local product demo talks to Rust graph demo APIs | Browser demo receipt, console-clean shape compatibility, API compatibility checks |
+| Slack companion | Durable intake, execution, delivery, and lifecycle status through explicit Slack authority paths | Fixture-only Slack validation unless live writes are explicitly approved |
+| SDKs and schemas | Python, TypeScript, Go, OpenAPI, proto, and portable interchange contracts | Generated artifact drift checks and SDK tests |
+
+Surfaces not listed as Rust-authoritative remain Go-compatible or bridged until their validation gates pass. Do not infer full Rust replacement from the product demo alone.
 
 Top-level commands are `serve`, `version`, `source`, `source-runtime`, `connector-catalog`, `append-log`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, `closeout`, and `deploy`.
 
@@ -141,8 +146,18 @@ Control extension packs use the workflows documented in [Compliance controls](do
 Common validation commands:
 
 ```bash
-make build
-make test
+make rust-fmt-check
+make rust-clippy
+make rust-test
+make projection-parity-test
+make source-fixture-check
+make mcp-contract-check
+make mcp-sdk-compat
+make openapi-check
+make openapi-lint
+make sdk-test
+make rust-product-demo-check
+make graph-rebuild-dryrun RUNTIME_ID=<runtime-id>
 make readme-check
 make docs-drift-check
 make oss-audit
