@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,20 @@ func TestOpenDependenciesAllowsUnconfiguredStores(t *testing.T) {
 	}
 	if err := closeAll(); err != nil {
 		t.Fatalf("closeAll() error = %v", err)
+	}
+}
+
+func TestOpenDependenciesRejectsGraphReadModeWithoutEndpoint(t *testing.T) {
+	_, closeAll, err := OpenDependencies(context.Background(), config.Config{
+		OrganizationalGraph: config.OrganizationalGraphConfig{ReadMode: "authority"},
+	})
+	if closeAll != nil {
+		if closeErr := closeAll(); closeErr != nil {
+			t.Fatalf("closeAll() error = %v", closeErr)
+		}
+	}
+	if err == nil || !strings.Contains(err.Error(), "organizational graph read endpoint is required in authority mode") {
+		t.Fatalf("OpenDependencies() error = %v, want missing authority endpoint", err)
 	}
 }
 

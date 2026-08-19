@@ -35,7 +35,7 @@ LIMIT 25`,
 		},
 		Summary: "Review `urn:cerebro:writer:asset:alpha` first.",
 	}
-	app := New(graphReasoningAuthConfig(), Dependencies{GraphStore: graphStore, GraphAgentLLM: llm}, nil)
+	app := New(graphReasoningAuthConfig(), Dependencies{GraphStore: graphStore, GraphQueries: graphStore, GraphAgentLLM: llm}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -108,7 +108,8 @@ func TestHandleAgentPlatformGraphReasonAllowsAllowedTenantPrincipal(t *testing.T
 			}},
 		},
 	}, Dependencies{
-		GraphStore: graphStore,
+		GraphStore:   graphStore,
+		GraphQueries: graphStore,
 		GraphAgentLLM: &graphagent.StubLLMClient{
 			DraftResponse: &graphagent.DraftResponse{
 				Rationale: "Reasoning over scoped graph rows.",
