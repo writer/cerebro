@@ -105,17 +105,14 @@ type InventorySignal struct {
 }
 
 func (s *Service) ListInventoryCategories(ctx context.Context, request InventoryCategoryRequest) ([]InventoryCategory, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.catalog == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	store, ok := s.store.(ports.EntityCatalogStore)
-	if !ok {
-		return nil, ErrRuntimeUnavailable
-	}
+	store := s.catalog
 	filter := inventoryCatalogFilter(tenantID, request.SourceID, request.Surface)
 	page, err := store.CountEntityKinds(ctx, ports.EntityKindCountRequest{Filter: filter, Limit: maxInventoryLimit})
 	if err != nil {
@@ -165,7 +162,7 @@ func (s *Service) ListInventoryCategories(ctx context.Context, request Inventory
 }
 
 func (s *Service) ListInventoryAssets(ctx context.Context, request InventoryAssetRequest) ([]InventoryAsset, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.catalog == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	entityTypes := inventoryEntityTypesForFilter(request.CategoryID, request.EntityType)
@@ -173,10 +170,7 @@ func (s *Service) ListInventoryAssets(ctx context.Context, request InventoryAsse
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	store, ok := s.store.(ports.EntityCatalogStore)
-	if !ok {
-		return nil, ErrRuntimeUnavailable
-	}
+	store := s.catalog
 	filter := inventoryCatalogFilter(tenantID, request.SourceID, request.Surface)
 	filter.Query = strings.TrimSpace(request.Query)
 	if len(entityTypes) > 0 {
@@ -201,7 +195,7 @@ func (s *Service) ListInventoryAssets(ctx context.Context, request InventoryAsse
 }
 
 func (s *Service) GetInventoryAsset(ctx context.Context, request InventoryAssetDetailRequest) (*InventoryAssetDetail, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.catalog == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	urn := strings.TrimSpace(request.URN)
@@ -211,10 +205,7 @@ func (s *Service) GetInventoryAsset(ctx context.Context, request InventoryAssetD
 	if err := validateCerebroURN(urn); err != nil {
 		return nil, err
 	}
-	store, ok := s.store.(ports.EntityCatalogStore)
-	if !ok {
-		return nil, ErrRuntimeUnavailable
-	}
+	store := s.catalog
 	tenantID := cerebrourn.TenantID(urn)
 	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn}, Limit: 1})
 	if err != nil {

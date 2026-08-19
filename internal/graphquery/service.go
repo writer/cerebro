@@ -22,9 +22,22 @@ var (
 	ErrInvalidRequest = errors.New("invalid graph query request")
 )
 
+// Store is the narrowed graph read capability surface consumed by the graph
+// query service: Rust authority typed reads (neighborhoods, entity catalog,
+// exposure coverage) plus the retained raw-Cypher compatibility surface.
+type Store interface {
+	ports.RawCypherQueryStore
+	ports.GraphNeighborhoodStore
+	ports.EntityCatalogStore
+	ports.ExposureCoverageStore
+}
+
 // Service exposes the first bounded graph neighborhood query.
 type Service struct {
-	store ports.GraphQueryStore
+	rawCypher     ports.RawCypherQueryStore
+	neighborhoods ports.GraphNeighborhoodStore
+	catalog       ports.EntityCatalogStore
+	exposure      ports.ExposureCoverageStore
 }
 
 // NeighborhoodRequest scopes one bounded root-centered graph query.
@@ -34,13 +47,18 @@ type NeighborhoodRequest struct {
 }
 
 // New constructs a bounded graph neighborhood service.
-func New(store ports.GraphQueryStore) *Service {
-	return &Service{store: store}
+func New(store Store) *Service {
+	return &Service{
+		rawCypher:     store,
+		neighborhoods: store,
+		catalog:       store,
+		exposure:      store,
+	}
 }
 
 // GetEntityNeighborhood loads one bounded root-centered graph neighborhood.
 func (s *Service) GetEntityNeighborhood(ctx context.Context, request NeighborhoodRequest) (*ports.EntityNeighborhood, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.neighborhoods == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	if strings.TrimSpace(request.RootURN) == "" {
@@ -50,7 +68,7 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 	if err := validateCerebroURN(rootURN); err != nil {
 		return nil, err
 	}
-	return s.store.GetEntityNeighborhood(ctx, rootURN, normalizeNeighborhoodLimit(request.Limit))
+	return s.neighborhoods.GetEntityNeighborhood(ctx, rootURN, normalizeNeighborhoodLimit(request.Limit))
 }
 
 // validateCerebroURN rejects malformed root URN inputs so the API can surface

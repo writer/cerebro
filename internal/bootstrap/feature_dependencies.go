@@ -176,7 +176,7 @@ func newDecisionOutcomeService(deps Dependencies) *decisionops.Service {
 }
 
 type graphQueryFeatureDeps struct {
-	GraphQueries ports.GraphQueryStore
+	GraphQueries ports.GraphReadStore
 }
 
 func newGraphQueryFeatureDeps(deps Dependencies) graphQueryFeatureDeps {
@@ -257,7 +257,7 @@ func newRuntimeResponseFeatureService(deps runtimeResponseFeatureDeps) *runtimer
 }
 
 type graphReasoningFeatureDeps struct {
-	GraphQueries    ports.GraphQueryStore
+	GraphQueries    ports.GraphReadStore
 	GraphAgentLLM   graphagent.LLMClient
 	TrajectoryStore ports.AskTrajectoryStore
 }

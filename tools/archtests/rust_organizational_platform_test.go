@@ -249,6 +249,22 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	if strings.Contains(graphAgentAsk, "func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore") {
 		t.Error("graph agent scoped neighborhood restored full graph query dependency")
 	}
+	graphQueryService := readText(t, filepath.Join(root, "internal/graphquery/service.go"))
+	if strings.Contains(graphQueryService, "ports.GraphQueryStore") {
+		t.Error("graph query service restored transitional composite graph query dependency")
+	}
+	bootstrapApp := readText(t, filepath.Join(root, "internal/bootstrap/app.go"))
+	if strings.Contains(bootstrapApp, "ports.GraphQueryStore") {
+		t.Error("bootstrap app restored transitional composite graph query dependency")
+	}
+	featureDependencies := readText(t, filepath.Join(root, "internal/bootstrap/feature_dependencies.go"))
+	if strings.Contains(featureDependencies, "ports.GraphQueryStore") {
+		t.Error("bootstrap feature dependencies restored transitional composite graph query dependency")
+	}
+	cerebroMain := readText(t, filepath.Join(root, "cmd/cerebro/main.go"))
+	if strings.Contains(cerebroMain, "ports.GraphQueryStore") {
+		t.Error("cerebro main restored transitional composite graph query dependency")
+	}
 
 	goNeo4jStore := readText(t, filepath.Join(root, "internal/graphstore/neo4j/store.go"))
 	for _, removedTypedRead := range []string{

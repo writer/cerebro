@@ -77,7 +77,7 @@ type Dependencies struct {
 	AppendLog                   ports.AppendLog
 	StateStore                  ports.StateStore
 	GraphStore                  ports.GraphStore
-	GraphQueries                ports.GraphQueryStore
+	GraphQueries                ports.GraphReadStore
 	SecurityLifecycleQueries    securityLifecycleQueryReader
 	SourceCollectionReceipts    ports.SourceCollectionReader
 	OrganizationalProjector     *organizationalgraph.ProjectionClient
@@ -2047,7 +2047,7 @@ func guardedLegacyGraphProjector(deps Dependencies) ports.SourceProjector {
 	return organizationalgraph.NewLegacyWriteGuard(legacy, deps.OrganizationalProjector)
 }
 
-func dependencyGraphQueryStore(deps Dependencies) ports.GraphQueryStore {
+func dependencyGraphQueryStore(deps Dependencies) ports.GraphReadStore {
 	if !isNilInterface(deps.GraphQueries) {
 		return deps.GraphQueries
 	}
