@@ -694,7 +694,7 @@ type grcPolicyGraphRelation struct {
 	Attrs    map[string]string
 }
 
-func Build(ctx context.Context, store ports.GraphQueryStore, scope Scope) (Response, error) {
+func Build(ctx context.Context, store ports.RawCypherQueryStore, scope Scope) (Response, error) {
 	limit := int(scope.Limit)
 	if limit <= 0 {
 		limit = grcPolicyLifecycleDefaultLimit

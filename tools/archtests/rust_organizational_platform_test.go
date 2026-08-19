@@ -188,6 +188,28 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		}
 	}
 
+	queryAdapterSource := readText(t, filepath.Join(root, "internal/sourcehttp/organizationalgraph/query.go"))
+	for _, widenedRawCypherBoundary := range []string{
+		"func NewQueryStore(rawCypher ports.GraphQueryStore",
+		"func NewConfiguredQueryStore(rawCypher ports.GraphQueryStore",
+	} {
+		if strings.Contains(queryAdapterSource, widenedRawCypherBoundary) {
+			t.Errorf("Rust graph query adapter widened raw-Cypher compatibility boundary %q", widenedRawCypherBoundary)
+		}
+	}
+	knowledgeService := readText(t, filepath.Join(root, "internal/knowledge/service.go"))
+	if strings.Contains(knowledgeService, "func New(query ports.RawCypherQueryStore") {
+		t.Error("knowledge writer restored unused graph query dependency")
+	}
+	provenanceService := readText(t, filepath.Join(root, "internal/graphprovenance/provenance.go"))
+	if strings.Contains(provenanceService, "store ports.GraphQueryStore") {
+		t.Error("graph provenance restored full graph query dependency")
+	}
+	grcPolicyLifecycle := readText(t, filepath.Join(root, "internal/grcpolicylifecycle/lifecycle.go"))
+	if strings.Contains(grcPolicyLifecycle, "func Build(ctx context.Context, store ports.GraphQueryStore") {
+		t.Error("GRC policy lifecycle restored full graph query dependency")
+	}
+
 	goNeo4jStore := readText(t, filepath.Join(root, "internal/graphstore/neo4j/store.go"))
 	for _, removedTypedRead := range []string{
 		"func (s *Store) GetEntityNeighborhood(",

@@ -281,7 +281,7 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 	if rationale := strings.TrimSpace(finding.StatusReason); rationale != "" {
 		workflowMetadata["rationale"] = rationale
 	}
-	service := knowledge.New(s.graphQuery, s.graph).
+	service := knowledge.New(s.graph).
 		WithAppendLog(s.appendLog).
 		WithDurabilityMode(knowledge.DurabilityRequired)
 	decision, err := service.WriteDecision(ctx, knowledge.DecisionWriteRequest{

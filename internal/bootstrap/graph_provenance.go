@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/graphprovenance"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func (a *App) handleGetGraphProvenance(w http.ResponseWriter, r *http.Request) {
@@ -13,7 +14,12 @@ func (a *App) handleGetGraphProvenance(w http.ResponseWriter, r *http.Request) {
 		writeGraphQueryError(w, err)
 		return
 	}
-	response, err := graphprovenance.New(dependencyGraphQueryStore(a.deps)).Get(r.Context(), graphprovenance.Request{URN: urn})
+	graphStore := dependencyGraphQueryStore(a.deps)
+	var catalogStore ports.EntityCatalogStore
+	if graphStore != nil {
+		catalogStore, _ = graphStore.(ports.EntityCatalogStore)
+	}
+	response, err := graphprovenance.New(catalogStore).Get(r.Context(), graphprovenance.Request{URN: urn})
 	if err != nil {
 		writeGraphQueryError(w, err)
 		return
