@@ -245,14 +245,13 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	if strings.Contains(graphAgentProbe, "func probeCounts(ctx context.Context, store ports.GraphQueryStore") {
 		t.Error("graph agent probe counts restored full graph query dependency")
 	}
-	graphAgentAsk := readText(t, filepath.Join(root, "internal/graphagent/ask.go"))
-	if strings.Contains(graphAgentAsk, "func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore") {
-		t.Error("graph agent scoped neighborhood restored full graph query dependency")
-	}
-
 	graphQueryService := readText(t, filepath.Join(root, "internal/graphquery/service.go"))
 	if strings.Contains(graphQueryService, "store ports.GraphQueryStore") || strings.Contains(graphQueryService, "func New(store ports.GraphQueryStore") {
 		t.Error("graphquery service restored full graph query dependency")
+	}
+	graphAgentAsk := readText(t, filepath.Join(root, "internal/graphagent/ask.go"))
+	if strings.Contains(graphAgentAsk, "func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore") {
+		t.Error("graph agent scoped neighborhood restored full graph query dependency")
 	}
 
 	goNeo4jStore := readText(t, filepath.Join(root, "internal/graphstore/neo4j/store.go"))
