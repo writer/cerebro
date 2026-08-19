@@ -1754,6 +1754,18 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 	return nil, nil
 }
 
+func (s *stubGraphStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
+	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(rootURNs))
+	for _, rootURN := range rootURNs {
+		neighborhood, err := s.GetEntityNeighborhood(ctx, rootURN, limit)
+		if err != nil {
+			return nil, err
+		}
+		neighborhoods[rootURN] = neighborhood
+	}
+	return neighborhoods, nil
+}
+
 func (s *stubGraphStore) CompareExposureCoverage(_ context.Context, request ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
 	if s.err != nil {
 		return nil, s.err

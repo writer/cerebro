@@ -899,7 +899,7 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 	return sourceprojection.New(state, graph)
 }
 
-func dependencyGraphQueryStore(deps bootstrap.Dependencies) ports.GraphQueryStore {
+func dependencyGraphQueryStore(deps bootstrap.Dependencies) ports.GraphReadStore {
 	return deps.GraphQueries
 }
 

@@ -100,7 +100,7 @@ func (*monitorStateStub) Ping(context.Context) error { return nil }
 
 type impactGraphStub struct {
 	ports.ProjectionGraphStore
-	ports.GraphQueryStore
+	ports.GraphReadStore
 }
 
 func (*impactGraphStub) Ping(context.Context) error { return nil }
@@ -112,7 +112,7 @@ type projectionOnlyImpactGraphStub struct {
 func (*projectionOnlyImpactGraphStub) Ping(context.Context) error { return nil }
 
 type queryOnlyImpactGraphStub struct {
-	ports.GraphQueryStore
+	ports.GraphReadStore
 }
 
 func (*queryOnlyImpactGraphStub) Ping(context.Context) error { return nil }

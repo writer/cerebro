@@ -87,6 +87,18 @@ type GraphQueryStore interface {
 	RawCypherQueryStore
 }
 
+// GraphReadStore is the top-level graph read handle wired by bootstrap: Rust
+// authority typed reads (neighborhoods, batched neighborhoods, entity catalog,
+// exposure coverage) plus the retained raw-Cypher compatibility surface.
+// Consumers narrow it to the capability interfaces they need.
+type GraphReadStore interface {
+	GraphNeighborhoodStore
+	GraphNeighborhoodBatchStore
+	EntityCatalogStore
+	ExposureCoverageStore
+	RawCypherQueryStore
+}
+
 // GraphNeighborhoodBatchStore exposes batched bounded graph neighborhood reads.
 type GraphNeighborhoodBatchStore interface {
 	GetEntityNeighborhoods(context.Context, []string, int) (map[string]*EntityNeighborhood, error)
