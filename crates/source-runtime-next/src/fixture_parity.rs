@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::canonical_digest;
@@ -18,7 +18,7 @@ use crate::canonical_digest;
 const FIXTURE_PARITY_SCHEMA_VERSION: &str = "cerebro.source-fixture-parity.v1";
 
 /// Fixture-only source runtime operation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FixtureParityOperation {
     /// Validate fixture execution plan/configuration only.
@@ -53,7 +53,7 @@ pub struct FixtureParityInput {
 }
 
 /// Normalized accepted event for parity comparison.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct FixtureParityEvent {
     /// Stable event digest identifier.
     pub event_id: String,
@@ -66,7 +66,7 @@ pub struct FixtureParityEvent {
 }
 
 /// Bounded quarantine summary for an invalid fixture record.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct FixtureParityQuarantine {
     /// Stable quarantine category.
     pub category: String,
@@ -77,7 +77,7 @@ pub struct FixtureParityQuarantine {
 }
 
 /// Duplicate input record detected during page admission.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct FixtureParityDuplicate {
     /// Duplicate event identifier.
     pub event_id: String,
@@ -88,7 +88,7 @@ pub struct FixtureParityDuplicate {
 }
 
 /// Normalized page semantics used for Go/Rust parity.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct FixtureParityPage {
     /// Source identifier.
     pub source_id: String,
@@ -111,15 +111,19 @@ pub struct FixtureParityPage {
     /// Rejected/quarantined record count.
     pub rejected_count: usize,
     /// Go-compatible next cursor.
+    #[serde(default)]
     #[serde(skip_serializing_if = "String::is_empty")]
     pub next_cursor: String,
     /// Proposed Go-compatible checkpoint.
+    #[serde(default)]
     #[serde(skip_serializing_if = "String::is_empty")]
     pub proposed_checkpoint: String,
     /// Stable short-circuit reasons.
+    #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub short_circuit_reasons: Vec<String>,
     /// Stable reconciliation reasons.
+    #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub reconciliation_reasons: Vec<String>,
 }
@@ -166,6 +170,43 @@ pub struct FixtureParityComparison {
     pub receipt: FixtureParityReceipt,
 }
 
+/// One checked-in Go oracle page for cross-language fixture parity.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct FixtureGoOracleCase {
+    /// Source identifier.
+    pub source_id: String,
+    /// Runtime family identifier.
+    pub family_id: String,
+    /// Fixture case identifier.
+    pub case_id: String,
+    /// Operation name.
+    pub operation: FixtureParityOperation,
+    /// Recorded fixture payload digest.
+    #[serde(default)]
+    pub payload_sha256: String,
+    /// Page emitted by the Go source/runtime oracle.
+    pub go_page: FixtureParityPage,
+    /// Digest of the Go oracle page.
+    pub go_page_digest_sha256: String,
+    /// Digest of this oracle case payload.
+    pub oracle_digest_sha256: String,
+    /// Proof string that the oracle was generated from checked-in fixtures.
+    pub offline_proof: String,
+    /// Whether provider network egress was required.
+    pub provider_network_egress: bool,
+}
+
+/// Checked-in Go source/runtime oracle artifact.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct FixtureGoOracleMatrix {
+    /// Receipt schema version.
+    pub schema_version: String,
+    /// Digest of the checked-in fixture corpus.
+    pub corpus_revision: String,
+    /// Per-fixture operation oracle pages.
+    pub cases: Vec<FixtureGoOracleCase>,
+}
+
 /// Fixture corpus parity matrix.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct FixtureParityMatrix {
@@ -180,17 +221,36 @@ pub struct FixtureParityMatrix {
 /// Build a parity matrix for every checked-in source API fixture.
 pub fn build_fixture_parity_matrix(repo_root: &Path) -> Result<FixtureParityMatrix, String> {
     let mut inputs = load_fixture_inputs(repo_root)?;
-    inputs.sort_by(|left, right| {
-        format!("{}/{}/{}", left.source_id, left.family_id, left.case_id).cmp(&format!(
-            "{}/{}/{}",
-            right.source_id, right.family_id, right.case_id
-        ))
-    });
+    inputs.sort_by(|left, right| fixture_input_key(left).cmp(&fixture_input_key(right)));
     let corpus_revision = fixture_corpus_revision(&inputs);
+    let oracle = load_go_fixture_oracle(repo_root)?;
+    if oracle.schema_version != FIXTURE_PARITY_SCHEMA_VERSION {
+        return Err(format!(
+            "Go oracle schema version {} does not match {}",
+            oracle.schema_version, FIXTURE_PARITY_SCHEMA_VERSION
+        ));
+    }
+    if oracle.corpus_revision != corpus_revision {
+        return Err(format!(
+            "Go oracle corpus revision {} does not match Rust corpus revision {}",
+            oracle.corpus_revision, corpus_revision
+        ));
+    }
+    let oracle_cases = oracle_case_map(oracle)?;
     let mut comparisons = Vec::with_capacity(inputs.len());
     let mut mismatch_count = 0usize;
     for input in inputs {
-        let comparison = compare_fixture_parity(&input, &corpus_revision)?;
+        let key = fixture_input_key(&input);
+        let go_case = oracle_cases
+            .get(&key)
+            .ok_or_else(|| format!("Go oracle missing fixture parity case {key}"))?;
+        if go_case.provider_network_egress {
+            return Err(format!(
+                "Go oracle case {key} required provider network egress"
+            ));
+        }
+        let comparison =
+            compare_fixture_parity_with_go_oracle(&input, &corpus_revision, &go_case.go_page)?;
         mismatch_count += comparison.receipt.mismatch_count;
         comparisons.push(comparison);
     }
@@ -206,11 +266,35 @@ pub fn compare_fixture_parity(
     input: &FixtureParityInput,
     corpus_revision: &str,
 ) -> Result<FixtureParityComparison, String> {
-    let go_page = execute_fixture_parity_page(input)?;
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .map_err(|error| format!("resolve repository root: {error}"))?;
+    let oracle = load_go_fixture_oracle(&repo_root)?;
+    if oracle.corpus_revision != corpus_revision {
+        return Err(format!(
+            "Go oracle corpus revision {} does not match requested corpus revision {}",
+            oracle.corpus_revision, corpus_revision
+        ));
+    }
+    let key = fixture_input_key(input);
+    let oracle_cases = oracle_case_map(oracle)?;
+    let go_case = oracle_cases
+        .get(&key)
+        .ok_or_else(|| format!("Go oracle missing fixture parity case {key}"))?;
+    compare_fixture_parity_with_go_oracle(input, corpus_revision, &go_case.go_page)
+}
+
+/// Compare a Go oracle page against a freshly executed Rust fixture page.
+pub fn compare_fixture_parity_with_go_oracle(
+    input: &FixtureParityInput,
+    corpus_revision: &str,
+    go_page: &FixtureParityPage,
+) -> Result<FixtureParityComparison, String> {
     let rust_page = execute_fixture_parity_page(input)?;
-    let receipt = fixture_parity_receipt(input, corpus_revision, &go_page, &rust_page);
+    let receipt = fixture_parity_receipt(input, corpus_revision, go_page, &rust_page);
     Ok(FixtureParityComparison {
-        go_page,
+        go_page: go_page.clone(),
         rust_page,
         receipt,
     })
@@ -383,19 +467,54 @@ fn load_fixture_inputs(repo_root: &Path) -> Result<Vec<FixtureParityInput>, Stri
         let payload_sha256 = yaml_scalar(&text, "sha256").unwrap_or_default();
         let payload = fs::read(manifest.with_file_name("response.json"))
             .map_err(|error| format!("read response for {}: {error}", manifest.display()))?;
-        inputs.push(FixtureParityInput {
-            source_id,
-            family_id,
-            case_id,
-            payload,
-            payload_sha256,
-            operation: FixtureParityOperation::ReadPage,
-            cursor: String::new(),
-            checkpoint: String::new(),
-            limit: 1000,
-        });
+        for operation in [
+            FixtureParityOperation::Check,
+            FixtureParityOperation::Discover,
+            FixtureParityOperation::ReadPage,
+        ] {
+            inputs.push(FixtureParityInput {
+                source_id: source_id.clone(),
+                family_id: family_id.clone(),
+                case_id: case_id.clone(),
+                payload: payload.clone(),
+                payload_sha256: payload_sha256.clone(),
+                operation,
+                cursor: String::new(),
+                checkpoint: String::new(),
+                limit: 1000,
+            });
+        }
     }
     Ok(inputs)
+}
+
+fn load_go_fixture_oracle(repo_root: &Path) -> Result<FixtureGoOracleMatrix, String> {
+    let path = repo_root.join("crates/source-runtime-next/testdata/go_fixture_oracle.json");
+    let payload = fs::read_to_string(&path)
+        .map_err(|error| format!("read Go fixture oracle {}: {error}", path.display()))?;
+    serde_json::from_str(&payload)
+        .map_err(|error| format!("decode Go fixture oracle {}: {error}", path.display()))
+}
+
+fn oracle_case_map(
+    oracle: FixtureGoOracleMatrix,
+) -> Result<BTreeMap<String, FixtureGoOracleCase>, String> {
+    let mut cases = BTreeMap::new();
+    for case in oracle.cases {
+        let key = format!(
+            "{}/{}/{}/{}",
+            case.source_id,
+            case.family_id,
+            case.case_id,
+            operation_name(case.operation)
+        );
+        if cases.insert(key.clone(), case).is_some() {
+            return Err(format!(
+                "Go oracle contains duplicate fixture parity case {key}"
+            ));
+        }
+    }
+    Ok(cases)
 }
 
 fn collect_provenance_paths(root: &Path, manifests: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -501,10 +620,8 @@ fn fixture_corpus_revision(inputs: &[FixtureParityInput]) -> String {
         .iter()
         .map(|input| {
             format!(
-                "{}/{}/{}:{}",
-                input.source_id,
-                input.family_id,
-                input.case_id,
+                "{}:{}",
+                fixture_input_key(input),
                 if input.payload_sha256.is_empty() {
                     canonical_digest(
                         &serde_json::from_slice::<serde_json::Value>(&input.payload)
@@ -522,6 +639,24 @@ fn fixture_corpus_revision(inputs: &[FixtureParityInput]) -> String {
         .collect();
     entries.sort();
     canonical_digest(&entries)
+}
+
+fn fixture_input_key(input: &FixtureParityInput) -> String {
+    format!(
+        "{}/{}/{}/{}",
+        input.source_id,
+        input.family_id,
+        input.case_id,
+        operation_name(input.operation)
+    )
+}
+
+fn operation_name(operation: FixtureParityOperation) -> &'static str {
+    match operation {
+        FixtureParityOperation::Check => "check",
+        FixtureParityOperation::Discover => "discover",
+        FixtureParityOperation::ReadPage => "read-page",
+    }
 }
 
 fn quarantine_summary(quarantines: &[FixtureParityQuarantine]) -> Vec<String> {
@@ -596,7 +731,18 @@ mod tests {
         let matrix = build_fixture_parity_matrix(&root).unwrap();
         assert!(!matrix.corpus_revision.is_empty());
         assert!(!matrix.comparisons.is_empty());
-        assert_eq!(matrix.mismatch_count, 0);
+        assert_eq!(
+            matrix.mismatch_count,
+            0,
+            "first mismatches: {:?}",
+            matrix
+                .comparisons
+                .iter()
+                .filter(|comparison| comparison.receipt.mismatch_count != 0)
+                .take(3)
+                .map(|comparison| &comparison.receipt)
+                .collect::<Vec<_>>()
+        );
         for comparison in &matrix.comparisons {
             assert_eq!(
                 comparison.receipt.go_page_digest_sha256,
@@ -692,16 +838,15 @@ mod tests {
             ),
         ];
         for (name, input, reason, want_zero) in scenarios {
-            let comparison = compare_fixture_parity(&input, "test-corpus").unwrap();
-            assert_eq!(comparison.receipt.mismatch_count, 0, "{name}");
-            let mut reasons = comparison.go_page.short_circuit_reasons.clone();
-            reasons.extend(comparison.go_page.reconciliation_reasons.clone());
+            let page = execute_fixture_parity_page(&input).unwrap();
+            let mut reasons = page.short_circuit_reasons.clone();
+            reasons.extend(page.reconciliation_reasons.clone());
             assert!(
                 reasons.iter().any(|candidate| candidate == reason),
                 "{name}"
             );
             if want_zero {
-                assert_eq!(comparison.go_page.accepted_count, 0, "{name}");
+                assert_eq!(page.accepted_count, 0, "{name}");
             }
         }
         let first = execute_fixture_parity_page(&base).unwrap();
@@ -722,5 +867,55 @@ mod tests {
                 .iter()
                 .any(|reason| reason == "equal_watermark")
         );
+    }
+
+    #[test]
+    fn fixture_parity_receipt_counts_cross_language_mismatches() {
+        let input = FixtureParityInput {
+            source_id: "fixture".to_owned(),
+            family_id: "identity_user".to_owned(),
+            case_id: "page".to_owned(),
+            payload: br#"{"items":[{"id":"u1"}]}"#.to_vec(),
+            payload_sha256: String::new(),
+            operation: FixtureParityOperation::ReadPage,
+            cursor: String::new(),
+            checkpoint: String::new(),
+            limit: 10,
+        };
+        let go_page = execute_fixture_parity_page(&input).unwrap();
+        let mut rust_page = go_page.clone();
+        rust_page.accepted_count += 1;
+        let receipt = fixture_parity_receipt(&input, "test-corpus", &go_page, &rust_page);
+        assert_eq!(receipt.mismatch_count, 1);
+        assert_ne!(
+            receipt.go_page_digest_sha256,
+            receipt.rust_page_digest_sha256
+        );
+    }
+
+    #[test]
+    fn fixture_parity_matrix_covers_all_operations_per_fixture_case() {
+        let root = repo_root();
+        let matrix = build_fixture_parity_matrix(&root).unwrap();
+        let mut operations_by_fixture = BTreeMap::<String, BTreeSet<String>>::new();
+        for comparison in &matrix.comparisons {
+            operations_by_fixture
+                .entry(format!(
+                    "{}/{}/{}",
+                    comparison.receipt.source_id,
+                    comparison.receipt.family_id,
+                    comparison.receipt.case_id
+                ))
+                .or_default()
+                .insert(comparison.receipt.operation.clone());
+        }
+        for (fixture, operations) in operations_by_fixture {
+            for operation in ["check", "discover", "read-page"] {
+                assert!(
+                    operations.contains(operation),
+                    "{fixture} missing {operation}"
+                );
+            }
+        }
     }
 }

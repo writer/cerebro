@@ -269,7 +269,7 @@ fn write_canonical_json(value: &serde_json::Value, out: &mut Vec<u8>) {
         }
         serde_json::Value::Number(value) => out.extend_from_slice(value.to_string().as_bytes()),
         serde_json::Value::String(value) => {
-            serde_json::to_writer(out, value).expect("canonical string serializes");
+            write_go_json_string(out, value);
         }
         serde_json::Value::Array(values) => {
             out.push(b'[');
@@ -289,11 +289,28 @@ fn write_canonical_json(value: &serde_json::Value, out: &mut Vec<u8>) {
                 if idx > 0 {
                     out.push(b',');
                 }
-                serde_json::to_writer(&mut *out, key).expect("canonical object key serializes");
+                write_go_json_string(out, key);
                 out.push(b':');
                 write_canonical_json(&values[key], out);
             }
             out.push(b'}');
+        }
+    }
+}
+
+fn write_go_json_string(out: &mut Vec<u8>, value: &str) {
+    let encoded = serde_json::to_string(value).expect("canonical string serializes");
+    for character in encoded.chars() {
+        match character {
+            '<' => out.extend_from_slice(b"\\u003c"),
+            '>' => out.extend_from_slice(b"\\u003e"),
+            '&' => out.extend_from_slice(b"\\u0026"),
+            '\u{2028}' => out.extend_from_slice(b"\\u2028"),
+            '\u{2029}' => out.extend_from_slice(b"\\u2029"),
+            _ => {
+                let mut buf = [0; 4];
+                out.extend_from_slice(character.encode_utf8(&mut buf).as_bytes());
+            }
         }
     }
 }

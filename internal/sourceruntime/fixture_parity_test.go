@@ -1,34 +1,68 @@
 package sourceruntime
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestRustFixtureParity(t *testing.T) {
-	matrix, err := BuildFixtureParityMatrix("../..")
+func TestRustFixtureParityGoOracleArtifactMatchesCurrentOracle(t *testing.T) {
+	matrix, err := BuildGoFixtureOracleMatrix("../..")
 	if err != nil {
-		t.Fatalf("BuildFixtureParityMatrix() error = %v", err)
+		t.Fatalf("BuildGoFixtureOracleMatrix() error = %v", err)
 	}
 	if matrix.CorpusRevision == "" {
 		t.Fatal("fixture corpus revision is empty")
 	}
-	if len(matrix.Comparisons) == 0 {
-		t.Fatal("fixture parity matrix is empty")
+	if len(matrix.Cases) == 0 {
+		t.Fatal("fixture Go oracle matrix is empty")
 	}
-	for _, comparison := range matrix.Comparisons {
-		if comparison.Receipt.MismatchCount != 0 {
-			t.Fatalf("%s/%s/%s mismatch receipt: %#v", comparison.Receipt.SourceID, comparison.Receipt.FamilyID, comparison.Receipt.CaseID, comparison.Receipt)
+	for _, oracle := range matrix.Cases {
+		if oracle.ProviderNetworkEgress {
+			t.Fatalf("%s/%s/%s/%s oracle used provider network egress", oracle.SourceID, oracle.FamilyID, oracle.CaseID, oracle.Operation)
 		}
-		if comparison.Receipt.GoPageDigestSHA256 != comparison.Receipt.RustPageDigestSHA256 {
-			t.Fatalf("%s/%s/%s Go/Rust page digest mismatch", comparison.Receipt.SourceID, comparison.Receipt.FamilyID, comparison.Receipt.CaseID)
-		}
-		if comparison.Receipt.CursorDigestSHA256 == "" || comparison.Receipt.CheckpointDigestSHA256 == "" || comparison.Receipt.ReceiptDigestSHA256 == "" {
-			t.Fatalf("%s/%s/%s receipt has empty digest fields: %#v", comparison.Receipt.SourceID, comparison.Receipt.FamilyID, comparison.Receipt.CaseID, comparison.Receipt)
+		if oracle.GoPageDigestSHA256 == "" || oracle.OracleDigestSHA256 == "" {
+			t.Fatalf("%s/%s/%s/%s oracle has empty digest fields: %#v", oracle.SourceID, oracle.FamilyID, oracle.CaseID, oracle.Operation, oracle)
 		}
 	}
-	t.Logf("fixture parity matrix corpus_revision=%s cases=%d mismatch_count=%d first_receipt=%#v",
-		matrix.CorpusRevision, len(matrix.Comparisons), matrix.MismatchCount, matrix.Comparisons[0].Receipt)
+
+	artifactPath := filepath.Join("..", "..", "crates", "source-runtime-next", "testdata", "go_fixture_oracle.json")
+	payload, err := os.ReadFile(artifactPath)
+	if err != nil {
+		t.Fatalf("read Go fixture oracle artifact: %v", err)
+	}
+	var artifact FixtureGoOracleMatrix
+	if err := json.Unmarshal(payload, &artifact); err != nil {
+		t.Fatalf("decode Go fixture oracle artifact: %v", err)
+	}
+	current, err := json.MarshalIndent(matrix, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current = append(current, '\n')
+	if string(payload) != string(current) {
+		t.Fatalf("Go fixture oracle artifact drifted; regenerate %s from BuildGoFixtureOracleMatrix", artifactPath)
+	}
+
+	operationsByFixture := map[string]map[FixtureParityOperation]bool{}
+	for _, oracle := range artifact.Cases {
+		key := oracle.SourceID + "/" + oracle.FamilyID + "/" + oracle.CaseID
+		if operationsByFixture[key] == nil {
+			operationsByFixture[key] = map[FixtureParityOperation]bool{}
+		}
+		operationsByFixture[key][oracle.Operation] = true
+	}
+	for fixture, operations := range operationsByFixture {
+		for _, operation := range []FixtureParityOperation{FixtureParityCheck, FixtureParityDiscover, FixtureParityReadPage} {
+			if !operations[operation] {
+				t.Fatalf("%s missing operation %s from Go oracle artifact", fixture, operation)
+			}
+		}
+	}
+	t.Logf("fixture Go oracle corpus_revision=%s cases=%d first_oracle=%#v",
+		matrix.CorpusRevision, len(matrix.Cases), matrix.Cases[0])
 }
 
 func TestRustFixtureParityCoversPageSemantics(t *testing.T) {
@@ -96,32 +130,29 @@ func TestRustFixtureParityCoversPageSemantics(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			comparison, err := CompareFixtureParity(test.input, "test-corpus")
+			page, err := ExecuteGoFixtureOraclePage(test.input)
 			if err != nil {
-				t.Fatalf("CompareFixtureParity() error = %v", err)
+				t.Fatalf("ExecuteGoFixtureOraclePage() error = %v", err)
 			}
-			if comparison.Receipt.MismatchCount != 0 {
-				t.Fatalf("mismatch count = %d", comparison.Receipt.MismatchCount)
-			}
-			joined := strings.Join(append(comparison.GoPage.ShortCircuitReasons, comparison.GoPage.ReconciliationReasons...), ",")
+			joined := strings.Join(append(page.ShortCircuitReasons, page.ReconciliationReasons...), ",")
 			for _, want := range test.want {
 				if !strings.Contains(joined, want) {
 					t.Fatalf("reasons %q do not contain %q", joined, want)
 				}
 			}
-			if test.wantZero && comparison.GoPage.AcceptedCount != 0 {
-				t.Fatalf("accepted count = %d, want 0", comparison.GoPage.AcceptedCount)
+			if test.wantZero && page.AcceptedCount != 0 {
+				t.Fatalf("accepted count = %d, want 0", page.AcceptedCount)
 			}
 		})
 	}
 
 	notModified := base
-	first, err := ExecuteFixtureParityPage(base)
+	first, err := ExecuteGoFixtureOraclePage(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	notModified.Checkpoint = first.ProposedCheckpoint
-	second, err := ExecuteFixtureParityPage(notModified)
+	second, err := ExecuteGoFixtureOraclePage(notModified)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,12 +165,63 @@ func TestRustFixtureParityCoversPageSemantics(t *testing.T) {
 	discover := base
 	discover.Operation = FixtureParityDiscover
 	for _, input := range []FixtureParityInput{check, discover} {
-		comparison, err := CompareFixtureParity(input, "test-corpus")
+		page, err := ExecuteGoFixtureOraclePage(input)
 		if err != nil {
-			t.Fatalf("%s CompareFixtureParity() error = %v", input.Operation, err)
+			t.Fatalf("%s ExecuteGoFixtureOraclePage() error = %v", input.Operation, err)
 		}
-		if comparison.Receipt.MismatchCount != 0 {
-			t.Fatalf("%s mismatch count = %d", input.Operation, comparison.Receipt.MismatchCount)
+		if page.Operation != input.Operation {
+			t.Fatalf("%s page operation = %s", input.Operation, page.Operation)
+		}
+	}
+}
+
+func TestFixtureParityReceiptRequiresCrossLanguageComparison(t *testing.T) {
+	input := FixtureParityInput{
+		SourceID: "fixture", FamilyID: "identity_user", CaseID: "page",
+		Operation: FixtureParityReadPage, Payload: []byte(`{"items":[{"id":"u1"}]}`), Limit: 10,
+	}
+	goPage, err := ExecuteGoFixtureOraclePage(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rustPage := goPage
+	rustPage.AcceptedCount++
+	comparison, err := CompareFixtureParityAgainstRustPage(input, "test-corpus", goPage, rustPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comparison.Receipt.MismatchCount == 0 {
+		t.Fatalf("mismatch_count = 0 for divergent Go/Rust pages: %#v", comparison.Receipt)
+	}
+	if comparison.Receipt.GoPageDigestSHA256 == comparison.Receipt.RustPageDigestSHA256 {
+		t.Fatalf("Go/Rust page digests unexpectedly match: %#v", comparison.Receipt)
+	}
+	if comparison.Receipt.ReceiptDigestSHA256 == "" {
+		t.Fatalf("receipt digest is empty: %#v", comparison.Receipt)
+	}
+}
+
+func TestFixtureParityInputsCoverEveryOperationPerManifestCase(t *testing.T) {
+	inputs, err := BuildFixtureParityInputs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationsByFixture := map[string]map[FixtureParityOperation]bool{}
+	for _, input := range inputs {
+		key := input.SourceID + "/" + input.FamilyID + "/" + input.CaseID
+		if operationsByFixture[key] == nil {
+			operationsByFixture[key] = map[FixtureParityOperation]bool{}
+		}
+		operationsByFixture[key][input.Operation] = true
+	}
+	if len(operationsByFixture) == 0 {
+		t.Fatal("no fixture manifest cases found")
+	}
+	for fixture, operations := range operationsByFixture {
+		for _, operation := range []FixtureParityOperation{FixtureParityCheck, FixtureParityDiscover, FixtureParityReadPage} {
+			if !operations[operation] {
+				t.Fatalf("%s missing operation %s", fixture, operation)
+			}
 		}
 	}
 }

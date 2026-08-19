@@ -91,58 +91,105 @@ type FixtureParityComparison struct {
 	Receipt  FixtureParityReceipt `json:"receipt"`
 }
 
+type FixtureGoOracleCase struct {
+	SourceID              string                 `json:"source_id"`
+	FamilyID              string                 `json:"family_id"`
+	CaseID                string                 `json:"case_id"`
+	Operation             FixtureParityOperation `json:"operation"`
+	PayloadSHA256         string                 `json:"payload_sha256,omitempty"`
+	GoPage                FixtureParityPage      `json:"go_page"`
+	GoPageDigestSHA256    string                 `json:"go_page_digest_sha256"`
+	OracleDigestSHA256    string                 `json:"oracle_digest_sha256"`
+	OfflineProof          string                 `json:"offline_proof"`
+	ProviderNetworkEgress bool                   `json:"provider_network_egress"`
+}
+
+type FixtureGoOracleMatrix struct {
+	SchemaVersion  string                `json:"schema_version"`
+	CorpusRevision string                `json:"corpus_revision"`
+	Cases          []FixtureGoOracleCase `json:"cases"`
+}
+
 type FixtureParityMatrix struct {
 	CorpusRevision string                    `json:"corpus_revision"`
 	Comparisons    []FixtureParityComparison `json:"comparisons"`
 	MismatchCount  int                       `json:"mismatch_count"`
 }
 
-func BuildFixtureParityMatrix(root string) (FixtureParityMatrix, error) {
+func BuildFixtureParityInputs(root string) ([]FixtureParityInput, error) {
 	var inputs []FixtureParityInput
 	if err := sourcefixture.WalkBundles(root, func(bundle sourcefixture.Bundle) error {
-		inputs = append(inputs, FixtureParityInput{
-			SourceID:      bundle.Manifest.SourceID,
-			FamilyID:      bundle.Manifest.Family,
-			CaseID:        bundle.Manifest.Case,
-			Payload:       bundle.Payload,
-			PayloadSHA256: bundle.Manifest.Response.SHA256,
-			Operation:     FixtureParityReadPage,
-			Limit:         1000,
-		})
+		for _, operation := range []FixtureParityOperation{
+			FixtureParityCheck,
+			FixtureParityDiscover,
+			FixtureParityReadPage,
+		} {
+			inputs = append(inputs, FixtureParityInput{
+				SourceID:      bundle.Manifest.SourceID,
+				FamilyID:      bundle.Manifest.Family,
+				CaseID:        bundle.Manifest.Case,
+				Payload:       bundle.Payload,
+				PayloadSHA256: bundle.Manifest.Response.SHA256,
+				Operation:     operation,
+				Limit:         1000,
+			})
+		}
 		return nil
 	}); err != nil {
-		return FixtureParityMatrix{}, err
+		return nil, err
 	}
 	sort.Slice(inputs, func(i, j int) bool {
-		left := inputs[i].SourceID + "/" + inputs[i].FamilyID + "/" + inputs[i].CaseID
-		right := inputs[j].SourceID + "/" + inputs[j].FamilyID + "/" + inputs[j].CaseID
+		left := fixtureParityInputKey(inputs[i])
+		right := fixtureParityInputKey(inputs[j])
 		return left < right
 	})
+	return inputs, nil
+}
+
+func BuildGoFixtureOracleMatrix(root string) (FixtureGoOracleMatrix, error) {
+	inputs, err := BuildFixtureParityInputs(root)
+	if err != nil {
+		return FixtureGoOracleMatrix{}, err
+	}
 	corpusRevision, err := fixtureCorpusRevision(inputs)
 	if err != nil {
-		return FixtureParityMatrix{}, err
+		return FixtureGoOracleMatrix{}, err
 	}
-	matrix := FixtureParityMatrix{CorpusRevision: corpusRevision}
+	matrix := FixtureGoOracleMatrix{
+		SchemaVersion:  fixtureParityCorpusVersion,
+		CorpusRevision: corpusRevision,
+	}
 	for _, input := range inputs {
-		comparison, err := CompareFixtureParity(input, corpusRevision)
+		page, err := ExecuteGoFixtureOraclePage(input)
 		if err != nil {
-			return FixtureParityMatrix{}, err
+			return FixtureGoOracleMatrix{}, err
 		}
-		matrix.MismatchCount += comparison.Receipt.MismatchCount
-		matrix.Comparisons = append(matrix.Comparisons, comparison)
+		pageDigest, err := CanonicalSourceRuntimeDigest(page)
+		if err != nil {
+			return FixtureGoOracleMatrix{}, err
+		}
+		oracle := FixtureGoOracleCase{
+			SourceID:              input.SourceID,
+			FamilyID:              input.FamilyID,
+			CaseID:                input.CaseID,
+			Operation:             input.Operation,
+			PayloadSHA256:         input.PayloadSHA256,
+			GoPage:                page,
+			GoPageDigestSHA256:    pageDigest,
+			OfflineProof:          "fixture_only_no_provider_network",
+			ProviderNetworkEgress: false,
+		}
+		oracleDigest, err := CanonicalSourceRuntimeDigest(oracle)
+		if err != nil {
+			return FixtureGoOracleMatrix{}, err
+		}
+		oracle.OracleDigestSHA256 = oracleDigest
+		matrix.Cases = append(matrix.Cases, oracle)
 	}
 	return matrix, nil
 }
 
-func CompareFixtureParity(input FixtureParityInput, corpusRevision string) (FixtureParityComparison, error) {
-	goPage, err := ExecuteFixtureParityPage(input)
-	if err != nil {
-		return FixtureParityComparison{}, err
-	}
-	rustPage, err := ExecuteFixtureParityPage(input)
-	if err != nil {
-		return FixtureParityComparison{}, err
-	}
+func CompareFixtureParityAgainstRustPage(input FixtureParityInput, corpusRevision string, goPage, rustPage FixtureParityPage) (FixtureParityComparison, error) {
 	receipt, err := fixtureParityReceipt(input, corpusRevision, goPage, rustPage)
 	if err != nil {
 		return FixtureParityComparison{}, err
@@ -150,7 +197,7 @@ func CompareFixtureParity(input FixtureParityInput, corpusRevision string) (Fixt
 	return FixtureParityComparison{GoPage: goPage, RustPage: rustPage, Receipt: receipt}, nil
 }
 
-func ExecuteFixtureParityPage(input FixtureParityInput) (FixtureParityPage, error) {
+func ExecuteGoFixtureOraclePage(input FixtureParityInput) (FixtureParityPage, error) {
 	page := FixtureParityPage{
 		SourceID:       input.SourceID,
 		FamilyID:       input.FamilyID,
@@ -341,10 +388,14 @@ func fixtureCorpusRevision(inputs []FixtureParityInput) (string, error) {
 		if payloadDigest == "" {
 			payloadDigest = digestFixtureValue(json.RawMessage(input.Payload))
 		}
-		entries = append(entries, filepath.ToSlash(input.SourceID+"/"+input.FamilyID+"/"+input.CaseID)+":"+payloadDigest)
+		entries = append(entries, filepath.ToSlash(fixtureParityInputKey(input))+":"+payloadDigest)
 	}
 	sort.Strings(entries)
 	return digestFixtureValue(entries), nil
+}
+
+func fixtureParityInputKey(input FixtureParityInput) string {
+	return input.SourceID + "/" + input.FamilyID + "/" + input.CaseID + "/" + string(input.Operation)
 }
 
 func digestFixtureValue(value any) string {
