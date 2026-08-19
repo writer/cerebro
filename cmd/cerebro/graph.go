@@ -487,7 +487,7 @@ func runGraphInspect(args []string) error {
 		if err != nil {
 			return err
 		}
-		store := dependencyGraphQueryStore(deps)
+		store := deps.GraphReads.Neighborhoods
 		if store == nil {
 			return fmt.Errorf("graph read store is required for neighborhoods")
 		}
@@ -811,11 +811,11 @@ func runGraphImpact(args []string) error {
 		return err
 	}
 	defer logClose(closeDeps)
-	store := dependencyGraphQueryStore(deps)
+	store := deps.GraphReads.Neighborhoods
 	if store == nil {
 		return fmt.Errorf("graph read store is required for impact traversals")
 	}
-	result, err := graphquery.New(store).GetImpact(ctx, request)
+	result, err := graphquery.NewWithCapabilities(store, deps.GraphReads.RawCypher, deps.GraphReads.Catalog, deps.GraphReads.Exposure).GetImpact(ctx, request)
 	if err != nil {
 		return err
 	}

@@ -237,6 +237,9 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	if strings.Contains(securityPathCapture, "GraphQueries ports.GraphQueryStore") {
 		t.Error("security path capture restored full graph query dependency")
 	}
+	if strings.Contains(securityPathCapture, "GraphQueries ports.RawCypherQueryStore") {
+		t.Error("security path capture restored graph query naming for raw-Cypher dependency")
+	}
 	graphAgentValidator := readText(t, filepath.Join(root, "internal/graphagent/validator.go"))
 	if strings.Contains(graphAgentValidator, "store   ports.GraphQueryStore") || strings.Contains(graphAgentValidator, "func NewValidator(store ports.GraphQueryStore") {
 		t.Error("graph agent validator restored full graph query dependency")

@@ -42,7 +42,7 @@ type runtimeSyncService interface {
 }
 
 type SecurityPathDependencies struct {
-	GraphQueries ports.RawCypherQueryStore
+	RawCypher    ports.RawCypherQueryStore
 	GraphIngest  graphIngestService
 	Checkpoints  CheckpointStore
 	RuntimeStore ports.SourceRuntimeStore
@@ -104,7 +104,7 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 	if tenantID == "" || runtimeID == "" {
 		return securitypathdelta.Snapshot{}, errors.New("source runtime tenant and id are required for security path capture")
 	}
-	if s == nil || s.deps.GraphQueries == nil {
+	if s == nil || s.deps.RawCypher == nil {
 		return securitypathdelta.Snapshot{}, attackpath.ErrRuntimeUnavailable
 	}
 	migrationLimitations, err := s.migrateLegacyAssertions(ctx, tenantID)
@@ -112,7 +112,7 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 		return securitypathdelta.Snapshot{}, err
 	}
 	observedAt := time.Now().UTC()
-	result, err := attackpath.New(s.deps.GraphQueries).Traverse(ctx, attackpath.Request{
+	result, err := attackpath.New(s.deps.RawCypher).Traverse(ctx, attackpath.Request{
 		TenantID:              tenantID,
 		AccountID:             strings.TrimSpace(request.AccountID),
 		RequireAssertionProof: true,
@@ -129,7 +129,7 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 	limitations := append([]string(nil), request.GraphReceipt.limitations...)
 	limitations = append(limitations, migrationLimitations...)
 	limitations = append(limitations, sourceruntime.CollectionIncompletenessReasons(runtime)...)
-	coverageStore, ok := s.deps.GraphQueries.(ports.ProjectionAssertionCoverageStore)
+	coverageStore, ok := s.deps.RawCypher.(ports.ProjectionAssertionCoverageStore)
 	if !ok || coverageStore == nil {
 		limitations = append(limitations, "material_link_assertion_coverage_unavailable")
 	} else {
@@ -199,7 +199,7 @@ func (s *SecurityPathService) captureSnapshot(ctx context.Context, request snaps
 }
 
 func (s *SecurityPathService) migrateLegacyAssertions(ctx context.Context, tenantID string) ([]string, error) {
-	migrator, ok := s.deps.GraphQueries.(ports.ProjectionAssertionMigrator)
+	migrator, ok := s.deps.RawCypher.(ports.ProjectionAssertionMigrator)
 	if !ok || migrator == nil {
 		return []string{"material_link_assertion_migration_unavailable"}, nil
 	}
