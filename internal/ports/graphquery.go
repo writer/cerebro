@@ -79,14 +79,6 @@ type RawCypherQueryStore interface {
 	ExecuteReadCypher(context.Context, CypherQueryRequest) ([]CypherRow, error)
 }
 
-// GraphQueryStore is the transitional composite consumed by existing product
-// packages. The authority adapter serves typed reads from Rust and delegates
-// only raw Cypher through RawCypherQueryStore.
-type GraphQueryStore interface {
-	GraphNeighborhoodStore
-	RawCypherQueryStore
-}
-
 // GraphReadStore is the top-level graph read handle wired by bootstrap: Rust
 // authority typed reads (neighborhoods, batched neighborhoods, entity catalog,
 // exposure coverage) plus the retained raw-Cypher compatibility surface.

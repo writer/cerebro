@@ -1185,4 +1185,4 @@ func (s *askStore) ExecuteReadCypher(_ context.Context, request ports.CypherQuer
 	return s.rows, nil
 }
 
-var _ ports.GraphQueryStore = (*askStore)(nil)
+var _ Store = (*askStore)(nil)
