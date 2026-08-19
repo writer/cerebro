@@ -81,7 +81,7 @@ type CrownJewelRank struct {
 }
 
 func (s *Service) GetCrownJewelRanks(ctx context.Context, request CrownJewelRankRequest) (*CrownJewelRankResult, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.rawCypher == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
@@ -103,7 +103,7 @@ func (s *Service) GetCrownJewelRanks(ctx context.Context, request CrownJewelRank
 		},
 	}
 
-	seedRows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: crownJewelSeedQuery, Params: params, RowLimit: seedLimit})
+	seedRows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: crownJewelSeedQuery, Params: params, RowLimit: seedLimit})
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (s *Service) GetCrownJewelRanks(ctx context.Context, request CrownJewelRank
 	}
 	params["path_limit_per_seed"] = int64(crownJewelLimitPerSeed(len(seeds)))
 
-	edgeRows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: crownJewelEdgeQuery(depth), Params: params, RowLimit: ports.MaxCypherQueryRows})
+	edgeRows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: crownJewelEdgeQuery(depth), Params: params, RowLimit: ports.MaxCypherQueryRows})
 	if err != nil {
 		return nil, err
 	}
