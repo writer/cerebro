@@ -565,7 +565,7 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	graphStore := dependencyGraphQueryStore(a.deps)
+	graphStore := a.deps.GraphReads.Neighborhoods
 	if graphStore == nil {
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
 		return
@@ -668,7 +668,7 @@ func (a *App) buildGRCAuditPreview(r *http.Request, findingID string) (grcAuditP
 	}
 	var graph *ports.EntityNeighborhood
 	if len(finding.ResourceURNs) > 0 {
-		if graphStore := dependencyGraphQueryStore(a.deps); graphStore != nil {
+		if graphStore := a.deps.GraphReads.Neighborhoods; graphStore != nil {
 			var graphErr error
 			graph, graphErr = graphStore.GetEntityNeighborhood(r.Context(), finding.ResourceURNs[0], int(limit))
 			if graphErr != nil {

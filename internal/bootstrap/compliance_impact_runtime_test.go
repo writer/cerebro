@@ -15,7 +15,7 @@ func TestComplianceImpactServiceComposition(t *testing.T) {
 	t.Parallel()
 	graph := &impactGraphStub{}
 	app := &App{deps: Dependencies{
-		StateStore: &monitorStateStub{}, GraphStore: graph, GraphQueries: graph, AppendLog: bootstrapAppendOnlyLog{},
+		StateStore: &monitorStateStub{}, GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph), AppendLog: bootstrapAppendOnlyLog{},
 	}}
 	monitors, projector, scheduler := app.newComplianceImpactServices(nil, nil)
 	if monitors == nil || projector == nil || scheduler == nil {
@@ -23,7 +23,7 @@ func TestComplianceImpactServiceComposition(t *testing.T) {
 	}
 
 	app.deps.GraphStore = nil
-	app.deps.GraphQueries = nil
+	app.deps.GraphReads = GraphReadCapabilities{}
 	monitors, projector, scheduler = app.newComplianceImpactServices(nil, nil)
 	if monitors == nil || projector != nil || scheduler != nil {
 		t.Fatalf("without graph monitors=%v projector=%v scheduler=%v", monitors != nil, projector != nil, scheduler != nil)
@@ -32,7 +32,7 @@ func TestComplianceImpactServiceComposition(t *testing.T) {
 	app.deps.StateStore = nonEvidenceStateStub{}
 	graph = &impactGraphStub{}
 	app.deps.GraphStore = graph
-	app.deps.GraphQueries = graph
+	app.deps.GraphReads = NewGraphReadCapabilities(graph)
 	monitors, projector, scheduler = app.newComplianceImpactServices(nil, nil)
 	if monitors != nil || projector == nil || scheduler != nil {
 		t.Fatalf("without monitor store monitors=%v projector=%v scheduler=%v", monitors != nil, projector != nil, scheduler != nil)
@@ -42,10 +42,10 @@ func TestComplianceImpactServiceComposition(t *testing.T) {
 func TestComplianceImpactUsesConfiguredReadAuthority(t *testing.T) {
 	t.Parallel()
 	app := &App{deps: Dependencies{
-		StateStore:   &monitorStateStub{},
-		GraphStore:   &projectionOnlyImpactGraphStub{},
-		GraphQueries: &queryOnlyImpactGraphStub{},
-		AppendLog:    bootstrapAppendOnlyLog{},
+		StateStore: &monitorStateStub{},
+		GraphStore: &projectionOnlyImpactGraphStub{},
+		GraphReads: GraphReadCapabilities{RawCypher: &queryOnlyImpactGraphStub{}},
+		AppendLog:  bootstrapAppendOnlyLog{},
 	}}
 
 	monitors, projector, scheduler := app.newComplianceImpactServices(nil, nil)
@@ -100,7 +100,7 @@ func (*monitorStateStub) Ping(context.Context) error { return nil }
 
 type impactGraphStub struct {
 	ports.ProjectionGraphStore
-	ports.GraphReadStore
+	ports.RawCypherQueryStore
 }
 
 func (*impactGraphStub) Ping(context.Context) error { return nil }
@@ -112,7 +112,7 @@ type projectionOnlyImpactGraphStub struct {
 func (*projectionOnlyImpactGraphStub) Ping(context.Context) error { return nil }
 
 type queryOnlyImpactGraphStub struct {
-	ports.GraphReadStore
+	ports.RawCypherQueryStore
 }
 
 func (*queryOnlyImpactGraphStub) Ping(context.Context) error { return nil }

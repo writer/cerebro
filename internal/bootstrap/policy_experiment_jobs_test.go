@@ -130,7 +130,7 @@ func TestPolicyExperimentJobRunsCurrentGraphCanaryAndPersistsReceipt(t *testing.
 	statusReader := policyExperimentStatusReader{status: policycandidate.ExperimentCheckpointStatus{
 		RuntimeID: "runtime-canary", TenantID: "tenant-a", CheckpointID: checkpoint.ID, Found: true, Completed: true, CheckpointCurrent: true,
 	}}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0"}, Dependencies{StateStore: store, GraphStore: graph, GraphQueries: graph, PolicyExperimentCheckpoints: statusReader}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0"}, Dependencies{StateStore: store, GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph), PolicyExperimentCheckpoints: statusReader}, nil)
 	result, _, err := app.runPolicyCandidateExperimentJob(context.Background(), &ports.Job{
 		ID: "job-canary", TenantID: "tenant-a", SubjectID: experiment.ID, Payload: map[string]any{"experiment_id": experiment.ID},
 	}, nil)

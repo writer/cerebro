@@ -22,7 +22,7 @@ func TestHandleGetGraphProvenance(t *testing.T) {
 			"attributes_json": `{"event_id":"evt-1","observed_at":"2026-06-15T12:00:00Z","projection_class":"durable_state","projection_reason":"projected_current_state"}`,
 		}},
 	}}}
-	app := New(graphReasoningAuthConfig(), Dependencies{GraphStore: graphStore, GraphQueries: graphStore}, nil)
+	app := New(graphReasoningAuthConfig(), Dependencies{GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 

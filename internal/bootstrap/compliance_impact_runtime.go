@@ -24,7 +24,7 @@ func (a *App) newComplianceImpactServices(jobs *platformjobs.Service, assessment
 	}
 
 	projectionStore, projectionOK := a.deps.GraphStore.(ports.ProjectionGraphStore)
-	queryStore := dependencyGraphQueryStore(a.deps)
+	queryStore := a.deps.GraphReads.RawCypher
 	if !projectionOK || isNilInterface(projectionStore) || isNilInterface(queryStore) {
 		return monitorService, nil, nil
 	}
