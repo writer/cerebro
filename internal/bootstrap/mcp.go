@@ -94,7 +94,7 @@ type mcpGraphStoreNeighborhoodResult struct {
 	err          error
 }
 
-func fetchMCPGraphStoreNeighborhoods(ctx context.Context, graphStore ports.GraphQueryStore, roots []string, limit int) []mcpGraphStoreNeighborhoodResult {
+func fetchMCPGraphStoreNeighborhoods(ctx context.Context, graphStore ports.GraphNeighborhoodStore, roots []string, limit int) []mcpGraphStoreNeighborhoodResult {
 	if graphStore == nil || len(roots) == 0 {
 		return nil
 	}

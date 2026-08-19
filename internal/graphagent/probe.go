@@ -133,7 +133,7 @@ func resetGraphProbeCountsCacheForTest() {
 	graphProbeCountsCache.entries = map[string]graphProbeCountsCacheEntry{}
 }
 
-func probeCounts(ctx context.Context, store ports.GraphQueryStore, params map[string]any, query string, probe *GraphProbe) []GraphProbeCount {
+func probeCounts(ctx context.Context, store ports.RawCypherQueryStore, params map[string]any, query string, probe *GraphProbe) []GraphProbeCount {
 	rows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: query, Params: params, RowLimit: 20})
 	if err != nil {
 		if probe != nil {

@@ -1,5 +1,5 @@
 // Package organizationalgraph makes the Rust-owned generated graph contract
-// the product read authority. A legacy store is optional and exists only for
+// the product read authority. A raw Cypher compatibility store is optional for
 // callers that have not yet moved from raw Cypher to typed operations.
 package organizationalgraph
 
@@ -54,12 +54,12 @@ func ReadinessStore(compatibility, authority ports.GraphStore) ports.GraphStore 
 	return compatibility
 }
 
-func NewQueryStore(rawCypher ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration) (*QueryStore, error) {
+func NewQueryStore(rawCypher ports.RawCypherQueryStore, baseURL, sharedSecret string, timeout time.Duration) (*QueryStore, error) {
 	return newQueryStore(rawCypher, baseURL, sharedSecret, timeout)
 }
 
 // NewConfiguredQueryStore selects one validated deployment read strategy.
-func NewConfiguredQueryStore(rawCypher ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string) (*QueryStore, error) {
+func NewConfiguredQueryStore(rawCypher ports.RawCypherQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string) (*QueryStore, error) {
 	return NewConfiguredQueryStoreWithCompatibility(
 		rawCypher,
 		baseURL,

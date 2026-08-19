@@ -36,7 +36,7 @@ func newSourceFeatureService(deps sourceFeatureDeps) *sourceops.Service {
 
 type reportFeatureDeps struct {
 	Findings     ports.FindingStore
-	GraphQueries ports.GraphQueryStore
+	GraphQueries ports.GraphNeighborhoodStore
 	Reports      ports.ReportStore
 }
 
@@ -112,7 +112,7 @@ type findingFeatureDeps struct {
 	Claims          ports.ClaimStore
 	Candidates      ports.FindingCandidateStore
 	ProjectionGraph ports.ProjectionGraphStore
-	GraphQueries    ports.GraphQueryStore
+	GraphQueries    ports.RawCypherQueryStore
 	AppendLog       ports.AppendLog
 	Rules           *findings.Registry
 }
@@ -149,21 +149,19 @@ func newFindingWorkflowFeatureService(deps findingFeatureDeps) *findings.Service
 }
 
 type knowledgeFeatureDeps struct {
-	GraphQueries    ports.GraphQueryStore
 	ProjectionGraph ports.ProjectionGraphStore
 	AppendLog       ports.AppendLog
 }
 
 func newKnowledgeFeatureDeps(deps Dependencies) knowledgeFeatureDeps {
 	return knowledgeFeatureDeps{
-		GraphQueries:    dependencyGraphQueryStore(deps),
 		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
 		AppendLog:       deps.AppendLog,
 	}
 }
 
 func newKnowledgeFeatureService(deps knowledgeFeatureDeps) *knowledge.Service {
-	return knowledge.New(deps.GraphQueries, deps.ProjectionGraph).
+	return knowledge.New(deps.ProjectionGraph).
 		WithAppendLog(deps.AppendLog).
 		WithDurabilityMode(knowledge.DurabilityRequired)
 }

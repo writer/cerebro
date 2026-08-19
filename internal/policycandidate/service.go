@@ -25,7 +25,7 @@ type Service struct {
 	Experiments ExperimentStore
 	Datasets    PolicyEvaluationDatasetStore
 	Author      *agentauthoring.Service
-	Graph       ports.GraphQueryStore
+	Graph       ports.RawCypherQueryStore
 	Catalog     CoverageCatalog
 	Now         func() time.Time
 }

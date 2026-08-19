@@ -115,7 +115,7 @@ func TestWriteDecisionRecordsDecisionTargetsEvidenceAndActions(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
+	service := New(store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 
 	result, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		DecisionType:  "finding-triage",
@@ -168,7 +168,7 @@ func TestWriteOutcomeRecordsOutcomeAgainstDecision(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
+	service := New(store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 	decision, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -210,7 +210,7 @@ func TestWriteActionRecordsTargetsAndDecisionLink(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
+	service := New(store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 	decision, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -273,7 +273,7 @@ func TestWriteDecisionAppendsWorkflowEventBeforeProjection(t *testing.T) {
 		},
 	}
 	appendLog := &recordingAppendLog{}
-	service := New(store, store).WithAppendLog(appendLog)
+	service := New(store).WithAppendLog(appendLog)
 	result, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -307,7 +307,7 @@ func TestWriteDecisionAppendFailurePreventsGraphProjection(t *testing.T) {
 		},
 	}
 	appendErr := errors.New("append failed")
-	service := New(store, store).WithAppendLog(&recordingAppendLog{err: appendErr})
+	service := New(store).WithAppendLog(&recordingAppendLog{err: appendErr})
 	if _, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -333,7 +333,7 @@ func TestWriteActionProjectionFailureReturnsDurableResult(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
+	service := New(store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 	decision, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -367,7 +367,7 @@ func TestWriteActionProjectionFailureReturnsDurableResult(t *testing.T) {
 }
 
 func TestWriteDecisionRequiresAppendLogInDurableMode(t *testing.T) {
-	service := New(nil, nil).WithDurabilityMode(DurabilityRequired)
+	service := New(nil).WithDurabilityMode(DurabilityRequired)
 	if _, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		DecisionType: "finding-triage",
 		TargetIDs:    []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
@@ -378,7 +378,7 @@ func TestWriteDecisionRequiresAppendLogInDurableMode(t *testing.T) {
 
 func TestWriteDecisionRecordsWithoutGraphWhenAppendLogIsAvailable(t *testing.T) {
 	appendLog := &recordingAppendLog{}
-	result, err := New(nil, nil).
+	result, err := New(nil).
 		WithAppendLog(appendLog).
 		WithDurabilityMode(DurabilityRequired).
 		WriteDecision(context.Background(), DecisionWriteRequest{
@@ -399,7 +399,7 @@ func TestWriteDecisionRecordsWithoutGraphWhenAppendLogIsAvailable(t *testing.T) 
 func TestLegacyProjectionOnlyReportsMissingDurability(t *testing.T) {
 	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}}
-	result, err := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly).WriteDecision(context.Background(), DecisionWriteRequest{
+	result, err := New(store).WithDurabilityMode(DurabilityLegacyProjectionOnly).WriteDecision(context.Background(), DecisionWriteRequest{
 		DecisionType: "finding-triage",
 		TargetIDs:    []string{targetURN},
 	})
@@ -413,7 +413,7 @@ func TestLegacyProjectionOnlyReportsMissingDurability(t *testing.T) {
 
 func TestCrossTenantReferenceNeverEntersAppendLog(t *testing.T) {
 	appendLog := &recordingAppendLog{}
-	_, err := New(nil, nil).
+	_, err := New(nil).
 		WithAppendLog(appendLog).
 		WithDurabilityMode(DurabilityRequired).
 		WriteDecision(context.Background(), DecisionWriteRequest{
@@ -432,7 +432,7 @@ func TestCrossTenantReferenceNeverEntersAppendLog(t *testing.T) {
 
 func TestDecisionRetryKeepsLogicalEventIdentity(t *testing.T) {
 	appendLog := &recordingAppendLog{}
-	service := New(nil, nil).WithAppendLog(appendLog)
+	service := New(nil).WithAppendLog(appendLog)
 	request := DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -458,7 +458,7 @@ func TestPacketDecisionIdentityNamespaceIsServerOwned(t *testing.T) {
 	store := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{
 		targetURN: {URN: targetURN, TenantID: "writer", SourceID: "test", EntityType: "resource", Label: "Service 1"},
 	}}
-	service := New(store, store).WithAppendLog(appendLog)
+	service := New(store).WithAppendLog(appendLog)
 	request := DecisionWriteRequest{
 		ID:           "urn:cerebro:writer:packet_decision:dpr-1-accepted",
 		DecisionType: "finding-triage",
@@ -501,7 +501,7 @@ func TestKnowledgeValidationErrorsAreInvalidRequests(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
+	service := New(store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 	for _, tt := range []struct {
 		name string
 		run  func() error

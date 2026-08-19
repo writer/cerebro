@@ -70,7 +70,7 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	vendors, err := grcvendor.New(dependencyGraphQueryStore(a.deps)).ListVendors(r.Context(), grcvendor.ListVendorsRequest{
+	vendors, err := grcvendor.New(dependencyGRCVendorGraphStore(a.deps)).ListVendors(r.Context(), grcvendor.ListVendorsRequest{
 		TenantID:    scope.TenantID,
 		RuntimeID:   scope.RuntimeID,
 		RuntimeIDs:  scope.RuntimeIDs,
@@ -102,6 +102,15 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		Vendors:     vendors,
 		GeneratedAt: time.Now().UTC(),
 	})
+}
+
+func dependencyGRCVendorGraphStore(deps Dependencies) grcvendor.GraphStore {
+	graphStore := dependencyGraphQueryStore(deps)
+	if graphStore == nil {
+		return nil
+	}
+	store, _ := graphStore.(grcvendor.GraphStore)
+	return store
 }
 
 func (a *App) handleGRCVendorDetail(w http.ResponseWriter, r *http.Request) {
@@ -141,7 +150,7 @@ func (a *App) grcVendorDetailResponse(r *http.Request) (grcVendorDetailResponse,
 	if err != nil {
 		return grcVendorDetailResponse{}, err
 	}
-	detail, err := grcvendor.New(dependencyGraphQueryStore(a.deps)).GetVendor(r.Context(), grcvendor.VendorDetailRequest{
+	detail, err := grcvendor.New(dependencyGRCVendorGraphStore(a.deps)).GetVendor(r.Context(), grcvendor.VendorDetailRequest{
 		URN:        urn,
 		VendorID:   vendorID,
 		TenantID:   scope.TenantID,
@@ -213,7 +222,7 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	decisionState := strings.TrimSpace(r.URL.Query().Get("decision_state"))
-	discoveries, err := grcvendor.New(dependencyGraphQueryStore(a.deps)).ListDiscoveries(r.Context(), grcvendor.ListDiscoveriesRequest{
+	discoveries, err := grcvendor.New(dependencyGRCVendorGraphStore(a.deps)).ListDiscoveries(r.Context(), grcvendor.ListDiscoveriesRequest{
 		TenantID:      scope.TenantID,
 		RuntimeID:     scope.RuntimeID,
 		RuntimeIDs:    scope.RuntimeIDs,

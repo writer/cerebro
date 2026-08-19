@@ -1143,7 +1143,7 @@ func rowValueEmpty(value any) bool {
 	}
 }
 
-func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore, scopeURN string) *ports.EntityNeighborhood {
+func scopedNeighborhood(ctx context.Context, store ports.GraphNeighborhoodStore, scopeURN string) *ports.EntityNeighborhood {
 	scopeURN = strings.TrimSpace(scopeURN)
 	if scopeURN == "" || store == nil {
 		return nil

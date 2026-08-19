@@ -21,7 +21,7 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	if got := newFindingFeatureDeps(deps); got.Runtimes != nil || got.EventReplayer != nil || got.Findings != nil || got.EvaluationRuns != nil || got.Evidence != nil || got.Claims != nil || got.Candidates != nil || got.ProjectionGraph != nil || got.GraphQueries != nil || got.AppendLog != nil {
 		t.Fatalf("newFindingFeatureDeps() = %#v, want nil dependencies", got)
 	}
-	if got := newKnowledgeFeatureDeps(deps); got.GraphQueries != nil || got.ProjectionGraph != nil || got.AppendLog != nil {
+	if got := newKnowledgeFeatureDeps(deps); got.ProjectionGraph != nil || got.AppendLog != nil {
 		t.Fatalf("newKnowledgeFeatureDeps() = %#v, want nil dependencies", got)
 	}
 	if got := newGraphQueryFeatureDeps(deps); got.GraphQueries != nil {
@@ -59,9 +59,6 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	if got := newFindingFeatureDeps(deps).GraphQueries; got != authority {
 		t.Fatalf("finding graph queries = %#v, want configured authority", got)
 	}
-	if got := newKnowledgeFeatureDeps(deps).GraphQueries; got != authority {
-		t.Fatalf("knowledge graph queries = %#v, want configured authority", got)
-	}
 	if got := newGraphQueryFeatureDeps(deps).GraphQueries; got != authority {
 		t.Fatalf("graph query service = %#v, want configured authority", got)
 	}
@@ -81,9 +78,6 @@ func TestProductReadDependencyBundlesDoNotFallbackToLegacyGraphStore(t *testing.
 	}
 	if got := newFindingFeatureDeps(deps).GraphQueries; got != nil {
 		t.Fatalf("finding graph queries = %#v, want nil without configured authority", got)
-	}
-	if got := newKnowledgeFeatureDeps(deps).GraphQueries; got != nil {
-		t.Fatalf("knowledge graph queries = %#v, want nil without configured authority", got)
 	}
 	if got := newGraphQueryFeatureDeps(deps).GraphQueries; got != nil {
 		t.Fatalf("graph query service = %#v, want nil without configured authority", got)

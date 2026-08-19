@@ -42,7 +42,7 @@ type runtimeSyncService interface {
 }
 
 type SecurityPathDependencies struct {
-	GraphQueries ports.GraphQueryStore
+	GraphQueries ports.RawCypherQueryStore
 	GraphIngest  graphIngestService
 	Checkpoints  CheckpointStore
 	RuntimeStore ports.SourceRuntimeStore
