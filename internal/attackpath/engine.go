@@ -27,8 +27,10 @@ var (
 )
 
 type Engine struct {
-	store ports.RawCypherQueryStore
-	depth int
+	store     ports.RawCypherQueryStore
+	typed     ports.CloudAttackPathStore
+	depth     int
+	useLegacy bool
 }
 
 type Request struct {
@@ -104,11 +106,15 @@ type NodeRef struct {
 }
 
 func New(store ports.RawCypherQueryStore) *Engine {
-	return &Engine{store: store, depth: DefaultDepth}
+	return &Engine{store: store, typed: cloudAttackPathCapability(store), depth: DefaultDepth}
+}
+
+func NewWithCapabilities(rawCypher ports.RawCypherQueryStore, typed ports.CloudAttackPathStore) *Engine {
+	return &Engine{store: rawCypher, typed: typed, depth: DefaultDepth}
 }
 
 func (e *Engine) Traverse(ctx context.Context, request Request) (*Result, error) {
-	if e == nil || e.store == nil {
+	if e == nil || (e.typed == nil && e.store == nil) {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
@@ -125,6 +131,26 @@ func (e *Engine) Traverse(ctx context.Context, request Request) (*Result, error)
 			RequireAssertionProof: request.RequireAssertionProof,
 			Limit:                 limit,
 		},
+	}
+	if e.typed != nil && !e.useLegacy {
+		typed, err := e.typed.ListCloudAttackPaths(ctx, ports.CloudAttackPathRequest{
+			TenantID:              tenantID,
+			AccountID:             strings.TrimSpace(request.AccountID),
+			RuntimeID:             strings.TrimSpace(request.RuntimeID),
+			RequireAssertionProof: request.RequireAssertionProof,
+			Limit:                 limit,
+			Depth:                 NormalizeDepth(e.depth),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := applyTypedResult(result, typed, limit); err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+	if e.store == nil {
+		return nil, ErrRuntimeUnavailable
 	}
 
 	countsQuery := CountsQuery(e.depth)
@@ -150,6 +176,92 @@ func (e *Engine) Traverse(ctx context.Context, request Request) (*Result, error)
 		result.NeighborhoodURN = result.Paths[0].ExposedResource.URN
 	}
 	return result, nil
+}
+
+func cloudAttackPathCapability(store any) ports.CloudAttackPathStore {
+	if typed, ok := store.(ports.CloudAttackPathStore); ok {
+		return typed
+	}
+	return nil
+}
+
+func applyTypedResult(result *Result, typed *ports.CloudAttackPathResult, limit int) error {
+	if result == nil || typed == nil || typed.TenantID != result.TenantID {
+		return fmt.Errorf("%w: typed attack path returned an invalid tenant", ErrRuntimeUnavailable)
+	}
+	if len(typed.Paths) > limit {
+		return fmt.Errorf("%w: typed attack path returned too many paths", ErrRuntimeUnavailable)
+	}
+	result.Counts = Counts{
+		Paths:                uint64ToInt(typed.Counts.Paths),
+		ExposedResources:     uint64ToInt(typed.Counts.ExposedResources),
+		PrivilegedPrincipals: uint64ToInt(typed.Counts.PrivilegedPrincipals),
+		CloudAccounts:        uint64ToInt(typed.Counts.CloudAccounts),
+	}
+	for _, path := range typed.Paths {
+		converted := pathFromTyped(path)
+		if converted.PublicPrincipal.URN == "" || converted.ExposedResource.URN == "" || converted.CloudAccount.URN == "" || converted.Principal.URN == "" || converted.Permission.URN == "" || !BoundaryProofMatches(converted) || !AccountProofMatches(converted) || !TraversalProofMatches(converted.RelationChain, converted.TraversalEdges) {
+			continue
+		}
+		result.Paths = append(result.Paths, converted)
+		if len(result.Paths) == limit {
+			break
+		}
+	}
+	if len(result.Paths) > 0 {
+		result.NeighborhoodURN = result.Paths[0].ExposedResource.URN
+	}
+	return nil
+}
+
+func pathFromTyped(path ports.CloudAttackPath) Path {
+	ownerships := make([]Ownership, 0, len(path.Ownerships))
+	for _, ownership := range path.Ownerships {
+		ownerships = append(ownerships, Ownership{
+			Owner: nodeFromTyped(ownership.Owner),
+			Edge:  edgeFromTyped(ownership.Edge),
+		})
+	}
+	traversalEdges := make([]Edge, 0, len(path.TraversalEdges))
+	for _, edge := range path.TraversalEdges {
+		traversalEdges = append(traversalEdges, edgeFromTyped(edge))
+	}
+	return Path{
+		PublicPrincipal:       nodeFromTyped(path.PublicPrincipal),
+		ExposedResource:       nodeFromTyped(path.ExposedResource),
+		CloudAccount:          nodeFromTyped(path.CloudAccount),
+		Principal:             nodeFromTyped(path.Principal),
+		Permission:            nodeFromTyped(path.Permission),
+		Ownerships:            ownerships,
+		ReachRelation:         path.ReachRelation,
+		AccessRelation:        path.AccessRelation,
+		RelationChain:         append([]string(nil), path.RelationChain...),
+		ExposureEdge:          edgeFromTyped(path.ExposureEdge),
+		ResourceAccountEdge:   edgeFromTyped(path.ResourceAccountEdge),
+		TraversalEdges:        traversalEdges,
+		PrivilegeEdge:         edgeFromTyped(path.PrivilegeEdge),
+		PermissionAccountEdge: edgeFromTyped(path.PermissionAccountEdge),
+	}
+}
+
+func nodeFromTyped(node ports.CloudAttackPathNode) NodeRef {
+	return NodeRef{URN: node.URN, EntityType: node.EntityType, Label: node.Label}
+}
+
+func edgeFromTyped(edge ports.CloudAttackPathEdge) Edge {
+	attributes := cypherMapJSON(map[string]any{"attributes_json": edge.AttributesJSON}, "attributes_json")
+	sourceRuntimeID := firstNonEmpty(edge.SourceRuntimeID, attributes["source_runtime_id"])
+	return Edge{
+		From:                nodeFromTyped(edge.From),
+		Relation:            edge.Relation,
+		To:                  nodeFromTyped(edge.To),
+		Direction:           edge.Direction,
+		SourceID:            firstNonEmpty(edge.SourceID, attributes["source_id"]),
+		SourceRuntimeID:     sourceRuntimeID,
+		AssertionRuntimeIDs: normalizedStringList(append(edge.AssertionRuntimeIDs, sourceRuntimeID)),
+		SourceEventID:       firstNonEmpty(attributes["source_event_id"], attributes["event_id"]),
+		ObservedAt:          parseObservedAt(firstNonEmpty(attributes["observed_at"], attributes["at"])),
+	}
 }
 
 func NormalizeLimit(limit uint32) int {
