@@ -188,7 +188,7 @@ func TestDecisionPacketDispositionAndOutcomeConnect(t *testing.T) {
 func TestLegacyKnownOutcomesRetainKnowledgePath(t *testing.T) {
 	writeLegacyDecision := func(t *testing.T, log *decisionOutcomeLog, decisionID string) string {
 		t.Helper()
-		writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+		writer := knowledge.New(nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
 		result, err := writer.WriteDecision(context.Background(), knowledge.DecisionWriteRequest{
 			ID: decisionID, DecisionType: "change", Status: "recorded", SourceSystem: "legacy",
 			TargetIDs:  []string{"urn:cerebro:tenant-1:resource:1"},

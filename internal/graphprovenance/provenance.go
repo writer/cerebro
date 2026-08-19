@@ -38,10 +38,10 @@ type Provenance struct {
 }
 
 type Service struct {
-	store ports.GraphQueryStore
+	store ports.EntityCatalogStore
 }
 
-func New(store ports.GraphQueryStore) *Service {
+func New(store ports.EntityCatalogStore) *Service {
 	return &Service{store: store}
 }
 
@@ -54,11 +54,7 @@ func (s *Service) Get(ctx context.Context, request Request) (Response, error) {
 		return Response{}, graphquery.ErrRuntimeUnavailable
 	}
 	tenantID := TenantIDFromURN(urn)
-	store, ok := s.store.(ports.EntityCatalogStore)
-	if !ok {
-		return Response{}, ports.ErrGraphTypedOperationRequired
-	}
-	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn}, Limit: 1})
+	page, err := s.store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn}, Limit: 1})
 	if err != nil {
 		return Response{}, err
 	}

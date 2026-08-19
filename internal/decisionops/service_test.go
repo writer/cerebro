@@ -91,7 +91,7 @@ func TestRecordDecisionAndOutcomeRemainDurableWithoutGraph(t *testing.T) {
 		ScopeURN: "urn:cerebro:tenant-1:finding:1",
 	}}
 	log := &replayLog{}
-	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	writer := knowledge.New(nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
 	service := New(receipts, log, writer, &sequenceClock{values: []time.Time{start, start.Add(2 * time.Hour)}})
 
 	decision, err := service.RecordDecision(context.Background(), RecordDecisionRequest{
@@ -136,7 +136,7 @@ func TestAuthenticatedPacketDecisionClassification(t *testing.T) {
 		ScopeURN: "urn:cerebro:tenant-1:finding:1",
 	}}
 	log := &replayLog{}
-	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	writer := knowledge.New(nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
 	service := New(receipts, log, writer, &sequenceClock{values: []time.Time{start}})
 	if _, err := service.IsAuthenticatedPacketDecision(context.Background(), "tenant-1", "urn:cerebro:tenant-1:decision:future"); !errors.Is(err, ErrDecisionNotFound) {
 		t.Fatalf("missing decision error = %v, want %v", err, ErrDecisionNotFound)
@@ -204,7 +204,7 @@ func TestChangeDecisionCompletionMetricIsEmittedOnce(t *testing.T) {
 		PacketDigest: "sha256:packet", ScopeURN: "urn:cerebro:tenant-1:change:1",
 	}}
 	log := &replayLog{}
-	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	writer := knowledge.New(nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
 	service := New(receipts, log, writer, &sequenceClock{values: []time.Time{start, start.Add(time.Minute)}})
 	decision, err := service.RecordDecision(context.Background(), RecordDecisionRequest{
 		TenantID: "tenant-1", ActorID: "operator-1", PacketID: "dpr_1",
@@ -252,7 +252,7 @@ func decisionMetricTotal(metrics metricdata.ResourceMetrics, name string) int64 
 func TestRecordOutcomeRejectsLegacyDecisionWithForgedPacketMetadata(t *testing.T) {
 	start := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
 	log := &replayLog{}
-	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	writer := knowledge.New(nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
 	forged, err := writer.WriteDecision(context.Background(), knowledge.DecisionWriteRequest{
 		ID: "forged-decision", DecisionType: "evidence-backed-finding_to_verified_fix",
 		Status: string(decisionworkflow.DispositionAccepted), MadeBy: "forged-operator",
@@ -292,7 +292,7 @@ func TestVerifiedClosureRequiresIndependentActor(t *testing.T) {
 		DecisionState: string(decisionworkflow.DecisionSupported), PacketDigest: "sha256:packet",
 	}}
 	log := &replayLog{}
-	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	writer := knowledge.New(nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
 	service := New(receipts, log, writer, &sequenceClock{values: []time.Time{start}})
 	decision, err := service.RecordDecision(context.Background(), RecordDecisionRequest{
 		TenantID: "tenant-1", ActorID: "operator-1", PacketID: "dpr_1", Disposition: decisionworkflow.DispositionAccepted,
@@ -310,7 +310,7 @@ func TestVerifiedClosureRequiresIndependentActor(t *testing.T) {
 }
 
 func TestRecordDecisionRejectsUnboundedDispositionReason(t *testing.T) {
-	service := New(&receiptStore{}, nil, knowledge.New(nil, nil), nil)
+	service := New(&receiptStore{}, nil, knowledge.New(nil), nil)
 	_, err := service.RecordDecision(context.Background(), RecordDecisionRequest{
 		TenantID: "tenant-1", ActorID: "operator-1", PacketID: "dpr_1",
 		Disposition: decisionworkflow.DispositionAccepted, Reason: decisionworkflow.DismissalAcceptedRisk,
@@ -328,7 +328,7 @@ func TestAuditDeliveryRequiresReceipt(t *testing.T) {
 		DecisionState: string(decisionworkflow.DecisionSupported), PacketDigest: "sha256:packet",
 	}}
 	log := &replayLog{}
-	writer := knowledge.New(nil, nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
+	writer := knowledge.New(nil).WithAppendLog(log).WithDurabilityMode(knowledge.DurabilityRequired)
 	service := New(receipts, log, writer, &sequenceClock{values: []time.Time{start}})
 	decision, err := service.RecordDecision(context.Background(), RecordDecisionRequest{
 		TenantID: "tenant-1", ActorID: "operator-1", PacketID: "dpr_1", Disposition: decisionworkflow.DispositionAccepted,

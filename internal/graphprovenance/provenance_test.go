@@ -65,21 +65,8 @@ func TestServiceGetRejectsKindOnlyURN(t *testing.T) {
 
 type recordingStore struct {
 	rows           []ports.CypherRow
-	request        ports.CypherQueryRequest
 	called         bool
 	catalogRequest ports.EntityCatalogPageRequest
-}
-
-func (s *recordingStore) Ping(context.Context) error { return nil }
-
-func (s *recordingStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
-	return nil, ports.ErrGraphEntityNotFound
-}
-
-func (s *recordingStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	s.called = true
-	s.request = request
-	return s.rows, nil
 }
 
 func (s *recordingStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
