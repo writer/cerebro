@@ -154,6 +154,20 @@ func ValidateAuthorityEvidenceRecord(record AuthorityEvidenceRecord) error {
 	return nil
 }
 
+func VerifyAuthorityEvidenceRecord(record AuthorityEvidenceRecord) error {
+	record = normalizedAuthorityEvidenceRecord(record)
+	if err := ValidateAuthorityEvidenceRecord(record); err != nil {
+		return err
+	}
+	if !validSHA256Hex(record.RecordDigestSHA256) {
+		return fmt.Errorf("%w: record_digest_sha256 must be SHA-256 hex", ErrAuthorityEvidenceInvalid)
+	}
+	if got := authorityEvidenceRecordDigest(record); got != record.RecordDigestSHA256 {
+		return fmt.Errorf("%w: record digest mismatch", ErrAuthorityEvidenceImmutable)
+	}
+	return nil
+}
+
 func AuthorityEvidenceReceiptRef(record AuthorityEvidenceRecord) string {
 	record = normalizedAuthorityEvidenceRecord(record)
 	if record.DecisionID == "" {

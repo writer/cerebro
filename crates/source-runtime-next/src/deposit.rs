@@ -30,6 +30,8 @@ pub struct DepositIngestRequest {
     pub links_projected: u32,
     /// Authority evidence decision that permitted this family mode.
     pub authority_decision_id: String,
+    /// Durable append-only authority evidence reference.
+    pub authority_evidence_ref: String,
 }
 
 /// Deposit ingest receipt that mirrors scheduled page receipt semantics without
@@ -66,6 +68,9 @@ pub struct DepositIngestReceipt {
     /// Authority evidence decision referenced by this receipt.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub authority_decision_id: String,
+    /// Durable append-only authority evidence reference.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub authority_evidence_ref: String,
     /// Canonical digest of this receipt.
     pub receipt_digest_sha256: String,
 }
@@ -88,7 +93,10 @@ pub fn build_deposit_receipt(
     {
         return Err(DepositIngestError::TenantMismatch);
     }
-    if request.appended > 0 && request.authority_decision_id.trim().is_empty() {
+    if request.appended > 0
+        && (request.authority_decision_id.trim().is_empty()
+            || request.authority_evidence_ref.trim().is_empty())
+    {
         return Err(DepositIngestError::MissingReceiptEvidence);
     }
     let id_payload = serde_json::json!({
@@ -117,6 +125,7 @@ pub fn build_deposit_receipt(
         links_projected: request.links_projected,
         idempotency_key_digest: digest_optional(&request.idempotency_key),
         authority_decision_id: request.authority_decision_id.trim().to_owned(),
+        authority_evidence_ref: request.authority_evidence_ref.trim().to_owned(),
         receipt_digest_sha256: String::new(),
     };
     receipt.receipt_digest_sha256 = canonical_digest(&receipt);
@@ -151,6 +160,7 @@ mod tests {
             entities_projected: 1,
             links_projected: 0,
             authority_decision_id: "decision-1".to_owned(),
+            authority_evidence_ref: "authority-evidence:decision-1:7".to_owned(),
         })
         .unwrap();
         assert!(receipt.receipt_id.starts_with("deposit:"));
@@ -168,6 +178,7 @@ mod tests {
         let serialized = serde_json::to_string(&receipt).unwrap();
         assert!(!serialized.contains("SECRET-IDEMPOTENCY-KEY"));
         assert!(serialized.contains("decision-1"));
+        assert!(serialized.contains("authority-evidence:decision-1:7"));
     }
 
     #[test]
@@ -185,6 +196,7 @@ mod tests {
             entities_projected: 1,
             links_projected: 0,
             authority_decision_id: "decision-1".to_owned(),
+            authority_evidence_ref: "authority-evidence:decision-1:7".to_owned(),
         };
         assert_eq!(
             build_deposit_receipt(&request),
@@ -192,6 +204,12 @@ mod tests {
         );
         request.runtime_tenant_id = "tenant-a".to_owned();
         request.authority_decision_id.clear();
+        assert_eq!(
+            build_deposit_receipt(&request),
+            Err(DepositIngestError::MissingReceiptEvidence)
+        );
+        request.authority_decision_id = "decision-1".to_owned();
+        request.authority_evidence_ref.clear();
         assert_eq!(
             build_deposit_receipt(&request),
             Err(DepositIngestError::MissingReceiptEvidence)

@@ -47,6 +47,14 @@ func TestAuthorityEvidenceStreamIsAppendOnlyAndAuditable(t *testing.T) {
 	if ref := AuthorityEvidenceReceiptRef(first); ref != "authority-evidence:decision-promote:1" {
 		t.Fatalf("receipt ref = %q", ref)
 	}
+	if err := VerifyAuthorityEvidenceRecord(first); err != nil {
+		t.Fatalf("verify appended evidence: %v", err)
+	}
+	mutatedRecord := first
+	mutatedRecord.ReasonCode = "mutated_after_append"
+	if err := VerifyAuthorityEvidenceRecord(mutatedRecord); !errors.Is(err, ErrAuthorityEvidenceImmutable) {
+		t.Fatalf("verify mutated evidence error = %v, want immutable", err)
+	}
 }
 
 func TestAuthorityEvidenceRejectsMalformedDigestAndUnsignedPromotion(t *testing.T) {

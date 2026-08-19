@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -115,9 +116,10 @@ func stringInSlice(values []string, needle string) bool {
 
 type ledgerRuntimeStore struct {
 	runtimeStore
-	calls     []string
-	attempts  []ports.SourceRuntimePageAttempt
-	commitErr error
+	calls             []string
+	attempts          []ports.SourceRuntimePageAttempt
+	commitErr         error
+	authorityEvidence []sourcehealth.AuthorityEvidenceRecord
 }
 
 func (s *ledgerRuntimeStore) BeginSourceRuntimePage(_ context.Context, attempt ports.SourceRuntimePageAttempt) error {

@@ -31,6 +31,8 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   admission_scanned_sha256 TEXT NOT NULL DEFAULT '',
   admission_accepted_sha256 TEXT NOT NULL DEFAULT '',
   admission_result_sha256 TEXT NOT NULL DEFAULT '',
+  authority_decision_id TEXT NOT NULL DEFAULT '',
+  authority_epoch BIGINT NOT NULL DEFAULT 0,
   entities_projected INTEGER NOT NULL DEFAULT 0,
   links_projected INTEGER NOT NULL DEFAULT 0,
   runtime_json JSONB,
@@ -48,7 +50,9 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   ADD COLUMN IF NOT EXISTS admission_contracts_sha256 TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS admission_scanned_sha256 TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS admission_accepted_sha256 TEXT NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS admission_result_sha256 TEXT NOT NULL DEFAULT ''`,
+  ADD COLUMN IF NOT EXISTS admission_result_sha256 TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS authority_decision_id TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS authority_epoch BIGINT NOT NULL DEFAULT 0`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtime_page_ledger_runtime_status_idx ON source_runtime_page_ledger (runtime_id, status, updated_at ASC)`,
 	`CREATE TABLE IF NOT EXISTS source_runtime_page_outbox (
   attempt_id TEXT NOT NULL REFERENCES source_runtime_page_ledger(attempt_id) ON DELETE CASCADE,
@@ -84,9 +88,10 @@ INSERT INTO source_runtime_page_ledger (
   attempt_id, runtime_id, source_id, tenant_id, page_number, status,
   records_scanned, records_accepted, records_quarantined, duplicate_events,
   admission_kernel, admission_abi_version, admission_contracts_sha256,
-  admission_scanned_sha256, admission_accepted_sha256, admission_result_sha256
+  admission_scanned_sha256, admission_accepted_sha256, admission_result_sha256,
+  authority_decision_id, authority_epoch
 )
-VALUES ($1, $2, $3, $4, $5, 'started', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+VALUES ($1, $2, $3, $4, $5, 'started', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 ON CONFLICT (attempt_id)
 DO UPDATE SET status = 'started',
               records_scanned = EXCLUDED.records_scanned,
@@ -99,6 +104,8 @@ DO UPDATE SET status = 'started',
               admission_scanned_sha256 = EXCLUDED.admission_scanned_sha256,
               admission_accepted_sha256 = EXCLUDED.admission_accepted_sha256,
               admission_result_sha256 = EXCLUDED.admission_result_sha256,
+              authority_decision_id = EXCLUDED.authority_decision_id,
+              authority_epoch = EXCLUDED.authority_epoch,
               updated_at = NOW()`,
 		attemptID,
 		strings.TrimSpace(attempt.RuntimeID),
@@ -115,6 +122,8 @@ DO UPDATE SET status = 'started',
 		strings.TrimSpace(attempt.Admission.ScannedSHA256),
 		strings.TrimSpace(attempt.Admission.AcceptedSHA256),
 		strings.TrimSpace(attempt.Admission.ResultSHA256),
+		strings.TrimSpace(attempt.Authority.DecisionID),
+		attempt.Authority.Epoch,
 	); err != nil {
 		return fmt.Errorf("upsert source runtime page ledger %q: %w", attemptID, err)
 	}

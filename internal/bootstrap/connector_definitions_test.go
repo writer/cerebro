@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcegen"
+	"github.com/writer/cerebro/internal/sourcehealth"
 )
 
 type failAfterAppendLog struct {
@@ -33,6 +34,38 @@ func (l *failAfterAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 	}
 	l.events = append(l.events, event)
 	return nil
+}
+
+func (s *connectorTestStore) LatestSourceRuntimeAuthorityEvidence(_ context.Context, tenantID, sourceID, familyID string) (sourcehealth.AuthorityEvidenceRecord, error) {
+	for i := len(s.authorityEvidence) - 1; i >= 0; i-- {
+		record := s.authorityEvidence[i]
+		if record.TenantID == tenantID && record.SourceID == sourceID && record.FamilyID == familyID {
+			return record, nil
+		}
+	}
+	return sourcehealth.AuthorityEvidenceRecord{}, sourcehealth.ErrAuthorityEvidenceInvalid
+}
+
+func connectorDepositAuthorityEvidence(t *testing.T) sourcehealth.AuthorityEvidenceRecord {
+	t.Helper()
+	stream := sourcehealth.NewAuthorityEvidenceStream()
+	record, err := stream.Append(sourcehealth.AuthorityEvidenceRecord{
+		TenantID:                  "tenant-a",
+		SourceID:                  "custom_deposit",
+		FamilyID:                  "assets",
+		AuthorityEpoch:            7,
+		DecisionID:                "decision-deposit-authority",
+		DecisionKind:              sourcehealth.AuthorityDecisionPromote,
+		InputEvidenceDigestSHA256: strings.Repeat("a", 64),
+		ActorID:                   "system:cutover",
+		Timestamp:                 time.Date(2026, 8, 19, 11, 55, 0, 0, time.UTC),
+		ReasonCode:                "provider_proof_complete",
+		AuthenticatedReceiptID:    "receipt:promotion",
+	})
+	if err != nil {
+		t.Fatalf("append authority evidence fixture: %v", err)
+	}
+	return record
 }
 
 type testConnectorDefinitionPlanResponse struct {
@@ -763,6 +796,7 @@ func TestConnectorDepositAppendsAndProjectsDynamicRecords(t *testing.T) {
 				DefinitionJSON: definitionJSON,
 			},
 		},
+		authorityEvidence: []sourcehealth.AuthorityEvidenceRecord{connectorDepositAuthorityEvidence(t)},
 	}
 	appendLog := &recordingAppendLog{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
@@ -804,6 +838,8 @@ func TestConnectorDepositAppendsAndProjectsDynamicRecords(t *testing.T) {
 			ProjectionReceiptID  string `json:"projection_receipt_id"`
 			ReceiptDigestSHA256  string `json:"receipt_digest_sha256"`
 			IdempotencyKeyDigest string `json:"idempotency_key_digest"`
+			AuthorityDecisionID  string `json:"authority_decision_id"`
+			AuthorityEvidenceRef string `json:"authority_evidence_ref"`
 		} `json:"receipt"`
 	}
 	if err := json.Unmarshal(responseBytes, &payload); err != nil {
@@ -820,6 +856,9 @@ func TestConnectorDepositAppendsAndProjectsDynamicRecords(t *testing.T) {
 	}
 	if !strings.HasPrefix(payload.Receipt.ReceiptID, "deposit:") || payload.Receipt.AppendReceiptID == "" || payload.Receipt.ProjectionReceiptID == "" || len(payload.Receipt.ReceiptDigestSHA256) != 64 || len(payload.Receipt.IdempotencyKeyDigest) != 64 {
 		t.Fatalf("receipt = %#v, want deposit append/projection/idempotency digests", payload.Receipt)
+	}
+	if payload.Receipt.AuthorityDecisionID != "decision-deposit-authority" || payload.Receipt.AuthorityEvidenceRef != "authority-evidence:decision-deposit-authority:7" {
+		t.Fatalf("receipt authority refs = %#v, want durable authority evidence", payload.Receipt)
 	}
 	if len(appendLog.events) != 1 {
 		t.Fatalf("append log events = %d, want 1", len(appendLog.events))
@@ -889,6 +928,7 @@ func TestConnectorDepositRecordsRuntimeFailureAfterPartialAppend(t *testing.T) {
 				DefinitionJSON: definitionJSON,
 			},
 		},
+		authorityEvidence: []sourcehealth.AuthorityEvidenceRecord{connectorDepositAuthorityEvidence(t)},
 	}
 	appendLog := &failAfterAppendLog{failAfter: 1}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{

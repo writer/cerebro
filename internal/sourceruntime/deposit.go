@@ -47,6 +47,7 @@ type DepositResponse struct {
 	EntitiesProjected uint32
 	LinksProjected    uint32
 	Errors            []DepositRecordError
+	authorityEvidence ports.SourceRuntimeAuthorityEvidenceRef
 }
 
 type DepositReceipt struct {
@@ -70,6 +71,10 @@ type DepositRecordError struct {
 	Index         int
 	SourceEventID string
 	Detail        string
+}
+
+type depositAuthorityEvidenceReader interface {
+	LatestSourceRuntimeAuthorityEvidence(ctx context.Context, tenantID, sourceID, familyID string) (sourcehealth.AuthorityEvidenceRecord, error)
 }
 
 func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResponse, error) {
@@ -155,6 +160,18 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 		}
 		events = append(events, event)
 	}
+	if len(events) > 0 {
+		authority, err := s.depositAuthorityEvidence(ctx, runtime, family)
+		if err != nil {
+			return nil, err
+		}
+		response.Receipt.AuthorityDecisionID = authority.DecisionID
+		response.Receipt.AuthorityEvidenceRef = sourcehealth.AuthorityEvidenceReceiptRef(authority)
+		response.authorityEvidence = ports.SourceRuntimeAuthorityEvidenceRef{
+			DecisionID: authority.DecisionID,
+			Epoch:      authority.AuthorityEpoch,
+		}
+	}
 	if batcher, ok := s.appendLog.(ports.AppendLogBatcher); ok {
 		if err := s.beginDepositPageAttempt(ctx, runtime, family, events, response, req); err != nil {
 			return nil, err
@@ -197,7 +214,11 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 		return nil, err
 	}
 	response.RecordsAccepted = response.EventsAppended
-	response.Receipt = buildDepositReceipt(runtime, family, req, response)
+	receipt, err := buildDepositReceipt(runtime, family, req, response)
+	if err != nil {
+		return nil, err
+	}
+	response.Receipt = receipt
 	runtime.LastSyncedAt = timestamppb.Now()
 	if runtime.Config == nil {
 		runtime.Config = map[string]string{}
@@ -244,10 +265,29 @@ func (s *Service) beginDepositPageAttempt(ctx context.Context, runtime *cerebrov
 		RecordsScanned: boundedUint32(len(events)) + response.RecordsRejected,
 		Events:         events,
 		Admission:      admission,
+		Authority:      response.authorityEvidence,
 	}); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (s *Service) depositAuthorityEvidence(ctx context.Context, runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily) (sourcehealth.AuthorityEvidenceRecord, error) {
+	reader, ok := s.store.(depositAuthorityEvidenceReader)
+	if !ok {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence store is required for deposit ingest", ErrRuntimeUnavailable)
+	}
+	record, err := reader.LatestSourceRuntimeAuthorityEvidence(ctx, runtime.GetTenantId(), runtime.GetSourceId(), family.ID)
+	if err != nil {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence is required for deposit ingest: %v", ErrRuntimeUnavailable, err)
+	}
+	if err := sourcehealth.VerifyAuthorityEvidenceRecord(record); err != nil {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence is invalid for deposit ingest: %v", ErrRuntimeUnavailable, err)
+	}
+	if sourcehealth.AuthorityEvidenceReceiptRef(record) == "" {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence reference is required for deposit ingest", ErrRuntimeUnavailable)
+	}
+	return record, nil
 }
 
 func (s *Service) markDepositPageAppended(ctx context.Context, response *DepositResponse) error {
@@ -269,15 +309,18 @@ func (s *Service) markDepositPageProjected(ctx context.Context, response *Deposi
 	})
 }
 
-func buildDepositReceipt(runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily, req DepositRequest, response *DepositResponse) DepositReceipt {
+func buildDepositReceipt(runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily, req DepositRequest, response *DepositResponse) (DepositReceipt, error) {
 	if response == nil {
-		return DepositReceipt{}
+		return DepositReceipt{}, nil
 	}
 	receipt := response.Receipt
 	if receipt.ReceiptID == "" {
 		receipt.ReceiptID = depositReceiptID(runtime, family, req, nil)
 		receipt.AppendReceiptID = "append:" + receipt.ReceiptID
 		receipt.ProjectionReceiptID = "projection:" + receipt.ReceiptID
+	}
+	if response.EventsAppended > 0 && (strings.TrimSpace(receipt.AuthorityDecisionID) == "" || strings.TrimSpace(receipt.AuthorityEvidenceRef) == "") {
+		return DepositReceipt{}, fmt.Errorf("%w: deposit receipt is missing durable authority evidence", ErrRuntimeUnavailable)
 	}
 	receipt.RecordsScanned = response.RecordsAccepted + response.RecordsRejected
 	receipt.RecordsAccepted = response.RecordsAccepted
@@ -286,16 +329,13 @@ func buildDepositReceipt(runtime *cerebrov1.SourceRuntime, family connectordefin
 	receipt.EntitiesProjected = response.EntitiesProjected
 	receipt.LinksProjected = response.LinksProjected
 	receipt.QuarantineSummary = depositQuarantineSummary(response.Errors)
-	if key := strings.TrimSpace(req.IdempotencyKey); key != "" {
-		sum := sha256.Sum256([]byte(key))
-		receipt.IdempotencyKeyDigest = hex.EncodeToString(sum[:])
-	}
+	receipt.IdempotencyKeyDigest = depositRawDigest(req.IdempotencyKey)
 	receipt.ReceiptDigestSHA256 = ""
 	digest, err := CanonicalSourceRuntimeDigest(receipt)
 	if err == nil {
 		receipt.ReceiptDigestSHA256 = digest
 	}
-	return receipt
+	return receipt, nil
 }
 
 func depositReceiptID(runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily, req DepositRequest, events []*cerebrov1.EventEnvelope) string {
@@ -307,14 +347,14 @@ func depositReceiptID(runtime *cerebrov1.SourceRuntime, family connectordefiniti
 	}
 	sort.Strings(eventIDs)
 	payload := map[string]any{
-		"tenant_id":       runtime.GetTenantId(),
-		"source_id":       runtime.GetSourceId(),
-		"runtime_id":      runtime.GetId(),
-		"family_id":       family.ID,
-		"batch_id":        strings.TrimSpace(req.BatchID),
-		"idempotency_key": strings.TrimSpace(req.IdempotencyKey),
-		"full_state":      req.FullStateMarker,
-		"event_ids":       eventIDs,
+		"tenant_id":              runtime.GetTenantId(),
+		"source_id":              runtime.GetSourceId(),
+		"runtime_id":             runtime.GetId(),
+		"family_id":              family.ID,
+		"batch_id_digest":        depositRawDigest(req.BatchID),
+		"idempotency_key_digest": depositRawDigest(req.IdempotencyKey),
+		"full_state":             req.FullStateMarker,
+		"event_ids":              eventIDs,
 	}
 	digest, err := CanonicalSourceRuntimeDigest(payload)
 	if err != nil {
@@ -353,6 +393,15 @@ func depositDigest(value any) string {
 		return ""
 	}
 	return "sha256:" + digest
+}
+
+func depositRawDigest(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 func depositQuarantineSummary(errors []DepositRecordError) []string {
@@ -635,11 +684,13 @@ func depositProjectionClass(family connectordefinitions.ResourceFamily) string {
 
 func depositEventID(runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily, decoded any, payload json.RawMessage, options depositEventOptions) string {
 	hash := sha256.Sum256(payload)
-	stable := firstNonEmptyString(
-		options.IdempotencyKey,
-		options.BatchID,
-		depositPayloadFirstString(decoded, "source_event_id", "event_id"),
-	)
+	stable := depositSafeCallerToken("idempotency", options.IdempotencyKey)
+	if stable == "" {
+		stable = depositSafeCallerToken("batch", options.BatchID)
+	}
+	if stable == "" {
+		stable = depositPayloadFirstString(decoded, "source_event_id", "event_id")
+	}
 	if stable == "" {
 		stable = hex.EncodeToString(hash[:12])
 	}
@@ -652,6 +703,14 @@ func depositEventID(runtime *cerebrov1.SourceRuntime, family connectordefinition
 		strings.TrimSpace(family.ID),
 		sanitizeDepositEventIDSegment(stable),
 	}, ":")
+}
+
+func depositSafeCallerToken(label string, value string) string {
+	digest := depositRawDigest(value)
+	if digest == "" {
+		return ""
+	}
+	return strings.TrimSpace(label) + "-sha256-" + digest
 }
 
 func sanitizeDepositEventIDSegment(value string) string {
