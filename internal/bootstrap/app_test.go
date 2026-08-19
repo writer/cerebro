@@ -1673,6 +1673,8 @@ type stubGraphStore struct {
 	exposureResult      *ports.ExposureCoverageResult
 	exposureRequests    []ports.ExposureCoverageRequest
 	entityRequests      []ports.EntityCatalogPageRequest
+	entityKindRequests  []ports.EntityKindCountRequest
+	relationRequests    []ports.RelationCountRequest
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -1799,8 +1801,23 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 	}
 	return page, nil
 }
-func (s *stubGraphStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
-	return &ports.EntityKindCountPage{TenantID: "writer"}, nil
+func (s *stubGraphStore) CountEntityKinds(_ context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	s.entityKindRequests = append(s.entityKindRequests, request)
+	return &ports.EntityKindCountPage{
+		TenantID: request.Filter.TenantID,
+		Counts: []ports.EntityKindCount{
+			{EntityKind: "asset", Count: 1},
+		},
+	}, nil
+}
+func (s *stubGraphStore) CountRelations(_ context.Context, request ports.RelationCountRequest) (*ports.RelationCountPage, error) {
+	s.relationRequests = append(s.relationRequests, request)
+	return &ports.RelationCountPage{
+		TenantID: request.TenantID,
+		Counts: []ports.RelationCount{
+			{Relation: "has_finding", Count: 1},
+		},
+	}, nil
 }
 func (s *stubGraphStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
 	return &ports.EntityRelationPage{TenantID: "writer"}, nil

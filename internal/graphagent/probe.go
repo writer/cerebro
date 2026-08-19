@@ -44,7 +44,7 @@ type GraphProbeCount struct {
 	Count int64  `json:"count"`
 }
 
-func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, request AskRequest, params map[string]any) GraphProbe {
+func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, request AskRequest) GraphProbe {
 	probe := GraphProbe{ScopeURN: strings.TrimSpace(request.ScopeURN)}
 	if rawCypher == nil && neighborhoods == nil {
 		probe.Warnings = append(probe.Warnings, "graph_store_unavailable")
