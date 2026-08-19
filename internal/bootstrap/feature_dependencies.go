@@ -36,7 +36,7 @@ func newSourceFeatureService(deps sourceFeatureDeps) *sourceops.Service {
 
 type reportFeatureDeps struct {
 	Findings     ports.FindingStore
-	GraphQueries ports.GraphQueryStore
+	GraphQueries ports.GraphNeighborhoodStore
 	Reports      ports.ReportStore
 }
 
@@ -112,7 +112,7 @@ type findingFeatureDeps struct {
 	Claims          ports.ClaimStore
 	Candidates      ports.FindingCandidateStore
 	ProjectionGraph ports.ProjectionGraphStore
-	GraphQueries    ports.GraphQueryStore
+	GraphQueries    ports.RawCypherQueryStore
 	AppendLog       ports.AppendLog
 	Rules           *findings.Registry
 }

@@ -24,7 +24,7 @@ RETURN source.urn AS from_urn, target.urn AS to_urn, edge.relation AS relation, 
 ORDER BY from_urn, relation, to_urn
 LIMIT $row_limit`
 
-func groundGraphEvidence(ctx context.Context, graph ports.GraphQueryStore, tenantID string, evidence policyauthor.GraphEvidence, request GroundingRequest, now func() time.Time) (*GroundingReceipt, error) {
+func groundGraphEvidence(ctx context.Context, graph ports.RawCypherQueryStore, tenantID string, evidence policyauthor.GraphEvidence, request GroundingRequest, now func() time.Time) (*GroundingReceipt, error) {
 	if err := validateMultiHopEvidence(evidence); err != nil {
 		return nil, err
 	}

@@ -62,8 +62,13 @@ var (
 // Service reads the vendor GRC graph projection without owning a separate
 // source, source-provider writer, or normalization path.
 type Service struct {
-	store ports.GraphQueryStore
+	store GraphStore
 	now   func() time.Time
+}
+
+type GraphStore interface {
+	ports.EntityCatalogStore
+	ports.GraphNeighborhoodStore
 }
 
 type ListVendorsRequest struct {
@@ -457,7 +462,7 @@ type RelatedRecord struct {
 	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
-func New(store ports.GraphQueryStore) *Service {
+func New(store GraphStore) *Service {
 	return &Service{store: store, now: time.Now}
 }
 
