@@ -596,8 +596,11 @@ func TestWriteGraphErrorsDoNotExposeInternalMessages(t *testing.T) {
 
 func TestStoreBoundaryHelpersTreatTypedNilAsUnavailable(t *testing.T) {
 	var graph *stubGraphStore
-	if got := graphQueryStore(graph); got != nil {
-		t.Fatalf("graphQueryStore(typed nil) = %#v, want nil", got)
+	if got := dependencyGraphQueryStore(Dependencies{GraphQueries: graph}); got != nil {
+		t.Fatalf("dependencyGraphQueryStore(typed nil) = %#v, want nil", got)
+	}
+	if got := dependencyGraphQueryStore(Dependencies{GraphStore: &stubGraphStore{}}); got != nil {
+		t.Fatalf("dependencyGraphQueryStore(GraphStore only) = %#v, want nil", got)
 	}
 	if got := sourceProjectionGraphStore(graph); got != nil {
 		t.Fatalf("sourceProjectionGraphStore(typed nil) = %#v, want nil", got)

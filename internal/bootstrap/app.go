@@ -2047,19 +2047,11 @@ func guardedLegacyGraphProjector(deps Dependencies) ports.SourceProjector {
 	return organizationalgraph.NewLegacyWriteGuard(legacy, deps.OrganizationalProjector)
 }
 
-func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
-	queryStore, ok := store.(ports.GraphQueryStore)
-	if !ok || isNilInterface(queryStore) {
-		return nil
-	}
-	return queryStore
-}
-
 func dependencyGraphQueryStore(deps Dependencies) ports.GraphQueryStore {
 	if !isNilInterface(deps.GraphQueries) {
 		return deps.GraphQueries
 	}
-	return graphQueryStore(deps.GraphStore)
+	return nil
 }
 
 func askTrajectoryStore(store ports.StateStore) ports.AskTrajectoryStore {
