@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -50,7 +49,6 @@ type readMode uint8
 const (
 	readModeAuthority readMode = iota
 	readModeShadow
-	readModeCanary
 	readModeLegacy
 )
 
@@ -67,7 +65,6 @@ type QueryStore struct {
 	auth          tenantAuthenticator
 	mode          readMode
 	samplePercent uint32
-	verifyPercent uint32
 	timeout       time.Duration
 	comparisons   chan struct{}
 }
@@ -85,7 +82,7 @@ func NewQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret st
 }
 
 // NewConfiguredQueryStore selects one validated deployment read strategy.
-func NewConfiguredQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string, shadowPercent, authorityPercent, canaryVerifyPercent int) (*QueryStore, error) {
+func NewConfiguredQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string, shadowPercent int) (*QueryStore, error) {
 	return NewConfiguredQueryStoreWithCompatibility(
 		compatibility,
 		compatibility,
@@ -94,21 +91,19 @@ func NewConfiguredQueryStore(compatibility ports.GraphQueryStore, baseURL, share
 		timeout,
 		mode,
 		shadowPercent,
-		authorityPercent,
-		canaryVerifyPercent,
 	)
 }
 
 // NewConfiguredQueryStoreWithCompatibility keeps typed Go rollback reads
 // separate from raw Cypher compatibility. Authority mode needs only the raw
-// compatibility port; legacy, shadow, and canary also require typed Go reads.
+// compatibility port; legacy and shadow also require typed Go reads.
 func NewConfiguredQueryStoreWithCompatibility(
 	compatibility ports.GraphNeighborhoodStore,
 	rawCypher ports.RawCypherQueryStore,
 	baseURL, sharedSecret string,
 	timeout time.Duration,
 	mode string,
-	shadowPercent, authorityPercent, canaryVerifyPercent int,
+	shadowPercent int,
 ) (*QueryStore, error) {
 	switch mode {
 	case "legacy":
@@ -125,21 +120,7 @@ func NewConfiguredQueryStoreWithCompatibility(
 		}
 		return newQueryStore(compatibility, rawCypher, baseURL, sharedSecret, timeout, readModeShadow, uint32(shadowPercent)) // #nosec G115 -- validated above.
 	case "canary":
-		if compatibility == nil {
-			return nil, errors.New("canary graph reads require the legacy compatibility store")
-		}
-		if authorityPercent <= 0 || authorityPercent >= 100 {
-			return nil, errors.New("canary graph read percent must be between 1 and 99")
-		}
-		if canaryVerifyPercent < 0 || canaryVerifyPercent > 100 {
-			return nil, errors.New("canary graph verification percent must be between 0 and 100")
-		}
-		store, err := newQueryStore(compatibility, rawCypher, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
-		if err != nil {
-			return nil, err
-		}
-		store.verifyPercent = uint32(canaryVerifyPercent) // #nosec G115 -- validated above.
-		return store, nil
+		return nil, errors.New("canary graph reads are no longer supported")
 	case "", "authority":
 		// Config.Load normalizes an omitted mode to authority. Accept the zero
 		// value here as well for callers that construct Config directly.
@@ -167,34 +148,6 @@ func NewShadowQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSec
 		return nil, errors.New("shadow graph read percent must be between 1 and 100")
 	}
 	return newQueryStore(compatibility, compatibility, baseURL, sharedSecret, timeout, readModeShadow, uint32(shadowPercent)) // #nosec G115 -- validated above.
-}
-
-// NewCanaryQueryStore returns Rust responses for one stable sample of typed
-// reads and the compatibility response for the rest. A sampled Rust failure
-// fails closed; it never retries the same request against Go.
-func NewCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, authorityPercent int) (*QueryStore, error) {
-	return NewVerifiedCanaryQueryStore(compatibility, baseURL, sharedSecret, timeout, authorityPercent, 0)
-}
-
-// NewVerifiedCanaryQueryStore also compares a stable sample of Rust-authority
-// reads with the compatibility result. Verification never changes the selected
-// authority or falls back after a Rust failure.
-func NewVerifiedCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, authorityPercent, verifyPercent int) (*QueryStore, error) {
-	if compatibility == nil {
-		return nil, errors.New("canary graph reads require the legacy compatibility store")
-	}
-	if authorityPercent <= 0 || authorityPercent >= 100 {
-		return nil, errors.New("canary graph read percent must be between 1 and 99")
-	}
-	if verifyPercent < 0 || verifyPercent > 100 {
-		return nil, errors.New("canary graph verification percent must be between 0 and 100")
-	}
-	store, err := newQueryStore(compatibility, compatibility, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
-	if err != nil {
-		return nil, err
-	}
-	store.verifyPercent = uint32(verifyPercent) // #nosec G115 -- validated above.
-	return store, nil
 }
 
 func newQueryStore(compatibility ports.GraphNeighborhoodStore, rawCypher ports.RawCypherQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode readMode, samplePercent uint32) (*QueryStore, error) {
@@ -295,11 +248,6 @@ func (s *QueryStore) Ping(ctx context.Context) (err error) {
 			return nil, s.pingRust(comparisonCtx)
 		})
 		return nil
-	case readModeCanary:
-		if err := s.pingCompatibility(ctx); err != nil {
-			return err
-		}
-		return s.pingRust(ctx)
 	default:
 		return errors.New("organizational graph read mode is invalid")
 	}
@@ -340,26 +288,6 @@ func (s *QueryStore) pingRust(ctx context.Context) (err error) {
 func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
 	if s.mode == readModeLegacy {
 		return s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
-	}
-	if s.mode == readModeCanary {
-		tenantID := cerebrourn.TenantID(strings.TrimSpace(rootURN))
-		if tenantID == "" {
-			return nil, errors.New("root is not a tenant-scoped Cerebro URN")
-		}
-		started := time.Now()
-		if !s.sample(tenantID) {
-			result, err := s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
-			s.recordCanaryRoute(ctx, "expand", "go", err, started)
-			return result, err
-		}
-		result, err := s.getRustEntityNeighborhood(ctx, rootURN, limit)
-		if err == nil && s.verifyCanary("expand", rootURN) {
-			s.scheduleCanaryVerification(ctx, "expand", result, func(comparisonCtx context.Context) (any, error) {
-				return s.compatibility.GetEntityNeighborhood(comparisonCtx, rootURN, limit)
-			})
-		}
-		s.recordCanaryRoute(ctx, "expand", "rust", err, started)
-		return result, err
 	}
 	if s.mode == readModeAuthority {
 		return s.getRustEntityNeighborhood(ctx, rootURN, limit)
@@ -410,26 +338,6 @@ func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []stri
 		return legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
 	}
 	sampleKey := strings.Join(rootURNs, "\x00")
-	if s.mode == readModeCanary {
-		tenantID, err := graphRootsTenant(rootURNs)
-		if err != nil {
-			return nil, err
-		}
-		started := time.Now()
-		if !s.sample(tenantID) {
-			result, err := legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
-			s.recordCanaryRoute(ctx, "expand_batch", "go", err, started)
-			return result, err
-		}
-		result, err := s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
-		if err == nil && s.verifyCanary("expand_batch", sampleKey) {
-			s.scheduleCanaryVerification(ctx, "expand_batch", result, func(comparisonCtx context.Context) (any, error) {
-				return legacyNeighborhoods(comparisonCtx, s.compatibility, rootURNs, limit)
-			})
-		}
-		s.recordCanaryRoute(ctx, "expand_batch", "rust", err, started)
-		return result, err
-	}
 	if s.mode == readModeAuthority {
 		return s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
 	}
@@ -685,10 +593,6 @@ func (s *QueryStore) sample(key string) bool {
 	return sampleAtPercent(key, s.samplePercent)
 }
 
-func (s *QueryStore) verifyCanary(operation, key string) bool {
-	return sampleAtPercent("canary-verify\x00"+operation+"\x00"+key, s.verifyPercent)
-}
-
 func sampleAtPercent(key string, percent uint32) bool {
 	if percent == 0 {
 		return false
@@ -714,20 +618,6 @@ func (s *QueryStore) scheduleShadowComparison(ctx context.Context, operation str
 	}
 }
 
-func (s *QueryStore) scheduleCanaryVerification(ctx context.Context, operation string, rust any, compare func(context.Context) (any, error)) {
-	if !s.scheduleComparison(ctx, func(comparisonCtx context.Context) {
-		started := time.Now()
-		legacy, legacyErr := compare(comparisonCtx)
-		s.recordCanaryVerification(comparisonCtx, operation, legacy, legacyErr, rust, started)
-	}) {
-		logComparisonReceipt(ctx, operation, "dropped", nil, rust, errComparisonCapacity)
-		observability.RecordOrganizationalGraphCanaryVerification(ctx, observability.OrganizationalGraphCanaryVerificationMetrics{
-			Operation: operation,
-			Status:    "dropped",
-		})
-	}
-}
-
 func (s *QueryStore) scheduleComparison(ctx context.Context, compare func(context.Context)) bool {
 	select {
 	case s.comparisons <- struct{}{}:
@@ -742,40 +632,6 @@ func (s *QueryStore) scheduleComparison(ctx context.Context, compare func(contex
 		compare(comparisonCtx)
 	}()
 	return true
-}
-
-func (s *QueryStore) recordCanaryRoute(ctx context.Context, operation, authority string, err error, started time.Time) {
-	status := "success"
-	if err != nil {
-		status = "error"
-		// #nosec G706 -- operation and authority use closed vocabularies; the
-		// percentage is validated configuration and the error is emitted only
-		// as a locally generated digest.
-		log.Printf(
-			"organizational graph canary route operation=%s authority=%s status=error configured_percent=%d error_sha256=%s",
-			operation,
-			authority,
-			s.samplePercent,
-			digestString(err.Error()),
-		)
-	}
-	observability.RecordOrganizationalGraphCanaryRoute(ctx, observability.OrganizationalGraphCanaryRouteMetrics{
-		Operation:         operation,
-		Authority:         authority,
-		Status:            status,
-		ConfiguredPercent: int(s.samplePercent),
-		Duration:          time.Since(started),
-	})
-}
-
-func (s *QueryStore) recordCanaryVerification(ctx context.Context, operation string, legacy any, legacyErr error, rust any, started time.Time) {
-	status := comparisonStatus(legacy, legacyErr, rust, nil)
-	logComparisonReceipt(ctx, operation, status, legacy, rust, legacyErr)
-	observability.RecordOrganizationalGraphCanaryVerification(ctx, observability.OrganizationalGraphCanaryVerificationMetrics{
-		Operation: operation,
-		Status:    status,
-		Duration:  time.Since(started),
-	})
 }
 
 func (s *QueryStore) recordComparison(ctx context.Context, operation string, legacy, rust any, rustErr error, started time.Time) {

@@ -115,8 +115,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		queryStore, err := organizationalgraph.NewConfiguredQueryStoreWithCompatibility(
 			compatibility, rawCypher, readBaseURL, cfg.OrganizationalGraph.SharedSecret,
 			cfg.OrganizationalGraph.Timeout, cfg.OrganizationalGraph.ReadMode,
-			cfg.OrganizationalGraph.ShadowPercent, cfg.OrganizationalGraph.AuthorityPercent,
-			cfg.OrganizationalGraph.CanaryVerifyPercent,
+			cfg.OrganizationalGraph.ShadowPercent,
 		)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))
