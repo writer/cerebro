@@ -40,6 +40,7 @@ type graphServiceStub struct {
 	expandBatch    func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
 	listEntities   func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
 	countRelations func(context.Context, *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error)
+	personAccess   func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
 }
 
 func (s graphServiceStub) ListEntities(ctx context.Context, request *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error) {
@@ -56,6 +57,10 @@ func (s graphServiceStub) ExpandBatch(ctx context.Context, request *connect.Requ
 
 func (s graphServiceStub) CountRelations(ctx context.Context, request *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error) {
 	return s.countRelations(ctx, request)
+}
+
+func (s graphServiceStub) ListPersonAccessPaths(ctx context.Context, request *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error) {
+	return s.personAccess(ctx, request)
 }
 
 func newGraphTestServer(t *testing.T, service graphServiceStub) *httptest.Server {
@@ -160,6 +165,25 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 			}
 			return connect.NewResponse(&cerebrographv1.CountRelationsResponse{TenantId: "tenant-a", GraphRevision: 9, Counts: []*cerebrographv1.RelationCount{{Relation: "has_finding", Count: 4}}}), nil
 		},
+		personAccess: func(_ context.Context, request *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetLimit() != 10 || request.Msg.GetMaxDepth() != 3 {
+				t.Fatalf("person access request missing tenant/bounds: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			entity := func(kind, urn, label string) *cerebrographv1.GraphEntity {
+				return &cerebrographv1.GraphEntity{AgentKey: urn, EntityKind: kind, Label: label}
+			}
+			return connect.NewResponse(&cerebrographv1.ListPersonAccessPathsResponse{
+				TenantId:      "tenant-a",
+				GraphRevision: 9,
+				Paths: []*cerebrographv1.PersonAccessPath{{
+					Person:        entity("person", "urn:cerebro:tenant-a:person:one", "One"),
+					Identity:      entity("identity.email", "urn:cerebro:tenant-a:identity:one", "one@example.com"),
+					Principal:     entity("okta.user", "urn:cerebro:tenant-a:okta_user:one", "One"),
+					AccessTarget:  entity("aws.role", "urn:cerebro:tenant-a:aws_role:reader", "Reader"),
+					RelationChain: []string{"assigned_to"},
+				}},
+			}), nil
+		},
 	})
 	defer server.Close()
 	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
@@ -179,6 +203,13 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 	}
 	if relations.GraphRevision != 9 || len(relations.Counts) != 1 || relations.Counts[0].Relation != "has_finding" || relations.Counts[0].Count != 4 {
 		t.Fatalf("relations = %#v", relations)
+	}
+	access, err := store.ListPersonAccessPaths(context.Background(), ports.PersonAccessPathRequest{TenantID: "tenant-a", PersonQuery: "One", Limit: 10, Depth: 3})
+	if err != nil {
+		t.Fatalf("ListPersonAccessPaths() error = %v", err)
+	}
+	if access.GraphRevision != 9 || len(access.Paths) != 1 || access.Paths[0].AccessTarget.EntityType != "aws.role" {
+		t.Fatalf("access = %#v", access)
 	}
 }
 

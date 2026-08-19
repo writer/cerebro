@@ -29,6 +29,10 @@ service OrganizationalGraphService {
   rpc CountEntityKinds(CountEntityKindsRequest) returns (CountEntityKindsResponse);
   // CountRelations returns bounded relation counts from the tenant legacy graph projection.
   rpc CountRelations(CountRelationsRequest) returns (CountRelationsResponse);
+  // ListPersonAccessPaths returns bounded person-to-access-target paths from the legacy graph projection.
+  rpc ListPersonAccessPaths(ListPersonAccessPathsRequest) returns (ListPersonAccessPathsResponse);
+  // ListCloudAttackPaths returns bounded public-exposure-to-privilege paths from the legacy graph projection.
+  rpc ListCloudAttackPaths(ListCloudAttackPathsRequest) returns (ListCloudAttackPathsResponse);
   // ListEntityRelations returns filtered direct relations for one catalog entity.
   rpc ListEntityRelations(ListEntityRelationsRequest) returns (ListEntityRelationsResponse);
   // GetSourceSummary returns the catalog coverage compiled into the running Rust service.
@@ -295,6 +299,94 @@ message CountRelationsResponse {
   repeated RelationCount counts = 3;
   bool truncated = 4;
   string next_after_relation = 5;
+}
+
+message PersonAccessPath {
+  GraphEntity person = 1;
+  GraphEntity identity = 2;
+  GraphEntity principal = 3;
+  GraphEntity access_target = 4;
+  repeated string relation_chain = 5;
+}
+
+message ListPersonAccessPathsRequest {
+  string tenant_id = 1;
+  string person_urn = 2;
+  string person_query = 3;
+  uint32 limit = 4;
+  uint32 max_depth = 5;
+  uint64 expected_graph_revision = 6;
+}
+
+message ListPersonAccessPathsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated PersonAccessPath paths = 3;
+  bool truncated = 4;
+}
+
+message CloudAttackPathNode {
+  string urn = 1;
+  string entity_kind = 2;
+  string label = 3;
+}
+
+message CloudAttackPathEdge {
+  CloudAttackPathNode from = 1;
+  string relation = 2;
+  CloudAttackPathNode to = 3;
+  string direction = 4;
+  string source_id = 5;
+  string source_runtime_id = 6;
+  repeated string assertion_runtime_ids = 7;
+  string attributes_json = 8;
+}
+
+message CloudAttackPathOwnership {
+  CloudAttackPathNode owner = 1;
+  CloudAttackPathEdge edge = 2;
+}
+
+message CloudAttackPath {
+  CloudAttackPathNode public_principal = 1;
+  CloudAttackPathNode exposed_resource = 2;
+  CloudAttackPathNode cloud_account = 3;
+  CloudAttackPathNode principal = 4;
+  CloudAttackPathNode permission = 5;
+  repeated CloudAttackPathOwnership ownerships = 6;
+  string reach_relation = 7;
+  string access_relation = 8;
+  repeated string relation_chain = 9;
+  CloudAttackPathEdge exposure_edge = 10;
+  CloudAttackPathEdge resource_account_edge = 11;
+  repeated CloudAttackPathEdge traversal_edges = 12;
+  CloudAttackPathEdge privilege_edge = 13;
+  CloudAttackPathEdge permission_account_edge = 14;
+}
+
+message CloudAttackPathCounts {
+  uint64 paths = 1;
+  uint64 exposed_resources = 2;
+  uint64 privileged_principals = 3;
+  uint64 cloud_accounts = 4;
+}
+
+message ListCloudAttackPathsRequest {
+  string tenant_id = 1;
+  string account_id = 2;
+  string runtime_id = 3;
+  bool require_assertion_proof = 4;
+  uint32 limit = 5;
+  uint32 max_depth = 6;
+  uint64 expected_graph_revision = 7;
+}
+
+message ListCloudAttackPathsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  CloudAttackPathCounts counts = 3;
+  repeated CloudAttackPath paths = 4;
+  bool truncated = 5;
 }
 
 enum EntityRelationDirection {

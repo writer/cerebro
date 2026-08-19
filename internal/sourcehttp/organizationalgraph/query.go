@@ -572,6 +572,139 @@ func (s *QueryStore) CountRelations(ctx context.Context, request ports.RelationC
 	return page, nil
 }
 
+func (s *QueryStore) ListPersonAccessPaths(ctx context.Context, request ports.PersonAccessPathRequest) (*ports.PersonAccessPathResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("person access tenant_id is required")
+	}
+	if request.Limit < 1 || request.Limit > 100 {
+		return nil, errors.New("person access limit must be between 1 and 100")
+	}
+	if request.Depth < 1 || request.Depth > 4 {
+		return nil, errors.New("person access depth must be between 1 and 4")
+	}
+	personURN := strings.TrimSpace(request.PersonURN)
+	personQuery := strings.ToLower(strings.TrimSpace(request.PersonQuery))
+	if personURN == "" && personQuery == "" {
+		return nil, errors.New("person access person_urn or person_query is required")
+	}
+	if personURN != "" && !cerebrourn.SameTenant(personURN, tenantID) {
+		return nil, errors.New("person access person_urn must match tenant_id")
+	}
+	message := connect.NewRequest(&cerebrographv1.ListPersonAccessPathsRequest{
+		TenantId:              tenantID,
+		PersonUrn:             personURN,
+		PersonQuery:           personQuery,
+		Limit:                 uint32(request.Limit), // #nosec G115 -- validated above to 1..100.
+		MaxDepth:              uint32(request.Depth), // #nosec G115 -- validated above to 1..4.
+		ExpectedGraphRevision: request.ExpectedRevision,
+	})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListPersonAccessPaths(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("list person access paths", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetPaths()) > request.Limit {
+		return nil, errors.New("rust person access returned an invalid tenant or bound")
+	}
+	result := &ports.PersonAccessPathResult{
+		TenantID:      tenantID,
+		GraphRevision: response.Msg.GetGraphRevision(),
+		Truncated:     response.Msg.GetTruncated(),
+	}
+	for _, path := range response.Msg.GetPaths() {
+		if path == nil || len(path.GetRelationChain()) == 0 || len(path.GetRelationChain()) > request.Depth {
+			return nil, errors.New("rust person access returned an invalid path")
+		}
+		person, err := catalogEntity(tenantID, path.GetPerson())
+		if err != nil {
+			return nil, err
+		}
+		identity, err := catalogEntity(tenantID, path.GetIdentity())
+		if err != nil {
+			return nil, err
+		}
+		principal, err := catalogEntity(tenantID, path.GetPrincipal())
+		if err != nil {
+			return nil, err
+		}
+		accessTarget, err := catalogEntity(tenantID, path.GetAccessTarget())
+		if err != nil {
+			return nil, err
+		}
+		if person.EntityType != "person" {
+			return nil, errors.New("rust person access returned a non-person subject")
+		}
+		result.Paths = append(result.Paths, ports.PersonAccessPath{
+			Person:        person,
+			Identity:      identity,
+			Principal:     principal,
+			AccessTarget:  accessTarget,
+			RelationChain: append([]string(nil), path.GetRelationChain()...),
+		})
+	}
+	if result.Truncated && len(result.Paths) != request.Limit {
+		return nil, errors.New("rust person access returned an invalid truncation")
+	}
+	return result, nil
+}
+
+func (s *QueryStore) ListCloudAttackPaths(ctx context.Context, request ports.CloudAttackPathRequest) (*ports.CloudAttackPathResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("cloud attack path tenant_id is required")
+	}
+	if request.Limit < 1 || request.Limit > 100 {
+		return nil, errors.New("cloud attack path limit must be between 1 and 100")
+	}
+	if request.Depth < 1 || request.Depth > 6 {
+		return nil, errors.New("cloud attack path depth must be between 1 and 6")
+	}
+	message := connect.NewRequest(&cerebrographv1.ListCloudAttackPathsRequest{
+		TenantId:              tenantID,
+		AccountId:             strings.TrimSpace(request.AccountID),
+		RuntimeId:             strings.TrimSpace(request.RuntimeID),
+		RequireAssertionProof: request.RequireAssertionProof,
+		Limit:                 uint32(request.Limit), // #nosec G115 -- validated above to 1..100.
+		MaxDepth:              uint32(request.Depth), // #nosec G115 -- validated above to 1..6.
+		ExpectedGraphRevision: request.ExpectedRevision,
+	})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListCloudAttackPaths(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("list cloud attack paths", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetPaths()) > request.Limit {
+		return nil, errors.New("rust cloud attack paths returned an invalid tenant or bound")
+	}
+	result := &ports.CloudAttackPathResult{
+		TenantID:      tenantID,
+		GraphRevision: response.Msg.GetGraphRevision(),
+		Counts: ports.CloudAttackPathCounts{
+			Paths:                response.Msg.GetCounts().GetPaths(),
+			ExposedResources:     response.Msg.GetCounts().GetExposedResources(),
+			PrivilegedPrincipals: response.Msg.GetCounts().GetPrivilegedPrincipals(),
+			CloudAccounts:        response.Msg.GetCounts().GetCloudAccounts(),
+		},
+		Truncated: response.Msg.GetTruncated(),
+	}
+	for _, path := range response.Msg.GetPaths() {
+		converted := cloudAttackPathFromProto(path)
+		if converted.PublicPrincipal.URN == "" || converted.ExposedResource.URN == "" || converted.CloudAccount.URN == "" || converted.Principal.URN == "" || converted.Permission.URN == "" {
+			return nil, errors.New("rust cloud attack paths returned an invalid path")
+		}
+		result.Paths = append(result.Paths, converted)
+	}
+	if result.Truncated && len(result.Paths) != request.Limit {
+		return nil, errors.New("rust cloud attack paths returned an invalid truncation")
+	}
+	return result, nil
+}
+
 func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
@@ -642,6 +775,72 @@ func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.Enti
 		return nil, errors.New("rust entity relations returned an invalid continuation")
 	}
 	return page, nil
+}
+
+func cloudAttackPathFromProto(path *cerebrographv1.CloudAttackPath) ports.CloudAttackPath {
+	if path == nil {
+		return ports.CloudAttackPath{}
+	}
+	ownerships := make([]ports.CloudAttackPathOwnership, 0, len(path.GetOwnerships()))
+	for _, ownership := range path.GetOwnerships() {
+		if ownership == nil {
+			return ports.CloudAttackPath{}
+		}
+		ownerships = append(ownerships, ports.CloudAttackPathOwnership{
+			Owner: cloudAttackPathNodeFromProto(ownership.GetOwner()),
+			Edge:  cloudAttackPathEdgeFromProto(ownership.GetEdge()),
+		})
+	}
+	traversalEdges := make([]ports.CloudAttackPathEdge, 0, len(path.GetTraversalEdges()))
+	for _, edge := range path.GetTraversalEdges() {
+		if edge == nil {
+			return ports.CloudAttackPath{}
+		}
+		traversalEdges = append(traversalEdges, cloudAttackPathEdgeFromProto(edge))
+	}
+	return ports.CloudAttackPath{
+		PublicPrincipal:       cloudAttackPathNodeFromProto(path.GetPublicPrincipal()),
+		ExposedResource:       cloudAttackPathNodeFromProto(path.GetExposedResource()),
+		CloudAccount:          cloudAttackPathNodeFromProto(path.GetCloudAccount()),
+		Principal:             cloudAttackPathNodeFromProto(path.GetPrincipal()),
+		Permission:            cloudAttackPathNodeFromProto(path.GetPermission()),
+		Ownerships:            ownerships,
+		ReachRelation:         path.GetReachRelation(),
+		AccessRelation:        path.GetAccessRelation(),
+		RelationChain:         append([]string(nil), path.GetRelationChain()...),
+		ExposureEdge:          cloudAttackPathEdgeFromProto(path.GetExposureEdge()),
+		ResourceAccountEdge:   cloudAttackPathEdgeFromProto(path.GetResourceAccountEdge()),
+		TraversalEdges:        traversalEdges,
+		PrivilegeEdge:         cloudAttackPathEdgeFromProto(path.GetPrivilegeEdge()),
+		PermissionAccountEdge: cloudAttackPathEdgeFromProto(path.GetPermissionAccountEdge()),
+	}
+}
+
+func cloudAttackPathEdgeFromProto(edge *cerebrographv1.CloudAttackPathEdge) ports.CloudAttackPathEdge {
+	if edge == nil {
+		return ports.CloudAttackPathEdge{}
+	}
+	return ports.CloudAttackPathEdge{
+		From:                cloudAttackPathNodeFromProto(edge.GetFrom()),
+		Relation:            edge.GetRelation(),
+		To:                  cloudAttackPathNodeFromProto(edge.GetTo()),
+		Direction:           edge.GetDirection(),
+		SourceID:            edge.GetSourceId(),
+		SourceRuntimeID:     edge.GetSourceRuntimeId(),
+		AssertionRuntimeIDs: append([]string(nil), edge.GetAssertionRuntimeIds()...),
+		AttributesJSON:      edge.GetAttributesJson(),
+	}
+}
+
+func cloudAttackPathNodeFromProto(node *cerebrographv1.CloudAttackPathNode) ports.CloudAttackPathNode {
+	if node == nil {
+		return ports.CloudAttackPathNode{}
+	}
+	return ports.CloudAttackPathNode{
+		URN:        node.GetUrn(),
+		EntityType: node.GetEntityKind(),
+		Label:      node.GetLabel(),
+	}
 }
 
 func entityCatalogFilter(filter ports.EntityCatalogFilter) (*cerebrographv1.EntityCatalogFilter, string, error) {

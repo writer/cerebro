@@ -16,7 +16,7 @@ type AttackPath = attackpath.Path
 type AttackPathEdge = attackpath.Edge
 
 func (s *Service) GetAttackPaths(ctx context.Context, request AttackPathRequest) (*AttackPathResult, error) {
-	if s == nil || s.rawCypher == nil {
+	if s == nil || (s.rawCypher == nil && s.attackPaths == nil) {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
@@ -24,5 +24,5 @@ func (s *Service) GetAttackPaths(ctx context.Context, request AttackPathRequest)
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
 	request.TenantID = tenantID
-	return attackpath.New(s.rawCypher).Traverse(ctx, request)
+	return attackpath.NewWithCapabilities(s.rawCypher, s.attackPaths).Traverse(ctx, request)
 }

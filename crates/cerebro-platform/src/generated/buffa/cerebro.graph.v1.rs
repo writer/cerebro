@@ -7295,6 +7295,2728 @@ pub const __COUNT_RELATIONS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEn
 #[derive(Clone, PartialEq, Default)]
 #[derive(::serde::Serialize, ::serde::Deserialize)]
 #[serde(default)]
+pub struct PersonAccessPath {
+    /// Field 1: `person`
+    #[serde(
+        rename = "person",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub person: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 2: `identity`
+    #[serde(
+        rename = "identity",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub identity: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 3: `principal`
+    #[serde(
+        rename = "principal",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub principal: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 4: `access_target`
+    #[serde(
+        rename = "accessTarget",
+        alias = "access_target",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub access_target: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 5: `relation_chain`
+    #[serde(
+        rename = "relationChain",
+        alias = "relation_chain",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub relation_chain: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for PersonAccessPath {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("PersonAccessPath")
+            .field("person", &self.person)
+            .field("identity", &self.identity)
+            .field("principal", &self.principal)
+            .field("access_target", &self.access_target)
+            .field("relation_chain", &self.relation_chain)
+            .finish()
+    }
+}
+impl PersonAccessPath {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.PersonAccessPath";
+}
+::buffa::impl_default_instance!(PersonAccessPath);
+impl ::buffa::MessageName for PersonAccessPath {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "PersonAccessPath";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.PersonAccessPath";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.PersonAccessPath";
+}
+impl ::buffa::Message for PersonAccessPath {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.person.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.person.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.identity.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.identity.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.principal.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.principal.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.access_target.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.access_target.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.relation_chain {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.person.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.person.write_to(__cache, buf);
+        }
+        if self.identity.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.identity.write_to(__cache, buf);
+        }
+        if self.principal.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.principal.write_to(__cache, buf);
+        }
+        if self.access_target.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                4u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.access_target.write_to(__cache, buf);
+        }
+        for v in &self.relation_chain {
+            ::buffa::types::put_string_field(5u32, v, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.person.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.identity.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.principal.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.access_target.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.relation_chain.push(__elem);
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.person = ::buffa::MessageField::none();
+        self.identity = ::buffa::MessageField::none();
+        self.principal = ::buffa::MessageField::none();
+        self.access_target = ::buffa::MessageField::none();
+        self.relation_chain.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for PersonAccessPath {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.PersonAccessPath";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for PersonAccessPath {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __PERSON_ACCESS_PATH_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.PersonAccessPath",
+    to_json: ::buffa::type_registry::any_to_json::<PersonAccessPath>,
+    from_json: ::buffa::type_registry::any_from_json::<PersonAccessPath>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListPersonAccessPathsRequest {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `person_urn`
+    #[serde(
+        rename = "personUrn",
+        alias = "person_urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub person_urn: ::buffa::alloc::string::String,
+    /// Field 3: `person_query`
+    #[serde(
+        rename = "personQuery",
+        alias = "person_query",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub person_query: ::buffa::alloc::string::String,
+    /// Field 4: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    /// Field 5: `max_depth`
+    #[serde(
+        rename = "maxDepth",
+        alias = "max_depth",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub max_depth: u32,
+    /// Field 6: `expected_graph_revision`
+    #[serde(
+        rename = "expectedGraphRevision",
+        alias = "expected_graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub expected_graph_revision: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListPersonAccessPathsRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListPersonAccessPathsRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("person_urn", &self.person_urn)
+            .field("person_query", &self.person_query)
+            .field("limit", &self.limit)
+            .field("max_depth", &self.max_depth)
+            .field("expected_graph_revision", &self.expected_graph_revision)
+            .finish()
+    }
+}
+impl ListPersonAccessPathsRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListPersonAccessPathsRequest";
+}
+::buffa::impl_default_instance!(ListPersonAccessPathsRequest);
+impl ::buffa::MessageName for ListPersonAccessPathsRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListPersonAccessPathsRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListPersonAccessPathsRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListPersonAccessPathsRequest";
+}
+impl ::buffa::Message for ListPersonAccessPathsRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.person_urn.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.person_urn) as u64;
+        }
+        if !self.person_query.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.person_query) as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        if self.max_depth != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.max_depth) as u64;
+        }
+        if self.expected_graph_revision != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.expected_graph_revision)
+                        as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.person_urn.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.person_urn, buf);
+        }
+        if !self.person_query.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.person_query, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(4u32, self.limit, buf);
+        }
+        if self.max_depth != 0u32 {
+            ::buffa::types::put_uint32_field(5u32, self.max_depth, buf);
+        }
+        if self.expected_graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(6u32, self.expected_graph_revision, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.person_urn, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.person_query, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.max_depth = ::buffa::types::decode_uint32(buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.expected_graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.person_urn.clear();
+        self.person_query.clear();
+        self.limit = 0u32;
+        self.max_depth = 0u32;
+        self.expected_graph_revision = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListPersonAccessPathsRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListPersonAccessPathsRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListPersonAccessPathsRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_PERSON_ACCESS_PATHS_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListPersonAccessPathsRequest",
+    to_json: ::buffa::type_registry::any_to_json::<ListPersonAccessPathsRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<ListPersonAccessPathsRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListPersonAccessPathsResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `paths`
+    #[serde(
+        rename = "paths",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub paths: ::buffa::alloc::vec::Vec<PersonAccessPath>,
+    /// Field 4: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListPersonAccessPathsResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListPersonAccessPathsResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("paths", &self.paths)
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
+impl ListPersonAccessPathsResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListPersonAccessPathsResponse";
+}
+::buffa::impl_default_instance!(ListPersonAccessPathsResponse);
+impl ::buffa::MessageName for ListPersonAccessPathsResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListPersonAccessPathsResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListPersonAccessPathsResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListPersonAccessPathsResponse";
+}
+impl ::buffa::Message for ListPersonAccessPathsResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        for v in &self.paths {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        for v in &self.paths {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.paths.push(elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.paths.clear();
+        self.truncated = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListPersonAccessPathsResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListPersonAccessPathsResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListPersonAccessPathsResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_PERSON_ACCESS_PATHS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListPersonAccessPathsResponse",
+    to_json: ::buffa::type_registry::any_to_json::<ListPersonAccessPathsResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<ListPersonAccessPathsResponse>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CloudAttackPathNode {
+    /// Field 1: `urn`
+    #[serde(
+        rename = "urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub urn: ::buffa::alloc::string::String,
+    /// Field 2: `entity_kind`
+    #[serde(
+        rename = "entityKind",
+        alias = "entity_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub entity_kind: ::buffa::alloc::string::String,
+    /// Field 3: `label`
+    #[serde(
+        rename = "label",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub label: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CloudAttackPathNode {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CloudAttackPathNode")
+            .field("urn", &self.urn)
+            .field("entity_kind", &self.entity_kind)
+            .field("label", &self.label)
+            .finish()
+    }
+}
+impl CloudAttackPathNode {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathNode";
+}
+::buffa::impl_default_instance!(CloudAttackPathNode);
+impl ::buffa::MessageName for CloudAttackPathNode {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CloudAttackPathNode";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPathNode";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathNode";
+}
+impl ::buffa::Message for CloudAttackPathNode {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.urn.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.urn) as u64;
+        }
+        if !self.entity_kind.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.entity_kind) as u64;
+        }
+        if !self.label.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.label) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.urn.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.urn, buf);
+        }
+        if !self.entity_kind.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.entity_kind, buf);
+        }
+        if !self.label.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.label, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.urn, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.entity_kind, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.label, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.urn.clear();
+        self.entity_kind.clear();
+        self.label.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CloudAttackPathNode {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CloudAttackPathNode";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CloudAttackPathNode {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __CLOUD_ATTACK_PATH_NODE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CloudAttackPathNode",
+    to_json: ::buffa::type_registry::any_to_json::<CloudAttackPathNode>,
+    from_json: ::buffa::type_registry::any_from_json::<CloudAttackPathNode>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CloudAttackPathEdge {
+    /// Field 1: `from`
+    #[serde(
+        rename = "from",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub from: ::buffa::MessageField<
+        CloudAttackPathNode,
+        ::buffa::Inline<CloudAttackPathNode>,
+    >,
+    /// Field 2: `relation`
+    #[serde(
+        rename = "relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub relation: ::buffa::alloc::string::String,
+    /// Field 3: `to`
+    #[serde(
+        rename = "to",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub to: ::buffa::MessageField<
+        CloudAttackPathNode,
+        ::buffa::Inline<CloudAttackPathNode>,
+    >,
+    /// Field 4: `direction`
+    #[serde(
+        rename = "direction",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub direction: ::buffa::alloc::string::String,
+    /// Field 5: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 6: `source_runtime_id`
+    #[serde(
+        rename = "sourceRuntimeId",
+        alias = "source_runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_runtime_id: ::buffa::alloc::string::String,
+    /// Field 7: `assertion_runtime_ids`
+    #[serde(
+        rename = "assertionRuntimeIds",
+        alias = "assertion_runtime_ids",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub assertion_runtime_ids: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 8: `attributes_json`
+    #[serde(
+        rename = "attributesJson",
+        alias = "attributes_json",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub attributes_json: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CloudAttackPathEdge {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CloudAttackPathEdge")
+            .field("from", &self.from)
+            .field("relation", &self.relation)
+            .field("to", &self.to)
+            .field("direction", &self.direction)
+            .field("source_id", &self.source_id)
+            .field("source_runtime_id", &self.source_runtime_id)
+            .field("assertion_runtime_ids", &self.assertion_runtime_ids)
+            .field("attributes_json", &self.attributes_json)
+            .finish()
+    }
+}
+impl CloudAttackPathEdge {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathEdge";
+}
+::buffa::impl_default_instance!(CloudAttackPathEdge);
+impl ::buffa::MessageName for CloudAttackPathEdge {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CloudAttackPathEdge";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPathEdge";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathEdge";
+}
+impl ::buffa::Message for CloudAttackPathEdge {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.from.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.from.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.relation.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.relation) as u64;
+        }
+        if self.to.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.to.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.direction.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.direction) as u64;
+        }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        if !self.source_runtime_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.source_runtime_id) as u64;
+        }
+        for v in &self.assertion_runtime_ids {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if !self.attributes_json.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.attributes_json) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.from.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.from.write_to(__cache, buf);
+        }
+        if !self.relation.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.relation, buf);
+        }
+        if self.to.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.to.write_to(__cache, buf);
+        }
+        if !self.direction.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.direction, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.source_id, buf);
+        }
+        if !self.source_runtime_id.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.source_runtime_id, buf);
+        }
+        for v in &self.assertion_runtime_ids {
+            ::buffa::types::put_string_field(7u32, v, buf);
+        }
+        if !self.attributes_json.is_empty() {
+            ::buffa::types::put_string_field(8u32, &self.attributes_json, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.from.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.relation, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.to.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.direction, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_runtime_id, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.assertion_runtime_ids.push(__elem);
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.attributes_json, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.from = ::buffa::MessageField::none();
+        self.relation.clear();
+        self.to = ::buffa::MessageField::none();
+        self.direction.clear();
+        self.source_id.clear();
+        self.source_runtime_id.clear();
+        self.assertion_runtime_ids.clear();
+        self.attributes_json.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CloudAttackPathEdge {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CloudAttackPathEdge";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CloudAttackPathEdge {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __CLOUD_ATTACK_PATH_EDGE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CloudAttackPathEdge",
+    to_json: ::buffa::type_registry::any_to_json::<CloudAttackPathEdge>,
+    from_json: ::buffa::type_registry::any_from_json::<CloudAttackPathEdge>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CloudAttackPathOwnership {
+    /// Field 1: `owner`
+    #[serde(
+        rename = "owner",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub owner: ::buffa::MessageField<
+        CloudAttackPathNode,
+        ::buffa::Inline<CloudAttackPathNode>,
+    >,
+    /// Field 2: `edge`
+    #[serde(
+        rename = "edge",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub edge: ::buffa::MessageField<
+        CloudAttackPathEdge,
+        ::buffa::Inline<CloudAttackPathEdge>,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CloudAttackPathOwnership {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CloudAttackPathOwnership")
+            .field("owner", &self.owner)
+            .field("edge", &self.edge)
+            .finish()
+    }
+}
+impl CloudAttackPathOwnership {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathOwnership";
+}
+::buffa::impl_default_instance!(CloudAttackPathOwnership);
+impl ::buffa::MessageName for CloudAttackPathOwnership {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CloudAttackPathOwnership";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPathOwnership";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathOwnership";
+}
+impl ::buffa::Message for CloudAttackPathOwnership {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.owner.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.owner.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.edge.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.edge.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.owner.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.owner.write_to(__cache, buf);
+        }
+        if self.edge.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.edge.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.owner.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.edge.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.owner = ::buffa::MessageField::none();
+        self.edge = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CloudAttackPathOwnership {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CloudAttackPathOwnership";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CloudAttackPathOwnership {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __CLOUD_ATTACK_PATH_OWNERSHIP_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CloudAttackPathOwnership",
+    to_json: ::buffa::type_registry::any_to_json::<CloudAttackPathOwnership>,
+    from_json: ::buffa::type_registry::any_from_json::<CloudAttackPathOwnership>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CloudAttackPath {
+    /// Field 1: `public_principal`
+    #[serde(
+        rename = "publicPrincipal",
+        alias = "public_principal",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub public_principal: ::buffa::MessageField<
+        CloudAttackPathNode,
+        ::buffa::Inline<CloudAttackPathNode>,
+    >,
+    /// Field 2: `exposed_resource`
+    #[serde(
+        rename = "exposedResource",
+        alias = "exposed_resource",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub exposed_resource: ::buffa::MessageField<
+        CloudAttackPathNode,
+        ::buffa::Inline<CloudAttackPathNode>,
+    >,
+    /// Field 3: `cloud_account`
+    #[serde(
+        rename = "cloudAccount",
+        alias = "cloud_account",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub cloud_account: ::buffa::MessageField<
+        CloudAttackPathNode,
+        ::buffa::Inline<CloudAttackPathNode>,
+    >,
+    /// Field 4: `principal`
+    #[serde(
+        rename = "principal",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub principal: ::buffa::MessageField<
+        CloudAttackPathNode,
+        ::buffa::Inline<CloudAttackPathNode>,
+    >,
+    /// Field 5: `permission`
+    #[serde(
+        rename = "permission",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub permission: ::buffa::MessageField<
+        CloudAttackPathNode,
+        ::buffa::Inline<CloudAttackPathNode>,
+    >,
+    /// Field 6: `ownerships`
+    #[serde(
+        rename = "ownerships",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub ownerships: ::buffa::alloc::vec::Vec<CloudAttackPathOwnership>,
+    /// Field 7: `reach_relation`
+    #[serde(
+        rename = "reachRelation",
+        alias = "reach_relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub reach_relation: ::buffa::alloc::string::String,
+    /// Field 8: `access_relation`
+    #[serde(
+        rename = "accessRelation",
+        alias = "access_relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub access_relation: ::buffa::alloc::string::String,
+    /// Field 9: `relation_chain`
+    #[serde(
+        rename = "relationChain",
+        alias = "relation_chain",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub relation_chain: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 10: `exposure_edge`
+    #[serde(
+        rename = "exposureEdge",
+        alias = "exposure_edge",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub exposure_edge: ::buffa::MessageField<
+        CloudAttackPathEdge,
+        ::buffa::Inline<CloudAttackPathEdge>,
+    >,
+    /// Field 11: `resource_account_edge`
+    #[serde(
+        rename = "resourceAccountEdge",
+        alias = "resource_account_edge",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub resource_account_edge: ::buffa::MessageField<
+        CloudAttackPathEdge,
+        ::buffa::Inline<CloudAttackPathEdge>,
+    >,
+    /// Field 12: `traversal_edges`
+    #[serde(
+        rename = "traversalEdges",
+        alias = "traversal_edges",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub traversal_edges: ::buffa::alloc::vec::Vec<CloudAttackPathEdge>,
+    /// Field 13: `privilege_edge`
+    #[serde(
+        rename = "privilegeEdge",
+        alias = "privilege_edge",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub privilege_edge: ::buffa::MessageField<
+        CloudAttackPathEdge,
+        ::buffa::Inline<CloudAttackPathEdge>,
+    >,
+    /// Field 14: `permission_account_edge`
+    #[serde(
+        rename = "permissionAccountEdge",
+        alias = "permission_account_edge",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub permission_account_edge: ::buffa::MessageField<
+        CloudAttackPathEdge,
+        ::buffa::Inline<CloudAttackPathEdge>,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CloudAttackPath {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CloudAttackPath")
+            .field("public_principal", &self.public_principal)
+            .field("exposed_resource", &self.exposed_resource)
+            .field("cloud_account", &self.cloud_account)
+            .field("principal", &self.principal)
+            .field("permission", &self.permission)
+            .field("ownerships", &self.ownerships)
+            .field("reach_relation", &self.reach_relation)
+            .field("access_relation", &self.access_relation)
+            .field("relation_chain", &self.relation_chain)
+            .field("exposure_edge", &self.exposure_edge)
+            .field("resource_account_edge", &self.resource_account_edge)
+            .field("traversal_edges", &self.traversal_edges)
+            .field("privilege_edge", &self.privilege_edge)
+            .field("permission_account_edge", &self.permission_account_edge)
+            .finish()
+    }
+}
+impl CloudAttackPath {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPath";
+}
+::buffa::impl_default_instance!(CloudAttackPath);
+impl ::buffa::MessageName for CloudAttackPath {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CloudAttackPath";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPath";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPath";
+}
+impl ::buffa::Message for CloudAttackPath {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.public_principal.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.public_principal.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.exposed_resource.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.exposed_resource.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.cloud_account.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.cloud_account.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.principal.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.principal.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.permission.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.permission.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.ownerships {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.reach_relation.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.reach_relation) as u64;
+        }
+        if !self.access_relation.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.access_relation) as u64;
+        }
+        for v in &self.relation_chain {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if self.exposure_edge.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.exposure_edge.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.resource_account_edge.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.resource_account_edge.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.traversal_edges {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.privilege_edge.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.privilege_edge.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.permission_account_edge.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.permission_account_edge.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.public_principal.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.public_principal.write_to(__cache, buf);
+        }
+        if self.exposed_resource.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.exposed_resource.write_to(__cache, buf);
+        }
+        if self.cloud_account.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.cloud_account.write_to(__cache, buf);
+        }
+        if self.principal.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                4u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.principal.write_to(__cache, buf);
+        }
+        if self.permission.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                5u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.permission.write_to(__cache, buf);
+        }
+        for v in &self.ownerships {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if !self.reach_relation.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.reach_relation, buf);
+        }
+        if !self.access_relation.is_empty() {
+            ::buffa::types::put_string_field(8u32, &self.access_relation, buf);
+        }
+        for v in &self.relation_chain {
+            ::buffa::types::put_string_field(9u32, v, buf);
+        }
+        if self.exposure_edge.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                10u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.exposure_edge.write_to(__cache, buf);
+        }
+        if self.resource_account_edge.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                11u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.resource_account_edge.write_to(__cache, buf);
+        }
+        for v in &self.traversal_edges {
+            ::buffa::types::put_len_delimited_header(
+                12u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.privilege_edge.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                13u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.privilege_edge.write_to(__cache, buf);
+        }
+        if self.permission_account_edge.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                14u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.permission_account_edge.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.public_principal.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.exposed_resource.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.cloud_account.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.principal.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.permission.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.ownerships.push(elem);
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.reach_relation, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.access_relation, buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.relation_chain.push(__elem);
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.exposure_edge.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.resource_account_edge.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.traversal_edges.push(elem);
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.privilege_edge.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.permission_account_edge.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.public_principal = ::buffa::MessageField::none();
+        self.exposed_resource = ::buffa::MessageField::none();
+        self.cloud_account = ::buffa::MessageField::none();
+        self.principal = ::buffa::MessageField::none();
+        self.permission = ::buffa::MessageField::none();
+        self.ownerships.clear();
+        self.reach_relation.clear();
+        self.access_relation.clear();
+        self.relation_chain.clear();
+        self.exposure_edge = ::buffa::MessageField::none();
+        self.resource_account_edge = ::buffa::MessageField::none();
+        self.traversal_edges.clear();
+        self.privilege_edge = ::buffa::MessageField::none();
+        self.permission_account_edge = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CloudAttackPath {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CloudAttackPath";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CloudAttackPath {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __CLOUD_ATTACK_PATH_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CloudAttackPath",
+    to_json: ::buffa::type_registry::any_to_json::<CloudAttackPath>,
+    from_json: ::buffa::type_registry::any_from_json::<CloudAttackPath>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct CloudAttackPathCounts {
+    /// Field 1: `paths`
+    #[serde(
+        rename = "paths",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub paths: u64,
+    /// Field 2: `exposed_resources`
+    #[serde(
+        rename = "exposedResources",
+        alias = "exposed_resources",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub exposed_resources: u64,
+    /// Field 3: `privileged_principals`
+    #[serde(
+        rename = "privilegedPrincipals",
+        alias = "privileged_principals",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub privileged_principals: u64,
+    /// Field 4: `cloud_accounts`
+    #[serde(
+        rename = "cloudAccounts",
+        alias = "cloud_accounts",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub cloud_accounts: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for CloudAttackPathCounts {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("CloudAttackPathCounts")
+            .field("paths", &self.paths)
+            .field("exposed_resources", &self.exposed_resources)
+            .field("privileged_principals", &self.privileged_principals)
+            .field("cloud_accounts", &self.cloud_accounts)
+            .finish()
+    }
+}
+impl CloudAttackPathCounts {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathCounts";
+}
+::buffa::impl_default_instance!(CloudAttackPathCounts);
+impl ::buffa::MessageName for CloudAttackPathCounts {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "CloudAttackPathCounts";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPathCounts";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathCounts";
+}
+impl ::buffa::Message for CloudAttackPathCounts {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.paths != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.paths) as u64;
+        }
+        if self.exposed_resources != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.exposed_resources) as u64;
+        }
+        if self.privileged_principals != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.privileged_principals)
+                        as u64;
+        }
+        if self.cloud_accounts != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.cloud_accounts) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.paths != 0u64 {
+            ::buffa::types::put_uint64_field(1u32, self.paths, buf);
+        }
+        if self.exposed_resources != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.exposed_resources, buf);
+        }
+        if self.privileged_principals != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.privileged_principals, buf);
+        }
+        if self.cloud_accounts != 0u64 {
+            ::buffa::types::put_uint64_field(4u32, self.cloud_accounts, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.paths = ::buffa::types::decode_uint64(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.exposed_resources = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.privileged_principals = ::buffa::types::decode_uint64(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.cloud_accounts = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.paths = 0u64;
+        self.exposed_resources = 0u64;
+        self.privileged_principals = 0u64;
+        self.cloud_accounts = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for CloudAttackPathCounts {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.CloudAttackPathCounts";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for CloudAttackPathCounts {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __CLOUD_ATTACK_PATH_COUNTS_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.CloudAttackPathCounts",
+    to_json: ::buffa::type_registry::any_to_json::<CloudAttackPathCounts>,
+    from_json: ::buffa::type_registry::any_from_json::<CloudAttackPathCounts>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListCloudAttackPathsRequest {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `account_id`
+    #[serde(
+        rename = "accountId",
+        alias = "account_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub account_id: ::buffa::alloc::string::String,
+    /// Field 3: `runtime_id`
+    #[serde(
+        rename = "runtimeId",
+        alias = "runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub runtime_id: ::buffa::alloc::string::String,
+    /// Field 4: `require_assertion_proof`
+    #[serde(
+        rename = "requireAssertionProof",
+        alias = "require_assertion_proof",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub require_assertion_proof: bool,
+    /// Field 5: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    /// Field 6: `max_depth`
+    #[serde(
+        rename = "maxDepth",
+        alias = "max_depth",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub max_depth: u32,
+    /// Field 7: `expected_graph_revision`
+    #[serde(
+        rename = "expectedGraphRevision",
+        alias = "expected_graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub expected_graph_revision: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListCloudAttackPathsRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListCloudAttackPathsRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("account_id", &self.account_id)
+            .field("runtime_id", &self.runtime_id)
+            .field("require_assertion_proof", &self.require_assertion_proof)
+            .field("limit", &self.limit)
+            .field("max_depth", &self.max_depth)
+            .field("expected_graph_revision", &self.expected_graph_revision)
+            .finish()
+    }
+}
+impl ListCloudAttackPathsRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListCloudAttackPathsRequest";
+}
+::buffa::impl_default_instance!(ListCloudAttackPathsRequest);
+impl ::buffa::MessageName for ListCloudAttackPathsRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListCloudAttackPathsRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListCloudAttackPathsRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListCloudAttackPathsRequest";
+}
+impl ::buffa::Message for ListCloudAttackPathsRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.account_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.account_id) as u64;
+        }
+        if !self.runtime_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.runtime_id) as u64;
+        }
+        if self.require_assertion_proof {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        if self.max_depth != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.max_depth) as u64;
+        }
+        if self.expected_graph_revision != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.expected_graph_revision)
+                        as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.account_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.account_id, buf);
+        }
+        if !self.runtime_id.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.runtime_id, buf);
+        }
+        if self.require_assertion_proof {
+            ::buffa::types::put_bool_field(4u32, self.require_assertion_proof, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(5u32, self.limit, buf);
+        }
+        if self.max_depth != 0u32 {
+            ::buffa::types::put_uint32_field(6u32, self.max_depth, buf);
+        }
+        if self.expected_graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(7u32, self.expected_graph_revision, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.account_id, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.runtime_id, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.require_assertion_proof = ::buffa::types::decode_bool(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.max_depth = ::buffa::types::decode_uint32(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.expected_graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.account_id.clear();
+        self.runtime_id.clear();
+        self.require_assertion_proof = false;
+        self.limit = 0u32;
+        self.max_depth = 0u32;
+        self.expected_graph_revision = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListCloudAttackPathsRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListCloudAttackPathsRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListCloudAttackPathsRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_CLOUD_ATTACK_PATHS_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListCloudAttackPathsRequest",
+    to_json: ::buffa::type_registry::any_to_json::<ListCloudAttackPathsRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<ListCloudAttackPathsRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListCloudAttackPathsResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `counts`
+    #[serde(
+        rename = "counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub counts: ::buffa::MessageField<
+        CloudAttackPathCounts,
+        ::buffa::Inline<CloudAttackPathCounts>,
+    >,
+    /// Field 4: `paths`
+    #[serde(
+        rename = "paths",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub paths: ::buffa::alloc::vec::Vec<CloudAttackPath>,
+    /// Field 5: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListCloudAttackPathsResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListCloudAttackPathsResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("counts", &self.counts)
+            .field("paths", &self.paths)
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
+impl ListCloudAttackPathsResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListCloudAttackPathsResponse";
+}
+::buffa::impl_default_instance!(ListCloudAttackPathsResponse);
+impl ::buffa::MessageName for ListCloudAttackPathsResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListCloudAttackPathsResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListCloudAttackPathsResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListCloudAttackPathsResponse";
+}
+impl ::buffa::Message for ListCloudAttackPathsResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        if self.counts.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.counts.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.paths {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        if self.counts.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.counts.write_to(__cache, buf);
+        }
+        for v in &self.paths {
+            ::buffa::types::put_len_delimited_header(
+                4u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(5u32, self.truncated, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.counts.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.paths.push(elem);
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.counts = ::buffa::MessageField::none();
+        self.paths.clear();
+        self.truncated = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListCloudAttackPathsResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListCloudAttackPathsResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListCloudAttackPathsResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_CLOUD_ATTACK_PATHS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListCloudAttackPathsResponse",
+    to_json: ::buffa::type_registry::any_to_json::<ListCloudAttackPathsResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<ListCloudAttackPathsResponse>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
 pub struct ListEntityRelationsRequest {
     /// Field 1: `tenant_id`
     #[serde(
@@ -23774,6 +26496,4987 @@ pub mod __buffa {
             }
         }
         #[derive(Clone, Debug, Default)]
+        pub struct PersonAccessPathView<'a> {
+            /// Field 1: `person`
+            pub person: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 2: `identity`
+            pub identity: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 3: `principal`
+            pub principal: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 4: `access_target`
+            pub access_target: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 5: `relation_chain`
+            pub relation_chain: ::buffa::RepeatedView<'a, &'a str>,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for PersonAccessPathView<'a> {
+            type Owned = super::super::PersonAccessPath;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.person.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.person = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.identity.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.identity = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.principal.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.principal = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.access_target.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.access_target = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.relation_chain.push(__elem);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::PersonAccessPath,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::PersonAccessPath,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::PersonAccessPath {
+                    person: match self.person.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    identity: match self.identity.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    principal: match self.principal.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    access_target: match self.access_target.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    relation_chain: self
+                        .relation_chain
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for PersonAccessPathView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.person.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.person.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.identity.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.identity.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.principal.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.principal.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.access_target.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.access_target.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.relation_chain {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.person.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.person.write_to(__cache, buf);
+                }
+                if self.identity.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.identity.write_to(__cache, buf);
+                }
+                if self.principal.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.principal.write_to(__cache, buf);
+                }
+                if self.access_target.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        4u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.access_target.write_to(__cache, buf);
+                }
+                for v in &self.relation_chain {
+                    ::buffa::types::put_string_field(5u32, v, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for PersonAccessPathView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.person.as_option() {
+                        __map.serialize_entry("person", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.identity.as_option()
+                    {
+                        __map.serialize_entry("identity", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.principal.as_option()
+                    {
+                        __map.serialize_entry("principal", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .access_target
+                        .as_option()
+                    {
+                        __map.serialize_entry("accessTarget", __v)?;
+                    }
+                }
+                if !self.relation_chain.is_empty() {
+                    __map.serialize_entry("relationChain", &*self.relation_chain)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for PersonAccessPathView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "PersonAccessPath";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.PersonAccessPath";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.PersonAccessPath";
+        }
+        ::buffa::impl_default_view_instance!(PersonAccessPathView);
+        ::buffa::impl_view_reborrow!(PersonAccessPathView);
+        /** Self-contained, `'static` owned view of a `PersonAccessPath` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`PersonAccessPathView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`PersonAccessPathView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct PersonAccessPathOwnedView(
+            ::buffa::OwnedView<PersonAccessPathView<'static>>,
+        );
+        impl PersonAccessPathOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    PersonAccessPathOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    PersonAccessPathOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::PersonAccessPath,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    PersonAccessPathOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`PersonAccessPathView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &PersonAccessPathView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::PersonAccessPath {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `person`
+            #[must_use]
+            pub fn person(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().person
+            }
+            /// Field 2: `identity`
+            #[must_use]
+            pub fn identity(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().identity
+            }
+            /// Field 3: `principal`
+            #[must_use]
+            pub fn principal(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().principal
+            }
+            /// Field 4: `access_target`
+            #[must_use]
+            pub fn access_target(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().access_target
+            }
+            /// Field 5: `relation_chain`
+            #[must_use]
+            pub fn relation_chain(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().relation_chain
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<PersonAccessPathView<'static>>>
+        for PersonAccessPathOwnedView {
+            fn from(inner: ::buffa::OwnedView<PersonAccessPathView<'static>>) -> Self {
+                PersonAccessPathOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<PersonAccessPathOwnedView>
+        for ::buffa::OwnedView<PersonAccessPathView<'static>> {
+            fn from(wrapper: PersonAccessPathOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<PersonAccessPathView<'static>>>
+        for PersonAccessPathOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<PersonAccessPathView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::PersonAccessPath {
+            type View<'a> = PersonAccessPathView<'a>;
+            type ViewHandle = PersonAccessPathOwnedView;
+        }
+        impl ::serde::Serialize for PersonAccessPathOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListPersonAccessPathsRequestView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `person_urn`
+            pub person_urn: &'a str,
+            /// Field 3: `person_query`
+            pub person_query: &'a str,
+            /// Field 4: `limit`
+            pub limit: u32,
+            /// Field 5: `max_depth`
+            pub max_depth: u32,
+            /// Field 6: `expected_graph_revision`
+            pub expected_graph_revision: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListPersonAccessPathsRequestView<'a> {
+            type Owned = super::super::ListPersonAccessPathsRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.person_urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.person_query = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.max_depth = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.expected_graph_revision = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListPersonAccessPathsRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListPersonAccessPathsRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListPersonAccessPathsRequest {
+                    tenant_id: self.tenant_id.to_string(),
+                    person_urn: self.person_urn.to_string(),
+                    person_query: self.person_query.to_string(),
+                    limit: self.limit,
+                    max_depth: self.max_depth,
+                    expected_graph_revision: self.expected_graph_revision,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListPersonAccessPathsRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.person_urn.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.person_urn)
+                                as u64;
+                }
+                if !self.person_query.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.person_query)
+                                as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                if self.max_depth != 0u32 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint32_encoded_len(self.max_depth) as u64;
+                }
+                if self.expected_graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.expected_graph_revision,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.person_urn.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.person_urn, buf);
+                }
+                if !self.person_query.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.person_query, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(4u32, self.limit, buf);
+                }
+                if self.max_depth != 0u32 {
+                    ::buffa::types::put_uint32_field(5u32, self.max_depth, buf);
+                }
+                if self.expected_graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        6u32,
+                        self.expected_graph_revision,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListPersonAccessPathsRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.person_urn) {
+                    __map.serialize_entry("personUrn", self.person_urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.person_query) {
+                    __map.serialize_entry("personQuery", self.person_query)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.max_depth) {
+                    __map
+                        .serialize_entry(
+                            "maxDepth",
+                            &::buffa::json_helpers::ProtoJson(&self.max_depth),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.expected_graph_revision,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "expectedGraphRevision",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.expected_graph_revision,
+                            ),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListPersonAccessPathsRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListPersonAccessPathsRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListPersonAccessPathsRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListPersonAccessPathsRequest";
+        }
+        ::buffa::impl_default_view_instance!(ListPersonAccessPathsRequestView);
+        ::buffa::impl_view_reborrow!(ListPersonAccessPathsRequestView);
+        /** Self-contained, `'static` owned view of a `ListPersonAccessPathsRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListPersonAccessPathsRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListPersonAccessPathsRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListPersonAccessPathsRequestOwnedView(
+            ::buffa::OwnedView<ListPersonAccessPathsRequestView<'static>>,
+        );
+        impl ListPersonAccessPathsRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListPersonAccessPathsRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListPersonAccessPathsRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListPersonAccessPathsRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListPersonAccessPathsRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListPersonAccessPathsRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListPersonAccessPathsRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListPersonAccessPathsRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `person_urn`
+            #[must_use]
+            pub fn person_urn(&self) -> &'_ str {
+                self.0.reborrow().person_urn
+            }
+            /// Field 3: `person_query`
+            #[must_use]
+            pub fn person_query(&self) -> &'_ str {
+                self.0.reborrow().person_query
+            }
+            /// Field 4: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+            /// Field 5: `max_depth`
+            #[must_use]
+            pub fn max_depth(&self) -> u32 {
+                self.0.reborrow().max_depth
+            }
+            /// Field 6: `expected_graph_revision`
+            #[must_use]
+            pub fn expected_graph_revision(&self) -> u64 {
+                self.0.reborrow().expected_graph_revision
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListPersonAccessPathsRequestView<'static>>,
+        > for ListPersonAccessPathsRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListPersonAccessPathsRequestView<'static>>,
+            ) -> Self {
+                ListPersonAccessPathsRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListPersonAccessPathsRequestOwnedView>
+        for ::buffa::OwnedView<ListPersonAccessPathsRequestView<'static>> {
+            fn from(wrapper: ListPersonAccessPathsRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListPersonAccessPathsRequestView<'static>>,
+        > for ListPersonAccessPathsRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListPersonAccessPathsRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListPersonAccessPathsRequest {
+            type View<'a> = ListPersonAccessPathsRequestView<'a>;
+            type ViewHandle = ListPersonAccessPathsRequestOwnedView;
+        }
+        impl ::serde::Serialize for ListPersonAccessPathsRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListPersonAccessPathsResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `paths`
+            pub paths: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::PersonAccessPathView<'a>,
+            >,
+            /// Field 4: `truncated`
+            pub truncated: bool,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListPersonAccessPathsResponseView<'a> {
+            type Owned = super::super::ListPersonAccessPathsResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::PersonAccessPathView,
+                            >(),
+                        )?;
+                        view.paths
+                            .push(
+                                <super::super::__buffa::view::PersonAccessPathView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListPersonAccessPathsResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListPersonAccessPathsResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListPersonAccessPathsResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    paths: self
+                        .paths
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    truncated: self.truncated,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListPersonAccessPathsResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                for v in &self.paths {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                for v in &self.paths {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListPersonAccessPathsResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !self.paths.is_empty() {
+                    __map.serialize_entry("paths", &*self.paths)?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListPersonAccessPathsResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListPersonAccessPathsResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListPersonAccessPathsResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListPersonAccessPathsResponse";
+        }
+        ::buffa::impl_default_view_instance!(ListPersonAccessPathsResponseView);
+        ::buffa::impl_view_reborrow!(ListPersonAccessPathsResponseView);
+        /** Self-contained, `'static` owned view of a `ListPersonAccessPathsResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListPersonAccessPathsResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListPersonAccessPathsResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListPersonAccessPathsResponseOwnedView(
+            ::buffa::OwnedView<ListPersonAccessPathsResponseView<'static>>,
+        );
+        impl ListPersonAccessPathsResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListPersonAccessPathsResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListPersonAccessPathsResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListPersonAccessPathsResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListPersonAccessPathsResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListPersonAccessPathsResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListPersonAccessPathsResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListPersonAccessPathsResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `paths`
+            #[must_use]
+            pub fn paths(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::PersonAccessPathView<'_>,
+            > {
+                &self.0.reborrow().paths
+            }
+            /// Field 4: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListPersonAccessPathsResponseView<'static>>,
+        > for ListPersonAccessPathsResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListPersonAccessPathsResponseView<'static>>,
+            ) -> Self {
+                ListPersonAccessPathsResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListPersonAccessPathsResponseOwnedView>
+        for ::buffa::OwnedView<ListPersonAccessPathsResponseView<'static>> {
+            fn from(wrapper: ListPersonAccessPathsResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListPersonAccessPathsResponseView<'static>>,
+        > for ListPersonAccessPathsResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListPersonAccessPathsResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListPersonAccessPathsResponse {
+            type View<'a> = ListPersonAccessPathsResponseView<'a>;
+            type ViewHandle = ListPersonAccessPathsResponseOwnedView;
+        }
+        impl ::serde::Serialize for ListPersonAccessPathsResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct CloudAttackPathNodeView<'a> {
+            /// Field 1: `urn`
+            pub urn: &'a str,
+            /// Field 2: `entity_kind`
+            pub entity_kind: &'a str,
+            /// Field 3: `label`
+            pub label: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CloudAttackPathNodeView<'a> {
+            type Owned = super::super::CloudAttackPathNode;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.entity_kind = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.label = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPathNode,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPathNode,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CloudAttackPathNode {
+                    urn: self.urn.to_string(),
+                    entity_kind: self.entity_kind.to_string(),
+                    label: self.label.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CloudAttackPathNodeView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.urn.is_empty() {
+                    size += 1u64 + ::buffa::types::string_encoded_len(&self.urn) as u64;
+                }
+                if !self.entity_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.entity_kind)
+                                as u64;
+                }
+                if !self.label.is_empty() {
+                    size
+                        += 1u64 + ::buffa::types::string_encoded_len(&self.label) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.urn.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.urn, buf);
+                }
+                if !self.entity_kind.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.entity_kind, buf);
+                }
+                if !self.label.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.label, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CloudAttackPathNodeView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.urn) {
+                    __map.serialize_entry("urn", self.urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.entity_kind) {
+                    __map.serialize_entry("entityKind", self.entity_kind)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.label) {
+                    __map.serialize_entry("label", self.label)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CloudAttackPathNodeView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CloudAttackPathNode";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPathNode";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathNode";
+        }
+        ::buffa::impl_default_view_instance!(CloudAttackPathNodeView);
+        ::buffa::impl_view_reborrow!(CloudAttackPathNodeView);
+        /** Self-contained, `'static` owned view of a `CloudAttackPathNode` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CloudAttackPathNodeView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CloudAttackPathNodeView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CloudAttackPathNodeOwnedView(
+            ::buffa::OwnedView<CloudAttackPathNodeView<'static>>,
+        );
+        impl CloudAttackPathNodeOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathNodeOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathNodeOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CloudAttackPathNode,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathNodeOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`CloudAttackPathNodeView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CloudAttackPathNodeView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::CloudAttackPathNode {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `urn`
+            #[must_use]
+            pub fn urn(&self) -> &'_ str {
+                self.0.reborrow().urn
+            }
+            /// Field 2: `entity_kind`
+            #[must_use]
+            pub fn entity_kind(&self) -> &'_ str {
+                self.0.reborrow().entity_kind
+            }
+            /// Field 3: `label`
+            #[must_use]
+            pub fn label(&self) -> &'_ str {
+                self.0.reborrow().label
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<CloudAttackPathNodeView<'static>>>
+        for CloudAttackPathNodeOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<CloudAttackPathNodeView<'static>>,
+            ) -> Self {
+                CloudAttackPathNodeOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CloudAttackPathNodeOwnedView>
+        for ::buffa::OwnedView<CloudAttackPathNodeView<'static>> {
+            fn from(wrapper: CloudAttackPathNodeOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<CloudAttackPathNodeView<'static>>>
+        for CloudAttackPathNodeOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<CloudAttackPathNodeView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CloudAttackPathNode {
+            type View<'a> = CloudAttackPathNodeView<'a>;
+            type ViewHandle = CloudAttackPathNodeOwnedView;
+        }
+        impl ::serde::Serialize for CloudAttackPathNodeOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct CloudAttackPathEdgeView<'a> {
+            /// Field 1: `from`
+            pub from: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'a>,
+            >,
+            /// Field 2: `relation`
+            pub relation: &'a str,
+            /// Field 3: `to`
+            pub to: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'a>,
+            >,
+            /// Field 4: `direction`
+            pub direction: &'a str,
+            /// Field 5: `source_id`
+            pub source_id: &'a str,
+            /// Field 6: `source_runtime_id`
+            pub source_runtime_id: &'a str,
+            /// Field 7: `assertion_runtime_ids`
+            pub assertion_runtime_ids: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 8: `attributes_json`
+            pub attributes_json: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CloudAttackPathEdgeView<'a> {
+            type Owned = super::super::CloudAttackPathEdge;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.from.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.from = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathNodeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.to.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.to = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathNodeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.direction = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.attributes_json = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.assertion_runtime_ids.push(__elem);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPathEdge,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPathEdge,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CloudAttackPathEdge {
+                    from: match self.from.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathNode,
+                                ::buffa::Inline<super::super::CloudAttackPathNode>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    relation: self.relation.to_string(),
+                    to: match self.to.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathNode,
+                                ::buffa::Inline<super::super::CloudAttackPathNode>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    direction: self.direction.to_string(),
+                    source_id: self.source_id.to_string(),
+                    source_runtime_id: self.source_runtime_id.to_string(),
+                    assertion_runtime_ids: self
+                        .assertion_runtime_ids
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    attributes_json: self.attributes_json.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CloudAttackPathEdgeView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.from.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.from.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.relation) as u64;
+                }
+                if self.to.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.to.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.direction.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.direction) as u64;
+                }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                if !self.source_runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_runtime_id)
+                                as u64;
+                }
+                for v in &self.assertion_runtime_ids {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if !self.attributes_json.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.attributes_json)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.from.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.from.write_to(__cache, buf);
+                }
+                if !self.relation.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.relation, buf);
+                }
+                if self.to.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.to.write_to(__cache, buf);
+                }
+                if !self.direction.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.direction, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.source_id, buf);
+                }
+                if !self.source_runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(6u32, &self.source_runtime_id, buf);
+                }
+                for v in &self.assertion_runtime_ids {
+                    ::buffa::types::put_string_field(7u32, v, buf);
+                }
+                if !self.attributes_json.is_empty() {
+                    ::buffa::types::put_string_field(8u32, &self.attributes_json, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CloudAttackPathEdgeView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.from.as_option() {
+                        __map.serialize_entry("from", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.relation) {
+                    __map.serialize_entry("relation", self.relation)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.to.as_option() {
+                        __map.serialize_entry("to", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.direction) {
+                    __map.serialize_entry("direction", self.direction)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.source_runtime_id,
+                ) {
+                    __map.serialize_entry("sourceRuntimeId", self.source_runtime_id)?;
+                }
+                if !self.assertion_runtime_ids.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "assertionRuntimeIds",
+                            &*self.assertion_runtime_ids,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.attributes_json) {
+                    __map.serialize_entry("attributesJson", self.attributes_json)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CloudAttackPathEdgeView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CloudAttackPathEdge";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPathEdge";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathEdge";
+        }
+        ::buffa::impl_default_view_instance!(CloudAttackPathEdgeView);
+        ::buffa::impl_view_reborrow!(CloudAttackPathEdgeView);
+        /** Self-contained, `'static` owned view of a `CloudAttackPathEdge` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CloudAttackPathEdgeView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CloudAttackPathEdgeView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CloudAttackPathEdgeOwnedView(
+            ::buffa::OwnedView<CloudAttackPathEdgeView<'static>>,
+        );
+        impl CloudAttackPathEdgeOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathEdgeOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathEdgeOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CloudAttackPathEdge,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathEdgeOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`CloudAttackPathEdgeView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CloudAttackPathEdgeView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::CloudAttackPathEdge {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `from`
+            #[must_use]
+            pub fn from(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'_>,
+            > {
+                &self.0.reborrow().from
+            }
+            /// Field 2: `relation`
+            #[must_use]
+            pub fn relation(&self) -> &'_ str {
+                self.0.reborrow().relation
+            }
+            /// Field 3: `to`
+            #[must_use]
+            pub fn to(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'_>,
+            > {
+                &self.0.reborrow().to
+            }
+            /// Field 4: `direction`
+            #[must_use]
+            pub fn direction(&self) -> &'_ str {
+                self.0.reborrow().direction
+            }
+            /// Field 5: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 6: `source_runtime_id`
+            #[must_use]
+            pub fn source_runtime_id(&self) -> &'_ str {
+                self.0.reborrow().source_runtime_id
+            }
+            /// Field 7: `assertion_runtime_ids`
+            #[must_use]
+            pub fn assertion_runtime_ids(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().assertion_runtime_ids
+            }
+            /// Field 8: `attributes_json`
+            #[must_use]
+            pub fn attributes_json(&self) -> &'_ str {
+                self.0.reborrow().attributes_json
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<CloudAttackPathEdgeView<'static>>>
+        for CloudAttackPathEdgeOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<CloudAttackPathEdgeView<'static>>,
+            ) -> Self {
+                CloudAttackPathEdgeOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CloudAttackPathEdgeOwnedView>
+        for ::buffa::OwnedView<CloudAttackPathEdgeView<'static>> {
+            fn from(wrapper: CloudAttackPathEdgeOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<CloudAttackPathEdgeView<'static>>>
+        for CloudAttackPathEdgeOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<CloudAttackPathEdgeView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CloudAttackPathEdge {
+            type View<'a> = CloudAttackPathEdgeView<'a>;
+            type ViewHandle = CloudAttackPathEdgeOwnedView;
+        }
+        impl ::serde::Serialize for CloudAttackPathEdgeOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct CloudAttackPathOwnershipView<'a> {
+            /// Field 1: `owner`
+            pub owner: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'a>,
+            >,
+            /// Field 2: `edge`
+            pub edge: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CloudAttackPathOwnershipView<'a> {
+            type Owned = super::super::CloudAttackPathOwnership;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.owner.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.owner = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathNodeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.edge.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.edge = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathEdgeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPathOwnership,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPathOwnership,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CloudAttackPathOwnership {
+                    owner: match self.owner.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathNode,
+                                ::buffa::Inline<super::super::CloudAttackPathNode>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    edge: match self.edge.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathEdge,
+                                ::buffa::Inline<super::super::CloudAttackPathEdge>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CloudAttackPathOwnershipView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.owner.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.owner.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.edge.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.edge.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.owner.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.owner.write_to(__cache, buf);
+                }
+                if self.edge.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.edge.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CloudAttackPathOwnershipView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.owner.as_option() {
+                        __map.serialize_entry("owner", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.edge.as_option() {
+                        __map.serialize_entry("edge", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CloudAttackPathOwnershipView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CloudAttackPathOwnership";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPathOwnership";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathOwnership";
+        }
+        ::buffa::impl_default_view_instance!(CloudAttackPathOwnershipView);
+        ::buffa::impl_view_reborrow!(CloudAttackPathOwnershipView);
+        /** Self-contained, `'static` owned view of a `CloudAttackPathOwnership` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CloudAttackPathOwnershipView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CloudAttackPathOwnershipView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CloudAttackPathOwnershipOwnedView(
+            ::buffa::OwnedView<CloudAttackPathOwnershipView<'static>>,
+        );
+        impl CloudAttackPathOwnershipOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathOwnershipOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathOwnershipOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CloudAttackPathOwnership,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathOwnershipOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`CloudAttackPathOwnershipView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CloudAttackPathOwnershipView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::CloudAttackPathOwnership {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `owner`
+            #[must_use]
+            pub fn owner(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'_>,
+            > {
+                &self.0.reborrow().owner
+            }
+            /// Field 2: `edge`
+            #[must_use]
+            pub fn edge(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'_>,
+            > {
+                &self.0.reborrow().edge
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<CloudAttackPathOwnershipView<'static>>,
+        > for CloudAttackPathOwnershipOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<CloudAttackPathOwnershipView<'static>>,
+            ) -> Self {
+                CloudAttackPathOwnershipOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CloudAttackPathOwnershipOwnedView>
+        for ::buffa::OwnedView<CloudAttackPathOwnershipView<'static>> {
+            fn from(wrapper: CloudAttackPathOwnershipOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<CloudAttackPathOwnershipView<'static>>,
+        > for CloudAttackPathOwnershipOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<CloudAttackPathOwnershipView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CloudAttackPathOwnership {
+            type View<'a> = CloudAttackPathOwnershipView<'a>;
+            type ViewHandle = CloudAttackPathOwnershipOwnedView;
+        }
+        impl ::serde::Serialize for CloudAttackPathOwnershipOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct CloudAttackPathView<'a> {
+            /// Field 1: `public_principal`
+            pub public_principal: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'a>,
+            >,
+            /// Field 2: `exposed_resource`
+            pub exposed_resource: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'a>,
+            >,
+            /// Field 3: `cloud_account`
+            pub cloud_account: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'a>,
+            >,
+            /// Field 4: `principal`
+            pub principal: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'a>,
+            >,
+            /// Field 5: `permission`
+            pub permission: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'a>,
+            >,
+            /// Field 6: `ownerships`
+            pub ownerships: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::CloudAttackPathOwnershipView<'a>,
+            >,
+            /// Field 7: `reach_relation`
+            pub reach_relation: &'a str,
+            /// Field 8: `access_relation`
+            pub access_relation: &'a str,
+            /// Field 9: `relation_chain`
+            pub relation_chain: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 10: `exposure_edge`
+            pub exposure_edge: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'a>,
+            >,
+            /// Field 11: `resource_account_edge`
+            pub resource_account_edge: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'a>,
+            >,
+            /// Field 12: `traversal_edges`
+            pub traversal_edges: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::CloudAttackPathEdgeView<'a>,
+            >,
+            /// Field 13: `privilege_edge`
+            pub privilege_edge: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'a>,
+            >,
+            /// Field 14: `permission_account_edge`
+            pub permission_account_edge: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CloudAttackPathView<'a> {
+            type Owned = super::super::CloudAttackPath;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.public_principal.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.public_principal = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathNodeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.exposed_resource.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.exposed_resource = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathNodeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.cloud_account.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.cloud_account = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathNodeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.principal.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.principal = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathNodeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.permission.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.permission = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathNodeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.reach_relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.access_relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.exposure_edge.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.exposure_edge = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathEdgeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    11u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.resource_account_edge.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.resource_account_edge = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathEdgeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    13u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.privilege_edge.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.privilege_edge = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathEdgeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    14u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.permission_account_edge.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.permission_account_edge = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathEdgeView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::CloudAttackPathOwnershipView,
+                            >(),
+                        )?;
+                        view.ownerships
+                            .push(
+                                <super::super::__buffa::view::CloudAttackPathOwnershipView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.relation_chain.push(__elem);
+                    }
+                    12u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::CloudAttackPathEdgeView,
+                            >(),
+                        )?;
+                        view.traversal_edges
+                            .push(
+                                <super::super::__buffa::view::CloudAttackPathEdgeView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPath,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPath,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CloudAttackPath {
+                    public_principal: match self.public_principal.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathNode,
+                                ::buffa::Inline<super::super::CloudAttackPathNode>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    exposed_resource: match self.exposed_resource.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathNode,
+                                ::buffa::Inline<super::super::CloudAttackPathNode>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    cloud_account: match self.cloud_account.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathNode,
+                                ::buffa::Inline<super::super::CloudAttackPathNode>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    principal: match self.principal.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathNode,
+                                ::buffa::Inline<super::super::CloudAttackPathNode>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    permission: match self.permission.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathNode,
+                                ::buffa::Inline<super::super::CloudAttackPathNode>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    ownerships: self
+                        .ownerships
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    reach_relation: self.reach_relation.to_string(),
+                    access_relation: self.access_relation.to_string(),
+                    relation_chain: self
+                        .relation_chain
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    exposure_edge: match self.exposure_edge.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathEdge,
+                                ::buffa::Inline<super::super::CloudAttackPathEdge>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    resource_account_edge: match self.resource_account_edge.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathEdge,
+                                ::buffa::Inline<super::super::CloudAttackPathEdge>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    traversal_edges: self
+                        .traversal_edges
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    privilege_edge: match self.privilege_edge.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathEdge,
+                                ::buffa::Inline<super::super::CloudAttackPathEdge>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    permission_account_edge: match self
+                        .permission_account_edge
+                        .as_option()
+                    {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathEdge,
+                                ::buffa::Inline<super::super::CloudAttackPathEdge>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CloudAttackPathView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.public_principal.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.public_principal.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.exposed_resource.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.exposed_resource.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.cloud_account.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.cloud_account.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.principal.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.principal.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.permission.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.permission.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.ownerships {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.reach_relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.reach_relation)
+                                as u64;
+                }
+                if !self.access_relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.access_relation)
+                                as u64;
+                }
+                for v in &self.relation_chain {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if self.exposure_edge.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.exposure_edge.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.resource_account_edge.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.resource_account_edge.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.traversal_edges {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.privilege_edge.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.privilege_edge.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.permission_account_edge.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.permission_account_edge.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.public_principal.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.public_principal.write_to(__cache, buf);
+                }
+                if self.exposed_resource.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.exposed_resource.write_to(__cache, buf);
+                }
+                if self.cloud_account.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.cloud_account.write_to(__cache, buf);
+                }
+                if self.principal.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        4u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.principal.write_to(__cache, buf);
+                }
+                if self.permission.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        5u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.permission.write_to(__cache, buf);
+                }
+                for v in &self.ownerships {
+                    ::buffa::types::put_len_delimited_header(
+                        6u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if !self.reach_relation.is_empty() {
+                    ::buffa::types::put_string_field(7u32, &self.reach_relation, buf);
+                }
+                if !self.access_relation.is_empty() {
+                    ::buffa::types::put_string_field(8u32, &self.access_relation, buf);
+                }
+                for v in &self.relation_chain {
+                    ::buffa::types::put_string_field(9u32, v, buf);
+                }
+                if self.exposure_edge.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        10u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.exposure_edge.write_to(__cache, buf);
+                }
+                if self.resource_account_edge.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        11u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.resource_account_edge.write_to(__cache, buf);
+                }
+                for v in &self.traversal_edges {
+                    ::buffa::types::put_len_delimited_header(
+                        12u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.privilege_edge.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        13u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.privilege_edge.write_to(__cache, buf);
+                }
+                if self.permission_account_edge.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        14u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.permission_account_edge.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CloudAttackPathView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .public_principal
+                        .as_option()
+                    {
+                        __map.serialize_entry("publicPrincipal", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .exposed_resource
+                        .as_option()
+                    {
+                        __map.serialize_entry("exposedResource", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .cloud_account
+                        .as_option()
+                    {
+                        __map.serialize_entry("cloudAccount", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.principal.as_option()
+                    {
+                        __map.serialize_entry("principal", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .permission
+                        .as_option()
+                    {
+                        __map.serialize_entry("permission", __v)?;
+                    }
+                }
+                if !self.ownerships.is_empty() {
+                    __map.serialize_entry("ownerships", &*self.ownerships)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.reach_relation) {
+                    __map.serialize_entry("reachRelation", self.reach_relation)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.access_relation) {
+                    __map.serialize_entry("accessRelation", self.access_relation)?;
+                }
+                if !self.relation_chain.is_empty() {
+                    __map.serialize_entry("relationChain", &*self.relation_chain)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .exposure_edge
+                        .as_option()
+                    {
+                        __map.serialize_entry("exposureEdge", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .resource_account_edge
+                        .as_option()
+                    {
+                        __map.serialize_entry("resourceAccountEdge", __v)?;
+                    }
+                }
+                if !self.traversal_edges.is_empty() {
+                    __map.serialize_entry("traversalEdges", &*self.traversal_edges)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .privilege_edge
+                        .as_option()
+                    {
+                        __map.serialize_entry("privilegeEdge", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .permission_account_edge
+                        .as_option()
+                    {
+                        __map.serialize_entry("permissionAccountEdge", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CloudAttackPathView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CloudAttackPath";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPath";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPath";
+        }
+        ::buffa::impl_default_view_instance!(CloudAttackPathView);
+        ::buffa::impl_view_reborrow!(CloudAttackPathView);
+        /** Self-contained, `'static` owned view of a `CloudAttackPath` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CloudAttackPathView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CloudAttackPathView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CloudAttackPathOwnedView(
+            ::buffa::OwnedView<CloudAttackPathView<'static>>,
+        );
+        impl CloudAttackPathOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CloudAttackPath,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`CloudAttackPathView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CloudAttackPathView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::CloudAttackPath {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `public_principal`
+            #[must_use]
+            pub fn public_principal(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'_>,
+            > {
+                &self.0.reborrow().public_principal
+            }
+            /// Field 2: `exposed_resource`
+            #[must_use]
+            pub fn exposed_resource(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'_>,
+            > {
+                &self.0.reborrow().exposed_resource
+            }
+            /// Field 3: `cloud_account`
+            #[must_use]
+            pub fn cloud_account(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'_>,
+            > {
+                &self.0.reborrow().cloud_account
+            }
+            /// Field 4: `principal`
+            #[must_use]
+            pub fn principal(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'_>,
+            > {
+                &self.0.reborrow().principal
+            }
+            /// Field 5: `permission`
+            #[must_use]
+            pub fn permission(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathNodeView<'_>,
+            > {
+                &self.0.reborrow().permission
+            }
+            /// Field 6: `ownerships`
+            #[must_use]
+            pub fn ownerships(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::CloudAttackPathOwnershipView<'_>,
+            > {
+                &self.0.reborrow().ownerships
+            }
+            /// Field 7: `reach_relation`
+            #[must_use]
+            pub fn reach_relation(&self) -> &'_ str {
+                self.0.reborrow().reach_relation
+            }
+            /// Field 8: `access_relation`
+            #[must_use]
+            pub fn access_relation(&self) -> &'_ str {
+                self.0.reborrow().access_relation
+            }
+            /// Field 9: `relation_chain`
+            #[must_use]
+            pub fn relation_chain(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().relation_chain
+            }
+            /// Field 10: `exposure_edge`
+            #[must_use]
+            pub fn exposure_edge(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'_>,
+            > {
+                &self.0.reborrow().exposure_edge
+            }
+            /// Field 11: `resource_account_edge`
+            #[must_use]
+            pub fn resource_account_edge(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'_>,
+            > {
+                &self.0.reborrow().resource_account_edge
+            }
+            /// Field 12: `traversal_edges`
+            #[must_use]
+            pub fn traversal_edges(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::CloudAttackPathEdgeView<'_>,
+            > {
+                &self.0.reborrow().traversal_edges
+            }
+            /// Field 13: `privilege_edge`
+            #[must_use]
+            pub fn privilege_edge(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'_>,
+            > {
+                &self.0.reborrow().privilege_edge
+            }
+            /// Field 14: `permission_account_edge`
+            #[must_use]
+            pub fn permission_account_edge(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathEdgeView<'_>,
+            > {
+                &self.0.reborrow().permission_account_edge
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<CloudAttackPathView<'static>>>
+        for CloudAttackPathOwnedView {
+            fn from(inner: ::buffa::OwnedView<CloudAttackPathView<'static>>) -> Self {
+                CloudAttackPathOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CloudAttackPathOwnedView>
+        for ::buffa::OwnedView<CloudAttackPathView<'static>> {
+            fn from(wrapper: CloudAttackPathOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<CloudAttackPathView<'static>>>
+        for CloudAttackPathOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<CloudAttackPathView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CloudAttackPath {
+            type View<'a> = CloudAttackPathView<'a>;
+            type ViewHandle = CloudAttackPathOwnedView;
+        }
+        impl ::serde::Serialize for CloudAttackPathOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct CloudAttackPathCountsView<'a> {
+            /// Field 1: `paths`
+            pub paths: u64,
+            /// Field 2: `exposed_resources`
+            pub exposed_resources: u64,
+            /// Field 3: `privileged_principals`
+            pub privileged_principals: u64,
+            /// Field 4: `cloud_accounts`
+            pub cloud_accounts: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for CloudAttackPathCountsView<'a> {
+            type Owned = super::super::CloudAttackPathCounts;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.paths = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.exposed_resources = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.privileged_principals = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.cloud_accounts = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPathCounts,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::CloudAttackPathCounts,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::CloudAttackPathCounts {
+                    paths: self.paths,
+                    exposed_resources: self.exposed_resources,
+                    privileged_principals: self.privileged_principals,
+                    cloud_accounts: self.cloud_accounts,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for CloudAttackPathCountsView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.paths != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.paths) as u64;
+                }
+                if self.exposed_resources != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.exposed_resources)
+                                as u64;
+                }
+                if self.privileged_principals != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.privileged_principals,
+                            ) as u64;
+                }
+                if self.cloud_accounts != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.cloud_accounts)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.paths != 0u64 {
+                    ::buffa::types::put_uint64_field(1u32, self.paths, buf);
+                }
+                if self.exposed_resources != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.exposed_resources, buf);
+                }
+                if self.privileged_principals != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        3u32,
+                        self.privileged_principals,
+                        buf,
+                    );
+                }
+                if self.cloud_accounts != 0u64 {
+                    ::buffa::types::put_uint64_field(4u32, self.cloud_accounts, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for CloudAttackPathCountsView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.paths) {
+                    __map
+                        .serialize_entry(
+                            "paths",
+                            &::buffa::json_helpers::ProtoJson(&self.paths),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.exposed_resources,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "exposedResources",
+                            &::buffa::json_helpers::ProtoJson(&self.exposed_resources),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.privileged_principals,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "privilegedPrincipals",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.privileged_principals,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.cloud_accounts) {
+                    __map
+                        .serialize_entry(
+                            "cloudAccounts",
+                            &::buffa::json_helpers::ProtoJson(&self.cloud_accounts),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for CloudAttackPathCountsView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "CloudAttackPathCounts";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.CloudAttackPathCounts";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.CloudAttackPathCounts";
+        }
+        ::buffa::impl_default_view_instance!(CloudAttackPathCountsView);
+        ::buffa::impl_view_reborrow!(CloudAttackPathCountsView);
+        /** Self-contained, `'static` owned view of a `CloudAttackPathCounts` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`CloudAttackPathCountsView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`CloudAttackPathCountsView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct CloudAttackPathCountsOwnedView(
+            ::buffa::OwnedView<CloudAttackPathCountsView<'static>>,
+        );
+        impl CloudAttackPathCountsOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathCountsOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathCountsOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::CloudAttackPathCounts,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    CloudAttackPathCountsOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`CloudAttackPathCountsView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &CloudAttackPathCountsView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::CloudAttackPathCounts {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `paths`
+            #[must_use]
+            pub fn paths(&self) -> u64 {
+                self.0.reborrow().paths
+            }
+            /// Field 2: `exposed_resources`
+            #[must_use]
+            pub fn exposed_resources(&self) -> u64 {
+                self.0.reborrow().exposed_resources
+            }
+            /// Field 3: `privileged_principals`
+            #[must_use]
+            pub fn privileged_principals(&self) -> u64 {
+                self.0.reborrow().privileged_principals
+            }
+            /// Field 4: `cloud_accounts`
+            #[must_use]
+            pub fn cloud_accounts(&self) -> u64 {
+                self.0.reborrow().cloud_accounts
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<CloudAttackPathCountsView<'static>>,
+        > for CloudAttackPathCountsOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<CloudAttackPathCountsView<'static>>,
+            ) -> Self {
+                CloudAttackPathCountsOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<CloudAttackPathCountsOwnedView>
+        for ::buffa::OwnedView<CloudAttackPathCountsView<'static>> {
+            fn from(wrapper: CloudAttackPathCountsOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<CloudAttackPathCountsView<'static>>,
+        > for CloudAttackPathCountsOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<CloudAttackPathCountsView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::CloudAttackPathCounts {
+            type View<'a> = CloudAttackPathCountsView<'a>;
+            type ViewHandle = CloudAttackPathCountsOwnedView;
+        }
+        impl ::serde::Serialize for CloudAttackPathCountsOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListCloudAttackPathsRequestView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `account_id`
+            pub account_id: &'a str,
+            /// Field 3: `runtime_id`
+            pub runtime_id: &'a str,
+            /// Field 4: `require_assertion_proof`
+            pub require_assertion_proof: bool,
+            /// Field 5: `limit`
+            pub limit: u32,
+            /// Field 6: `max_depth`
+            pub max_depth: u32,
+            /// Field 7: `expected_graph_revision`
+            pub expected_graph_revision: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListCloudAttackPathsRequestView<'a> {
+            type Owned = super::super::ListCloudAttackPathsRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.account_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.require_assertion_proof = ::buffa::types::decode_bool(
+                            &mut cur,
+                        )?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.max_depth = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.expected_graph_revision = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListCloudAttackPathsRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListCloudAttackPathsRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListCloudAttackPathsRequest {
+                    tenant_id: self.tenant_id.to_string(),
+                    account_id: self.account_id.to_string(),
+                    runtime_id: self.runtime_id.to_string(),
+                    require_assertion_proof: self.require_assertion_proof,
+                    limit: self.limit,
+                    max_depth: self.max_depth,
+                    expected_graph_revision: self.expected_graph_revision,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListCloudAttackPathsRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.account_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.account_id)
+                                as u64;
+                }
+                if !self.runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.runtime_id)
+                                as u64;
+                }
+                if self.require_assertion_proof {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                if self.max_depth != 0u32 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint32_encoded_len(self.max_depth) as u64;
+                }
+                if self.expected_graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.expected_graph_revision,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.account_id.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.account_id, buf);
+                }
+                if !self.runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.runtime_id, buf);
+                }
+                if self.require_assertion_proof {
+                    ::buffa::types::put_bool_field(
+                        4u32,
+                        self.require_assertion_proof,
+                        buf,
+                    );
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(5u32, self.limit, buf);
+                }
+                if self.max_depth != 0u32 {
+                    ::buffa::types::put_uint32_field(6u32, self.max_depth, buf);
+                }
+                if self.expected_graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        7u32,
+                        self.expected_graph_revision,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListCloudAttackPathsRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.account_id) {
+                    __map.serialize_entry("accountId", self.account_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.runtime_id) {
+                    __map.serialize_entry("runtimeId", self.runtime_id)?;
+                }
+                if self.require_assertion_proof {
+                    __map
+                        .serialize_entry(
+                            "requireAssertionProof",
+                            &self.require_assertion_proof,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.max_depth) {
+                    __map
+                        .serialize_entry(
+                            "maxDepth",
+                            &::buffa::json_helpers::ProtoJson(&self.max_depth),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.expected_graph_revision,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "expectedGraphRevision",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.expected_graph_revision,
+                            ),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListCloudAttackPathsRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListCloudAttackPathsRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListCloudAttackPathsRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListCloudAttackPathsRequest";
+        }
+        ::buffa::impl_default_view_instance!(ListCloudAttackPathsRequestView);
+        ::buffa::impl_view_reborrow!(ListCloudAttackPathsRequestView);
+        /** Self-contained, `'static` owned view of a `ListCloudAttackPathsRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListCloudAttackPathsRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListCloudAttackPathsRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListCloudAttackPathsRequestOwnedView(
+            ::buffa::OwnedView<ListCloudAttackPathsRequestView<'static>>,
+        );
+        impl ListCloudAttackPathsRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListCloudAttackPathsRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListCloudAttackPathsRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListCloudAttackPathsRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListCloudAttackPathsRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListCloudAttackPathsRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListCloudAttackPathsRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ListCloudAttackPathsRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `account_id`
+            #[must_use]
+            pub fn account_id(&self) -> &'_ str {
+                self.0.reborrow().account_id
+            }
+            /// Field 3: `runtime_id`
+            #[must_use]
+            pub fn runtime_id(&self) -> &'_ str {
+                self.0.reborrow().runtime_id
+            }
+            /// Field 4: `require_assertion_proof`
+            #[must_use]
+            pub fn require_assertion_proof(&self) -> bool {
+                self.0.reborrow().require_assertion_proof
+            }
+            /// Field 5: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+            /// Field 6: `max_depth`
+            #[must_use]
+            pub fn max_depth(&self) -> u32 {
+                self.0.reborrow().max_depth
+            }
+            /// Field 7: `expected_graph_revision`
+            #[must_use]
+            pub fn expected_graph_revision(&self) -> u64 {
+                self.0.reborrow().expected_graph_revision
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListCloudAttackPathsRequestView<'static>>,
+        > for ListCloudAttackPathsRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListCloudAttackPathsRequestView<'static>>,
+            ) -> Self {
+                ListCloudAttackPathsRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListCloudAttackPathsRequestOwnedView>
+        for ::buffa::OwnedView<ListCloudAttackPathsRequestView<'static>> {
+            fn from(wrapper: ListCloudAttackPathsRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListCloudAttackPathsRequestView<'static>>,
+        > for ListCloudAttackPathsRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListCloudAttackPathsRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListCloudAttackPathsRequest {
+            type View<'a> = ListCloudAttackPathsRequestView<'a>;
+            type ViewHandle = ListCloudAttackPathsRequestOwnedView;
+        }
+        impl ::serde::Serialize for ListCloudAttackPathsRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListCloudAttackPathsResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `counts`
+            pub counts: ::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathCountsView<'a>,
+            >,
+            /// Field 4: `paths`
+            pub paths: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::CloudAttackPathView<'a>,
+            >,
+            /// Field 5: `truncated`
+            pub truncated: bool,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListCloudAttackPathsResponseView<'a> {
+            type Owned = super::super::ListCloudAttackPathsResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.counts.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.counts = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::CloudAttackPathCountsView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::CloudAttackPathView,
+                            >(),
+                        )?;
+                        view.paths
+                            .push(
+                                <super::super::__buffa::view::CloudAttackPathView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListCloudAttackPathsResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListCloudAttackPathsResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListCloudAttackPathsResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    counts: match self.counts.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::CloudAttackPathCounts,
+                                ::buffa::Inline<super::super::CloudAttackPathCounts>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    paths: self
+                        .paths
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    truncated: self.truncated,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListCloudAttackPathsResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                if self.counts.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.counts.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.paths {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                if self.counts.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.counts.write_to(__cache, buf);
+                }
+                for v in &self.paths {
+                    ::buffa::types::put_len_delimited_header(
+                        4u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(5u32, self.truncated, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListCloudAttackPathsResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.counts.as_option() {
+                        __map.serialize_entry("counts", __v)?;
+                    }
+                }
+                if !self.paths.is_empty() {
+                    __map.serialize_entry("paths", &*self.paths)?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListCloudAttackPathsResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListCloudAttackPathsResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListCloudAttackPathsResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListCloudAttackPathsResponse";
+        }
+        ::buffa::impl_default_view_instance!(ListCloudAttackPathsResponseView);
+        ::buffa::impl_view_reborrow!(ListCloudAttackPathsResponseView);
+        /** Self-contained, `'static` owned view of a `ListCloudAttackPathsResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListCloudAttackPathsResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListCloudAttackPathsResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListCloudAttackPathsResponseOwnedView(
+            ::buffa::OwnedView<ListCloudAttackPathsResponseView<'static>>,
+        );
+        impl ListCloudAttackPathsResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListCloudAttackPathsResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListCloudAttackPathsResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListCloudAttackPathsResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListCloudAttackPathsResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListCloudAttackPathsResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListCloudAttackPathsResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListCloudAttackPathsResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `counts`
+            #[must_use]
+            pub fn counts(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::CloudAttackPathCountsView<'_>,
+            > {
+                &self.0.reborrow().counts
+            }
+            /// Field 4: `paths`
+            #[must_use]
+            pub fn paths(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::CloudAttackPathView<'_>,
+            > {
+                &self.0.reborrow().paths
+            }
+            /// Field 5: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListCloudAttackPathsResponseView<'static>>,
+        > for ListCloudAttackPathsResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListCloudAttackPathsResponseView<'static>>,
+            ) -> Self {
+                ListCloudAttackPathsResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListCloudAttackPathsResponseOwnedView>
+        for ::buffa::OwnedView<ListCloudAttackPathsResponseView<'static>> {
+            fn from(wrapper: ListCloudAttackPathsResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListCloudAttackPathsResponseView<'static>>,
+        > for ListCloudAttackPathsResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListCloudAttackPathsResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListCloudAttackPathsResponse {
+            type View<'a> = ListCloudAttackPathsResponseView<'a>;
+            type ViewHandle = ListCloudAttackPathsResponseOwnedView;
+        }
+        impl ::serde::Serialize for ListCloudAttackPathsResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
         pub struct ListEntityRelationsRequestView<'a> {
             /// Field 1: `tenant_id`
             pub tenant_id: &'a str,
@@ -30594,6 +38297,16 @@ pub mod __buffa {
         reg.register_json_any(super::__RELATION_COUNT_JSON_ANY);
         reg.register_json_any(super::__COUNT_RELATIONS_REQUEST_JSON_ANY);
         reg.register_json_any(super::__COUNT_RELATIONS_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__PERSON_ACCESS_PATH_JSON_ANY);
+        reg.register_json_any(super::__LIST_PERSON_ACCESS_PATHS_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__LIST_PERSON_ACCESS_PATHS_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__CLOUD_ATTACK_PATH_NODE_JSON_ANY);
+        reg.register_json_any(super::__CLOUD_ATTACK_PATH_EDGE_JSON_ANY);
+        reg.register_json_any(super::__CLOUD_ATTACK_PATH_OWNERSHIP_JSON_ANY);
+        reg.register_json_any(super::__CLOUD_ATTACK_PATH_JSON_ANY);
+        reg.register_json_any(super::__CLOUD_ATTACK_PATH_COUNTS_JSON_ANY);
+        reg.register_json_any(super::__LIST_CLOUD_ATTACK_PATHS_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__LIST_CLOUD_ATTACK_PATHS_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__LIST_ENTITY_RELATIONS_REQUEST_JSON_ANY);
         reg.register_json_any(super::__ENTITY_RELATION_JSON_ANY);
         reg.register_json_any(super::__LIST_ENTITY_RELATIONS_RESPONSE_JSON_ANY);
@@ -30747,6 +38460,46 @@ pub use self::__buffa::view::CountRelationsRequestOwnedView;
 pub use self::__buffa::view::CountRelationsResponseView;
 #[doc(inline)]
 pub use self::__buffa::view::CountRelationsResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::PersonAccessPathView;
+#[doc(inline)]
+pub use self::__buffa::view::PersonAccessPathOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListPersonAccessPathsRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ListPersonAccessPathsRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListPersonAccessPathsResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ListPersonAccessPathsResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathNodeView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathNodeOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathEdgeView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathEdgeOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathOwnershipView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathOwnershipOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathCountsView;
+#[doc(inline)]
+pub use self::__buffa::view::CloudAttackPathCountsOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListCloudAttackPathsRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ListCloudAttackPathsRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListCloudAttackPathsResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ListCloudAttackPathsResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::view::ListEntityRelationsRequestView;
 #[doc(inline)]

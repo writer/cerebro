@@ -108,6 +108,30 @@ pub type OwnedCountRelationsResponseView = ::buffa::view::OwnedView<
         'static,
     >,
 >;
+///Shorthand for `OwnedView<ListPersonAccessPathsRequestView<'static>>`.
+pub type OwnedListPersonAccessPathsRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListPersonAccessPathsRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListPersonAccessPathsResponseView<'static>>`.
+pub type OwnedListPersonAccessPathsResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListPersonAccessPathsResponseView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListCloudAttackPathsRequestView<'static>>`.
+pub type OwnedListCloudAttackPathsRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListCloudAttackPathsRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListCloudAttackPathsResponseView<'static>>`.
+pub type OwnedListCloudAttackPathsResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListCloudAttackPathsResponseView<
+        'static,
+    >,
+>;
 ///Shorthand for `OwnedView<ListEntityRelationsRequestView<'static>>`.
 pub type OwnedListEntityRelationsRequestView = ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsRequestView<
@@ -543,6 +567,90 @@ for ::buffa::view::OwnedView<
     }
 }
 impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsResponse,
+>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListPersonAccessPathsResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListPersonAccessPathsResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsResponse,
+>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListCloudAttackPathsResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListCloudAttackPathsResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<
     crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsResponse,
 >
 for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListEntityRelationsResponseView<
@@ -724,6 +832,24 @@ pub const ORGANIZATIONAL_GRAPH_SERVICE_COUNT_ENTITY_KINDS_SPEC: ::connectrpc::Sp
 /// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
 pub const ORGANIZATIONAL_GRAPH_SERVICE_COUNT_RELATIONS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/cerebro.graph.v1.OrganizationalGraphService/CountRelations",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `ListPersonAccessPaths` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_PERSON_ACCESS_PATHS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/ListPersonAccessPaths",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `ListCloudAttackPaths` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_CLOUD_ATTACK_PATHS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/ListCloudAttackPaths",
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
@@ -1047,6 +1173,52 @@ pub trait OrganizationalGraphService: Send + Sync + 'static {
         Output = ::connectrpc::ServiceResult<
             impl ::connectrpc::Encodable<
                 crate::rpc::proto::cerebro::graph::v1::CountRelationsResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// ListPersonAccessPaths returns bounded person-to-access-target paths from the legacy graph projection.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn list_person_access_paths<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// ListCloudAttackPaths returns bounded public-exposure-to-privilege paths from the legacy graph projection.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn list_cloud_attack_paths<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsResponse,
             > + Send + use<'a, Self>,
         >,
     > + Send;
@@ -1449,6 +1621,64 @@ impl<S: OrganizationalGraphService> OrganizationalGraphServiceExt for S {
             .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_COUNT_RELATIONS_SPEC)
             .route_view(
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListPersonAccessPaths",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListPersonAccessPathsRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.list_person_access_paths(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_LIST_PERSON_ACCESS_PATHS_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListCloudAttackPaths",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListCloudAttackPathsRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.list_cloud_attack_paths(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_LIST_CLOUD_ATTACK_PATHS_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "ListEntityRelations",
                 {
                     let svc = ::std::sync::Arc::clone(&self);
@@ -1628,6 +1858,22 @@ for OrganizationalGraphServiceServer<T> {
                 Some(
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
                         .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_COUNT_RELATIONS_SPEC),
+                )
+            }
+            "ListPersonAccessPaths" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(
+                            ORGANIZATIONAL_GRAPH_SERVICE_LIST_PERSON_ACCESS_PATHS_SPEC,
+                        ),
+                )
+            }
+            "ListCloudAttackPaths" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(
+                            ORGANIZATIONAL_GRAPH_SERVICE_LIST_CLOUD_ATTACK_PATHS_SPEC,
+                        ),
                 )
             }
             "ListEntityRelations" => {
@@ -1899,6 +2145,50 @@ for OrganizationalGraphServiceServer<T> {
                         .await?
                         .encode::<
                             crate::rpc::proto::cerebro::graph::v1::CountRelationsResponse,
+                        >(format)
+                })
+            }
+            "ListPersonAccessPaths" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListPersonAccessPathsRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsRequest,
+                    >::from_parts(&req, &body);
+                    svc.list_person_access_paths(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsResponse,
+                        >(format)
+                })
+            }
+            "ListCloudAttackPaths" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListCloudAttackPathsRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsRequest,
+                    >::from_parts(&req, &body);
+                    svc.list_cloud_attack_paths(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsResponse,
                         >(format)
                 })
             }
@@ -2561,6 +2851,96 @@ where
                 &self.config,
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "CountRelations",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the ListPersonAccessPaths RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/ListPersonAccessPaths.
+    pub async fn list_person_access_paths(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListPersonAccessPathsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.list_person_access_paths_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the ListPersonAccessPaths RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn list_person_access_paths_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListPersonAccessPathsRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListPersonAccessPathsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListPersonAccessPaths",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the ListCloudAttackPaths RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/ListCloudAttackPaths.
+    pub async fn list_cloud_attack_paths(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListCloudAttackPathsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.list_cloud_attack_paths_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the ListCloudAttackPaths RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn list_cloud_attack_paths_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListCloudAttackPathsRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListCloudAttackPathsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListCloudAttackPaths",
                 request,
                 options,
             )

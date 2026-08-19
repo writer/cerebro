@@ -50,7 +50,7 @@ type PersonAccessPath struct {
 }
 
 func (s *Service) GetPersonAccessPaths(ctx context.Context, request PersonAccessPathRequest) (*PersonAccessPathResult, error) {
-	if s == nil || s.rawCypher == nil {
+	if s == nil || s.personAccess == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
@@ -71,29 +71,41 @@ func (s *Service) GetPersonAccessPaths(ctx context.Context, request PersonAccess
 		}
 	}
 	limit := normalizePersonAccessPathLimit(request.Limit)
-	params := map[string]any{
-		"access_relations": []string{"assigned_to", "member_of", "can_admin", "can_perform", "can_assume", "can_impersonate", "runs_as"},
-		"person_query":     personQuery,
-		"person_urn":       personURN,
-		"sample_limit":     int64(limit),
-		"tenant_id":        tenantID,
-	}
-	rows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query:    personAccessPathQuery(normalizePersonAccessPathDepth(request.Depth)),
-		Params:   params,
-		RowLimit: limit,
+	depth := normalizePersonAccessPathDepth(request.Depth)
+	typed, err := s.personAccess.ListPersonAccessPaths(ctx, ports.PersonAccessPathRequest{
+		TenantID:    tenantID,
+		PersonURN:   personURN,
+		PersonQuery: personQuery,
+		Limit:       limit,
+		Depth:       depth,
 	})
 	if err != nil {
 		return nil, err
 	}
-	paths := personAccessPathsFromRows(rows)
+	if typed == nil || typed.TenantID != tenantID || len(typed.Paths) > limit {
+		return nil, fmt.Errorf("%w: typed person access returned an invalid tenant or bound", ErrRuntimeUnavailable)
+	}
+	paths := make([]PersonAccessPath, 0, len(typed.Paths))
+	for _, path := range typed.Paths {
+		converted := PersonAccessPath{
+			Person:        catalogGraphRef(path.Person),
+			Identity:      catalogGraphRef(path.Identity),
+			Principal:     catalogGraphRef(path.Principal),
+			AccessTarget:  catalogGraphRef(path.AccessTarget),
+			RelationChain: append([]string(nil), path.RelationChain...),
+		}
+		if converted.Person.URN == "" || converted.Identity.URN == "" || converted.Principal.URN == "" || converted.AccessTarget.URN == "" || len(converted.RelationChain) == 0 {
+			return nil, fmt.Errorf("%w: typed person access returned an invalid path", ErrRuntimeUnavailable)
+		}
+		paths = append(paths, converted)
+	}
 	return &PersonAccessPathResult{
 		TenantID: tenantID,
 		Filters: PersonAccessPathFilters{
 			PersonURN:   personURN,
 			PersonQuery: personQuery,
 			Limit:       limit,
-			Depth:       normalizePersonAccessPathDepth(request.Depth),
+			Depth:       depth,
 		},
 		Counts: PersonAccessPathCounts{Paths: len(paths)},
 		Paths:  paths,
@@ -130,55 +142,10 @@ func tenantFromCerebroURN(urn string) string {
 	return ""
 }
 
-func personAccessPathQuery(depth int) string {
-	return fmt.Sprintf(`MATCH (person:Entity {tenant_id: $tenant_id, entity_type: 'person'})
-WHERE ($person_urn = '' OR person.urn = $person_urn)
-  AND ($person_query = ''
-       OR toLower(coalesce(person.label, '')) CONTAINS $person_query
-       OR toLower(coalesce(person.attributes_json, '')) CONTAINS $person_query)
-MATCH (person)-[person_identity:RELATION {relation: 'same_actor'}]-(identity:Entity {tenant_id: $tenant_id})
-MATCH (principal:Entity {tenant_id: $tenant_id})-[principal_identity:RELATION {relation: 'represents_identity'}]->(identity)
-MATCH path = (principal)-[:RELATION*1..%d]->(target:Entity {tenant_id: $tenant_id})
-WHERE person_identity.tenant_id = $tenant_id
-  AND principal_identity.tenant_id = $tenant_id
-  AND all(node IN nodes(path) WHERE node.tenant_id = $tenant_id)
-  AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $access_relations)
-  AND target.urn <> person.urn
-  AND target.urn <> identity.urn
-RETURN person.urn AS person_urn,
-       person.entity_type AS person_entity_type,
-       person.label AS person_label,
-       identity.urn AS identity_urn,
-       identity.entity_type AS identity_entity_type,
-       identity.label AS identity_label,
-       principal.urn AS principal_urn,
-       principal.entity_type AS principal_entity_type,
-       principal.label AS principal_label,
-       target.urn AS target_urn,
-       target.entity_type AS target_entity_type,
-       target.label AS target_label,
-       [rel IN relationships(path) | rel.relation] AS relation_chain
-ORDER BY person.label, principal.label, target.label
-LIMIT $sample_limit`, depth)
-}
-
-func personAccessPathsFromRows(rows []ports.CypherRow) []PersonAccessPath {
-	paths := make([]PersonAccessPath, 0, len(rows))
-	for _, row := range rows {
-		if row.Values == nil {
-			continue
-		}
-		path := PersonAccessPath{
-			Person:        GraphEntityRef{URN: cypherString(row, "person_urn"), EntityType: cypherString(row, "person_entity_type"), Label: cypherString(row, "person_label")},
-			Identity:      GraphEntityRef{URN: cypherString(row, "identity_urn"), EntityType: cypherString(row, "identity_entity_type"), Label: cypherString(row, "identity_label")},
-			Principal:     GraphEntityRef{URN: cypherString(row, "principal_urn"), EntityType: cypherString(row, "principal_entity_type"), Label: cypherString(row, "principal_label")},
-			AccessTarget:  GraphEntityRef{URN: cypherString(row, "target_urn"), EntityType: cypherString(row, "target_entity_type"), Label: cypherString(row, "target_label")},
-			RelationChain: cypherStringList(row.Values["relation_chain"]),
-		}
-		if path.Person.URN == "" || path.Identity.URN == "" || path.Principal.URN == "" || path.AccessTarget.URN == "" || len(path.RelationChain) == 0 {
-			continue
-		}
-		paths = append(paths, path)
+func catalogGraphRef(entity ports.CatalogEntity) GraphEntityRef {
+	return GraphEntityRef{
+		URN:        entity.URN,
+		EntityType: entity.EntityType,
+		Label:      entity.Label,
 	}
-	return paths
 }

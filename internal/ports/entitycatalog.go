@@ -103,6 +103,102 @@ type RelationCountStore interface {
 	CountRelations(context.Context, RelationCountRequest) (*RelationCountPage, error)
 }
 
+type PersonAccessPathRequest struct {
+	TenantID         string
+	PersonURN        string
+	PersonQuery      string
+	Limit            int
+	Depth            int
+	ExpectedRevision uint64
+}
+
+type PersonAccessPath struct {
+	Person        CatalogEntity
+	Identity      CatalogEntity
+	Principal     CatalogEntity
+	AccessTarget  CatalogEntity
+	RelationChain []string
+}
+
+type PersonAccessPathResult struct {
+	TenantID      string
+	GraphRevision uint64
+	Paths         []PersonAccessPath
+	Truncated     bool
+}
+
+type PersonAccessPathStore interface {
+	ListPersonAccessPaths(context.Context, PersonAccessPathRequest) (*PersonAccessPathResult, error)
+}
+
+type CloudAttackPathNode struct {
+	URN        string
+	EntityType string
+	Label      string
+}
+
+type CloudAttackPathEdge struct {
+	From                CloudAttackPathNode
+	Relation            string
+	To                  CloudAttackPathNode
+	Direction           string
+	SourceID            string
+	SourceRuntimeID     string
+	AssertionRuntimeIDs []string
+	AttributesJSON      string
+}
+
+type CloudAttackPathOwnership struct {
+	Owner CloudAttackPathNode
+	Edge  CloudAttackPathEdge
+}
+
+type CloudAttackPath struct {
+	PublicPrincipal       CloudAttackPathNode
+	ExposedResource       CloudAttackPathNode
+	CloudAccount          CloudAttackPathNode
+	Principal             CloudAttackPathNode
+	Permission            CloudAttackPathNode
+	Ownerships            []CloudAttackPathOwnership
+	ReachRelation         string
+	AccessRelation        string
+	RelationChain         []string
+	ExposureEdge          CloudAttackPathEdge
+	ResourceAccountEdge   CloudAttackPathEdge
+	TraversalEdges        []CloudAttackPathEdge
+	PrivilegeEdge         CloudAttackPathEdge
+	PermissionAccountEdge CloudAttackPathEdge
+}
+
+type CloudAttackPathCounts struct {
+	Paths                uint64
+	ExposedResources     uint64
+	PrivilegedPrincipals uint64
+	CloudAccounts        uint64
+}
+
+type CloudAttackPathRequest struct {
+	TenantID              string
+	AccountID             string
+	RuntimeID             string
+	RequireAssertionProof bool
+	Limit                 int
+	Depth                 int
+	ExpectedRevision      uint64
+}
+
+type CloudAttackPathResult struct {
+	TenantID      string
+	GraphRevision uint64
+	Counts        CloudAttackPathCounts
+	Paths         []CloudAttackPath
+	Truncated     bool
+}
+
+type CloudAttackPathStore interface {
+	ListCloudAttackPaths(context.Context, CloudAttackPathRequest) (*CloudAttackPathResult, error)
+}
+
 type EntityRelationDirection string
 
 const (
