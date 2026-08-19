@@ -732,7 +732,7 @@ func assertRulepackConvertGraphReplaySingleOpenRow(t *testing.T, rule Rule, defi
 		store,
 		store,
 		registry,
-	).WithGraphQueryStore(graphStore)
+	).WithRawCypherQueryStore(graphStore)
 
 	firstResult, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{
 		RuntimeID: fixture.runtime.GetId(),

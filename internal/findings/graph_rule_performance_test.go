@@ -83,7 +83,7 @@ func TestEvaluateSourceRuntimeGraphRulesReadsConcurrentlyAndReturnsInRuleOrder(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithRawCypherQueryStore(graphStore)
 
 	type evaluationResult struct {
 		result *EvaluateGraphRulesResult
@@ -142,7 +142,7 @@ func TestEvaluateSourceRuntimeGraphRulesEnforcesPerRuleQueryTimeout(t *testing.T
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).
-		WithGraphQueryStore(graphStore).
+		WithRawCypherQueryStore(graphStore).
 		WithGraphRuleQueryTimeout(25 * time.Millisecond)
 
 	started := time.Now()
