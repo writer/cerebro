@@ -86,6 +86,29 @@ func WithRuntimeContext(values map[string]string, tenantID string, runtimeID str
 	return cloned
 }
 
+// PreserveRedactedRuntimeConfig restores prior sensitive values only when an
+// update uses the public redaction sentinel. Callers must pass the prior config
+// for the same source; this helper deliberately has no cross-source lookup path.
+func PreserveRedactedRuntimeConfig(prior map[string]string, update map[string]string, redactionSentinel string) (map[string]string, error) {
+	redactionSentinel = strings.TrimSpace(redactionSentinel)
+	if redactionSentinel == "" {
+		return nil, sourceConfigError("redaction sentinel is required")
+	}
+	restored := make(map[string]string, len(update))
+	for key, value := range update {
+		if strings.TrimSpace(value) == redactionSentinel && SensitiveKey(key) {
+			priorValue, ok := prior[key]
+			if !ok || strings.TrimSpace(priorValue) == "" {
+				return nil, sourceConfigError("redacted sensitive config has no prior value")
+			}
+			restored[key] = priorValue
+			continue
+		}
+		restored[key] = value
+	}
+	return restored, nil
+}
+
 func ValidateAWSCredentialSource(profile string, accessKeyID string, secretAccessKey string, sessionToken string, roleARN string) error {
 	if strings.TrimSpace(profile) != "" {
 		return sourceConfigError("aws profile is not supported for source runtimes")

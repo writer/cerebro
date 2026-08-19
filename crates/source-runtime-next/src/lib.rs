@@ -5,10 +5,13 @@
 
 mod append_log;
 mod aws_secret_store;
+mod credential_lease;
+mod egress;
 mod fixture_parity;
 mod http;
 mod mapper;
 mod protocol;
+mod provider_failure;
 mod runtime_config;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
@@ -16,6 +19,14 @@ pub use aws_secret_store::{
     AwsSecretReadError, AwsSecretReader, AwsSecretReference, AwsSecretResolutionError,
     AwsSecretValue, contains_aws_secret_references, parse_aws_secret_reference,
     resolve_aws_secret_references,
+};
+pub use credential_lease::{
+    CredentialLeaseError, CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus,
+    LeaseClock, OperationScopedCredentialLease,
+};
+pub use egress::{
+    EgressDecision, EgressDecisionKind, EgressMode, EgressPolicy, EgressPolicyError,
+    EgressRequestContext,
 };
 pub use fixture_parity::{
     FixtureParityComparison, FixtureParityDuplicate, FixtureParityEvent, FixtureParityInput,
@@ -30,6 +41,10 @@ pub use protocol::{
     SourceRuntimeOperation, SourceRuntimeReceipt, SourceRuntimeResult, canonical_digest,
     canonical_digest_vectors, validate_authority_evidence, validate_envelope,
     validate_envelope_json,
+};
+pub use provider_failure::{
+    ProviderFailureCategory, ProviderFailureClassification, ProviderFailureKind,
+    classify_http_connector_failure, classify_provider_failure,
 };
 pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,
