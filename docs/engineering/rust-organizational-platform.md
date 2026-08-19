@@ -319,12 +319,11 @@ projection are not authority evidence. A failed Rust request remains failed; the
 router never retries it through Go.
 
 Raw Cypher is a separate compatibility port. It remains delegated to the Go
-Neo4j reader until each caller has a typed Rust operation. The Go
-`GetEntityNeighborhood` and `GetEntityNeighborhoods` implementation may be
-deleted after the authority burn-in because typed neighborhood reads no longer
-need it; `ExecuteReadCypher` and `ExplainReadCypher` stay until their callers
-are migrated. Rollback uses the last retained-Go image rather than a live read
-mode in the current image.
+Neo4j reader until each caller has a typed Rust operation. The Go typed
+neighborhood read implementation has been removed because Rust now owns those
+product reads; `ExecuteReadCypher` and `ExplainReadCypher` stay until their
+callers are migrated. Rollback uses the last retained-Go image rather than a
+live read mode in the current image.
 
 The append-log consumer defaults to new events. A rebuild uses
 `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff
