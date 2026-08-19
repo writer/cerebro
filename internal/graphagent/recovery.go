@@ -35,7 +35,7 @@ func (s *Service) recoverWeakRows(ctx context.Context, traceID string, started t
 	if !validation.OK {
 		return nil, "", validation, false, false, nil
 	}
-	recoveredRaw, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+	recoveredRaw, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query:    recoveredConversion.Cypher,
 		Params:   recoveredParams,
 		RowLimit: rowLimit,
