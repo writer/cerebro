@@ -98,7 +98,7 @@ func TestGetAWSPublicEndpointInsightsUsesOneTypedBoundedRead(t *testing.T) {
 }
 
 func TestGetAWSPublicEndpointInsightsFailsClosedWithoutTypedStore(t *testing.T) {
-	store := struct{ ports.GraphQueryStore }{}
+	store := struct{ ports.GraphNeighborhoodStore }{}
 	_, err := New(store).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{TenantID: "writer"})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("GetAWSPublicEndpointInsights() error = %v, want %v", err, ErrRuntimeUnavailable)
