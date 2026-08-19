@@ -75,10 +75,10 @@ func TestOpenDependenciesAllowsRustGraphWithoutGoGraphStore(t *testing.T) {
 	if deps.GraphStore != nil {
 		t.Fatal("GraphStore != nil, want no Go graph store")
 	}
-	if deps.GraphQueries == nil {
-		t.Fatal("GraphQueries = nil, want Rust graph client")
+	if deps.GraphReads.RawCypher == nil {
+		t.Fatal("GraphReads.RawCypher = nil, want Rust graph client")
 	}
-	if _, err := deps.GraphQueries.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
+	if _, err := deps.GraphReads.RawCypher.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
 		t.Fatalf("ExecuteReadCypher() error = %v", err)
 	}
 }

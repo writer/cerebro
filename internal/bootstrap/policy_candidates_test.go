@@ -18,7 +18,7 @@ func TestPolicyCandidateReadsUseConfiguredAuthority(t *testing.T) {
 	authority := &stubGraphStore{}
 	app := &App{deps: Dependencies{
 		GraphStore:      legacy,
-		GraphQueries:    authority,
+		GraphReads:      NewGraphReadCapabilities(authority),
 		PolicyAuthoring: &agentauthoring.Service{},
 	}}
 

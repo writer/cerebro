@@ -77,7 +77,7 @@ type Dependencies struct {
 	AppendLog                   ports.AppendLog
 	StateStore                  ports.StateStore
 	GraphStore                  ports.GraphStore
-	GraphQueries                ports.GraphReadStore
+	GraphReads                  ports.GraphReadCapabilities
 	SecurityLifecycleQueries    securityLifecycleQueryReader
 	SourceCollectionReceipts    ports.SourceCollectionReader
 	OrganizationalProjector     *organizationalgraph.ProjectionClient
@@ -87,6 +87,12 @@ type Dependencies struct {
 	PolicyAuthoring             *agentauthoring.Service
 	PolicyExperiments           PolicyExperimentJobHandler
 	PolicyExperimentCheckpoints policycandidate.ExperimentCheckpointStatusReader
+}
+
+type GraphReadCapabilities = ports.GraphReadCapabilities
+
+func NewGraphReadCapabilities(store ports.GraphStore) GraphReadCapabilities {
+	return ports.NewGraphReadCapabilities(store)
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
@@ -682,7 +688,7 @@ func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[c
 func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.Request[cerebrov1.ListReportDefinitionsRequest]) (*connect.Response[cerebrov1.ListReportDefinitionsResponse], error) {
 	return connect.NewResponse(reports.New(
 		findingStore(s.deps.StateStore),
-		dependencyGraphQueryStore(s.deps),
+		s.deps.GraphReads.Neighborhoods,
 		reportStore(s.deps.StateStore),
 	).List()), nil
 }
@@ -697,7 +703,7 @@ func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[c
 	}
 	response, err := reports.New(
 		findingStore(s.deps.StateStore),
-		dependencyGraphQueryStore(s.deps),
+		s.deps.GraphReads.Neighborhoods,
 		reportStore(s.deps.StateStore),
 	).Run(ctx, req.Msg)
 	if err != nil {
@@ -712,7 +718,7 @@ func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[c
 func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Request[cerebrov1.GetReportRunRequest]) (*connect.Response[cerebrov1.GetReportRunResponse], error) {
 	response, err := reports.New(
 		findingStore(s.deps.StateStore),
-		dependencyGraphQueryStore(s.deps),
+		s.deps.GraphReads.Neighborhoods,
 		reportStore(s.deps.StateStore),
 	).Get(ctx, req.Msg)
 	if err != nil {
@@ -1273,8 +1279,11 @@ func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *conne
 	if err := authorizeCerebroURNTenant(ctx, req.Msg.GetRootUrn()); err != nil {
 		return nil, graphQueryConnectError(err)
 	}
-	response, err := graphquery.New(
-		dependencyGraphQueryStore(s.deps),
+	response, err := graphquery.NewWithCapabilities(
+		s.deps.GraphReads.Neighborhoods,
+		s.deps.GraphReads.RawCypher,
+		s.deps.GraphReads.Catalog,
+		s.deps.GraphReads.Exposure,
 	).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
 		RootURN: req.Msg.GetRootUrn(),
 		Limit:   req.Msg.GetLimit(),
@@ -1367,7 +1376,7 @@ func publicHealthResponse(ctx context.Context, deps Dependencies) *cerebrov1.Che
 	}{
 		{name: "append_log", dependency: deps.AppendLog},
 		{name: "state_store", dependency: deps.StateStore},
-		{name: "graph_store", dependency: organizationalgraph.ReadinessStore(deps.GraphStore, deps.GraphQueries)},
+		{name: "graph_store", dependency: organizationalgraph.ReadinessStore(deps.GraphStore, deps.GraphReads.ReadinessStore())},
 	}
 	components := make([]*cerebrov1.ComponentStatus, len(checks))
 	var wg sync.WaitGroup
@@ -2045,13 +2054,6 @@ func guardedLegacyGraphProjector(deps Dependencies) ports.SourceProjector {
 		return legacy
 	}
 	return organizationalgraph.NewLegacyWriteGuard(legacy, deps.OrganizationalProjector)
-}
-
-func dependencyGraphQueryStore(deps Dependencies) ports.GraphReadStore {
-	if !isNilInterface(deps.GraphQueries) {
-		return deps.GraphQueries
-	}
-	return nil
 }
 
 func askTrajectoryStore(store ports.StateStore) ports.AskTrajectoryStore {

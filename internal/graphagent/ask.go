@@ -62,11 +62,18 @@ func NewService(store Store, llm LLMClient, options ValidatorOptions) *Service {
 }
 
 func NewServiceWithOptions(store Store, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
+	if store == nil {
+		return NewServiceWithCapabilities(nil, nil, llm, validatorOptions, serviceOptions)
+	}
+	return NewServiceWithCapabilities(store, store, llm, validatorOptions, serviceOptions)
+}
+
+func NewServiceWithCapabilities(rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
 	return &Service{
-		rawCypher:     store,
-		neighborhoods: store,
+		rawCypher:     rawCypher,
+		neighborhoods: neighborhoods,
 		llm:           llm,
-		validator:     NewValidator(store, validatorOptions),
+		validator:     NewValidator(rawCypher, validatorOptions),
 		options:       normalizeServiceOptions(serviceOptions),
 	}
 }

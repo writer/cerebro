@@ -181,7 +181,7 @@ func (a *App) policyCandidateService() policycandidate.Service {
 	store, _ := a.deps.StateStore.(policycandidate.Store)
 	experiments, _ := a.deps.StateStore.(policycandidate.ExperimentStore)
 	datasets, _ := a.deps.StateStore.(policycandidate.PolicyEvaluationDatasetStore)
-	graph := dependencyGraphQueryStore(a.deps)
+	graph := a.deps.GraphReads.RawCypher
 	var author *agentauthoring.Service
 	if a.deps.PolicyAuthoring != nil {
 		copy := *a.deps.PolicyAuthoring

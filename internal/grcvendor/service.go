@@ -466,6 +466,38 @@ func New(store GraphStore) *Service {
 	return &Service{store: store, now: time.Now}
 }
 
+func NewWithCapabilities(catalog ports.EntityCatalogStore, neighborhoods ports.GraphNeighborhoodStore) *Service {
+	if catalog == nil || neighborhoods == nil {
+		return New(nil)
+	}
+	return New(graphStoreCapabilities{catalog: catalog, neighborhoods: neighborhoods})
+}
+
+type graphStoreCapabilities struct {
+	catalog       ports.EntityCatalogStore
+	neighborhoods ports.GraphNeighborhoodStore
+}
+
+func (s graphStoreCapabilities) Ping(ctx context.Context) error {
+	return s.neighborhoods.Ping(ctx)
+}
+
+func (s graphStoreCapabilities) GetEntityNeighborhood(ctx context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
+	return s.neighborhoods.GetEntityNeighborhood(ctx, rootURN, limit)
+}
+
+func (s graphStoreCapabilities) ListEntities(ctx context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	return s.catalog.ListEntities(ctx, request)
+}
+
+func (s graphStoreCapabilities) CountEntityKinds(ctx context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return s.catalog.CountEntityKinds(ctx, request)
+}
+
+func (s graphStoreCapabilities) ListEntityRelations(ctx context.Context, request ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	return s.catalog.ListEntityRelations(ctx, request)
+}
+
 func (s *Service) ListVendors(ctx context.Context, request ListVendorsRequest) ([]Vendor, error) {
 	if s == nil || s.store == nil {
 		return nil, ErrRuntimeUnavailable

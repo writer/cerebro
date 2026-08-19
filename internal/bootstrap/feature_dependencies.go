@@ -35,21 +35,21 @@ func newSourceFeatureService(deps sourceFeatureDeps) *sourceops.Service {
 }
 
 type reportFeatureDeps struct {
-	Findings     ports.FindingStore
-	GraphQueries ports.GraphNeighborhoodStore
-	Reports      ports.ReportStore
+	Findings           ports.FindingStore
+	GraphNeighborhoods ports.GraphNeighborhoodStore
+	Reports            ports.ReportStore
 }
 
 func newReportFeatureDeps(deps Dependencies) reportFeatureDeps {
 	return reportFeatureDeps{
-		Findings:     findingStore(deps.StateStore),
-		GraphQueries: dependencyGraphQueryStore(deps),
-		Reports:      reportStore(deps.StateStore),
+		Findings:           findingStore(deps.StateStore),
+		GraphNeighborhoods: deps.GraphReads.Neighborhoods,
+		Reports:            reportStore(deps.StateStore),
 	}
 }
 
 func newReportFeatureService(deps reportFeatureDeps) *reports.Service {
-	return reports.New(deps.Findings, deps.GraphQueries, deps.Reports)
+	return reports.New(deps.Findings, deps.GraphNeighborhoods, deps.Reports)
 }
 
 type runtimeFeatureDeps struct {
@@ -112,7 +112,7 @@ type findingFeatureDeps struct {
 	Claims          ports.ClaimStore
 	Candidates      ports.FindingCandidateStore
 	ProjectionGraph ports.ProjectionGraphStore
-	GraphQueries    ports.RawCypherQueryStore
+	GraphRawCypher  ports.RawCypherQueryStore
 	AppendLog       ports.AppendLog
 	Rules           *findings.Registry
 }
@@ -127,7 +127,7 @@ func newFindingFeatureDeps(deps Dependencies) findingFeatureDeps {
 		Claims:          claimStore(deps.StateStore),
 		Candidates:      findingCandidateStore(deps.StateStore),
 		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
-		GraphQueries:    dependencyGraphQueryStore(deps),
+		GraphRawCypher:  deps.GraphReads.RawCypher,
 		AppendLog:       deps.AppendLog,
 		Rules:           deps.FindingRules,
 	}
@@ -144,7 +144,7 @@ func newFindingCandidateFeatureService(deps findingFeatureDeps) *findings.Servic
 func newFindingWorkflowFeatureService(deps findingFeatureDeps) *findings.Service {
 	return newFindingCandidateFeatureService(deps).
 		WithGraphStore(deps.ProjectionGraph).
-		WithRawCypherQueryStore(deps.GraphQueries).WithTrustedSourceResolution().
+		WithRawCypherQueryStore(deps.GraphRawCypher).WithTrustedSourceResolution().
 		WithAppendLog(deps.AppendLog)
 }
 
@@ -176,15 +176,23 @@ func newDecisionOutcomeService(deps Dependencies) *decisionops.Service {
 }
 
 type graphQueryFeatureDeps struct {
-	GraphQueries ports.GraphReadStore
+	GraphNeighborhoods ports.GraphNeighborhoodStore
+	GraphRawCypher     ports.RawCypherQueryStore
+	GraphCatalog       ports.EntityCatalogStore
+	GraphExposure      ports.ExposureCoverageStore
 }
 
 func newGraphQueryFeatureDeps(deps Dependencies) graphQueryFeatureDeps {
-	return graphQueryFeatureDeps{GraphQueries: dependencyGraphQueryStore(deps)}
+	return graphQueryFeatureDeps{
+		GraphNeighborhoods: deps.GraphReads.Neighborhoods,
+		GraphRawCypher:     deps.GraphReads.RawCypher,
+		GraphCatalog:       deps.GraphReads.Catalog,
+		GraphExposure:      deps.GraphReads.Exposure,
+	}
 }
 
 func newGraphQueryFeatureService(deps graphQueryFeatureDeps) *graphquery.Service {
-	return graphquery.New(deps.GraphQueries)
+	return graphquery.NewWithCapabilities(deps.GraphNeighborhoods, deps.GraphRawCypher, deps.GraphCatalog, deps.GraphExposure)
 }
 
 type graphIngestFeatureDeps struct {
@@ -257,27 +265,29 @@ func newRuntimeResponseFeatureService(deps runtimeResponseFeatureDeps) *runtimer
 }
 
 type graphReasoningFeatureDeps struct {
-	GraphQueries    ports.GraphReadStore
-	GraphAgentLLM   graphagent.LLMClient
-	TrajectoryStore ports.AskTrajectoryStore
+	GraphNeighborhoods ports.GraphNeighborhoodStore
+	GraphRawCypher     ports.RawCypherQueryStore
+	GraphAgentLLM      graphagent.LLMClient
+	TrajectoryStore    ports.AskTrajectoryStore
 }
 
 func newGraphReasoningFeatureDeps(deps Dependencies) graphReasoningFeatureDeps {
 	return graphReasoningFeatureDeps{
-		GraphQueries:    dependencyGraphQueryStore(deps),
-		GraphAgentLLM:   deps.GraphAgentLLM,
-		TrajectoryStore: askTrajectoryStore(deps.StateStore),
+		GraphNeighborhoods: deps.GraphReads.Neighborhoods,
+		GraphRawCypher:     deps.GraphReads.RawCypher,
+		GraphAgentLLM:      deps.GraphAgentLLM,
+		TrajectoryStore:    askTrajectoryStore(deps.StateStore),
 	}
 }
 
 func newGraphReasoningFeatureService(deps graphReasoningFeatureDeps) (*graphagent.Service, error) {
-	if deps.GraphQueries == nil {
+	if deps.GraphRawCypher == nil || deps.GraphNeighborhoods == nil {
 		return nil, graphquery.ErrRuntimeUnavailable
 	}
 	if deps.GraphAgentLLM == nil {
 		return nil, errors.Join(graphagent.ErrRuntimeUnavailable, errors.New("graph agent llm is not configured"))
 	}
-	return graphagent.NewServiceWithOptions(deps.GraphQueries, deps.GraphAgentLLM, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
+	return graphagent.NewServiceWithCapabilities(deps.GraphRawCypher, deps.GraphNeighborhoods, deps.GraphAgentLLM, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
 		TrajectoryStore:             deps.TrajectoryStore,
 		EnableGraphProbes:           true,
 		EnableDeterministicFastPath: true,

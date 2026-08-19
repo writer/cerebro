@@ -120,7 +120,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))
 		}
-		deps.GraphQueries = queryStore
+		deps.GraphReads = NewGraphReadCapabilities(queryStore)
 		deps.SecurityLifecycleQueries = queryStore
 	}
 	if err := pingDependency(ctx, "append log", deps.AppendLog); err != nil {
@@ -129,7 +129,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	if err := pingDependency(ctx, "state store", deps.StateStore); err != nil {
 		return fail(err)
 	}
-	if err := pingDependency(ctx, "graph store", organizationalgraph.ReadinessStore(deps.GraphStore, deps.GraphQueries)); err != nil {
+	if err := pingDependency(ctx, "graph store", organizationalgraph.ReadinessStore(deps.GraphStore, deps.GraphReads.ReadinessStore())); err != nil {
 		return fail(err)
 	}
 	switch cfg.Cache.Driver {
