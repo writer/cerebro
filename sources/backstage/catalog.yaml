@@ -1,10 +1,12 @@
 id: backstage
 name: Backstage
-description: Backstage catalog source for service ownership and runtime context.
+description: Backstage catalog source for component and system ownership context.
 emitted_kinds:
   - backstage.component
+  - backstage.system
 runtime_families:
   - component
+  - system
 provider_api:
   status: verified
   basis: declared
@@ -24,6 +26,10 @@ provider_api:
       method: GET
       path: /api/catalog/entities/by-query
       operation: queryEntities
+    - id: system
+      method: GET
+      path: /api/catalog/entities/by-query
+      operation: queryEntities
 coverage_contract:
   owner_domain: engineering
   authority_domain: backstage
@@ -32,6 +38,14 @@ coverage_contract:
       type: entity_family
       title: Backstage components
       families: [component]
+      support: supported
+      high_value: true
+      evidence_types: [source_snapshot]
+      control_domains: [asset_inventory]
+    - id: systems
+      type: entity_family
+      title: Backstage systems
+      families: [system]
       support: supported
       high_value: true
       evidence_types: [source_snapshot]
@@ -45,7 +59,6 @@ coverage_contract:
       evidence_types: [relationship_evidence]
       control_domains: [asset_inventory]
       known_unsupported_fields:
-        - non-component catalog ownership entities
         - transitive group membership expansion
     - id: runtime_context
       type: relationship
@@ -60,6 +73,13 @@ coverage_contract:
 event_contracts:
   - kind: backstage.component
     schema_ref: backstage/component/v1
+    required_attributes:
+      - name
+      - kind
+    required_payload_fields:
+      - metadata.name
+  - kind: backstage.system
+    schema_ref: backstage/system/v1
     required_attributes:
       - name
       - kind

@@ -2238,7 +2238,11 @@ mod tests {
         .unwrap();
         let backstage = catalog.get("backstage").unwrap();
         assert_eq!(backstage.authority(), CollectionAuthority::Authoritative);
-        let component = backstage.families().first().unwrap();
+        let component = backstage
+            .families()
+            .iter()
+            .find(|family| family.id() == "component")
+            .unwrap();
         assert!(component.is_authoritative());
         assert_eq!(component.id_field(), "metadata.uid|metadata.name|name");
         assert_eq!(component.record_selector(), "$.items[*]");
@@ -2251,6 +2255,14 @@ mod tests {
                 page_size: 100,
             }
         );
+        let system = backstage
+            .families()
+            .iter()
+            .find(|family| family.id() == "system")
+            .unwrap();
+        assert!(system.is_authoritative());
+        assert_eq!(system.static_query().get("filter").unwrap(), "kind=system");
+        assert_eq!(system.record_selector(), "$.items[*]");
     }
 
     #[test]
@@ -2263,7 +2275,7 @@ mod tests {
         .unwrap();
         let summary = catalog.summary();
         assert_eq!(summary.sources, 795);
-        assert_eq!(summary.families, 3_895);
+        assert_eq!(summary.families, 3_896);
         assert_eq!(
             summary.projection_classes.values().sum::<usize>(),
             summary.families
@@ -3054,7 +3066,7 @@ mod tests {
         .unwrap();
         let report = catalog.unsupported_feature_report();
         assert_eq!(report.total_sources, 795);
-        assert_eq!(report.total_families, 3_895);
+        assert_eq!(report.total_families, 3_896);
         assert_eq!(report.families.len(), report.total_families);
         assert!(report.missing_family_reports.is_empty());
         assert_eq!(
@@ -3103,7 +3115,7 @@ mod tests {
         )
         .unwrap();
         let report = catalog.authority_readiness_report();
-        assert_eq!(report.total_families, 3_895);
+        assert_eq!(report.total_families, 3_896);
         assert_eq!(report.rust_authoritative_families, 0);
         assert_eq!(report.shadow_or_go_families, report.total_families);
         let aws_bedrock = report

@@ -78,7 +78,7 @@ Declarative connector catalog entries are cataloged when a spec exists. They are
 | `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
 | `azure_devops` | Azure Devops source | azure_devops.audit_events, azure_devops.repositories, azure_devops.users |
 | `azure_openai` | Azure Openai source | azure_openai.deployments, azure_openai.model_catalog, azure_openai.private_endpoint_connections, azure_openai.rai_blocklists, azure_openai.rai_policies |
-| `backstage` | Backstage catalog source | components |
+| `backstage` | Backstage catalog source | components, systems |
 | `bamboohr` | Bamboohr source | bamboohr.audit_events, bamboohr.groups, bamboohr.users |
 | `basecamp` | Basecamp source | basecamp.audit_events, basecamp.documents, basecamp.groups, basecamp.users, basecamp.workspaces |
 | `baselime` | Baselime source | baselime.alerts, baselime.audit_events, baselime.dashboards, baselime.incidents, baselime.monitors |

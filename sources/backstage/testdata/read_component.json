@@ -1,0 +1,41 @@
+[
+  {
+    "attributes": {
+      "external_id": "component-1",
+      "family": "component",
+      "kind": "Component",
+      "lifecycle": "production",
+      "name": "cerebro",
+      "namespace": "default",
+      "owner": "group:platform/security",
+      "provider": "backstage",
+      "resource_id": "component-1",
+      "resource_name": "cerebro",
+      "resource_type": "service",
+      "source_product": "backstage",
+      "source_provider": "backstage",
+      "system": "security",
+      "uid": "component-1"
+    },
+    "id": "backstage-component-event-1",
+    "kind": "backstage.component",
+    "occurred_at": "2026-08-20T00:00:00Z",
+    "payload": {
+      "kind": "Component",
+      "metadata": {
+        "name": "cerebro",
+        "namespace": "default",
+        "uid": "component-1"
+      },
+      "spec": {
+        "lifecycle": "production",
+        "owner": "group:platform/security",
+        "system": "security",
+        "type": "service"
+      }
+    },
+    "schema_ref": "backstage/component/v1",
+    "source_id": "backstage",
+    "tenant_id": "tenant"
+  }
+]

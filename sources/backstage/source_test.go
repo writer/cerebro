@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,25 @@ func TestSourceSpec(t *testing.T) {
 	}
 	if source.Spec().Name != "Backstage" {
 		t.Fatalf("Spec().Name = %q, want Backstage", source.Spec().Name)
+	}
+}
+
+func TestRuntimeFixturesSatisfyCatalogContracts(t *testing.T) {
+	catalogBytes, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	for _, family := range []string{familyComponent, familySystem} {
+		if _, err := sourcecdk.LoadFixtureURNs(os.DirFS("."), "testdata/discover_"+family+".json"); err != nil {
+			t.Fatalf("load %s discover fixture: %v", family, err)
+		}
+		if _, err := sourcecdk.LoadFixtureEventsWithContracts(os.DirFS("."), "testdata/read_"+family+".json", catalog.EventContracts); err != nil {
+			t.Fatalf("load %s read fixture: %v", family, err)
+		}
 	}
 }
 
@@ -98,6 +118,70 @@ func TestReadComponentFamily(t *testing.T) {
 	}
 	if event.Attributes["criticality"] != "high" || event.Attributes["data_class"] != "restricted" {
 		t.Fatalf("annotation attrs = %#v, want Backstage annotation attributes", event.Attributes)
+	}
+}
+
+func TestReadSystemFamily(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/catalog/entities/by-query" {
+			t.Fatalf("request path = %q, want /api/catalog/entities/by-query", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("filter"); got != "kind=system" {
+			t.Fatalf("filter query = %q, want kind=system", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "100" {
+			t.Fatalf("limit query = %q, want 100", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer backstage-token" {
+			t.Fatalf("Authorization = %q, want Bearer backstage-token", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{{
+				"kind": "System",
+				"metadata": map[string]any{
+					"uid":         "system-1",
+					"name":        "security-platform",
+					"namespace":   "default",
+					"description": "Security services",
+				},
+				"spec": map[string]any{
+					"type":   "product",
+					"owner":  "group:platform/security",
+					"domain": "security",
+				},
+			}},
+			"totalItems": 1,
+			"pageInfo":   map[string]any{},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"token":     "backstage-token",
+		"family":    "system",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "backstage.system" {
+		t.Fatalf("Kind = %q, want backstage.system", event.Kind)
+	}
+	if event.Attributes["name"] != "security-platform" || event.Attributes["owner"] != "group:platform/security" {
+		t.Fatalf("attrs = %#v, want Backstage system attributes", event.Attributes)
+	}
+	if event.Attributes["domain"] != "security" {
+		t.Fatalf("domain = %q, want security", event.Attributes["domain"])
 	}
 }
 
