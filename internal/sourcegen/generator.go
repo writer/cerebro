@@ -811,10 +811,13 @@ func methodForResource(resource connectordefinitions.ResourceFamily) string {
 
 func idKeysForResource(resource connectordefinitions.ResourceFamily) []string {
 	keys := []string{}
-	for _, key := range []string{resource.IDField, resource.NameField} {
+	for _, key := range strings.Split(resource.IDField, "|") {
 		if key = strings.TrimSpace(key); key != "" {
 			keys = append(keys, key)
 		}
+	}
+	if key := strings.TrimSpace(resource.NameField); key != "" {
+		keys = append(keys, key)
 	}
 	return uniqueStrings(keys)
 }

@@ -923,7 +923,7 @@ impl SourceConnector for HttpSourceConnector {
                     let provider_id = if let Some(template) = self.family.id_template() {
                         render_id_template(self.family.id(), template, &value, &record_attributes)?
                     } else {
-                        scalar_at(&value, self.family.id_field()).ok_or_else(|| {
+                        scalar_at_candidates(&value, self.family.id_field()).ok_or_else(|| {
                             HttpConnectorError::InvalidResponse(format!(
                                 "family {} record is missing {}",
                                 self.family.id(),
@@ -1911,6 +1911,12 @@ fn scalar_at(value: &Value, field: &str) -> Option<String> {
     scalar_at_path(value, field)
 }
 
+fn scalar_at_candidates(value: &Value, expression: &str) -> Option<String> {
+    expression
+        .split('|')
+        .find_map(|path| scalar_at_path(value, path))
+}
+
 fn render_id_template(
     family_id: &str,
     template: &str,
@@ -1965,14 +1971,19 @@ fn scalar_at_path(value: &Value, path: &str) -> Option<String> {
     value_at_path(value, path).and_then(scalar)
 }
 
-fn value_at_path<'a>(mut value: &'a Value, path: &str) -> Option<&'a Value> {
+fn value_at_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     if path.is_empty() {
         return Some(value);
     }
-    for part in path.split('.') {
-        value = value.get(part)?;
+    if let Some((head, tail)) = path.split_once('.') {
+        if let Some(nested) = value
+            .get(head)
+            .and_then(|nested| value_at_path(nested, tail))
+        {
+            return Some(nested);
+        }
     }
-    Some(value)
+    value.get(path)
 }
 
 fn scalar(value: &Value) -> Option<String> {
@@ -4425,6 +4436,21 @@ mod tests {
     }
 
     #[test]
+    fn provider_paths_preserve_nested_keys_that_contain_dots() {
+        let value = serde_json::json!({
+            "metadata": {
+                "annotations": {
+                    "cerebro.io/criticality": "high"
+                }
+            }
+        });
+        assert_eq!(
+            scalar_at_path(&value, "metadata.annotations.cerebro.io/criticality"),
+            Some("high".to_owned())
+        );
+    }
+
+    #[test]
     fn explicit_fanout_binding_drives_runtime_paths_and_record_scope() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -4638,6 +4664,88 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::NonAuthoritative(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "asset-1");
+    }
+
+    #[tokio::test]
+    async fn backstage_catalog_family_executes_documented_cursor_contract() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for page in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                requests.push(String::from_utf8_lossy(&request[..read]).into_owned());
+                let body = if page == 0 {
+                    r#"{"items":[{"kind":"Component","metadata":{"uid":"component-1","name":"cerebro","namespace":"default","annotations":{"cerebro.io/criticality":"high"}},"spec":{"type":"service","lifecycle":"production","owner":"group:platform/security","system":"security"},"repository":"writer/cerebro"}],"totalItems":2,"pageInfo":{"nextCursor":"page-2"}}"#
+                } else {
+                    r#"{"items":[{"kind":"Component","metadata":{"name":"fallback-component","namespace":"default"},"spec":{"type":"service","owner":"group:platform/security"}}],"totalItems":2,"pageInfo":{}}"#
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+            requests
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("backstage").unwrap().clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::Authoritative
+        );
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "component",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "backstage-token".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "backstage-prod",
+            &base_url,
+        );
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("backstage-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        let requests = server.await.unwrap();
+
+        for request in &requests {
+            assert!(request.starts_with("GET /api/catalog/entities/by-query?"));
+            assert!(request.contains("filter=kind%3Dcomponent"));
+            assert!(request.contains("limit=100"));
+            assert!(request.lines().any(|line| {
+                line.eq_ignore_ascii_case("authorization: Bearer backstage-token")
+            }));
+        }
+        assert!(!requests[0].contains("cursor="));
+        assert!(requests[1].contains("cursor=page-2"));
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].provider_id, "component-1");
+        assert_eq!(batch.records[1].provider_id, "fallback-component");
+        assert_eq!(
+            batch.records[0].payload["spec"]["owner"],
+            "group:platform/security"
+        );
     }
 
     #[tokio::test]

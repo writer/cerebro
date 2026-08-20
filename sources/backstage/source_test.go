@@ -42,8 +42,8 @@ func TestReadComponentFamily(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer backstage-token" {
 			t.Fatalf("Authorization = %q, want Bearer backstage-token", got)
 		}
-		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{{
 				"kind": "Component",
 				"metadata": map[string]any{
 					"uid":         "component-1",
@@ -62,7 +62,9 @@ func TestReadComponentFamily(t *testing.T) {
 					"system":    "security",
 				},
 				"repository": "WriterInternal/cerebro",
-			},
+			}},
+			"totalItems": 1,
+			"pageInfo":   map[string]any{},
 		})
 	}))
 	defer server.Close()
