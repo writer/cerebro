@@ -1,0 +1,31 @@
+# Schema-derived repository fixture; this is not a provider capture.
+schema_version: cerebro.source-api-fixture.v1
+source_id: sentinelone
+family: application
+case: list_applications
+replay_test: provider_fixture_test.go#TestSourceReplaysRepositorySentinelOneApplication
+request:
+    method: GET
+    url: https://sentinelone.example.test/web/api/v2.1/agents/applications?ids=agent-fixture-1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-08-20T11:02:58Z"
+    sha256: 6e3cc6d669e892adc1da21c6189bb02596186e04de918b83e8cb26af2f780c3f
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $request.method
+        - $request.url
+        - $.data
+        - $.data[0].name
+        - $.data[0].publisher
+        - $.data[0].version
+        - $.data[0].installedDate
+        - $.data[0].size
+        - $response.status
+        - $response.content_type
+        - $response.captured_at
+origin:
+    type: operator_request
