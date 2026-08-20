@@ -1,6 +1,6 @@
 [
   {
-    "id": "sentinelone-application-sentinelone.example.test-agent-fixture-1-Example_Inc::Example_App",
+    "id": "sentinelone-application-sentinelone.example.test-agent-fixture-1-Example_Inc::Example_App::1.0.0",
     "tenant_id": "sentinelone.example.test",
     "source_id": "sentinelone",
     "kind": "sentinelone.application_inventory",
@@ -14,7 +14,13 @@
       "version": "1.0.0",
       "installed_date": "2026-04-20T00:00:00Z",
       "size_bytes": 12345,
-      "raw": {}
+      "raw": {
+        "installedDate": "2026-04-20T00:00:00Z",
+        "name": "Example App",
+        "publisher": "Example Inc",
+        "size": 12345,
+        "version": "1.0.0"
+      }
     },
     "attributes": {
       "agent_id": "agent-fixture-1",
