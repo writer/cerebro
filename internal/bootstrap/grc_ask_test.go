@@ -64,11 +64,14 @@ LIMIT 25`,
 			t.Fatalf("event[%d] = %q, want %q", i, events[i].Name, name)
 		}
 	}
-	if len(graphStore.cypherRequests) != 4 {
-		t.Fatalf("cypher request count = %d, want 2 probes + EXPLAIN + execute", len(graphStore.cypherRequests))
+	if len(graphStore.entityKindRequests) != 1 || len(graphStore.relationRequests) != 1 {
+		t.Fatalf("typed probe requests = entity kinds %d relations %d, want one each", len(graphStore.entityKindRequests), len(graphStore.relationRequests))
 	}
-	if !strings.HasPrefix(graphStore.cypherRequests[2].Query, "EXPLAIN ") {
-		t.Fatalf("third cypher request = %q, want EXPLAIN", graphStore.cypherRequests[2].Query)
+	if len(graphStore.cypherRequests) != 2 {
+		t.Fatalf("cypher request count = %d, want EXPLAIN + execute", len(graphStore.cypherRequests))
+	}
+	if !strings.HasPrefix(graphStore.cypherRequests[0].Query, "EXPLAIN ") {
+		t.Fatalf("first cypher request = %q, want EXPLAIN", graphStore.cypherRequests[0].Query)
 	}
 }
 

@@ -109,7 +109,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 			return err
 		}
 		probeStarted := time.Now()
-		collected := collectGraphProbe(ctx, s.rawCypher, s.neighborhoods, request, params)
+		collected := collectGraphProbe(ctx, s.rawCypher, s.neighborhoods, request)
 		timings.ProbeMS = time.Since(probeStarted).Milliseconds()
 		probe = &collected
 		if err := emit(Event{Name: EventGraphProbe, Data: GraphProbeEvent{Probe: collected}}); err != nil {

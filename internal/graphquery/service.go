@@ -28,6 +28,8 @@ type Service struct {
 	rawCypher     ports.RawCypherQueryStore
 	catalog       ports.EntityCatalogStore
 	exposure      ports.ExposureCoverageStore
+	personAccess  ports.PersonAccessPathStore
+	attackPaths   ports.CloudAttackPathStore
 }
 
 // NeighborhoodRequest scopes one bounded root-centered graph query.
@@ -43,15 +45,36 @@ func New(store ports.GraphNeighborhoodStore) *Service {
 		graphRawCypherCapability(store),
 		graphCatalogCapability(store),
 		graphExposureCapability(store),
+		graphPersonAccessCapability(store),
+		graphAttackPathCapability(store),
 	)
 }
 
-func NewWithCapabilities(neighborhoods ports.GraphNeighborhoodStore, rawCypher ports.RawCypherQueryStore, catalog ports.EntityCatalogStore, exposure ports.ExposureCoverageStore) *Service {
+func NewWithCapabilities(neighborhoods ports.GraphNeighborhoodStore, rawCypher ports.RawCypherQueryStore, catalog ports.EntityCatalogStore, exposure ports.ExposureCoverageStore, extraCapabilities ...any) *Service {
+	var personAccessStores []ports.PersonAccessPathStore
+	var attackPathStore ports.CloudAttackPathStore
+	for _, capability := range extraCapabilities {
+		switch typed := capability.(type) {
+		case ports.PersonAccessPathStore:
+			personAccessStores = append(personAccessStores, typed)
+		case ports.CloudAttackPathStore:
+			attackPathStore = typed
+		}
+	}
+	personAccessStore := firstPersonAccessCapability(personAccessStores)
+	if personAccessStore == nil {
+		personAccessStore = graphPersonAccessCapability(neighborhoods, rawCypher, catalog, exposure)
+	}
+	if attackPathStore == nil {
+		attackPathStore = graphAttackPathCapability(neighborhoods, rawCypher, catalog, exposure, personAccessStore)
+	}
 	return &Service{
 		neighborhoods: neighborhoods,
 		rawCypher:     rawCypher,
 		catalog:       catalog,
 		exposure:      exposure,
+		personAccess:  personAccessStore,
+		attackPaths:   attackPathStore,
 	}
 }
 
@@ -72,6 +95,33 @@ func graphCatalogCapability(store ports.GraphNeighborhoodStore) ports.EntityCata
 func graphExposureCapability(store ports.GraphNeighborhoodStore) ports.ExposureCoverageStore {
 	if exposure, ok := store.(ports.ExposureCoverageStore); ok {
 		return exposure
+	}
+	return nil
+}
+
+func graphPersonAccessCapability(stores ...any) ports.PersonAccessPathStore {
+	for _, store := range stores {
+		if personAccess, ok := store.(ports.PersonAccessPathStore); ok {
+			return personAccess
+		}
+	}
+	return nil
+}
+
+func graphAttackPathCapability(stores ...any) ports.CloudAttackPathStore {
+	for _, store := range stores {
+		if attackPaths, ok := store.(ports.CloudAttackPathStore); ok {
+			return attackPaths
+		}
+	}
+	return nil
+}
+
+func firstPersonAccessCapability(stores []ports.PersonAccessPathStore) ports.PersonAccessPathStore {
+	for _, store := range stores {
+		if store != nil {
+			return store
+		}
 	}
 	return nil
 }

@@ -18,6 +18,12 @@ type stubStore struct {
 	err       error
 }
 
+type typedAttackPathStore struct {
+	requests []ports.CloudAttackPathRequest
+	result   *ports.CloudAttackPathResult
+	err      error
+}
+
 func (s *stubStore) Ping(context.Context) error {
 	return s.err
 }
@@ -37,6 +43,11 @@ func (s *stubStore) ExecuteReadCypher(_ context.Context, request ports.CypherQue
 	rows := s.responses[0]
 	s.responses = s.responses[1:]
 	return rows, nil
+}
+
+func (s *typedAttackPathStore) ListCloudAttackPaths(_ context.Context, request ports.CloudAttackPathRequest) (*ports.CloudAttackPathResult, error) {
+	s.requests = append(s.requests, request)
+	return s.result, s.err
 }
 
 func TestTraverseRequiresTenant(t *testing.T) {
@@ -59,6 +70,62 @@ func TestTraverseCanRequirePerRuntimeAssertionProof(t *testing.T) {
 		if !strings.Contains(request.Query, "RELATION_ASSERTION") {
 			t.Fatalf("assertion-proof query uses logical relation:\n%s", request.Query)
 		}
+	}
+}
+
+func TestTraversePrefersTypedCloudAttackPathStore(t *testing.T) {
+	node := func(kind, urn, label string) ports.CloudAttackPathNode {
+		return ports.CloudAttackPathNode{URN: urn, EntityType: kind, Label: label}
+	}
+	edge := func(from ports.CloudAttackPathNode, relation string, to ports.CloudAttackPathNode, direction string) ports.CloudAttackPathEdge {
+		return ports.CloudAttackPathEdge{From: from, Relation: relation, To: to, Direction: direction, SourceRuntimeID: "runtime-1", AttributesJSON: `{"source_event_id":"event-1","observed_at":"2026-07-15T08:00:00Z"}`}
+	}
+	public := node("aws.public_principal", "urn:cerebro:writer:aws_public_principal:public", "public")
+	exposed := node("aws.network.interface", "urn:cerebro:writer:aws_network_interface:eni-1", "eni-1")
+	account := node("cloud.account", "urn:cerebro:writer:cloud_account:123456789012", "123456789012")
+	principal := node("aws.role", "urn:cerebro:writer:aws_role:admin", "admin")
+	permission := node("aws.policy", "urn:cerebro:writer:aws_policy:admin", "admin policy")
+	typed := &typedAttackPathStore{result: &ports.CloudAttackPathResult{
+		TenantID: "writer",
+		Counts:   ports.CloudAttackPathCounts{Paths: 1, ExposedResources: 1, PrivilegedPrincipals: 1, CloudAccounts: 1},
+		Paths: []ports.CloudAttackPath{{
+			PublicPrincipal:       public,
+			ExposedResource:       exposed,
+			CloudAccount:          account,
+			Principal:             principal,
+			Permission:            permission,
+			ReachRelation:         "can_reach",
+			AccessRelation:        "can_admin",
+			RelationChain:         []string{"attached_to"},
+			ExposureEdge:          edge(public, "can_reach", exposed, "forward"),
+			ResourceAccountEdge:   edge(exposed, "belongs_to", account, "forward"),
+			TraversalEdges:        []ports.CloudAttackPathEdge{edge(exposed, "attached_to", principal, "forward")},
+			PrivilegeEdge:         edge(principal, "can_admin", permission, "forward"),
+			PermissionAccountEdge: edge(permission, "belongs_to", account, "forward"),
+		}},
+	}}
+	raw := &stubStore{}
+	result, err := NewWithCapabilities(raw, typed).Traverse(context.Background(), Request{
+		TenantID:              " writer ",
+		AccountID:             "123456789012",
+		RuntimeID:             "runtime-1",
+		RequireAssertionProof: true,
+		Limit:                 250,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw.requests) != 0 {
+		t.Fatalf("raw Cypher requests = %d, want typed path read only", len(raw.requests))
+	}
+	if len(typed.requests) != 1 || typed.requests[0].Limit != MaxLimit || typed.requests[0].Depth != DefaultDepth || !typed.requests[0].RequireAssertionProof {
+		t.Fatalf("typed requests = %#v", typed.requests)
+	}
+	if result.Counts.Paths != 1 || len(result.Paths) != 1 || result.NeighborhoodURN != exposed.URN {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Paths[0].PrivilegeEdge.SourceEventID != "event-1" || result.Paths[0].PrivilegeEdge.ObservedAt.IsZero() {
+		t.Fatalf("privilege edge provenance = %#v", result.Paths[0].PrivilegeEdge)
 	}
 }
 

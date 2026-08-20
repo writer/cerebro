@@ -1657,22 +1657,26 @@ func (s *stubRuntimeStore) GetReportRun(_ context.Context, id string) (*cerebrov
 }
 
 type stubGraphStore struct {
-	mu                  sync.Mutex
-	err                 error
-	entities            map[string]*ports.ProjectedEntity
-	links               map[string]*ports.ProjectedLink
-	checkpoints         map[string]graphstore.IngestCheckpoint
-	ingestRuns          map[string]graphstore.IngestRun
-	neighborhood        *ports.EntityNeighborhood
-	neighborhoodRootURN string
-	neighborhoodLimit   int
-	ingestRunListFilter graphstore.IngestRunFilter
-	cypherPlan          *ports.CypherPlan
-	cypherRows          [][]ports.CypherRow
-	cypherRequests      []ports.CypherQueryRequest
-	exposureResult      *ports.ExposureCoverageResult
-	exposureRequests    []ports.ExposureCoverageRequest
-	entityRequests      []ports.EntityCatalogPageRequest
+	mu                   sync.Mutex
+	err                  error
+	entities             map[string]*ports.ProjectedEntity
+	links                map[string]*ports.ProjectedLink
+	checkpoints          map[string]graphstore.IngestCheckpoint
+	ingestRuns           map[string]graphstore.IngestRun
+	neighborhood         *ports.EntityNeighborhood
+	neighborhoodRootURN  string
+	neighborhoodLimit    int
+	ingestRunListFilter  graphstore.IngestRunFilter
+	cypherPlan           *ports.CypherPlan
+	cypherRows           [][]ports.CypherRow
+	cypherRequests       []ports.CypherQueryRequest
+	exposureResult       *ports.ExposureCoverageResult
+	exposureRequests     []ports.ExposureCoverageRequest
+	personAccessResult   *ports.PersonAccessPathResult
+	personAccessRequests []ports.PersonAccessPathRequest
+	entityRequests       []ports.EntityCatalogPageRequest
+	entityKindRequests   []ports.EntityKindCountRequest
+	relationRequests     []ports.RelationCountRequest
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -1774,6 +1778,14 @@ func (s *stubGraphStore) CompareExposureCoverage(_ context.Context, request port
 	return s.exposureResult, nil
 }
 
+func (s *stubGraphStore) ListPersonAccessPaths(_ context.Context, request ports.PersonAccessPathRequest) (*ports.PersonAccessPathResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.personAccessRequests = append(s.personAccessRequests, request)
+	return s.personAccessResult, nil
+}
+
 func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -1799,8 +1811,23 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 	}
 	return page, nil
 }
-func (s *stubGraphStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
-	return &ports.EntityKindCountPage{TenantID: "writer"}, nil
+func (s *stubGraphStore) CountEntityKinds(_ context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	s.entityKindRequests = append(s.entityKindRequests, request)
+	return &ports.EntityKindCountPage{
+		TenantID: request.Filter.TenantID,
+		Counts: []ports.EntityKindCount{
+			{EntityKind: "asset", Count: 1},
+		},
+	}, nil
+}
+func (s *stubGraphStore) CountRelations(_ context.Context, request ports.RelationCountRequest) (*ports.RelationCountPage, error) {
+	s.relationRequests = append(s.relationRequests, request)
+	return &ports.RelationCountPage{
+		TenantID: request.TenantID,
+		Counts: []ports.RelationCount{
+			{Relation: "has_finding", Count: 1},
+		},
+	}, nil
 }
 func (s *stubGraphStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
 	return &ports.EntityRelationPage{TenantID: "writer"}, nil
@@ -4173,22 +4200,31 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 }
 
 func TestGraphPersonAccessPathsEndpoint(t *testing.T) {
-	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
-		{{Values: map[string]any{
-			"person_urn":            "urn:cerebro:writer:person:vanta:person-1",
-			"person_entity_type":    "person",
-			"person_label":          "designer@example.com",
-			"identity_urn":          "urn:cerebro:writer:identity:email:designer@example.com",
-			"identity_entity_type":  "identity.email",
-			"identity_label":        "designer@example.com",
-			"principal_urn":         "urn:cerebro:writer:okta_user:00u1",
-			"principal_entity_type": "okta.user",
-			"principal_label":       "designer@example.com",
-			"target_urn":            "urn:cerebro:writer:aws_role:DesignerAnalytics",
-			"target_entity_type":    "aws.role",
-			"target_label":          "DesignerAnalytics",
-			"relation_chain":        []any{"assigned_to"},
-		}}},
+	graph := &stubGraphStore{personAccessResult: &ports.PersonAccessPathResult{
+		TenantID: "writer",
+		Paths: []ports.PersonAccessPath{{
+			Person: ports.CatalogEntity{
+				URN:        "urn:cerebro:writer:person:vanta:person-1",
+				EntityType: "person",
+				Label:      "designer@example.com",
+			},
+			Identity: ports.CatalogEntity{
+				URN:        "urn:cerebro:writer:identity:email:designer@example.com",
+				EntityType: "identity.email",
+				Label:      "designer@example.com",
+			},
+			Principal: ports.CatalogEntity{
+				URN:        "urn:cerebro:writer:okta_user:00u1",
+				EntityType: "okta.user",
+				Label:      "designer@example.com",
+			},
+			AccessTarget: ports.CatalogEntity{
+				URN:        "urn:cerebro:writer:aws_role:DesignerAnalytics",
+				EntityType: "aws.role",
+				Label:      "DesignerAnalytics",
+			},
+			RelationChain: []string{"assigned_to"},
+		}},
 	}}
 	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -4226,8 +4262,11 @@ func TestGraphPersonAccessPathsEndpoint(t *testing.T) {
 	if body.Paths[0].Principal.URN != "urn:cerebro:writer:okta_user:00u1" || body.Paths[0].AccessTarget.URN != "urn:cerebro:writer:aws_role:DesignerAnalytics" {
 		t.Fatalf("paths = %#v", body.Paths)
 	}
-	if len(graph.cypherRequests) != 1 || graph.cypherRequests[0].Params["person_query"] != "product designer" {
-		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
+	if len(graph.personAccessRequests) != 1 || graph.personAccessRequests[0].PersonQuery != "product designer" || graph.personAccessRequests[0].Limit != 5 || graph.personAccessRequests[0].Depth != 2 {
+		t.Fatalf("person access requests = %#v", graph.personAccessRequests)
+	}
+	if len(graph.cypherRequests) != 0 {
+		t.Fatalf("cypher requests = %#v, want none", graph.cypherRequests)
 	}
 }
 

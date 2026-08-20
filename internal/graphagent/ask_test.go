@@ -419,19 +419,19 @@ func TestCollectGraphProbeCachesTenantCounts(t *testing.T) {
 	}
 	request := AskRequest{TenantID: "writer", Question: "What is risky?"}
 
-	first := collectGraphProbe(context.Background(), store, store, request, askParams(request))
+	first := collectGraphProbe(context.Background(), store, store, request)
 	if first.SourceCount != 3 {
 		t.Fatalf("first probe source count = %d, want 3", first.SourceCount)
 	}
-	if len(store.requests) != 2 {
-		t.Fatalf("store requests after first probe = %d, want 2", len(store.requests))
+	if store.countRequests != 2 {
+		t.Fatalf("store count requests after first probe = %d, want 2", store.countRequests)
 	}
-	second := collectGraphProbe(context.Background(), store, store, request, askParams(request))
+	second := collectGraphProbe(context.Background(), store, store, request)
 	if second.SourceCount != 3 {
 		t.Fatalf("second probe source count = %d, want cached 3", second.SourceCount)
 	}
-	if len(store.requests) != 2 {
-		t.Fatalf("store requests after second probe = %d, want tenant count cache hit", len(store.requests))
+	if store.countRequests != 2 {
+		t.Fatalf("store count requests after second probe = %d, want tenant count cache hit", store.countRequests)
 	}
 }
 
@@ -1163,9 +1163,10 @@ func stringSliceContains(values []string, want string) bool {
 }
 
 type askStore struct {
-	requests []ports.CypherQueryRequest
-	rows     []ports.CypherRow
-	graph    *ports.EntityNeighborhood
+	requests      []ports.CypherQueryRequest
+	rows          []ports.CypherRow
+	graph         *ports.EntityNeighborhood
+	countRequests int
 }
 
 func (s *askStore) Ping(context.Context) error { return nil }
@@ -1183,6 +1184,16 @@ func (s *askStore) ExecuteReadCypher(_ context.Context, request ports.CypherQuer
 		return nil, nil
 	}
 	return s.rows, nil
+}
+
+func (s *askStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	s.countRequests++
+	return &ports.EntityKindCountPage{Counts: []ports.EntityKindCount{{EntityKind: "source", Count: 3}}}, nil
+}
+
+func (s *askStore) CountRelations(context.Context, ports.RelationCountRequest) (*ports.RelationCountPage, error) {
+	s.countRequests++
+	return &ports.RelationCountPage{Counts: []ports.RelationCount{{Relation: "has_finding", Count: 2}}}, nil
 }
 
 var _ Store = (*askStore)(nil)
