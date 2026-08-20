@@ -279,10 +279,10 @@ func (s *Service) depositAuthorityEvidence(ctx context.Context, runtime *cerebro
 	}
 	record, err := reader.LatestSourceRuntimeAuthorityEvidence(ctx, runtime.GetTenantId(), runtime.GetSourceId(), family.ID)
 	if err != nil {
-		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence is required for deposit ingest: %v", ErrRuntimeUnavailable, err)
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence is required for deposit ingest: %w", ErrRuntimeUnavailable, err)
 	}
 	if err := sourcehealth.VerifyAuthorityEvidenceRecord(record); err != nil {
-		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence is invalid for deposit ingest: %v", ErrRuntimeUnavailable, err)
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence is invalid for deposit ingest: %w", ErrRuntimeUnavailable, err)
 	}
 	if sourcehealth.AuthorityEvidenceReceiptRef(record) == "" {
 		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence reference is required for deposit ingest", ErrRuntimeUnavailable)

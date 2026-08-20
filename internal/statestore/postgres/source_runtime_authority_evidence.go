@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcehealth"
@@ -38,6 +39,9 @@ func (s *Store) AppendSourceRuntimeAuthorityEvidence(ctx context.Context, record
 	record, err := stream.Append(record)
 	if err != nil {
 		return sourcehealth.AuthorityEvidenceRecord{}, err
+	}
+	if record.AuthorityEpoch > math.MaxInt64 {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: authority_epoch exceeds postgres bigint", sourcehealth.ErrAuthorityEvidenceInvalid)
 	}
 	if err := s.ensureSourceRuntimeAuthorityEvidenceTables(ctx); err != nil {
 		return sourcehealth.AuthorityEvidenceRecord{}, err

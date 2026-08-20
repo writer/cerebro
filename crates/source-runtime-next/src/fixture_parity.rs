@@ -15,7 +15,7 @@ use serde_json::json;
 
 use crate::canonical_digest;
 
-const FIXTURE_PARITY_SCHEMA_VERSION: &str = "cerebro.source-fixture-parity.v1";
+const FIXTURE_PARITY_SCHEMA_VERSION: &str = "cerebro.source-fixture-parity.v2";
 
 /// Fixture-only source runtime operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -340,8 +340,7 @@ pub fn execute_fixture_parity_page(
             page.accepted_events.push(event);
             page.scanned_count = 1;
             page.accepted_count = 1;
-            page.proposed_checkpoint =
-                canonical_digest(&json!({"discovered": page.accepted_events}));
+            page.proposed_checkpoint = fixture_digest(&json!({"discovered": page.accepted_events}));
             return Ok(page);
         }
         FixtureParityOperation::ReadPage => {}
@@ -402,7 +401,7 @@ pub fn execute_fixture_parity_page(
     if page.next_cursor.is_empty() {
         append_stable_reason(&mut page.short_circuit_reasons, "final_page");
     }
-    page.proposed_checkpoint = canonical_digest(&json!({
+    page.proposed_checkpoint = fixture_digest(&json!({
         "source_id": input.source_id,
         "family_id": input.family_id,
         "case_id": input.case_id,
@@ -424,8 +423,8 @@ fn fixture_parity_receipt(
     go_page: &FixtureParityPage,
     rust_page: &FixtureParityPage,
 ) -> FixtureParityReceipt {
-    let go_page_digest = canonical_digest(go_page);
-    let rust_page_digest = canonical_digest(rust_page);
+    let go_page_digest = fixture_digest(go_page);
+    let rust_page_digest = fixture_digest(rust_page);
     let mut receipt = FixtureParityReceipt {
         schema_version: FIXTURE_PARITY_SCHEMA_VERSION.to_owned(),
         corpus_revision: corpus_revision.to_owned(),
@@ -440,13 +439,13 @@ fn fixture_parity_receipt(
         .to_owned(),
         go_page_digest_sha256: go_page_digest.clone(),
         rust_page_digest_sha256: rust_page_digest.clone(),
-        cursor_digest_sha256: canonical_digest(&go_page.next_cursor),
-        checkpoint_digest_sha256: canonical_digest(&go_page.proposed_checkpoint),
+        cursor_digest_sha256: fixture_digest(&go_page.next_cursor),
+        checkpoint_digest_sha256: fixture_digest(&go_page.proposed_checkpoint),
         quarantine_summary: quarantine_summary(&go_page.quarantines),
         mismatch_count: usize::from(go_page_digest != rust_page_digest),
         receipt_digest_sha256: String::new(),
     };
-    receipt.receipt_digest_sha256 = canonical_digest(&receipt);
+    receipt.receipt_digest_sha256 = fixture_digest(&receipt);
     receipt
 }
 
@@ -584,9 +583,12 @@ fn fixture_parity_event(
     index: usize,
     record: &serde_json::Value,
 ) -> FixtureParityEvent {
-    let payload_sha256 = canonical_digest(record);
+    let payload_sha256 = fixture_digest(&json!({
+        "domain": "cerebro.source-fixture-record.v1",
+        "record": record,
+    }));
     FixtureParityEvent {
-        event_id: canonical_digest(&json!({
+        event_id: fixture_digest(&json!({
             "source_id": input.source_id,
             "family_id": input.family_id,
             "case_id": input.case_id,
@@ -623,7 +625,7 @@ fn fixture_corpus_revision(inputs: &[FixtureParityInput]) -> String {
                 "{}:{}",
                 fixture_input_key(input),
                 if input.payload_sha256.is_empty() {
-                    canonical_digest(
+                    fixture_digest(
                         &serde_json::from_slice::<serde_json::Value>(&input.payload)
                             .unwrap_or_else(|_| {
                                 serde_json::Value::String(
@@ -638,7 +640,13 @@ fn fixture_corpus_revision(inputs: &[FixtureParityInput]) -> String {
         })
         .collect();
     entries.sort();
-    canonical_digest(&entries)
+    fixture_digest(&entries)
+}
+
+fn fixture_digest(value: &impl Serialize) -> String {
+    // V2 proof digests use a case-sensitive uppercase encoding. Provider
+    // capture hashes and runtime protocol digests retain their original form.
+    canonical_digest(value).to_ascii_uppercase()
 }
 
 fn fixture_input_key(input: &FixtureParityInput) -> String {
@@ -866,6 +874,18 @@ mod tests {
                 .reconciliation_reasons
                 .iter()
                 .any(|reason| reason == "equal_watermark")
+        );
+    }
+
+    #[test]
+    fn fixture_proof_digest_encoding_matches_go_vector() {
+        let record = json!({
+            "domain": "cerebro.source-fixture-record.v1",
+            "record": {"id": "user-1", "name": "Ada"},
+        });
+        assert_eq!(
+            fixture_digest(&record),
+            "E4911FD30E7D4F0E4BA68D619B6F6FC12C25652AE38AFEEB8ED5F68D5CC2B598"
         );
     }
 

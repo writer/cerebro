@@ -11,7 +11,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcefixture"
 )
 
-const fixtureParityCorpusVersion = "cerebro.source-fixture-parity.v1"
+const fixtureParityCorpusVersion = "cerebro.source-fixture-parity.v2"
 
 type FixtureParityOperation string
 
@@ -151,10 +151,7 @@ func BuildGoFixtureOracleMatrix(root string) (FixtureGoOracleMatrix, error) {
 	if err != nil {
 		return FixtureGoOracleMatrix{}, err
 	}
-	corpusRevision, err := fixtureCorpusRevision(inputs)
-	if err != nil {
-		return FixtureGoOracleMatrix{}, err
-	}
+	corpusRevision := fixtureCorpusRevision(inputs)
 	matrix := FixtureGoOracleMatrix{
 		SchemaVersion:  fixtureParityCorpusVersion,
 		CorpusRevision: corpusRevision,
@@ -175,7 +172,7 @@ func BuildGoFixtureOracleMatrix(root string) (FixtureGoOracleMatrix, error) {
 			Operation:             input.Operation,
 			PayloadSHA256:         input.PayloadSHA256,
 			GoPage:                page,
-			GoPageDigestSHA256:    pageDigest,
+			GoPageDigestSHA256:    strings.ToUpper(pageDigest),
 			OfflineProof:          "fixture_only_no_provider_network",
 			ProviderNetworkEgress: false,
 		}
@@ -183,7 +180,7 @@ func BuildGoFixtureOracleMatrix(root string) (FixtureGoOracleMatrix, error) {
 		if err != nil {
 			return FixtureGoOracleMatrix{}, err
 		}
-		oracle.OracleDigestSHA256 = oracleDigest
+		oracle.OracleDigestSHA256 = strings.ToUpper(oracleDigest)
 		matrix.Cases = append(matrix.Cases, oracle)
 	}
 	return matrix, nil
@@ -223,7 +220,7 @@ func ExecuteGoFixtureOraclePage(input FixtureParityInput) (FixtureParityPage, er
 		page.ScannedCount = 1
 		page.AcceptedCount = 1
 		page.ProposedCheckpoint = digestFixtureValue(map[string]any{"discovered": page.AcceptedEvents})
-		return page, nil
+		return page, nil //nolint:nilerr // malformed records are quarantined parity outcomes, not executor failures.
 	case FixtureParityReadPage:
 	default:
 		return FixtureParityPage{}, fmt.Errorf("unsupported fixture parity operation %q", input.Operation)
@@ -314,8 +311,8 @@ func fixtureParityReceipt(input FixtureParityInput, corpusRevision string, goPag
 		FamilyID:               input.FamilyID,
 		CaseID:                 input.CaseID,
 		Operation:              string(input.Operation),
-		GoPageDigestSHA256:     goDigest,
-		RustPageDigestSHA256:   rustDigest,
+		GoPageDigestSHA256:     strings.ToUpper(goDigest),
+		RustPageDigestSHA256:   strings.ToUpper(rustDigest),
 		CursorDigestSHA256:     digestFixtureValue(goPage.NextCursor),
 		CheckpointDigestSHA256: digestFixtureValue(goPage.ProposedCheckpoint),
 		QuarantineSummary:      quarantineSummary(goPage.Quarantines),
@@ -325,7 +322,7 @@ func fixtureParityReceipt(input FixtureParityInput, corpusRevision string, goPag
 	if err != nil {
 		return FixtureParityReceipt{}, err
 	}
-	receipt.ReceiptDigestSHA256 = receiptDigest
+	receipt.ReceiptDigestSHA256 = strings.ToUpper(receiptDigest)
 	return receipt, nil
 }
 
@@ -359,13 +356,20 @@ func collectFixtureRecords(value any, records *[]any) {
 }
 
 func fixtureParityEvent(input FixtureParityInput, index int, record any) FixtureParityEvent {
-	payloadDigest := digestFixtureValue(record)
+	payloadDigest := digestFixtureRecord(record)
 	return FixtureParityEvent{
 		EventID:       digestFixtureValue(map[string]any{"source_id": input.SourceID, "family_id": input.FamilyID, "case_id": input.CaseID, "payload_sha256": payloadDigest}),
 		Kind:          input.SourceID + "." + input.FamilyID,
 		InputIndex:    index,
 		PayloadSHA256: payloadDigest,
 	}
+}
+
+func digestFixtureRecord(record any) string {
+	return digestFixtureValue(map[string]any{
+		"domain": "cerebro.source-fixture-record.v1",
+		"record": record,
+	})
 }
 
 func missingFixtureIdentity(record any) bool {
@@ -381,7 +385,7 @@ func missingFixtureIdentity(record any) bool {
 	return true
 }
 
-func fixtureCorpusRevision(inputs []FixtureParityInput) (string, error) {
+func fixtureCorpusRevision(inputs []FixtureParityInput) string {
 	entries := make([]string, 0, len(inputs))
 	for _, input := range inputs {
 		payloadDigest := input.PayloadSHA256
@@ -391,7 +395,7 @@ func fixtureCorpusRevision(inputs []FixtureParityInput) (string, error) {
 		entries = append(entries, filepath.ToSlash(fixtureParityInputKey(input))+":"+payloadDigest)
 	}
 	sort.Strings(entries)
-	return digestFixtureValue(entries), nil
+	return digestFixtureValue(entries)
 }
 
 func fixtureParityInputKey(input FixtureParityInput) string {
@@ -403,7 +407,9 @@ func digestFixtureValue(value any) string {
 	if err != nil {
 		return ""
 	}
-	return digest
+	// V2 proof digests use a case-sensitive uppercase encoding. Keep provider
+	// capture hashes and runtime digest contracts on their original encodings.
+	return strings.ToUpper(digest)
 }
 
 func quarantineSummary(quarantines []FixtureParityQuarantine) []string {

@@ -811,6 +811,14 @@ pages without changing append or checkpoint authority.
 - Add property tests for pagination termination, cursor round trips, identity encoding, redaction, and event validation.
 - Add fuzz corpora from existing source fixtures without storing sensitive provider data.
 
+The checked Go oracle is owned by `go run ./tools/fixtureoracle -root . -write`.
+Its `cerebro.source-fixture-parity.v2` derived proof digests hash the same
+canonical JSON bytes in Go and Rust and encode SHA-256 as uppercase hexadecimal.
+Digest comparison is case-sensitive. Provider-capture hashes remain byte-for-byte
+unchanged. These uppercase values are offline parity proofs only: runtime
+identities, idempotency keys, provider record digests, and persisted runtime
+compatibility contracts must not consume or normalize them.
+
 **Exit gate:** selected declarative families produce the same accepted events, quarantines, cursors, and checkpoints as Go.
 
 ### Stage 3: live shadow

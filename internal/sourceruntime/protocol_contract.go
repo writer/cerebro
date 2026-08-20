@@ -108,7 +108,11 @@ func ValidateSourceRuntimeEnvelope(envelope SourceRuntimeEnvelope) error {
 	return nil
 }
 
-func CanonicalSourceRuntimeDigest(value any) (string, error) {
+// SourceRuntimeCanonicalValue is a JSON-serializable protocol value whose
+// digest is computed after canonical key ordering and number decoding.
+type SourceRuntimeCanonicalValue interface{}
+
+func CanonicalSourceRuntimeDigest(value SourceRuntimeCanonicalValue) (string, error) {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return "", err

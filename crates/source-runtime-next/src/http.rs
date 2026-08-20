@@ -33,10 +33,11 @@ use reqwest::{
     Client, Request, Response, StatusCode, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
+use serde::Deserialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256, Sha512};
 use time::OffsetDateTime;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     CollectedBatch, CollectedScope, CollectionRequest, CredentialLeaseError,
@@ -65,6 +66,23 @@ pub enum ResolvedAuth {
     Bearer {
         /// Token placed in the `Authorization` header.
         token: String,
+    },
+    /// Exchange OAuth client credentials for one bearer token before provider reads.
+    OauthClientCredentials {
+        /// OAuth client identifier.
+        client_id: String,
+        /// OAuth client secret.
+        client_secret: String,
+        /// Fully rendered provider token endpoint.
+        token_url: String,
+        /// Requested OAuth scopes.
+        scopes: Vec<String>,
+        /// Provider scope separator.
+        scope_separator: String,
+        /// Client authentication method for the token request.
+        token_request_auth_method: String,
+        /// Additional provider-declared token form parameters.
+        token_params: BTreeMap<String, String>,
     },
     /// Send HTTP Basic credentials.
     Basic {
@@ -122,6 +140,26 @@ impl fmt::Debug for ResolvedAuth {
         match self {
             Self::None => formatter.write_str("None"),
             Self::Bearer { .. } => formatter.write_str("Bearer { token: [REDACTED] }"),
+            Self::OauthClientCredentials {
+                token_url,
+                scopes,
+                scope_separator,
+                token_request_auth_method,
+                token_params,
+                ..
+            } => formatter
+                .debug_struct("OauthClientCredentials")
+                .field("client_id", &"[REDACTED]")
+                .field("client_secret", &"[REDACTED]")
+                .field("token_url", token_url)
+                .field("scopes", scopes)
+                .field("scope_separator", scope_separator)
+                .field("token_request_auth_method", token_request_auth_method)
+                .field(
+                    "token_param_names",
+                    &token_params.keys().collect::<Vec<_>>(),
+                )
+                .finish(),
             Self::Basic { .. } => {
                 formatter.write_str("Basic { username: [REDACTED], password: [REDACTED] }")
             }
@@ -170,6 +208,18 @@ impl Drop for ResolvedAuth {
         match self {
             Self::None => {}
             Self::Bearer { token } => token.zeroize(),
+            Self::OauthClientCredentials {
+                client_id,
+                client_secret,
+                token_params,
+                ..
+            } => {
+                client_id.zeroize();
+                client_secret.zeroize();
+                for value in token_params.values_mut() {
+                    value.zeroize();
+                }
+            }
             Self::Basic { username, password } => {
                 username.zeroize();
                 password.zeroize();
@@ -207,6 +257,16 @@ impl Drop for ResolvedAuth {
                 integration_key.zeroize();
                 secret_key.zeroize();
             }
+        }
+    }
+}
+
+impl ResolvedAuth {
+    /// Token endpoint that must be included in the exact provider egress allowlist.
+    pub fn oauth_token_url(&self) -> Option<&str> {
+        match self {
+            Self::OauthClientCredentials { token_url, .. } => Some(token_url),
+            _ => None,
         }
     }
 }
@@ -684,6 +744,7 @@ impl SourceConnector for HttpSourceConnector {
     async fn collect(&mut self, request: CollectionRequest) -> Result<CollectedBatch, Self::Error> {
         let observed_at = unix_millis()?;
         let _lease_scope = self.validate_provider_access(&request)?;
+        let oauth_access_token = self.exchange_oauth_client_credentials().await?;
         let request_scopes = self.request_scopes()?;
         let initial_cursor = effective_cursor(self.family.pagination(), request.cursor.as_deref());
         if request.cursor.is_some() && request_scopes.len() > 1 {
@@ -728,6 +789,13 @@ impl SourceConnector for HttpSourceConnector {
                 builder = match &self.auth {
                     ResolvedAuth::None => builder,
                     ResolvedAuth::Bearer { token } => builder.bearer_auth(token),
+                    ResolvedAuth::OauthClientCredentials { .. } => {
+                        builder.bearer_auth(oauth_access_token.as_deref().ok_or_else(|| {
+                            HttpConnectorError::InvalidConfiguration(
+                                "OAuth client-credentials token is unavailable".to_owned(),
+                            )
+                        })?)
+                    }
                     ResolvedAuth::Basic { username, password } => {
                         builder.basic_auth(username, Some(password))
                     }
@@ -918,6 +986,108 @@ impl SourceConnector for HttpSourceConnector {
     }
 }
 
+#[derive(Deserialize)]
+struct OauthTokenResponse {
+    access_token: String,
+    #[serde(default)]
+    token_type: String,
+}
+
+impl Drop for OauthTokenResponse {
+    fn drop(&mut self) {
+        self.access_token.zeroize();
+    }
+}
+
+impl HttpSourceConnector {
+    async fn exchange_oauth_client_credentials(
+        &mut self,
+    ) -> Result<Option<Zeroizing<String>>, HttpConnectorError> {
+        let token_url = match &self.auth {
+            ResolvedAuth::OauthClientCredentials { token_url, .. } => Url::parse(token_url)
+                .map_err(|_| {
+                    HttpConnectorError::InvalidConfiguration(
+                        "OAuth token URL is invalid".to_owned(),
+                    )
+                })?,
+            _ => return Ok(None),
+        };
+        self.authorize_provider_url(&token_url)?;
+        let ResolvedAuth::OauthClientCredentials {
+            client_id,
+            client_secret,
+            scopes,
+            scope_separator,
+            token_request_auth_method,
+            token_params,
+            ..
+        } = &self.auth
+        else {
+            return Ok(None);
+        };
+        let mut form = token_params.clone();
+        form.insert("grant_type".to_owned(), "client_credentials".to_owned());
+        let scope = scopes.join(scope_separator);
+        if !scope.trim().is_empty() {
+            form.insert("scope".to_owned(), scope);
+        }
+        let mut builder = self
+            .client
+            .post(token_url)
+            .header("Accept", "application/json");
+        match token_request_auth_method.as_str() {
+            "client_secret_post" => {
+                form.insert("client_id".to_owned(), client_id.clone());
+                form.insert("client_secret".to_owned(), client_secret.clone());
+            }
+            "client_secret_basic" => {
+                form.insert("client_id".to_owned(), client_id.clone());
+                builder = builder.basic_auth(client_id, Some(client_secret));
+            }
+            _ => {
+                return Err(HttpConnectorError::InvalidConfiguration(
+                    "OAuth token request auth method is invalid".to_owned(),
+                ));
+            }
+        }
+        let request = builder
+            .form(&form)
+            .build()
+            .map_err(|_| HttpConnectorError::RedactedRequest)?;
+        for value in form.values_mut() {
+            value.zeroize();
+        }
+        let response = self
+            .client
+            .execute(request)
+            .await
+            .map_err(|_| HttpConnectorError::RedactedRequest)?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(HttpConnectorError::ProviderStatus(status));
+        }
+        let body = read_bounded_json_with_limit(response, 1 << 20).await?;
+        let mut token: OauthTokenResponse = serde_json::from_value(body).map_err(|_| {
+            HttpConnectorError::InvalidResponse(
+                "OAuth token response does not match the expected contract".to_owned(),
+            )
+        })?;
+        if !token.token_type.is_empty() && !token.token_type.eq_ignore_ascii_case("bearer") {
+            return Err(HttpConnectorError::InvalidResponse(
+                "OAuth token response returned an unsupported token type".to_owned(),
+            ));
+        }
+        if token.access_token.trim().is_empty() {
+            return Err(HttpConnectorError::InvalidResponse(
+                "OAuth token response is missing access_token".to_owned(),
+            ));
+        }
+        Ok(Some(Zeroizing::new(std::mem::take(
+            &mut token.access_token,
+        ))))
+    }
+}
+
 fn build_client(
     request_timeout: Duration,
     connect_timeout: Duration,
@@ -1014,12 +1184,17 @@ fn validate_auth(source: &CompiledSource, actual: &ResolvedAuth) -> Result<(), H
         },
         AuthModel::BearerToken
         | AuthModel::OauthAuthorizationCode
-        | AuthModel::OauthClientCredentials
         | AuthModel::TwoStep
         | AuthModel::Jwt => matches!(
             actual,
             ResolvedAuth::Bearer { .. } | ResolvedAuth::Header { .. }
         ),
+        AuthModel::OauthClientCredentials => {
+            matches!(
+                actual,
+                ResolvedAuth::OauthClientCredentials { .. } | ResolvedAuth::Bearer { .. }
+            )
+        }
         AuthModel::AwsSigV4 => matches!(actual, ResolvedAuth::AwsSigV4 { .. }),
         AuthModel::DuoHmacV5 => matches!(actual, ResolvedAuth::DuoHmacV5 { .. }),
         AuthModel::Signature | AuthModel::DuoHmac => false,
@@ -2072,6 +2247,63 @@ mod tests {
         assert!(!classification.advances_progress);
         assert!(!format!("{error:?}").contains("secret-sentinel"));
         assert!(!format!("{classification:?}").contains("secret-sentinel"));
+    }
+
+    #[tokio::test]
+    async fn oauth_client_credentials_exchange_is_egress_scoped_and_redacted() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let count = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..count]);
+            assert!(request.starts_with("POST /oauth2/token HTTP/1.1"));
+            assert!(request.contains("grant_type=client_credentials"));
+            assert!(request.contains("client_id=client-example"));
+            assert!(request.contains("client_secret=credential-example"));
+            assert!(request.contains("scope=read%3Ausers+read%3Agroups"));
+            let body = r#"{"access_token":"oauth-token-example","token_type":"Bearer"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let base_url = format!("http://{address}");
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("box")
+        .unwrap()
+        .clone();
+        let auth = ResolvedAuth::OauthClientCredentials {
+            client_id: "client-example".to_owned(),
+            client_secret: "credential-example".to_owned(),
+            token_url: format!("{base_url}/oauth2/token"),
+            scopes: vec!["read:users".to_owned(), "read:groups".to_owned()],
+            scope_separator: " ".to_owned(),
+            token_request_auth_method: "client_secret_post".to_owned(),
+            token_params: BTreeMap::new(),
+        };
+        assert!(!format!("{auth:?}").contains("credential-example"));
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(source, "users", &base_url, BTreeMap::new(), auth).unwrap(),
+            "tenant-a",
+            "box-prod",
+            &base_url,
+        );
+        let token = connector
+            .exchange_oauth_client_credentials()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(token.as_str(), "oauth-token-example");
+        server.await.unwrap();
     }
 
     #[test]

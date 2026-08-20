@@ -29,6 +29,7 @@ func TestRustFixtureParityGoOracleArtifactMatchesCurrentOracle(t *testing.T) {
 	}
 
 	artifactPath := filepath.Join("..", "..", "crates", "source-runtime-next", "testdata", "go_fixture_oracle.json")
+	// #nosec G304 -- fixed repository-relative artifact path assembled from constants.
 	payload, err := os.ReadFile(artifactPath)
 	if err != nil {
 		t.Fatalf("read Go fixture oracle artifact: %v", err)
@@ -172,6 +173,17 @@ func TestRustFixtureParityCoversPageSemantics(t *testing.T) {
 		if page.Operation != input.Operation {
 			t.Fatalf("%s page operation = %s", input.Operation, page.Operation)
 		}
+	}
+}
+
+func TestFixtureProofDigestEncodingMatchesRustVector(t *testing.T) {
+	got := digestFixtureRecord(map[string]any{"id": "user-1", "name": "Ada"})
+	const want = "E4911FD30E7D4F0E4BA68D619B6F6FC12C25652AE38AFEEB8ED5F68D5CC2B598"
+	if got != want {
+		t.Fatalf("digestFixtureRecord() = %q, want shared Go/Rust vector %q", got, want)
+	}
+	if got != strings.ToUpper(got) {
+		t.Fatalf("fixture proof digest is not uppercase: %q", got)
 	}
 }
 

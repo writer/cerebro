@@ -341,8 +341,40 @@ pub struct CompiledSource {
     auth_header_parameters: BTreeMap<String, String>,
     auth_query_parameters: BTreeMap<String, String>,
     auth_json_body_parameters: BTreeMap<String, String>,
+    oauth_client_credentials: Option<CompiledOauthClientCredentials>,
     authority: CollectionAuthority,
     families: Vec<CompiledFamily>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledOauthClientCredentials {
+    token_url: String,
+    scopes: Vec<String>,
+    scope_separator: String,
+    token_request_auth_method: String,
+    token_params: BTreeMap<String, String>,
+}
+
+impl CompiledOauthClientCredentials {
+    pub fn token_url(&self) -> &str {
+        &self.token_url
+    }
+
+    pub fn scopes(&self) -> &[String] {
+        &self.scopes
+    }
+
+    pub fn scope_separator(&self) -> &str {
+        &self.scope_separator
+    }
+
+    pub fn token_request_auth_method(&self) -> &str {
+        &self.token_request_auth_method
+    }
+
+    pub fn token_params(&self) -> &BTreeMap<String, String> {
+        &self.token_params
+    }
 }
 
 impl CompiledSource {
@@ -376,6 +408,10 @@ impl CompiledSource {
 
     pub fn auth_json_body_parameters(&self) -> &BTreeMap<String, String> {
         &self.auth_json_body_parameters
+    }
+
+    pub fn oauth_client_credentials(&self) -> Option<&CompiledOauthClientCredentials> {
+        self.oauth_client_credentials.as_ref()
     }
 
     pub fn authority(&self) -> CollectionAuthority {
@@ -709,6 +745,16 @@ struct AuthWire {
     query_parameters: BTreeMap<String, String>,
     #[serde(default)]
     json_body_parameters: BTreeMap<String, String>,
+    #[serde(default)]
+    token_url: String,
+    #[serde(default)]
+    scopes: Vec<String>,
+    #[serde(default)]
+    scope_separator: String,
+    #[serde(default)]
+    token_request_auth_method: String,
+    #[serde(default)]
+    token_params: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -862,6 +908,8 @@ fn compile_source(
         .iter()
         .map(|field| field.key.trim())
         .collect::<BTreeSet<_>>();
+    let oauth_client_credentials =
+        compile_oauth_client_credentials(path, &entry.definition.auth, &credential_fields)?;
     let mut auth_header_parameters = BTreeMap::new();
     let mut normalized_header_names = BTreeSet::new();
     for (header, credential_field) in entry.definition.auth.header_parameters {
@@ -1045,9 +1093,85 @@ fn compile_source(
         auth_header_parameters,
         auth_query_parameters,
         auth_json_body_parameters,
+        oauth_client_credentials,
         authority,
         families,
     })
+}
+
+fn compile_oauth_client_credentials(
+    path: &Path,
+    auth: &AuthWire,
+    credential_fields: &BTreeSet<&str>,
+) -> Result<Option<CompiledOauthClientCredentials>, CatalogError> {
+    if auth.model.trim() != "oauth_client_credentials" {
+        return Ok(None);
+    }
+    if !credential_fields.contains("client_id") || !credential_fields.contains("client_secret") {
+        return invalid(
+            path,
+            "oauth_client_credentials requires client_id and client_secret credential fields",
+        );
+    }
+    let token_url = auth.token_url.trim();
+    if token_url.is_empty() || token_url.len() > 2_048 || token_url.chars().any(char::is_control) {
+        return invalid(path, "oauth_client_credentials token_url is invalid");
+    }
+    let token_request_auth_method = match auth.token_request_auth_method.trim() {
+        "" | "client_secret_post" => "client_secret_post",
+        "client_secret_basic" | "basic" => "client_secret_basic",
+        _ => {
+            return invalid(
+                path,
+                "oauth_client_credentials token request auth method is invalid",
+            );
+        }
+    };
+    let scope_separator = if auth.scope_separator.is_empty() {
+        " "
+    } else {
+        auth.scope_separator.as_str()
+    };
+    if scope_separator.len() > 16 || scope_separator.chars().any(char::is_control) {
+        return invalid(path, "oauth_client_credentials scope separator is invalid");
+    }
+    let scopes = auth
+        .scopes
+        .iter()
+        .map(|scope| scope.trim())
+        .filter(|scope| !scope.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if scopes.len() > 128
+        || scopes
+            .iter()
+            .any(|scope| scope.len() > 512 || scope.chars().any(char::is_control))
+    {
+        return invalid(path, "oauth_client_credentials scopes are invalid");
+    }
+    if auth.token_params.len() > 32
+        || auth.token_params.iter().any(|(key, value)| {
+            key.is_empty()
+                || key.len() > 128
+                || !key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+                || value.len() > 2_048
+                || value.chars().any(char::is_control)
+        })
+    {
+        return invalid(
+            path,
+            "oauth_client_credentials token parameters are invalid",
+        );
+    }
+    Ok(Some(CompiledOauthClientCredentials {
+        token_url: token_url.to_owned(),
+        scopes,
+        scope_separator: scope_separator.to_owned(),
+        token_request_auth_method: token_request_auth_method.to_owned(),
+        token_params: auth.token_params.clone(),
+    }))
 }
 
 fn compile_family(
@@ -2425,6 +2549,29 @@ mod tests {
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
         );
+    }
+
+    #[test]
+    fn oauth_client_credentials_contract_is_compiled_without_credential_material() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let oauth = catalog
+            .get("auth0")
+            .unwrap()
+            .oauth_client_credentials()
+            .unwrap();
+        assert_eq!(oauth.token_url(), "https://${config.domain}/oauth/token");
+        assert_eq!(oauth.scope_separator(), " ");
+        assert_eq!(oauth.token_request_auth_method(), "client_secret_post");
+        assert_eq!(
+            oauth.token_params().get("audience").map(String::as_str),
+            Some("https://${config.domain}/api/v2/")
+        );
+        assert!(oauth.scopes().contains(&"read:users".to_owned()));
     }
 
     #[test]

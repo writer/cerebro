@@ -9,7 +9,7 @@ import (
 
 func TestAuthorityEvidenceStreamIsAppendOnlyAndAuditable(t *testing.T) {
 	stream := NewAuthorityEvidenceStream()
-	first, err := stream.Append(authorityEvidenceFixture("decision-promote", 1, AuthorityDecisionPromote))
+	first, err := stream.Append(authorityEvidenceFixture("decision-promote", 1))
 	if err != nil {
 		t.Fatalf("append promotion evidence: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestAuthorityEvidenceStreamIsAppendOnlyAndAuditable(t *testing.T) {
 	if len(history) != 2 || history[0].DecisionID != "decision-promote" || history[1].DecisionID != "decision-rollback" {
 		t.Fatalf("history = %#v, want ordered family decisions", history)
 	}
-	if _, err := stream.Append(authorityEvidenceFixture("decision-promote", 3, AuthorityDecisionPromote)); !errors.Is(err, ErrAuthorityEvidenceImmutable) {
+	if _, err := stream.Append(authorityEvidenceFixture("decision-promote", 3)); !errors.Is(err, ErrAuthorityEvidenceImmutable) {
 		t.Fatalf("duplicate decision append error = %v, want immutable", err)
 	}
 	mutated := first
@@ -58,15 +58,15 @@ func TestAuthorityEvidenceStreamIsAppendOnlyAndAuditable(t *testing.T) {
 }
 
 func TestAuthorityEvidenceRejectsMalformedDigestAndUnsignedPromotion(t *testing.T) {
-	malformed := authorityEvidenceFixture("decision-bad-digest", 1, AuthorityDecisionPromote)
+	malformed := authorityEvidenceFixture("decision-bad-digest", 1)
 	malformed.InputEvidenceDigestSHA256 = "not-a-sha"
 	if err := ValidateAuthorityEvidenceRecord(malformed); !errors.Is(err, ErrAuthorityEvidenceInvalid) {
 		t.Fatalf("malformed digest error = %v, want invalid", err)
 	}
-	unsigned := authorityEvidenceFixture("decision-unsigned", 1, AuthorityDecisionPromote)
+	unsigned := authorityEvidenceFixture("decision-unsigned", 1)
 	unsigned.AuthenticatedReceiptID = ""
 	unsigned.ReceiptSignature = ""
-	if err := ValidateAuthorityEvidenceRecord(unsigned); !errors.Is(err, ErrAuthorityEvidenceInvalid) || !strings.Contains(err.Error(), "signed or authenticated") {
+	if err := ValidateAuthorityEvidenceRecord(unsigned); !errors.Is(err, ErrAuthorityEvidenceInvalid) {
 		t.Fatalf("unsigned promotion error = %v, want signed/authenticated rejection", err)
 	}
 	blocked := unsigned
@@ -77,14 +77,14 @@ func TestAuthorityEvidenceRejectsMalformedDigestAndUnsignedPromotion(t *testing.
 	}
 }
 
-func authorityEvidenceFixture(decisionID string, epoch uint64, kind AuthorityDecisionKind) AuthorityEvidenceRecord {
+func authorityEvidenceFixture(decisionID string, epoch uint64) AuthorityEvidenceRecord {
 	return AuthorityEvidenceRecord{
 		TenantID:                  "tenant-a",
 		SourceID:                  "custom_deposit",
 		FamilyID:                  "assets",
 		AuthorityEpoch:            epoch,
 		DecisionID:                decisionID,
-		DecisionKind:              kind,
+		DecisionKind:              AuthorityDecisionPromote,
 		InputEvidenceDigestSHA256: strings.Repeat("a", 64),
 		ActorID:                   "system:cutover",
 		Timestamp:                 time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC),

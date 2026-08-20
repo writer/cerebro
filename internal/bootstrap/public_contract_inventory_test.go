@@ -65,7 +65,7 @@ func TestPublicContractInventoryGolden(t *testing.T) {
 	got := mustMarshalInventory(t, inventory)
 	goldenPath := filepath.Join(root, publicContractInventoryPath)
 	if os.Getenv("CEREBRO_UPDATE_PUBLIC_CONTRACT_INVENTORY") == "1" {
-		if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
+		if err := os.WriteFile(goldenPath, got, 0o600); err != nil {
 			t.Fatalf("update public contract inventory: %v", err)
 		}
 	}
@@ -278,7 +278,11 @@ func TestConnectWireCompatibilityGeneratedClientRawHTTPAuthAndTenant(t *testing.
 	if err != nil {
 		t.Fatalf("raw Connect GetVersion: %v", err)
 	}
-	defer rawResp.Body.Close()
+	t.Cleanup(func() {
+		if err := rawResp.Body.Close(); err != nil {
+			t.Errorf("close raw Connect response body: %v", err)
+		}
+	})
 	if rawResp.StatusCode != http.StatusOK {
 		t.Fatalf("raw Connect status = %d, want 200", rawResp.StatusCode)
 	}
@@ -354,11 +358,12 @@ func httpContractEntry(method string, routePath string, routeSurface string, con
 	surface := "protected"
 	authClass := "api-key-or-bearer"
 	tenantScope := "tenant-id-required"
-	if routeSurface == "routeSurfacePublicHTTP" {
+	switch routeSurface {
+	case "routeSurfacePublicHTTP":
 		surface = "public-exempt"
 		authClass = "public-exempt"
 		tenantScope = "none"
-	} else if routeSurface == "routeSurfaceInternalHTTP" {
+	case "routeSurfaceInternalHTTP":
 		surface = "internal-only"
 		authClass = "internal-only"
 		tenantScope = "internal-context"

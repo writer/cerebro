@@ -14,6 +14,9 @@ import (
 	"github.com/writer/cerebro/internal/sourcehealth"
 )
 
+// #nosec G101 -- synthetic test sentinel, not credential material.
+const depositSecretIdempotencyForTest = "SECRET-SENTINEL-IDEMPOTENCY-KEY-DO-NOT-PERSIST"
+
 type depositDefinitionStore struct {
 	records []*ports.ConnectorDefinitionRecord
 }
@@ -146,30 +149,29 @@ func TestDepositIngestRedactsCallerIdempotencyFromDurableOutputs(t *testing.T) {
 	appendLog := &appendLog{}
 	projector := &projector{result: ports.ProjectionResult{EntitiesProjected: 1}}
 	service := New(nil, store, appendLog, projector).WithConnectorDefinitionStore(definitions)
-	const secretIdempotency = "SECRET-SENTINEL-IDEMPOTENCY-KEY-DO-NOT-PERSIST"
 	response, err := service.Deposit(context.Background(), DepositRequest{
 		RuntimeID:      "runtime-deposit",
 		SourceID:       "custom_deposit",
 		TenantID:       "tenant-a",
 		FamilyID:       "assets",
 		BatchID:        "batch-secret-sentinel",
-		IdempotencyKey: secretIdempotency,
+		IdempotencyKey: depositSecretIdempotencyForTest,
 		OccurredAt:     time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC),
 		Records:        []json.RawMessage{json.RawMessage(`{"id":"asset-1","name":"Asset One"}`)},
 	})
 	if err != nil {
 		t.Fatalf("Deposit() error = %v", err)
 	}
-	if response.Receipt.IdempotencyKeyDigest == "" || strings.Contains(response.Receipt.ReceiptID, secretIdempotency) {
+	if response.Receipt.IdempotencyKeyDigest == "" || strings.Contains(response.Receipt.ReceiptID, depositSecretIdempotencyForTest) {
 		t.Fatalf("receipt id/digest = %#v, want redacted idempotency identity", response.Receipt)
 	}
-	assertDepositOutputOmits(t, secretIdempotency, "receipt", response.Receipt)
-	assertDepositOutputOmits(t, secretIdempotency, "append log events", appendLog.events)
-	assertDepositOutputOmits(t, secretIdempotency, "ledger attempts", store.attempts)
-	assertDepositOutputOmits(t, secretIdempotency, "projected events", projector.events)
-	assertDepositOutputOmits(t, secretIdempotency, "runtime state", store.runtimes)
+	assertDepositOutputOmits(t, "receipt", response.Receipt)
+	assertDepositOutputOmits(t, "append log events", appendLog.events)
+	assertDepositOutputOmits(t, "ledger attempts", store.attempts)
+	assertDepositOutputOmits(t, "projected events", projector.events)
+	assertDepositOutputOmits(t, "runtime state", store.runtimes)
 	for _, event := range appendLog.events {
-		if strings.Contains(event.GetId(), secretIdempotency) || strings.Contains(event.GetAttributes()["source_event_id"], secretIdempotency) {
+		if strings.Contains(event.GetId(), depositSecretIdempotencyForTest) || strings.Contains(event.GetAttributes()["source_event_id"], depositSecretIdempotencyForTest) {
 			t.Fatalf("event identifiers leaked idempotency key: id=%q attrs=%#v", event.GetId(), event.GetAttributes())
 		}
 		if !strings.Contains(event.GetId(), "idempotency-sha256-") {
@@ -312,13 +314,13 @@ func unsignedDepositAuthorityEvidence(t *testing.T) sourcehealth.AuthorityEviden
 	return record
 }
 
-func assertDepositOutputOmits(t *testing.T, sentinel string, label string, value any) {
+func assertDepositOutputOmits(t *testing.T, label string, value any) {
 	t.Helper()
 	bytes, err := json.Marshal(value)
 	if err != nil {
 		t.Fatalf("marshal %s: %v", label, err)
 	}
-	if strings.Contains(string(bytes), sentinel) {
+	if strings.Contains(string(bytes), depositSecretIdempotencyForTest) {
 		t.Fatalf("%s leaked sentinel idempotency key: %s", label, string(bytes))
 	}
 }

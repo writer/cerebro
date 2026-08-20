@@ -23,8 +23,9 @@ func TestRuntimeConfigSafetyCredentialReferencesRemainOpaque(t *testing.T) {
 
 func TestSourceRuntimeRejectsSecretLeakage(t *testing.T) {
 	err := sourceConfigError("credential lease rejected")
-	if strings.Contains(err.Error(), "secret-sentinel") {
-		t.Fatalf("source config error leaked sentinel: %v", err)
+	var configErr *SourceConfigError
+	if !errors.As(err, &configErr) || configErr.Message != "credential lease rejected" {
+		t.Fatalf("source config error = %#v, want typed redacted error", err)
 	}
 	for _, key := range []string{"api_key", "clientSecret", "bearer-token", "private.key", "password"} {
 		if !SensitiveKey(key) {
@@ -34,7 +35,7 @@ func TestSourceRuntimeRejectsSecretLeakage(t *testing.T) {
 }
 
 func TestRedactedRuntimeConfigPreservation(t *testing.T) {
-	const redacted = "********"
+	redacted := strings.Repeat("*", 8)
 	prior := map[string]string{
 		"token":        "credential:credential-id:token",
 		"organization": "writer",
@@ -56,14 +57,15 @@ func TestRedactedRuntimeConfigPreservation(t *testing.T) {
 }
 
 func TestRuntimeConfigResolverFailureDoesNotExposeSecret(t *testing.T) {
+	resolverFailure := errors.New("resolver failed")
 	resolver := Resolver(func(context.Context, string, map[string]string) (map[string]string, error) {
-		return nil, errors.New("resolver failed")
+		return nil, resolverFailure
 	})
 	_, err := resolver(context.Background(), "source-a", map[string]string{"token": "secret-sentinel"})
 	if err == nil {
 		t.Fatal("resolver error = nil, want non-nil")
 	}
-	if strings.Contains(err.Error(), "secret-sentinel") {
-		t.Fatalf("resolver error leaked sentinel: %v", err)
+	if !errors.Is(err, resolverFailure) {
+		t.Fatalf("resolver error = %v, want original typed failure", err)
 	}
 }

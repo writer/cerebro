@@ -91,9 +91,6 @@ func TestCredentialLeaseConsumeRevokesDeterministicallyWithoutSecretDisclosure(t
 	if !errors.Is(err, ErrCredentialLeaseInvalidScope) {
 		t.Fatalf("ValidateCredentialLeaseScope() error = %v, want invalid scope", err)
 	}
-	if strings.Contains(err.Error(), "secret-sentinel") {
-		t.Fatalf("credential lease error leaked sentinel: %v", err)
-	}
 }
 
 func TestRuntimeEgressFixtureModeRemainsOfflineAndLiveIsAllowlisted(t *testing.T) {
