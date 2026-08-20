@@ -1,0 +1,128 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - {key: token, label: Writer API key, reference_only: true, required: true, secret: true}
+        model: bearer_token
+      categories: [ai, governance]
+      config_fields:
+        - {key: base_url, label: Writer API base URL, required: true}
+        - {key: application_id, label: Writer application ID}
+        - {key: order, label: Sort order}
+        - {key: file_types, label: File types}
+        - {key: graph_id, label: Graph ID}
+        - {key: status, label: Status}
+        - {key: type, label: Application type}
+      description: Collects Writer models, Knowledge Graphs, files, applications, application graph associations, and existing asynchronous application jobs through read-only API contracts.
+      display_name: Writer
+      id: builtin-writer
+      resource_families:
+        - id: model
+          label: Models
+          method: GET
+          path: /v1/models
+          record_selector: $.models[*]
+          id_field: id
+          name_field: name
+          event: {kind: writer.model, schema_ref: writer/model/v1, urn_kind: writer_model, required_payload_fields: [id]}
+          pagination: {type: none, disable_page_size: true}
+          projection:
+            template: asset
+            fields: {resource_id: id, resource_name: name, resource_type: type}
+            static_fields: {source_product: writer}
+          coverage:
+            - {id: models, type: entity_family, title: Writer models, families: [model], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: graph
+          label: Knowledge Graphs
+          method: GET
+          path: /v1/graphs
+          record_selector: $.data[*]
+          id_field: id
+          name_field: name
+          event: {kind: writer.graph, schema_ref: writer/graph/v1, urn_kind: writer_graph, required_payload_fields: [id]}
+          pagination: &writer_cursor {type: cursor, cursor_param: after, cursor_json_path: $.last_id, page_size_param: limit, page_size: 100}
+          config:
+            config_query: {order: order}
+          projection:
+            template: asset
+            fields: {resource_id: id, resource_name: name, resource_type: type}
+            static_fields: {source_product: writer}
+          coverage:
+            - {id: graphs, type: entity_family, title: Writer Knowledge Graphs, families: [graph], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: file
+          label: Files
+          method: GET
+          path: /v1/files
+          record_selector: $.data[*]
+          id_field: id
+          name_field: name
+          event: {kind: writer.file, schema_ref: writer/file/v1, urn_kind: writer_file, required_payload_fields: [id]}
+          pagination: *writer_cursor
+          config:
+            config_query: {file_types: file_types, graph_id: graph_id, order: order, status: status}
+          projection:
+            template: asset
+            fields: {resource_id: id, resource_name: name, resource_type: type}
+            static_fields: {source_product: writer}
+          coverage:
+            - {id: files, type: entity_family, title: Writer files, families: [file], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: application
+          label: Applications
+          method: GET
+          path: /v1/applications
+          record_selector: $.data[*]
+          id_field: id
+          name_field: name
+          event: {kind: writer.application, schema_ref: writer/application/v1, urn_kind: writer_application, required_payload_fields: [id]}
+          pagination: *writer_cursor
+          config:
+            config_query: {order: order, type: type}
+          projection:
+            template: identity_application
+            fields: {app_id: id, app_name: name, status: status}
+            static_fields: {source_product: writer}
+          coverage:
+            - {id: applications, type: entity_family, title: Writer applications, families: [application], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: application_graph
+          label: Application graph associations
+          method: GET
+          path: /v1/applications/{application_id}/graphs
+          record_selector: $
+          id_field: application_id
+          name_field: application_id
+          event: {kind: writer.application_graph, schema_ref: writer/application_graph/v1, urn_kind: writer_application_graph}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            id_template: ${application_id}
+            config_attributes: {application_id: application_id}
+          projection:
+            template: asset
+            fields: {resource_id: application_id, resource_name: application_id, resource_type: association}
+            static_fields: {source_product: writer}
+          coverage:
+            - {id: application_graphs, type: app_entitlement, title: Writer application graph associations, families: [application_graph], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
+        - id: application_job
+          label: Application jobs
+          method: GET
+          path: /v1/applications/{application_id}/jobs
+          record_selector: $.result[*]
+          id_field: id
+          name_field: id
+          event: {kind: writer.application_job, schema_ref: writer/application_job/v1, urn_kind: writer_application_job, required_payload_fields: [id]}
+          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
+          config:
+            config_query: {status: status}
+            config_attributes: {application_id: application_id}
+          projection:
+            template: deployment
+            fields: {deployment_id: id, deployment_name: id, status: status, resource_id: application_id, resource_type: application_job}
+            static_fields: {source_product: writer}
+          coverage:
+            - {id: application_jobs, type: lifecycle_state, title: Writer application jobs, families: [application_job], support: supported, high_value: true, evidence_types: [configuration_state], control_domains: [security_operations]}
+      schema_version: cerebro.integration/v1
+      source_id: writer
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.writer.com
+        verification: {method: GET, path: /v1/models, expect_status: [200]}

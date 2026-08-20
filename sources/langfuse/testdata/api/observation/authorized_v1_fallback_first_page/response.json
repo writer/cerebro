@@ -1,0 +1,2346 @@
+{
+  "data": [
+    {
+      "calculatedInputCost": null,
+      "calculatedOutputCost": null,
+      "calculatedTotalCost": 0,
+      "completionStartTime": "2026-08-20T20:18:49.141Z",
+      "completionTokens": 11,
+      "costDetails": {},
+      "createdAt": "2026-08-20T20:18:49.731Z",
+      "endTime": "2026-08-20T20:18:49.193Z",
+      "environment": "default",
+      "id": "example-4c3ed17a",
+      "input": {
+        "custom_params": {
+          "thinking_budget": 474094129
+        },
+        "max_tokens": 852001466,
+        "messages": [
+          {
+            "content": "example-9c75c49c",
+            "role": "example-bbc5e661"
+          },
+          {
+            "content": "example-17f64aa9",
+            "role": "example-bbc5e661"
+          },
+          {
+            "content": "",
+            "role": "example-a39a7ffa",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "example-2231a3ce",
+                  "name": "example-172dc8cc"
+                },
+                "id": "example-d1b27c37",
+                "type": "example-78f9ac01"
+              }
+            ]
+          },
+          {
+            "content": "example-1e747e37",
+            "name": "example-172dc8cc",
+            "role": "example-7c9bbe5e",
+            "tool_call_id": "example-d1b27c37"
+          },
+          {
+            "content": "example-42e752cc",
+            "role": "example-04f8996d"
+          },
+          {
+            "content": "",
+            "role": "example-a39a7ffa",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "example-37a2d4a6",
+                  "name": "example-466bb3ca"
+                },
+                "id": "example-1894a6c3",
+                "type": "example-78f9ac01"
+              }
+            ]
+          },
+          {
+            "content": "example-1e747e37",
+            "name": "example-466bb3ca",
+            "role": "example-7c9bbe5e",
+            "tool_call_id": "example-1894a6c3"
+          },
+          {
+            "content": "",
+            "role": "example-a39a7ffa",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "example-c54e54db",
+                  "name": "example-466bb3ca"
+                },
+                "id": "example-8dba669e",
+                "type": "example-78f9ac01"
+              }
+            ]
+          },
+          {
+            "content": "example-1e747e37",
+            "name": "example-466bb3ca",
+            "role": "example-7c9bbe5e",
+            "tool_call_id": "example-8dba669e"
+          },
+          {
+            "content": "example-aa5bf0a1",
+            "role": "example-04f8996d"
+          }
+        ],
+        "model": "example-6587634b",
+        "reasoning": {
+          "effort": "example-6ef7c9b1",
+          "enabled": false
+        },
+        "stream": false,
+        "stream_options": {
+          "include_usage": false
+        },
+        "temperature": 331360269,
+        "tool_choice": "example-929260ad",
+        "tools": [
+          {
+            "function": {
+              "description": "example-c9c16789",
+              "name": "example-2f2fc7f2",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "message": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-3006265c"
+                  },
+                  "skippable": {
+                    "default": false,
+                    "description": "example-e6fb01ac",
+                    "type": "example-bf84d3d6"
+                  },
+                  "suggestion": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-04bc1c0e"
+                  },
+                  "text": {
+                    "description": "example-b9ec5ee3",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-982d9e3e"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-dae1cb28",
+              "name": "example-a74f41a8",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "message": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-0ce1a7c1"
+                  },
+                  "multiple": {
+                    "default": false,
+                    "description": "example-2f0c94d3",
+                    "type": "example-bf84d3d6"
+                  },
+                  "options": {
+                    "description": "example-d853c2f8",
+                    "items": {
+                      "minLength": 310162913,
+                      "type": "example-473287f8"
+                    },
+                    "maxItems": 914540266,
+                    "minItems": 107262446,
+                    "type": "example-dbe42cc0"
+                  },
+                  "question": {
+                    "description": "example-48dffe59",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "skippable": {
+                    "default": false,
+                    "description": "example-e6fb01ac",
+                    "type": "example-bf84d3d6"
+                  }
+                },
+                "required": [
+                  "example-1f5087db",
+                  "example-a793ab8f"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-1e85025d",
+              "name": "example-2d36c331",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "fields": {
+                    "description": "example-c5502723",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "default": "example-982d9e3e",
+                          "description": "example-61793670",
+                          "enum": [
+                            "example-982d9e3e",
+                            "example-3b9c358f",
+                            "example-b1a36d25"
+                          ],
+                          "type": "example-473287f8"
+                        },
+                        "label": {
+                          "description": "example-346d944e",
+                          "minLength": 310162913,
+                          "type": "example-473287f8"
+                        },
+                        "options": {
+                          "anyOf": [
+                            {
+                              "items": {
+                                "minLength": 310162913,
+                                "type": "example-473287f8"
+                              },
+                              "type": "example-dbe42cc0"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null,
+                          "description": "example-1bf9249a"
+                        },
+                        "placeholder": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null,
+                          "description": "example-ad9e15b8"
+                        },
+                        "required": {
+                          "default": false,
+                          "description": "example-bd4a8b51",
+                          "type": "example-bf84d3d6"
+                        },
+                        "suggestion": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null,
+                          "description": "example-4c96f0c7"
+                        },
+                        "tooltip": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null,
+                          "description": "example-dd467784"
+                        }
+                      },
+                      "required": [
+                        "example-1aca80e8"
+                      ],
+                      "type": "example-2958d416"
+                    },
+                    "minItems": 310162913,
+                    "type": "example-dbe42cc0"
+                  },
+                  "message": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-0689cea0"
+                  },
+                  "skippable": {
+                    "default": false,
+                    "description": "example-f63f08a2",
+                    "type": "example-bf84d3d6"
+                  },
+                  "title": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-df4001af"
+                  }
+                },
+                "required": [
+                  "example-bfe5d697"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-bf54cee5",
+              "name": "example-0fed0959",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-3f1f5344"
+                  }
+                },
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-6a671d49",
+              "name": "example-2a719626",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "description": "example-277dee99",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-a8b77192"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-3fd4c4a4",
+              "name": "example-3f2690ac",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "output_dir": {
+                    "default": "example-0e4c11ea",
+                    "description": "example-5769ca20",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "prompt": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-1f6af9e9"
+                  },
+                  "urls": {
+                    "description": "example-1129d853",
+                    "items": {
+                      "minLength": 310162913,
+                      "type": "example-473287f8"
+                    },
+                    "minItems": 310162913,
+                    "type": "example-dbe42cc0"
+                  }
+                },
+                "required": [
+                  "example-2c195230"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-fa9cb3d0",
+              "name": "example-f400ec46",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "file_paths": {
+                    "description": "example-0876f22a",
+                    "items": {
+                      "minLength": 310162913,
+                      "type": "example-473287f8"
+                    },
+                    "minItems": 310162913,
+                    "type": "example-dbe42cc0"
+                  }
+                },
+                "required": [
+                  "example-0a87beec"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-30d37832",
+              "name": "example-251a204c",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "file_path": {
+                    "description": "example-974f7095",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "url_slug": {
+                    "description": "example-2ef0aa6f",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-1054bb88",
+                  "example-bf835d6d"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-a9cb5ec6",
+              "name": "example-d6b6f709",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_paths": {
+                    "description": "example-87119890",
+                    "items": {
+                      "minLength": 310162913,
+                      "type": "example-473287f8"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "prompt": {
+                    "description": "example-73334b54",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-2635c1e6",
+                  "example-cf07194e"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-c368cc0b",
+              "name": "example-c9f8123b",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "end_char": {
+                    "anyOf": [
+                      {
+                        "minimum": 310162913,
+                        "type": "example-2dba2454"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-b8cc19f7"
+                  },
+                  "end_line": {
+                    "anyOf": [
+                      {
+                        "minimum": 310162913,
+                        "type": "example-2dba2454"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-e8011dca"
+                  },
+                  "pages": {
+                    "anyOf": [
+                      {
+                        "pattern": "example-29abfc87",
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-ee4d84be"
+                  },
+                  "path": {
+                    "description": "example-847f7060",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "start_char": {
+                    "anyOf": [
+                      {
+                        "minimum": 0,
+                        "type": "example-2dba2454"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-2b136530"
+                  },
+                  "start_line": {
+                    "default": 310162913,
+                    "description": "example-fcdbc973",
+                    "minimum": 310162913,
+                    "type": "example-2dba2454"
+                  }
+                },
+                "required": [
+                  "example-a0af9f86"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-43a9ae85",
+              "name": "example-15223b63",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "description": "example-e031bf53",
+                    "type": "example-473287f8"
+                  },
+                  "path": {
+                    "description": "example-01fed731",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-a0af9f86",
+                  "example-ed7002b4"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-47bc4028",
+              "name": "example-df6945c4",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "description": "example-a7e5716d",
+                    "type": "example-473287f8"
+                  },
+                  "expected_size_bytes": {
+                    "anyOf": [
+                      {
+                        "minimum": 0,
+                        "type": "example-2dba2454"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-e18246fa"
+                  },
+                  "path": {
+                    "description": "example-2c733315",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-a0af9f86",
+                  "example-ed7002b4"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-9ad70530",
+              "name": "example-2e4da7b3",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "new_str": {
+                    "description": "example-b72a5404",
+                    "type": "example-473287f8"
+                  },
+                  "old_str": {
+                    "description": "example-67a253ac",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "path": {
+                    "description": "example-b8687f42",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "replace_all": {
+                    "default": false,
+                    "description": "example-e30991fa",
+                    "type": "example-bf84d3d6"
+                  }
+                },
+                "required": [
+                  "example-a0af9f86",
+                  "example-456510d9",
+                  "example-1e31ede2"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-b71d6799",
+              "name": "example-87b5c6b2",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "description": "example-5506e264",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-a0af9f86"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-8f2beab9",
+              "name": "example-210422d0",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "zip_path": {
+                    "description": "example-6bb4d929",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-408c73a3"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-4dd7f223",
+              "name": "example-f587c8fe",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "slug": {
+                    "description": "example-1cf3e0c0",
+                    "maxLength": 505366649,
+                    "pattern": "example-bba35666",
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-cd03861f"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-73a0af60",
+              "name": "example-7b41e112",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "presentation_name": {
+                    "description": "example-7a2d1b21",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-1a1efa54"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-36507710",
+              "name": "example-1c1ee3d9",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "attendee": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-7f891c2d"
+                  },
+                  "date_from": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-c30a8c7f"
+                  },
+                  "date_to": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-c2773496"
+                  },
+                  "limit": {
+                    "default": 914540266,
+                    "description": "example-6a7d274a",
+                    "type": "example-2dba2454"
+                  },
+                  "offset": {
+                    "default": 0,
+                    "description": "example-d495883e",
+                    "type": "example-2dba2454"
+                  },
+                  "query": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-f6d5af28"
+                  }
+                },
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-da38fb5c",
+              "name": "example-d9bf9c2d",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "include_notes": {
+                    "default": false,
+                    "description": "example-e6f55584",
+                    "type": "example-bf84d3d6"
+                  },
+                  "include_transcript": {
+                    "default": false,
+                    "description": "example-a7f60619",
+                    "type": "example-bf84d3d6"
+                  },
+                  "max_notes_chars": {
+                    "anyOf": [
+                      {
+                        "type": "example-2dba2454"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-4aaa9560"
+                  },
+                  "max_transcript_chars": {
+                    "anyOf": [
+                      {
+                        "type": "example-2dba2454"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-10da2cde"
+                  },
+                  "meeting_id": {
+                    "description": "example-d8944b25",
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-6f17343c"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-bde484f8",
+              "name": "example-c8d60693",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "connector_name": {
+                    "description": "example-9c1278cf",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "force": {
+                    "default": false,
+                    "description": "example-2130ac5b",
+                    "type": "example-bf84d3d6"
+                  },
+                  "profile": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-ed6756c9"
+                  }
+                },
+                "required": [
+                  "example-1b1d39c1"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-a6ab0898",
+              "name": "example-e5976f8a",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "function_arguments": {
+                    "additionalProperties": {},
+                    "description": "example-b46afda8",
+                    "type": "example-2958d416"
+                  },
+                  "function_name": {
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "profile": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null
+                  }
+                },
+                "required": [
+                  "example-e21ae0d5",
+                  "example-127184ef"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-14eb4f0b",
+              "name": "example-75bee85d",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "includeDisconnected": {
+                    "default": false,
+                    "description": "example-7300abb7",
+                    "type": "example-bf84d3d6"
+                  },
+                  "intent": {
+                    "description": "example-b0ca9fb2",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "limit": {
+                    "default": 613495083,
+                    "maximum": 914540266,
+                    "minimum": 310162913,
+                    "type": "example-2dba2454"
+                  },
+                  "offset": {
+                    "default": 0,
+                    "minimum": 0,
+                    "type": "example-2dba2454"
+                  },
+                  "statusFilter": {
+                    "default": "example-40c04184",
+                    "description": "example-3963b22b",
+                    "enum": [
+                      "example-5ef5ef03",
+                      "example-fb9cf756",
+                      "example-40c04184"
+                    ],
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-282bcbc3"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-f991171c",
+              "name": "example-ce635c4e",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "description": "example-e577107d",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "cwd": {
+                    "default": "example-cdb4ee2a",
+                    "description": "example-cdaa0e28",
+                    "type": "example-473287f8"
+                  },
+                  "timeout_s": {
+                    "default": 854195963,
+                    "description": "example-cc4bdf63",
+                    "maximum": 921967822,
+                    "minimum": 310162913,
+                    "type": "example-2dba2454"
+                  }
+                },
+                "required": [
+                  "example-5d347fd9"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-7db4d9fb",
+              "name": "example-466bb3ca",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "sections": {
+                    "description": "example-37b10431",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "description": "example-0761aa24",
+                          "type": "example-473287f8"
+                        },
+                        "task_updates": {
+                          "description": "example-e4b65684",
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "content": {
+                                "anyOf": [
+                                  {
+                                    "type": "example-473287f8"
+                                  },
+                                  {
+                                    "type": "example-74234e98"
+                                  }
+                                ],
+                                "default": null,
+                                "description": "example-db975a87"
+                              },
+                              "id": {
+                                "description": "example-d1eea89e",
+                                "type": "example-473287f8"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "enum": [
+                                      "example-62a2fed3",
+                                      "example-01734f41",
+                                      "example-4ddb3e96",
+                                      "example-8b47045e"
+                                    ],
+                                    "type": "example-473287f8"
+                                  },
+                                  {
+                                    "type": "example-74234e98"
+                                  }
+                                ],
+                                "default": null,
+                                "description": "example-77bb6250"
+                              }
+                            },
+                            "required": [
+                              "example-a5614527"
+                            ],
+                            "type": "example-2958d416"
+                          },
+                          "type": "example-dbe42cc0"
+                        },
+                        "tasks_to_add": {
+                          "description": "example-41c70af5",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "content": {
+                                    "description": "example-1ea6d6cb",
+                                    "type": "example-473287f8"
+                                  }
+                                },
+                                "required": [
+                                  "example-ed7002b4"
+                                ],
+                                "type": "example-2958d416"
+                              },
+                              {
+                                "type": "example-473287f8"
+                              }
+                            ]
+                          },
+                          "type": "example-dbe42cc0"
+                        },
+                        "title": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null,
+                          "description": "example-1890ec70"
+                        }
+                      },
+                      "required": [
+                        "example-a5614527"
+                      ],
+                      "type": "example-2958d416"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "sections_to_add": {
+                    "description": "example-cb26f8a7",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "tasks": {
+                          "description": "example-a987de8a",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "content": {
+                                    "description": "example-1ea6d6cb",
+                                    "type": "example-473287f8"
+                                  }
+                                },
+                                "required": [
+                                  "example-ed7002b4"
+                                ],
+                                "type": "example-2958d416"
+                              },
+                              {
+                                "type": "example-473287f8"
+                              }
+                            ]
+                          },
+                          "type": "example-dbe42cc0"
+                        },
+                        "title": {
+                          "description": "example-1225ce7d",
+                          "type": "example-473287f8"
+                        }
+                      },
+                      "required": [
+                        "example-aaf23206"
+                      ],
+                      "type": "example-2958d416"
+                    },
+                    "type": "example-dbe42cc0"
+                  }
+                },
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-c02d8224",
+              "name": "example-cb48a6dc",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "file_id": {
+                    "description": "example-f80430bc",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "query": {
+                    "description": "example-f46fbd50",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-5c78f619",
+                  "example-a8b77192"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-9bd2cf9d",
+              "name": "example-03b16ee0",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "name": {
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "template": {
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-82a3537f",
+                  "example-c9046f7a",
+                  "example-5cde0f12"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-5db068da",
+              "name": "example-730e0056",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "steps": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "agent_id": {
+                              "anyOf": [
+                                {
+                                  "type": "example-473287f8"
+                                },
+                                {
+                                  "type": "example-74234e98"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "connectors": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "type": "example-473287f8"
+                                  },
+                                  "type": "example-dbe42cc0"
+                                },
+                                {
+                                  "type": "example-74234e98"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "custom_instructions": {
+                              "anyOf": [
+                                {
+                                  "type": "example-473287f8"
+                                },
+                                {
+                                  "type": "example-74234e98"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "enable_context_manager": {
+                              "anyOf": [
+                                {
+                                  "type": "example-bf84d3d6"
+                                },
+                                {
+                                  "type": "example-74234e98"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "id": {
+                              "anyOf": [
+                                {
+                                  "type": "example-473287f8"
+                                },
+                                {
+                                  "type": "example-74234e98"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "knowledge_graphs": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "type": "example-473287f8"
+                                  },
+                                  "type": "example-dbe42cc0"
+                                },
+                                {
+                                  "type": "example-74234e98"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "prompt": {
+                              "anyOf": [
+                                {
+                                  "type": "example-473287f8"
+                                },
+                                {
+                                  "type": "example-74234e98"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "title": {
+                              "anyOf": [
+                                {
+                                  "type": "example-473287f8"
+                                },
+                                {
+                                  "type": "example-74234e98"
+                                }
+                              ],
+                              "default": null
+                            }
+                          },
+                          "type": "example-2958d416"
+                        },
+                        "type": "example-dbe42cc0"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "template": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null
+                  }
+                },
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-29bcd92d",
+              "name": "example-870de457",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "limit": {
+                    "anyOf": [
+                      {
+                        "minimum": 310162913,
+                        "type": "example-2dba2454"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-8947e414"
+                  },
+                  "query": {
+                    "default": "",
+                    "description": "example-2b59b0ab",
+                    "type": "example-473287f8"
+                  },
+                  "scope": {
+                    "default": "example-ff777205",
+                    "description": "example-4c7dfe04",
+                    "enum": [
+                      "example-ff777205",
+                      "example-ca8b22d0",
+                      "example-4a0a339b"
+                    ],
+                    "type": "example-473287f8"
+                  }
+                },
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-df4879d9",
+              "name": "example-54694988",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "playbook_id": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-bcc9bf2f"
+                  },
+                  "playbook_reference": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-f58f63bf"
+                  }
+                },
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-c4db7d22",
+              "name": "example-dc525174",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "limit": {
+                    "default": 131443062,
+                    "description": "example-ab98c204",
+                    "type": "example-2dba2454"
+                  },
+                  "query": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-b0dcda56"
+                  }
+                },
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-4146e337",
+              "name": "example-4fa9b4a3",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "context": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "csv_path": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-0fa1ccb5"
+                  },
+                  "draft_content_file_path": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-9dac9f5b"
+                  },
+                  "draft_description": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-e4936106"
+                  },
+                  "draft_name": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-72dd8ece"
+                  },
+                  "draft_package_directory_path": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-f5c27533"
+                  },
+                  "expected_deliverables": {
+                    "default": [],
+                    "items": {
+                      "type": "example-473287f8"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "file_ids": {
+                    "default": [],
+                    "items": {
+                      "type": "example-473287f8"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "input_variable_values": {
+                    "default": [],
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "minLength": 310162913,
+                          "type": "example-473287f8"
+                        },
+                        "value": {}
+                      },
+                      "required": [
+                        "example-a5614527",
+                        "example-cd42404d"
+                      ],
+                      "type": "example-2958d416"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "input_variables": {
+                    "additionalProperties": {},
+                    "type": "example-2958d416"
+                  },
+                  "inputs": {
+                    "default": [],
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "minLength": 310162913,
+                          "type": "example-473287f8"
+                        },
+                        "value": {}
+                      },
+                      "required": [
+                        "example-a5614527",
+                        "example-cd42404d"
+                      ],
+                      "type": "example-2958d416"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "instructions": {
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "max_parallel": {
+                    "anyOf": [
+                      {
+                        "type": "example-2dba2454"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-856dd9eb"
+                  },
+                  "playbook_id": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-bcc9bf2f"
+                  },
+                  "playbook_reference": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-f58f63bf"
+                  },
+                  "selected_connector_profiles": {
+                    "default": [],
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "connector_name": {
+                          "minLength": 310162913,
+                          "type": "example-473287f8"
+                        },
+                        "profile_alias": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null
+                        },
+                        "profile_id": {
+                          "minLength": 310162913,
+                          "type": "example-473287f8"
+                        },
+                        "profile_name": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null
+                        }
+                      },
+                      "required": [
+                        "example-1b1d39c1",
+                        "example-ce3b035f"
+                      ],
+                      "type": "example-2958d416"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "selected_connectors": {
+                    "default": [],
+                    "items": {
+                      "type": "example-473287f8"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "selected_knowledge_graphs": {
+                    "default": [],
+                    "items": {
+                      "type": "example-473287f8"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "uploaded_files": {
+                    "default": [],
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "file_id": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null
+                        },
+                        "name": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null
+                        },
+                        "path": {
+                          "anyOf": [
+                            {
+                              "type": "example-473287f8"
+                            },
+                            {
+                              "type": "example-74234e98"
+                            }
+                          ],
+                          "default": null
+                        }
+                      },
+                      "type": "example-2958d416"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "voice_id": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-8efb8137"
+                  }
+                },
+                "required": [
+                  "example-238fa28a"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-7a5f2495",
+              "name": "example-7c9f1ccd",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "limit": {
+                    "default": 776229392,
+                    "description": "example-e7b0e050",
+                    "maximum": 776229392,
+                    "minimum": 310162913,
+                    "type": "example-2dba2454"
+                  },
+                  "offset": {
+                    "default": 0,
+                    "description": "example-ec197b44",
+                    "minimum": 0,
+                    "type": "example-2dba2454"
+                  },
+                  "query": {
+                    "default": "",
+                    "description": "example-5d49858c",
+                    "type": "example-473287f8"
+                  }
+                },
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-221075b5",
+              "name": "example-d4f0bc5a",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "allow_writes": {
+                    "default": false,
+                    "description": "example-a0e6858f",
+                    "type": "example-bf84d3d6"
+                  },
+                  "description": {
+                    "description": "example-d823fff0",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "expected_output": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-a7c1141b"
+                  },
+                  "file_attachments": {
+                    "default": [],
+                    "description": "example-ccb2ddc5",
+                    "items": {
+                      "type": "example-473287f8"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "file_ids": {
+                    "default": [],
+                    "description": "example-520ba355",
+                    "items": {
+                      "type": "example-473287f8"
+                    },
+                    "type": "example-dbe42cc0"
+                  },
+                  "prompt": {
+                    "description": "example-0a555f28",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "subagent_type": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-6a1fb3a4"
+                  }
+                },
+                "required": [
+                  "example-c9046f7a",
+                  "example-cf07194e"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-65f5a9e6",
+              "name": "example-3fc7c9bc",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "alt_text": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-33a5dc4c"
+                  },
+                  "image_path": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-36c76fb3"
+                  },
+                  "prompt": {
+                    "description": "example-30c9ba00",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-cf07194e",
+                  "example-1a87f830"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-8226e2c6",
+              "name": "example-6f1ce531",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "aspect_ratio": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "example-cb140f95",
+                          "example-1ac6f39e"
+                        ],
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-e81515a3"
+                  },
+                  "duration": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "example-4b227777",
+                          "example-e7f6c011",
+                          "example-2c624232"
+                        ],
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-8cc0d111"
+                  },
+                  "first_frame_path": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-1e0405c8"
+                  },
+                  "generate_audio": {
+                    "default": false,
+                    "description": "example-a5a70800",
+                    "type": "example-bf84d3d6"
+                  },
+                  "last_frame_path": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-0058bb34"
+                  },
+                  "output_directory": {
+                    "default": "example-97f8a20d",
+                    "description": "example-9766b637",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "prompt": {
+                    "description": "example-edb8ba57",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "reference_image_paths": {
+                    "default": [],
+                    "description": "example-b1bd776d",
+                    "items": {
+                      "type": "example-473287f8"
+                    },
+                    "maxItems": 226856843,
+                    "type": "example-dbe42cc0"
+                  },
+                  "resolution": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "example-9c450588",
+                          "example-39614a47"
+                        ],
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-a160444a"
+                  },
+                  "source_video_path": {
+                    "anyOf": [
+                      {
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "type": "example-74234e98"
+                      }
+                    ],
+                    "default": null,
+                    "description": "example-e44a264f"
+                  }
+                },
+                "required": [
+                  "example-cf07194e"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-855ee077",
+              "name": "example-24110251",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "prompt": {
+                    "default": "example-8d7590ed",
+                    "description": "example-aad3c89c",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  },
+                  "video_path": {
+                    "description": "example-3d272311",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-aa973d2e"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-e1f10e09",
+              "name": "example-f20e37dd",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_paths": {
+                    "anyOf": [
+                      {
+                        "minLength": 310162913,
+                        "type": "example-473287f8"
+                      },
+                      {
+                        "items": {
+                          "minLength": 310162913,
+                          "type": "example-473287f8"
+                        },
+                        "type": "example-dbe42cc0"
+                      }
+                    ],
+                    "description": "example-d45e850d"
+                  }
+                },
+                "required": [
+                  "example-2635c1e6"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-abb24878",
+              "name": "example-7e10750c",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "file_path": {
+                    "description": "example-0f448899",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-1054bb88"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          },
+          {
+            "function": {
+              "description": "example-d8a7a263",
+              "name": "example-0fe3f9ab",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "youtube_url": {
+                    "description": "example-80b7b6a5",
+                    "minLength": 310162913,
+                    "type": "example-473287f8"
+                  }
+                },
+                "required": [
+                  "example-96b0918f"
+                ],
+                "type": "example-2958d416"
+              }
+            },
+            "type": "example-78f9ac01"
+          }
+        ]
+      },
+      "inputPrice": null,
+      "latency": 0.957,
+      "level": "DEFAULT",
+      "metadata": {
+        "attempt_id": "example-6a099611",
+        "attempt_index": {
+          "intValue": 0
+        },
+        "attempt_mode": "example-317b32c1",
+        "finish_reason": "example-6c45cb72",
+        "gateway": "example-ab4bb379",
+        "gen_ai.operation.name": "example-31e06f7d",
+        "gen_ai.provider.name": "example-ab4bb379",
+        "gen_ai.request.model": "example-bfd9c2d3",
+        "gen_ai.usage.input_tokens": 548767908,
+        "gen_ai.usage.output_tokens": 379747538,
+        "gen_ai.usage.total_tokens": 408523653,
+        "internal_at_writer": false,
+        "is_retry": false,
+        "max_total_attempts": 226856843,
+        "organization_id": 846896413,
+        "provider": "example-ab4bb379",
+        "provider_metadata": {
+          "generation_id": "example-6893f443",
+          "transport_request_id": "example-54f708a3"
+        },
+        "request_parameters": {
+          "custom_params": {
+            "thinking_budget": 474094129
+          },
+          "max_tokens": 852001466,
+          "model": "example-6587634b",
+          "reasoning": {
+            "effort": "example-6ef7c9b1",
+            "enabled": false
+          },
+          "stream": false,
+          "stream_options": {
+            "include_usage": false
+          },
+          "temperature": 331360269,
+          "tool_choice": "example-929260ad"
+        },
+        "resourceAttributes": {
+          "service.name": "example-a0b88f76",
+          "telemetry.sdk.language": "example-11a4a60b",
+          "telemetry.sdk.name": "example-15646ccf",
+          "telemetry.sdk.version": "example-800c935f"
+        },
+        "route_policy_id": "example-85e1eaa6",
+        "route_policy_index": {
+          "intValue": 0
+        },
+        "run_id": "example-60ac2eaa",
+        "scope": {
+          "attributes": {
+            "public_key": "example-b3651117"
+          },
+          "name": "example-b8e573c9",
+          "version": "example-3fa31b4b"
+        },
+        "stream_timing.content_stream_ms": 881844106,
+        "stream_timing.time_to_first_content_ms": 705216024,
+        "stream_timing.total_stream_ms": 881844106,
+        "target_kind": "example-d15690f0",
+        "team_id": 109244519,
+        "tool_call_count": {
+          "intValue": 0
+        },
+        "tool_count": 438000828,
+        "tools_schema_digest": "example-f21467f1",
+        "transport_request_id": "example-54f708a3",
+        "transport_request_number": 310162913,
+        "usage.reasoning_tokens": 310162913,
+        "user_id": 847692163
+      },
+      "model": "example-bfd9c2d3",
+      "modelId": null,
+      "modelParameters": {
+        "custom_params": "{\"thinking_budget\":43000}",
+        "max_tokens": 60000,
+        "reasoning": "{\"effort\":\"high\",\"enabled\":true}",
+        "temperature": 0.4,
+        "tool_choice": "auto"
+      },
+      "name": "example-80b208c4",
+      "output": "example-19008bfb",
+      "outputPrice": null,
+      "parentObservationId": "example-21b8b498",
+      "projectId": "example-36bcc519",
+      "promptId": null,
+      "promptName": null,
+      "promptTokens": 903,
+      "promptVersion": null,
+      "startTime": "2026-08-20T20:18:48.236Z",
+      "statusMessage": null,
+      "timeToFirstToken": 0.905,
+      "totalPrice": null,
+      "totalTokens": 17362,
+      "traceId": "example-54f708a3",
+      "type": "GENERATION",
+      "unit": "TOKENS",
+      "updatedAt": "2026-08-20T20:18:49.743Z",
+      "usage": {
+        "input": 524953966,
+        "output": 379747538,
+        "total": 17362,
+        "unit": "TOKENS"
+      },
+      "usageDetails": {
+        "cache_read_input_tokens": 16448,
+        "input": 524953966,
+        "output": 379747538,
+        "total": 17362
+      },
+      "usagePricingTierId": null,
+      "usagePricingTierName": null,
+      "version": null
+    }
+  ],
+  "meta": {
+    "limit": 1,
+    "page": 1,
+    "totalItems": 2103417,
+    "totalPages": 2103417
+  }
+}

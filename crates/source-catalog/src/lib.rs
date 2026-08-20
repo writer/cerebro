@@ -242,7 +242,9 @@ pub struct CompiledFamily {
     name_field: Option<String>,
     static_query: BTreeMap<String, String>,
     config_query: BTreeMap<String, PathParameterBinding>,
+    config_headers: BTreeMap<String, PathParameterBinding>,
     config_attributes: BTreeMap<String, PathParameterBinding>,
+    static_json_body: BTreeMap<String, serde_json::Value>,
     pagination: Pagination,
     cursor_in_json_body: bool,
     path_parameters: BTreeMap<String, PathParameterBinding>,
@@ -293,8 +295,16 @@ impl CompiledFamily {
         &self.config_query
     }
 
+    pub fn config_headers(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_headers
+    }
+
     pub fn config_attributes(&self) -> &BTreeMap<String, PathParameterBinding> {
         &self.config_attributes
+    }
+
+    pub fn static_json_body(&self) -> &BTreeMap<String, serde_json::Value> {
+        &self.static_json_body
     }
 
     pub fn pagination(&self) -> &Pagination {
@@ -486,6 +496,7 @@ pub enum UnsupportedReasonCode {
     MissingProviderProof,
     UnboundPathConfigParameter,
     UnboundConfigQueryParameter,
+    UnboundConfigHeader,
     UnboundConfigAttribute,
     UnsupportedProjectionTemplate,
     UnsupportedPaginationGrammar,
@@ -831,6 +842,8 @@ struct FamilyConfigWire {
     #[serde(default)]
     config_query: BTreeMap<String, String>,
     #[serde(default)]
+    config_headers: BTreeMap<String, String>,
+    #[serde(default)]
     config_attributes: BTreeMap<String, String>,
     #[serde(default)]
     id_template: String,
@@ -842,6 +855,8 @@ struct FamilyReadWire {
     path_param_fanout: BTreeMap<String, String>,
     #[serde(default)]
     scalar_record_field: String,
+    #[serde(default)]
+    static_json_body: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -1108,11 +1123,13 @@ fn compile_source(
         );
     }
     if auth_json_body_parameters.is_empty()
-        && families.iter().any(CompiledFamily::cursor_in_json_body)
+        && families
+            .iter()
+            .any(|family| family.cursor_in_json_body() && family.static_json_body().is_empty())
     {
         return invalid(
             path,
-            "JSON body cursor placement requires JSON body authentication",
+            "JSON body cursor placement requires a static JSON body or JSON body authentication",
         );
     }
     if families.is_empty() {
@@ -1396,6 +1413,49 @@ fn compile_family(
         })
         .collect::<BTreeMap<_, _>>();
     let config_query_configured = config_query.len() == config_query_wire.len();
+    let config_headers_wire = family
+        .config
+        .as_ref()
+        .map(|config| &config.config_headers)
+        .cloned()
+        .unwrap_or_default();
+    if config_headers_wire.keys().any(|header| {
+        header.is_empty()
+            || header.len() > 128
+            || !header.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || matches!(
+                        byte,
+                        b'!' | b'#'
+                            | b'$'
+                            | b'%'
+                            | b'&'
+                            | b'\''
+                            | b'*'
+                            | b'+'
+                            | b'-'
+                            | b'.'
+                            | b'^'
+                            | b'_'
+                            | b'`'
+                            | b'|'
+                            | b'~'
+                    )
+            })
+    }) {
+        return invalid(
+            path,
+            &format!("family {} config header name is invalid", family.id),
+        );
+    }
+    let config_headers = config_headers_wire
+        .iter()
+        .filter_map(|(header, config_field)| {
+            config_query_binding(config_field, config_fields)
+                .map(|binding| (header.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_headers_configured = config_headers.len() == config_headers_wire.len();
     let config_attributes_wire = family
         .config
         .as_ref()
@@ -1469,6 +1529,43 @@ fn compile_family(
     }) {
         return invalid(path, "family scalar_record_field is invalid");
     }
+    let static_json_body = family
+        .read
+        .as_ref()
+        .map(|read| read.static_json_body.clone())
+        .unwrap_or_default();
+    if !static_json_body.is_empty() {
+        if method != HttpMethod::Post {
+            return invalid(
+                path,
+                &format!("family {} static JSON body requires POST", family.id),
+            );
+        }
+        if static_json_body.keys().any(|key| {
+            key.is_empty()
+                || key.len() > 128
+                || !key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        }) {
+            return invalid(
+                path,
+                &format!("family {} static JSON body key is invalid", family.id),
+            );
+        }
+        let body_size = serde_json::to_vec(&static_json_body)
+            .map_err(|error| CatalogError::Invalid {
+                path: path.to_path_buf(),
+                message: format!("family {} static JSON body is invalid: {error}", family.id),
+            })?
+            .len();
+        if body_size > 16 * 1024 {
+            return invalid(
+                path,
+                &format!("family {} static JSON body exceeds 16384 bytes", family.id),
+            );
+        }
+    }
     let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
         verified.contains(&(
             family.id.clone(),
@@ -1483,6 +1580,7 @@ fn compile_family(
         && provider_contract_verified
         && path_parameters_configured
         && config_query_configured
+        && config_headers_configured
         && config_attributes_configured;
     let projection_authoritative =
         provider_contract_verified && projection_class.can_be_authoritative();
@@ -1499,6 +1597,9 @@ fn compile_family(
     }
     if !config_query_configured {
         unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigQueryParameter);
+    }
+    if !config_headers_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigHeader);
     }
     if !config_attributes_configured {
         unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigAttribute);
@@ -1530,7 +1631,9 @@ fn compile_family(
         name_field: optional(family.name_field),
         static_query: family.static_query,
         config_query,
+        config_headers,
         config_attributes,
+        static_json_body,
         pagination: compile_pagination(path, family.pagination)?,
         cursor_in_json_body,
         path_parameters,
@@ -1783,6 +1886,9 @@ fn family_plan_digest(source: &CompiledSource, family: &CompiledFamily) -> Strin
         "projection_template": family.projection().template(),
         "static_query": family.static_query(),
         "config_query": family.config_query().keys().collect::<Vec<_>>(),
+        "config_headers": family.config_headers().keys().collect::<Vec<_>>(),
+        "static_json_body": family.static_json_body(),
+        "cursor_in_json_body": family.cursor_in_json_body(),
         "path_parameters": family.path_parameters().keys().collect::<Vec<_>>(),
     });
     let bytes = serde_json::to_vec(&payload).expect("family plan digest payload serializes");
@@ -2097,7 +2203,7 @@ mod tests {
         );
         assert_eq!(
             invalid_message(unbound_body_cursor),
-            "JSON body cursor placement requires JSON body authentication"
+            "JSON body cursor placement requires a static JSON body or JSON body authentication"
         );
     }
 

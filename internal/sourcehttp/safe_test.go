@@ -318,6 +318,29 @@ func TestDoWithRetryRetriesRetryableStatus(t *testing.T) {
 	}
 }
 
+func TestDoWithRetryHonorsExplicitDoNotRetryStatus(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		http.Error(w, "not implemented", http.StatusNotImplemented)
+	}))
+	defer server.Close()
+	req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	resp, err := DoWithRetry(context.Background(), server.Client(), req, RetryOptions{
+		Backoff:            time.Nanosecond,
+		DoNotRetryStatuses: []int{http.StatusNotImplemented},
+	})
+	if err != nil {
+		t.Fatalf("DoWithRetry() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusNotImplemented || attempts != 1 {
+		t.Fatalf("response/attempts = %d/%d, want 501/1", resp.StatusCode, attempts)
+	}
+}
+
 func TestDoWithRetryPreservesCustomBodyLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("abcdef"))

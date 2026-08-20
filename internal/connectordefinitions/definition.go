@@ -1,6 +1,7 @@
 package connectordefinitions
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -222,21 +223,22 @@ type RetrySpec struct {
 
 // PaginationSpec describes one supported pagination strategy.
 type PaginationSpec struct {
-	Type            string   `json:"type,omitempty"`
-	CursorParam     string   `json:"cursor_param,omitempty"`
-	CursorJSONPath  string   `json:"cursor_json_path,omitempty"`
-	PageParam       string   `json:"page_param,omitempty"`
-	PageSizeParam   string   `json:"page_size_param,omitempty"`
-	OffsetParam     string   `json:"offset_param,omitempty"`
-	LimitParam      string   `json:"limit_param,omitempty"`
-	LinkHeader      string   `json:"link_header,omitempty"`
-	NextURLJSONPath string   `json:"next_url_json_path,omitempty"`
-	NextCursorKeys  []string `json:"next_cursor_keys,omitempty"`
-	HasMoreKey      string   `json:"has_more_key,omitempty"`
-	StartPage       int      `json:"start_page,omitempty"`
-	PageSize        int      `json:"page_size,omitempty"`
-	InjectFirstPage bool     `json:"inject_first_page,omitempty"`
-	DisablePageSize bool     `json:"disable_page_size,omitempty"`
+	Type             string   `json:"type,omitempty"`
+	CursorParam      string   `json:"cursor_param,omitempty"`
+	CursorJSONPath   string   `json:"cursor_json_path,omitempty"`
+	PageParam        string   `json:"page_param,omitempty"`
+	PageSizeParam    string   `json:"page_size_param,omitempty"`
+	OffsetParam      string   `json:"offset_param,omitempty"`
+	LimitParam       string   `json:"limit_param,omitempty"`
+	LinkHeader       string   `json:"link_header,omitempty"`
+	NextURLJSONPath  string   `json:"next_url_json_path,omitempty"`
+	NextCursorKeys   []string `json:"next_cursor_keys,omitempty"`
+	HasMoreKey       string   `json:"has_more_key,omitempty"`
+	StartPage        int      `json:"start_page,omitempty"`
+	PageSize         int      `json:"page_size,omitempty"`
+	InjectFirstPage  bool     `json:"inject_first_page,omitempty"`
+	DisablePageSize  bool     `json:"disable_page_size,omitempty"`
+	CursorInJSONBody bool     `json:"cursor_in_json_body,omitempty"`
 }
 
 // IncrementalSpec describes durable state for changed-record reads.
@@ -346,6 +348,7 @@ type ResourceReadSpec struct {
 	PathParamFanout       map[string]string `json:"path_param_fanout,omitempty"`
 	MapRecords            map[string]string `json:"map_records,omitempty"`
 	ScalarRecordField     string            `json:"scalar_record_field,omitempty"`
+	StaticJSONBody        map[string]any    `json:"static_json_body,omitempty"`
 	Singleton             bool              `json:"singleton,omitempty"`
 	DisablePageSize       bool              `json:"disable_page_size,omitempty"`
 }
@@ -356,6 +359,7 @@ type FamilyConfigSpec struct {
 	AuthModel        string            `json:"auth_model,omitempty"`
 	StaticQuery      map[string]string `json:"static_query,omitempty"`
 	ConfigQuery      map[string]string `json:"config_query,omitempty"`
+	ConfigHeaders    map[string]string `json:"config_headers,omitempty"`
 	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
 	IDTemplate       string            `json:"id_template,omitempty"`
 	EncodeURNID      bool              `json:"encode_urn_id,omitempty"`
@@ -907,10 +911,20 @@ func validateFamilyIntegrationFields(family ResourceFamily, configFields map[str
 				add(blocking("map_records_"+family.ID, "Map records", "Map record bindings require non-empty source object and value keys."))
 			}
 		}
+		if len(family.Read.StaticJSONBody) > 0 {
+			if !strings.EqualFold(strings.TrimSpace(family.Method), "POST") {
+				add(blocking("static_json_body_method_"+family.ID, "Static JSON body", "Static JSON request bodies require POST resource families."))
+			}
+			payload, err := json.Marshal(family.Read.StaticJSONBody)
+			if err != nil || len(payload) > 16*1024 {
+				add(blocking("static_json_body_size_"+family.ID, "Static JSON body", "Static JSON request bodies must be valid and no larger than 16384 bytes."))
+			}
+		}
 	}
 	if family.Config != nil {
 		validateFamilyConfigMap(family.ID, "static_query", family.Config.StaticQuery, add)
 		validateFamilyConfigMap(family.ID, "config_query", family.Config.ConfigQuery, add)
+		validateFamilyConfigMap(family.ID, "config_headers", family.Config.ConfigHeaders, add)
 		validateFamilyConfigMap(family.ID, "config_attributes", family.Config.ConfigAttributes, add)
 		for _, key := range family.Config.IdentityKeys {
 			if strings.TrimSpace(key) == "" {
@@ -1357,8 +1371,9 @@ func normalizeResourceReadSpec(read *ResourceReadSpec) *ResourceReadSpec {
 	next.PathParams = normalizeOrderedStringList(next.PathParams)
 	next.PathParamFanout = normalizeStringMap(next.PathParamFanout)
 	next.MapRecords = normalizeStringMap(next.MapRecords)
+	next.StaticJSONBody = normalizeJSONMap(next.StaticJSONBody)
 	next.ScalarRecordField = strings.TrimSpace(next.ScalarRecordField)
-	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && next.ScalarRecordField == "" && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
+	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && len(next.StaticJSONBody) == 0 && next.ScalarRecordField == "" && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
 		return nil
 	}
 	return &next
@@ -1373,11 +1388,12 @@ func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
 	next.AuthModel = strings.TrimSpace(next.AuthModel)
 	next.StaticQuery = normalizeStringMap(next.StaticQuery)
 	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
+	next.ConfigHeaders = normalizeStringMap(next.ConfigHeaders)
 	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
 	next.IDTemplate = strings.TrimSpace(next.IDTemplate)
 	next.ResourceURNKind = strings.TrimSpace(next.ResourceURNKind)
 	next.IdentityKeys = normalizeStringList(next.IdentityKeys)
-	if next.BaseURL == "" && next.AuthModel == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && next.IDTemplate == "" && !next.EncodeURNID && next.ResourceURNKind == "" && len(next.IdentityKeys) == 0 {
+	if next.BaseURL == "" && next.AuthModel == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigHeaders) == 0 && len(next.ConfigAttributes) == 0 && next.IDTemplate == "" && !next.EncodeURNID && next.ResourceURNKind == "" && len(next.IdentityKeys) == 0 {
 		return nil
 	}
 	return &next
@@ -1659,6 +1675,24 @@ func normalizeStringMap(values map[string]string) map[string]string {
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
 		if key == "" || value == "" {
+			continue
+		}
+		normalized[key] = value
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeJSONMap(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make(map[string]any, len(values))
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		if key == "" {
 			continue
 		}
 		normalized[key] = value

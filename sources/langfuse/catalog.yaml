@@ -12,6 +12,17 @@ emitted_kinds:
   - langfuse.session
   - langfuse.metric
   - langfuse.annotation_queue
+runtime_families:
+  - project
+  - project_member
+  - api_key
+  - trace
+  - observation
+  - score
+  - prompt
+  - session
+  - metric
+  - annotation_queue
 coverage_contract:
   owner_domain: ai
   authority_domain: langfuse

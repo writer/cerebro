@@ -8,6 +8,13 @@ emitted_kinds:
   - writer.application
   - writer.application_graph
   - writer.application_job
+runtime_families:
+  - model
+  - graph
+  - file
+  - application
+  - application_graph
+  - application_job
 coverage_contract:
   owner_domain: ai
   authority_domain: writer

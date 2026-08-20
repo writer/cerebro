@@ -1,0 +1,39 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: writer
+family: application
+case: authorized_first_page
+replay_test: source_test.go#TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies
+request:
+    method: GET
+    url: https://api.writer.com/v1/applications?limit=1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-08-20T19:30:45Z"
+    sha256: 5984651f403289199136dd08f54958af11390f242e8be1205600a49d0ceb4834
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.data[0].id
+        - $.data[0].inputs[0].input_type
+        - $.data[0].inputs[0].name
+        - $.data[0].inputs[0].options.file_types[0]
+        - $.data[0].inputs[0].options.file_types[1]
+        - $.data[0].inputs[0].options.file_types[2]
+        - $.data[0].inputs[0].options.file_types[3]
+        - $.data[0].inputs[0].options.file_types[4]
+        - $.data[0].inputs[0].options.max_image_size_mb
+        - $.data[0].inputs[1].input_type
+        - $.data[0].inputs[1].name
+        - $.data[0].inputs[1].options.max_fields
+        - $.data[0].inputs[1].options.min_fields
+        - $.data[0].inputs[2].input_type
+        - $.data[0].inputs[2].name
+        - $.data[0].inputs[2].options.max_fields
+        - $.data[0].inputs[2].options.min_fields
+        - $.data[0].name
+        - $.first_id
+        - $.last_id
+origin:
+    type: operator_request
