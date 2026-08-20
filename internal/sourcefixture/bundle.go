@@ -243,11 +243,11 @@ func ValidateReplayContract(bundle Bundle, expected ReplayContract) error {
 	}
 	actualQuery, err := canonicalRawQuery(requestURL.RawQuery)
 	if err != nil {
-		return fmt.Errorf("%w: replay provenance query is invalid: %v", ErrReplayQuery, err)
+		return fmt.Errorf("%w: replay provenance query is invalid: %w", ErrReplayQuery, err)
 	}
 	expectedQuery, err := canonicalRawQuery(strings.TrimSpace(expected.RawQuery))
 	if err != nil {
-		return fmt.Errorf("%w: expected replay query is invalid: %v", ErrReplayQuery, err)
+		return fmt.Errorf("%w: expected replay query is invalid: %w", ErrReplayQuery, err)
 	}
 	if actualQuery != expectedQuery {
 		return fmt.Errorf("replay provenance query = %q, want %q", actualQuery, expectedQuery)
@@ -383,7 +383,7 @@ func ValidateManifest(manifest Manifest, payload []byte) error {
 	}
 	requestQuery, err := url.ParseQuery(requestURL.RawQuery)
 	if err != nil {
-		return fmt.Errorf("%w: request.url query is invalid: %v", ErrMalformedQuery, err)
+		return fmt.Errorf("%w: request.url query is invalid: %w", ErrMalformedQuery, err)
 	}
 	if manifest.SourceID == "langfuse" && strings.HasSuffix(strings.ToLower(requestURL.Hostname()), ".writer.com") {
 		return fmt.Errorf("%w: langfuse capture provenance must not publish an environment-specific Writer host", ErrSanitizedURL)
@@ -634,8 +634,8 @@ func replayTestBindings(payload []byte, testName string, manifest Manifest) (boo
 		}
 		foundBundle := false
 		foundContract := false
-		bundleVariables := map[*ast.Object]struct{}{}
-		testReporter := testReporterObject(function)
+		bundleVariables := map[string]struct{}{}
+		testReporter := testReporterName(function)
 		for _, statement := range function.Body.List {
 			if assignment, ok := statement.(*ast.AssignStmt); ok {
 				for _, expression := range assignment.Rhs {
@@ -645,8 +645,8 @@ func replayTestBindings(payload []byte, testName string, manifest Manifest) (boo
 					}
 					foundBundle = true
 					if len(assignment.Lhs) > 0 {
-						if identifier, ok := assignment.Lhs[0].(*ast.Ident); ok && identifier.Name != "_" && identifier.Obj != nil {
-							bundleVariables[identifier.Obj] = struct{}{}
+						if identifier, ok := assignment.Lhs[0].(*ast.Ident); ok && identifier.Name != "_" {
+							bundleVariables[identifier.Name] = struct{}{}
 						}
 					}
 				}
@@ -665,33 +665,33 @@ func replayTestBindings(payload []byte, testName string, manifest Manifest) (boo
 	return false, false, false, nil
 }
 
-func testReporterObject(function *ast.FuncDecl) *ast.Object {
+func testReporterName(function *ast.FuncDecl) string {
 	if function == nil || function.Type == nil || function.Type.Params == nil {
-		return nil
+		return ""
 	}
 	for _, field := range function.Type.Params.List {
 		for _, name := range field.Names {
 			if name.Name == "t" {
-				return name.Obj
+				return name.Name
 			}
 		}
 	}
-	return nil
+	return ""
 }
 
-func matchingRequiredReplayContractCall(call *ast.CallExpr, testReporter *ast.Object, bundleVariables map[*ast.Object]struct{}, manifest Manifest) bool {
-	if call == nil || selectorName(call.Fun) != "sourcefixture.RequireReplayContract" || len(call.Args) != 3 || testReporter == nil {
+func matchingRequiredReplayContractCall(call *ast.CallExpr, testReporter string, bundleVariables map[string]struct{}, manifest Manifest) bool {
+	if call == nil || selectorName(call.Fun) != "sourcefixture.RequireReplayContract" || len(call.Args) != 3 || testReporter == "" {
 		return false
 	}
 	reporter, ok := call.Args[0].(*ast.Ident)
-	if !ok || reporter.Obj != testReporter {
+	if !ok || reporter.Name != testReporter {
 		return false
 	}
 	bundle, ok := call.Args[1].(*ast.Ident)
-	if !ok || bundle.Obj == nil {
+	if !ok {
 		return false
 	}
-	if _, ok := bundleVariables[bundle.Obj]; !ok {
+	if _, ok := bundleVariables[bundle.Name]; !ok {
 		return false
 	}
 	contract, ok := literalReplayContract(call.Args[2])

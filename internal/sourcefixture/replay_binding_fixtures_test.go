@@ -54,3 +54,16 @@ func replayBindingIgnoredError(_ *testing.T) {
 		RawQuery: "",
 	})
 }
+
+var replayBindingNegativeFixtures = [...]func(*testing.T){
+	replayBindingIfFalse,
+	replayBindingBlankContract,
+	replayBindingWrongFamily,
+	replayBindingIgnoredError,
+}
+
+func TestReplayBindingNegativeFixturesCompile(t *testing.T) {
+	if len(replayBindingNegativeFixtures) != 4 {
+		t.Fatalf("negative replay fixture count = %d, want 4", len(replayBindingNegativeFixtures))
+	}
+}

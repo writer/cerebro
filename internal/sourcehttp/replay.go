@@ -27,11 +27,11 @@ func ValidateReplayRequest(request *http.Request, method, requestPath, rawQuery 
 	}
 	actualQuery, err := canonicalReplayQuery(request.URL.RawQuery)
 	if err != nil {
-		return fmt.Errorf("%w: replay HTTP query is invalid: %v", ErrMalformedReplayQuery, err)
+		return fmt.Errorf("%w: replay HTTP query is invalid: %w", ErrMalformedReplayQuery, err)
 	}
 	expectedQuery, err := canonicalReplayQuery(strings.TrimSpace(rawQuery))
 	if err != nil {
-		return fmt.Errorf("%w: expected replay HTTP query is invalid: %v", ErrMalformedExpectedReplayQuery, err)
+		return fmt.Errorf("%w: expected replay HTTP query is invalid: %w", ErrMalformedExpectedReplayQuery, err)
 	}
 	if actualQuery != expectedQuery {
 		return fmt.Errorf("replay HTTP query = %q, want %q", actualQuery, expectedQuery)
