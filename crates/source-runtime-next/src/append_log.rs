@@ -742,7 +742,7 @@ fn sentinelone_optional_attribute_component<'a>(
     }
 }
 
-fn sentinelone_component_value<'a>(value: Option<&'a str>) -> Option<Option<&'a str>> {
+fn sentinelone_component_value(value: Option<&str>) -> Option<Option<&str>> {
     let value = value?.trim();
     if value.is_empty() {
         return Some(None);
