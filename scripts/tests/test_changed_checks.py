@@ -68,6 +68,46 @@ class ChangedChecksTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("rust-deny", self.command_names([path]))
 
+    def test_source_runtime_crates_select_focused_rust_validation(self):
+        packages = [
+            "-p",
+            "cerebro-platform",
+            "-p",
+            "cerebro-source-catalog",
+            "-p",
+            "cerebro-source-runtime-next",
+        ]
+        for path in (
+            "crates/cerebro-platform/src/main.rs",
+            "crates/source-catalog/src/lib.rs",
+            "crates/source-runtime-next/src/http.rs",
+        ):
+            with self.subTest(path=path):
+                selected = changed.select_commands([path], Path("."))
+                commands = {plan.name: plan.argv for plan in selected}
+                self.assertEqual(
+                    commands["rust-source-runtime-fmt"],
+                    ["cargo", "fmt", "--all", "--", "--check"],
+                )
+                self.assertEqual(
+                    commands["rust-source-runtime-test"],
+                    ["cargo", "test", "--locked", *packages],
+                )
+                self.assertEqual(
+                    commands["rust-source-runtime-clippy"],
+                    [
+                        "cargo",
+                        "clippy",
+                        "--locked",
+                        *packages,
+                        "--all-targets",
+                        "--all-features",
+                        "--",
+                        "-D",
+                        "warnings",
+                    ],
+                )
+
     def test_workspace_manifests_and_policy_select_workspace_check(self):
         for path in (
             "Cargo.toml",
