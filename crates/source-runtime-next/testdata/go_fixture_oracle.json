@@ -1,6 +1,6 @@
 {
   "schema_version": "cerebro.source-fixture-parity.v2",
-  "corpus_revision": "14682C4C785808497184A3B052ABCA748E61CFC2D36D913EDDFA253FBE6A187E",
+  "corpus_revision": "DB97396F2D48308498BB2FBD83668EDDD9A0874D0188A123FF38BED50DAC5A9D",
   "cases": [
     {
       "source_id": "appwrite",
@@ -853,6 +853,186 @@
       },
       "go_page_digest_sha256": "CB4D88B05C18D0740111B03293728EF42D840440D940EBE9774DBDC93C32DB44",
       "oracle_digest_sha256": "8C43FD83931B433F34FB44D8ACFD69FC4C119E9F57AC255BE66028900D5A2E90",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "backstage",
+      "family_id": "component",
+      "case_id": "public_first_page",
+      "operation": "check",
+      "payload_sha256": "bc6d7f50b574894d7d20c0a747928d42126e91eb07d20568e9e55b4bed3cce3a",
+      "go_page": {
+        "source_id": "backstage",
+        "family_id": "component",
+        "case_id": "public_first_page",
+        "operation": "check",
+        "accepted_events": [],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 0,
+        "accepted_count": 0,
+        "rejected_count": 0,
+        "short_circuit_reasons": [
+          "check_only"
+        ]
+      },
+      "go_page_digest_sha256": "3AEF44E778820CFA2E55789ACA6223C1D06C374AA5D513B735D1DE863DC37605",
+      "oracle_digest_sha256": "B8EC0BFBD1D15FE0B1ABF8D9156FB38ABC904CB8ED72782D3AFE88B05F0BF8FC",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "backstage",
+      "family_id": "component",
+      "case_id": "public_first_page",
+      "operation": "discover",
+      "payload_sha256": "bc6d7f50b574894d7d20c0a747928d42126e91eb07d20568e9e55b4bed3cce3a",
+      "go_page": {
+        "source_id": "backstage",
+        "family_id": "component",
+        "case_id": "public_first_page",
+        "operation": "discover",
+        "accepted_events": [
+          {
+            "event_id": "EB3F3A901751B6CF73BDD91E3782152B364AD97BC10F008FAA38370017C05536",
+            "kind": "backstage.component",
+            "input_index": 0,
+            "payload_sha256": "D88F624D45AB7DBF1B2FCA27EE071CFE722611EE7333F42FD444BF72543FF785"
+          }
+        ],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 1,
+        "accepted_count": 1,
+        "rejected_count": 0,
+        "proposed_checkpoint": "0A7ABE40D0F989F1E63F9388D80D6EE0573A8A4088F5E49265F0ADF6AB1B807A"
+      },
+      "go_page_digest_sha256": "2C22B0050F8204D41A5D0B3FBBF93B90416AE7A478DB9BE461712A9DA76E905B",
+      "oracle_digest_sha256": "F032CDACB7E35BEF94894331F627613E9606034CCB7AD9C97CFB2532106A5520",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "backstage",
+      "family_id": "component",
+      "case_id": "public_first_page",
+      "operation": "read-page",
+      "payload_sha256": "bc6d7f50b574894d7d20c0a747928d42126e91eb07d20568e9e55b4bed3cce3a",
+      "go_page": {
+        "source_id": "backstage",
+        "family_id": "component",
+        "case_id": "public_first_page",
+        "operation": "read-page",
+        "accepted_events": [],
+        "quarantines": [
+          {
+            "category": "missing_identity",
+            "field_path": "$.id",
+            "input_index": 0
+          }
+        ],
+        "duplicates": [],
+        "scanned_count": 1,
+        "accepted_count": 0,
+        "rejected_count": 1,
+        "proposed_checkpoint": "AF2A6572CE4008E6A98AEB7A5D4827825C0BBD18B8359C3A7F3BBB77E37D80E5",
+        "short_circuit_reasons": [
+          "final_page"
+        ]
+      },
+      "go_page_digest_sha256": "EA7C36EA93A80F92DEF0F25170A2FA69CD9BC909F71A08D5296D56246A8D89FB",
+      "oracle_digest_sha256": "9B2294FC6370134B068ADCBBE01904D8418E4EB4066AEE7F66437E6B103EBC18",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "backstage",
+      "family_id": "system",
+      "case_id": "public_first_page",
+      "operation": "check",
+      "payload_sha256": "3b7ec8d61a467bd30a0da2bf9e3a86ae9039a1446b98ff550d8de65780751d8b",
+      "go_page": {
+        "source_id": "backstage",
+        "family_id": "system",
+        "case_id": "public_first_page",
+        "operation": "check",
+        "accepted_events": [],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 0,
+        "accepted_count": 0,
+        "rejected_count": 0,
+        "short_circuit_reasons": [
+          "check_only"
+        ]
+      },
+      "go_page_digest_sha256": "EB9237F2BB3E9810ADBC3BF9BAF68AEB0EFD9620FFB6C1A84296424AE0FF4783",
+      "oracle_digest_sha256": "8E6590320ED201CB0A1432C5E5B934C8CD1BD025BEDD07D6ED89D94C13CEE70D",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "backstage",
+      "family_id": "system",
+      "case_id": "public_first_page",
+      "operation": "discover",
+      "payload_sha256": "3b7ec8d61a467bd30a0da2bf9e3a86ae9039a1446b98ff550d8de65780751d8b",
+      "go_page": {
+        "source_id": "backstage",
+        "family_id": "system",
+        "case_id": "public_first_page",
+        "operation": "discover",
+        "accepted_events": [
+          {
+            "event_id": "1EFB6C7415A420D839FA82AA4AE99D4E9ED436328545602A732539DEAEFCEDF1",
+            "kind": "backstage.system",
+            "input_index": 0,
+            "payload_sha256": "9FA07E8BB1BAE98E4F19AC97C61C2F41657E7D7E053F6D32CAA5C30C5317914D"
+          }
+        ],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 1,
+        "accepted_count": 1,
+        "rejected_count": 0,
+        "proposed_checkpoint": "23EF336020F4FE5E1414977EE6D72E69112BF8F22DB6E435887E19897313055C"
+      },
+      "go_page_digest_sha256": "1A2DA1E4C18A38032004195A316E085743B08308FD85C802197C3E02B6674877",
+      "oracle_digest_sha256": "5EB00EE35B0EDC5D027F2521CD99117705BA6C74B38552E55CAC50281EE8B1C9",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "backstage",
+      "family_id": "system",
+      "case_id": "public_first_page",
+      "operation": "read-page",
+      "payload_sha256": "3b7ec8d61a467bd30a0da2bf9e3a86ae9039a1446b98ff550d8de65780751d8b",
+      "go_page": {
+        "source_id": "backstage",
+        "family_id": "system",
+        "case_id": "public_first_page",
+        "operation": "read-page",
+        "accepted_events": [],
+        "quarantines": [
+          {
+            "category": "missing_identity",
+            "field_path": "$.id",
+            "input_index": 0
+          }
+        ],
+        "duplicates": [],
+        "scanned_count": 1,
+        "accepted_count": 0,
+        "rejected_count": 1,
+        "proposed_checkpoint": "1E0FEA34016CB437DA3FA1466DDD3A75A9D73D86290F10D36F6E2D3DC2E1FD49",
+        "short_circuit_reasons": [
+          "final_page"
+        ]
+      },
+      "go_page_digest_sha256": "8C569CCE458983C96FD88DC735FE899EF5B351CAF18725805B4E2D4673577A1F",
+      "oracle_digest_sha256": "DAC3FB618D587533B5ED77BB07B3D526E2AF6FE6BE1C25485DC3EE1A2C58B2AA",
       "offline_proof": "fixture_only_no_provider_network",
       "provider_network_egress": false
     },

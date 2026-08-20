@@ -1,0 +1,18 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: backstage
+family: component
+case: public_first_page
+replay_test: source_test.go#TestGenuineProviderResponsesReplayEveryRuntimeFamily
+request:
+    method: GET
+    url: https://demo.backstage.io/api/catalog/entities/by-query?filter=kind%3Dcomponent&limit=1
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-08-20T18:03:41Z"
+    sha256: bc6d7f50b574894d7d20c0a747928d42126e91eb07d20568e9e55b4bed3cce3a
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

@@ -1,12 +1,6 @@
-[
-  {
-    "id": "backstage-tenant-system-40c54c4b132db237",
-    "tenant_id": "tenant",
-    "source_id": "backstage",
-    "kind": "backstage.system",
-    "occurred_at": "2026-08-20T18:03:41Z",
-    "schema_ref": "backstage/system/v1",
-    "payload": {
+{
+  "items": [
+    {
       "apiVersion": "backstage.io/v1alpha1",
       "kind": "System",
       "metadata": {
@@ -53,21 +47,10 @@
         "owner": "team-a",
         "type": "service"
       }
-    },
-    "attributes": {
-      "description": "Everything related to artists",
-      "domain": "artists",
-      "external_id": "a3f33ec1-e3c8-44aa-a392-1c37e6da8d70",
-      "family": "system",
-      "kind": "System",
-      "name": "artist-engagement-portal",
-      "namespace": "default",
-      "owner": "team-a",
-      "provider": "backstage",
-      "source_product": "backstage",
-      "source_provider": "backstage",
-      "type": "service",
-      "uid": "a3f33ec1-e3c8-44aa-a392-1c37e6da8d70"
     }
-  }
-]
+  ],
+  "pageInfo": {
+    "nextCursor": "eyJvcmRlckZpZWxkcyI6W10sImlzUHJldmlvdXMiOmZhbHNlLCJxdWVyeSI6eyJraW5kIjoic3lzdGVtIn0sImZ1bGxUZXh0RmlsdGVyIjp7InRlcm0iOiIifSwib3JkZXJGaWVsZFZhbHVlcyI6WyJhM2YzM2VjMS1lM2M4LTQ0YWEtYTM5Mi0xYzM3ZTZkYThkNzAiXSwiZmlyc3RTb3J0RmllbGRWYWx1ZXMiOlsiYTNmMzNlYzEtZTNjOC00NGFhLWEzOTItMWMzN2U2ZGE4ZDcwIl0sInRvdGFsSXRlbXMiOjN9"
+  },
+  "totalItems": 3
+}

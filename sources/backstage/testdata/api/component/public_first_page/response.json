@@ -1,12 +1,6 @@
-[
-  {
-    "id": "backstage-tenant-component-0f617935da1b3c41",
-    "tenant_id": "tenant",
-    "source_id": "backstage",
-    "kind": "backstage.component",
-    "occurred_at": "2026-08-20T18:03:41Z",
-    "schema_ref": "backstage/component/v1",
-    "payload": {
+{
+  "items": [
+    {
       "apiVersion": "backstage.io/v1alpha1",
       "kind": "Component",
       "metadata": {
@@ -39,21 +33,10 @@
         "subcomponentOf": "wayback-archive",
         "type": "service"
       }
-    },
-    "attributes": {
-      "description": "Storage subsystem of the Wayback Archive",
-      "external_id": "03c09ec0-833b-4100-89a6-7702bd6c5e01",
-      "family": "component",
-      "kind": "Component",
-      "lifecycle": "production",
-      "name": "wayback-archive-storage",
-      "namespace": "default",
-      "owner": "team-a",
-      "provider": "backstage",
-      "source_product": "backstage",
-      "source_provider": "backstage",
-      "type": "service",
-      "uid": "03c09ec0-833b-4100-89a6-7702bd6c5e01"
     }
-  }
-]
+  ],
+  "pageInfo": {
+    "nextCursor": "eyJvcmRlckZpZWxkcyI6W10sImlzUHJldmlvdXMiOmZhbHNlLCJxdWVyeSI6eyJraW5kIjoiY29tcG9uZW50In0sImZ1bGxUZXh0RmlsdGVyIjp7InRlcm0iOiIifSwib3JkZXJGaWVsZFZhbHVlcyI6WyIwM2MwOWVjMC04MzNiLTQxMDAtODlhNi03NzAyYmQ2YzVlMDEiXSwiZmlyc3RTb3J0RmllbGRWYWx1ZXMiOlsiMDNjMDllYzAtODMzYi00MTAwLTg5YTYtNzcwMmJkNmM1ZTAxIl0sInRvdGFsSXRlbXMiOjE2fQ=="
+  },
+  "totalItems": 16
+}
