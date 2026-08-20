@@ -278,6 +278,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [resolve, image]
     permissions:
+      artifact-metadata: write
       attestations: write
       contents: read
       id-token: write
@@ -546,6 +547,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [resolve, web-image]
     permissions:
+      artifact-metadata: write
       attestations: write
       contents: read
       id-token: write

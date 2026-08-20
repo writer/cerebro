@@ -43,6 +43,18 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
         self.assertIn("runner: ubuntu-24.04-arm", web_image)
         self.assertNotIn("docker/setup-qemu-action", web_image)
 
+    def test_candidate_image_attestations_can_index_artifact_metadata(self) -> None:
+        workflow = CUT_RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        manifest = workflow.split("  manifest:\n", 1)[1].split(
+            "\n  rust-organizational-e2e:", 1
+        )[0]
+        web_manifest = workflow.split("  web-manifest:\n", 1)[1].split(
+            "\n  scan-images:", 1
+        )[0]
+
+        for job in (manifest, web_manifest):
+            self.assertIn("artifact-metadata: write", job)
+
 
 if __name__ == "__main__":
     unittest.main()
