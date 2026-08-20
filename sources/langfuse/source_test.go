@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -732,9 +733,9 @@ func TestReadDoesNotFallbackFromV2OnTransportOrDecodeErrors(t *testing.T) {
 	for _, family := range []string{"observation", "metric"} {
 		for _, failure := range []string{"transport", "decode"} {
 			t.Run(family+"_"+failure, func(t *testing.T) {
-				requestCount := 0
+				var requestCount atomic.Int32
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					requestCount++
+					requestCount.Add(1)
 					if r.URL.EscapedPath() == "/api/public/observations" || r.URL.EscapedPath() == "/api/public/metrics" {
 						t.Fatalf("unexpected v1 fallback path %q for %s error", r.URL.EscapedPath(), failure)
 					}
@@ -769,8 +770,8 @@ func TestReadDoesNotFallbackFromV2OnTransportOrDecodeErrors(t *testing.T) {
 				if _, err := source.Read(context.Background(), sourcecdk.NewConfig(cfg), nil); err == nil {
 					t.Fatalf("Read() error = nil, want %s error", failure)
 				}
-				if requestCount < 1 {
-					t.Fatalf("request count = %d, want at least one v2 request", requestCount)
+				if count := requestCount.Load(); count < 1 {
+					t.Fatalf("request count = %d, want at least one v2 request", count)
 				}
 			})
 		}
