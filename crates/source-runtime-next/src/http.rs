@@ -1302,7 +1302,27 @@ fn validate_auth(source: &CompiledSource, actual: &ResolvedAuth) -> Result<(), H
         }
         AuthModel::AwsSigV4 => matches!(actual, ResolvedAuth::AwsSigV4 { .. }),
         AuthModel::DuoHmacV5 => matches!(actual, ResolvedAuth::DuoHmacV5 { .. }),
-        AuthModel::Signature | AuthModel::DuoHmac => false,
+        AuthModel::Signature => match actual {
+            ResolvedAuth::Header { name, value } => {
+                let expected_header = if source.token_header().trim().is_empty() {
+                    "Authorization"
+                } else {
+                    source.token_header()
+                };
+                let expected_scheme = if source.token_scheme().trim().is_empty() {
+                    "Signature"
+                } else {
+                    source.token_scheme()
+                };
+                name.eq_ignore_ascii_case(expected_header)
+                    && value
+                        .strip_prefix(expected_scheme)
+                        .and_then(|value| value.strip_prefix(' '))
+                        .is_some_and(|value| !value.trim().is_empty())
+            }
+            _ => false,
+        },
+        AuthModel::DuoHmac => false,
     };
     if valid {
         Ok(())
@@ -4548,6 +4568,76 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn signature_catalog_family_executes_with_a_redacted_precomputed_header() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /v1/assets?"));
+            assert!(request.lines().any(|line| {
+                line.eq_ignore_ascii_case("authorization: Signature precomputed-proof")
+            }));
+            let body = r#"{"data":[{"id":"asset-1","name":"Asset One"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("veracode").unwrap().clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::ShadowOnly
+        );
+        let auth = ResolvedAuth::Header {
+            name: "Authorization".to_owned(),
+            value: "Signature precomputed-proof".to_owned(),
+        };
+        assert!(!format!("{auth:?}").contains("precomputed-proof"));
+        assert!(
+            HttpSourceConnector::new(
+                source.clone(),
+                "assets",
+                &format!("http://{address}"),
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "precomputed-proof".to_owned(),
+                },
+            )
+            .is_err()
+        );
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(source, "assets", &base_url, BTreeMap::new(), auth).unwrap(),
+            "tenant-a",
+            "veracode-prod",
+            &base_url,
+        );
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("veracode-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::NonAuthoritative(_)));
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "asset-1");
     }
 
     #[tokio::test]

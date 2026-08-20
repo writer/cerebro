@@ -1983,7 +1983,36 @@ fn resolved_auth(
                 }
             }
         }
-        AuthModel::DuoHmac | AuthModel::Signature => {
+        AuthModel::Signature => {
+            let aliases = [
+                "token",
+                "signature",
+                "auth_value",
+                "access_token",
+                "api_token",
+                "api_key",
+            ];
+            let value = take_first_required_config(config, &aliases)?;
+            for alias in aliases {
+                discard_config_secret(config, alias);
+            }
+            ResolvedAuth::Header {
+                name: if token_header.trim().is_empty() {
+                    "Authorization".to_owned()
+                } else {
+                    nonempty_catalog_auth_value(&token_header, "token_header")?
+                },
+                value: apply_auth_scheme(
+                    if token_scheme.trim().is_empty() {
+                        "Signature"
+                    } else {
+                        &token_scheme
+                    },
+                    value,
+                ),
+            }
+        }
+        AuthModel::DuoHmac => {
             return Err("source auth requires a bespoke Rust connector".into());
         }
         _ => ResolvedAuth::Bearer {
@@ -4641,6 +4670,49 @@ mod tests {
         ));
         assert!(!bearer.contains_key("access_token"));
         assert!(!bearer.contains_key("oauth_client_reference"));
+    }
+
+    #[test]
+    fn stored_signature_auth_matches_go_aliases_and_scrubs_every_secret() {
+        let catalog = load_catalog().unwrap();
+        for (source_id, selected_alias) in [("netsuite", "token"), ("veracode", "signature")] {
+            let source = catalog.get(source_id).unwrap();
+            let mut config = BTreeMap::from([
+                (
+                    selected_alias.to_owned(),
+                    format!("{source_id}-precomputed-proof"),
+                ),
+                ("access_token".to_owned(), "unused-access-proof".to_owned()),
+                ("api_key".to_owned(), "unused-api-proof".to_owned()),
+                ("family".to_owned(), source.families()[0].id().to_owned()),
+            ]);
+            let auth = resolved_auth(
+                source.auth(),
+                CatalogAuthSettings::from_source(source),
+                &mut config,
+            )
+            .unwrap();
+            assert!(matches!(
+                auth,
+                ResolvedAuth::Header {
+                    ref name,
+                    ref value,
+                } if name == "Authorization"
+                    && value == &format!("Signature {source_id}-precomputed-proof")
+            ));
+            assert!(!format!("{auth:?}").contains("precomputed-proof"));
+            for alias in [
+                "token",
+                "signature",
+                "auth_value",
+                "access_token",
+                "api_token",
+                "api_key",
+            ] {
+                assert!(!config.contains_key(alias));
+            }
+            assert!(config.contains_key("family"));
+        }
     }
 
     #[test]

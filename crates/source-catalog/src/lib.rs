@@ -102,6 +102,7 @@ impl AuthModel {
                 | Self::OauthClientCredentials
                 | Self::TwoStep
                 | Self::Jwt
+                | Self::Signature
                 | Self::AwsSigV4
                 | Self::DuoHmacV5
         )
@@ -2737,6 +2738,42 @@ mod tests {
                 .token_url(),
             "https://connect.signl4.com/identity/connect/token"
         );
+    }
+
+    #[test]
+    fn precomputed_signature_contract_is_executable_but_remains_shadow_only() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let actual = catalog
+            .sources()
+            .filter(|source| source.auth() == &AuthModel::Signature)
+            .map(CompiledSource::id)
+            .collect::<Vec<_>>();
+        assert_eq!(actual, vec!["netsuite", "veracode"]);
+
+        for source_id in actual {
+            let source = catalog.get(source_id).unwrap();
+            assert!(source.auth().supports_generic_runtime());
+            assert_eq!(source.token_header(), "Authorization");
+            assert_eq!(source.token_scheme(), "Signature");
+            assert_eq!(source.authority(), CollectionAuthority::ShadowOnly);
+            for family in source.families() {
+                assert!(
+                    !family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::UnsupportedAuthModel)
+                );
+                assert!(
+                    family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::MissingProviderProof)
+                );
+            }
+        }
     }
 
     #[test]
