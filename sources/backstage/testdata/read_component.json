@@ -1,41 +1,59 @@
 [
   {
-    "attributes": {
-      "external_id": "component-1",
-      "family": "component",
-      "kind": "Component",
-      "lifecycle": "production",
-      "name": "cerebro",
-      "namespace": "default",
-      "owner": "group:platform/security",
-      "provider": "backstage",
-      "resource_id": "component-1",
-      "resource_name": "cerebro",
-      "resource_type": "service",
-      "source_product": "backstage",
-      "source_provider": "backstage",
-      "system": "security",
-      "uid": "component-1"
-    },
-    "id": "backstage-component-event-1",
+    "id": "backstage-tenant-component-0f617935da1b3c41",
+    "tenant_id": "tenant",
+    "source_id": "backstage",
     "kind": "backstage.component",
-    "occurred_at": "2026-08-20T00:00:00Z",
+    "occurred_at": "2026-08-20T18:03:41Z",
+    "schema_ref": "backstage/component/v1",
     "payload": {
+      "apiVersion": "backstage.io/v1alpha1",
       "kind": "Component",
       "metadata": {
-        "name": "cerebro",
+        "annotations": {
+          "backstage.io/edit-url": "https://github.com/backstage/backstage/edit/master/packages/catalog-model/examples/components/wayback-archive-storage-component.yaml",
+          "backstage.io/managed-by-location": "url:https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/components/wayback-archive-storage-component.yaml",
+          "backstage.io/managed-by-origin-location": "url:https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/all-components.yaml",
+          "backstage.io/source-location": "url:https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/components/",
+          "backstage.io/view-url": "https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/components/wayback-archive-storage-component.yaml"
+        },
+        "description": "Storage subsystem of the Wayback Archive",
+        "etag": "2bea3967fe39609c23d254944b69adaef8681c37",
+        "name": "wayback-archive-storage",
         "namespace": "default",
-        "uid": "component-1"
+        "uid": "03c09ec0-833b-4100-89a6-7702bd6c5e01"
       },
+      "relations": [
+        {
+          "targetRef": "group:default/team-a",
+          "type": "ownedBy"
+        },
+        {
+          "targetRef": "component:default/wayback-archive",
+          "type": "partOf"
+        }
+      ],
       "spec": {
         "lifecycle": "production",
-        "owner": "group:platform/security",
-        "system": "security",
+        "owner": "team-a",
+        "subcomponentOf": "wayback-archive",
         "type": "service"
       }
     },
-    "schema_ref": "backstage/component/v1",
-    "source_id": "backstage",
-    "tenant_id": "tenant"
+    "attributes": {
+      "description": "Storage subsystem of the Wayback Archive",
+      "external_id": "03c09ec0-833b-4100-89a6-7702bd6c5e01",
+      "family": "component",
+      "kind": "Component",
+      "lifecycle": "production",
+      "name": "wayback-archive-storage",
+      "namespace": "default",
+      "owner": "team-a",
+      "provider": "backstage",
+      "source_product": "backstage",
+      "source_provider": "backstage",
+      "type": "service",
+      "uid": "03c09ec0-833b-4100-89a6-7702bd6c5e01"
+    }
   }
 ]

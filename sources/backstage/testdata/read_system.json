@@ -1,39 +1,73 @@
 [
   {
-    "attributes": {
-      "domain": "security",
-      "external_id": "system-1",
-      "family": "system",
-      "kind": "System",
-      "name": "security-platform",
-      "namespace": "default",
-      "owner": "group:platform/security",
-      "provider": "backstage",
-      "resource_id": "system-1",
-      "resource_name": "security-platform",
-      "resource_type": "product",
-      "source_product": "backstage",
-      "source_provider": "backstage",
-      "uid": "system-1"
-    },
-    "id": "backstage-system-event-1",
+    "id": "backstage-tenant-system-40c54c4b132db237",
+    "tenant_id": "tenant",
+    "source_id": "backstage",
     "kind": "backstage.system",
-    "occurred_at": "2026-08-20T00:00:00Z",
+    "occurred_at": "2026-08-20T18:03:41Z",
+    "schema_ref": "backstage/system/v1",
     "payload": {
+      "apiVersion": "backstage.io/v1alpha1",
       "kind": "System",
       "metadata": {
-        "name": "security-platform",
+        "annotations": {
+          "backstage.io/edit-url": "https://github.com/backstage/backstage/edit/master/packages/catalog-model/examples/systems/artist-engagement-portal-system.yaml",
+          "backstage.io/managed-by-location": "url:https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/systems/artist-engagement-portal-system.yaml",
+          "backstage.io/managed-by-origin-location": "url:https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/all-systems.yaml",
+          "backstage.io/source-location": "url:https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/systems/",
+          "backstage.io/view-url": "https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/systems/artist-engagement-portal-system.yaml"
+        },
+        "description": "Everything related to artists",
+        "etag": "590edf0fe97c745c2c496d7bc2a052a051cbebbe",
+        "name": "artist-engagement-portal",
         "namespace": "default",
-        "uid": "system-1"
+        "tags": [
+          "portal"
+        ],
+        "uid": "a3f33ec1-e3c8-44aa-a392-1c37e6da8d70"
       },
+      "relations": [
+        {
+          "targetRef": "component:default/artist-lookup",
+          "type": "hasPart"
+        },
+        {
+          "targetRef": "component:default/www-artist",
+          "type": "hasPart"
+        },
+        {
+          "targetRef": "resource:default/artists-db",
+          "type": "hasPart"
+        },
+        {
+          "targetRef": "group:default/team-a",
+          "type": "ownedBy"
+        },
+        {
+          "targetRef": "domain:default/artists",
+          "type": "partOf"
+        }
+      ],
       "spec": {
-        "domain": "security",
-        "owner": "group:platform/security",
-        "type": "product"
+        "domain": "artists",
+        "owner": "team-a",
+        "type": "service"
       }
     },
-    "schema_ref": "backstage/system/v1",
-    "source_id": "backstage",
-    "tenant_id": "tenant"
+    "attributes": {
+      "description": "Everything related to artists",
+      "domain": "artists",
+      "external_id": "a3f33ec1-e3c8-44aa-a392-1c37e6da8d70",
+      "family": "system",
+      "kind": "System",
+      "name": "artist-engagement-portal",
+      "namespace": "default",
+      "owner": "team-a",
+      "provider": "backstage",
+      "source_product": "backstage",
+      "source_provider": "backstage",
+      "type": "service",
+      "uid": "a3f33ec1-e3c8-44aa-a392-1c37e6da8d70"
+    }
   }
 ]
