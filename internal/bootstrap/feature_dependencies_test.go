@@ -62,7 +62,7 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority || got.GraphCatalog != authority || got.GraphExposure != authority {
 		t.Fatalf("graph query service = %#v, want configured authority for all capabilities", got)
 	}
-	if got := newGraphReasoningFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority {
+	if got := newGraphReasoningFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority || got.GraphEntityKindCounts != authority || got.GraphRelationCounts != authority {
 		t.Fatalf("graph reasoning queries = %#v, want configured authority", got)
 	}
 }

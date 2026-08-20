@@ -82,7 +82,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 
 	clearLongRunningWriteDeadline(w)
 	flusher, _ := w.(http.Flusher)
-	service := graphagent.NewServiceWithCapabilities(rawCypher, neighborhoods, llm, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
+	service := graphagent.NewServiceWithGraphCapabilities(rawCypher, neighborhoods, a.deps.GraphReads.EntityKindCounts, a.deps.GraphReads.RelationCounts, llm, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
 		TrajectoryStore:             askTrajectoryStore(a.deps.StateStore),
 		EnableGraphProbes:           true,
 		EnableDeterministicFastPath: true,

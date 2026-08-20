@@ -419,19 +419,37 @@ func TestCollectGraphProbeCachesTenantCounts(t *testing.T) {
 	}
 	request := AskRequest{TenantID: "writer", Question: "What is risky?"}
 
-	first := collectGraphProbe(context.Background(), store, store, request)
+	first := collectGraphProbe(context.Background(), store, store, store, request)
 	if first.SourceCount != 3 {
 		t.Fatalf("first probe source count = %d, want 3", first.SourceCount)
 	}
 	if store.countRequests != 2 {
 		t.Fatalf("store count requests after first probe = %d, want 2", store.countRequests)
 	}
-	second := collectGraphProbe(context.Background(), store, store, request)
+	second := collectGraphProbe(context.Background(), store, store, store, request)
 	if second.SourceCount != 3 {
 		t.Fatalf("second probe source count = %d, want cached 3", second.SourceCount)
 	}
 	if store.countRequests != 2 {
 		t.Fatalf("store count requests after second probe = %d, want tenant count cache hit", store.countRequests)
+	}
+}
+
+func TestCollectGraphProbeUsesTypedCountStoresWithoutRawCypher(t *testing.T) {
+	resetGraphProbeCountsCacheForTest()
+	defer resetGraphProbeCountsCacheForTest()
+	store := &askStore{
+		rows: []ports.CypherRow{{Values: map[string]any{"unexpected": "raw query"}}},
+	}
+	probe := collectGraphProbe(context.Background(), store, store, nil, AskRequest{TenantID: "writer", Question: "What is risky?"})
+	if probe.SourceCount != 3 || probe.FindingCount != 0 {
+		t.Fatalf("probe counts = %#v, want typed source count 3 and no finding count", probe)
+	}
+	if len(probe.Warnings) != 0 {
+		t.Fatalf("probe warnings = %#v, want none", probe.Warnings)
+	}
+	if len(store.requests) != 0 {
+		t.Fatalf("raw Cypher requests = %#v, want none", store.requests)
 	}
 }
 

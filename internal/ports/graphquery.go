@@ -81,10 +81,12 @@ type RawCypherQueryStore interface {
 }
 
 type GraphReadCapabilities struct {
-	Neighborhoods GraphNeighborhoodStore
-	RawCypher     RawCypherQueryStore
-	Catalog       EntityCatalogStore
-	Exposure      ExposureCoverageStore
+	Neighborhoods    GraphNeighborhoodStore
+	RawCypher        RawCypherQueryStore
+	Catalog          EntityCatalogStore
+	Exposure         ExposureCoverageStore
+	EntityKindCounts EntityKindCountStore
+	RelationCounts   RelationCountStore
 }
 
 func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
@@ -103,6 +105,12 @@ func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
 	}
 	if exposure, ok := store.(ExposureCoverageStore); ok && !isNilGraphReadCapability(exposure) {
 		capabilities.Exposure = exposure
+	}
+	if entityKindCounts, ok := store.(EntityKindCountStore); ok && !isNilGraphReadCapability(entityKindCounts) {
+		capabilities.EntityKindCounts = entityKindCounts
+	}
+	if relationCounts, ok := store.(RelationCountStore); ok && !isNilGraphReadCapability(relationCounts) {
+		capabilities.RelationCounts = relationCounts
 	}
 	return capabilities
 }
