@@ -292,9 +292,12 @@ impl SentinelOneKernel {
                         query.append_pair("siteIds", value);
                     }
                 }
-                SentinelOneFamily::Application
-                | SentinelOneFamily::Exclusion
-                | SentinelOneFamily::Site => {}
+                SentinelOneFamily::Exclusion => {
+                    if let Some(value) = self.filters.site_id.as_deref() {
+                        query.append_pair("siteIds", value);
+                    }
+                }
+                SentinelOneFamily::Application | SentinelOneFamily::Site => {}
             }
         }
         Ok(SentinelOneRequest {
@@ -769,17 +772,19 @@ fn scalar_string(value: Option<&Value>) -> Option<String> {
 }
 
 fn application_identity(payload: &Value) -> String {
-    let parts = ["publisher", "name", "version"]
-        .into_iter()
-        .filter_map(|field| scalar_string(payload.get(field)))
-        .filter(|value| !value.is_empty())
-        .map(|value| value.replace(' ', "_"))
-        .collect::<Vec<_>>();
-    if parts.is_empty() {
-        "unknown".to_owned()
-    } else {
-        parts.join("::")
-    }
+    let encoded = |field| {
+        URL_SAFE_NO_PAD.encode(
+            scalar_string(payload.get(field))
+                .unwrap_or_default()
+                .as_bytes(),
+        )
+    };
+    format!(
+        "p.{}.n.{}.v.{}",
+        encoded("publisher"),
+        encoded("name"),
+        encoded("version")
+    )
 }
 
 fn nonempty(value: String) -> Option<String> {
@@ -857,6 +862,29 @@ mod tests {
     }
 
     #[test]
+    fn exclusion_request_preserves_the_go_site_scope() {
+        let kernel = SentinelOneKernel::new(
+            "https://sentinelone.example.test",
+            SentinelOneFamily::Exclusion,
+            SentinelOneFilters {
+                site_id: Some("site-1".to_owned()),
+                ..SentinelOneFilters::default()
+            },
+            Some(25),
+        )
+        .unwrap();
+        let request = kernel.plan(None).unwrap();
+        let query = request
+            .url()
+            .query_pairs()
+            .into_owned()
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(request.url().path(), "/web/api/v2.1/exclusions");
+        assert_eq!(query.get("limit").map(String::as_str), Some("25"));
+        assert_eq!(query.get("siteIds").map(String::as_str), Some("site-1"));
+    }
+
+    #[test]
     fn direct_family_decodes_flexible_data_envelope_and_cursor() {
         let kernel = kernel(SentinelOneFamily::Threat);
         let request = kernel.plan(None).unwrap();
@@ -904,14 +932,53 @@ mod tests {
         assert_eq!(page.records.len(), 1);
         assert_eq!(
             page.records[0].provider_id,
-            "agent-fixture-1::Example_Inc::Example_App::1.0.0"
+            "agent-fixture-1::p.RXhhbXBsZSBJbmM.n.RXhhbXBsZSBBcHA.v.MS4wLjA"
         );
         assert_eq!(
             page.records[0]
                 .fields
                 .get("application_id")
                 .map(String::as_str),
-            Some("Example_Inc::Example_App::1.0.0")
+            Some("p.RXhhbXBsZSBJbmM.n.RXhhbXBsZSBBcHA.v.MS4wLjA")
+        );
+    }
+
+    #[test]
+    fn application_identity_does_not_alias_spacing_delimiters_or_empty_components() {
+        let spaced = serde_json::json!({
+            "publisher": "A B",
+            "name": "App",
+            "version": "1"
+        });
+        let underscored = serde_json::json!({
+            "publisher": "A_B",
+            "name": "App",
+            "version": "1"
+        });
+        assert_ne!(
+            application_identity(&spaced),
+            application_identity(&underscored)
+        );
+
+        let publisher_delimiter = serde_json::json!({
+            "publisher": "A::B",
+            "name": "C",
+            "version": ""
+        });
+        let name_delimiter = serde_json::json!({
+            "publisher": "A",
+            "name": "B::C"
+        });
+        assert_ne!(
+            application_identity(&publisher_delimiter),
+            application_identity(&name_delimiter)
+        );
+
+        let missing_publisher = serde_json::json!({"name": "App", "version": "1"});
+        let missing_name = serde_json::json!({"publisher": "App", "version": "1"});
+        assert_ne!(
+            application_identity(&missing_publisher),
+            application_identity(&missing_name)
         );
     }
 
@@ -945,7 +1012,10 @@ mod tests {
                 .iter()
                 .map(|record| record.provider_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["agent-1::P::Alpha::1", "agent-1::P::Middle::1"]
+            vec![
+                "agent-1::p.UA.n.QWxwaGE.v.MQ",
+                "agent-1::p.UA.n.TWlkZGxl.v.MQ"
+            ]
         );
         let cursor = first.next_cursor.expect("versioned cursor");
         assert!(cursor.starts_with(APPLICATION_CURSOR_PREFIX));
@@ -960,7 +1030,7 @@ mod tests {
         let SentinelOneOutcome::Page(second) = second else {
             panic!("expected second page")
         };
-        assert_eq!(second.records[0].provider_id, "agent-1::P::Zulu::1");
+        assert_eq!(second.records[0].provider_id, "agent-1::p.UA.n.WnVsdQ.v.MQ");
         assert_eq!(second.next_cursor.as_deref(), Some("agents-next-1"));
     }
 
