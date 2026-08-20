@@ -44,9 +44,9 @@ type GraphProbeCount struct {
 	Count int64  `json:"count"`
 }
 
-func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, request AskRequest) GraphProbe {
+func collectGraphProbe(ctx context.Context, entityKindCounts ports.EntityKindCountStore, relationCounts ports.RelationCountStore, neighborhoods ports.GraphNeighborhoodStore, request AskRequest) GraphProbe {
 	probe := GraphProbe{ScopeURN: strings.TrimSpace(request.ScopeURN)}
-	if rawCypher == nil && neighborhoods == nil {
+	if entityKindCounts == nil && relationCounts == nil && neighborhoods == nil {
 		probe.Warnings = append(probe.Warnings, "graph_store_unavailable")
 		return probe
 	}
@@ -61,10 +61,6 @@ func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore,
 			probe.ScopeLabel = neighborhood.Root.Label
 		}
 	}
-	if rawCypher == nil {
-		probe.Warnings = append(probe.Warnings, "graph_store_unavailable")
-		return probe
-	}
 	if cached, ok := cachedGraphProbeCounts(request.TenantID); ok {
 		probe.EntityTypes = cached.EntityTypes
 		probe.Relations = cached.Relations
@@ -73,9 +69,7 @@ func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore,
 		return probe
 	}
 	warningsBeforeCounts := len(probe.Warnings)
-	entityKindCounts, entityKindOK := rawCypher.(ports.EntityKindCountStore)
-	relationCounts, relationOK := rawCypher.(ports.RelationCountStore)
-	if !entityKindOK || !relationOK {
+	if entityKindCounts == nil || relationCounts == nil {
 		probe.Warnings = append(probe.Warnings, "graph_count_store_unavailable")
 		return probe
 	}

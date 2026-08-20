@@ -265,29 +265,27 @@ func newRuntimeResponseFeatureService(deps runtimeResponseFeatureDeps) *runtimer
 }
 
 type graphReasoningFeatureDeps struct {
-	GraphNeighborhoods ports.GraphNeighborhoodStore
-	GraphRawCypher     ports.RawCypherQueryStore
-	GraphAgentLLM      graphagent.LLMClient
-	TrajectoryStore    ports.AskTrajectoryStore
+	GraphReads      ports.GraphReadCapabilities
+	GraphAgentLLM   graphagent.LLMClient
+	TrajectoryStore ports.AskTrajectoryStore
 }
 
 func newGraphReasoningFeatureDeps(deps Dependencies) graphReasoningFeatureDeps {
 	return graphReasoningFeatureDeps{
-		GraphNeighborhoods: deps.GraphReads.Neighborhoods,
-		GraphRawCypher:     deps.GraphReads.RawCypher,
-		GraphAgentLLM:      deps.GraphAgentLLM,
-		TrajectoryStore:    askTrajectoryStore(deps.StateStore),
+		GraphReads:      deps.GraphReads,
+		GraphAgentLLM:   deps.GraphAgentLLM,
+		TrajectoryStore: askTrajectoryStore(deps.StateStore),
 	}
 }
 
 func newGraphReasoningFeatureService(deps graphReasoningFeatureDeps) (*graphagent.Service, error) {
-	if deps.GraphRawCypher == nil || deps.GraphNeighborhoods == nil {
+	if deps.GraphReads.RawCypher == nil || deps.GraphReads.Neighborhoods == nil {
 		return nil, graphquery.ErrRuntimeUnavailable
 	}
 	if deps.GraphAgentLLM == nil {
 		return nil, errors.Join(graphagent.ErrRuntimeUnavailable, errors.New("graph agent llm is not configured"))
 	}
-	return graphagent.NewServiceWithCapabilities(deps.GraphRawCypher, deps.GraphNeighborhoods, deps.GraphAgentLLM, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
+	return graphagent.NewServiceWithGraphCapabilities(deps.GraphReads.RawCypher, deps.GraphReads.Neighborhoods, deps.GraphReads.EntityKindCounts, deps.GraphReads.RelationCounts, deps.GraphAgentLLM, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
 		TrajectoryStore:             deps.TrajectoryStore,
 		EnableGraphProbes:           true,
 		EnableDeterministicFastPath: true,

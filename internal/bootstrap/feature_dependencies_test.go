@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/graphagent"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
@@ -39,7 +40,7 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	if got := newRuntimeResponseFeatureDeps(deps); got.Blocklist != nil {
 		t.Fatalf("newRuntimeResponseFeatureDeps() = %#v, want nil runtime response store", got)
 	}
-	if got := newGraphReasoningFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphAgentLLM != nil || got.TrajectoryStore != nil {
+	if got := newGraphReasoningFeatureDeps(deps); got.GraphReads != (ports.GraphReadCapabilities{}) || got.GraphAgentLLM != nil || got.TrajectoryStore != nil {
 		t.Fatalf("newGraphReasoningFeatureDeps() = %#v, want nil dependencies", got)
 	}
 }
@@ -62,7 +63,7 @@ func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
 	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority || got.GraphCatalog != authority || got.GraphExposure != authority {
 		t.Fatalf("graph query service = %#v, want configured authority for all capabilities", got)
 	}
-	if got := newGraphReasoningFeatureDeps(deps); got.GraphNeighborhoods != authority || got.GraphRawCypher != authority {
+	if got := newGraphReasoningFeatureDeps(deps); got.GraphReads.Neighborhoods != authority || got.GraphReads.RawCypher != authority || got.GraphReads.EntityKindCounts != authority || got.GraphReads.RelationCounts != authority {
 		t.Fatalf("graph reasoning queries = %#v, want configured authority", got)
 	}
 }
@@ -82,7 +83,7 @@ func TestProductReadDependencyBundlesDoNotFallbackToLegacyGraphStore(t *testing.
 	if got := newGraphQueryFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil || got.GraphCatalog != nil || got.GraphExposure != nil {
 		t.Fatalf("graph query service = %#v, want nil without configured authority", got)
 	}
-	if got := newGraphReasoningFeatureDeps(deps); got.GraphNeighborhoods != nil || got.GraphRawCypher != nil {
+	if got := newGraphReasoningFeatureDeps(deps); got.GraphReads != (ports.GraphReadCapabilities{}) {
 		t.Fatalf("graph reasoning queries = %#v, want nil without configured authority", got)
 	}
 }
