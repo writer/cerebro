@@ -74,7 +74,7 @@ entries:
           record_selector: $.members[*]
           id_field: id|identity_id|user_id|email
           name_field: full_name|name|display_name|email
-          event: {kind: langchain.organization_member, schema_ref: langchain/organization_member/v1, urn_kind: langchain_organization_member}
+          event: {kind: langchain.organization_member, schema_ref: langchain/organization_member/v1, urn_kind: langchain_organization_member, required_payload_fields: [id|identity_id|user_id|email]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_headers: {X-Organization-Id: organization_id}
@@ -92,7 +92,7 @@ entries:
           record_selector: $.members[*]
           id_field: id|identity_id|user_id|email
           name_field: full_name|name|display_name|email
-          event: {kind: langchain.workspace_member, schema_ref: langchain/workspace_member/v1, urn_kind: langchain_workspace_member}
+          event: {kind: langchain.workspace_member, schema_ref: langchain/workspace_member/v1, urn_kind: langchain_workspace_member, required_payload_fields: [id|identity_id|user_id|email]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
@@ -110,7 +110,7 @@ entries:
           record_selector: $[*]
           id_field: id|role_id|display_name|name
           name_field: display_name|name
-          event: {kind: langchain.role, schema_ref: langchain/role/v1, urn_kind: langchain_role}
+          event: {kind: langchain.role, schema_ref: langchain/role/v1, urn_kind: langchain_role, required_payload_fields: [id|role_id|display_name|name]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_headers: {X-Organization-Id: organization_id}
@@ -128,7 +128,7 @@ entries:
           record_selector: $[*]
           id_field: id|api_key_id|key_id
           name_field: name|display_name
-          event: {kind: langchain.api_key, schema_ref: langchain/api_key/v1, urn_kind: langchain_api_key}
+          event: {kind: langchain.api_key, schema_ref: langchain/api_key/v1, urn_kind: langchain_api_key, required_payload_fields: [id|api_key_id|key_id]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_headers: {X-Organization-Id: organization_id}
@@ -146,7 +146,7 @@ entries:
           record_selector: $[*]
           id_field: id|service_account_id
           name_field: display_name|name
-          event: {kind: langchain.service_account, schema_ref: langchain/service_account/v1, urn_kind: langchain_service_account}
+          event: {kind: langchain.service_account, schema_ref: langchain/service_account/v1, urn_kind: langchain_service_account, required_payload_fields: [id|service_account_id]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_headers: {X-Organization-Id: organization_id}
@@ -183,7 +183,7 @@ entries:
           record_selector: $.runs[*]
           id_field: id|run_id
           name_field: name
-          event: {kind: langchain.run, schema_ref: langchain/run/v1, urn_kind: langchain_run}
+          event: {kind: langchain.run, schema_ref: langchain/run/v1, urn_kind: langchain_run, required_payload_fields: [id|run_id]}
           read:
             static_json_body:
               limit: 100
@@ -205,7 +205,7 @@ entries:
           record_selector: $[*]
           id_field: id|feedback_id
           name_field: key
-          event: {kind: langchain.feedback, schema_ref: langchain/feedback/v1, urn_kind: langchain_feedback}
+          event: {kind: langchain.feedback, schema_ref: langchain/feedback/v1, urn_kind: langchain_feedback, required_payload_fields: [id|feedback_id]}
           pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
           config:
             config_query: {run: run_id, key: name, feedback_source: feedback_source}
@@ -224,7 +224,7 @@ entries:
           record_selector: $[*]
           id_field: id|dataset_id|name
           name_field: name
-          event: {kind: langchain.dataset, schema_ref: langchain/dataset/v1, urn_kind: langchain_dataset}
+          event: {kind: langchain.dataset, schema_ref: langchain/dataset/v1, urn_kind: langchain_dataset, required_payload_fields: [id|dataset_id|name]}
           pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
           config:
             config_query: {name: name, name_contains: name_contains}
@@ -243,7 +243,7 @@ entries:
           record_selector: $[*]
           id_field: id|usage_limit_id|name
           name_field: name
-          event: {kind: langchain.usage_limit, schema_ref: langchain/usage_limit/v1, urn_kind: langchain_usage_limit}
+          event: {kind: langchain.usage_limit, schema_ref: langchain/usage_limit/v1, urn_kind: langchain_usage_limit, required_payload_fields: [id|usage_limit_id|name]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
@@ -261,7 +261,7 @@ entries:
           record_selector: $.items[*]
           id_field: id|audit_log_id|metadata.uid
           name_field: activity_name|event_type|action
-          event: {kind: langchain.audit_log, schema_ref: langchain/audit_log/v1, urn_kind: langchain_audit_log}
+          event: {kind: langchain.audit_log, schema_ref: langchain/audit_log/v1, urn_kind: langchain_audit_log, required_payload_fields: [id|audit_log_id|metadata.uid]}
           pagination: {type: cursor, cursor_param: cursor, cursor_json_path: $.cursor, page_size_param: limit, page_size: 100}
           config:
             config_query: {start_time: start_time, end_time: end_time, event_type: event_type}

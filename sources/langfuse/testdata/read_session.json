@@ -1,0 +1,25 @@
+[
+  {
+    "id": "langfuse-writer-session-cb0e2f9f9c18b155",
+    "tenant_id": "writer",
+    "source_id": "langfuse",
+    "kind": "langfuse.session",
+    "occurred_at": "2026-08-20T19:43:33Z",
+    "schema_ref": "langfuse/session/v1",
+    "payload": {
+      "createdAt": "2026-08-20T19:35:51.742Z",
+      "environment": "default",
+      "id": "example-a27d91ef",
+      "projectId": "example-36bcc519"
+    },
+    "attributes": {
+      "created_at": "2026-08-20T19:35:51.742Z",
+      "external_id": "example-a27d91ef",
+      "family": "session",
+      "provider": "langfuse",
+      "session_id": "example-a27d91ef",
+      "source_product": "langfuse",
+      "source_provider": "langfuse"
+    }
+  }
+]

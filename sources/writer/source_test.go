@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcefixture"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -99,8 +101,8 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 		t.Run(test.family, func(t *testing.T) {
 			bundle := bundles[test.family]
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if err := sourcefixture.ValidateHTTPReplayRequest(r, http.MethodGet, test.wantPath, test.runtimeQuery); err != nil {
-					t.Fatalf("ValidateHTTPReplayRequest() error = %v", err)
+				if err := sourcehttp.ValidateReplayRequest(r, http.MethodGet, test.wantPath, test.runtimeQuery); err != nil {
+					t.Fatalf("ValidateReplayRequest() error = %v", err)
 				}
 				if got := r.Header.Get("Authorization"); got != "Bearer replay-token" {
 					t.Fatalf("Authorization = %q, want replay token", got)
@@ -116,12 +118,13 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.inner.AllowLoopbackBaseURL = true
-			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+			cfg := sourcecdk.NewConfig(map[string]string{
 				"api_key":   "replay-token",
 				"base_url":  server.URL,
 				"family":    test.family,
 				"tenant_id": "writer",
-			}), nil)
+			})
+			pull, err := source.Read(context.Background(), cfg, nil)
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
 			}
@@ -133,6 +136,7 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 					t.Fatalf("event kind/attributes = %q/%#v, want %q with %s", event.Kind, event.Attributes, test.wantKind, test.wantAttr)
 				}
 			}
+			compareGenuineProviderOutputs(t, source, cfg, bundle, test.family, pull)
 		})
 	}
 
@@ -161,8 +165,8 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 			default:
 				t.Fatalf("unexpected application replay path %q", r.URL.EscapedPath())
 			}
-			if err := sourcefixture.ValidateHTTPReplayRequest(r, http.MethodGet, wantPath, wantQuery); err != nil {
-				t.Fatalf("ValidateHTTPReplayRequest() error = %v", err)
+			if err := sourcehttp.ValidateReplayRequest(r, http.MethodGet, wantPath, wantQuery); err != nil {
+				t.Fatalf("ValidateReplayRequest() error = %v", err)
 			}
 			if got := r.Header.Get("Authorization"); got != "Bearer replay-token" {
 				t.Fatalf("Authorization = %q, want replay token", got)
@@ -178,24 +182,26 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 			t.Fatalf("New() error = %v", err)
 		}
 		source.inner.AllowLoopbackBaseURL = true
-		pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		cfg := sourcecdk.NewConfig(map[string]string{
 			"api_key":   "replay-token",
 			"base_url":  server.URL,
 			"family":    "application",
 			"tenant_id": "writer",
-		}), nil)
+		})
+		pull, err := source.Read(context.Background(), cfg, nil)
 		if err != nil {
 			t.Fatalf("Read() error = %v", err)
 		}
 		if len(pull.Events) != 1 || pull.Events[0].Kind != "writer.application" || pull.Events[0].Attributes["application_id"] != envelope.Data[0].ID {
 			t.Fatalf("application replay events = %#v, want one detail-enriched application", pull.Events)
 		}
+		compareGenuineProviderOutputs(t, source, cfg, detailBundle, "application", pull)
 	})
 
 	t.Run("application_job", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if err := sourcefixture.ValidateHTTPReplayRequest(r, http.MethodGet, "/v1/applications/replay-application/jobs", "limit=100"); err != nil {
-				t.Fatalf("ValidateHTTPReplayRequest() error = %v", err)
+			if err := sourcehttp.ValidateReplayRequest(r, http.MethodGet, "/v1/applications/replay-application/jobs", "limit=100"); err != nil {
+				t.Fatalf("ValidateReplayRequest() error = %v", err)
 			}
 			if got := r.Header.Get("Authorization"); got != "Bearer replay-token" {
 				t.Fatalf("Authorization = %q, want replay token", got)
@@ -211,20 +217,36 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 			t.Fatalf("New() error = %v", err)
 		}
 		source.inner.AllowLoopbackBaseURL = true
-		pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		cfg := sourcecdk.NewConfig(map[string]string{
 			"api_key":        "replay-token",
 			"application_id": "replay-application",
 			"base_url":       server.URL,
 			"family":         "application_job",
 			"tenant_id":      "writer",
-		}), nil)
+		})
+		pull, err := source.Read(context.Background(), cfg, nil)
 		if err != nil {
 			t.Fatalf("Read() error = %v", err)
 		}
 		if len(pull.Events) != 0 {
 			t.Fatalf("len(Events) = %d, want genuine empty provider page", len(pull.Events))
 		}
+		compareGenuineProviderOutputs(t, source, cfg, applicationJobBundle, "application_job", pull)
 	})
+}
+
+func compareGenuineProviderOutputs(t *testing.T, source *Source, cfg sourcecdk.Config, bundle sourcefixture.Bundle, family string, pull sourcecdk.Pull) {
+	t.Helper()
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(%s) error = %v", family, err)
+	}
+	if err := sourcefixture.StabilizeEvents(bundle, pull.Events, true); err != nil {
+		t.Fatalf("StabilizeEvents(%s) error = %v", family, err)
+	}
+	if err := sourcefixture.CompareOrUpdateSourceOutputs(".", family, pull.Events, urns, strings.TrimSpace(os.Getenv("CEREBRO_UPDATE_SOURCE_FIXTURES")) == "1"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestReadEmitsRequiredInventoryKindIdentifiers(t *testing.T) {

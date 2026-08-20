@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcefixture"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
@@ -73,8 +75,8 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 		t.Run(test.family, func(t *testing.T) {
 			bundle := bundles[test.family]
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if err := sourcefixture.ValidateHTTPReplayRequest(r, http.MethodGet, test.wantPath, test.runtimeQuery); err != nil {
-					t.Fatalf("ValidateHTTPReplayRequest() error = %v", err)
+				if err := sourcehttp.ValidateReplayRequest(r, http.MethodGet, test.wantPath, test.runtimeQuery); err != nil {
+					t.Fatalf("ValidateReplayRequest() error = %v", err)
 				}
 				if username, password, ok := r.BasicAuth(); !ok || username != "replay-public-key" || password != "replay-secret-key" {
 					t.Fatalf("BasicAuth() = %q/%q/%t, want configured replay key pair", username, password, ok)
@@ -90,13 +92,14 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 			source.inner.AllowLoopbackBaseURL = true
-			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
+			cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
 				"base_url":   server.URL,
 				"family":     test.family,
 				"public_key": "replay-public-key",
 				"secret_key": "replay-secret-key",
 				"tenant_id":  "writer",
-			}), nil)
+			})
+			pull, err := source.Read(context.Background(), cfg, nil)
 			if err != nil {
 				t.Fatalf("Read() error = %v", err)
 			}
@@ -104,6 +107,7 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 				if len(pull.Events) != 0 {
 					t.Fatalf("len(Events) = %d, want genuine empty provider page", len(pull.Events))
 				}
+				compareGenuineProviderOutputs(t, source, cfg, bundle, test.family, pull)
 				return
 			}
 			if len(pull.Events) == 0 {
@@ -114,7 +118,22 @@ func TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies(t *testing.T) {
 					t.Fatalf("event kind/attributes = %q/%#v, want %q with %s", event.Kind, event.Attributes, test.wantKind, test.wantAttr)
 				}
 			}
+			compareGenuineProviderOutputs(t, source, cfg, bundle, test.family, pull)
 		})
+	}
+}
+
+func compareGenuineProviderOutputs(t *testing.T, source *Source, cfg sourcecdk.Config, bundle sourcefixture.Bundle, family string, pull sourcecdk.Pull) {
+	t.Helper()
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(%s) error = %v", family, err)
+	}
+	if err := sourcefixture.StabilizeEvents(bundle, pull.Events, true); err != nil {
+		t.Fatalf("StabilizeEvents(%s) error = %v", family, err)
+	}
+	if err := sourcefixture.CompareOrUpdateSourceOutputs(".", family, pull.Events, urns, strings.TrimSpace(os.Getenv("CEREBRO_UPDATE_SOURCE_FIXTURES")) == "1"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -158,8 +177,8 @@ func TestGenuineProviderV1FallbackResponsesReplay(t *testing.T) {
 				wantPath = "/api/public/observations"
 				wantQuery = "limit=100&page=1"
 			}
-			if err := sourcefixture.ValidateHTTPReplayRequest(r, http.MethodGet, wantPath, wantQuery); err != nil {
-				t.Fatalf("ValidateHTTPReplayRequest(%d) error = %v", requestCount, err)
+			if err := sourcehttp.ValidateReplayRequest(r, http.MethodGet, wantPath, wantQuery); err != nil {
+				t.Fatalf("ValidateReplayRequest(%d) error = %v", requestCount, err)
 			}
 			if username, password, ok := r.BasicAuth(); !ok || username != "replay-public-key" || password != "replay-secret-key" {
 				t.Fatalf("BasicAuth() = %q/%q/%t, want configured replay key pair", username, password, ok)
@@ -180,18 +199,24 @@ func TestGenuineProviderV1FallbackResponsesReplay(t *testing.T) {
 			t.Fatalf("New() error = %v", err)
 		}
 		source.inner.AllowLoopbackBaseURL = true
-		pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
+		cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
 			"base_url":   server.URL,
 			"family":     "observation",
 			"public_key": "replay-public-key",
 			"secret_key": "replay-secret-key",
 			"tenant_id":  "writer",
-		}), nil)
+		})
+		pull, err := source.Read(context.Background(), cfg, nil)
 		if err != nil {
 			t.Fatalf("Read() error = %v", err)
 		}
 		if len(pull.Events) != 1 || pull.Events[0].Kind != "langfuse.observation" || strings.TrimSpace(pull.Events[0].Attributes["observation_id"]) == "" || requestCount != 2 {
 			t.Fatalf("fallback observation replay = %#v requests=%d, want one production-decoded event after exact 501", pull, requestCount)
+		}
+		requestCount = 0
+		compareGenuineProviderOutputs(t, source, cfg, observationBundle, "observation", pull)
+		if requestCount != 2 {
+			t.Fatalf("Discover(observation) requests = %d, want exact v2 501 then v1 replay", requestCount)
 		}
 	})
 
@@ -203,8 +228,8 @@ func TestGenuineProviderV1FallbackResponsesReplay(t *testing.T) {
 			if requestCount == 2 {
 				wantPath = "/api/public/metrics"
 			}
-			if err := sourcefixture.ValidateHTTPReplayRequest(r, http.MethodGet, wantPath, metricsRawQuery); err != nil {
-				t.Fatalf("ValidateHTTPReplayRequest(%d) error = %v", requestCount, err)
+			if err := sourcehttp.ValidateReplayRequest(r, http.MethodGet, wantPath, metricsRawQuery); err != nil {
+				t.Fatalf("ValidateReplayRequest(%d) error = %v", requestCount, err)
 			}
 			if username, password, ok := r.BasicAuth(); !ok || username != "replay-public-key" || password != "replay-secret-key" {
 				t.Fatalf("BasicAuth() = %q/%q/%t, want configured replay key pair", username, password, ok)
@@ -225,19 +250,25 @@ func TestGenuineProviderV1FallbackResponsesReplay(t *testing.T) {
 			t.Fatalf("New() error = %v", err)
 		}
 		source.inner.AllowLoopbackBaseURL = true
-		pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
+		cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
 			"base_url":      server.URL,
 			"family":        "metric",
 			"metrics_query": metricsQuery,
 			"public_key":    "replay-public-key",
 			"secret_key":    "replay-secret-key",
 			"tenant_id":     "writer",
-		}), nil)
+		})
+		pull, err := source.Read(context.Background(), cfg, nil)
 		if err != nil {
 			t.Fatalf("Read() error = %v", err)
 		}
 		if len(pull.Events) != 1 || pull.Events[0].Kind != "langfuse.metric" || strings.TrimSpace(pull.Events[0].Attributes["metric_id"]) == "" || requestCount != 2 {
 			t.Fatalf("fallback metric replay = %#v requests=%d, want one production-decoded event after exact 501", pull, requestCount)
+		}
+		requestCount = 0
+		compareGenuineProviderOutputs(t, source, cfg, metricBundle, "metric", pull)
+		if requestCount != 2 {
+			t.Fatalf("Discover(metric) requests = %d, want exact v2 501 then v1 replay", requestCount)
 		}
 	})
 }

@@ -91,7 +91,7 @@ entries:
           record_selector: $
           id_field: application_id
           name_field: application_id
-          event: {kind: writer.application_graph, schema_ref: writer/application_graph/v1, urn_kind: writer_application_graph}
+          event: {kind: writer.application_graph, schema_ref: writer/application_graph/v1, urn_kind: writer_application_graph, required_payload_fields: [application_id]}
           pagination: {type: none, disable_page_size: true}
           config:
             id_template: ${application_id}

@@ -14,8 +14,6 @@ emitted_kinds:
   - langfuse.annotation_queue
 runtime_families:
   - project
-  - project_member
-  - api_key
   - trace
   - observation
   - score

@@ -38,7 +38,7 @@ entries:
           record_selector: $.data[*]
           id_field: id|projectId|project_id
           name_field: name
-          event: {kind: langfuse.project, schema_ref: langfuse/project/v1, urn_kind: langfuse_project}
+          event: {kind: langfuse.project, schema_ref: langfuse/project/v1, urn_kind: langfuse_project, required_payload_fields: [id|projectId|project_id]}
           pagination: {type: none, disable_page_size: true}
           projection: &project_asset
             template: asset
@@ -53,7 +53,7 @@ entries:
           record_selector: $.memberships[*]
           id_field: id|userId|user_id|email
           name_field: name|email
-          event: {kind: langfuse.project_member, schema_ref: langfuse/project_member/v1, urn_kind: langfuse_project_member}
+          event: {kind: langfuse.project_member, schema_ref: langfuse/project_member/v1, urn_kind: langfuse_project_member, required_payload_fields: [id|userId|user_id|email]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_attributes: {project_id: project_id}
@@ -70,7 +70,7 @@ entries:
           record_selector: $.apiKeys[*]
           id_field: id|apiKeyId|publicKey
           name_field: name|label|note
-          event: {kind: langfuse.api_key, schema_ref: langfuse/api_key/v1, urn_kind: langfuse_api_key}
+          event: {kind: langfuse.api_key, schema_ref: langfuse/api_key/v1, urn_kind: langfuse_api_key, required_payload_fields: [id|apiKeyId|publicKey]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_attributes: {project_id: project_id}
@@ -87,7 +87,7 @@ entries:
           record_selector: $.data[*]
           id_field: id|traceId
           name_field: name
-          event: {kind: langfuse.trace, schema_ref: langfuse/trace/v1, urn_kind: langfuse_trace}
+          event: {kind: langfuse.trace, schema_ref: langfuse/trace/v1, urn_kind: langfuse_trace, required_payload_fields: [id|traceId]}
           pagination: &langfuse_page {type: page, page_param: page, page_size_param: limit, start_page: 1, page_size: 100}
           config:
             config_query: {fromTimestamp: from_timestamp, toTimestamp: to_timestamp, name: name, userId: user_id, sessionId: session_id, release: release, version: version, tags: tags, filter: filter}
@@ -104,7 +104,7 @@ entries:
           record_selector: $.data[*]
           id_field: id|observationId
           name_field: name
-          event: {kind: langfuse.observation, schema_ref: langfuse/observation/v1, urn_kind: langfuse_observation}
+          event: {kind: langfuse.observation, schema_ref: langfuse/observation/v1, urn_kind: langfuse_observation, required_payload_fields: [id|observationId]}
           pagination: {type: cursor, cursor_param: cursor, cursor_json_path: $.meta.cursor, page_size_param: limit, page_size: 100}
           config:
             config_query: {fromStartTime: from_start_time, toStartTime: to_start_time, traceId: trace_id, userId: user_id, name: name, type: type, fields: fields, filter: filter}
@@ -121,7 +121,7 @@ entries:
           record_selector: $.data[*]
           id_field: id|scoreId
           name_field: name
-          event: {kind: langfuse.score, schema_ref: langfuse/score/v1, urn_kind: langfuse_score}
+          event: {kind: langfuse.score, schema_ref: langfuse/score/v1, urn_kind: langfuse_score, required_payload_fields: [id|scoreId]}
           pagination: *langfuse_page
           config:
             config_query: {traceId: trace_id, userId: user_id, name: name, fromTimestamp: from_timestamp, toTimestamp: to_timestamp}
@@ -138,7 +138,7 @@ entries:
           record_selector: $.data[*]
           id_field: name
           name_field: name
-          event: {kind: langfuse.prompt, schema_ref: langfuse/prompt/v1, urn_kind: langfuse_prompt}
+          event: {kind: langfuse.prompt, schema_ref: langfuse/prompt/v1, urn_kind: langfuse_prompt, required_payload_fields: [name]}
           pagination: *langfuse_page
           config:
             config_query: {name: name, label: label, tag: tag}
@@ -155,7 +155,7 @@ entries:
           record_selector: $.data[*]
           id_field: id|sessionId
           name_field: name
-          event: {kind: langfuse.session, schema_ref: langfuse/session/v1, urn_kind: langfuse_session}
+          event: {kind: langfuse.session, schema_ref: langfuse/session/v1, urn_kind: langfuse_session, required_payload_fields: [id|sessionId]}
           pagination: *langfuse_page
           config:
             config_query: {fromTimestamp: from_timestamp, toTimestamp: to_timestamp, userId: user_id}
@@ -172,7 +172,7 @@ entries:
           record_selector: $.data[*]
           id_field: name|metric
           name_field: name|metric
-          event: {kind: langfuse.metric, schema_ref: langfuse/metric/v1, urn_kind: langfuse_metric}
+          event: {kind: langfuse.metric, schema_ref: langfuse/metric/v1, urn_kind: langfuse_metric, required_payload_fields: [name|metric]}
           pagination: {type: none, disable_page_size: true}
           config:
             config_query: {query: metrics_query}
@@ -189,7 +189,7 @@ entries:
           record_selector: $.data[*]
           id_field: id|queueId|name
           name_field: name
-          event: {kind: langfuse.annotation_queue, schema_ref: langfuse/annotation_queue/v1, urn_kind: langfuse_annotation_queue}
+          event: {kind: langfuse.annotation_queue, schema_ref: langfuse/annotation_queue/v1, urn_kind: langfuse_annotation_queue, required_payload_fields: [id|queueId|name]}
           pagination: *langfuse_page
           projection:
             template: asset

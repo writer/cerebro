@@ -12,7 +12,6 @@ import (
 	"go/token"
 	"io"
 	"io/fs"
-	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -259,32 +258,6 @@ func RequireReplayContract(t ReplayTestReporter, bundle Bundle, expected ReplayC
 	if err := ValidateReplayContract(bundle, expected); err != nil {
 		t.Fatalf("ValidateReplayContract() error = %v", err)
 	}
-}
-
-// ValidateHTTPReplayRequest binds a replay server handler to the exact method,
-// path, and canonical query issued by the production source transport.
-func ValidateHTTPReplayRequest(request *http.Request, method, requestPath, rawQuery string) error {
-	if request == nil || request.URL == nil {
-		return errors.New("replay HTTP request is required")
-	}
-	if got, want := strings.ToUpper(strings.TrimSpace(request.Method)), strings.ToUpper(strings.TrimSpace(method)); got == "" || got != want {
-		return fmt.Errorf("replay HTTP method = %q, want %q", got, want)
-	}
-	if got, want := request.URL.EscapedPath(), strings.TrimSpace(requestPath); got != want {
-		return fmt.Errorf("replay HTTP path = %q, want %q", got, want)
-	}
-	actualQuery, err := canonicalRawQuery(request.URL.RawQuery)
-	if err != nil {
-		return fmt.Errorf("replay HTTP query is invalid: %w", err)
-	}
-	expectedQuery, err := canonicalRawQuery(strings.TrimSpace(rawQuery))
-	if err != nil {
-		return fmt.Errorf("expected replay HTTP query is invalid: %w", err)
-	}
-	if got, want := actualQuery, expectedQuery; got != want {
-		return fmt.Errorf("replay HTTP query = %q, want %q", got, want)
-	}
-	return nil
 }
 
 func canonicalRawQuery(rawQuery string) (string, error) {
@@ -770,9 +743,9 @@ func literalReplayContract(expression ast.Expr) (ReplayContract, bool) {
 func httpMethodConstant(expression ast.Expr) string {
 	switch selectorName(expression) {
 	case "http.MethodGet":
-		return http.MethodGet
+		return "GET"
 	case "http.MethodPost":
-		return http.MethodPost
+		return "POST"
 	default:
 		return ""
 	}

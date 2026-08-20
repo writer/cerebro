@@ -13,7 +13,6 @@ runtime_families:
   - graph
   - file
   - application
-  - application_graph
   - application_job
 coverage_contract:
   owner_domain: ai

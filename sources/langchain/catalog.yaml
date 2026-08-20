@@ -15,20 +15,6 @@ emitted_kinds:
   - langchain.dataset
   - langchain.usage_limit
   - langchain.audit_log
-runtime_families:
-  - organization
-  - workspace
-  - organization_member
-  - workspace_member
-  - role
-  - api_key
-  - service_account
-  - project
-  - run
-  - feedback
-  - dataset
-  - usage_limit
-  - audit_log
 coverage_contract:
   owner_domain: ai
   authority_domain: langchain
