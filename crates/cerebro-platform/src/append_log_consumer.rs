@@ -1502,8 +1502,18 @@ mod tests {
     }
 
     fn encoded_event(source_id: &str, kind: &str, schema_ref: &str, payload: Vec<u8>) -> Vec<u8> {
+        encoded_event_with_id("event-1", source_id, kind, schema_ref, payload)
+    }
+
+    fn encoded_event_with_id(
+        id: &str,
+        source_id: &str,
+        kind: &str,
+        schema_ref: &str,
+        payload: Vec<u8>,
+    ) -> Vec<u8> {
         EventWire {
-            id: "event-1".to_owned(),
+            id: id.to_owned(),
             tenant_id: "tenant-a".to_owned(),
             source_id: source_id.to_owned(),
             kind: kind.to_owned(),
@@ -1653,6 +1663,136 @@ mod tests {
             skip_category("legacy_retired_family_projection_incompatible"),
             ConsumerSkipCategory::LegacyRetiredFamilyProjectionIncompatible
         );
+    }
+
+    #[test]
+    fn gcp_legacy_principals_decode_then_skip_outside_the_compiled_catalog() {
+        let cases = [
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user@example.test-roles-owner",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-allUsers-roles-viewer",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-allAuthenticatedUsers-roles-viewer",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-writer.com-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-user@example.test-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-allUsers-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-allAuthenticatedUsers-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-writer.com-roles-viewer",
+            ),
+        ];
+
+        for (kind, schema_ref, id) in cases {
+            let family = kind
+                .strip_prefix("gcp.")
+                .expect("GCP event kind has a source prefix");
+            let payload = encoded_event_with_id(
+                id,
+                "gcp",
+                kind,
+                schema_ref,
+                br#"{"project_id":"writer-prod"}"#.to_vec(),
+            );
+            assert!(
+                decode_event(
+                    &payload,
+                    "gcp",
+                    &format!("events.gcp.{family}"),
+                    "events",
+                    true,
+                )
+                .unwrap()
+                .is_some()
+            );
+            assert_eq!(
+                decode_event(
+                    &payload,
+                    "gcp",
+                    &format!("events.gcp.{family}"),
+                    "events",
+                    false,
+                )
+                .unwrap(),
+                None,
+                "decoded compatibility event should be a catalog skip: {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_gcp_legacy_principals_are_rejected_before_catalog_skip() {
+        let cases = [
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-allUsers",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user\\alias@example.test-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-foobar-roles-viewer",
+            ),
+        ];
+        for (kind, schema_ref, id) in cases {
+            let family = kind
+                .strip_prefix("gcp.")
+                .expect("GCP event kind has a source prefix");
+            let payload = encoded_event_with_id(
+                id,
+                "gcp",
+                kind,
+                schema_ref,
+                br#"{"project_id":"writer-prod"}"#.to_vec(),
+            );
+            assert!(
+                matches!(
+                    decode_event(
+                        &payload,
+                        "gcp",
+                        &format!("events.gcp.{family}"),
+                        "events",
+                        false,
+                    ),
+                    Err(EventDecodeError::Boundary(
+                        AppendLogDecodeError::InvalidModel(message)
+                    )) if message == "observation id is invalid"
+                ),
+                "malformed compatibility event must reject: {id}"
+            );
+        }
     }
 
     #[test]
