@@ -50,11 +50,13 @@ type Store interface {
 }
 
 type Service struct {
-	rawCypher     ports.RawCypherQueryStore
-	neighborhoods ports.GraphNeighborhoodStore
-	llm           LLMClient
-	validator     *Validator
-	options       ServiceOptions
+	rawCypher        ports.RawCypherQueryStore
+	neighborhoods    ports.GraphNeighborhoodStore
+	entityKindCounts ports.EntityKindCountStore
+	relationCounts   ports.RelationCountStore
+	llm              LLMClient
+	validator        *Validator
+	options          ServiceOptions
 }
 
 func NewService(store Store, llm LLMClient, options ValidatorOptions) *Service {
@@ -62,13 +64,43 @@ func NewService(store Store, llm LLMClient, options ValidatorOptions) *Service {
 }
 
 func NewServiceWithOptions(store Store, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
-	return &Service{
-		rawCypher:     store,
-		neighborhoods: store,
-		llm:           llm,
-		validator:     NewValidator(store, validatorOptions),
-		options:       normalizeServiceOptions(serviceOptions),
+	if store == nil {
+		return NewServiceWithGraphCapabilities(nil, nil, nil, nil, llm, validatorOptions, serviceOptions)
 	}
+	return NewServiceWithGraphCapabilities(store, store, entityKindCountCapability(store), relationCountCapability(store), llm, validatorOptions, serviceOptions)
+}
+
+func NewServiceWithCapabilities(rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
+	return NewServiceWithGraphCapabilities(rawCypher, neighborhoods, entityKindCountCapability(rawCypher), relationCountCapability(rawCypher), llm, validatorOptions, serviceOptions)
+}
+
+// NewServiceWithGraphCapabilities wires the graphagent's separate read
+// capabilities. Raw Cypher remains required for runtime-authored Ask queries,
+// while graph probes use the typed count operations directly.
+func NewServiceWithGraphCapabilities(rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, entityKindCounts ports.EntityKindCountStore, relationCounts ports.RelationCountStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
+	return &Service{
+		rawCypher:        rawCypher,
+		neighborhoods:    neighborhoods,
+		entityKindCounts: entityKindCounts,
+		relationCounts:   relationCounts,
+		llm:              llm,
+		validator:        NewValidator(rawCypher, validatorOptions),
+		options:          normalizeServiceOptions(serviceOptions),
+	}
+}
+
+func entityKindCountCapability(store any) ports.EntityKindCountStore {
+	if counts, ok := store.(ports.EntityKindCountStore); ok {
+		return counts
+	}
+	return nil
+}
+
+func relationCountCapability(store any) ports.RelationCountStore {
+	if counts, ok := store.(ports.RelationCountStore); ok {
+		return counts
+	}
+	return nil
 }
 
 func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) error {
@@ -102,7 +134,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 			return err
 		}
 		probeStarted := time.Now()
-		collected := collectGraphProbe(ctx, s.rawCypher, s.neighborhoods, request, params)
+		collected := collectGraphProbe(ctx, s.entityKindCounts, s.relationCounts, s.neighborhoods, request)
 		timings.ProbeMS = time.Since(probeStarted).Milliseconds()
 		probe = &collected
 		if err := emit(Event{Name: EventGraphProbe, Data: GraphProbeEvent{Probe: collected}}); err != nil {

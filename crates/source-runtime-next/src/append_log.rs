@@ -569,30 +569,12 @@ fn compatible_legacy_invalid_identity<'a>(
     }
     match (source_id, event_kind, schema_ref) {
         ("gcp", "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1")
-            if event_id
-                .strip_prefix("gcp-iam-role-assignment-")
-                .is_some_and(|suffix| {
-                    event_id.len() <= 256
-                        && !suffix.is_empty()
-                        && event_id.contains('@')
-                        && event_id
-                            .bytes()
-                            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
-                }) =>
+            if gcp_legacy_identity_is_safe(event_id, "gcp-iam-role-assignment-") =>
         {
             Some(LegacyInvalidIdentity::PreservedEventId)
         }
         ("gcp", "gcp.effective_permission", "gcp/effective_permission/v1")
-            if event_id
-                .strip_prefix("gcp-effective-permission-")
-                .is_some_and(|suffix| {
-                    event_id.len() <= 256
-                        && !suffix.is_empty()
-                        && event_id.contains('@')
-                        && event_id
-                            .bytes()
-                            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
-                }) =>
+            if gcp_legacy_identity_is_safe(event_id, "gcp-effective-permission-") =>
         {
             Some(LegacyInvalidIdentity::PreservedEventId)
         }
@@ -607,6 +589,72 @@ fn compatible_legacy_invalid_identity<'a>(
         }
         _ => None,
     }
+}
+
+/// The Go producer derives these identities as
+/// `sanitize(member)-sanitize(role)`. Keep this exception closed to the two
+/// producer families and to the producer's role-shaped suffix while preserving
+/// the original ID in the deterministic compatibility hash below. The caller
+/// invokes this only after the model parser rejects the historical ID, so
+/// parser-valid public and domain identities retain their original IDs.
+fn gcp_legacy_identity_is_safe(event_id: &str, prefix: &str) -> bool {
+    let Some(suffix) = event_id.strip_prefix(prefix) else {
+        return false;
+    };
+    let Some(has_bracket_token) = gcp_legacy_identity_charset_is_safe(event_id) else {
+        return false;
+    };
+    if event_id.len() > 256 || suffix.is_empty() || (!event_id.contains('@') && !has_bracket_token)
+    {
+        return false;
+    }
+
+    let Some((separator, _)) = suffix.match_indices("-roles-").last() else {
+        return false;
+    };
+    let principal = &suffix[..separator];
+    let role = &suffix[separator + "-roles-".len()..];
+    !principal.is_empty()
+        && !role.is_empty()
+        && role
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte))
+}
+
+/// Return whether the legacy ID uses one optional, non-empty bracket token.
+/// Brackets are the only accepted bytes outside the historical identifier
+/// charset, and they must be a single balanced pair with safe interior bytes.
+fn gcp_legacy_identity_charset_is_safe(event_id: &str) -> Option<bool> {
+    let mut bracket_open = false;
+    let mut bracket_seen = false;
+    let mut bracket_content_len = 0;
+
+    for byte in event_id.bytes() {
+        match byte {
+            b'[' => {
+                if bracket_seen || bracket_open {
+                    return None;
+                }
+                bracket_open = true;
+                bracket_seen = true;
+                bracket_content_len = 0;
+            }
+            b']' => {
+                if !bracket_open || bracket_content_len == 0 {
+                    return None;
+                }
+                bracket_open = false;
+            }
+            byte if byte.is_ascii_alphanumeric() || b"-_.:/@+%".contains(&byte) => {
+                if bracket_open {
+                    bracket_content_len += 1;
+                }
+            }
+            _ => return None,
+        }
+    }
+
+    (!bracket_open).then_some(bracket_seen)
 }
 
 fn compatible_legacy_aws_public_endpoint_identity<'a>(
@@ -871,62 +919,250 @@ mod tests {
     }
 
     #[test]
-    fn compatible_legacy_observation_id_decodes_to_stable_identity() {
-        let mut wire = source_wire();
-        wire.source_id = "gcp".to_owned();
-        wire.kind = "gcp.iam_role_assignment".to_owned();
-        wire.schema_ref = "gcp/iam_role_assignment/v1".to_owned();
-        wire.id = "gcp-iam-role-assignment-user+alias@example.test-roles-owner".to_owned();
+    fn compatible_legacy_observation_ids_preserve_parse_first_semantics() {
+        let compatibility_cases = [
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user+alias@example.test-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-user+alias@example.test-roles-owner",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-principal[workload-identity]-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[workload-identity]-roles-viewer",
+            ),
+        ];
 
-        let first = CommittedSourceEvent::decode(&encode(wire.clone()))
-            .expect("legacy compatibility ID should decode")
-            .expect("source event");
-        let second = CommittedSourceEvent::decode(&encode(wire))
-            .expect("redelivery should decode")
-            .expect("source event");
+        for (kind, schema_ref, id) in compatibility_cases {
+            let mut wire = source_wire();
+            wire.source_id = "gcp".to_owned();
+            wire.kind = kind.to_owned();
+            wire.schema_ref = schema_ref.to_owned();
+            wire.id = id.to_owned();
 
-        assert_eq!(first.observation_id(), second.observation_id());
-        assert_ne!(
-            first.observation_id().as_str(),
-            "gcp-iam-role-assignment-user+alias@example.test-roles-owner"
+            let first = CommittedSourceEvent::decode(&encode(wire.clone()))
+                .expect("legacy compatibility ID should decode")
+                .expect("source event");
+            let second = CommittedSourceEvent::decode(&encode(wire))
+                .expect("redelivery should decode")
+                .expect("source event");
+
+            assert_eq!(first.observation_id(), second.observation_id(), "{id}");
+            assert_ne!(first.observation_id().as_str(), id, "{id}");
+            assert!(first.observation_id().as_str().starts_with("compat:v1:"));
+        }
+
+        let parser_valid_cases = [
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-allUsers-roles-viewer",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-allAuthenticatedUsers-roles-viewer",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-writer.com-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-allUsers-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-allAuthenticatedUsers-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-writer.com-roles-viewer",
+            ),
+        ];
+
+        for (kind, schema_ref, id) in parser_valid_cases {
+            let mut wire = source_wire();
+            wire.source_id = "gcp".to_owned();
+            wire.kind = kind.to_owned();
+            wire.schema_ref = schema_ref.to_owned();
+            wire.id = id.to_owned();
+
+            let event = CommittedSourceEvent::decode(&encode(wire))
+                .expect("parser-valid producer ID should decode")
+                .expect("source event");
+            assert_eq!(event.observation_id().as_str(), id);
+        }
+    }
+
+    #[test]
+    fn malformed_gcp_legacy_ids_remain_rejected() {
+        let cases = [
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user@example.test?",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user\\alias@example.test-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user@example.test-roles-owner?",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user@example.test-role-owner",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-principal[workload-identity-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-principalworkload-identity]-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-principal[]-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[[workload]]-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[workload?]-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-effective-permission-user@example.test-roles-owner",
+            ),
+            (
+                "gcp",
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-iam-role-assignment-user@example.test-roles-owner",
+            ),
+            (
+                "other",
+                "other.iam_role_assignment",
+                "other/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user@example.test-roles-owner",
+            ),
+        ];
+        for (source_id, kind, schema_ref, id) in cases {
+            let mut wire = source_wire();
+            wire.source_id = source_id.to_owned();
+            wire.kind = kind.to_owned();
+            wire.schema_ref = schema_ref.to_owned();
+            wire.id = id.to_owned();
+            assert!(
+                matches!(
+                    CommittedSourceEvent::decode(&encode(wire)),
+                    Err(AppendLogDecodeError::InvalidModel(message))
+                        if message == "observation id is invalid"
+                ),
+                "{source_id} {kind} {id}"
+            );
+        }
+
+        let mut oversized = source_wire();
+        oversized.source_id = "gcp".to_owned();
+        oversized.kind = "gcp.effective_permission".to_owned();
+        oversized.schema_ref = "gcp/effective_permission/v1".to_owned();
+        oversized.id = format!(
+            "gcp-effective-permission-user@example.test-roles-{}?",
+            "x".repeat(256),
         );
-        assert!(first.observation_id().as_str().starts_with("compat:v1:"));
+        assert!(matches!(
+            CommittedSourceEvent::decode(&encode(oversized)),
+            Err(AppendLogDecodeError::InvalidModel(message))
+                if message == "observation id is invalid"
+        ));
     }
 
     #[test]
     fn compatibility_identity_binds_tenant_and_contract_not_delivery_provenance() {
-        let mut first_wire = source_wire();
-        first_wire.source_id = "gcp".to_owned();
-        first_wire.kind = "gcp.effective_permission".to_owned();
-        first_wire.schema_ref = "gcp/effective_permission/v1".to_owned();
-        first_wire.id = "gcp-effective-permission-user@example.test-roles-owner".to_owned();
-        let first = CommittedSourceEvent::decode(&encode(first_wire.clone()))
-            .unwrap()
-            .unwrap();
+        for id in [
+            "gcp-effective-permission-user@example.test-roles-owner",
+            "gcp-effective-permission-principal[workload-identity]-roles-viewer",
+        ] {
+            let mut first_wire = source_wire();
+            first_wire.source_id = "gcp".to_owned();
+            first_wire.kind = "gcp.effective_permission".to_owned();
+            first_wire.schema_ref = "gcp/effective_permission/v1".to_owned();
+            first_wire.id = id.to_owned();
+            let first = CommittedSourceEvent::decode(&encode(first_wire.clone()))
+                .unwrap()
+                .unwrap();
 
-        let mut redelivery_wire = first_wire.clone();
-        redelivery_wire.attributes.insert(
-            SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
-            "gcp-replacement".to_owned(),
-        );
-        redelivery_wire.attributes.insert(
-            SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
-            "replacement-collection".to_owned(),
-        );
-        let redelivery = CommittedSourceEvent::decode(&encode(redelivery_wire))
-            .unwrap()
-            .unwrap();
-        assert_eq!(first.observation_id(), redelivery.observation_id());
-        assert_eq!(first.record_digest(), redelivery.record_digest());
-        assert_ne!(first.attributes_digest(), redelivery.attributes_digest());
+            let mut redelivery_wire = first_wire.clone();
+            redelivery_wire.attributes.insert(
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "gcp-replacement".to_owned(),
+            );
+            redelivery_wire.attributes.insert(
+                SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+                "replacement-collection".to_owned(),
+            );
+            let redelivery = CommittedSourceEvent::decode(&encode(redelivery_wire))
+                .unwrap()
+                .unwrap();
+            assert_eq!(first.observation_id(), redelivery.observation_id(), "{id}");
+            assert_eq!(first.record_digest(), redelivery.record_digest(), "{id}");
+            assert_ne!(
+                first.attributes_digest(),
+                redelivery.attributes_digest(),
+                "{id}"
+            );
 
-        let mut other_tenant_wire = first_wire;
-        other_tenant_wire.tenant_id = "tenant-b".to_owned();
-        let other_tenant = CommittedSourceEvent::decode(&encode(other_tenant_wire))
-            .unwrap()
-            .unwrap();
-        assert_ne!(first.observation_id(), other_tenant.observation_id());
-        assert_ne!(first.record_digest(), other_tenant.record_digest());
+            let mut other_tenant_wire = first_wire;
+            other_tenant_wire.tenant_id = "tenant-b".to_owned();
+            let other_tenant = CommittedSourceEvent::decode(&encode(other_tenant_wire))
+                .unwrap()
+                .unwrap();
+            assert_ne!(
+                first.observation_id(),
+                other_tenant.observation_id(),
+                "{id}"
+            );
+            assert_ne!(first.record_digest(), other_tenant.record_digest(), "{id}");
+        }
     }
 
     #[test]

@@ -25,7 +25,7 @@ func TestCollectVerificationRefreshesEveryContributingRuntime(t *testing.T) {
 	graph := &verificationGraph{now: now, checkpoints: map[string]graphstore.IngestCheckpoint{}}
 	leases := &verificationLeaseStore{}
 	service := NewSecurityPathService(SecurityPathDependencies{
-		GraphQueries: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: runtimes, LeaseStore: leases,
+		RawCypher: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: runtimes, LeaseStore: leases,
 	})
 	reference := verificationReferenceSnapshot(t, now)
 	current := verificationCurrentSnapshot(now, map[string]string{"runtime-a": "current-a", "runtime-b": "current-b"})
@@ -72,7 +72,7 @@ func TestCollectVerificationStopsBeforeReadsWhenContributorLeaseIsHeld(t *testin
 	now := time.Now().UTC().Add(-2 * time.Minute)
 	graph := &verificationGraph{now: now, checkpoints: map[string]graphstore.IngestCheckpoint{}}
 	leases := &verificationLeaseStore{blockedRuntime: "runtime-b"}
-	service := NewSecurityPathService(SecurityPathDependencies{GraphQueries: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now), LeaseStore: leases})
+	service := NewSecurityPathService(SecurityPathDependencies{RawCypher: graph, GraphIngest: graph, Checkpoints: graph, RuntimeStore: verificationRuntimeStore(now), LeaseStore: leases})
 
 	_, err := service.collectVerification(context.Background(), verificationRequest{
 		PrimaryRuntimeID: "runtime-a", LeaseOwner: "owner-a", Current: verificationCurrentSnapshot(now, nil),

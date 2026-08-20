@@ -35,13 +35,16 @@ pub use cutover::{
     ProjectionPromotionRequest,
 };
 pub use neo4j::{
-    EntityCatalogDirection, EntityCatalogFilter, EntityCatalogKindCount, EntityCatalogKindPage,
-    EntityCatalogPage, EntityCatalogRelation, EntityCatalogRelationCount,
-    EntityCatalogRelationCountFilter, EntityCatalogRelationPage, ExposureCoverageAccount,
+    CloudAttackPath, CloudAttackPathCounts, CloudAttackPathEdge, CloudAttackPathNode,
+    CloudAttackPathOwnership, CloudAttackPathPage, EntityCatalogDirection, EntityCatalogFilter,
+    EntityCatalogKindCount, EntityCatalogKindPage, EntityCatalogPage, EntityCatalogRelation,
+    EntityCatalogRelationCount, EntityCatalogRelationCountFilter, EntityCatalogRelationKindCount,
+    EntityCatalogRelationKindPage, EntityCatalogRelationPage, ExposureCoverageAccount,
     ExposureCoverageCompleteness, ExposureCoverageCorroboratingOnly, ExposureCoverageCounts,
     ExposureCoverageEntity, ExposureCoverageKindCount, ExposureCoverageOverlap,
     ExposureCoveragePair, ExposureCoverageProfile, ExposureCoverageQuery, ExposureCoverageResult,
-    LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector, ResolvedLifecycleFinding,
+    LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector, PersonAccessPath,
+    PersonAccessPathPage, ResolvedLifecycleFinding,
 };
 pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,

@@ -381,7 +381,7 @@ func (a *App) runtimeOrchestrationService() (*runtimeorchestration.SecurityPathS
 		return nil, fmt.Errorf("%w: runtime orchestration storage is unavailable", platformjobs.ErrRuntimeUnavailable)
 	}
 	return runtimeorchestration.NewSecurityPathService(runtimeorchestration.SecurityPathDependencies{
-		GraphQueries: dependencyGraphQueryStore(a.deps), GraphIngest: a.graphIngestService(), Checkpoints: checkpoints,
+		RawCypher: a.deps.GraphReads.RawCypher, GraphIngest: a.graphIngestService(), Checkpoints: checkpoints,
 		RuntimeStore: runtimeStore, LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore), RuntimeSync: a.runtimeService(),
 	}), nil
 }

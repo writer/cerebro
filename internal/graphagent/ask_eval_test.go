@@ -277,10 +277,6 @@ func (s *askEvalStore) GetEntityNeighborhood(context.Context, string, int) (*por
 
 func (s *askEvalStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	switch {
-	case strings.Contains(request.Query, "RETURN n.entity_type AS name"):
-		return []ports.CypherRow{{Values: map[string]any{"name": "finding", "count": int64(3)}}, {Values: map[string]any{"name": "source", "count": int64(1)}}}, nil
-	case strings.Contains(request.Query, "RETURN r.relation AS name"):
-		return []ports.CypherRow{{Values: map[string]any{"name": "has_finding", "count": int64(2)}}}, nil
 	case strings.HasPrefix(request.Query, "EXPLAIN "):
 		return nil, nil
 	}
@@ -290,6 +286,14 @@ func (s *askEvalStore) ExecuteReadCypher(_ context.Context, request ports.Cypher
 	}
 	s.executions++
 	return s.recoveryRows, nil
+}
+
+func (s *askEvalStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return &ports.EntityKindCountPage{Counts: []ports.EntityKindCount{{EntityKind: "finding", Count: 3}, {EntityKind: "source", Count: 1}}}, nil
+}
+
+func (s *askEvalStore) CountRelations(context.Context, ports.RelationCountRequest) (*ports.RelationCountPage, error) {
+	return &ports.RelationCountPage{Counts: []ports.RelationCount{{Relation: "has_finding", Count: 2}}}, nil
 }
 
 func rowsFromMaps(rows []map[string]any) []ports.CypherRow {

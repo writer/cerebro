@@ -255,7 +255,7 @@ func TestTrustedGraphEvaluationReportsSharedProjectionAsUnfenced(t *testing.T) {
 		runtime.GetId(): completedGraphRun("graph-okta", runtime.GetId(), "checkpoint-okta", sourceAt.Add(time.Minute)),
 	}}
 	service := NewWithRegistry(runtimeStore, &stubReplayer{}, store, store, store, store, registry).
-		WithGraphQueryStore(&stubGraphStore{}).
+		WithRawCypherQueryStore(&stubGraphStore{}).
 		WithGraphIngestRunStore(runStore).
 		WithTrustedSourceResolution()
 

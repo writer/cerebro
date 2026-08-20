@@ -174,7 +174,7 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		"cmd/cerebro/finding_rule_graph_evaluate.go",
 	} {
 		source := readText(t, filepath.Join(root, filepath.FromSlash(productionPath)))
-		if !strings.Contains(source, "dependencyGraphQueryStore(") {
+		if !strings.Contains(source, ".GraphReads.RawCypher") {
 			t.Errorf("%s bypasses configured Rust graph authority", productionPath)
 		}
 	}
@@ -225,6 +225,10 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	if strings.Contains(policyCandidateGrounding, "graph ports.GraphQueryStore") {
 		t.Error("policy candidate grounding restored full graph query dependency")
 	}
+	findingsService := readText(t, filepath.Join(root, "internal/findings/service.go"))
+	if strings.Contains(findingsService, "WithGraphQueryStore") || strings.Contains(findingsService, "graphQuery                ports.RawCypherQueryStore") {
+		t.Error("findings service restored graph query naming for raw-Cypher dependency")
+	}
 	grcVendorService := readText(t, filepath.Join(root, "internal/grcvendor/service.go"))
 	if strings.Contains(grcVendorService, "store ports.GraphQueryStore") {
 		t.Error("GRC vendor service restored full graph query dependency")
@@ -236,6 +240,9 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	securityPathCapture := readText(t, filepath.Join(root, "internal/runtimeorchestration/security_path_capture.go"))
 	if strings.Contains(securityPathCapture, "GraphQueries ports.GraphQueryStore") {
 		t.Error("security path capture restored full graph query dependency")
+	}
+	if strings.Contains(securityPathCapture, "GraphQueries ports.RawCypherQueryStore") {
+		t.Error("security path capture restored graph query naming for raw-Cypher dependency")
 	}
 	graphAgentValidator := readText(t, filepath.Join(root, "internal/graphagent/validator.go"))
 	if strings.Contains(graphAgentValidator, "store   ports.GraphQueryStore") || strings.Contains(graphAgentValidator, "func NewValidator(store ports.GraphQueryStore") {
@@ -271,6 +278,13 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	cerebroMain := readText(t, filepath.Join(root, "cmd/cerebro/main.go"))
 	if strings.Contains(cerebroMain, "ports.GraphQueryStore") {
 		t.Error("cerebro main restored transitional composite graph query dependency")
+	}
+	portsGraphQuery := readText(t, filepath.Join(root, "internal/ports/graphquery.go"))
+	if strings.Contains(portsGraphQuery, "type GraphReadStore interface") {
+		t.Error("ports restored aggregate graph read store interface")
+	}
+	if strings.Contains(bootstrapApp, "GraphQueries") || strings.Contains(bootstrapApp, "ports.GraphReadStore") {
+		t.Error("bootstrap app restored aggregate graph read handle")
 	}
 
 	goNeo4jStore := readText(t, filepath.Join(root, "internal/graphstore/neo4j/store.go"))

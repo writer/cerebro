@@ -365,6 +365,60 @@ func TestGRCDashboardEmitsLatencyTelemetry(t *testing.T) {
 	}
 }
 
+func TestGRCDashboardReturnsCoreDataWhenRuntimeHealthUnavailable(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-grc": {
+				Id:       "writer-grc",
+				SourceId: "grc",
+				TenantId: "writer",
+			},
+		},
+		findings:        map[string]*ports.FindingRecord{},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{},
+	}
+	app := New(
+		config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second},
+		Dependencies{
+			StateStore: store,
+			GraphStore: &stubGraphStore{err: errors.New("runtime health graph read unavailable")},
+		},
+		nil,
+	)
+	server := httptest.NewServer(app.Handler())
+
+	stderr := captureBootstrapStderr(t, func() {
+		defer server.Close()
+		resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=writer&limit=1")
+		if err != nil {
+			t.Fatalf("GET /grc/dashboard error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+		var payload grcDashboardResponse
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode /grc/dashboard: %v", err)
+		}
+		if len(payload.SourceSummaries) != 0 {
+			t.Fatalf("source summaries = %#v, want omitted degraded enrichment", payload.SourceSummaries)
+		}
+	})
+
+	phasePayload := decodeBootstrapTelemetryPayload(t, stderr, "grc.dashboard.runtime_health")
+	if got := phasePayload["status"]; got != "failed" {
+		t.Fatalf("runtime health status = %#v, want failed; payload=%#v", got, phasePayload)
+	}
+	dashboardPayload := decodeBootstrapTelemetryPayload(t, stderr, "grc.dashboard")
+	if got := dashboardPayload["status"]; got != "completed" {
+		t.Fatalf("dashboard status = %#v, want completed; payload=%#v", got, dashboardPayload)
+	}
+	if got := dashboardPayload["source_summaries_status"]; got != "failed" {
+		t.Fatalf("source summaries status = %#v, want failed; payload=%#v", got, dashboardPayload)
+	}
+}
+
 func TestGRCDashboardTelemetryRecordsHTTPErrorStatus(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -1179,7 +1233,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 		},
 	}
 	appendLog := &recordingAppendLog{}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, GraphQueries: graphStore, AppendLog: appendLog}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore), AppendLog: appendLog}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -1495,7 +1549,7 @@ func TestGRCEntityImpactResolvesLegacyGitHubRepoURN(t *testing.T) {
 			},
 		},
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, GraphQueries: graphStore}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store, GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 

@@ -2,9 +2,7 @@ package graphagent
 
 import (
 	"context"
-	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,9 +44,9 @@ type GraphProbeCount struct {
 	Count int64  `json:"count"`
 }
 
-func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, request AskRequest, params map[string]any) GraphProbe {
+func collectGraphProbe(ctx context.Context, entityKindCounts ports.EntityKindCountStore, relationCounts ports.RelationCountStore, neighborhoods ports.GraphNeighborhoodStore, request AskRequest) GraphProbe {
 	probe := GraphProbe{ScopeURN: strings.TrimSpace(request.ScopeURN)}
-	if rawCypher == nil && neighborhoods == nil {
+	if entityKindCounts == nil && relationCounts == nil && neighborhoods == nil {
 		probe.Warnings = append(probe.Warnings, "graph_store_unavailable")
 		return probe
 	}
@@ -63,10 +61,6 @@ func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore,
 			probe.ScopeLabel = neighborhood.Root.Label
 		}
 	}
-	if rawCypher == nil {
-		probe.Warnings = append(probe.Warnings, "graph_store_unavailable")
-		return probe
-	}
 	if cached, ok := cachedGraphProbeCounts(request.TenantID); ok {
 		probe.EntityTypes = cached.EntityTypes
 		probe.Relations = cached.Relations
@@ -75,14 +69,12 @@ func collectGraphProbe(ctx context.Context, rawCypher ports.RawCypherQueryStore,
 		return probe
 	}
 	warningsBeforeCounts := len(probe.Warnings)
-	probe.EntityTypes = probeCounts(ctx, rawCypher, params, `MATCH (n:Entity {tenant_id: $tenant_id})
-RETURN n.entity_type AS name, count(n) AS count
-ORDER BY count DESC, name
-LIMIT 20`, &probe)
-	probe.Relations = probeCounts(ctx, rawCypher, params, `MATCH (:Entity {tenant_id: $tenant_id})-[r:RELATION]->(:Entity {tenant_id: $tenant_id})
-RETURN r.relation AS name, count(r) AS count
-ORDER BY count DESC, name
-LIMIT 20`, &probe)
+	if entityKindCounts == nil || relationCounts == nil {
+		probe.Warnings = append(probe.Warnings, "graph_count_store_unavailable")
+		return probe
+	}
+	probe.EntityTypes = probeEntityKindCounts(ctx, entityKindCounts, request.TenantID, &probe)
+	probe.Relations = probeRelationCounts(ctx, relationCounts, request.TenantID, &probe)
 	probe.SourceCount = countForName(probe.EntityTypes, "source")
 	probe.FindingCount = countForName(probe.EntityTypes, "finding")
 	if len(probe.Warnings) == warningsBeforeCounts {
@@ -138,23 +130,51 @@ func resetGraphProbeCountsCacheForTest() {
 	graphProbeCountsCache.entries = map[string]graphProbeCountsCacheEntry{}
 }
 
-func probeCounts(ctx context.Context, store ports.RawCypherQueryStore, params map[string]any, query string, probe *GraphProbe) []GraphProbeCount {
-	rows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{Query: query, Params: params, RowLimit: 20})
+func probeEntityKindCounts(ctx context.Context, store ports.EntityKindCountStore, tenantID string, probe *GraphProbe) []GraphProbeCount {
+	page, err := store.CountEntityKinds(ctx, ports.EntityKindCountRequest{
+		Filter: ports.EntityCatalogFilter{TenantID: strings.TrimSpace(tenantID)},
+		Limit:  20,
+	})
 	if err != nil {
 		if probe != nil {
 			probe.Warnings = append(probe.Warnings, "probe_query_failed:"+truncateProbeWarning(err.Error()))
 		}
 		return nil
 	}
-	counts := make([]GraphProbeCount, 0, len(rows))
-	for _, row := range cypherRowsToMaps(rows) {
-		nameValue := row["name"]
-		name := strings.TrimSpace(fmt.Sprint(nameValue))
-		if name == "" || name == "<nil>" {
+	counts := make([]GraphProbeCount, 0, len(page.Counts))
+	for _, count := range page.Counts {
+		name := strings.TrimSpace(count.EntityKind)
+		if name == "" {
 			name = "unknown"
 		}
-		counts = append(counts, GraphProbeCount{Name: name, Count: int64RowValue(row["count"])})
+		counts = append(counts, GraphProbeCount{Name: name, Count: int64(count.Count)}) // #nosec G115 -- graph probe counts are diagnostic only.
 	}
+	return sortProbeCounts(counts)
+}
+
+func probeRelationCounts(ctx context.Context, store ports.RelationCountStore, tenantID string, probe *GraphProbe) []GraphProbeCount {
+	page, err := store.CountRelations(ctx, ports.RelationCountRequest{
+		TenantID: strings.TrimSpace(tenantID),
+		Limit:    20,
+	})
+	if err != nil {
+		if probe != nil {
+			probe.Warnings = append(probe.Warnings, "probe_query_failed:"+truncateProbeWarning(err.Error()))
+		}
+		return nil
+	}
+	counts := make([]GraphProbeCount, 0, len(page.Counts))
+	for _, count := range page.Counts {
+		name := strings.TrimSpace(count.Relation)
+		if name == "" {
+			name = "unknown"
+		}
+		counts = append(counts, GraphProbeCount{Name: name, Count: int64(count.Count)}) // #nosec G115 -- graph probe counts are diagnostic only.
+	}
+	return sortProbeCounts(counts)
+}
+
+func sortProbeCounts(counts []GraphProbeCount) []GraphProbeCount {
 	sort.Slice(counts, func(i, j int) bool {
 		if counts[i].Count != counts[j].Count {
 			return counts[i].Count > counts[j].Count
@@ -171,22 +191,6 @@ func countForName(counts []GraphProbeCount, name string) int64 {
 		}
 	}
 	return 0
-}
-
-func int64RowValue(value any) int64 {
-	switch typed := value.(type) {
-	case int:
-		return int64(typed)
-	case int64:
-		return typed
-	case float64:
-		return int64(typed)
-	case string:
-		parsed, _ := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
-		return parsed
-	default:
-		return 0
-	}
 }
 
 func truncateProbeWarning(value string) string {
