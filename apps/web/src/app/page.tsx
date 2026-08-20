@@ -22,6 +22,7 @@ import {
   shortEntity,
 } from "@/lib/grc";
 import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcPath, grcProgramReadinessPath, useGRCQuery } from "@/lib/grc-client";
+import { normalizeLegacyControlHref } from "@/lib/navigation";
 
 const HOME_DASHBOARD_FINDING_LIMIT = DASHBOARD_FINDING_LIMIT;
 
@@ -110,7 +111,7 @@ const findingKeyFromHref = (href: string) => {
 };
 
 const workItemReviewItem = (item: GRCProgramWorkItem): HomeQueueItem => {
-  const href = item.href || (item.framework_name && item.control_id ? `/controls?framework=${encodeURIComponent(item.framework_name)}&control=${encodeURIComponent(item.control_id)}` : "/controls");
+  const href = normalizeLegacyControlHref(item.href || (item.framework_name && item.control_id ? `/controls?framework=${encodeURIComponent(item.framework_name)}&control=${encodeURIComponent(item.control_id)}` : "/controls"));
   const evidenceIssue = (item.missing_evidence_items ?? 0) + (item.stale_evidence_items ?? 0);
   const pointsAtRisk = href.startsWith("/findings/");
   return {
@@ -244,7 +245,7 @@ const dedupeQueueItems = (items: HomeQueueItem[]) => {
   });
 };
 
-function buildHomeQueue({
+export function buildHomeQueue({
   connectors,
   controls,
   coverageBlindSpots,
@@ -299,7 +300,7 @@ const pageSummary = (metrics: HomeMetrics) =>
     countLabel(metrics.summary.stale_connectors, "stale source"),
   ].join(", ") + ".";
 
-function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
+export function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
   return (
     <section className="surface-panel">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--border)] px-5 py-4">
@@ -313,7 +314,7 @@ function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
         {items.map((item) => (
           <Link
             key={item.id}
-            href={item.href}
+            href={normalizeLegacyControlHref(item.href)}
             className="grid gap-3 px-5 py-4 transition hover:bg-[var(--surface-muted)] lg:grid-cols-[96px_minmax(0,1fr)_180px_128px]"
           >
             <div className="flex items-start gap-2">

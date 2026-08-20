@@ -18,6 +18,7 @@ import {
 } from "@/lib/grc";
 import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcProgramReadinessPath, useGRCQuery } from "@/lib/grc-client";
 import { frameworkRouteSegment } from "@/lib/grc-frameworks";
+import { normalizeLegacyControlHref } from "@/lib/navigation";
 import type { RuntimeState } from "@/lib/runtime-state";
 
 type IssueQueueItem = {
@@ -50,7 +51,7 @@ const controlHref = (control: GRCControl) =>
   `/controls?framework=${encodeURIComponent(control.framework_name)}&control=${encodeURIComponent(control.control_id)}`;
 
 const workItemHref = (item: GRCProgramWorkItem) => {
-  if (item.href) return item.href;
+  if (item.href) return normalizeLegacyControlHref(item.href);
   if (item.framework_name && item.control_id) {
     return `/controls?framework=${encodeURIComponent(item.framework_name)}&control=${encodeURIComponent(item.control_id)}`;
   }
@@ -302,7 +303,7 @@ function IssueQueuePanel({ items }: { items: IssueQueueItem[] }) {
       ) : (
         <div className="divide-y divide-[color:var(--border)]">
           {items.map((item) => (
-            <Link key={item.id} href={item.href} className="grid gap-3 py-3 transition hover:bg-[var(--surface-muted)] md:grid-cols-[minmax(0,1fr)_150px_132px_80px]">
+            <Link key={item.id} href={normalizeLegacyControlHref(item.href)} className="grid gap-3 py-3 transition hover:bg-[var(--surface-muted)] md:grid-cols-[minmax(0,1fr)_150px_132px_80px]">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge value={item.type} />
