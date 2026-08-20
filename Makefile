@@ -2,7 +2,7 @@
 
 .PHONY: release-train-test
 .PHONY: app-workspace-check web-docker-smoke
-.PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
+.PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check fixture-oracle-generate fixture-oracle-check
 .PHONY: rust-event-admission-benchmark rust-organizational-platform-benchmark rust-organizational-store-benchmark sourceruntime-event-admission-generate sourceruntime-event-admission-check
 .PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check rust-product-demo rust-product-demo-check secure-business-demo security-operator-benchmark github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review post-merge-health land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
@@ -292,6 +292,12 @@ source-fixture-check: ## Verify genuine provider response fixtures and provenanc
 	go test ./internal/sourcefixture -count=1
 	go run ./tools/sourcefixture verify -root .
 	go test $$(go run ./tools/sourcefixture packages -root .) -count=1
+
+fixture-oracle-generate: ## Regenerate the checked Go fixture oracle consumed by Rust parity tests.
+	go run ./tools/fixtureoracle -root . -write
+
+fixture-oracle-check: ## Verify the checked Go fixture oracle matches the owning generator.
+	go run ./tools/fixtureoracle -root .
 
 sourcegen-grammar-check: ## Prove every declared connector grammar feature is executable by sourcegen.
 	go run ./tools/sourcegrammarcheck

@@ -4,6 +4,23 @@ Choose the smallest Cerebro profile that supports the work. Each profile adds op
 
 The preflight receipt reports one of four `runtime_profile` values: `lightweight-api`, `durable-api`, `durable-sync`, or `graph-enabled`. Capability layers such as MCP OAuth appear in `enabled_capabilities`.
 
+The Rust product demo is the provider-free local product path. It starts an in-memory organizational graph with synthetic data, requires no Docker services or provider credentials, and is validated with `make rust-product-demo-check`.
+
+The Go compatibility runtime remains the live source, CLI, HTTP, Connect, MCP, append-log, findings, reports, and compatibility workflow surface until each Rust authority boundary has parity, fail-closed, rollback, and client-compatibility evidence. Durable workflows require NATS JetStream, Postgres, and Neo4j according to the profile below. Routes backed by an unconfigured durable store fail closed. No in-memory or SQLite production fallback is used for durable routes.
+
+## Runtime Authority Map
+
+| Surface | Current authority | Backing services | Deletion or promotion gate |
+| --- | --- | --- | --- |
+| Rust product demo | Rust product demo over an in-memory organizational graph | None | Browser receipt and product-shape compatibility |
+| Source reads and source runtime | Go compatibility runtime | Provider config as required; durable sync additionally needs Postgres and NATS JetStream | Go/Rust protocol parity, fixture parity, durable fencing, cursor/checkpoint rollback proof |
+| Public HTTP, Connect, MCP, CLI, findings, reports | Go compatibility runtime or bridged-to-Rust authority where explicitly wired | Profile-dependent; durable routes require Postgres and sometimes NATS JetStream or Neo4j | OpenAPI, proto, SDK, MCP, auth, and route inventory gates |
+| Typed graph/product authority | Rust organizational platform for promoted graph routes | Neo4j or Aura for graph-enabled durable reads; Postgres and NATS JetStream for persisted projection/replay | Typed graph tests, readiness/fail-closed receipts, rollback evidence |
+| Raw Cypher compatibility and migration helpers | Retained Go compatibility only where an explicit compatibility port is wired | Neo4j or Aura | Typed Rust operation replacement and raw-Cypher inventory closure |
+| Slack companion | Explicit Slack authority paths, fixture-first by default | Profile-dependent durable stores | Fixture or approved-live validation with no unapproved writes |
+
+Do not document or operate a surface as Rust-only until the matching gate has a receipt. Remaining Go compatibility is intentional migration scaffolding, not a fallback for Rust authority failure.
+
 ## Lightweight API
 
 Use this profile for metadata routes, source catalog inspection, OpenAPI access, and provider-free source previews.
@@ -188,3 +205,27 @@ Operator duties:
 | Issue MCP OAuth tokens | Durable API with MCP OAuth enabled |
 
 Run `cerebro deploy preflight --format json` after changing profile config. The `runtime_profile`, `enabled_capabilities`, `required_backing_services`, and `required_secret_names` fields should match the intended profile and capability layers before traffic moves.
+
+## Validation Commands
+
+These commands are the repository-discoverable gates used by runtime and compatibility validators. Run the focused gate that matches the changed surface, then use `make verify` for broad PR-parity validation when scope warrants it.
+
+```bash
+make rust-fmt-check
+make rust-clippy
+make rust-test
+make projection-parity-test
+make source-fixture-check
+make mcp-contract-check
+make mcp-sdk-compat
+make openapi-check
+make openapi-lint
+make sdk-test
+make rust-product-demo-check
+make graph-rebuild-dryrun RUNTIME_ID=<runtime-id>
+make readme-check
+make docs-drift-check
+make verify
+```
+
+For operational preflight and health evidence, use the profile-specific checks above. Validation receipts must redact secret-bearing values such as API keys, bearer tokens, OAuth client secrets, graph shared secrets, provider tokens, Postgres DSNs, Neo4j passwords, and capability-token HMAC material. Use placeholders such as `<postgres-dsn-with-tls>`, `<neo4j-password>`, `<hmac-secret-1>`, and `<oauth-client-secret>` in shared docs and receipts.

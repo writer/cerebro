@@ -31,6 +31,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehealth"
 	auth0source "github.com/writer/cerebro/sources/auth0"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -41,6 +42,7 @@ type connectorTestStore struct {
 	audit              []*ports.ConnectorCredentialAuditRecord
 	definitions        map[string]*ports.ConnectorDefinitionRecord
 	definitionVersions map[string][]*ports.ConnectorDefinitionVersionRecord
+	authorityEvidence  []sourcehealth.AuthorityEvidenceRecord
 }
 
 func (s *connectorTestStore) PutConnectorCredential(_ context.Context, record *ports.ConnectorCredentialRecord) error {

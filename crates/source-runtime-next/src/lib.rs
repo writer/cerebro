@@ -5,8 +5,14 @@
 
 mod append_log;
 mod aws_secret_store;
+mod credential_lease;
+mod deposit;
+mod egress;
+mod fixture_parity;
 mod http;
 mod mapper;
+mod protocol;
+mod provider_failure;
 mod runtime_config;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
@@ -15,8 +21,35 @@ pub use aws_secret_store::{
     AwsSecretValue, contains_aws_secret_references, parse_aws_secret_reference,
     resolve_aws_secret_references,
 };
-pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
+pub use credential_lease::{
+    CredentialLeaseError, CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus,
+    LeaseClock, OperationScopedCredentialLease,
+};
+pub use deposit::{
+    DepositIngestError, DepositIngestReceipt, DepositIngestRequest, build_deposit_receipt,
+};
+pub use egress::{
+    EgressDecision, EgressDecisionKind, EgressMode, EgressPolicy, EgressPolicyError,
+    EgressRequestContext,
+};
+pub use fixture_parity::{
+    FixtureParityComparison, FixtureParityDuplicate, FixtureParityEvent, FixtureParityInput,
+    FixtureParityMatrix, FixtureParityOperation, FixtureParityPage, FixtureParityQuarantine,
+    FixtureParityReceipt, build_fixture_parity_matrix, compare_fixture_parity,
+    execute_fixture_parity_page, fixture_excluded_family_reasons,
+};
+pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
+pub use protocol::{
+    AuthorityEvidence, ProtocolError, SourceRuntimeEnvelope, SourceRuntimeErrorShape,
+    SourceRuntimeOperation, SourceRuntimeReceipt, SourceRuntimeResult, canonical_digest,
+    canonical_digest_vectors, validate_authority_evidence, validate_envelope,
+    validate_envelope_json,
+};
+pub use provider_failure::{
+    ProviderFailureCategory, ProviderFailureClassification, ProviderFailureKind,
+    classify_http_connector_failure, classify_provider_failure,
+};
 pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,
     resolve_environment_references,
