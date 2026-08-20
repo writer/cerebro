@@ -1975,13 +1975,12 @@ fn value_at_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     if path.is_empty() {
         return Some(value);
     }
-    if let Some((head, tail)) = path.split_once('.') {
-        if let Some(nested) = value
+    if let Some((head, tail)) = path.split_once('.')
+        && let Some(nested) = value
             .get(head)
             .and_then(|nested| value_at_path(nested, tail))
-        {
-            return Some(nested);
-        }
+    {
+        return Some(nested);
     }
     value.get(path)
 }

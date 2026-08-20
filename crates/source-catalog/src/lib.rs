@@ -1623,10 +1623,18 @@ fn validate_id_field(
     expression: String,
 ) -> Result<String, CatalogError> {
     const MAX_CANDIDATES: usize = 8;
+    const MAX_COMPOSITE_PARTS: usize = 8;
+    const MAX_EXPRESSION_BYTES: usize = 2_048;
     const MAX_PATH_BYTES: usize = 128;
 
     let expression = nonempty(path, "family id_field", expression)?;
     let candidates = expression.split('|').collect::<Vec<_>>();
+    if expression.len() > MAX_EXPRESSION_BYTES {
+        return invalid(
+            path,
+            &format!("family {family_id} id_field exceeds the {MAX_EXPRESSION_BYTES}-byte limit"),
+        );
+    }
     if candidates.len() > MAX_CANDIDATES {
         return invalid(
             path,
@@ -1636,12 +1644,16 @@ fn validate_id_field(
     if candidates.iter().any(|candidate| {
         candidate.is_empty()
             || candidate.trim() != *candidate
-            || candidate.len() > MAX_PATH_BYTES
-            || candidate.split('.').any(|part| {
-                part.is_empty()
-                    || !part
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            || candidate.split('+').count() > MAX_COMPOSITE_PARTS
+            || candidate.split('+').any(|path| {
+                path.is_empty()
+                    || path.len() > MAX_PATH_BYTES
+                    || path.split('.').any(|part| {
+                        part.is_empty()
+                            || !part.bytes().all(|byte| {
+                                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
+                            })
+                    })
             })
     }) {
         return invalid(path, &format!("family {family_id} id_field is invalid"));
@@ -2196,7 +2208,7 @@ mod tests {
     }
 
     #[test]
-    fn id_field_candidates_are_bounded_and_path_only() {
+    fn id_field_candidates_and_composites_are_bounded_and_path_only() {
         let path = Path::new("id-field-fixture.yaml");
         assert_eq!(
             validate_id_field(
@@ -2208,12 +2220,35 @@ mod tests {
             "metadata.uid|metadata.name|name"
         );
         assert_eq!(
+            validate_id_field(path, "audit_events", "date+type+actingUserId".to_owned()).unwrap(),
+            "date+type+actingUserId"
+        );
+        assert_eq!(
             invalid_message(validate_id_field(
                 path,
                 "components",
                 "metadata.uid||name".to_owned()
             )),
             "family components id_field is invalid"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "audit_events",
+                "date++actingUserId".to_owned()
+            )),
+            "family audit_events id_field is invalid"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "audit_events",
+                (0..9)
+                    .map(|index| format!("part{index}"))
+                    .collect::<Vec<_>>()
+                    .join("+")
+            )),
+            "family audit_events id_field is invalid"
         );
         assert_eq!(
             invalid_message(validate_id_field(
