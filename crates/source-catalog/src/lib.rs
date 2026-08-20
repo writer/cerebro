@@ -341,9 +341,41 @@ pub struct CompiledSource {
     auth_header_parameters: BTreeMap<String, String>,
     auth_query_parameters: BTreeMap<String, String>,
     auth_json_body_parameters: BTreeMap<String, String>,
+    oauth_authorization_code: Option<CompiledOauthAuthorizationCode>,
     oauth_client_credentials: Option<CompiledOauthClientCredentials>,
     authority: CollectionAuthority,
     families: Vec<CompiledFamily>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledOauthAuthorizationCode {
+    token_url: String,
+    scopes: Vec<String>,
+    scope_separator: String,
+    token_request_auth_method: String,
+    token_params: BTreeMap<String, String>,
+}
+
+impl CompiledOauthAuthorizationCode {
+    pub fn token_url(&self) -> &str {
+        &self.token_url
+    }
+
+    pub fn scopes(&self) -> &[String] {
+        &self.scopes
+    }
+
+    pub fn scope_separator(&self) -> &str {
+        &self.scope_separator
+    }
+
+    pub fn token_request_auth_method(&self) -> &str {
+        &self.token_request_auth_method
+    }
+
+    pub fn token_params(&self) -> &BTreeMap<String, String> {
+        &self.token_params
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -412,6 +444,10 @@ impl CompiledSource {
 
     pub fn oauth_client_credentials(&self) -> Option<&CompiledOauthClientCredentials> {
         self.oauth_client_credentials.as_ref()
+    }
+
+    pub fn oauth_authorization_code(&self) -> Option<&CompiledOauthAuthorizationCode> {
+        self.oauth_authorization_code.as_ref()
     }
 
     pub fn authority(&self) -> CollectionAuthority {
@@ -748,6 +784,8 @@ struct AuthWire {
     #[serde(default)]
     token_url: String,
     #[serde(default)]
+    refresh_url: String,
+    #[serde(default)]
     scopes: Vec<String>,
     #[serde(default)]
     scope_separator: String,
@@ -908,6 +946,7 @@ fn compile_source(
         .iter()
         .map(|field| field.key.trim())
         .collect::<BTreeSet<_>>();
+    let oauth_authorization_code = compile_oauth_authorization_code(path, &entry.definition.auth)?;
     let oauth_client_credentials =
         compile_oauth_client_credentials(path, &entry.definition.auth, &credential_fields)?;
     let mut auth_header_parameters = BTreeMap::new();
@@ -1093,10 +1132,83 @@ fn compile_source(
         auth_header_parameters,
         auth_query_parameters,
         auth_json_body_parameters,
+        oauth_authorization_code,
         oauth_client_credentials,
         authority,
         families,
     })
+}
+
+fn compile_oauth_authorization_code(
+    path: &Path,
+    auth: &AuthWire,
+) -> Result<Option<CompiledOauthAuthorizationCode>, CatalogError> {
+    if auth.model.trim() != "oauth_authorization_code" {
+        return Ok(None);
+    }
+    let token_url = if auth.refresh_url.trim().is_empty() {
+        auth.token_url.trim()
+    } else {
+        auth.refresh_url.trim()
+    };
+    if token_url.is_empty() || token_url.len() > 2_048 || token_url.chars().any(char::is_control) {
+        return invalid(path, "oauth_authorization_code token_url is invalid");
+    }
+    let token_request_auth_method = match auth.token_request_auth_method.trim() {
+        "" | "client_secret_post" => "client_secret_post",
+        "client_secret_basic" | "basic" => "client_secret_basic",
+        _ => {
+            return invalid(
+                path,
+                "oauth_authorization_code token request auth method is invalid",
+            );
+        }
+    };
+    let scope_separator = if auth.scope_separator.is_empty() {
+        " "
+    } else {
+        auth.scope_separator.as_str()
+    };
+    if scope_separator.len() > 16 || scope_separator.chars().any(char::is_control) {
+        return invalid(path, "oauth_authorization_code scope separator is invalid");
+    }
+    let scopes = auth
+        .scopes
+        .iter()
+        .map(|scope| scope.trim())
+        .filter(|scope| !scope.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if scopes.len() > 128
+        || scopes
+            .iter()
+            .any(|scope| scope.len() > 512 || scope.chars().any(char::is_control))
+    {
+        return invalid(path, "oauth_authorization_code scopes are invalid");
+    }
+    if auth.token_params.len() > 32
+        || auth.token_params.iter().any(|(key, value)| {
+            key.is_empty()
+                || key.len() > 128
+                || !key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+                || value.len() > 2_048
+                || value.chars().any(char::is_control)
+        })
+    {
+        return invalid(
+            path,
+            "oauth_authorization_code token parameters are invalid",
+        );
+    }
+    Ok(Some(CompiledOauthAuthorizationCode {
+        token_url: token_url.to_owned(),
+        scopes,
+        scope_separator: scope_separator.to_owned(),
+        token_request_auth_method: token_request_auth_method.to_owned(),
+        token_params: auth.token_params.clone(),
+    }))
 }
 
 fn compile_oauth_client_credentials(
@@ -2572,6 +2684,59 @@ mod tests {
             Some("https://${config.domain}/api/v2/")
         );
         assert!(oauth.scopes().contains(&"read:users".to_owned()));
+    }
+
+    #[test]
+    fn oauth_authorization_code_contract_is_compiled_for_every_catalog_source() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let actual = catalog
+            .sources()
+            .filter(|source| source.oauth_authorization_code().is_some())
+            .map(CompiledSource::id)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual,
+            vec![
+                "azure_devops",
+                "bitbucket_cloud",
+                "dracoon",
+                "drchrono",
+                "dropbox_business",
+                "google_drive",
+                "hubspot",
+                "miro",
+                "runscope",
+                "salesforce",
+                "servicenow",
+                "signl4",
+                "slack",
+                "square",
+            ]
+        );
+        let drchrono = catalog
+            .get("drchrono")
+            .unwrap()
+            .oauth_authorization_code()
+            .unwrap();
+        assert_eq!(drchrono.token_url(), "https://drchrono.com/o/token/");
+        assert_eq!(drchrono.token_request_auth_method(), "client_secret_basic");
+        assert!(drchrono.scopes().contains(&"patients:read".to_owned()));
+        assert_eq!(drchrono.scope_separator(), " ");
+        assert!(drchrono.token_params().is_empty());
+        assert_eq!(
+            catalog
+                .get("signl4")
+                .unwrap()
+                .oauth_authorization_code()
+                .unwrap()
+                .token_url(),
+            "https://connect.signl4.com/identity/connect/token"
+        );
     }
 
     #[test]

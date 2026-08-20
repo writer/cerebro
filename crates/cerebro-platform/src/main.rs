@@ -75,8 +75,8 @@ use cerebro_security_lifecycle::{
     project_observation, query_records_with_source,
 };
 use cerebro_source_catalog::{
-    AuthModel, CatalogSummary, CompiledOauthClientCredentials, CompiledSource, ProjectionClass,
-    SourceCatalog,
+    AuthModel, CatalogSummary, CompiledOauthAuthorizationCode, CompiledOauthClientCredentials,
+    CompiledSource, ProjectionClass, SourceCatalog,
 };
 use cerebro_source_runtime_next::{
     AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CollectionRequest,
@@ -1847,6 +1847,7 @@ struct CatalogAuthSettings {
     header_parameters: BTreeMap<String, String>,
     query_parameters: BTreeMap<String, String>,
     json_body_parameters: BTreeMap<String, String>,
+    oauth_authorization_code: Option<CompiledOauthAuthorizationCode>,
     oauth_client_credentials: Option<CompiledOauthClientCredentials>,
 }
 
@@ -1858,6 +1859,7 @@ impl CatalogAuthSettings {
             header_parameters: source.auth_header_parameters().clone(),
             query_parameters: source.auth_query_parameters().clone(),
             json_body_parameters: source.auth_json_body_parameters().clone(),
+            oauth_authorization_code: source.oauth_authorization_code().cloned(),
             oauth_client_credentials: source.oauth_client_credentials().cloned(),
         }
     }
@@ -1874,6 +1876,7 @@ fn resolved_auth(
         header_parameters,
         query_parameters,
         json_body_parameters,
+        oauth_authorization_code,
         oauth_client_credentials,
     } = settings;
     Ok(match model {
@@ -1938,6 +1941,46 @@ fn resolved_auth(
                 scope_separator: oauth.scope_separator().to_owned(),
                 token_request_auth_method: oauth.token_request_auth_method().to_owned(),
                 token_params,
+            }
+        }
+        AuthModel::OauthAuthorizationCode => {
+            if let Some(token) = take_first_config(
+                config,
+                &["token", "access_token", "api_token", "bearer_token"],
+            ) {
+                for key in [
+                    "token",
+                    "access_token",
+                    "api_token",
+                    "bearer_token",
+                    "client_id",
+                    "client_secret",
+                    "refresh_token",
+                    "oauth_client_reference",
+                ] {
+                    discard_config_secret(config, key);
+                }
+                ResolvedAuth::Bearer { token }
+            } else {
+                let oauth = oauth_authorization_code
+                    .as_ref()
+                    .ok_or("source catalog OAuth authorization-code settings are missing")?;
+                let token_url = resolve_oauth_token_url(oauth.token_url(), config)?;
+                let mut token_params = BTreeMap::new();
+                for (key, value) in oauth.token_params() {
+                    token_params.insert(key.clone(), render_source_config_template(value, config)?);
+                }
+                discard_config_secret(config, "oauth_client_reference");
+                ResolvedAuth::OauthAuthorizationCode {
+                    client_id: take_required_config(config, "client_id")?,
+                    client_secret: take_required_config(config, "client_secret")?,
+                    refresh_token: take_required_config(config, "refresh_token")?,
+                    token_url,
+                    scopes: oauth.scopes().to_vec(),
+                    scope_separator: oauth.scope_separator().to_owned(),
+                    token_request_auth_method: oauth.token_request_auth_method().to_owned(),
+                    token_params,
+                }
             }
         }
         AuthModel::DuoHmac | AuthModel::Signature => {
@@ -2066,6 +2109,21 @@ fn take_first_required_config(
             .join(", ")
     )
     .into())
+}
+
+fn take_first_config(config: &mut BTreeMap<String, String>, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = remove_nonempty(config, key) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn discard_config_secret(config: &mut BTreeMap<String, String>, key: &str) {
+    if let Some(mut value) = config.remove(key) {
+        value.zeroize();
+    }
 }
 
 fn remove_nonempty(config: &mut BTreeMap<String, String>, key: &str) -> Option<String> {
@@ -4525,6 +4583,64 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn oauth_authorization_code_resolution_refreshes_or_uses_a_resolved_bearer() {
+        let catalog = load_catalog().unwrap();
+        let source = catalog.get("hubspot").unwrap();
+        let mut refresh = BTreeMap::from([
+            ("client_id".to_owned(), "client-example".to_owned()),
+            ("client_secret".to_owned(), "credential-example".to_owned()),
+            ("refresh_token".to_owned(), "refresh-example".to_owned()),
+            ("base_url".to_owned(), "https://api.hubapi.com".to_owned()),
+            ("family".to_owned(), "users".to_owned()),
+        ]);
+        let auth = resolved_auth(
+            source.auth(),
+            CatalogAuthSettings::from_source(source),
+            &mut refresh,
+        )
+        .unwrap();
+        assert!(matches!(
+            auth,
+            ResolvedAuth::OauthAuthorizationCode {
+                ref client_id,
+                ref client_secret,
+                ref refresh_token,
+                ref token_url,
+                ..
+            } if client_id == "client-example"
+                && client_secret == "credential-example"
+                && refresh_token == "refresh-example"
+                && token_url == "https://api.hubapi.com/oauth/token"
+        ));
+        for secret_key in ["client_id", "client_secret", "refresh_token"] {
+            assert!(!refresh.contains_key(secret_key));
+        }
+        assert_eq!(refresh.get("family").map(String::as_str), Some("users"));
+
+        let referenced = catalog.get("drchrono").unwrap();
+        let mut bearer = BTreeMap::from([
+            ("access_token".to_owned(), "access-example".to_owned()),
+            (
+                "oauth_client_reference".to_owned(),
+                "managed-client-example".to_owned(),
+            ),
+            ("base_url".to_owned(), "https://drchrono.com".to_owned()),
+            ("family".to_owned(), "patients".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                referenced.auth(),
+                CatalogAuthSettings::from_source(referenced),
+                &mut bearer,
+            )
+            .unwrap(),
+            ResolvedAuth::Bearer { ref token } if token == "access-example"
+        ));
+        assert!(!bearer.contains_key("access_token"));
+        assert!(!bearer.contains_key("oauth_client_reference"));
     }
 
     #[test]
