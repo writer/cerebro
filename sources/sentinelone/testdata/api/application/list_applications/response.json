@@ -1,0 +1,11 @@
+{
+  "data": [
+    {
+      "installedDate": "2026-04-20T00:00:00Z",
+      "name": "Example App",
+      "publisher": "Example Inc",
+      "size": 12345,
+      "version": "1.0.0"
+    }
+  ]
+}
