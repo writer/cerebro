@@ -18,6 +18,7 @@ const (
 	defaultBaseURL = ""
 
 	familyComponent = "component"
+	familySystem    = "system"
 )
 
 // Source reads Backstage catalog entities.
@@ -68,6 +69,30 @@ func New() (*Source, error) {
 				},
 				StaticAttributes: map[string]string{"source_product": "backstage"},
 				Config:           jsonapi.FamilyConfig{StaticQuery: map[string]string{"filter": "kind=component"}},
+				PageSizeParams:   []string{"limit"},
+			},
+			{
+				Name:      familySystem,
+				Path:      "/api/catalog/entities/by-query",
+				URNKind:   "backstage_system",
+				RequireID: true,
+				IDKeys:    []string{"metadata.uid", "metadata.name", "name"},
+				TimestampKeys: []string{
+					"updated_at", "created_at",
+				},
+				Attributes: map[string]string{
+					"uid":         "metadata.uid",
+					"name":        "metadata.name|name",
+					"namespace":   "metadata.namespace",
+					"kind":        "kind",
+					"type":        "spec.type|type",
+					"owner":       "spec.owner|owner",
+					"domain":      "spec.domain|domain",
+					"description": "metadata.description|description",
+					"source_url":  "source_url",
+				},
+				StaticAttributes: map[string]string{"source_product": "backstage"},
+				Config:           jsonapi.FamilyConfig{StaticQuery: map[string]string{"filter": "kind=system"}},
 				PageSizeParams:   []string{"limit"},
 			},
 		},

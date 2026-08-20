@@ -1,0 +1,39 @@
+[
+  {
+    "attributes": {
+      "domain": "security",
+      "external_id": "system-1",
+      "family": "system",
+      "kind": "System",
+      "name": "security-platform",
+      "namespace": "default",
+      "owner": "group:platform/security",
+      "provider": "backstage",
+      "resource_id": "system-1",
+      "resource_name": "security-platform",
+      "resource_type": "product",
+      "source_product": "backstage",
+      "source_provider": "backstage",
+      "uid": "system-1"
+    },
+    "id": "backstage-system-event-1",
+    "kind": "backstage.system",
+    "occurred_at": "2026-08-20T00:00:00Z",
+    "payload": {
+      "kind": "System",
+      "metadata": {
+        "name": "security-platform",
+        "namespace": "default",
+        "uid": "system-1"
+      },
+      "spec": {
+        "domain": "security",
+        "owner": "group:platform/security",
+        "type": "product"
+      }
+    },
+    "schema_ref": "backstage/system/v1",
+    "source_id": "backstage",
+    "tenant_id": "tenant"
+  }
+]

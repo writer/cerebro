@@ -1515,16 +1515,18 @@ fn compile_family(
     }
     unsupported_reasons.sort();
     unsupported_reasons.dedup();
+    let family_id = nonempty(path, "family id", family.id)?;
+    let id_field = validate_id_field(path, &family_id, family.id_field)?;
     Ok(CompiledFamily {
         authoritative,
         projection_authoritative,
-        id: nonempty(path, "family id", family.id)?,
+        id: family_id,
         method,
         path: family.path,
         record_selector,
         scalar_record_field,
         id_template,
-        id_field: nonempty(path, "family id_field", family.id_field)?,
+        id_field,
         name_field: optional(family.name_field),
         static_query: family.static_query,
         config_query,
@@ -1613,6 +1615,50 @@ fn valid_id_template(template: &str) -> bool {
         rest = &rest[field_end + 1..];
     }
     placeholders > 0 && !rest.contains('{') && !rest.contains('}')
+}
+
+fn validate_id_field(
+    path: &Path,
+    family_id: &str,
+    expression: String,
+) -> Result<String, CatalogError> {
+    const MAX_CANDIDATES: usize = 8;
+    const MAX_COMPOSITE_PARTS: usize = 8;
+    const MAX_EXPRESSION_BYTES: usize = 2_048;
+    const MAX_PATH_BYTES: usize = 128;
+
+    let expression = nonempty(path, "family id_field", expression)?;
+    let candidates = expression.split('|').collect::<Vec<_>>();
+    if expression.len() > MAX_EXPRESSION_BYTES {
+        return invalid(
+            path,
+            &format!("family {family_id} id_field exceeds the {MAX_EXPRESSION_BYTES}-byte limit"),
+        );
+    }
+    if candidates.len() > MAX_CANDIDATES {
+        return invalid(
+            path,
+            &format!("family {family_id} id_field exceeds the {MAX_CANDIDATES}-candidate limit"),
+        );
+    }
+    if candidates.iter().any(|candidate| {
+        candidate.is_empty()
+            || candidate.trim() != *candidate
+            || candidate.split('+').count() > MAX_COMPOSITE_PARTS
+            || candidate.split('+').any(|path| {
+                path.is_empty()
+                    || path.len() > MAX_PATH_BYTES
+                    || path.split('.').any(|part| {
+                        part.is_empty()
+                            || !part.bytes().all(|byte| {
+                                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
+                            })
+                    })
+            })
+    }) {
+        return invalid(path, &format!("family {family_id} id_field is invalid"));
+    }
+    Ok(expression)
 }
 
 fn compile_pagination(
@@ -1971,7 +2017,7 @@ mod tests {
         )
     }
 
-    fn invalid_message(result: Result<CompiledSource, CatalogError>) -> String {
+    fn invalid_message<T: fmt::Debug>(result: Result<T, CatalogError>) -> String {
         match result.unwrap_err() {
             CatalogError::Invalid { message, .. } => message,
             error => panic!("unexpected error: {error}"),
@@ -2162,6 +2208,99 @@ mod tests {
     }
 
     #[test]
+    fn id_field_candidates_and_composites_are_bounded_and_path_only() {
+        let path = Path::new("id-field-fixture.yaml");
+        assert_eq!(
+            validate_id_field(
+                path,
+                "components",
+                "metadata.uid|metadata.name|name".to_owned()
+            )
+            .unwrap(),
+            "metadata.uid|metadata.name|name"
+        );
+        assert_eq!(
+            validate_id_field(path, "audit_events", "date+type+actingUserId".to_owned()).unwrap(),
+            "date+type+actingUserId"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "components",
+                "metadata.uid||name".to_owned()
+            )),
+            "family components id_field is invalid"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "audit_events",
+                "date++actingUserId".to_owned()
+            )),
+            "family audit_events id_field is invalid"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "audit_events",
+                (0..9)
+                    .map(|index| format!("part{index}"))
+                    .collect::<Vec<_>>()
+                    .join("+")
+            )),
+            "family audit_events id_field is invalid"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "components",
+                (0..9)
+                    .map(|index| format!("candidate{index}"))
+                    .collect::<Vec<_>>()
+                    .join("|")
+            )),
+            "family components id_field exceeds the 8-candidate limit"
+        );
+    }
+
+    #[test]
+    fn backstage_is_compiled_as_a_verified_authoritative_source() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let backstage = catalog.get("backstage").unwrap();
+        assert_eq!(backstage.authority(), CollectionAuthority::Authoritative);
+        let component = backstage
+            .families()
+            .iter()
+            .find(|family| family.id() == "component")
+            .unwrap();
+        assert!(component.is_authoritative());
+        assert_eq!(component.id_field(), "metadata.uid|metadata.name|name");
+        assert_eq!(component.record_selector(), "$.items[*]");
+        assert_eq!(
+            component.pagination(),
+            &Pagination::Cursor {
+                parameter: "cursor".to_owned(),
+                response_path: "$.pageInfo.nextCursor".to_owned(),
+                page_size_parameter: Some("limit".to_owned()),
+                page_size: 100,
+            }
+        );
+        let system = backstage
+            .families()
+            .iter()
+            .find(|family| family.id() == "system")
+            .unwrap();
+        assert!(system.is_authoritative());
+        assert_eq!(system.static_query().get("filter").unwrap(), "kind=system");
+        assert_eq!(system.record_selector(), "$.items[*]");
+    }
+
+    #[test]
     fn compiles_the_complete_checked_in_catalog() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -2170,8 +2309,8 @@ mod tests {
         )
         .unwrap();
         let summary = catalog.summary();
-        assert_eq!(summary.sources, 794);
-        assert_eq!(summary.families, 3_894);
+        assert_eq!(summary.sources, 795);
+        assert_eq!(summary.families, 3_896);
         assert_eq!(
             summary.projection_classes.values().sum::<usize>(),
             summary.families
@@ -2961,8 +3100,8 @@ mod tests {
         )
         .unwrap();
         let report = catalog.unsupported_feature_report();
-        assert_eq!(report.total_sources, 794);
-        assert_eq!(report.total_families, 3_894);
+        assert_eq!(report.total_sources, 795);
+        assert_eq!(report.total_families, 3_896);
         assert_eq!(report.families.len(), report.total_families);
         assert!(report.missing_family_reports.is_empty());
         assert_eq!(
@@ -3011,7 +3150,7 @@ mod tests {
         )
         .unwrap();
         let report = catalog.authority_readiness_report();
-        assert_eq!(report.total_families, 3_894);
+        assert_eq!(report.total_families, 3_896);
         assert_eq!(report.rust_authoritative_families, 0);
         assert_eq!(report.shadow_or_go_families, report.total_families);
         let aws_bedrock = report

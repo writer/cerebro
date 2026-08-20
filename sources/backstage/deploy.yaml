@@ -9,3 +9,9 @@ runtimes:
       family: component
       per_page: "100"
       token: env:BACKSTAGE_EXTERNAL_ACCESS_TOKEN
+  - localId: system
+    config:
+      base_url: env:BACKSTAGE_BASE_URL
+      family: system
+      per_page: "100"
+      token: env:BACKSTAGE_EXTERNAL_ACCESS_TOKEN

@@ -15,7 +15,7 @@ Four facts shape the plan. Each is verified against the code as of
    projection templates (`ProjectionClass::for_template` in
    `crates/source-catalog/src/lib.rs`), and `CatalogGraphMapper`
    (`crates/source-runtime-next/src/mapper.rs:603`) maps every one of them.
-   All ~3,891 cataloged families flow into the organizational graph. There
+   All ~3,896 cataloged families flow into the organizational graph. There
    is no unmapped-template gap.
 
 2. **The organizational edge vocabulary is three relations wide.** The

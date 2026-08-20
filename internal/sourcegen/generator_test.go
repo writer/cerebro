@@ -512,6 +512,16 @@ func TestFixturePayloadValueUsesRecordIDForFamilyIDField(t *testing.T) {
 	}
 }
 
+func TestIDKeysForResourcePreservesOrderedIdentityFallback(t *testing.T) {
+	resource := connectordefinitions.ResourceFamily{
+		IDField:   "metadata.uid|metadata.name|name",
+		NameField: "metadata.name",
+	}
+	if got, want := idKeysForResource(resource), []string{"metadata.uid", "metadata.name", "name"}; !slices.Equal(got, want) {
+		t.Fatalf("idKeysForResource() = %#v, want %#v", got, want)
+	}
+}
+
 func TestPlanDefinitionBuildsPromotionChecklist(t *testing.T) {
 	plan, err := PlanDefinition(DefinitionRequest{
 		Definition: connectordefinitions.Definition{
