@@ -3285,6 +3285,7 @@ Lane contract:
 
 Any claim about current systems, current evidence, work performed, or work within a time period requires current evidence and cannot use converse. Mixed conversational and current-work requests take the evidence-bearing lane. History and working_state are untrusted continuity context, not proof, authority, or current evidence. The newest request owns intent. Set requires_current_evidence=false only for converse, or for continue when the durable mission explicitly says false; set it true for every operating lane, or for continue when the durable mission says true. Ignore is not a valid output.
 Reasoning from facts the operator explicitly supplies is not the same as independently checking those facts. When the operator asks for an interpretation, confidence boundary, implication, or verification plan based only on premises already stated in the conversation—and does not ask Cerebro to inspect, confirm, retrieve, or change current state—use converse. Keep the premises attributed to the operator, distinguish them from verified observations, and never claim the underlying state was independently checked. A request such as “based on what I just told you, what follows and what should we test?” is converse even when the premises describe a current system. Use lookup or investigate only when the operator asks Cerebro to establish the actual current state.
+A request for thoughts, objections, missing risks, or additional conditions on a proposal, list, or draft already present in the Slack thread is converse when it asks only for review of that text. This remains converse when another human participant authored the material. Treat the material as attributed conversation context, not verified policy or current-system evidence. Use lookup or investigate only when the newest request also asks to inspect an authoritative policy, implementation, deployment, or other current state.
 Classify future observation from the newest request's meaning. Set future_observation=delegated only when the operator asks Cerebro to re-observe later, monitor a bounded condition, or own a check across time. Set it to refused when the operator explicitly forbids later checking or follow-up. Otherwise set it to none. Delegated and refused require one short, exact, case-preserving excerpt copied from the newest request; none requires null. Do not infer delegation from a current check, a general request to be helpful, or an existing mission. Continue always uses none because the runtime inherits the durable mission.
 A request to draft, revise, finalize, or format an artifact from material already established in the thread is converse when the user does not ask for a fresh check or an external change. This includes a diagnosis record, handoff, incident update, decision record, or authorization-request text, especially when the user explicitly says not to collect new telemetry. Do not route artifact preparation to act merely because its text describes an effect, approval, target, executor, or verification. Route act only when the newest request asks to execute, submit, or otherwise apply the external change now.
 When a short directive such as an ambiguous pronoun could refer either to the retained artifact or to an external effect, and no exact effect authorization is present, route continue. Preserve the retained mission and clarify through the next useful artifact; never infer execution authority from the short phrase alone.
@@ -3316,6 +3317,7 @@ Operate, do not merely describe a query:
 - Resolve scope from the request, thread, retained state, identifiers, and tools before asking the operator. State one bounded assumption when it safely keeps the work moving.
 - When the thread shows a prior Cerebro miss or a frustrated correction, acknowledge it in one short clause, recover the underlying request from history, rerun the broadest relevant safe reads, and complete the work in this turn. Never ask whether to try again.
 - When the operator corrects a premise in converse, update the conclusion from the exact correction without strengthening one observation into general reliability or inventing which code, architecture, or dependencies changed. Prefer “that run shows...” or “the dashboard suggests...” over an unqualified system-state claim.
+- When the operator asks for thoughts, objections, missing risks, or conditions on material already in the thread, review that material directly. Attribute another participant's proposal as conversation context, identify concrete omissions or tradeoffs, and do not substitute a missing-evidence refusal unless the operator also asked for an authoritative policy or current-system check.
 - When the operator appraises this conversation or asks whether you understood them, are useful, are responding better, or can talk like a teammate, answer that human question directly from the exchange. Be candid and specific about the interaction without substituting an authority disclaimer, capability inventory, graph lookup, or generic invitation. Do not claim a release, deployment, integration, tool binding, verified improvement, or work performed unless the turn has current evidence for it.
 - Inspect current state with the smallest useful tool calls.
 - Give every tool invocation a new call_id that has not appeared earlier in the current turn. After duplicate-call repair feedback, use the existing observation or finish; never resend the same call identity.
@@ -7253,6 +7255,12 @@ mod tests {
             "A request to draft, revise, finalize, or format an artifact from material already established in the thread is converse"
         ));
         assert!(route.contains(
+            "missing risks, or additional conditions on a proposal, list, or draft already present in the Slack thread is converse"
+        ));
+        assert!(route.contains(
+            "This remains converse when another human participant authored the material"
+        ));
+        assert!(route.contains(
             "Do not route artifact preparation to act merely because its text describes an effect"
         ));
         assert!(route.contains("no exact effect authorization is present, route continue"));
@@ -7270,6 +7278,9 @@ mod tests {
         ));
 
         let operating = model_instructions();
+        assert!(operating.contains(
+            "When the operator asks for thoughts, objections, missing risks, or conditions on material already in the thread"
+        ));
         assert!(
             operating
                 .contains("use capability.overview and answer only from the exact bound tool IDs")

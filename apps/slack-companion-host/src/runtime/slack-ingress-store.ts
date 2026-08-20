@@ -775,10 +775,14 @@ function slackIngressEvent(body: unknown): SlackIngressEvent | undefined {
   const botUserId = authorization && typeof authorization.user_id === "string"
     ? authorization.user_id
     : undefined;
+  const acceptsUnmentionedReply = event.type !== "message"
+    || event.channel_type === "im"
+    || (botUserId !== undefined && event.parent_user_id === botUserId);
   if (
     event.type === "message"
     && (
-      event.subtype !== undefined
+      !acceptsUnmentionedReply
+      || event.subtype !== undefined
       || event.bot_id !== undefined
       || event.app_id !== undefined
       || event.user === botUserId
