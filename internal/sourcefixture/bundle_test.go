@@ -142,16 +142,16 @@ func TestValidateManifestRequiresExplicitLangfuseHostSanitization(t *testing.T) 
 	}
 	manifest := testManifest(payload, "https://langfuse.example.com/api/public/projects")
 	manifest.SourceID = "langfuse"
-	if err := ValidateManifest(manifest, payload); err == nil || !strings.Contains(err.Error(), "$request.url") {
-		t.Fatalf("ValidateManifest(unmarked example host) error = %v, want sanitized URL marker requirement", err)
+	if err := ValidateManifest(manifest, payload); !errors.Is(err, ErrSanitizedURL) {
+		t.Fatalf("ValidateManifest(unmarked example host) error = %v, want errors.Is(_, ErrSanitizedURL)", err)
 	}
 	manifest.Sanitization.ChangedFields = []string{"$request.url"}
 	if err := ValidateManifest(manifest, payload); err != nil {
 		t.Fatalf("ValidateManifest(marked example host) error = %v", err)
 	}
 	manifest.Request.URL = "https://private.langfuse.writer.com/api/public/projects"
-	if err := ValidateManifest(manifest, payload); err == nil || !strings.Contains(err.Error(), "environment-specific Writer host") {
-		t.Fatalf("ValidateManifest(environment host) error = %v, want publication rejection", err)
+	if err := ValidateManifest(manifest, payload); !errors.Is(err, ErrSanitizedURL) {
+		t.Fatalf("ValidateManifest(environment host) error = %v, want errors.Is(_, ErrSanitizedURL)", err)
 	}
 }
 
@@ -209,8 +209,8 @@ func TestValidateManifestRejectsGETFragment(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := testManifest(payload, "https://api.example.test/v1/items#fragment")
-	if err := ValidateManifest(manifest, payload); err == nil || !strings.Contains(err.Error(), "fragment") {
-		t.Fatalf("ValidateManifest() error = %v, want raw fragment rejection", err)
+	if err := ValidateManifest(manifest, payload); !errors.Is(err, ErrURLFragment) {
+		t.Fatalf("ValidateManifest() error = %v, want errors.Is(_, ErrURLFragment)", err)
 	}
 }
 
@@ -228,8 +228,8 @@ func TestValidateManifestRejectsMalformedQuery(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			manifest := testManifest(payload, "https://api.example.test/v1/items?"+test.rawQuery)
-			if err := ValidateManifest(manifest, payload); err == nil || !strings.Contains(err.Error(), "query is invalid") {
-				t.Fatalf("ValidateManifest() error = %v, want malformed query rejection", err)
+			if err := ValidateManifest(manifest, payload); !errors.Is(err, ErrMalformedQuery) {
+				t.Fatalf("ValidateManifest() error = %v, want errors.Is(_, ErrMalformedQuery)", err)
 			}
 		})
 	}
@@ -278,8 +278,8 @@ func TestValidateReplayContractBindsIdentityAndSanitizedRequest(t *testing.T) {
 		})
 	}
 	bundle.Manifest.Request.URL += "#fragment"
-	if err := ValidateReplayContract(bundle, expected); err == nil || !strings.Contains(err.Error(), "fragment") {
-		t.Fatalf("ValidateReplayContract(fragment) error = %v, want raw fragment rejection", err)
+	if err := ValidateReplayContract(bundle, expected); !errors.Is(err, ErrURLFragment) {
+		t.Fatalf("ValidateReplayContract(fragment) error = %v, want errors.Is(_, ErrURLFragment)", err)
 	}
 }
 
@@ -303,8 +303,8 @@ func TestValidateReplayContractRejectsMalformedActualAndExpectedQuery(t *testing
 	} {
 		t.Run("actual_"+test.name, func(t *testing.T) {
 			bundle.Manifest.Request.URL = "https://api.example.test/v1/items?" + test.rawQuery
-			if err := ValidateReplayContract(bundle, expected); err == nil || !strings.Contains(err.Error(), "provenance query is invalid") {
-				t.Fatalf("ValidateReplayContract(actual malformed query) error = %v", err)
+			if err := ValidateReplayContract(bundle, expected); !errors.Is(err, ErrReplayQuery) {
+				t.Fatalf("ValidateReplayContract(actual malformed query) error = %v, want errors.Is(_, ErrReplayQuery)", err)
 			}
 		})
 	}
@@ -318,8 +318,8 @@ func TestValidateReplayContractRejectsMalformedActualAndExpectedQuery(t *testing
 	} {
 		t.Run("expected_"+test.name, func(t *testing.T) {
 			expected.RawQuery = test.rawQuery
-			if err := ValidateReplayContract(bundle, expected); err == nil || !strings.Contains(err.Error(), "expected replay query is invalid") {
-				t.Fatalf("ValidateReplayContract(expected malformed query) error = %v", err)
+			if err := ValidateReplayContract(bundle, expected); !errors.Is(err, ErrReplayQuery) {
+				t.Fatalf("ValidateReplayContract(expected malformed query) error = %v, want errors.Is(_, ErrReplayQuery)", err)
 			}
 		})
 	}
@@ -354,8 +354,8 @@ func TestVerifyReplayTestRequiresBoundProvenanceForAIGovernanceBatch(t *testing.
 			if err := os.WriteFile(testPath, []byte(test.source), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := verifyReplayTest(root, bundle); err == nil || !strings.Contains(err.Error(), "RequireReplayContract") {
-				t.Fatalf("verifyReplayTest() error = %v, want fail-closed checked literal contract rejection", err)
+			if err := verifyReplayTest(root, bundle); !errors.Is(err, ErrReplayBinding) {
+				t.Fatalf("verifyReplayTest() error = %v, want errors.Is(_, ErrReplayBinding)", err)
 			}
 		})
 	}

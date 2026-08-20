@@ -35,8 +35,13 @@ const (
 var (
 	ErrCredentialField = errors.New("provider response contains credential field")
 	ErrCredentialQuery = errors.New("request URL contains credential query parameter")
+	ErrMalformedQuery  = errors.New("request query is malformed")
 	ErrPersonalEmail   = errors.New("provider response contains non-example email")
 	ErrProviderID      = errors.New("provider response contains unsanitized provider identifier")
+	ErrReplayBinding   = errors.New("replay test does not bind the fixture contract")
+	ErrReplayQuery     = errors.New("replay query is malformed")
+	ErrSanitizedURL    = errors.New("request URL sanitization contract is invalid")
+	ErrURLFragment     = errors.New("request URL contains a fragment")
 
 	emailPattern             = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
 	credentialFieldKey       = regexp.MustCompile(`(?i)^(?:authorization|credentials?|tokens?|secrets?|passwords?|access[_-]?tokens?|refresh[_-]?tokens?|api[_-]?keys?|client[_-]?secrets?|private[_-]?keys?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
@@ -221,14 +226,14 @@ func ValidateReplayContract(bundle Bundle, expected ReplayContract) error {
 	}
 	rawRequestURL := strings.TrimSpace(actual.Request.URL)
 	if strings.Contains(rawRequestURL, "#") {
-		return errors.New("replay provenance request URL must not contain a fragment")
+		return fmt.Errorf("%w: replay provenance request URL must not contain a fragment", ErrURLFragment)
 	}
 	requestURL, err := url.ParseRequestURI(rawRequestURL)
 	if err != nil || requestURL.Scheme != "https" || requestURL.User != nil {
 		return errors.New("replay provenance request URL must be sanitized HTTPS")
 	}
 	if requestURL.Fragment != "" {
-		return errors.New("replay provenance request URL must not contain a fragment")
+		return fmt.Errorf("%w: replay provenance request URL must not contain a fragment", ErrURLFragment)
 	}
 	if requestURL.Port() != "" || !strings.EqualFold(requestURL.Hostname(), strings.TrimSpace(expected.Host)) {
 		return fmt.Errorf("replay provenance host = %q, want %q", requestURL.Host, expected.Host)
@@ -238,11 +243,11 @@ func ValidateReplayContract(bundle Bundle, expected ReplayContract) error {
 	}
 	actualQuery, err := canonicalRawQuery(requestURL.RawQuery)
 	if err != nil {
-		return fmt.Errorf("replay provenance query is invalid: %w", err)
+		return fmt.Errorf("%w: replay provenance query is invalid: %v", ErrReplayQuery, err)
 	}
 	expectedQuery, err := canonicalRawQuery(strings.TrimSpace(expected.RawQuery))
 	if err != nil {
-		return fmt.Errorf("expected replay query is invalid: %w", err)
+		return fmt.Errorf("%w: expected replay query is invalid: %v", ErrReplayQuery, err)
 	}
 	if actualQuery != expectedQuery {
 		return fmt.Errorf("replay provenance query = %q, want %q", actualQuery, expectedQuery)
@@ -367,21 +372,21 @@ func ValidateManifest(manifest Manifest, payload []byte) error {
 	}
 	rawRequestURL := strings.TrimSpace(manifest.Request.URL)
 	if strings.Contains(rawRequestURL, "#") {
-		return errors.New("request.url must not contain a fragment")
+		return fmt.Errorf("%w: request.url must not contain a fragment", ErrURLFragment)
 	}
 	requestURL, err := url.ParseRequestURI(rawRequestURL)
 	if err != nil || requestURL.Scheme != "https" || requestURL.Host == "" || requestURL.User != nil {
 		return errors.New("request.url must be an HTTPS URL without user information")
 	}
 	if requestURL.Fragment != "" {
-		return errors.New("request.url must not contain a fragment")
+		return fmt.Errorf("%w: request.url must not contain a fragment", ErrURLFragment)
 	}
 	requestQuery, err := url.ParseQuery(requestURL.RawQuery)
 	if err != nil {
-		return fmt.Errorf("request.url query is invalid: %w", err)
+		return fmt.Errorf("%w: request.url query is invalid: %v", ErrMalformedQuery, err)
 	}
 	if manifest.SourceID == "langfuse" && strings.HasSuffix(strings.ToLower(requestURL.Hostname()), ".writer.com") {
-		return errors.New("langfuse capture provenance must not publish an environment-specific Writer host")
+		return fmt.Errorf("%w: langfuse capture provenance must not publish an environment-specific Writer host", ErrSanitizedURL)
 	}
 	if manifest.SourceID == "langfuse" && strings.EqualFold(requestURL.Hostname(), "langfuse.example.com") {
 		markedSanitized := false
@@ -392,7 +397,7 @@ func ValidateManifest(manifest Manifest, payload []byte) error {
 			}
 		}
 		if !markedSanitized {
-			return errors.New("langfuse example-host provenance must mark $request.url as sanitized")
+			return fmt.Errorf("%w: langfuse example-host provenance must mark $request.url as sanitized", ErrSanitizedURL)
 		}
 	}
 	allowedReadOnlyQuery := manifest.SourceID == "langchain" &&
@@ -609,7 +614,7 @@ func verifyReplayTest(root string, bundle Bundle) error {
 		return fmt.Errorf("%s replay_test %s must load fixture case %q with sourcefixture.FindBundle", bundle.ManifestPath, bundle.Manifest.ReplayTest, bundle.Manifest.Case)
 	}
 	if requiresBoundReplay && !foundContract {
-		return fmt.Errorf("%s replay_test %s must directly bind fixture case %q with sourcefixture.RequireReplayContract and an exact literal contract", bundle.ManifestPath, bundle.Manifest.ReplayTest, bundle.Manifest.Case)
+		return fmt.Errorf("%w: %s replay_test %s must directly bind fixture case %q with sourcefixture.RequireReplayContract and an exact literal contract", ErrReplayBinding, bundle.ManifestPath, bundle.Manifest.ReplayTest, bundle.Manifest.Case)
 	}
 	if !requiresBoundReplay && (!strings.Contains(string(payload), "sourcefixture.FindBundle") || !strings.Contains(string(payload), `"`+bundle.Manifest.Case+`"`)) {
 		return fmt.Errorf("%s replay_test %s must load fixture case %q with sourcefixture.FindBundle", bundle.ManifestPath, bundle.Manifest.ReplayTest, bundle.Manifest.Case)

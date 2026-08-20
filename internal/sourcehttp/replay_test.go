@@ -1,9 +1,9 @@
 package sourcehttp
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -37,8 +37,8 @@ func TestValidateReplayRequestBindsMethodPathAndCanonicalQuery(t *testing.T) {
 	} {
 		t.Run("actual_"+test.name, func(t *testing.T) {
 			request.URL.RawQuery = test.rawQuery
-			if err := ValidateReplayRequest(request, http.MethodGet, "/v1/items", "kept=1"); err == nil || !strings.Contains(err.Error(), "replay HTTP query is invalid") {
-				t.Fatalf("ValidateReplayRequest(actual malformed query) error = %v", err)
+			if err := ValidateReplayRequest(request, http.MethodGet, "/v1/items", "kept=1"); !errors.Is(err, ErrMalformedReplayQuery) {
+				t.Fatalf("ValidateReplayRequest(actual malformed query) error = %v, want errors.Is(_, ErrMalformedReplayQuery)", err)
 			}
 		})
 	}
@@ -51,8 +51,8 @@ func TestValidateReplayRequestBindsMethodPathAndCanonicalQuery(t *testing.T) {
 		{name: "percent_escape", rawQuery: "kept=%zz"},
 	} {
 		t.Run("expected_"+test.name, func(t *testing.T) {
-			if err := ValidateReplayRequest(request, http.MethodGet, "/v1/items", test.rawQuery); err == nil || !strings.Contains(err.Error(), "expected replay HTTP query is invalid") {
-				t.Fatalf("ValidateReplayRequest(expected malformed query) error = %v", err)
+			if err := ValidateReplayRequest(request, http.MethodGet, "/v1/items", test.rawQuery); !errors.Is(err, ErrMalformedExpectedReplayQuery) {
+				t.Fatalf("ValidateReplayRequest(expected malformed query) error = %v, want errors.Is(_, ErrMalformedExpectedReplayQuery)", err)
 			}
 		})
 	}

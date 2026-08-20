@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+var (
+	ErrMalformedReplayQuery         = errors.New("replay HTTP query is malformed")
+	ErrMalformedExpectedReplayQuery = errors.New("expected replay HTTP query is malformed")
+)
+
 // ValidateReplayRequest binds a replay server handler to the exact method,
 // path, and canonical query issued by the production source transport.
 func ValidateReplayRequest(request *http.Request, method, requestPath, rawQuery string) error {
@@ -22,11 +27,11 @@ func ValidateReplayRequest(request *http.Request, method, requestPath, rawQuery 
 	}
 	actualQuery, err := canonicalReplayQuery(request.URL.RawQuery)
 	if err != nil {
-		return fmt.Errorf("replay HTTP query is invalid: %w", err)
+		return fmt.Errorf("%w: replay HTTP query is invalid: %v", ErrMalformedReplayQuery, err)
 	}
 	expectedQuery, err := canonicalReplayQuery(strings.TrimSpace(rawQuery))
 	if err != nil {
-		return fmt.Errorf("expected replay HTTP query is invalid: %w", err)
+		return fmt.Errorf("%w: expected replay HTTP query is invalid: %v", ErrMalformedExpectedReplayQuery, err)
 	}
 	if actualQuery != expectedQuery {
 		return fmt.Errorf("replay HTTP query = %q, want %q", actualQuery, expectedQuery)
