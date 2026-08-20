@@ -386,6 +386,8 @@ test("Slack ingress preserves mention-before-reply order across queue processes"
       ...slackEnvelopeFixture(),
       event: {
         channel: "C-ONE",
+        channel_type: "group",
+        parent_user_id: "U-BOT",
         text: "Keep going from the prior answer.",
         thread_ts: "1710000000.000001",
         ts: "1710000001.000002",
@@ -413,6 +415,77 @@ test("Slack ingress preserves mention-before-reply order across queue processes"
       assert.equal(reply.event.kind, "message");
       assert.equal(reply.event.threadTs, mention.event.threadTs);
       await first.complete(permit, reply);
+    });
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack ingress ignores ambient replies in human-owned channel threads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-addressing-"));
+  try {
+    const ingress = new FileSlackIngressQueue(root);
+    const envelope = slackEnvelopeFixture();
+    assert.equal(await ingress.admitEnvelope({
+      ...envelope,
+      event: {
+        channel: "C-ONE",
+        channel_type: "group",
+        parent_user_id: "U-HUMAN",
+        text: "This reply is for the people already in the thread.",
+        thread_ts: "1710000000.000001",
+        ts: "1710000001.000002",
+        type: "message",
+        user: "U-ONE",
+      },
+    }), false);
+    assert.equal(await withIngressExecution(
+      ingress,
+      "worker:ambient-channel-reply",
+      async (permit) => ingress.claimNext(permit),
+    ), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack ingress keeps unmentioned replies in direct messages and bot-owned threads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-addressed-"));
+  try {
+    const ingress = new FileSlackIngressQueue(root);
+    const envelope = slackEnvelopeFixture();
+    for (const event of [
+      {
+        channel: "D-ONE",
+        channel_type: "im",
+        parent_user_id: "U-ONE",
+        text: "Keep going in this direct conversation.",
+        thread_ts: "1710000000.000001",
+        ts: "1710000001.000002",
+        type: "message",
+        user: "U-ONE",
+      },
+      {
+        channel: "C-ONE",
+        channel_type: "group",
+        parent_user_id: "U-BOT",
+        text: "Keep going from the Cerebro message.",
+        thread_ts: "1710000000.000003",
+        ts: "1710000001.000004",
+        type: "message",
+        user: "U-ONE",
+      },
+    ]) {
+      assert.equal(await ingress.admitEnvelope({ ...envelope, event }), true);
+    }
+    await withIngressExecution(ingress, "worker:addressed-replies", async (permit) => {
+      const direct = await ingress.claimNext(permit);
+      assert.equal(direct?.event.channel, "D-ONE");
+      if (direct) await ingress.complete(permit, direct);
+      const botOwned = await ingress.claimNext(permit);
+      assert.equal(botOwned?.event.channel, "C-ONE");
+      if (botOwned) await ingress.complete(permit, botOwned);
+      assert.equal(await ingress.claimNext(permit), undefined);
     });
   } finally {
     await rm(root, { force: true, recursive: true });
