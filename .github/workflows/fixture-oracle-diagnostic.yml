@@ -1,0 +1,67 @@
+name: Fixture Oracle Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/fixture-oracle-diagnostic.yml"
+      - "internal/sourceruntime/fixture_parity.go"
+      - "sources/**/testdata/api/**"
+      - "tools/fixtureoracle/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fixture-oracle-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate owner artifact and report bounded difference
+        shell: bash
+        run: |
+          cp crates/source-runtime-next/testdata/go_fixture_oracle.json "$RUNNER_TEMP/checked-go-fixture-oracle.json"
+          make fixture-oracle-generate
+          CHECKED_ORACLE="$RUNNER_TEMP/checked-go-fixture-oracle.json" python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          checked_path = Path(os.environ["CHECKED_ORACLE"])
+          generated_path = Path("crates/source-runtime-next/testdata/go_fixture_oracle.json")
+          checked = checked_path.read_bytes()
+          generated = generated_path.read_bytes()
+          limit = min(len(checked), len(generated))
+          offset = next((index for index in range(limit) if checked[index] != generated[index]), limit)
+          line = checked[:offset].count(b"\n") + 1
+          old_cases = json.loads(checked)["cases"]
+          new_cases = json.loads(generated)["cases"]
+          key = lambda case: tuple(case[field] for field in ("source_id", "family_id", "case_id", "operation"))
+          old_capture = {key(case): case["payload_sha256"] for case in old_cases}
+          new_capture = {key(case): case["payload_sha256"] for case in new_cases}
+          print(f"checked_sha256={hashlib.sha256(checked).hexdigest()}")
+          print(f"generated_sha256={hashlib.sha256(generated).hexdigest()}")
+          print(f"checked_bytes={len(checked)} generated_bytes={len(generated)}")
+          print(f"first_difference_byte={offset} checked_line={line}")
+          print(f"provider_capture_hashes_unchanged={old_capture == new_capture} checked={len(old_capture)} generated={len(new_capture)}")
+          PY
+
+      - name: Upload owner-generated oracle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: owner-generated-go-fixture-oracle
+          path: crates/source-runtime-next/testdata/go_fixture_oracle.json
+          if-no-files-found: error
+          retention-days: 1

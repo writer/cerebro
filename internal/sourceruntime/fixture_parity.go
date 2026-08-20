@@ -220,7 +220,7 @@ func ExecuteGoFixtureOraclePage(input FixtureParityInput) (FixtureParityPage, er
 		page.ScannedCount = 1
 		page.AcceptedCount = 1
 		page.ProposedCheckpoint = digestFixtureValue(map[string]any{"discovered": page.AcceptedEvents})
-		return page, nil //nolint:nilerr // malformed records are quarantined parity outcomes, not executor failures.
+		return page, nil
 	case FixtureParityReadPage:
 	default:
 		return FixtureParityPage{}, fmt.Errorf("unsupported fixture parity operation %q", input.Operation)
@@ -235,7 +235,7 @@ func ExecuteGoFixtureOraclePage(input FixtureParityInput) (FixtureParityPage, er
 		page.RejectedCount = 1
 		page.ProposedCheckpoint = input.Checkpoint
 		page.ShortCircuitReasons = []string{"malformed_record"}
-		return page, nil
+		return page, nil //nolint:nilerr // malformed records are quarantined parity outcomes, not executor failures.
 	}
 	if len(records) == 0 {
 		page.ShortCircuitReasons = []string{"empty_page"}

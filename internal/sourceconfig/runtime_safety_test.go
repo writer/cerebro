@@ -36,6 +36,7 @@ func TestSourceRuntimeRejectsSecretLeakage(t *testing.T) {
 
 func TestRedactedRuntimeConfigPreservation(t *testing.T) {
 	redacted := strings.Repeat("*", 8)
+	// #nosec G101 -- this is a redacted credential-reference sentinel, not a credential.
 	prior := map[string]string{
 		"token":        "credential:credential-id:token",
 		"organization": "writer",
