@@ -1,6 +1,6 @@
 {
   "schema_version": "cerebro.source-fixture-parity.v2",
-  "corpus_revision": "E084007BD99F43D413587AEB4C28F1AD8D05D05270648B0C82EFA4996ED0EB1F",
+  "corpus_revision": "14682C4C785808497184A3B052ABCA748E61CFC2D36D913EDDFA253FBE6A187E",
   "cases": [
     {
       "source_id": "appwrite",
@@ -17163,6 +17163,97 @@
       },
       "go_page_digest_sha256": "C2B2C152FCAD1FCDDE538C395912D8681F75B8FE399E860B88777B775BD24B42",
       "oracle_digest_sha256": "8B1EFB7F7464B467CB0CD1A649E74BD8568319C5C33C7E5B7611BF8D44A328E1",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "sentinelone",
+      "family_id": "application",
+      "case_id": "list_applications",
+      "operation": "check",
+      "payload_sha256": "6e3cc6d669e892adc1da21c6189bb02596186e04de918b83e8cb26af2f780c3f",
+      "go_page": {
+        "source_id": "sentinelone",
+        "family_id": "application",
+        "case_id": "list_applications",
+        "operation": "check",
+        "accepted_events": [],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 0,
+        "accepted_count": 0,
+        "rejected_count": 0,
+        "short_circuit_reasons": [
+          "check_only"
+        ]
+      },
+      "go_page_digest_sha256": "A00FD0ADC43EDADD0A894D7263261B4B394CA6A40E58FAA05E645B54808E7B01",
+      "oracle_digest_sha256": "64C790BACF4F746821788B6FCEABEEA350C7E13D227F7D241DBC199E43768A89",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "sentinelone",
+      "family_id": "application",
+      "case_id": "list_applications",
+      "operation": "discover",
+      "payload_sha256": "6e3cc6d669e892adc1da21c6189bb02596186e04de918b83e8cb26af2f780c3f",
+      "go_page": {
+        "source_id": "sentinelone",
+        "family_id": "application",
+        "case_id": "list_applications",
+        "operation": "discover",
+        "accepted_events": [
+          {
+            "event_id": "E29DEB53A45F8A9DE1541DB853AC81AEFB8BF2510ACB13C15ACBF7A7443755DB",
+            "kind": "sentinelone.application",
+            "input_index": 0,
+            "payload_sha256": "3430D09AD722DEE057622A75EB359A35B198F766999190B1B53FCCED9309A88E"
+          }
+        ],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 1,
+        "accepted_count": 1,
+        "rejected_count": 0,
+        "proposed_checkpoint": "606C3B1B1ACBC06248DB6D74F13F9F1A3585BF175608E4B33F58865821310E96"
+      },
+      "go_page_digest_sha256": "47FC02C3440291200C113A7955DBEF3EB342F295AF55040C3598C0BC744A423F",
+      "oracle_digest_sha256": "C13CF3994434F43B03581E7F4102192552C072F926355E5D08AF54705C82BB39",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "sentinelone",
+      "family_id": "application",
+      "case_id": "list_applications",
+      "operation": "read-page",
+      "payload_sha256": "6e3cc6d669e892adc1da21c6189bb02596186e04de918b83e8cb26af2f780c3f",
+      "go_page": {
+        "source_id": "sentinelone",
+        "family_id": "application",
+        "case_id": "list_applications",
+        "operation": "read-page",
+        "accepted_events": [
+          {
+            "event_id": "C72B338F4B1728440E548DCAFDAD25C888CA55E1F84D2529E5F55A8B8348601C",
+            "kind": "sentinelone.application",
+            "input_index": 0,
+            "payload_sha256": "4BC0164B9F0161752AFDC888928FC1DAEF375366D3446CF3C80B32EDCE81F1E5"
+          }
+        ],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 1,
+        "accepted_count": 1,
+        "rejected_count": 0,
+        "proposed_checkpoint": "1990AD68EEBB8F1A03A16752871713CF8BB3A2EFEFB0A955355CB53A871614C5",
+        "short_circuit_reasons": [
+          "final_page"
+        ]
+      },
+      "go_page_digest_sha256": "83B8B717AB0670396A1660DFCB4D4BC4782F036FB1B3687CC21F6F90253DEA2F",
+      "oracle_digest_sha256": "49FE763A5FD2A5FCEE8334E79005118251936D119881FCDEBE50ED5E99BF6334",
       "offline_proof": "fixture_only_no_provider_network",
       "provider_network_egress": false
     },

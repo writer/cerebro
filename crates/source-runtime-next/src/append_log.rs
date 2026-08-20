@@ -30,6 +30,13 @@ const OKTA_THREAT_INSIGHT_SCHEMA_REF: &str = "okta/threat_insight/v1";
 const LEGACY_OKTA_THREAT_INSIGHT_PREFIX: &str = "okta-threat-insight-";
 const CURRENT_OKTA_THREAT_INSIGHT_PREFIX: &str = "okta-threat-insight-sha256-";
 const COMPATIBILITY_OBSERVATION_ID_PREFIX: &str = "compat:v1:";
+const SENTINELONE_APPLICATION_KIND: &str = "sentinelone.application_inventory";
+const SENTINELONE_APPLICATION_SCHEMA_REF: &str = "sentinelone/application_inventory/v1";
+const SENTINELONE_APPLICATION_EVENT_ID_PREFIX: &str = "sentinelone-application-";
+const SENTINELONE_APPLICATION_COMPATIBILITY_DOMAIN: &str =
+    "cerebro.compat-observation-id.sentinelone-application/v1";
+const MAX_SENTINELONE_APPLICATION_EVENT_ID_BYTES: usize = 256;
+const MAX_SENTINELONE_APPLICATION_COMPONENT_BYTES: usize = 256;
 
 #[derive(Clone, PartialEq, Message)]
 struct CommittedSourceWire {
@@ -476,13 +483,26 @@ fn decode_observation_id(
     match ObservationId::parse(event_id) {
         Ok(observation_id) => Ok(observation_id),
         Err(error) => match compatible_legacy_invalid_identity(
-            event_id, source_id, event_kind, schema_ref, attributes, payload,
+            event_id, tenant_id, source_id, event_kind, schema_ref, attributes, payload,
         ) {
             Some(LegacyInvalidIdentity::PreservedEventId) => {
                 let mut hasher = Sha256::new();
                 hash_field(
                     &mut hasher,
                     b"cerebro.compat-observation-id.invalid-character/v1",
+                );
+                hash_field(&mut hasher, tenant_id.as_str().as_bytes());
+                hash_field(&mut hasher, source_id.as_bytes());
+                hash_field(&mut hasher, event_kind.as_bytes());
+                hash_field(&mut hasher, schema_ref.as_bytes());
+                hash_field(&mut hasher, event_id.as_bytes());
+                compatibility_observation_id(hasher)
+            }
+            Some(LegacyInvalidIdentity::SentinelOneApplication) => {
+                let mut hasher = Sha256::new();
+                hash_field(
+                    &mut hasher,
+                    SENTINELONE_APPLICATION_COMPATIBILITY_DOMAIN.as_bytes(),
                 );
                 hash_field(&mut hasher, tenant_id.as_str().as_bytes());
                 hash_field(&mut hasher, source_id.as_bytes());
@@ -553,11 +573,13 @@ fn is_bounded_provider_domain(value: &str) -> bool {
 
 enum LegacyInvalidIdentity<'a> {
     PreservedEventId,
+    SentinelOneApplication,
     AwsPublicEndpoint(&'a str),
 }
 
 fn compatible_legacy_invalid_identity<'a>(
     event_id: &str,
+    tenant_id: &TenantId,
     source_id: &str,
     event_kind: &str,
     schema_ref: &str,
@@ -566,6 +588,11 @@ fn compatible_legacy_invalid_identity<'a>(
 ) -> Option<LegacyInvalidIdentity<'a>> {
     if event_id.is_empty() {
         return None;
+    }
+    if sentinelone_application_legacy_identity_is_safe(
+        event_id, tenant_id, source_id, event_kind, schema_ref, attributes, payload,
+    ) {
+        return Some(LegacyInvalidIdentity::SentinelOneApplication);
     }
     match (source_id, event_kind, schema_ref) {
         ("gcp", "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1")
@@ -589,6 +616,140 @@ fn compatible_legacy_invalid_identity<'a>(
         }
         _ => None,
     }
+}
+
+fn sentinelone_application_legacy_identity_is_safe(
+    event_id: &str,
+    tenant_id: &TenantId,
+    source_id: &str,
+    event_kind: &str,
+    schema_ref: &str,
+    attributes: &HashMap<String, String>,
+    payload: &serde_json::Value,
+) -> bool {
+    if source_id != "sentinelone"
+        || event_kind != SENTINELONE_APPLICATION_KIND
+        || schema_ref != SENTINELONE_APPLICATION_SCHEMA_REF
+    {
+        return false;
+    }
+    let Some(tail) = event_id.strip_prefix(SENTINELONE_APPLICATION_EVENT_ID_PREFIX) else {
+        return false;
+    };
+    if event_id.len() > MAX_SENTINELONE_APPLICATION_EVENT_ID_BYTES
+        || tail.is_empty()
+        || tail.chars().any(char::is_control)
+        || attributes.get("family").map(String::as_str) != Some("application")
+    {
+        return false;
+    }
+
+    let Some(payload_agent_id) = sentinelone_payload_component(payload, "agent_id") else {
+        return false;
+    };
+    let Some(payload_tenant_host) = sentinelone_payload_component(payload, "tenant_host") else {
+        return false;
+    };
+    let Some(payload_name) = sentinelone_optional_payload_component(payload, "name") else {
+        return false;
+    };
+    let Some(payload_publisher) = sentinelone_optional_payload_component(payload, "publisher")
+    else {
+        return false;
+    };
+    let Some(payload_version) = sentinelone_optional_payload_component(payload, "version") else {
+        return false;
+    };
+    let Some(attribute_agent_id) = sentinelone_attribute_component(attributes, "agent_id") else {
+        return false;
+    };
+    let Some(attribute_tenant_host) = sentinelone_attribute_component(attributes, "tenant_host")
+    else {
+        return false;
+    };
+    let Some(attribute_name) =
+        sentinelone_optional_attribute_component(attributes, "application_name")
+    else {
+        return false;
+    };
+    let Some(attribute_publisher) =
+        sentinelone_optional_attribute_component(attributes, "publisher")
+    else {
+        return false;
+    };
+    let Some(attribute_version) = sentinelone_optional_attribute_component(attributes, "version")
+    else {
+        return false;
+    };
+    if payload_agent_id != attribute_agent_id
+        || payload_tenant_host != attribute_tenant_host
+        || payload_name != attribute_name
+        || payload_publisher != attribute_publisher
+        || payload_version != attribute_version
+        || payload_tenant_host != tenant_id.as_str()
+    {
+        return false;
+    }
+
+    let application_parts = [payload_publisher, payload_name, payload_version]
+        .into_iter()
+        .flatten()
+        .map(|value| value.replace(' ', "_"))
+        .collect::<Vec<_>>();
+    let application_id = if application_parts.is_empty() {
+        "unknown".to_owned()
+    } else {
+        application_parts.join("::")
+    };
+    let expected = format!(
+        "{SENTINELONE_APPLICATION_EVENT_ID_PREFIX}{payload_tenant_host}-{payload_agent_id}-{application_id}"
+    );
+    expected == event_id
+}
+
+fn sentinelone_payload_component<'a>(payload: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    sentinelone_optional_payload_component(payload, key)?
+        .as_ref()
+        .copied()
+}
+
+fn sentinelone_attribute_component<'a>(
+    attributes: &'a HashMap<String, String>,
+    key: &str,
+) -> Option<&'a str> {
+    sentinelone_optional_attribute_component(attributes, key)?
+        .as_ref()
+        .copied()
+}
+
+fn sentinelone_optional_payload_component<'a>(
+    payload: &'a serde_json::Value,
+    key: &str,
+) -> Option<Option<&'a str>> {
+    match payload.get(key) {
+        None => Some(None),
+        Some(value) => sentinelone_component_value(Some(value.as_str()?)),
+    }
+}
+
+fn sentinelone_optional_attribute_component<'a>(
+    attributes: &'a HashMap<String, String>,
+    key: &str,
+) -> Option<Option<&'a str>> {
+    match attributes.get(key) {
+        None => Some(None),
+        Some(value) => sentinelone_component_value(Some(value.as_str())),
+    }
+}
+
+fn sentinelone_component_value(value: Option<&str>) -> Option<Option<&str>> {
+    let value = value?.trim();
+    if value.is_empty() {
+        return Some(None);
+    }
+    (value.len() <= MAX_SENTINELONE_APPLICATION_COMPONENT_BYTES
+        && !value.chars().any(char::is_control))
+    .then_some(Some(value))
 }
 
 /// The Go producer derives these identities as
@@ -867,6 +1028,46 @@ mod tests {
         }
     }
 
+    fn sentinelone_application_wire(event_id: &str) -> CommittedSourceWire {
+        let mut wire = source_wire();
+        wire.id = event_id.to_owned();
+        wire.tenant_id = "sentinelone.example.test".to_owned();
+        wire.source_id = "sentinelone".to_owned();
+        wire.kind = "sentinelone.application_inventory".to_owned();
+        wire.schema_ref = "sentinelone/application_inventory/v1".to_owned();
+        wire.attributes = HashMap::from([
+            (
+                SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+                "sentinelone-runtime".to_owned(),
+            ),
+            ("family".to_owned(), "application".to_owned()),
+            ("agent_id".to_owned(), "agent-fixture-1".to_owned()),
+            (
+                "tenant_host".to_owned(),
+                "sentinelone.example.test".to_owned(),
+            ),
+            ("application_name".to_owned(), "Example App".to_owned()),
+            ("publisher".to_owned(), "(Example Inc)".to_owned()),
+            ("version".to_owned(), "1.0.0".to_owned()),
+        ]);
+        wire.payload = serde_json::to_vec(&serde_json::json!({
+            "agent_id": "agent-fixture-1",
+            "tenant_host": "sentinelone.example.test",
+            "name": "Example App",
+            "publisher": "(Example Inc)",
+            "version": "1.0.0",
+            "installed_date": "2026-04-20T00:00:00Z",
+            "size_bytes": 12345,
+            "raw": {
+                "name": "Example App",
+                "publisher": "(Example Inc)",
+                "version": "1.0.0"
+            }
+        }))
+        .unwrap();
+        wire
+    }
+
     fn legacy_aws_endpoint_wire(identity: &str) -> CommittedSourceWire {
         let identity = identity.trim();
         let mut wire = source_wire();
@@ -916,6 +1117,174 @@ mod tests {
         assert_eq!(event.observed_at_unix_ms(), 1_720_000_000_123);
         assert_eq!(event.attributes()["provider_id"], "file-1");
         assert_eq!(event.payload()["name"], "board.pdf");
+    }
+
+    #[test]
+    fn sentinelone_legacy_application_identity_is_accepted() {
+        let id = "sentinelone-application-sentinelone.example.test-agent-fixture-1-(Example_Inc)::Example_App::1.0.0";
+        let event = CommittedSourceEvent::decode(&encode(sentinelone_application_wire(id)))
+            .expect("SentinelOne legacy application identity should decode")
+            .expect("source event");
+        assert!(event.observation_id().as_str().starts_with("compat:v1:"));
+    }
+
+    #[test]
+    fn sentinelone_parser_valid_application_identity_is_preserved() {
+        let id = "sentinelone-application-sentinelone.example.test-agent-fixture-1-Example_Inc::Example_App::1.0.0";
+        let event = CommittedSourceEvent::decode(&encode(sentinelone_application_wire(id)))
+            .expect("parser-valid SentinelOne identity should decode")
+            .expect("source event");
+        assert_eq!(event.observation_id().as_str(), id);
+    }
+
+    #[test]
+    fn sentinelone_legacy_application_identity_is_redelivery_stable_without_provenance() {
+        let id = "sentinelone-application-sentinelone.example.test-agent-fixture-1-(Example_Inc)::Example_App::1.0.0";
+        let wire = sentinelone_application_wire(id);
+        let first = CommittedSourceEvent::decode(&encode(wire.clone()))
+            .expect("first SentinelOne identity should decode")
+            .expect("source event");
+        let second = CommittedSourceEvent::decode(&encode(wire.clone()))
+            .expect("redelivery SentinelOne identity should decode")
+            .expect("source event");
+        assert_eq!(first.observation_id(), second.observation_id());
+
+        let mut delivery_variant = wire;
+        delivery_variant.attributes.insert(
+            SOURCE_RUNTIME_ID_ATTRIBUTE.to_owned(),
+            "sentinelone-runtime-retry".to_owned(),
+        );
+        delivery_variant.attributes.insert(
+            SOURCE_COLLECTION_ID_ATTRIBUTE.to_owned(),
+            "collection-retry".to_owned(),
+        );
+        let retry = CommittedSourceEvent::decode(&encode(delivery_variant))
+            .expect("delivery variant should decode")
+            .expect("source event");
+        assert_eq!(first.observation_id(), retry.observation_id());
+    }
+
+    fn assert_sentinelone_application_rejected(label: &str, wire: CommittedSourceWire) {
+        assert!(
+            matches!(
+                CommittedSourceEvent::decode(&encode(wire)),
+                Err(AppendLogDecodeError::InvalidModel(_))
+            ),
+            "{label}"
+        );
+    }
+
+    #[test]
+    fn sentinelone_legacy_application_identity_rejects_adjacent_and_malformed_contracts() {
+        let id = "sentinelone-application-sentinelone.example.test-agent-fixture-1-(Example_Inc)::Example_App::1.0.0";
+
+        let mut wrong_source = sentinelone_application_wire(id);
+        wrong_source.source_id = "other".to_owned();
+        wrong_source.kind = "other.application_inventory".to_owned();
+        wrong_source.schema_ref = "other/application_inventory/v1".to_owned();
+        assert_sentinelone_application_rejected("cross-source identity was accepted", wrong_source);
+
+        let mut wrong_kind = sentinelone_application_wire(id);
+        wrong_kind.kind = "sentinelone.threat".to_owned();
+        wrong_kind.schema_ref = "sentinelone/threat/v1".to_owned();
+        assert_sentinelone_application_rejected("cross-family identity was accepted", wrong_kind);
+
+        let mut wrong_schema = sentinelone_application_wire(id);
+        wrong_schema.schema_ref = "sentinelone/application_inventory/v2".to_owned();
+        assert_sentinelone_application_rejected("cross-schema identity was accepted", wrong_schema);
+
+        let mut bad_prefix = sentinelone_application_wire(id);
+        bad_prefix.id = id.replacen(
+            SENTINELONE_APPLICATION_EVENT_ID_PREFIX,
+            "sentinelone-app-",
+            1,
+        );
+        assert_sentinelone_application_rejected("bad producer prefix was accepted", bad_prefix);
+
+        let mut tenant_mismatch = sentinelone_application_wire(id);
+        tenant_mismatch.tenant_id = "other.example.test".to_owned();
+        assert_sentinelone_application_rejected("tenant mismatch was accepted", tenant_mismatch);
+
+        let mut attribute_mismatch = sentinelone_application_wire(id);
+        attribute_mismatch
+            .attributes
+            .insert("publisher".to_owned(), "Different Inc".to_owned());
+        assert_sentinelone_application_rejected(
+            "attribute/payload disagreement was accepted",
+            attribute_mismatch,
+        );
+
+        let mut agent_mismatch = sentinelone_application_wire(id);
+        agent_mismatch
+            .attributes
+            .insert("agent_id".to_owned(), "other-agent".to_owned());
+        assert_sentinelone_application_rejected(
+            "agent attribute/payload disagreement was accepted",
+            agent_mismatch,
+        );
+
+        let mut reconstructed_id_mismatch = sentinelone_application_wire(id);
+        reconstructed_id_mismatch.id =
+            "sentinelone-application-sentinelone.example.test-agent-fixture-1-(Example_Inc)::Other_App::1.0.0"
+                .to_owned();
+        assert_sentinelone_application_rejected(
+            "identity differing from the reconstructed Go ID was accepted",
+            reconstructed_id_mismatch,
+        );
+
+        let mut control_tail = sentinelone_application_wire(id);
+        control_tail.id =
+            "sentinelone-application-sentinelone.example.test-agent-fixture-1-(Example_\u{1})::Example_App::1.0.0"
+                .to_owned();
+        assert_sentinelone_application_rejected(
+            "control byte in legacy tail was accepted",
+            control_tail,
+        );
+
+        let mut overlong_tail = sentinelone_application_wire(id);
+        overlong_tail.id = format!("{id}{}", "x".repeat(256));
+        assert_sentinelone_application_rejected(
+            "overlong legacy identity was accepted",
+            overlong_tail,
+        );
+    }
+
+    #[test]
+    fn sentinelone_legacy_application_identity_mirrors_optional_go_application_id_parts() {
+        let id = "sentinelone-application-sentinelone.example.test-agent-fixture-1-unknown";
+        let mut wire = sentinelone_application_wire(id);
+        let mut payload: serde_json::Value = serde_json::from_slice(&wire.payload).unwrap();
+        for key in ["name", "publisher", "version"] {
+            payload.as_object_mut().unwrap().remove(key);
+        }
+        wire.payload = serde_json::to_vec(&payload).unwrap();
+        for key in ["application_name", "publisher", "version"] {
+            wire.attributes.remove(key);
+        }
+        let event = CommittedSourceEvent::decode(&encode(wire))
+            .expect("optional Go application ID parts should decode")
+            .expect("source event");
+        assert_eq!(event.observation_id().as_str(), id);
+    }
+
+    #[test]
+    fn sentinelone_legacy_application_identity_mirrors_one_optional_invalid_go_id_part() {
+        let id = "sentinelone-application-sentinelone.example.test-agent-fixture-1-(Example_App)";
+        let mut wire = sentinelone_application_wire(id);
+        wire.payload = serde_json::to_vec(&serde_json::json!({
+            "agent_id": "agent-fixture-1",
+            "tenant_host": "sentinelone.example.test",
+            "name": "(Example App)"
+        }))
+        .unwrap();
+        wire.attributes
+            .insert("application_name".to_owned(), "(Example App)".to_owned());
+        wire.attributes.remove("publisher");
+        wire.attributes.remove("version");
+        let event = CommittedSourceEvent::decode(&encode(wire))
+            .expect("one optional invalid Go ID part should decode")
+            .expect("source event");
+        assert!(event.observation_id().as_str().starts_with("compat:v1:"));
     }
 
     #[test]
