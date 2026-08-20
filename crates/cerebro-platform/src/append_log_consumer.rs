@@ -1689,6 +1689,11 @@ mod tests {
                 "gcp-iam-role-assignment-writer.com-roles-viewer",
             ),
             (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-principal[workload-identity]-roles-viewer",
+            ),
+            (
                 "gcp.effective_permission",
                 "gcp/effective_permission/v1",
                 "gcp-effective-permission-user@example.test-roles-owner",
@@ -1707,6 +1712,11 @@ mod tests {
                 "gcp.effective_permission",
                 "gcp/effective_permission/v1",
                 "gcp-effective-permission-writer.com-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[workload-identity]-roles-viewer",
             ),
         ];
 
@@ -1753,7 +1763,7 @@ mod tests {
             (
                 "gcp.iam_role_assignment",
                 "gcp/iam_role_assignment/v1",
-                "gcp-iam-role-assignment-allUsers",
+                "gcp-iam-role-assignment-user@example.test?",
             ),
             (
                 "gcp.iam_role_assignment",
@@ -1763,7 +1773,22 @@ mod tests {
             (
                 "gcp.effective_permission",
                 "gcp/effective_permission/v1",
-                "gcp-effective-permission-foobar-roles-viewer",
+                "gcp-effective-permission-user@example.test-roles-owner?",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-principal[workload-identity-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[]-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[[workload]]-roles-owner",
             ),
         ];
         for (kind, schema_ref, id) in cases {
