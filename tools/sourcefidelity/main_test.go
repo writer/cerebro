@@ -65,6 +65,25 @@ func TestGeneratedProviderPilotsAreHighFidelity(t *testing.T) {
 	}
 }
 
+func TestBackstageGenuineFixturesCoverEveryRuntimeFamily(t *testing.T) {
+	source, err := analyzeSource(filepath.Join("..", "..", "sources", "backstage"))
+	if err != nil {
+		t.Fatalf("analyzeSource(backstage) error = %v", err)
+	}
+	if source.RuntimeFamilies == 0 {
+		t.Fatal("Backstage runtime families = 0")
+	}
+	if source.GenuineAPIFamilies != source.RuntimeFamilies {
+		t.Fatalf("Backstage genuine API families = %d, want every one of %d runtime families", source.GenuineAPIFamilies, source.RuntimeFamilies)
+	}
+	if source.GenuineAPIBundles < source.RuntimeFamilies {
+		t.Fatalf("Backstage genuine API bundles = %d, want at least %d", source.GenuineAPIBundles, source.RuntimeFamilies)
+	}
+	if !source.HasEveryFamilyTest {
+		t.Fatal("Backstage production-decoder replay does not cover every runtime family")
+	}
+}
+
 func providerPilotDefinition(sourceID string, authModel string, method string, pagination *connectordefinitions.PaginationSpec) connectordefinitions.Definition {
 	credentialFields := []connectordefinitions.Field{{Key: "token", Secret: true, ReferenceOnly: true}}
 	auth := connectordefinitions.AuthSpec{Model: authModel, CredentialFields: credentialFields}

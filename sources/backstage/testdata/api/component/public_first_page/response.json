@@ -1,0 +1,42 @@
+{
+  "items": [
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "metadata": {
+        "annotations": {
+          "backstage.io/edit-url": "https://github.com/backstage/backstage/edit/master/packages/catalog-model/examples/components/wayback-archive-storage-component.yaml",
+          "backstage.io/managed-by-location": "url:https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/components/wayback-archive-storage-component.yaml",
+          "backstage.io/managed-by-origin-location": "url:https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/all-components.yaml",
+          "backstage.io/source-location": "url:https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/components/",
+          "backstage.io/view-url": "https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/components/wayback-archive-storage-component.yaml"
+        },
+        "description": "Storage subsystem of the Wayback Archive",
+        "etag": "2bea3967fe39609c23d254944b69adaef8681c37",
+        "name": "wayback-archive-storage",
+        "namespace": "default",
+        "uid": "03c09ec0-833b-4100-89a6-7702bd6c5e01"
+      },
+      "relations": [
+        {
+          "targetRef": "group:default/team-a",
+          "type": "ownedBy"
+        },
+        {
+          "targetRef": "component:default/wayback-archive",
+          "type": "partOf"
+        }
+      ],
+      "spec": {
+        "lifecycle": "production",
+        "owner": "team-a",
+        "subcomponentOf": "wayback-archive",
+        "type": "service"
+      }
+    }
+  ],
+  "pageInfo": {
+    "nextCursor": "eyJvcmRlckZpZWxkcyI6W10sImlzUHJldmlvdXMiOmZhbHNlLCJxdWVyeSI6eyJraW5kIjoiY29tcG9uZW50In0sImZ1bGxUZXh0RmlsdGVyIjp7InRlcm0iOiIifSwib3JkZXJGaWVsZFZhbHVlcyI6WyIwM2MwOWVjMC04MzNiLTQxMDAtODlhNi03NzAyYmQ2YzVlMDEiXSwiZmlyc3RTb3J0RmllbGRWYWx1ZXMiOlsiMDNjMDllYzAtODMzYi00MTAwLTg5YTYtNzcwMmJkNmM1ZTAxIl0sInRvdGFsSXRlbXMiOjE2fQ=="
+  },
+  "totalItems": 16
+}

@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 )
 
 func TestSourceSpec(t *testing.T) {
@@ -42,6 +44,99 @@ func TestRuntimeFixturesSatisfyCatalogContracts(t *testing.T) {
 		if _, err := sourcecdk.LoadFixtureEventsWithContracts(os.DirFS("."), "testdata/read_"+family+".json", catalog.EventContracts); err != nil {
 			t.Fatalf("load %s read fixture: %v", family, err)
 		}
+	}
+}
+
+func TestGenuineProviderResponsesReplayEveryRuntimeFamily(t *testing.T) {
+	tests := []struct {
+		family   string
+		wantKind string
+	}{
+		{family: familyComponent, wantKind: "backstage.component"},
+		{family: familySystem, wantKind: "backstage.system"},
+	}
+	for _, test := range tests {
+		t.Run(test.family, func(t *testing.T) {
+			bundle, err := sourcefixture.FindBundle("../..", sourceID, test.family, "public_first_page")
+			if err != nil {
+				t.Fatalf("FindBundle() error = %v", err)
+			}
+			capturedURL, err := url.Parse(bundle.Manifest.Request.URL)
+			if err != nil {
+				t.Fatalf("parse captured URL: %v", err)
+			}
+			if capturedURL.Path != "/api/catalog/entities/by-query" {
+				t.Fatalf("capture path = %q, want /api/catalog/entities/by-query", capturedURL.Path)
+			}
+			if got, want := capturedURL.Query().Get("filter"), "kind="+test.family; got != want {
+				t.Fatalf("capture filter = %q, want %q", got, want)
+			}
+			if got := capturedURL.Query().Get("limit"); got != "1" {
+				t.Fatalf("capture limit = %q, want 1", got)
+			}
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Fatalf("method = %q, want GET", r.Method)
+				}
+				if r.URL.Path != capturedURL.Path {
+					t.Fatalf("path = %q, want %q", r.URL.Path, capturedURL.Path)
+				}
+				if got, want := r.URL.Query().Get("filter"), "kind="+test.family; got != want {
+					t.Fatalf("filter = %q, want %q", got, want)
+				}
+				if got := r.URL.Query().Get("limit"); got != "100" {
+					t.Fatalf("limit = %q, want 100", got)
+				}
+				if got := r.Header.Get("Authorization"); got != "Bearer replay-token" {
+					t.Fatalf("Authorization = %q, want Bearer replay-token", got)
+				}
+				w.Header().Set("Content-Type", bundle.Manifest.Response.ContentType)
+				for name, value := range bundle.Manifest.Response.Headers {
+					w.Header().Set(name, value)
+				}
+				w.WriteHeader(bundle.Manifest.Response.Status)
+				_, _ = w.Write(bundle.Payload)
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackForTest()
+			cfg := sourcecdk.NewConfig(map[string]string{
+				"tenant_id": "tenant",
+				"base_url":  server.URL,
+				"token":     "replay-token",
+				"family":    test.family,
+			})
+			pull, err := source.Read(context.Background(), cfg, nil)
+			if err != nil {
+				t.Fatalf("Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("events = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != test.wantKind {
+				t.Fatalf("event kind = %q, want %q", got, test.wantKind)
+			}
+			for _, attribute := range []string{"name", "kind"} {
+				if strings.TrimSpace(pull.Events[0].Attributes[attribute]) == "" {
+					t.Fatalf("required attribute %q missing", attribute)
+				}
+			}
+			urns, err := source.Discover(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("Discover() error = %v", err)
+			}
+			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, true); err != nil {
+				t.Fatalf("StabilizeEvents() error = %v", err)
+			}
+			if err := sourcefixture.CompareOrUpdateSourceOutputs(".", test.family, pull.Events, urns, os.Getenv("CEREBRO_UPDATE_SOURCE_FIXTURES") == "1"); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
