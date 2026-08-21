@@ -16,6 +16,7 @@ mod protocol;
 mod provider_failure;
 mod runtime_config;
 mod sentinelone;
+mod trivy;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use aws_secret_store::{
@@ -64,6 +65,7 @@ pub use sentinelone::{
     SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
     SentinelOnePage, SentinelOneRecord, SentinelOneRequest,
 };
+pub use trivy::{TrivyError, TrivyFamily, TrivyKernel, TrivyPage, TrivyRecord};
 
 use std::{collections::BTreeMap, error::Error, fmt};
 
