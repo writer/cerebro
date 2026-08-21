@@ -10,6 +10,7 @@ mod cerebro_source;
 mod credential_lease;
 mod deposit;
 mod egress;
+mod email_domain_health;
 mod evidence_cas;
 mod fixture_parity;
 mod google_workspace;
@@ -46,6 +47,11 @@ pub use deposit::{
 pub use egress::{
     EgressDecision, EgressDecisionKind, EgressMode, EgressPolicy, EgressPolicyError,
     EgressRequestContext,
+};
+pub use email_domain_health::{
+    EmailDomainDkimSelector, EmailDomainDnsQuery, EmailDomainDnsQueryKind, EmailDomainDnsSnapshot,
+    EmailDomainHealth, EmailDomainHealthError, EmailDomainHealthIssue, EmailDomainHealthKernel,
+    EmailDomainHealthPage, EmailDomainHealthRecord, EmailDomainMxRecord,
 };
 pub use evidence_cas::{
     EvidenceCasConfig, EvidenceCasContract, EvidenceCasError, EvidenceCasKernel, EvidenceCasPage,
