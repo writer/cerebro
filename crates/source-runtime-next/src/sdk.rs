@@ -15,6 +15,7 @@ const INTEGRATION_POSTURE_KIND: &str = "sdk.integration_posture";
 const INTEGRATION_POSTURE_SCHEMA_REF: &str = "sdk/integration_posture/v1";
 const POSTURE_STATUS_AT_RISK: &str = "at_risk";
 const POSTURE_STATUS_SECURE: &str = "secure";
+const MAX_PROTOBUF_TIMESTAMP_SECONDS: i64 = 253_402_300_799;
 
 /// One raw integration-posture payload received through the SDK push surface.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -37,7 +38,9 @@ pub struct SdkPushedTelemetry {
     pub posture_status: String,
     /// Optional reason for an at-risk posture.
     pub risk_reason: String,
-    /// Provider occurrence time, when supplied by the SDK runtime.
+    /// Provider occurrence time, when supplied by the SDK runtime. `None`
+    /// means absent; protobuf `{ seconds: 0, nanos: 0 }` is the Unix epoch and
+    /// is rejected because append-log occurrence times must be positive.
     pub occurred_at: Option<Timestamp>,
     /// Additional scalar attributes supplied by the integration.
     pub attributes: BTreeMap<String, String>,
@@ -54,7 +57,7 @@ pub struct SdkIntegrationPostureEvent {
     pub source_id: String,
     /// Static SDK posture event kind.
     pub kind: String,
-    /// Provider occurrence time, when supplied.
+    /// Provider occurrence time, when supplied and valid for the append log.
     pub occurred_at: Option<Timestamp>,
     /// Static SDK posture schema reference.
     pub schema_ref: String,
@@ -77,6 +80,8 @@ pub enum SdkTelemetryError {
     CrossTenantResourceUrn,
     /// The posture value cannot be canonicalized to secure or at-risk.
     UnknownPostureStatus,
+    /// The occurrence time cannot cross the append-log timestamp boundary.
+    InvalidOccurrenceTime,
 }
 
 impl fmt::Display for SdkTelemetryError {
@@ -104,6 +109,9 @@ impl fmt::Display for SdkTelemetryError {
             Self::UnknownPostureStatus => {
                 formatter.write_str("sdk telemetry posture status is not recognized")
             }
+            Self::InvalidOccurrenceTime => {
+                formatter.write_str("sdk telemetry occurrence time is invalid")
+            }
         }
     }
 }
@@ -121,6 +129,7 @@ pub fn normalize_sdk_pushed_telemetry(
     let tenant_id = safe_required_token("tenant id", &payload.tenant_id)?;
     let integration = safe_required_token("integration", &payload.integration)?;
     let control = safe_required_token("control", &payload.control)?;
+    let occurred_at = validate_occurrence_time(payload.occurred_at)?;
 
     let resource_urn = payload.resource_urn.trim().to_owned();
     if resource_urn.is_empty() {
@@ -180,10 +189,30 @@ pub fn normalize_sdk_pushed_telemetry(
         tenant_id,
         source_id: SOURCE_ID.to_owned(),
         kind: INTEGRATION_POSTURE_KIND.to_owned(),
-        occurred_at: payload.occurred_at,
+        occurred_at,
         schema_ref: INTEGRATION_POSTURE_SCHEMA_REF.to_owned(),
         attributes,
     })
+}
+
+fn validate_occurrence_time(
+    value: Option<Timestamp>,
+) -> Result<Option<Timestamp>, SdkTelemetryError> {
+    let Some(timestamp) = value else {
+        return Ok(None);
+    };
+    if !(0..=MAX_PROTOBUF_TIMESTAMP_SECONDS).contains(&timestamp.seconds)
+        || !(0..1_000_000_000).contains(&timestamp.nanos)
+    {
+        return Err(SdkTelemetryError::InvalidOccurrenceTime);
+    }
+    timestamp
+        .seconds
+        .checked_mul(1_000)
+        .and_then(|seconds| seconds.checked_add(i64::from(timestamp.nanos) / 1_000_000))
+        .filter(|millis| *millis > 0)
+        .ok_or(SdkTelemetryError::InvalidOccurrenceTime)?;
+    Ok(Some(timestamp))
 }
 
 fn safe_required_token(field: &'static str, value: &str) -> Result<String, SdkTelemetryError> {
@@ -333,6 +362,72 @@ mod tests {
         );
         assert!(event.id.starts_with("sdk-integration-posture-"));
         assert_eq!(event.id.len(), "sdk-integration-posture-".len() + 24);
+    }
+
+    #[test]
+    fn absence_is_allowed_but_unix_epoch_is_rejected() {
+        let mut absent = valid_payload();
+        absent.occurred_at = None;
+        assert_eq!(
+            normalize_sdk_pushed_telemetry(absent).unwrap().occurred_at,
+            None
+        );
+
+        let mut epoch = valid_payload();
+        epoch.occurred_at = Some(Timestamp {
+            seconds: 0,
+            nanos: 0,
+        });
+        assert_eq!(
+            normalize_sdk_pushed_telemetry(epoch),
+            Err(SdkTelemetryError::InvalidOccurrenceTime)
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_occurrence_time_nanos_and_range() {
+        for occurred_at in [
+            Timestamp {
+                seconds: 1,
+                nanos: -1,
+            },
+            Timestamp {
+                seconds: 1,
+                nanos: 1_000_000_000,
+            },
+            Timestamp {
+                seconds: -1,
+                nanos: 0,
+            },
+            Timestamp {
+                seconds: MAX_PROTOBUF_TIMESTAMP_SECONDS + 1,
+                nanos: 0,
+            },
+        ] {
+            let mut payload = valid_payload();
+            payload.occurred_at = Some(occurred_at);
+            assert_eq!(
+                normalize_sdk_pushed_telemetry(payload),
+                Err(SdkTelemetryError::InvalidOccurrenceTime)
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_the_first_append_log_millisecond() {
+        let mut payload = valid_payload();
+        payload.occurred_at = Some(Timestamp {
+            seconds: 0,
+            nanos: 1_000_000,
+        });
+        let event = normalize_sdk_pushed_telemetry(payload).unwrap();
+        assert_eq!(
+            event.occurred_at,
+            Some(Timestamp {
+                seconds: 0,
+                nanos: 1_000_000,
+            })
+        );
     }
 
     #[test]

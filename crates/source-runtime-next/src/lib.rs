@@ -25,8 +25,8 @@ mod panopticon;
 mod protocol;
 mod provider_failure;
 mod runtime_config;
-mod security_tooling_map;
 mod sdk;
+mod security_tooling_map;
 mod sentinelone;
 mod trivy;
 mod vulnview;
@@ -107,13 +107,13 @@ pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,
     resolve_environment_references,
 };
-pub use security_tooling_map::{
-    SecurityToolingMapError, SecurityToolingMapFamily, SecurityToolingMapKernel,
-    SecurityToolingMapPage, SecurityToolingMapRecord, SecurityToolingMapRequest,
-};
 pub use sdk::{
     SdkIntegrationPostureEvent, SdkPushedTelemetry, SdkTelemetryError,
     normalize_sdk_pushed_telemetry,
+};
+pub use security_tooling_map::{
+    SecurityToolingMapError, SecurityToolingMapFamily, SecurityToolingMapKernel,
+    SecurityToolingMapPage, SecurityToolingMapRecord, SecurityToolingMapRequest,
 };
 pub use sentinelone::{
     SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
