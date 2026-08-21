@@ -1,31 +1,19 @@
-//! Service-account wire decoding and Go-compatible normalization.
+//! Go-compatible family normalization.
+
+mod wire;
 
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
 use super::{
-    GcpIamError, GcpIamFamily, GcpIamRecord, first_gcp_value, first_nonblank_gcp, insert_gcp_field,
-    normalized_observed_at, sanitize_gcp_event_id,
+    GcpIamError, GcpIamFamily, GcpIamRecord,
+    normalize::{
+        first_gcp_value, first_nonblank_gcp, insert_gcp_field, normalized_observed_at,
+        sanitize_gcp_event_id,
+    },
 };
-
-#[derive(Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-struct ServiceAccountWire {
-    name: String,
-    #[serde(rename = "projectId")]
-    _project_id: String,
-    unique_id: String,
-    email: String,
-    display_name: String,
-    #[serde(rename = "description")]
-    _description: String,
-    disabled: bool,
-    #[serde(rename = "oauth2ClientId")]
-    _oauth2_client_id: String,
-}
 
 pub(super) fn normalize(
     payload: Value,
@@ -33,7 +21,7 @@ pub(super) fn normalize(
     project_id: &str,
     observed_at: OffsetDateTime,
 ) -> Result<GcpIamRecord, GcpIamError> {
-    let record: ServiceAccountWire =
+    let record: wire::ServiceAccountWire =
         serde_json::from_value(payload.clone()).map_err(|_| GcpIamError::InvalidResponse)?;
     let email = record.email.trim().to_owned();
     let unique_id = record.unique_id.trim().to_owned();
