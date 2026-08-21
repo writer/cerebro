@@ -31,6 +31,7 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 patterns_file="${repo_root}/scripts/leak_patterns.txt"
 user_patterns_file="${CEREBRO_LEAK_USER_PATTERNS:-$HOME/.config/cerebro/leak_patterns.txt}"
+commit_metadata_format='Author: %an <%ae>%nCommitter: %cn <%ce>%n%s%n%b%n---'
 
 if [ "${CEREBRO_LEAK_CHECK_BYPASS:-}" = "1" ]; then
   echo "leak-check: BYPASS via CEREBRO_LEAK_CHECK_BYPASS=1 (mode=${1:-?})" >&2
@@ -218,7 +219,7 @@ EOF
     if [[ "$range" == *...* ]]; then
       commits_range="${base_part}..${head_part}"
     fi
-    commits_meta="$(git log --format='%H%nAuthor: %an <%ae>%nCommitter: %cn <%ce>%n%s%n%b%n---' "$commits_range" 2>/dev/null || true)"
+    commits_meta="$(git log --format="$commit_metadata_format" "$commits_range" 2>/dev/null || true)"
     commits_diff="$(added_diff_for_changed_files "$range")"
     combined="${commits_meta}
 ${commits_diff}"
@@ -257,7 +258,7 @@ ${commits_diff}"
       else
         range="${remote_sha}..${local_sha}"
       fi
-      commits_meta="$(git log --format='%H%nAuthor: %an <%ae>%nCommitter: %cn <%ce>%n%s%n%b%n---' "$range" 2>/dev/null || true)"
+      commits_meta="$(git log --format="$commit_metadata_format" "$range" 2>/dev/null || true)"
       commits_diff="$(added_diff_for_changed_files "$range")"
       combined="${commits_meta}
 ${commits_diff}"
