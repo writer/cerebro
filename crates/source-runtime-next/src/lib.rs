@@ -8,6 +8,7 @@ mod append_log;
 mod archetype;
 mod aurelius;
 mod aws_account;
+mod aws_network_manager;
 mod aws_secret_store;
 mod azure;
 mod cerebro_source;
@@ -50,6 +51,11 @@ pub use aws_account::{
     AwsAccountContactError, AwsAccountContactKernel, AwsAccountContactOutcome,
     AwsAccountContactPage, AwsAccountContactRecord, AwsAccountContactRequest,
     AwsAccountContactRequestKind,
+};
+pub use aws_network_manager::{
+    AwsNetworkManagerBatch, AwsNetworkManagerError, AwsNetworkManagerFamily,
+    AwsNetworkManagerKernel, AwsNetworkManagerRecord, AwsNetworkManagerRequest,
+    AwsNetworkManagerRequestKind,
 };
 pub use aws_secret_store::{
     AwsSecretReadError, AwsSecretReader, AwsSecretReference, AwsSecretResolutionError,
