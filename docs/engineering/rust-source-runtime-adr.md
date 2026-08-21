@@ -81,8 +81,8 @@ The problem is not the absence of a connector factory. The problem is that the f
 The current repository snapshot, measured with `tools/codegenstatus` and
 `tools/sourcefidelity`, contains:
 
-- 795 connector definitions;
-- 794 definitions accepted by the normalized generator grammar;
+- 798 connector definitions;
+- 797 definitions accepted by the normalized generator grammar;
 - one definition classified as requiring a bespoke runtime;
 - 16 shared projection templates;
 - 820 entries in the source-fidelity inventory and 799 runtime sources;
