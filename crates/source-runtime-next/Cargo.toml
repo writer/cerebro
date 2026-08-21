@@ -20,6 +20,7 @@ cerebro-organizational-model.workspace = true
 cerebro-source-catalog.workspace = true
 futures-util.workspace = true
 hmac.workspace = true
+packageurl.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 reqwest = { workspace = true, features = ["form", "stream"] }

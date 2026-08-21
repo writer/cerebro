@@ -1141,6 +1141,7 @@ dependencies = [
  "cerebro-source-catalog",
  "futures-util",
  "hmac",
+ "packageurl",
  "prost",
  "prost-types",
  "reqwest",
@@ -2690,6 +2691,16 @@ name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
+
+[[package]]
+name = "packageurl"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d33fa1a190c3c9024f21b82e6b30f94137d9c1bf25071e2ab2ba13020135fbaf"
+dependencies = [
+ "percent-encoding",
+ "thiserror 2.0.19",
+]
 
 [[package]]
 name = "parking_lot"
