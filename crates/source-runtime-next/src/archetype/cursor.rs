@@ -1,6 +1,6 @@
 use super::{
     ArchetypeError, ArchetypeKernel, ArchetypeRequest, ArchetypeRequestKind, ArchetypeScan,
-    normalization::normalized_timestamp, request::SCAN_PAGE_LIMIT, wire::ScanResponse,
+    request::SCAN_PAGE_LIMIT, types::normalized_timestamp, wire::ScanResponse,
 };
 
 /// One decoded descending scan page and its provider pagination hint.

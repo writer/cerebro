@@ -134,7 +134,17 @@ fn scan_record_revalidates_mutable_fields_against_the_decoded_payload() {
     changed_repository_id.repository_id = 999;
     let mut changed_status = valid.clone();
     changed_status.status = "running".to_owned();
-    for inconsistent in [changed_id, changed_repository_id, changed_status] {
+    let mut changed_occurred_at = valid.clone();
+    changed_occurred_at.occurred_at = Some("2026-08-21T01:02:03Z".to_owned());
+    let mut missing_occurred_at = valid.clone();
+    missing_occurred_at.occurred_at = None;
+    for inconsistent in [
+        changed_id,
+        changed_repository_id,
+        changed_status,
+        changed_occurred_at,
+        missing_occurred_at,
+    ] {
         assert_eq!(
             kernel
                 .scan_record(&inconsistent, None, VulnerabilityCollectionState::Complete,)
@@ -148,6 +158,28 @@ fn scan_record_revalidates_mutable_fields_against_the_decoded_payload() {
     assert_eq!(
         kernel
             .scan_record(&blank_status, None, VulnerabilityCollectionState::Complete,)
+            .unwrap_err(),
+        ArchetypeError::InvalidResponse
+    );
+
+    let request = kernel.plan_scans(None).unwrap();
+    let mut no_provider_timestamp = kernel
+        .decode_scans(
+            &request,
+            br#"[{"id":10,"repository_id":7,"status":"completed"}]"#,
+        )
+        .unwrap()
+        .scans
+        .remove(0);
+    assert_eq!(no_provider_timestamp.occurred_at, None);
+    no_provider_timestamp.occurred_at = Some("2026-08-20T01:02:03Z".to_owned());
+    assert_eq!(
+        kernel
+            .scan_record(
+                &no_provider_timestamp,
+                None,
+                VulnerabilityCollectionState::Complete,
+            )
             .unwrap_err(),
         ArchetypeError::InvalidResponse
     );

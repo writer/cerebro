@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
+use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
 
 use super::ArchetypeError;
 
@@ -27,11 +28,23 @@ impl ArchetypeScan {
             || self.payload.get("id").and_then(Value::as_u64) != Some(self.id)
             || self.payload.get("repository_id").and_then(Value::as_u64) != Some(self.repository_id)
             || self.payload.get("status").and_then(Value::as_str) != Some(self.status.as_str())
+            || self.occurred_at != scan_occurrence_time(&self.payload)
         {
             return Err(ArchetypeError::InvalidResponse);
         }
         Ok(())
     }
+}
+
+fn scan_occurrence_time(payload: &Value) -> Option<String> {
+    ["completed_at", "started_at", "created_at"]
+        .into_iter()
+        .find_map(|field| payload.get(field)?.as_str().and_then(normalized_timestamp))
+}
+
+pub(super) fn normalized_timestamp(value: &str) -> Option<String> {
+    let parsed = OffsetDateTime::parse(value.trim(), &Rfc3339).ok()?;
+    parsed.to_offset(UtcOffset::UTC).format(&Rfc3339).ok()
 }
 
 /// One decoded repository identity used to enrich scan-derived records.

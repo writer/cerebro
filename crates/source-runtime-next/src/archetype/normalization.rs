@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, HashSet};
 
 use serde_json::Value;
-use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
 
 use super::{
     ArchetypeError, ArchetypeFamily, ArchetypeKernel, ArchetypeRecord, ArchetypeRepository,
     ArchetypeRequest, ArchetypeRequestKind, ArchetypeScan, VulnerabilityCollectionState,
+    types::normalized_timestamp,
     wire::{KnowledgeResponse, RepositoryResponse, VulnerabilityResponse},
 };
 
@@ -80,6 +80,7 @@ impl ArchetypeKernel {
         scan: &ArchetypeScan,
         repository: Option<&ArchetypeRepository>,
     ) -> Result<Vec<ArchetypeRecord>, ArchetypeError> {
+        scan.validate_invariant()?;
         self.require_vulnerability_family()?;
         self.validate_request(
             request,
@@ -144,6 +145,7 @@ impl ArchetypeKernel {
         scan: &ArchetypeScan,
         repository: Option<&ArchetypeRepository>,
     ) -> Result<Vec<ArchetypeRecord>, ArchetypeError> {
+        scan.validate_invariant()?;
         self.require_vulnerability_family()?;
         self.validate_request(
             request,
@@ -265,11 +267,6 @@ fn metadata_string(metadata: &BTreeMap<String, Value>, key: &str) -> Option<Stri
         Value::Bool(value) => Some(value.to_string()),
         _ => None,
     }
-}
-
-pub(super) fn normalized_timestamp(value: &str) -> Option<String> {
-    let parsed = OffsetDateTime::parse(value.trim(), &Rfc3339).ok()?;
-    parsed.to_offset(UtcOffset::UTC).format(&Rfc3339).ok()
 }
 
 fn query_escape(value: &str) -> String {
