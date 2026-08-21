@@ -154,7 +154,11 @@ impl GcpObjectContentKernel {
         let Some(metadata_class) = GcpDataClassification::parse(metadata) else {
             return metadata.to_owned();
         };
-        metadata_class.max(content).as_str().to_owned()
+        if content > metadata_class {
+            content.as_str().to_owned()
+        } else {
+            metadata.to_owned()
+        }
     }
 
     /// Merge a metadata indicator with an optional inspection result.
@@ -368,6 +372,13 @@ mod tests {
 
     #[test]
     fn metadata_classification_is_never_downgraded() {
+        assert_eq!(
+            GcpObjectContentKernel::strongest_classification(
+                "  INTERNAL  ",
+                Some(GcpDataClassification::Public)
+            ),
+            "INTERNAL"
+        );
         assert_eq!(
             GcpObjectContentKernel::strongest_classification(
                 "restricted",
