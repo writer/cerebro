@@ -3,8 +3,39 @@ use serde_json::Value;
 use crate::SdkError;
 
 use super::{
-    MAX_ID_BYTES, MAX_PAYLOAD_BYTES, MAX_PAYLOAD_DEPTH, MAX_PAYLOAD_NODES, MAX_REFS, MAX_TEXT_BYTES,
+    EXTERNAL_EVENT_ATTRIBUTE_KEYS, MAX_EXTERNAL_EVENT_ATTRIBUTE_VALUE_BYTES, MAX_ID_BYTES,
+    MAX_PAYLOAD_BYTES, MAX_PAYLOAD_DEPTH, MAX_PAYLOAD_NODES, MAX_REFS, MAX_TEXT_BYTES,
 };
+
+pub(super) fn validate_attribute(key: &str, value: &str) -> Result<(), SdkError> {
+    if !EXTERNAL_EVENT_ATTRIBUTE_KEYS.contains(&key) {
+        return Err(SdkError::Invalid("external event attribute key"));
+    }
+    if value.len() > MAX_EXTERNAL_EVENT_ATTRIBUTE_VALUE_BYTES {
+        return Err(SdkError::TooLong("external event attribute value"));
+    }
+    let normalized = value
+        .to_ascii_lowercase()
+        .replace(['-', '.', '/', ':', '@', '%'], "_");
+    let compact = normalized.replace('_', "");
+    if [
+        "apikey",
+        "authorization",
+        "bearer",
+        "credential",
+        "password",
+        "privatekey",
+        "secret",
+        "sessioncookie",
+        "token",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker))
+    {
+        return Err(SdkError::Invalid("external event attribute value"));
+    }
+    validate_id(value, "external event attribute value")
+}
 
 pub(super) fn validate_id(value: &str, field: &'static str) -> Result<(), SdkError> {
     if value.is_empty() {

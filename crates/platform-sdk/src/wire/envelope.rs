@@ -9,7 +9,9 @@ use super::payload::{
     AgentActivity, AgentCapability, ConnectorManifest, EndpointSessionLease, EndpointTelemetry,
     MetricSnapshot, RemediationOutcome, ScannerFinding, ThreatIntelligenceObservation,
 };
-use super::validation::{validate_digest, validate_id, validate_json_bounds, validate_text};
+use super::validation::{
+    validate_attribute, validate_digest, validate_id, validate_json_bounds, validate_text,
+};
 use super::{
     EXTERNAL_EVENT_SCHEMA_V1, MAX_PAYLOAD_BYTES, SIGNING_DOMAIN_V1, WireContractFamily,
     WireEvidenceState,
@@ -17,6 +19,7 @@ use super::{
 
 /// Detached signature metadata. Key material and trust roots remain host-owned.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct WireSignature {
     pub algorithm: String,
     pub key_id: String,
@@ -82,12 +85,11 @@ impl ExternalEventEnvelope {
         if self.occurred_at_unix_ms == 0 || self.observed_at_unix_ms < self.occurred_at_unix_ms {
             return Err(SdkError::OutOfRange("external event observation time"));
         }
-        if self.attributes.len() > 64 {
+        if self.attributes.len() > super::EXTERNAL_EVENT_ATTRIBUTE_KEYS.len() {
             return Err(SdkError::OutOfRange("external event attributes"));
         }
         for (key, value) in &self.attributes {
-            validate_id(key, "external event attribute key")?;
-            validate_text(value, "external event attribute value")?;
+            validate_attribute(key, value)?;
         }
         if let Some(digest) = self.previous_event_digest.as_deref() {
             validate_digest(digest, "external previous event digest")?;

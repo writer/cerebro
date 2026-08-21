@@ -212,6 +212,88 @@ fn remediation_fixture_preserves_its_serialized_idempotency_key() {
 }
 
 #[test]
+fn nested_evidence_and_signature_reject_unknown_members() {
+    let (family, payload) = sample_payloads().remove(0);
+    let mut evidence_value = serde_json::to_value(envelope(family, payload.clone())).unwrap();
+    evidence_value["evidence"]["authoritative"] = Value::Bool(false);
+    assert!(serde_json::from_value::<ExternalEventEnvelope>(evidence_value).is_err());
+
+    let mut signed = envelope(family, payload);
+    signed.signature = Some(WireSignature {
+        algorithm: "ed25519".into(),
+        key_id: "key-1".into(),
+        value: "signature-a".into(),
+    });
+    let mut signature_value = serde_json::to_value(signed).unwrap();
+    signature_value["signature"]["trust_override"] = Value::Bool(true);
+    assert!(serde_json::from_value::<ExternalEventEnvelope>(signature_value).is_err());
+}
+
+#[test]
+fn attributes_accept_only_bounded_non_secret_operational_metadata() {
+    let (family, payload) = sample_payloads().remove(0);
+    for key in EXTERNAL_EVENT_ATTRIBUTE_KEYS {
+        let mut event = envelope(family, payload.clone());
+        event.attributes.insert((*key).into(), "value-1".into());
+        event.validate().unwrap();
+    }
+
+    for key in [
+        "api_key",
+        "api-key",
+        "apiKey",
+        "token",
+        "access_token",
+        "password",
+        "secret",
+        "client_secret",
+        "private_key",
+        "session_cookie",
+        "authorization",
+        "proxy_authorization",
+    ] {
+        let mut event = envelope(family, payload.clone());
+        event.attributes.insert(key.into(), "redacted".into());
+        assert!(
+            event.validate().is_err(),
+            "attribute key {key} was accepted"
+        );
+    }
+
+    for value in [
+        "api_key",
+        "token-value",
+        "password:value",
+        "secret/value",
+        "private_key",
+        "session_cookie",
+        "authorization",
+        "bearer:credential",
+    ] {
+        let mut event = envelope(family, payload.clone());
+        event
+            .attributes
+            .insert("correlation_id".into(), value.into());
+        assert!(
+            event.validate().is_err(),
+            "credential-like attribute value {value} was accepted"
+        );
+    }
+
+    let mut event = envelope(family, payload);
+    event.attributes.insert(
+        "correlation_id".into(),
+        "a".repeat(MAX_EXTERNAL_EVENT_ATTRIBUTE_VALUE_BYTES),
+    );
+    event.validate().unwrap();
+    event.attributes.insert(
+        "correlation_id".into(),
+        "a".repeat(MAX_EXTERNAL_EVENT_ATTRIBUTE_VALUE_BYTES + 1),
+    );
+    assert!(event.validate().is_err());
+}
+
+#[test]
 fn family_schema_and_payload_must_match() {
     let (_, payload) = sample_payloads().remove(0);
     let mut event = envelope(WireContractFamily::AgentActivity, payload);

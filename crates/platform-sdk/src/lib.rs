@@ -71,14 +71,14 @@ pub use view::{MaterializedViewDefinition, MaterializedViewSnapshot, ViewRefresh
 pub use wire::{
     AGENT_ACTIVITY_SCHEMA_V1, AGENT_CAPABILITY_SCHEMA_V1, AgentActionStage, AgentActivity,
     AgentCapability, CONNECTOR_MANIFEST_SCHEMA_V1, ConnectorManifest, DecodedWirePayload,
-    ENDPOINT_SESSION_LEASE_SCHEMA_V1, ENDPOINT_TELEMETRY_SCHEMA_V1, EXTERNAL_EVENT_SCHEMA_V1,
-    EndpointNetworkProfile, EndpointOwnership, EndpointSessionLease, EndpointTelemetry,
-    EvidenceCompleteness, EvidenceFreshness, ExternalEventEnvelope, METRIC_SNAPSHOT_SCHEMA_V1,
-    MetricSnapshot, REMEDIATION_OUTCOME_SCHEMA_V1, RemediationOutcome, SCANNER_FINDING_SCHEMA_V1,
-    ScannerFinding, ScannerSeverity, ScannerValidationState, THREAT_INTELLIGENCE_SCHEMA_V1,
-    ThreatIndicatorKind, ThreatIntelligenceObservation, ThreatPromotionReason, ThreatVerdict,
-    WireContractFamily, WireEvidenceState, WireIngestOutcome, WireIngestReason, WireIngestReceipt,
-    WireSignature,
+    ENDPOINT_SESSION_LEASE_SCHEMA_V1, ENDPOINT_TELEMETRY_SCHEMA_V1, EXTERNAL_EVENT_ATTRIBUTE_KEYS,
+    EXTERNAL_EVENT_SCHEMA_V1, EndpointNetworkProfile, EndpointOwnership, EndpointSessionLease,
+    EndpointTelemetry, EvidenceCompleteness, EvidenceFreshness, ExternalEventEnvelope,
+    MAX_EXTERNAL_EVENT_ATTRIBUTE_VALUE_BYTES, METRIC_SNAPSHOT_SCHEMA_V1, MetricSnapshot,
+    REMEDIATION_OUTCOME_SCHEMA_V1, RemediationOutcome, SCANNER_FINDING_SCHEMA_V1, ScannerFinding,
+    ScannerSeverity, ScannerValidationState, THREAT_INTELLIGENCE_SCHEMA_V1, ThreatIndicatorKind,
+    ThreatIntelligenceObservation, ThreatPromotionReason, ThreatVerdict, WireContractFamily,
+    WireEvidenceState, WireIngestOutcome, WireIngestReason, WireIngestReceipt, WireSignature,
 };
 
 /// Stable schema revision for the reusable SDK contracts.

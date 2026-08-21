@@ -36,6 +36,17 @@ pub const SCANNER_FINDING_SCHEMA_V1: &str = "cerebro/scanner/finding/v1";
 pub const CONNECTOR_MANIFEST_SCHEMA_V1: &str = "cerebro/connector/manifest/v1";
 /// Agent capability payload schema.
 pub const AGENT_CAPABILITY_SCHEMA_V1: &str = "cerebro/agent/capability/v1";
+/// Closed non-secret operational metadata keys accepted on an external event.
+pub const EXTERNAL_EVENT_ATTRIBUTE_KEYS: &[&str] = &[
+    "correlation_id",
+    "environment",
+    "producer_version",
+    "region",
+    "source_kind",
+    "trace_id",
+];
+/// Maximum bytes accepted in one external-event operational metadata value.
+pub const MAX_EXTERNAL_EVENT_ATTRIBUTE_VALUE_BYTES: usize = 256;
 
 const SIGNING_DOMAIN_V1: &str = "cerebro.external-event-signature/v1";
 const MAX_ID_BYTES: usize = 256;
