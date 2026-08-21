@@ -5,6 +5,7 @@
 
 mod append_log;
 mod aurelius;
+mod aws_account;
 mod aws_secret_store;
 mod cerebro_source;
 mod credential_lease;
@@ -26,6 +27,11 @@ mod trivy;
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use aurelius::{
     AureliusCursor, AureliusError, AureliusFamily, AureliusKernel, AureliusPage, AureliusRecord,
+};
+pub use aws_account::{
+    AwsAccountContactError, AwsAccountContactKernel, AwsAccountContactOutcome,
+    AwsAccountContactPage, AwsAccountContactRecord, AwsAccountContactRequest,
+    AwsAccountContactRequestKind,
 };
 pub use aws_secret_store::{
     AwsSecretReadError, AwsSecretReader, AwsSecretReference, AwsSecretResolutionError,
