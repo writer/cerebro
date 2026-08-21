@@ -4,6 +4,7 @@
 //! Rust-native source collection and graph admission boundary.
 
 mod append_log;
+mod aurelius;
 mod aws_secret_store;
 mod credential_lease;
 mod deposit;
@@ -19,6 +20,9 @@ mod sentinelone;
 mod trivy;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
+pub use aurelius::{
+    AureliusCursor, AureliusError, AureliusFamily, AureliusKernel, AureliusPage, AureliusRecord,
+};
 pub use aws_secret_store::{
     AwsSecretReadError, AwsSecretReader, AwsSecretReference, AwsSecretResolutionError,
     AwsSecretValue, contains_aws_secret_references, parse_aws_secret_reference,
