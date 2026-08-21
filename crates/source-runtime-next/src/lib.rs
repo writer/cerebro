@@ -98,7 +98,10 @@ pub use fixture_parity::{
     FixtureParityReceipt, build_fixture_parity_matrix, compare_fixture_parity,
     execute_fixture_parity_page, fixture_excluded_family_reasons,
 };
-pub use gcp::{GcpContentInspection, GcpDataClassification, GcpObjectContentKernel};
+pub use gcp::{
+    GcpContentInspection, GcpDataClassification, GcpIamError, GcpIamFamily, GcpIamFilters,
+    GcpIamKernel, GcpIamPage, GcpIamRecord, GcpIamRequest, GcpObjectContentKernel,
+};
 pub use google_workspace::{
     GoogleWorkspaceError, GoogleWorkspaceFamily, GoogleWorkspaceFilters, GoogleWorkspaceKernel,
     GoogleWorkspaceOutcome, GoogleWorkspacePage, GoogleWorkspaceRecord, GoogleWorkspaceRequest,
