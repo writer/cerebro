@@ -319,9 +319,11 @@ type ResourceFamily struct {
 	Path                  string                  `json:"path"`
 	Method                string                  `json:"method,omitempty"`
 	RecordSelector        string                  `json:"record_selector,omitempty"`
+	ProviderKernel        string                  `json:"provider_kernel,omitempty"`
 	ListKey               string                  `json:"list_key,omitempty"`
 	Read                  *ResourceReadSpec       `json:"read,omitempty"`
 	Singleton             bool                    `json:"singleton,omitempty"`
+	SingletonFallbackID   string                  `json:"singleton_fallback_id,omitempty"`
 	IDField               string                  `json:"id_field"`
 	NameField             string                  `json:"name_field,omitempty"`
 	UpdatedAtField        string                  `json:"updated_at_field,omitempty"`

@@ -24,3 +24,66 @@ message SourceCheckpoint {
   google.protobuf.Timestamp watermark = 1;
   string cursor_opaque = 2;
 }
+
+// SourceExecutionPlanV1 is the compiled, credential-free contract for one
+// bounded provider read. Runtime workers consume this message; they never read
+// connector YAML or receive credential material.
+message SourceExecutionPlanV1 {
+  string plan_id = 1;
+  string source_id = 2;
+  string family_id = 3;
+  string provider_kernel = 4;
+  string method = 5;
+  string origin = 6;
+  string path = 7;
+  string record_selector = 8;
+  string id_field = 9;
+  string singleton_fallback_id = 10;
+  uint64 max_response_bytes = 11;
+  string event_kind = 12;
+  string schema_ref = 13;
+  repeated string required_attributes = 14;
+  repeated string required_payload_fields = 15;
+  string plan_digest_sha256 = 16;
+}
+
+// SourceWorkerHTTPRequestV1 is a safe request plan returned by the
+// capability-free Rust worker. The Go host owns credential redemption,
+// authorization headers, DNS, egress, redirects, deadlines, and network I/O.
+message SourceWorkerHTTPRequestV1 {
+  string plan_id = 1;
+  string method = 2;
+  string url = 3;
+  string accept = 4;
+  uint64 max_response_bytes = 5;
+  string plan_digest_sha256 = 6;
+}
+
+// SourceWorkerDecodeRequestV1 carries only bounded provider output and safe
+// execution identity into the capability-free Rust decoder.
+message SourceWorkerDecodeRequestV1 {
+  SourceExecutionPlanV1 plan = 1;
+  uint32 status_code = 2;
+  bytes response_body = 3;
+  string logical_page_id = 4;
+  string request_intent_digest = 5;
+}
+
+// SourceWorkerRecordV1 is one normalized, credential-free provider record.
+message SourceWorkerRecordV1 {
+  string provider_id = 1;
+  map<string, string> attributes = 2;
+  bytes payload_json = 3;
+}
+
+// SourceWorkerDecodeResultV1 binds normalized records to the exact plan and
+// logical page. Singleton families leave next_cursor empty.
+message SourceWorkerDecodeResultV1 {
+  string plan_id = 1;
+  string plan_digest_sha256 = 2;
+  string logical_page_id = 3;
+  string request_intent_digest = 4;
+  repeated SourceWorkerRecordV1 records = 5;
+  string next_cursor = 6;
+  string result_digest_sha256 = 7;
+}

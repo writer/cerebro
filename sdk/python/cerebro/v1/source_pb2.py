@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x63\x65rebro/v1/source.proto\x12\ncerebro.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"w\n\nSourceSpec\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12 \n\x0b\x64\x65scription\x18\x03 \x01(\tR\x0b\x64\x65scription\x12#\n\remitted_kinds\x18\x04 \x03(\tR\x0c\x65mittedKinds\"&\n\x0cSourceCursor\x12\x16\n\x06opaque\x18\x01 \x01(\tR\x06opaque\"q\n\x10SourceCheckpoint\x12\x38\n\twatermark\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\twatermark\x12#\n\rcursor_opaque\x18\x02 \x01(\tR\x0c\x63ursorOpaqueB4Z2github.com/writer/cerebro/gen/cerebro/v1;cerebrov1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x63\x65rebro/v1/source.proto\x12\ncerebro.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"w\n\nSourceSpec\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12 \n\x0b\x64\x65scription\x18\x03 \x01(\tR\x0b\x64\x65scription\x12#\n\remitted_kinds\x18\x04 \x03(\tR\x0c\x65mittedKinds\"&\n\x0cSourceCursor\x12\x16\n\x06opaque\x18\x01 \x01(\tR\x06opaque\"q\n\x10SourceCheckpoint\x12\x38\n\twatermark\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\twatermark\x12#\n\rcursor_opaque\x18\x02 \x01(\tR\x0c\x63ursorOpaque\"\xd2\x04\n\x15SourceExecutionPlanV1\x12\x17\n\x07plan_id\x18\x01 \x01(\tR\x06planId\x12\x1b\n\tsource_id\x18\x02 \x01(\tR\x08sourceId\x12\x1b\n\tfamily_id\x18\x03 \x01(\tR\x08\x66\x61milyId\x12\'\n\x0fprovider_kernel\x18\x04 \x01(\tR\x0eproviderKernel\x12\x16\n\x06method\x18\x05 \x01(\tR\x06method\x12\x16\n\x06origin\x18\x06 \x01(\tR\x06origin\x12\x12\n\x04path\x18\x07 \x01(\tR\x04path\x12\'\n\x0frecord_selector\x18\x08 \x01(\tR\x0erecordSelector\x12\x19\n\x08id_field\x18\t \x01(\tR\x07idField\x12\x32\n\x15singleton_fallback_id\x18\n \x01(\tR\x13singletonFallbackId\x12,\n\x12max_response_bytes\x18\x0b \x01(\x04R\x10maxResponseBytes\x12\x1d\n\nevent_kind\x18\x0c \x01(\tR\teventKind\x12\x1d\n\nschema_ref\x18\r \x01(\tR\tschemaRef\x12/\n\x13required_attributes\x18\x0e \x03(\tR\x12requiredAttributes\x12\x36\n\x17required_payload_fields\x18\x0f \x03(\tR\x15requiredPayloadFields\x12,\n\x12plan_digest_sha256\x18\x10 \x01(\tR\x10planDigestSha256\"\xd2\x01\n\x19SourceWorkerHTTPRequestV1\x12\x17\n\x07plan_id\x18\x01 \x01(\tR\x06planId\x12\x16\n\x06method\x18\x02 \x01(\tR\x06method\x12\x10\n\x03url\x18\x03 \x01(\tR\x03url\x12\x16\n\x06\x61\x63\x63\x65pt\x18\x04 \x01(\tR\x06\x61\x63\x63\x65pt\x12,\n\x12max_response_bytes\x18\x05 \x01(\x04R\x10maxResponseBytes\x12,\n\x12plan_digest_sha256\x18\x06 \x01(\tR\x10planDigestSha256\"\xf6\x01\n\x1bSourceWorkerDecodeRequestV1\x12\x35\n\x04plan\x18\x01 \x01(\x0b\x32!.cerebro.v1.SourceExecutionPlanV1R\x04plan\x12\x1f\n\x0bstatus_code\x18\x02 \x01(\rR\nstatusCode\x12#\n\rresponse_body\x18\x03 \x01(\x0cR\x0cresponseBody\x12&\n\x0flogical_page_id\x18\x04 \x01(\tR\rlogicalPageId\x12\x32\n\x15request_intent_digest\x18\x05 \x01(\tR\x13requestIntentDigest\"\xeb\x01\n\x14SourceWorkerRecordV1\x12\x1f\n\x0bprovider_id\x18\x01 \x01(\tR\nproviderId\x12P\n\nattributes\x18\x02 \x03(\x0b\x32\x30.cerebro.v1.SourceWorkerRecordV1.AttributesEntryR\nattributes\x12!\n\x0cpayload_json\x18\x03 \x01(\x0cR\x0bpayloadJson\x1a=\n\x0f\x41ttributesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\"\xce\x02\n\x1aSourceWorkerDecodeResultV1\x12\x17\n\x07plan_id\x18\x01 \x01(\tR\x06planId\x12,\n\x12plan_digest_sha256\x18\x02 \x01(\tR\x10planDigestSha256\x12&\n\x0flogical_page_id\x18\x03 \x01(\tR\rlogicalPageId\x12\x32\n\x15request_intent_digest\x18\x04 \x01(\tR\x13requestIntentDigest\x12:\n\x07records\x18\x05 \x03(\x0b\x32 .cerebro.v1.SourceWorkerRecordV1R\x07records\x12\x1f\n\x0bnext_cursor\x18\x06 \x01(\tR\nnextCursor\x12\x30\n\x14result_digest_sha256\x18\x07 \x01(\tR\x12resultDigestSha256B4Z2github.com/writer/cerebro/gen/cerebro/v1;cerebrov1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,10 +33,24 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'cerebro.v1.source_pb2', _gl
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z2github.com/writer/cerebro/gen/cerebro/v1;cerebrov1'
+  _globals['_SOURCEWORKERRECORDV1_ATTRIBUTESENTRY']._loaded_options = None
+  _globals['_SOURCEWORKERRECORDV1_ATTRIBUTESENTRY']._serialized_options = b'8\001'
   _globals['_SOURCESPEC']._serialized_start=72
   _globals['_SOURCESPEC']._serialized_end=191
   _globals['_SOURCECURSOR']._serialized_start=193
   _globals['_SOURCECURSOR']._serialized_end=231
   _globals['_SOURCECHECKPOINT']._serialized_start=233
   _globals['_SOURCECHECKPOINT']._serialized_end=346
+  _globals['_SOURCEEXECUTIONPLANV1']._serialized_start=349
+  _globals['_SOURCEEXECUTIONPLANV1']._serialized_end=943
+  _globals['_SOURCEWORKERHTTPREQUESTV1']._serialized_start=946
+  _globals['_SOURCEWORKERHTTPREQUESTV1']._serialized_end=1156
+  _globals['_SOURCEWORKERDECODEREQUESTV1']._serialized_start=1159
+  _globals['_SOURCEWORKERDECODEREQUESTV1']._serialized_end=1405
+  _globals['_SOURCEWORKERRECORDV1']._serialized_start=1408
+  _globals['_SOURCEWORKERRECORDV1']._serialized_end=1643
+  _globals['_SOURCEWORKERRECORDV1_ATTRIBUTESENTRY']._serialized_start=1582
+  _globals['_SOURCEWORKERRECORDV1_ATTRIBUTESENTRY']._serialized_end=1643
+  _globals['_SOURCEWORKERDECODERESULTV1']._serialized_start=1646
+  _globals['_SOURCEWORKERDECODERESULTV1']._serialized_end=1980
 # @@protoc_insertion_point(module_scope)
