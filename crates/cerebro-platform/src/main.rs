@@ -13,6 +13,7 @@ mod slack_agent_session;
 mod slack_authority;
 mod slack_mrkdwn;
 mod threat_insight_projection;
+mod trusted_endpoint_projection;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -836,6 +837,35 @@ impl ProjectionRuntime {
         if threat_insight_projection::matches(&event) {
             let (batch, delta) =
                 threat_insight_projection::project(event).map_err(ProjectionFailure::Invalid)?;
+            let receipt = self
+                .store
+                .lock()
+                .await
+                .apply(&batch, delta)
+                .await
+                .map_err(ProjectionFailure::Store)?;
+            return Ok(ProjectEventResponse {
+                authority: authority.authority,
+                projected: true,
+                graph_revision: Some(receipt.graph_revision),
+                entities_upserted: receipt.entities_upserted,
+                assertions_upserted: receipt.assertions_upserted,
+            });
+        }
+        if trusted_endpoint_projection::matches(&event) {
+            let contract = self
+                .catalog
+                .push_source(event.source_id())
+                .and_then(|source| source.family(event.family_id()))
+                .ok_or_else(|| {
+                    ProjectionFailure::Invalid(format!(
+                        "push family {}.{} is not in the compiled catalog",
+                        event.source_id(),
+                        event.family_id()
+                    ))
+                })?;
+            let (batch, delta) = trusted_endpoint_projection::project(event, contract)
+                .map_err(ProjectionFailure::Invalid)?;
             let receipt = self
                 .store
                 .lock()

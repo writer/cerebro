@@ -41,7 +41,7 @@ cerebro-source-catalog --> cerebro-source-runtime-next
 
 `cerebro-organizational-graph` is the only crate that advances current organizational graph state. A commit takes a validated `GraphDelta`; there is no public entity/link mutation method.
 
-`cerebro-source-catalog` compiles all 798 checked-in source definitions and 3,925 resource families into a closed runtime grammar. Every family is assigned one Rust-owned projection class: identity, access, resource, finding, activity, or bespoke. Connector YAML cannot declare another class. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed. Bespoke families also remain shadow-only until a native mapper is added.
+`cerebro-source-catalog` compiles all 798 checked-in pull-source definitions and 3,925 resource families into a closed runtime grammar. Every family is assigned one Rust-owned projection class: identity, access, resource, finding, activity, or bespoke. Connector YAML cannot declare another class. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed. Bespoke families also remain shadow-only until a native mapper is added. Separately, the catalog admits one push-only Trusted Endpoint source through ten exact event contracts; it does not construct an HTTP collector or change the pull-source totals.
 
 `cerebro-source-runtime-next` owns source collection, pagination, mapping, and graph commit sequencing. Provider redirects are disabled, pagination cannot change origin, pages are bounded, and resolved credentials never enter the graph model. A source cannot obtain a graph store or construct an unvalidated graph write.
 
@@ -257,7 +257,7 @@ Each receipt binds the tenant, runtime, source, family, collection, exact input 
 
 The runtime reads the same authority record before every projection. Legacy authority calls only Go. Rust authority calls only Rust, requires a commit receipt, and fails closed. The compatibility mapper remains available for parity comparison, but it is no longer a write fallback for a promoted family.
 
-The current checked-in catalog compiles to 798 sources and 3,925 families:
+The current checked-in pull catalog compiles to 798 sources and 3,925 families. The push catalog separately compiles one Trusted Endpoint source and ten event families:
 
 | Projection class | Families | Rust meaning |
 | --- | ---: | --- |
