@@ -15,10 +15,12 @@ const MEMBER_FIXTURE: &[u8] = include_bytes!(concat!(
 ));
 const GUILD_ID: &str = "100000000000000000";
 const APPLICATION_ID: &str = "200000000000000000";
+const TENANT_ID: &str = "tenant";
 
 fn kernel(family: DiscordFamily, page_size: Option<usize>) -> DiscordKernel {
     DiscordKernel::new(
         "https://discord.com/api/v10",
+        TENANT_ID,
         GUILD_ID,
         Some(APPLICATION_ID),
         family,
@@ -153,6 +155,7 @@ fn kernel_rejects_unsafe_scope_invalid_bounds_and_wrong_envelopes() {
     assert!(matches!(
         DiscordKernel::new(
             "http://discord.com/api/v10",
+            TENANT_ID,
             GUILD_ID,
             None,
             DiscordFamily::Member,
@@ -163,6 +166,7 @@ fn kernel_rejects_unsafe_scope_invalid_bounds_and_wrong_envelopes() {
     assert!(matches!(
         DiscordKernel::new(
             "https://127.0.0.1",
+            TENANT_ID,
             GUILD_ID,
             None,
             DiscordFamily::Member,
@@ -173,6 +177,7 @@ fn kernel_rejects_unsafe_scope_invalid_bounds_and_wrong_envelopes() {
     assert!(matches!(
         DiscordKernel::new(
             "https://discord.com/api/v10",
+            TENANT_ID,
             "guild",
             None,
             DiscordFamily::Member,
@@ -183,6 +188,7 @@ fn kernel_rejects_unsafe_scope_invalid_bounds_and_wrong_envelopes() {
     assert!(matches!(
         DiscordKernel::new(
             "https://discord.com/api/v10",
+            TENANT_ID,
             GUILD_ID,
             None,
             DiscordFamily::Permission,
@@ -193,6 +199,7 @@ fn kernel_rejects_unsafe_scope_invalid_bounds_and_wrong_envelopes() {
     assert!(matches!(
         DiscordKernel::new(
             "https://discord.com/api/v10",
+            TENANT_ID,
             GUILD_ID,
             None,
             DiscordFamily::AuditLog,

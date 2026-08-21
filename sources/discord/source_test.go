@@ -38,7 +38,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bot test-token" {
 			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 		}
-		if r.URL.Path != "/guilds/test-guild_id/audit-logs" {
+		if r.URL.Path != "/guilds/100000000000000000/audit-logs" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		if r.URL.Query().Get("after") != "0" {
@@ -51,7 +51,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 		_, _ = w.Write(readFixture(t, "testdata/read_audit_log.json"))
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_token": "test-token", "application_id": "test-application_id", "guild_id": "test-guild_id", "per_page": "2"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_token": "test-token", "application_id": "200000000000000000", "guild_id": "100000000000000000", "per_page": "2"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
@@ -211,7 +211,7 @@ func TestResumedCursorMustBePositiveSnowflake(t *testing.T) {
 }
 
 func TestNilPullHelpersAreSafe(t *testing.T) {
-	if err := adjustProviderCursor(familyMember, nil); err != nil {
+	if err := adjustProviderCursor(familyMember, sourcecdk.Config{}, nil); err != nil {
 		t.Fatalf("adjustProviderCursor(nil) error = %v", err)
 	}
 	if err := validatePermissionScope(familyPermission, sourcecdk.Config{}, nil); err != nil {

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 
 use super::{DiscordError, DiscordFamily, DiscordRecord, request::snowflake};
 
@@ -9,6 +10,10 @@ pub(super) const MAX_COMMAND_PERMISSION_ENTRIES: usize = 100;
 
 pub(super) fn normalize_record(
     family: DiscordFamily,
+    tenant_id: &str,
+    base_url: &str,
+    operation_path: &str,
+    guild_id: &str,
     payload: Value,
 ) -> Result<DiscordRecord, DiscordError> {
     let values = payload.as_object().ok_or(DiscordError::InvalidResponse)?;
@@ -21,7 +26,10 @@ pub(super) fn normalize_record(
     }
     .ok_or(DiscordError::MissingProviderId)
     .and_then(|value| snowflake(&value, DiscordError::MissingProviderId))?;
+    let occurred_at_unix_millis = snowflake_unix_millis(&provider_id)?;
+    let event_id = event_id(tenant_id, base_url, operation_path, family, &provider_id);
     let mut fields = BTreeMap::from([
+        ("external_id".to_owned(), provider_id.clone()),
         ("family".to_owned(), family.as_str().to_owned()),
         ("provider".to_owned(), "discord".to_owned()),
         ("provider_id".to_owned(), provider_id.clone()),
@@ -31,10 +39,13 @@ pub(super) fn normalize_record(
     match family {
         DiscordFamily::AuditLog => {
             fields.insert("id".to_owned(), provider_id.clone());
+            fields.insert("guild_id".to_owned(), guild_id.to_owned());
+            fields.insert("record_class".to_owned(), "audit_event".to_owned());
+            fields.insert("schema".to_owned(), "audit_log".to_owned());
+            fields.insert("source_system".to_owned(), "discord".to_owned());
             copy_first(&mut fields, values, "event_type", &["action_type"]);
             copy_first(&mut fields, values, "actor_id", &["user_id"]);
             copy_first(&mut fields, values, "resource_id", &["target_id"]);
-            copy_first(&mut fields, values, "reason", &["reason"]);
         }
         DiscordFamily::Member => normalize_member(&mut fields, values, &provider_id),
         DiscordFamily::Role => {
@@ -54,12 +65,68 @@ pub(super) fn normalize_record(
         }
     }
     Ok(DiscordRecord {
+        tenant_id: tenant_id.to_owned(),
+        event_id,
+        source_id: "discord".to_owned(),
+        schema_ref: format!("discord/{}/v1", family.as_str()),
         family: family.as_str().to_owned(),
         provider_kind: family.provider_kind().to_owned(),
         provider_id,
+        occurred_at_unix_millis,
         fields,
         payload,
     })
+}
+
+const DISCORD_EPOCH_MILLIS: u64 = 1_420_070_400_000;
+
+fn snowflake_unix_millis(value: &str) -> Result<i64, DiscordError> {
+    let snowflake = value
+        .parse::<u64>()
+        .map_err(|_| DiscordError::InvalidRecord)?;
+    let milliseconds = (snowflake >> 22)
+        .checked_add(DISCORD_EPOCH_MILLIS)
+        .ok_or(DiscordError::InvalidRecord)?;
+    i64::try_from(milliseconds).map_err(|_| DiscordError::InvalidRecord)
+}
+
+fn event_id(
+    tenant_id: &str,
+    base_url: &str,
+    operation_path: &str,
+    family: DiscordFamily,
+    provider_id: &str,
+) -> String {
+    let scope = Sha256::digest(format!(
+        "{}\0{}",
+        base_url.trim_end_matches('/'),
+        operation_path
+    ));
+    let scope_prefix = scope[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!(
+        "discord-{}-{}-{}-{}",
+        normalize_id(tenant_id),
+        scope_prefix,
+        normalize_id(family.as_str()),
+        normalize_id(provider_id)
+    )
+}
+
+fn normalize_id(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        return "unknown".to_owned();
+    }
+    value
+        .chars()
+        .map(|character| match character {
+            ' ' | '/' | ':' | '\t' | '\n' => '-',
+            other => other,
+        })
+        .collect()
 }
 
 fn normalize_member(
@@ -145,6 +212,9 @@ fn validate_record_shape(
 }
 
 fn validate_audit(values: &Map<String, Value>) -> Result<(), DiscordError> {
+    if values.contains_key("tenant_id") {
+        return Err(DiscordError::InvalidRecord);
+    }
     required_string(values.get("id"))?;
     required_nullable_snowflake(values.get("user_id"))?;
     required_unsigned_number(values.get("action_type"))?;

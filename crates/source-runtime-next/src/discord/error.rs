@@ -9,6 +9,8 @@ pub enum DiscordError {
     InvalidBaseUrl,
     /// Base URL contains an unsafe private, loopback, or link-local IP literal.
     UnsafeOrigin,
+    /// Authenticated runtime context did not supply a bounded tenant identifier.
+    InvalidTenantId,
     /// Guild identifier is not a positive Discord snowflake.
     InvalidGuildId,
     /// Application identifier is not a positive Discord snowflake.
@@ -39,6 +41,29 @@ pub enum DiscordError {
     MissingProviderId,
     /// An `after` page is not strictly ascending by provider snowflake.
     InvalidPageOrder,
+    /// The same provider identity appeared with different content.
+    ConflictingDuplicate,
+    /// Discord rejected the externally applied credential.
+    AuthenticationRejected,
+    /// The bot credential is valid but lacks the audit-log permission.
+    RequiredScopeMissing,
+    /// Discord asked the host to retry the bounded operation later.
+    RateLimited {
+        /// Provider delay admitted by the kernel's one-hour bound.
+        retry_after_seconds: Option<u64>,
+    },
+    /// Discord returned a retryable server status.
+    ProviderUnavailable {
+        /// Provider status in the inclusive 500-599 range.
+        status: u16,
+    },
+    /// Discord returned a non-success status outside the typed cases.
+    UnexpectedStatus {
+        /// Provider status that did not match a supported success or failure class.
+        status: u16,
+    },
+    /// Retry-After exceeded the provider-local persistence bound.
+    InvalidRetryAfter,
     /// A request was decoded by a kernel for another family or scope.
     RequestScopeMismatch,
 }
@@ -49,6 +74,7 @@ impl fmt::Display for DiscordError {
             Self::InvalidFamily => "discord family is invalid",
             Self::InvalidBaseUrl => "discord base URL must be a credential-free HTTPS URL",
             Self::UnsafeOrigin => "discord base URL contains an unsafe IP literal",
+            Self::InvalidTenantId => "discord tenant ID is required and must be bounded",
             Self::InvalidGuildId => "discord guild ID must be a positive snowflake",
             Self::InvalidApplicationId => "discord application ID must be a positive snowflake",
             Self::MissingApplicationId => "discord permission family requires an application ID",
@@ -64,6 +90,17 @@ impl fmt::Display for DiscordError {
             Self::CredentialMaterial => "discord response contains credential material",
             Self::MissingProviderId => "discord record is missing a provider snowflake",
             Self::InvalidPageOrder => "discord after page is not strictly ascending",
+            Self::ConflictingDuplicate => {
+                "discord provider identity was repeated with conflicting content"
+            }
+            Self::AuthenticationRejected => "discord rejected the bot credential",
+            Self::RequiredScopeMissing => {
+                "discord bot credential requires the VIEW_AUDIT_LOG permission"
+            }
+            Self::RateLimited { .. } => "discord rate limited the audit-log request",
+            Self::ProviderUnavailable { .. } => "discord provider is temporarily unavailable",
+            Self::UnexpectedStatus { .. } => "discord returned an unexpected HTTP status",
+            Self::InvalidRetryAfter => "discord Retry-After exceeds the one-hour bound",
             Self::RequestScopeMismatch => "discord request does not match the configured kernel",
         })
     }

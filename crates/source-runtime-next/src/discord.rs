@@ -18,4 +18,6 @@ pub use family::DiscordFamily;
 pub use types::{DiscordKernel, DiscordPage, DiscordRecord, DiscordRequest};
 
 #[cfg(test)]
+mod audit_log_tests;
+#[cfg(test)]
 mod tests;

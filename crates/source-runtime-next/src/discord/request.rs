@@ -2,13 +2,14 @@ use std::net::IpAddr;
 
 use reqwest::Url;
 
-use super::{DiscordError, DiscordFamily, DiscordKernel, DiscordRequest};
+use super::{DiscordError, DiscordFamily, DiscordKernel, DiscordRequest, wire::MAX_RESPONSE_BYTES};
 
 const AUDIT_DEFAULT_PAGE_SIZE: usize = 50;
 const AUDIT_MAX_PAGE_SIZE: usize = 100;
 const MEMBER_DEFAULT_PAGE_SIZE: usize = 1;
 const MEMBER_MAX_PAGE_SIZE: usize = 1_000;
 const MAX_SNOWFLAKE_BYTES: usize = 20;
+const MAX_TENANT_ID_BYTES: usize = 128;
 
 impl DiscordFamily {
     const fn default_page_size(self) -> Option<usize> {
@@ -29,6 +30,11 @@ impl DiscordFamily {
 }
 
 impl DiscordRequest {
+    /// Return the provider method for this read-only operation.
+    pub const fn method(&self) -> &'static str {
+        "GET"
+    }
+
     /// Return the exact provider URL. The caller must authorize it before I/O.
     pub fn url(&self) -> &Url {
         &self.url
@@ -39,6 +45,34 @@ impl DiscordRequest {
         "Bot"
     }
 
+    /// Return the header the trusted host must populate from its credential lease.
+    pub const fn authorization_header(&self) -> &'static str {
+        "Authorization"
+    }
+
+    /// The portable request never contains credential bytes.
+    pub const fn contains_credentials(&self) -> bool {
+        false
+    }
+
+    /// Redirects are denied so authentication cannot escape the planned origin.
+    pub const fn allows_redirects(&self) -> bool {
+        false
+    }
+
+    /// Return the provider permission required for audit-log reads.
+    pub const fn required_permission(&self) -> Option<&'static str> {
+        match self.family {
+            DiscordFamily::AuditLog => Some("VIEW_AUDIT_LOG"),
+            _ => None,
+        }
+    }
+
+    /// Return the response byte bound the host must enforce before kernel decode.
+    pub const fn max_response_bytes(&self) -> usize {
+        MAX_RESPONSE_BYTES
+    }
+
     /// Return the required response media type.
     pub const fn accept(&self) -> &'static str {
         "application/json"
@@ -46,18 +80,20 @@ impl DiscordRequest {
 }
 
 impl DiscordKernel {
-    /// Build a kernel for one guild, family, and optional application.
+    /// Build a kernel for one authenticated tenant, guild, and family.
     ///
     /// The caller still owns egress authorization and the operation-scoped bot
     /// credential lease. `application_id` is required only for `permission`.
     pub fn new(
         base_url: &str,
+        tenant_id: &str,
         guild_id: &str,
         application_id: Option<&str>,
         family: DiscordFamily,
         page_size: Option<usize>,
     ) -> Result<Self, DiscordError> {
         let base_url = validate_base_url(base_url)?;
+        let tenant_id = validate_tenant_id(tenant_id)?;
         let guild_id = snowflake(guild_id, DiscordError::InvalidGuildId)?;
         let application_id = application_id
             .map(|value| snowflake(value, DiscordError::InvalidApplicationId))
@@ -78,6 +114,7 @@ impl DiscordKernel {
         };
         Ok(Self {
             base_url,
+            tenant_id,
             guild_id,
             application_id,
             family,
@@ -116,6 +153,8 @@ impl DiscordKernel {
         }
         Ok(DiscordRequest {
             url,
+            operation_path: path,
+            tenant_id: self.tenant_id.clone(),
             family: self.family,
             cursor,
         })
@@ -137,16 +176,26 @@ fn validate_base_url(value: &str) -> Result<Url, DiscordError> {
         || url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
+        || url.port_or_known_default() != Some(443)
         || url.query().is_some()
         || url.fragment().is_some()
     {
         return Err(DiscordError::InvalidBaseUrl);
     }
-    if let Some(host) = url.host_str()
-        && let Ok(address) = host.parse::<IpAddr>()
-        && unsafe_address(address)
-    {
-        return Err(DiscordError::UnsafeOrigin);
+    if let Some(host) = url.host_str() {
+        let normalized = host.trim_end_matches('.').to_ascii_lowercase();
+        if normalized == "localhost"
+            || normalized.ends_with(".localhost")
+            || normalized.ends_with(".local")
+            || !normalized.contains('.')
+        {
+            return Err(DiscordError::UnsafeOrigin);
+        }
+        if let Ok(address) = normalized.parse::<IpAddr>()
+            && unsafe_address(address)
+        {
+            return Err(DiscordError::UnsafeOrigin);
+        }
     }
     let path = url.path().trim_end_matches('/').to_owned();
     url.set_path(if path.is_empty() { "/" } else { &path });
@@ -156,20 +205,36 @@ fn validate_base_url(value: &str) -> Result<Url, DiscordError> {
 fn unsafe_address(address: IpAddr) -> bool {
     match address {
         IpAddr::V4(address) => {
+            let octets = address.octets();
             address.is_private()
                 || address.is_loopback()
                 || address.is_link_local()
                 || address.is_multicast()
                 || address.is_unspecified()
+                || (octets[0] == 100 && (64..=127).contains(&octets[1]))
+                || (octets[0] == 192 && octets[1] == 0 && octets[2] == 2)
+                || (octets[0] == 198 && octets[1] == 51 && octets[2] == 100)
+                || (octets[0] == 203 && octets[1] == 0 && octets[2] == 113)
         }
         IpAddr::V6(address) => {
+            let segments = address.segments();
             address.is_loopback()
                 || address.is_multicast()
                 || address.is_unspecified()
                 || address.is_unique_local()
                 || address.is_unicast_link_local()
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
         }
     }
+}
+
+fn validate_tenant_id(value: &str) -> Result<String, DiscordError> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > MAX_TENANT_ID_BYTES || value.chars().any(char::is_control)
+    {
+        return Err(DiscordError::InvalidTenantId);
+    }
+    Ok(value.to_owned())
 }
 
 pub(super) fn snowflake(value: &str, error: DiscordError) -> Result<String, DiscordError> {
