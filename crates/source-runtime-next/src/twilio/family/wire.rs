@@ -33,7 +33,7 @@ pub(in crate::twilio) struct IdentityObjectWire {
 }
 
 impl IdentityDiscriminatorsWire {
-    pub(in crate::twilio) fn contains_control(&self) -> bool {
+    pub(in crate::twilio) fn has_noncanonical_value(&self) -> bool {
         let device = self.device.as_ref();
         let agent = self.agent.as_ref();
         [
@@ -48,7 +48,7 @@ impl IdentityDiscriminatorsWire {
         ]
         .into_iter()
         .flatten()
-        .any(WireScalar::contains_control)
+        .any(WireScalar::is_noncanonical_identity)
     }
 }
 
@@ -61,8 +61,11 @@ impl WireScalar {
         }
     }
 
-    pub(in crate::twilio) fn contains_control(&self) -> bool {
-        matches!(self, Self::String(value) if value.chars().any(char::is_control))
+    pub(in crate::twilio) fn is_noncanonical_identity(&self) -> bool {
+        match self {
+            Self::String(value) => value != value.trim() || value.chars().any(char::is_control),
+            Self::Number(_) | Self::Bool(_) => true,
+        }
     }
 }
 

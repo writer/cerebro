@@ -299,6 +299,68 @@ fn conflicting_duplicate_provider_identities_fail_closed() {
 }
 
 #[test]
+fn discriminator_text_and_type_aliases_fail_closed_across_pages() {
+    let kernel = kernel(TwilioFamily::Accounts);
+    let request = kernel.plan(None).unwrap();
+    for field in [
+        "device_id",
+        "serial_number",
+        "agent_id",
+        "device_uuid",
+        "installed_version",
+        "version",
+    ] {
+        let canonical = serde_json::to_vec(&json!({
+            "items": [{"id": "record-1", (field): "value-1"}]
+        }))
+        .unwrap();
+        kernel.decode(&request, &canonical, observed_at()).unwrap();
+        let alias = serde_json::to_vec(&json!({
+            "items": [{"id": "record-1", (field): " value-1 "}]
+        }))
+        .unwrap();
+        assert_eq!(
+            kernel.decode(&request, &alias, observed_at()).unwrap_err(),
+            TwilioError::InvalidEventIdentity,
+            "top-level discriminator {field}"
+        );
+    }
+
+    for (object, field) in [("device", "id"), ("agent", "uuid")] {
+        let canonical = serde_json::to_vec(&json!({
+            "items": [{"id": "record-1", (object): {(field): "value-1"}}]
+        }))
+        .unwrap();
+        kernel.decode(&request, &canonical, observed_at()).unwrap();
+        let alias = serde_json::to_vec(&json!({
+            "items": [{"id": "record-1", (object): {(field): " value-1 "}}]
+        }))
+        .unwrap();
+        assert_eq!(
+            kernel.decode(&request, &alias, observed_at()).unwrap_err(),
+            TwilioError::InvalidEventIdentity,
+            "nested discriminator {object}.{field}"
+        );
+    }
+
+    for (canonical, alias) in [(json!("1"), json!(1)), (json!("true"), json!(true))] {
+        let canonical = serde_json::to_vec(&json!({
+            "items": [{"id": "record-1", "device_id": canonical}]
+        }))
+        .unwrap();
+        kernel.decode(&request, &canonical, observed_at()).unwrap();
+        let alias = serde_json::to_vec(&json!({
+            "items": [{"id": "record-1", "device_id": alias}]
+        }))
+        .unwrap();
+        assert_eq!(
+            kernel.decode(&request, &alias, observed_at()).unwrap_err(),
+            TwilioError::InvalidEventIdentity
+        );
+    }
+}
+
+#[test]
 fn go_identity_discriminators_prevent_version_aliases_before_dedupe() {
     let kernel = kernel(TwilioFamily::Accounts);
     let page = kernel
