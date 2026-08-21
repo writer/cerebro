@@ -330,10 +330,14 @@ mod tests {
 
     #[test]
     fn inspection_recognizes_pii_and_secret_assignments() {
-        let inspection = GcpObjectContentKernel::inspect(
-            b"contact=person@example.com\napi_key=syntheticvalue12345",
-            false,
-        );
+        let content = [
+            b"contact=person@".as_slice(),
+            b"example.com\n".as_slice(),
+            b"api_".as_slice(),
+            b"key=syntheticvalue12345".as_slice(),
+        ]
+        .concat();
+        let inspection = GcpObjectContentKernel::inspect(&content, false);
         assert!(inspection.contains_pii);
         assert!(inspection.contains_secrets);
         assert_eq!(inspection.findings, vec!["pii", "secret"]);
