@@ -36,7 +36,7 @@ pub(in crate::twilio) fn normalize(
         scalar(&record.uuid),
         scalar(&record.request_id),
     ])?;
-    let provider_id = record_identity(&record_id, &record.identity);
+    let provider_id = record_identity(&record_id, &record.identity)?;
     let mut fields = base_fields(
         TwilioFamily::AuditEvents,
         tenant_id,

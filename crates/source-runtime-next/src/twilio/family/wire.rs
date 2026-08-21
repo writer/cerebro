@@ -32,6 +32,26 @@ pub(in crate::twilio) struct IdentityObjectWire {
     pub(in crate::twilio) uuid: Option<WireScalar>,
 }
 
+impl IdentityDiscriminatorsWire {
+    pub(in crate::twilio) fn contains_control(&self) -> bool {
+        let device = self.device.as_ref();
+        let agent = self.agent.as_ref();
+        [
+            self.device_id.as_ref(),
+            device.and_then(|value| value.id.as_ref()),
+            self.serial_number.as_ref(),
+            self.agent_id.as_ref(),
+            agent.and_then(|value| value.uuid.as_ref()),
+            self.device_uuid.as_ref(),
+            self.installed_version.as_ref(),
+            self.version.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(WireScalar::contains_control)
+    }
+}
+
 impl WireScalar {
     pub(in crate::twilio) fn text(&self) -> String {
         match self {
@@ -39,6 +59,10 @@ impl WireScalar {
             Self::Number(value) => value.to_string(),
             Self::Bool(value) => value.to_string(),
         }
+    }
+
+    pub(in crate::twilio) fn contains_control(&self) -> bool {
+        matches!(self, Self::String(value) if value.chars().any(char::is_control))
     }
 }
 

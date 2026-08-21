@@ -31,7 +31,7 @@ fn plans_exact_go_paths_pagination_and_credential_free_basic_auth() {
 }
 
 #[test]
-fn decodes_bounded_provider_cursor_and_deduplicates_in_provider_order() {
+fn decodes_bounded_provider_cursor_and_deduplicates_identical_records_in_provider_order() {
     let kernel = kernel(TwilioFamily::Accounts);
     let page = kernel
         .decode(
@@ -39,7 +39,7 @@ fn decodes_bounded_provider_cursor_and_deduplicates_in_provider_order() {
             br#"{
                 "data":[
                     {"id":"record-1","name":"First","updated_at":"2026-06-01T00:00:00Z"},
-                    {"id":"record-1","name":"Duplicate","updated_at":"2026-06-01T00:00:00Z"}
+                    {"id":"record-1","name":"First","updated_at":"2026-06-01T00:00:00Z"}
                 ],
                 "pagination":{"next_cursor":"accounts-2"}
             }"#,

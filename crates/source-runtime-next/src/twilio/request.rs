@@ -5,6 +5,7 @@ use reqwest::Url;
 use super::{
     TwilioError, TwilioFamily, TwilioFilters,
     cursor::bounded_cursor,
+    normalize::require_event_identity,
     origin::{origin_string, validate_origin},
 };
 
@@ -61,7 +62,9 @@ impl TwilioKernel {
         page_size: Option<usize>,
     ) -> Result<Self, TwilioError> {
         let base_url = validate_origin(base_url.unwrap_or(DEFAULT_BASE_URL))?;
-        let tenant_id = required(tenant_id, TwilioError::MissingTenantId)?;
+        let normalized_tenant_id = required(tenant_id, TwilioError::MissingTenantId)?;
+        require_event_identity(tenant_id)?;
+        let tenant_id = normalized_tenant_id;
         let account_sid = filters
             .account_sid
             .map(|value| value.trim().to_owned())
