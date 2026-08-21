@@ -22,6 +22,7 @@ mod runtime_config;
 mod security_tooling_map;
 mod sentinelone;
 mod trivy;
+mod vulnview;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use aurelius::{
@@ -90,6 +91,10 @@ pub use sentinelone::{
     SentinelOnePage, SentinelOneRecord, SentinelOneRequest,
 };
 pub use trivy::{TrivyError, TrivyFamily, TrivyKernel, TrivyPage, TrivyRecord};
+pub use vulnview::{
+    VulnViewError, VulnViewFamily, VulnViewFilters, VulnViewKernel, VulnViewPage, VulnViewRecord,
+    VulnViewRequest,
+};
 
 use std::{collections::BTreeMap, error::Error, fmt};
 
