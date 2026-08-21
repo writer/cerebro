@@ -16,8 +16,11 @@ use time::{Date, OffsetDateTime, Time, format_description::well_known::Rfc3339};
 const DEFAULT_PAGE_SIZE: usize = 100;
 const MAX_PAGE_SIZE: usize = 500;
 const MAX_FILTER_BYTES: usize = 2_048;
-const MAX_CURSOR_BYTES: usize = 4_096;
+const MAX_PROVIDER_CURSOR_BYTES: usize = 4_096;
 const DNS_CURSOR_PREFIX: &str = "dns:";
+const MAX_DNS_CURSOR_PAYLOAD_BYTES: usize = MAX_PROVIDER_CURSOR_BYTES * 2 + 96;
+const MAX_DNS_CURSOR_BYTES: usize =
+    DNS_CURSOR_PREFIX.len() + MAX_DNS_CURSOR_PAYLOAD_BYTES.div_ceil(3) * 4;
 
 /// One portable VulnView source family.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -184,7 +187,11 @@ impl VulnViewKernel {
 
     /// Plan one credential-free provider request.
     pub fn plan(&self, cursor: Option<&str>) -> Result<VulnViewRequest, VulnViewError> {
-        let cursor = bounded_cursor(cursor)?;
+        let cursor = if self.family == VulnViewFamily::DnsAlert {
+            bounded_dns_cursor(cursor)?
+        } else {
+            bounded_provider_cursor(cursor)?
+        };
         let dns_state = if self.family == VulnViewFamily::DnsAlert {
             Some(decode_dns_cursor(cursor.as_deref())?)
         } else {
@@ -336,15 +343,7 @@ impl VulnViewKernel {
     }
 
     fn validate_request(&self, request: &VulnViewRequest) -> Result<(), VulnViewError> {
-        if request.family != self.family || request.url.origin() != self.base_url.origin() {
-            return Err(VulnViewError::RequestScopeMismatch);
-        }
-        let expected_path = format!(
-            "{}{}",
-            self.base_url.path().trim_end_matches('/'),
-            self.family.path()
-        );
-        if request.url.path() != expected_path {
+        if request != &self.plan(request.cursor.as_deref())? {
             return Err(VulnViewError::RequestScopeMismatch);
         }
         Ok(())
@@ -475,11 +474,21 @@ fn validate_filters(filters: &VulnViewFilters) -> Result<(), VulnViewError> {
     Ok(())
 }
 
-fn bounded_cursor(cursor: Option<&str>) -> Result<Option<String>, VulnViewError> {
+fn bounded_provider_cursor(cursor: Option<&str>) -> Result<Option<String>, VulnViewError> {
+    bounded_cursor(cursor, MAX_PROVIDER_CURSOR_BYTES)
+}
+
+fn bounded_dns_cursor(cursor: Option<&str>) -> Result<Option<String>, VulnViewError> {
+    let max_bytes = cursor
+        .map(str::trim)
+        .filter(|value| value.starts_with(DNS_CURSOR_PREFIX))
+        .map_or(MAX_PROVIDER_CURSOR_BYTES, |_| MAX_DNS_CURSOR_BYTES);
+    bounded_cursor(cursor, max_bytes)
+}
+
+fn bounded_cursor(cursor: Option<&str>, max_bytes: usize) -> Result<Option<String>, VulnViewError> {
     let cursor = cursor.map(str::trim).filter(|value| !value.is_empty());
-    if cursor
-        .is_some_and(|value| value.len() > MAX_CURSOR_BYTES || value.chars().any(char::is_control))
-    {
+    if cursor.is_some_and(|value| value.len() > max_bytes || value.chars().any(char::is_control)) {
         return Err(VulnViewError::InvalidCursor);
     }
     Ok(cursor.map(str::to_owned))
@@ -494,7 +503,7 @@ fn decode_list(body: &[u8]) -> Result<(Vec<Value>, Option<String>), VulnViewErro
         None => Vec::new(),
     };
     let next_cursor = match root.get("nextCursor") {
-        Some(Value::String(value)) => trim_optional(Some(value.clone())),
+        Some(Value::String(value)) => bounded_provider_cursor(Some(value))?,
         Some(Value::Null) | None => None,
         Some(_) => return Err(VulnViewError::InvalidResponse),
     };
@@ -807,6 +816,7 @@ fn page_by_offset<T>(
 }
 
 fn decode_dns_cursor(cursor: Option<&str>) -> Result<DnsCursor, VulnViewError> {
+    let cursor = bounded_dns_cursor(cursor)?;
     let Some(cursor) = cursor else {
         return Ok(DnsCursor::default());
     };
@@ -821,21 +831,21 @@ fn decode_dns_cursor(cursor: Option<&str>) -> Result<DnsCursor, VulnViewError> {
         .map_err(|_| VulnViewError::InvalidCursor)?;
     let mut state: DnsCursor =
         serde_json::from_slice(&payload).map_err(|_| VulnViewError::InvalidCursor)?;
-    state.asset_cursor = state.asset_cursor.trim().to_owned();
-    if state.asset_cursor.len() > MAX_CURSOR_BYTES
-        || state.asset_cursor.chars().any(char::is_control)
-    {
-        return Err(VulnViewError::InvalidCursor);
-    }
+    state.asset_cursor = bounded_provider_cursor(Some(&state.asset_cursor))?.unwrap_or_default();
     Ok(state)
 }
 
 fn encode_dns_cursor(state: &DnsCursor) -> Result<String, VulnViewError> {
-    let payload = serde_json::to_vec(state).map_err(|_| VulnViewError::InvalidCursor)?;
-    Ok(format!(
-        "{DNS_CURSOR_PREFIX}{}",
-        URL_SAFE_NO_PAD.encode(payload)
-    ))
+    let state = DnsCursor {
+        asset_cursor: bounded_provider_cursor(Some(&state.asset_cursor))?.unwrap_or_default(),
+        alert_offset: state.alert_offset,
+    };
+    let payload = serde_json::to_vec(&state).map_err(|_| VulnViewError::InvalidCursor)?;
+    let cursor = format!("{DNS_CURSOR_PREFIX}{}", URL_SAFE_NO_PAD.encode(payload));
+    if cursor.len() > MAX_DNS_CURSOR_BYTES {
+        return Err(VulnViewError::InvalidCursor);
+    }
+    Ok(cursor)
 }
 
 #[cfg(test)]
@@ -971,6 +981,67 @@ mod tests {
             )
             .unwrap();
         assert_eq!(provider_page.next_cursor.as_deref(), Some("opaque-2"));
+    }
+
+    #[test]
+    fn emitted_provider_and_dns_cursors_roundtrip_at_their_bounds() {
+        let provider_cursor = "a".repeat(MAX_PROVIDER_CURSOR_BYTES);
+        let direct = kernel(VulnViewFamily::Site, 10);
+        let direct_request = direct.plan(None).unwrap();
+        let direct_page = direct
+            .decode(
+                &direct_request,
+                &body(json!({"items":[], "nextCursor": provider_cursor})),
+            )
+            .unwrap();
+        assert_eq!(
+            direct_page.next_cursor.as_deref(),
+            Some(provider_cursor.as_str())
+        );
+        direct.plan(direct_page.next_cursor.as_deref()).unwrap();
+
+        let dns = kernel(VulnViewFamily::DnsAlert, 10);
+        let dns_request = dns.plan(None).unwrap();
+        let dns_page = dns
+            .decode(
+                &dns_request,
+                &body(json!({"items":[], "nextCursor": provider_cursor})),
+            )
+            .unwrap();
+        let dns_cursor = dns_page.next_cursor.as_deref().unwrap();
+        assert!(dns_cursor.len() > MAX_PROVIDER_CURSOR_BYTES);
+        assert!(dns_cursor.len() <= MAX_DNS_CURSOR_BYTES);
+        let next_request = dns.plan(Some(dns_cursor)).unwrap();
+        assert_eq!(
+            next_request
+                .url()
+                .query_pairs()
+                .find(|(key, _)| key == "cursor")
+                .unwrap()
+                .1,
+            provider_cursor
+        );
+    }
+
+    #[test]
+    fn response_cursors_fail_closed_before_they_are_emitted() {
+        let direct = kernel(VulnViewFamily::Site, 10);
+        let request = direct.plan(None).unwrap();
+        for cursor in [
+            "a".repeat(MAX_PROVIDER_CURSOR_BYTES + 1),
+            "control\nbyte".to_owned(),
+        ] {
+            assert_eq!(
+                direct.decode(&request, &body(json!({"items":[], "nextCursor": cursor}))),
+                Err(VulnViewError::InvalidCursor)
+            );
+        }
+
+        let oversized_wrapper = format!("{DNS_CURSOR_PREFIX}{}", "a".repeat(MAX_DNS_CURSOR_BYTES));
+        assert_eq!(
+            kernel(VulnViewFamily::DnsAlert, 10).plan(Some(&oversized_wrapper)),
+            Err(VulnViewError::InvalidCursor)
+        );
     }
 
     #[test]
@@ -1118,6 +1189,27 @@ mod tests {
         let request = sites.plan(None).unwrap();
         assert_eq!(
             scans.decode(&request, &body(json!({"items":[]}))),
+            Err(VulnViewError::RequestScopeMismatch)
+        );
+        let filtered = VulnViewKernel::new(
+            "https://api.example.test/v1",
+            VulnViewFamily::Site,
+            VulnViewFilters {
+                search: Some("different".to_owned()),
+                ..VulnViewFilters::default()
+            },
+            Some(1),
+        )
+        .unwrap()
+        .plan(None)
+        .unwrap();
+        assert_eq!(
+            sites.decode(&filtered, &body(json!({"items":[]}))),
+            Err(VulnViewError::RequestScopeMismatch)
+        );
+        let wrong_page_size = kernel(VulnViewFamily::Site, 2).plan(None).unwrap();
+        assert_eq!(
+            sites.decode(&wrong_page_size, &body(json!({"items":[]}))),
             Err(VulnViewError::RequestScopeMismatch)
         );
         assert_eq!(
