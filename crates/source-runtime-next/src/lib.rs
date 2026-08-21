@@ -26,6 +26,7 @@ mod protocol;
 mod provider_failure;
 mod runtime_config;
 mod security_tooling_map;
+mod sdk;
 mod sentinelone;
 mod trivy;
 mod vulnview;
@@ -109,6 +110,10 @@ pub use runtime_config::{
 pub use security_tooling_map::{
     SecurityToolingMapError, SecurityToolingMapFamily, SecurityToolingMapKernel,
     SecurityToolingMapPage, SecurityToolingMapRecord, SecurityToolingMapRequest,
+};
+pub use sdk::{
+    SdkIntegrationPostureEvent, SdkPushedTelemetry, SdkTelemetryError,
+    normalize_sdk_pushed_telemetry,
 };
 pub use sentinelone::{
     SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
