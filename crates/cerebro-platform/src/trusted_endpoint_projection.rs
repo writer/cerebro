@@ -6,6 +6,7 @@ use cerebro_organizational_model::{
 };
 use cerebro_source_catalog::CompiledPushFamily;
 use cerebro_source_runtime_next::{CollectedBatch, CommittedSourceEvent};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 const SOURCE_ID: &str = "trusted_endpoint";
 const MAPPER_ID: &str = "cerebro-trusted-endpoint";
@@ -264,6 +265,61 @@ fn validate_contract(
             return Err(format!("Trusted Endpoint payload is missing field {field}"));
         }
     }
+    if event.event_kind() == "trusted_endpoint.agent_execution_receipt" {
+        validate_agent_execution_receipt(event.attributes())?;
+    }
+    Ok(())
+}
+
+const RECEIPT_ATTRIBUTE_LIMITS: &[(&str, usize)] = &[
+    ("receipt_id", 256),
+    ("receipt_digest", 128),
+    ("previous_receipt_digest", 128),
+    ("agent_product", 64),
+    ("model", 128),
+    ("session_id", 256),
+    ("turn_id", 256),
+    ("tool_call_id", 256),
+    ("tool_name", 128),
+    ("action", 256),
+    ("permission_mode", 64),
+    ("local_user_claim", 128),
+    ("local_user_claim_source", 64),
+    ("claimed_evidence_integrity", 64),
+    ("claimed_provider_binding", 64),
+    ("claimed_provider_event_id", 256),
+];
+
+fn validate_agent_execution_receipt(attributes: &BTreeMap<String, String>) -> Result<(), String> {
+    for (field, limit) in RECEIPT_ATTRIBUTE_LIMITS {
+        if attributes
+            .get(*field)
+            .is_some_and(|value| value.len() > *limit)
+        {
+            return Err(format!(
+                "Trusted Endpoint receipt attribute {field} exceeds {limit} bytes"
+            ));
+        }
+    }
+    if !matches!(
+        attributes.get("phase").map(String::as_str),
+        Some("session" | "attempted" | "approval_requested" | "completed" | "failed")
+    ) {
+        return Err("Trusted Endpoint receipt phase is not supported".to_owned());
+    }
+    if attributes
+        .get("captured_at")
+        .is_none_or(|value| OffsetDateTime::parse(value, &Rfc3339).is_err())
+    {
+        return Err("Trusted Endpoint receipt captured_at is invalid".to_owned());
+    }
+    if attributes
+        .get("sequence")
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_none_or(|sequence| sequence == 0)
+    {
+        return Err("Trusted Endpoint receipt sequence must be a positive integer".to_owned());
+    }
     Ok(())
 }
 
@@ -521,6 +577,26 @@ mod tests {
         .unwrap()
     }
 
+    fn rebuild_event(
+        event: &CommittedSourceEvent,
+        attributes: BTreeMap<String, String>,
+        payload: serde_json::Value,
+    ) -> CommittedSourceEvent {
+        CommittedSourceEvent::from_input(CommittedSourceInput {
+            tenant_id: event.tenant_id().clone(),
+            source_runtime_id: event.source_runtime_id().clone(),
+            observation_id: event.observation_id().clone(),
+            source_id: event.source_id().to_owned(),
+            family_id: event.family_id().to_owned(),
+            event_kind: event.event_kind().to_owned(),
+            schema_ref: event.schema_ref().to_owned(),
+            observed_at_unix_ms: event.observed_at_unix_ms(),
+            attributes,
+            payload,
+        })
+        .unwrap()
+    }
+
     fn field_value(field: &str) -> &str {
         match field {
             "agent_id" => "device-1",
@@ -541,11 +617,14 @@ mod tests {
             "decision" => "deny",
             "outcome" | "outcome_result" => "blocked",
             "receipt_id" => "receipt-1",
-            "captured_at" => "2026-08-21T00:00:00Z",
+            "receipt_digest" => "sha256:receipt",
+            "sequence" => "7",
+            "captured_at" => "2026-08-21T00:00:00.123456789Z",
             "agent_product" => "codex",
             "session_id" => "session-1",
             "phase" => "completed",
             "evidence_integrity" => "verified",
+            "provider_binding" => "unverified",
             _ => "value",
         }
     }
@@ -615,5 +694,67 @@ mod tests {
         })
         .unwrap();
         assert!(project(missing, contract).is_err());
+    }
+
+    #[test]
+    fn receipt_producer_authority_fields_and_values_fail_closed() {
+        let catalog = catalog();
+        let contract = catalog
+            .push_source(SOURCE_ID)
+            .unwrap()
+            .family("agent_execution_receipt")
+            .unwrap();
+
+        for field in ["provider_binding", "receipt_digest", "sequence"] {
+            let receipt = event(contract);
+            let mut attributes = receipt.attributes().clone();
+            attributes.remove(field);
+            assert!(
+                project(
+                    rebuild_event(&receipt, attributes, receipt.payload().clone()),
+                    contract
+                )
+                .is_err(),
+                "missing attribute {field} was accepted"
+            );
+
+            let receipt = event(contract);
+            let mut payload = receipt.payload().as_object().unwrap().clone();
+            payload.remove(field);
+            assert!(
+                project(
+                    rebuild_event(
+                        &receipt,
+                        receipt.attributes().clone(),
+                        serde_json::Value::Object(payload),
+                    ),
+                    contract,
+                )
+                .is_err(),
+                "missing payload field {field} was accepted"
+            );
+        }
+
+        for (field, value) in [
+            ("phase", "unknown".to_owned()),
+            ("captured_at", "not-a-timestamp".to_owned()),
+            ("sequence", "0".to_owned()),
+            ("sequence", "not-a-number".to_owned()),
+            ("receipt_digest", "x".repeat(129)),
+        ] {
+            let receipt = event(contract);
+            let mut attributes = receipt.attributes().clone();
+            attributes.insert(field.to_owned(), value.clone());
+            let mut payload = receipt.payload().as_object().unwrap().clone();
+            payload.insert(field.to_owned(), serde_json::Value::String(value));
+            assert!(
+                project(
+                    rebuild_event(&receipt, attributes, serde_json::Value::Object(payload),),
+                    contract,
+                )
+                .is_err(),
+                "malformed {field} was accepted"
+            );
+        }
     }
 }
