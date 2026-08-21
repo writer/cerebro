@@ -4,6 +4,7 @@
 //! Rust-native source collection and graph admission boundary.
 
 mod append_log;
+mod archetype;
 mod aurelius;
 mod aws_account;
 mod aws_secret_store;
@@ -30,6 +31,11 @@ mod trivy;
 mod vulnview;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
+pub use archetype::{
+    ArchetypeError, ArchetypeFamily, ArchetypeKernel, ArchetypePage, ArchetypeRecord,
+    ArchetypeRepository, ArchetypeRequest, ArchetypeRequestKind, ArchetypeScan,
+    VulnerabilityCollectionState,
+};
 pub use aurelius::{
     AureliusCursor, AureliusError, AureliusFamily, AureliusKernel, AureliusPage, AureliusRecord,
 };
