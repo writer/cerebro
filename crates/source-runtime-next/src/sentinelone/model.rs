@@ -180,6 +180,8 @@ pub enum SentinelOneError {
     CursorParentRequired,
     /// Response JSON does not match the SentinelOne list envelope.
     InvalidResponse,
+    /// Response bytes exceed the provider-local 8 MiB limit.
+    ResponseTooLarge,
     /// A provider record omitted its stable identity.
     MissingRecordIdentity,
     /// Agent discovery omitted the agent identity needed for fanout.
@@ -213,6 +215,7 @@ impl fmt::Display for SentinelOneError {
             Self::InvalidCursor => "sentinelone cursor is invalid",
             Self::CursorParentRequired => "sentinelone application cursor parent is required",
             Self::InvalidResponse => "sentinelone response does not match the list contract",
+            Self::ResponseTooLarge => "sentinelone response exceeds the 8 MiB limit",
             Self::MissingRecordIdentity => "sentinelone record identity is missing",
             Self::MissingAgentIdentity => "sentinelone agent identity is missing",
             Self::MissingApplicationState => "sentinelone application request state is missing",

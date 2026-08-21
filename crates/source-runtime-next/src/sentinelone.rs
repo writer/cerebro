@@ -1,9 +1,10 @@
-//! SentinelOne request, response, and application-fanout runtime kernel.
+//! SentinelOne request, response, and application-fanout provider kernel.
 //!
 //! SentinelOne exposes six directly paginated collection endpoints and one
 //! application inventory endpoint that must first enumerate agents. This
-//! module keeps that provider-specific state machine out of the generic HTTP
-//! grammar while producing records that can cross the shared graph boundary.
+//! module owns that credential-free provider state machine. Its normalized
+//! records still require the shared source-execution adapter, compiler mapping,
+//! event admission, and projection path before they can reach the graph.
 
 mod cursor;
 mod kernel;

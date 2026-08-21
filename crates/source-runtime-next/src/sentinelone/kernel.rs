@@ -59,9 +59,10 @@ impl SentinelOneKernel {
             let cursor = bounded_provider_cursor(cursor)?;
             return self.direct_request(cursor.as_deref());
         }
+        let normalized_cursor_present = cursor.is_some_and(|value| !value.trim().is_empty());
         let (mut state, provider_cursor, encoded) = decode_application_cursor(cursor)?;
         if let Some(configured_agent) = self.filters.agent_id.as_deref() {
-            if !encoded && cursor.is_some() {
+            if !encoded && normalized_cursor_present {
                 return Err(SentinelOneError::ConfiguredAgentCursor);
             }
             if !state.parent_id.is_empty() && state.parent_id != configured_agent {
@@ -215,7 +216,7 @@ impl SentinelOneKernel {
     }
 
     fn decode_direct(&self, body: &[u8]) -> Result<SentinelOnePage, SentinelOneError> {
-        let decoded = decode_list(body)?;
+        let decoded = decode_list(self.family, body)?;
         let mut records = Vec::with_capacity(decoded.records.len());
         for payload in decoded.records {
             let provider_id = scalar_string(payload.get("id"))
@@ -230,7 +231,7 @@ impl SentinelOneKernel {
     }
 
     fn decode_agent(&self, body: &[u8]) -> Result<SentinelOneOutcome, SentinelOneError> {
-        let decoded = decode_list(body)?;
+        let decoded = decode_list(SentinelOneFamily::Agent, body)?;
         let Some(agent) = decoded.records.first() else {
             return Ok(SentinelOneOutcome::Page(SentinelOnePage {
                 records: Vec::new(),
@@ -258,7 +259,7 @@ impl SentinelOneKernel {
             .application_state
             .clone()
             .ok_or(SentinelOneError::MissingApplicationState)?;
-        let decoded = decode_list(body)?;
+        let decoded = decode_list(SentinelOneFamily::Application, body)?;
         let mut applications = decoded
             .records
             .into_iter()

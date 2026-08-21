@@ -1,6 +1,6 @@
 use super::{
     cursor::{APPLICATION_CURSOR_PREFIX, MAX_APPLICATION_CURSOR_BYTES, MAX_PROVIDER_CURSOR_BYTES},
-    response::application_identity,
+    response::{MAX_RESPONSE_BYTES, application_identity},
     *,
 };
 use std::collections::BTreeMap;
@@ -92,6 +92,24 @@ fn exclusion_request_preserves_the_go_site_scope() {
     assert_eq!(request.url().path(), "/web/api/v2.1/exclusions");
     assert_eq!(query.get("limit").map(String::as_str), Some("25"));
     assert_eq!(query.get("siteIds").map(String::as_str), Some("site-1"));
+}
+
+#[test]
+fn configured_application_treats_whitespace_cursor_as_absent() {
+    let kernel = SentinelOneKernel::new(
+        "https://sentinelone.example.test",
+        SentinelOneFamily::Application,
+        SentinelOneFilters {
+            agent_id: Some("agent-1".to_owned()),
+            ..SentinelOneFilters::default()
+        },
+        Some(25),
+    )
+    .unwrap();
+    let absent = kernel.plan(None).unwrap();
+    let whitespace = kernel.plan(Some(" \t ")).unwrap();
+    assert_eq!(whitespace.url(), absent.url());
+    assert_eq!(whitespace.url().query(), Some("ids=agent-1"));
 }
 
 #[test]
@@ -222,19 +240,19 @@ fn genuine_application_response_preserves_agent_scoped_go_identity() {
     assert_eq!(page.records.len(), 1);
     assert_eq!(
         page.records[0].provider_id,
-        "agent-fixture-1::p.RXhhbXBsZSBJbmM.n.RXhhbXBsZSBBcHA.v.MS4wLjA"
+        "agent-fixture-1::Example_Inc::Example_App::1.0.0"
     );
     assert_eq!(
         page.records[0]
             .fields
             .get("application_id")
             .map(String::as_str),
-        Some("p.RXhhbXBsZSBJbmM.n.RXhhbXBsZSBBcHA.v.MS4wLjA")
+        Some("Example_Inc::Example_App::1.0.0")
     );
 }
 
 #[test]
-fn application_identity_does_not_alias_spacing_delimiters_or_empty_components() {
+fn application_identity_matches_go_normalization_and_ordering_key() {
     let spaced = serde_json::json!({
         "publisher": "A B",
         "name": "App",
@@ -245,10 +263,11 @@ fn application_identity_does_not_alias_spacing_delimiters_or_empty_components() 
         "name": "App",
         "version": "1"
     });
-    assert_ne!(
+    assert_eq!(
         application_identity(&spaced),
         application_identity(&underscored)
     );
+    assert_eq!(application_identity(&spaced), "A_B::App::1");
 
     let publisher_delimiter = serde_json::json!({
         "publisher": "A::B",
@@ -259,16 +278,24 @@ fn application_identity_does_not_alias_spacing_delimiters_or_empty_components() 
         "publisher": "A",
         "name": "B::C"
     });
-    assert_ne!(
+    assert_eq!(
         application_identity(&publisher_delimiter),
         application_identity(&name_delimiter)
     );
 
     let missing_publisher = serde_json::json!({"name": "App", "version": "1"});
     let missing_name = serde_json::json!({"publisher": "App", "version": "1"});
-    assert_ne!(
+    assert_eq!(
         application_identity(&missing_publisher),
         application_identity(&missing_name)
+    );
+    assert_eq!(
+        application_identity(&serde_json::json!({
+            "publisher": " ",
+            "name": "",
+            "version": "\t"
+        })),
+        "unknown"
     );
 }
 
@@ -302,10 +329,7 @@ fn application_fanout_resolves_agent_and_bounds_children_with_versioned_cursor()
             .iter()
             .map(|record| record.provider_id.as_str())
             .collect::<Vec<_>>(),
-        vec![
-            "agent-1::p.UA.n.QWxwaGE.v.MQ",
-            "agent-1::p.UA.n.TWlkZGxl.v.MQ"
-        ]
+        vec!["agent-1::P::Alpha::1", "agent-1::P::Middle::1"]
     );
     let cursor = first.next_cursor.expect("versioned cursor");
     assert!(cursor.starts_with(APPLICATION_CURSOR_PREFIX));
@@ -321,8 +345,80 @@ fn application_fanout_resolves_agent_and_bounds_children_with_versioned_cursor()
     let SentinelOneOutcome::Page(second) = second else {
         panic!("expected second page")
     };
-    assert_eq!(second.records[0].provider_id, "agent-1::p.UA.n.WnVsdQ.v.MQ");
+    assert_eq!(second.records[0].provider_id, "agent-1::P::Zulu::1");
     assert_eq!(second.next_cursor.as_deref(), Some("agents-next-1"));
+}
+
+#[test]
+fn every_family_rejects_malformed_typed_wire_fields_and_object_ids() {
+    let configured_application = SentinelOneKernel::new(
+        "https://sentinelone.example.test",
+        SentinelOneFamily::Application,
+        SentinelOneFilters {
+            agent_id: Some("agent-1".to_owned()),
+            ..SentinelOneFilters::default()
+        },
+        Some(2),
+    )
+    .unwrap();
+    let cases = [
+        (
+            kernel(SentinelOneFamily::Activity),
+            serde_json::json!({"id":"activity-1","activityType":{}}),
+        ),
+        (
+            kernel(SentinelOneFamily::Agent),
+            serde_json::json!({"id":"agent-1","isActive":"true"}),
+        ),
+        (
+            configured_application,
+            serde_json::json!({"name":"App","publisher":"P","version":"1","size":"12"}),
+        ),
+        (
+            kernel(SentinelOneFamily::Exclusion),
+            serde_json::json!({"id":"exclusion-1","actions":{}}),
+        ),
+        (
+            kernel(SentinelOneFamily::Group),
+            serde_json::json!({"id":"group-1","totalAgents":"1"}),
+        ),
+        (
+            kernel(SentinelOneFamily::Site),
+            serde_json::json!({"id":"site-1","isDefault":"true"}),
+        ),
+        (
+            kernel(SentinelOneFamily::Threat),
+            serde_json::json!({"id":"threat-1","threatInfo":[]}),
+        ),
+    ];
+    for (kernel, malformed) in cases {
+        let request = kernel.plan(None).unwrap();
+        let body = serde_json::to_vec(&serde_json::json!({"data":[malformed]})).unwrap();
+        assert!(matches!(
+            kernel.decode(&request, &body),
+            Err(SentinelOneError::InvalidResponse)
+        ));
+
+        let object_id = serde_json::to_vec(&serde_json::json!({
+            "data":[{"id":{"nested":"not-a-scalar"}}]
+        }))
+        .unwrap();
+        assert!(matches!(
+            kernel.decode(&request, &object_id),
+            Err(SentinelOneError::InvalidResponse)
+        ));
+    }
+}
+
+#[test]
+fn provider_response_is_bounded_before_json_parsing() {
+    let kernel = kernel(SentinelOneFamily::Threat);
+    let request = kernel.plan(None).unwrap();
+    let oversized = vec![b' '; MAX_RESPONSE_BYTES + 1];
+    assert!(matches!(
+        kernel.decode(&request, &oversized),
+        Err(SentinelOneError::ResponseTooLarge)
+    ));
 }
 
 #[test]
@@ -377,4 +473,11 @@ fn kernel_fails_closed_on_unsafe_origins_filters_cursors_and_duplicate_apps() {
             ),
             Err(SentinelOneError::DuplicateApplicationIdentity)
         ));
+    assert!(matches!(
+        kernel.decode(
+            &request,
+            br#"{"data":[{"name":"App","publisher":"A B","version":"1"},{"name":"App","publisher":"A_B","version":"1"}]}"#,
+        ),
+        Err(SentinelOneError::DuplicateApplicationIdentity)
+    ));
 }
