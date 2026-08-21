@@ -34,7 +34,7 @@ pub(in crate::twilio) fn normalize(
         scalar(&record.primary_email),
         scalar(&record.login),
     ])?;
-    let provider_id = record_identity(&record_id, &record.identity);
+    let provider_id = record_identity(&record_id, &record.identity)?;
     let mut fields = base_fields(
         TwilioFamily::Accounts,
         tenant_id,

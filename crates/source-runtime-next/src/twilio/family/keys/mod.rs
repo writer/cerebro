@@ -33,7 +33,7 @@ pub(in crate::twilio) fn normalize(
         scalar(&record.key),
         scalar(&record.sid),
     ])?;
-    let provider_id = record_identity(&record_id, &record.identity);
+    let provider_id = record_identity(&record_id, &record.identity)?;
     let mut fields = base_fields(TwilioFamily::Keys, tenant_id, &record_id, "secret");
     let mappings = [
         (

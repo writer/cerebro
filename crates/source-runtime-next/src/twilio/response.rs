@@ -1,6 +1,6 @@
 //! Bounded Twilio response decoding and family dispatch.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -41,16 +41,21 @@ impl TwilioKernel {
             return Err(TwilioError::TooManyRecords);
         }
         let path = request.url.path();
-        let mut seen = HashSet::new();
+        let mut seen = HashMap::new();
         let mut records = Vec::with_capacity(raw_records.len());
         for payload in raw_records {
             if !payload.is_object() {
                 return Err(TwilioError::InvalidResponse);
             }
             let record = self.normalize_record(payload, path, observed_at)?;
-            if seen.insert(record.provider_id.clone()) {
-                records.push(record);
+            if let Some(index) = seen.get(&record.provider_id).copied() {
+                if records.get(index) != Some(&record) {
+                    return Err(TwilioError::ConflictingProviderIdentity);
+                }
+                continue;
             }
+            seen.insert(record.provider_id.clone(), records.len());
+            records.push(record);
         }
         Ok(TwilioPage {
             records,

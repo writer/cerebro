@@ -40,14 +40,27 @@ pub(super) fn provider_identity<const N: usize>(
 }
 
 pub(super) fn require_payload_id(value: &Option<WireScalar>) -> Result<(), TwilioError> {
-    if scalar(value).is_empty() {
-        Err(TwilioError::MissingRequiredPayloadField("id"))
-    } else {
-        Ok(())
+    let value = value
+        .as_ref()
+        .ok_or(TwilioError::MissingRequiredPayloadField("id"))?;
+    let text = value.text();
+    if text.is_empty() {
+        return Err(TwilioError::MissingRequiredPayloadField("id"));
+    }
+    match value {
+        WireScalar::String(raw) => require_event_identity(raw),
+        WireScalar::Number(_) | WireScalar::Bool(_) => require_event_identity(&text),
     }
 }
 
-pub(super) fn record_identity(record_id: &str, identity: &IdentityDiscriminatorsWire) -> String {
+pub(super) fn record_identity(
+    record_id: &str,
+    identity: &IdentityDiscriminatorsWire,
+) -> Result<String, TwilioError> {
+    require_event_identity(record_id)?;
+    if identity.contains_control() {
+        return Err(TwilioError::InvalidEventIdentity);
+    }
     let device = identity.device.as_ref();
     let agent = identity.agent.as_ref();
     let mut parts = vec![record_id.trim().to_owned()];
@@ -72,14 +85,27 @@ pub(super) fn record_identity(record_id: &str, identity: &IdentityDiscriminators
         }
     }
     if parts.len() == 1 {
-        return parts.remove(0);
+        return Ok(parts.remove(0));
     }
     let material = parts.join("\0");
-    format!(
+    Ok(format!(
         "{}-{}",
         record_id.trim(),
         hex_prefix(&Sha256::digest(material.as_bytes()), 24)
-    )
+    ))
+}
+
+pub(super) fn require_event_identity(value: &str) -> Result<(), TwilioError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed != value
+        || trimmed.chars().any(char::is_control)
+        || normalize_id(trimmed) != trimmed
+    {
+        Err(TwilioError::InvalidEventIdentity)
+    } else {
+        Ok(())
+    }
 }
 
 pub(super) fn require_field(
@@ -155,7 +181,8 @@ fn normalized_time(value: &str) -> Option<String> {
         return None;
     }
     let parsed = if numeric > 1_000_000_000_000.0 {
-        OffsetDateTime::from_unix_timestamp_nanos((numeric.trunc() as i128) * 1_000_000).ok()?
+        let nanos = (numeric.trunc() as i128).checked_mul(1_000_000)?;
+        OffsetDateTime::from_unix_timestamp_nanos(nanos).ok()?
     } else {
         let whole = numeric.trunc();
         let fraction = numeric - whole;

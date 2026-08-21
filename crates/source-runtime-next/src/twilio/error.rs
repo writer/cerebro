@@ -27,6 +27,10 @@ pub enum TwilioError {
     InvalidResponse,
     /// A provider record has no stable identity under the Go selector order.
     MissingProviderIdentity,
+    /// Tenant, provider, or discriminator identity is not collision-safe.
+    InvalidEventIdentity,
+    /// One page contains different records with the same provider identity.
+    ConflictingProviderIdentity,
     /// A catalog-required raw provider field is missing or empty.
     MissingRequiredPayloadField(&'static str),
     /// A catalog-required normalized attribute is missing.
@@ -58,6 +62,12 @@ impl fmt::Display for TwilioError {
             }
             Self::MissingProviderIdentity => {
                 formatter.write_str("twilio record has no stable provider identity")
+            }
+            Self::InvalidEventIdentity => {
+                formatter.write_str("twilio tenant or provider identity is not event-ID safe")
+            }
+            Self::ConflictingProviderIdentity => {
+                formatter.write_str("twilio page contains conflicting provider identities")
             }
             Self::MissingRequiredPayloadField(name) => {
                 write!(

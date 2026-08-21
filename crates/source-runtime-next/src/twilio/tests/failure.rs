@@ -162,7 +162,7 @@ fn response_shape_wire_types_identity_cursor_and_bounds_fail_closed() {
 #[test]
 fn invalid_or_missing_provider_time_falls_back_to_observation_utc() {
     let kernel = kernel(TwilioFamily::Accounts);
-    for updated_at in [Value::Null, json!("not-rfc3339")] {
+    for updated_at in [Value::Null, json!("not-rfc3339"), json!(1e308)] {
         let body = serde_json::to_vec(&json!({
             "items": [{"id": "record-1", "updated_at": updated_at}]
         }))
@@ -194,6 +194,108 @@ fn invalid_or_missing_provider_time_falls_back_to_observation_utc() {
             .unwrap();
         assert_eq!(page.records[0].occurred_at, expected, "field {field}");
     }
+}
+
+#[test]
+fn event_identity_aliases_and_discriminator_controls_fail_closed() {
+    for tenant_id in [
+        "tenant/id",
+        "tenant:id",
+        "tenant id",
+        "tenant\tid",
+        "tenant\nid",
+        "tenant\0id",
+        " tenant",
+    ] {
+        assert_eq!(
+            TwilioKernel::new(
+                None,
+                tenant_id,
+                TwilioFamily::Accounts,
+                TwilioFilters::default(),
+                None,
+            )
+            .unwrap_err(),
+            TwilioError::InvalidEventIdentity,
+            "tenant {tenant_id:?}"
+        );
+    }
+
+    let accounts_kernel = kernel(TwilioFamily::Accounts);
+    let request = accounts_kernel.plan(None).unwrap();
+    for record_id in ["a/b", "a:b", "a b", "a\tb", "a\nb", "a\0b", " a-b"] {
+        let body = serde_json::to_vec(&json!({"items": [{"id": record_id}]})).unwrap();
+        assert_eq!(
+            accounts_kernel
+                .decode(&request, &body, observed_at())
+                .unwrap_err(),
+            TwilioError::InvalidEventIdentity,
+            "record id {record_id:?}"
+        );
+    }
+    let canonical = accounts_kernel
+        .decode(&request, br#"{"items":[{"id":"a-b"}]}"#, observed_at())
+        .unwrap();
+    assert!(canonical.records[0].event_id.ends_with("-a-b"));
+
+    for family in [
+        TwilioFamily::Accounts,
+        TwilioFamily::Keys,
+        TwilioFamily::AuditEvents,
+    ] {
+        let family_kernel = kernel(family);
+        assert_eq!(
+            family_kernel
+                .decode(
+                    &family_kernel.plan(None).unwrap(),
+                    br#"{"items":[{"id":"a/b"}]}"#,
+                    observed_at(),
+                )
+                .unwrap_err(),
+            TwilioError::InvalidEventIdentity,
+            "family {family:?}"
+        );
+    }
+
+    let collision_pair = br#"{"items":[
+        {"id":"record-1","device_id":"alpha\u0000serial_number=beta"},
+        {"id":"record-1","device_id":"alpha","serial_number":"beta"}
+    ]}"#;
+    assert_eq!(
+        accounts_kernel
+            .decode(&request, collision_pair, observed_at())
+            .unwrap_err(),
+        TwilioError::InvalidEventIdentity
+    );
+    for body in [
+        br#"{"items":[{"id":"record-1","device":{"id":"bad\u0000id"}}]}"#.as_slice(),
+        br#"{"items":[{"id":"record-1","agent":{"uuid":"bad\u001fuuid"}}]}"#.as_slice(),
+    ] {
+        assert_eq!(
+            accounts_kernel
+                .decode(&request, body, observed_at())
+                .unwrap_err(),
+            TwilioError::InvalidEventIdentity
+        );
+    }
+}
+
+#[test]
+fn conflicting_duplicate_provider_identities_fail_closed() {
+    let kernel = kernel(TwilioFamily::Accounts);
+    assert_eq!(
+        kernel
+            .decode(
+                &kernel.plan(None).unwrap(),
+                br#"{"items":[
+                    {"id":"record-1","name":"First"},
+                    {"id":"record-1","name":"Different"}
+                ]}"#,
+                observed_at(),
+            )
+            .unwrap_err(),
+        TwilioError::ConflictingProviderIdentity
+    );
 }
 
 #[test]
