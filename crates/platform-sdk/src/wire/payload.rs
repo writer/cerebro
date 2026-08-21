@@ -19,7 +19,7 @@ pub struct AgentActivity {
 }
 
 impl AgentActivity {
-    fn validate(&self) -> Result<(), SdkError> {
+    pub(super) fn validate(&self) -> Result<(), SdkError> {
         for (field, value) in [
             ("agent activity session id", self.session_id.as_str()),
             ("agent activity agent id", self.agent_id.as_str()),
@@ -58,7 +58,7 @@ pub struct EndpointTelemetry {
 }
 
 impl EndpointTelemetry {
-    fn validate(&self, evidence: WireEvidenceState) -> Result<(), SdkError> {
+    pub(super) fn validate(&self, evidence: WireEvidenceState) -> Result<(), SdkError> {
         for (field, value) in [
             ("endpoint id", self.endpoint_id.as_str()),
             ("endpoint agent id", self.agent_id.as_str()),
@@ -122,7 +122,7 @@ pub struct EndpointSessionLease {
 }
 
 impl EndpointSessionLease {
-    fn validate(&self) -> Result<(), SdkError> {
+    pub(super) fn validate(&self) -> Result<(), SdkError> {
         for (field, value) in [
             ("endpoint lease id", self.lease_id.as_str()),
             ("endpoint lease agent id", self.agent_id.as_str()),
@@ -217,7 +217,7 @@ pub struct ThreatIntelligenceObservation {
 }
 
 impl ThreatIntelligenceObservation {
-    fn validate(&self) -> Result<(), SdkError> {
+    pub(super) fn validate(&self) -> Result<(), SdkError> {
         validate_id(&self.indicator_id, "threat indicator id")?;
         validate_text(&self.normalized_value, "threat normalized value")?;
         if self.score_basis_points > 10_000 || self.confidence_basis_points > 10_000 {
@@ -274,7 +274,7 @@ pub struct RemediationOutcome {
 }
 
 impl RemediationOutcome {
-    fn validate(&self) -> Result<(), SdkError> {
+    pub(super) fn validate(&self) -> Result<(), SdkError> {
         for (field, value) in [
             ("remediation operation id", self.operation_id.as_str()),
             ("remediation finding id", self.finding_id.as_str()),
@@ -313,7 +313,7 @@ pub struct MetricSnapshot {
 }
 
 impl MetricSnapshot {
-    fn validate(&self, evidence: WireEvidenceState) -> Result<(), SdkError> {
+    pub(super) fn validate(&self, evidence: WireEvidenceState) -> Result<(), SdkError> {
         validate_id(&self.metric_id, "metric id")?;
         validate_id(&self.unit, "metric unit")?;
         validate_digest(&self.snapshot_digest, "metric snapshot digest")?;
@@ -376,7 +376,7 @@ pub struct ScannerFinding {
 }
 
 impl ScannerFinding {
-    fn validate(&self) -> Result<(), SdkError> {
+    pub(super) fn validate(&self) -> Result<(), SdkError> {
         for (field, value) in [
             ("scanner finding id", self.finding_id.as_str()),
             ("scanner id", self.scanner_id.as_str()),
@@ -418,7 +418,7 @@ pub struct ConnectorManifest {
 }
 
 impl ConnectorManifest {
-    fn validate(&self) -> Result<(), SdkError> {
+    pub(super) fn validate(&self) -> Result<(), SdkError> {
         validate_id(&self.connector_id, "connector id")?;
         validate_id(&self.auth_kind, "connector auth kind")?;
         validate_refs(&self.object_kinds, "connector object kind")?;
@@ -451,7 +451,7 @@ pub struct AgentCapability {
 }
 
 impl AgentCapability {
-    fn validate(&self) -> Result<(), SdkError> {
+    pub(super) fn validate(&self) -> Result<(), SdkError> {
         validate_id(&self.agent_id, "capability agent id")?;
         validate_id(&self.capability_id, "capability id")?;
         validate_refs(&self.tool_ids, "capability tool id")?;
