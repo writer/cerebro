@@ -14,6 +14,7 @@ mod mapper;
 mod protocol;
 mod provider_failure;
 mod runtime_config;
+mod sentinelone;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use aws_secret_store::{
@@ -53,6 +54,10 @@ pub use provider_failure::{
 pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,
     resolve_environment_references,
+};
+pub use sentinelone::{
+    SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
+    SentinelOnePage, SentinelOneRecord, SentinelOneRequest,
 };
 
 use std::{collections::BTreeMap, error::Error, fmt};
