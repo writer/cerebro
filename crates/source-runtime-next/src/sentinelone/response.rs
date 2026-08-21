@@ -17,7 +17,7 @@ pub(super) fn decode_list(
     body: &[u8],
 ) -> Result<DecodedList, SentinelOneError> {
     if body.len() > MAX_RESPONSE_BYTES {
-        return Err(SentinelOneError::ResponseTooLarge);
+        return Err(SentinelOneError::InvalidResponse);
     }
     let root: Value =
         serde_json::from_slice(body).map_err(|_| SentinelOneError::InvalidResponse)?;
@@ -431,7 +431,7 @@ fn matches_wire_type(value: &Value, expected: WireType) -> bool {
 }
 
 fn is_integer(value: &Value) -> bool {
-    value.as_i64().is_some() || value.as_u64().is_some()
+    value.as_i64().is_some()
 }
 
 fn validate_nested_object(

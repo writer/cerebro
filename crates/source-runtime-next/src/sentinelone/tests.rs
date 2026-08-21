@@ -417,8 +417,53 @@ fn provider_response_is_bounded_before_json_parsing() {
     let oversized = vec![b' '; MAX_RESPONSE_BYTES + 1];
     assert!(matches!(
         kernel.decode(&request, &oversized),
-        Err(SentinelOneError::ResponseTooLarge)
+        Err(SentinelOneError::InvalidResponse)
     ));
+}
+
+#[test]
+fn integer_wire_fields_reject_values_above_signed_i64() {
+    let overflow = 9_223_372_036_854_775_808_u64;
+    let configured_application = SentinelOneKernel::new(
+        "https://sentinelone.example.test",
+        SentinelOneFamily::Application,
+        SentinelOneFilters {
+            agent_id: Some("agent-1".to_owned()),
+            ..SentinelOneFilters::default()
+        },
+        Some(2),
+    )
+    .unwrap();
+    let cases = [
+        (
+            configured_application,
+            serde_json::json!({"name":"App","size":overflow}),
+        ),
+        (
+            kernel(SentinelOneFamily::Threat),
+            serde_json::json!({"id":"threat-1","threatInfo":{"fileSize":overflow}}),
+        ),
+        (
+            kernel(SentinelOneFamily::Threat),
+            serde_json::json!({"id":"threat-1","indicators":[{"ids":[overflow]}]}),
+        ),
+        (
+            kernel(SentinelOneFamily::Threat),
+            serde_json::json!({
+                "id":"threat-1",
+                "mitigationStatus":[{"actionsCounters":{"kill":overflow}}]
+            }),
+        ),
+    ];
+
+    for (kernel, record) in cases {
+        let request = kernel.plan(None).unwrap();
+        let body = serde_json::to_vec(&serde_json::json!({"data":[record]})).unwrap();
+        assert!(matches!(
+            kernel.decode(&request, &body),
+            Err(SentinelOneError::InvalidResponse)
+        ));
+    }
 }
 
 #[test]
