@@ -58,7 +58,7 @@ pub(super) fn record_identity(
     identity: &IdentityDiscriminatorsWire,
 ) -> Result<String, TwilioError> {
     require_event_identity(record_id)?;
-    if identity.contains_control() {
+    if identity.has_noncanonical_value() {
         return Err(TwilioError::InvalidEventIdentity);
     }
     let device = identity.device.as_ref();
