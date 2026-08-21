@@ -540,7 +540,9 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
             subject_source,
             &subject,
             &config.subject_prefix,
-            runtime.catalog.get(subject_source).is_some(),
+            runtime
+                .catalog
+                .admits_event_family(subject_source, subject_family),
         ) {
             Ok(Some(event)) => event,
             Ok(None) => {
@@ -1477,6 +1479,7 @@ fn consumer_io(error: impl std::fmt::Display) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cerebro_source_catalog::SourceCatalog;
     use prost::Message;
     use prost_types::Timestamp;
     use std::collections::HashMap;
@@ -1933,6 +1936,42 @@ mod tests {
             .unwrap()
             .is_none()
         );
+    }
+
+    #[test]
+    fn trusted_endpoint_push_contract_prevents_catalog_absence_skip() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        assert!(catalog.get("trusted_endpoint").is_none());
+
+        let payload = encoded_event(
+            "trusted_endpoint",
+            "trusted_endpoint.host_posture",
+            "trusted_endpoint/host_posture/v1",
+            br#"{"agent_id":"device-1","observation_table":"host_posture"}"#.to_vec(),
+        );
+        let admitted = catalog.admits_event_family("trusted_endpoint", "host_posture");
+        assert!(admitted);
+        assert!(
+            decode_event(
+                &payload,
+                "trusted_endpoint",
+                "events.trusted_endpoint.host_posture",
+                "events",
+                admitted,
+            )
+            .unwrap()
+            .is_some()
+        );
+
+        assert!(!catalog.admits_event_family("trusted_endpoint", "unknown"));
     }
 
     #[test]

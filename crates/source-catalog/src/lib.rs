@@ -474,6 +474,8 @@ impl CompiledSource {
 pub struct CatalogSummary {
     pub sources: usize,
     pub families: usize,
+    pub push_sources: usize,
+    pub push_families: usize,
     pub authoritative_sources: usize,
     pub authoritative_families: usize,
     pub shadow_only_sources: usize,
@@ -554,6 +556,63 @@ pub struct AuthorityReadinessReport {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceCatalog {
     sources: BTreeMap<String, CompiledSource>,
+    push_sources: BTreeMap<String, CompiledPushSource>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledPushSource {
+    id: String,
+    display_name: String,
+    families: BTreeMap<String, CompiledPushFamily>,
+}
+
+impl CompiledPushSource {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
+    pub fn families(&self) -> impl Iterator<Item = &CompiledPushFamily> {
+        self.families.values()
+    }
+
+    pub fn family(&self, family_id: &str) -> Option<&CompiledPushFamily> {
+        self.families.get(family_id)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledPushFamily {
+    id: String,
+    event_kind: String,
+    schema_ref: String,
+    required_attributes: Vec<String>,
+    required_payload_fields: Vec<String>,
+}
+
+impl CompiledPushFamily {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn event_kind(&self) -> &str {
+        &self.event_kind
+    }
+
+    pub fn schema_ref(&self) -> &str {
+        &self.schema_ref
+    }
+
+    pub fn required_attributes(&self) -> &[String] {
+        &self.required_attributes
+    }
+
+    pub fn required_payload_fields(&self) -> &[String] {
+        &self.required_payload_fields
+    }
 }
 
 impl SourceCatalog {
@@ -563,7 +622,7 @@ impl SourceCatalog {
         definition_root: impl AsRef<Path>,
         source_root: impl AsRef<Path>,
     ) -> Result<Self, CatalogError> {
-        let proofs = load_proofs(source_root.as_ref())?;
+        let manifests = load_source_manifests(source_root.as_ref())?;
         let mut definition_paths = yaml_files(definition_root.as_ref())?;
         definition_paths.sort();
         let mut sources = BTreeMap::new();
@@ -575,13 +634,16 @@ impl SourceCatalog {
                     message: error.to_string(),
                 })?;
             for entry in file.entries {
-                let source = compile_source(&path, entry, &proofs)?;
+                let source = compile_source(&path, entry, &manifests.proofs)?;
                 if sources.insert(source.id.clone(), source.clone()).is_some() {
                     return Err(CatalogError::DuplicateSource(source.id));
                 }
             }
         }
-        Ok(Self { sources })
+        Ok(Self {
+            sources,
+            push_sources: manifests.push_sources,
+        })
     }
 
     pub fn get(&self, source_id: &str) -> Option<&CompiledSource> {
@@ -590,6 +652,27 @@ impl SourceCatalog {
 
     pub fn sources(&self) -> impl Iterator<Item = &CompiledSource> {
         self.sources.values()
+    }
+
+    /// Returns a checked-in push-only source contract. Push contracts are
+    /// intentionally separate from HTTP connector definitions so they cannot
+    /// be selected as empty pollers.
+    pub fn push_source(&self, source_id: &str) -> Option<&CompiledPushSource> {
+        self.push_sources.get(source_id)
+    }
+
+    pub fn push_sources(&self) -> impl Iterator<Item = &CompiledPushSource> {
+        self.push_sources.values()
+    }
+
+    /// Returns whether an append-log source/family pair is admitted by either
+    /// the pull connector catalog or an exact push-only event contract.
+    pub fn admits_event_family(&self, source_id: &str, family_id: &str) -> bool {
+        self.sources.contains_key(source_id)
+            || self
+                .push_sources
+                .get(source_id)
+                .is_some_and(|source| source.family(family_id).is_some())
     }
 
     pub fn summary(&self) -> CatalogSummary {
@@ -618,6 +701,12 @@ impl SourceCatalog {
         CatalogSummary {
             sources: self.sources.len(),
             families,
+            push_sources: self.push_sources.len(),
+            push_families: self
+                .push_sources
+                .values()
+                .map(|source| source.families.len())
+                .sum(),
             authoritative_sources,
             authoritative_families,
             shadow_only_sources: self.sources.len() - authoritative_sources,
@@ -902,9 +991,27 @@ struct ProjectionWire {
 #[derive(Clone, Debug, Deserialize)]
 struct ProofManifestWire {
     id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    collection_mode: String,
+    #[serde(default)]
+    emitted_kinds: Vec<String>,
+    #[serde(default)]
+    event_contracts: Vec<PushEventContractWire>,
     provider_api: Option<ProviderApiWire>,
     #[serde(default)]
     runtime_families: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct PushEventContractWire {
+    kind: String,
+    schema_ref: String,
+    #[serde(default)]
+    required_attributes: Vec<String>,
+    #[serde(default)]
+    required_payload_fields: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1943,8 +2050,14 @@ fn path_parameter(segment: &str) -> Option<&str> {
     .then_some(parameter)
 }
 
-fn load_proofs(root: &Path) -> Result<BTreeMap<String, ProofManifestWire>, CatalogError> {
+struct SourceManifests {
+    proofs: BTreeMap<String, ProofManifestWire>,
+    push_sources: BTreeMap<String, CompiledPushSource>,
+}
+
+fn load_source_manifests(root: &Path) -> Result<SourceManifests, CatalogError> {
     let mut proofs = BTreeMap::new();
+    let mut push_sources = BTreeMap::new();
     let entries = fs::read_dir(root).map_err(|error| CatalogError::Io {
         path: root.to_path_buf(),
         message: error.to_string(),
@@ -1974,13 +2087,136 @@ fn load_proofs(root: &Path) -> Result<BTreeMap<String, ProofManifestWire>, Catal
                 path: path.clone(),
                 message: error.to_string(),
             })?;
+        if proof.collection_mode.trim() == "push" {
+            let push_source = compile_push_source(&path, &proof)?;
+            if push_sources
+                .insert(push_source.id.clone(), push_source.clone())
+                .is_some()
+            {
+                return Err(CatalogError::DuplicateSource(push_source.id));
+            }
+        } else if !matches!(proof.collection_mode.trim(), "" | "pull") {
+            return invalid(&path, "collection_mode must be pull or push");
+        }
         if proofs.insert(proof.id.clone(), proof).is_some() {
             return Err(CatalogError::DuplicateSource(
                 entry.file_name().to_string_lossy().into(),
             ));
         }
     }
-    Ok(proofs)
+    Ok(SourceManifests {
+        proofs,
+        push_sources,
+    })
+}
+
+fn compile_push_source(
+    path: &Path,
+    manifest: &ProofManifestWire,
+) -> Result<CompiledPushSource, CatalogError> {
+    let source_id = validate_push_identifier(path, "push source id", &manifest.id)?;
+    let display_name = nonempty(path, "name", manifest.name.clone())?;
+    if manifest.emitted_kinds.is_empty() {
+        return invalid(path, "push source must emit at least one event kind");
+    }
+    let emitted_kinds = manifest
+        .emitted_kinds
+        .iter()
+        .map(|kind| kind.trim().to_owned())
+        .collect::<BTreeSet<_>>();
+    if emitted_kinds.len() != manifest.emitted_kinds.len() {
+        return invalid(path, "push source emitted_kinds must be unique");
+    }
+    let mut families = BTreeMap::new();
+    for contract in &manifest.event_contracts {
+        let event_kind = contract.kind.trim();
+        let family_id = event_kind
+            .strip_prefix(&format!("{source_id}."))
+            .ok_or_else(|| CatalogError::Invalid {
+                path: path.to_path_buf(),
+                message: format!("push event kind {event_kind} must use source prefix {source_id}"),
+            })?;
+        let family_id = validate_push_identifier(path, "push family id", family_id)?;
+        if !emitted_kinds.contains(event_kind) {
+            return invalid(
+                path,
+                &format!("push event kind {event_kind} is not listed in emitted_kinds"),
+            );
+        }
+        let schema_ref = contract.schema_ref.trim();
+        let expected_schema = format!("{source_id}/{family_id}/v1");
+        if schema_ref != expected_schema {
+            return invalid(
+                path,
+                &format!("push family {family_id} schema_ref must be {expected_schema}"),
+            );
+        }
+        let required_attributes = compile_push_fields(
+            path,
+            family_id.as_str(),
+            "required attribute",
+            &contract.required_attributes,
+        )?;
+        let required_payload_fields = compile_push_fields(
+            path,
+            family_id.as_str(),
+            "required payload field",
+            &contract.required_payload_fields,
+        )?;
+        let family = CompiledPushFamily {
+            id: family_id.clone(),
+            event_kind: event_kind.to_owned(),
+            schema_ref: schema_ref.to_owned(),
+            required_attributes,
+            required_payload_fields,
+        };
+        if families.insert(family_id.clone(), family).is_some() {
+            return invalid(path, &format!("duplicate push family {family_id}"));
+        }
+    }
+    if families.len() != emitted_kinds.len() {
+        return invalid(
+            path,
+            "every push emitted kind must have exactly one event_contract",
+        );
+    }
+    Ok(CompiledPushSource {
+        id: source_id,
+        display_name,
+        families,
+    })
+}
+
+fn compile_push_fields(
+    path: &Path,
+    family_id: &str,
+    field_kind: &str,
+    fields: &[String],
+) -> Result<Vec<String>, CatalogError> {
+    let mut compiled = BTreeSet::new();
+    for field in fields {
+        let field = validate_push_identifier(path, field_kind, field)?;
+        if !compiled.insert(field) {
+            return invalid(
+                path,
+                &format!("push family {family_id} {field_kind}s must be unique"),
+            );
+        }
+    }
+    Ok(compiled.into_iter().collect())
+}
+
+fn validate_push_identifier(path: &Path, field: &str, value: &str) -> Result<String, CatalogError> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return invalid(path, &format!("{field} is invalid"));
+    }
+    Ok(value.to_owned())
 }
 
 fn yaml_files(root: &Path) -> Result<Vec<PathBuf>, CatalogError> {
@@ -2417,6 +2653,8 @@ mod tests {
         let summary = catalog.summary();
         assert_eq!(summary.sources, 798);
         assert_eq!(summary.families, 3_925);
+        assert_eq!(summary.push_sources, 1);
+        assert_eq!(summary.push_families, 10);
         assert_eq!(
             summary.projection_classes.values().sum::<usize>(),
             summary.families
@@ -2849,6 +3087,55 @@ mod tests {
                 family.id()
             );
         }
+    }
+
+    #[test]
+    fn trusted_endpoint_is_a_push_contract_not_an_http_poller() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        assert!(catalog.get("trusted_endpoint").is_none());
+        let source = catalog.push_source("trusted_endpoint").unwrap();
+        assert_eq!(source.id(), "trusted_endpoint");
+        assert_eq!(source.display_name(), "Trusted Endpoint");
+        let families = source
+            .families()
+            .map(|family| family.id())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            families,
+            BTreeSet::from([
+                "action_outcome",
+                "agent_execution_receipt",
+                "agent_identity",
+                "ai_session_summary",
+                "ai_workflow_risk",
+                "grc_evidence",
+                "host_posture",
+                "repo_worktree_context",
+                "security_finding",
+                "trust_gate_decision",
+            ])
+        );
+        for family in source.families() {
+            assert_eq!(
+                family.event_kind(),
+                format!("trusted_endpoint.{}", family.id())
+            );
+            assert_eq!(
+                family.schema_ref(),
+                format!("trusted_endpoint/{}/v1", family.id())
+            );
+            assert!(
+                catalog.admits_event_family("trusted_endpoint", family.id()),
+                "push family {} was not admitted",
+                family.id()
+            );
+        }
+        assert!(!catalog.admits_event_family("trusted_endpoint", "unknown"));
     }
 
     #[test]
