@@ -8,6 +8,7 @@ mod aws_secret_store;
 mod credential_lease;
 mod deposit;
 mod egress;
+mod evidence_cas;
 mod fixture_parity;
 mod http;
 mod mapper;
@@ -32,6 +33,10 @@ pub use deposit::{
 pub use egress::{
     EgressDecision, EgressDecisionKind, EgressMode, EgressPolicy, EgressPolicyError,
     EgressRequestContext,
+};
+pub use evidence_cas::{
+    EvidenceCasConfig, EvidenceCasContract, EvidenceCasError, EvidenceCasKernel, EvidenceCasPage,
+    EvidenceCasRecord, EvidenceCasRequest, EvidenceCasRequestKind,
 };
 pub use fixture_parity::{
     FixtureParityComparison, FixtureParityDuplicate, FixtureParityEvent, FixtureParityInput,
