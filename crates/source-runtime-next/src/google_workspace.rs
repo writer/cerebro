@@ -4,6 +4,9 @@
 //! provider pages. Live egress and OAuth credential ownership remain outside
 //! this module. Role assignment pages preserve the Go provider's per-page
 //! user lookup cache without moving provider calls into the kernel.
+//! Materialized events deliberately require the identity used by Go Discover.
+//! This fails closed for fallback-only records that Go Read can emit but Go
+//! Discover cannot turn into a canonical source URN.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -15,7 +18,9 @@ use std::{
 
 use reqwest::Url;
 use serde_json::{Map, Value};
+use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
 
+const SOURCE_ID: &str = "google_workspace";
 const DEFAULT_CUSTOMER_ID: &str = "my_customer";
 const DEFAULT_APPLICATION: &str = "admin";
 const DEFAULT_PAGE_SIZE: usize = 10;
@@ -56,6 +61,17 @@ impl GoogleWorkspaceFamily {
             Self::GroupMember => "google_workspace.group_member",
             Self::RoleAssignment => "google_workspace.role_assignment",
             Self::User => "google_workspace.user",
+        }
+    }
+
+    /// Return the public Go source event schema reference.
+    pub const fn schema_ref(self) -> &'static str {
+        match self {
+            Self::Audit => "google_workspace/audit/v1",
+            Self::Group => "google_workspace/group/v1",
+            Self::GroupMember => "google_workspace/group_member/v1",
+            Self::RoleAssignment => "google_workspace/role_assignment/v1",
+            Self::User => "google_workspace/user/v1",
         }
     }
 
@@ -136,6 +152,33 @@ pub struct GoogleWorkspaceRecord {
     pub payload: Value,
 }
 
+/// One Google Workspace event materialized at page observation time.
+///
+/// Event fields match the Go source after the stricter Discover identity gate
+/// succeeds. This is a deliberate fail-closed tightening, not unconditional
+/// Read parity for provider records that omit their canonical source identity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GoogleWorkspaceEvent {
+    /// Stable source event identity.
+    pub event_id: String,
+    /// Tenant domain from source settings.
+    pub tenant_id: String,
+    /// Source identifier.
+    pub source_id: String,
+    /// Emitted provider kind.
+    pub provider_kind: String,
+    /// Public event schema reference.
+    pub schema_ref: String,
+    /// Go-selected occurrence time, normalized to UTC RFC 3339.
+    pub occurred_at: String,
+    /// Discovery URN produced from the Go Discover identity contract.
+    pub discovery_urn: String,
+    /// Source attributes derived from the provider object.
+    pub attributes: BTreeMap<String, String>,
+    /// Provider object with the Go source's context overlay.
+    pub payload: Value,
+}
+
 /// A bounded Google Workspace page and its opaque provider cursor.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GoogleWorkspacePage {
@@ -143,6 +186,60 @@ pub struct GoogleWorkspacePage {
     pub records: Vec<GoogleWorkspaceRecord>,
     /// `nextPageToken` for the next provider page.
     pub next_cursor: Option<String>,
+}
+
+impl GoogleWorkspacePage {
+    /// Materialize event, checkpoint, and watermark semantics.
+    ///
+    /// `observed_at` supplies the clock value used by the Go source for groups,
+    /// memberships, role assignments, and invalid or absent provider times.
+    /// Records that have only a Go Read fallback identity fail closed because
+    /// the same record would be rejected by the Go Discover URN path.
+    pub fn materialize(
+        &self,
+        observed_at: &str,
+    ) -> Result<GoogleWorkspaceEventPage, GoogleWorkspaceError> {
+        let observed_at = parse_observed_at(observed_at)?;
+        if self.records.is_empty() {
+            return Ok(GoogleWorkspaceEventPage {
+                events: Vec::new(),
+                next_cursor: None,
+                checkpoint_cursor: None,
+                watermark: None,
+            });
+        }
+        let events = self
+            .records
+            .iter()
+            .map(|record| materialize_event(record, observed_at))
+            .collect::<Result<Vec<_>, _>>()?;
+        let checkpoint_cursor = self.next_cursor.clone().or_else(|| {
+            events
+                .last()
+                .map(|event| event.event_id.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        });
+        let watermark = events.last().map(|event| event.occurred_at.clone());
+        Ok(GoogleWorkspaceEventPage {
+            events,
+            next_cursor: self.next_cursor.clone(),
+            checkpoint_cursor,
+            watermark,
+        })
+    }
+}
+
+/// One materialized source page without durable checkpoint ownership.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GoogleWorkspaceEventPage {
+    /// Go-compatible events in provider order.
+    pub events: Vec<GoogleWorkspaceEvent>,
+    /// Opaque provider cursor exposed for the next read.
+    pub next_cursor: Option<String>,
+    /// Proposed checkpoint cursor: provider cursor, then final event identity.
+    pub checkpoint_cursor: Option<String>,
+    /// Final event occurrence time used by the Go source as its watermark.
+    pub watermark: Option<String>,
 }
 
 /// Result of decoding one Google Workspace response.
@@ -435,6 +532,10 @@ pub enum GoogleWorkspaceError {
     MissingRoleState,
     /// A request was decoded by a kernel configured for another family or origin.
     RequestScopeMismatch,
+    /// Caller-supplied page observation time is not RFC 3339.
+    InvalidObservedAt,
+    /// A normalized record cannot produce the Go discovery identity.
+    MissingDiscoveryIdentity,
 }
 
 impl fmt::Display for GoogleWorkspaceError {
@@ -452,6 +553,8 @@ impl fmt::Display for GoogleWorkspaceError {
             Self::RequestScopeMismatch => {
                 "google_workspace request family or origin does not match the kernel"
             }
+            Self::InvalidObservedAt => "google_workspace observed_at must be RFC 3339",
+            Self::MissingDiscoveryIdentity => "google_workspace discovery identity is missing",
         })
     }
 }
@@ -889,6 +992,144 @@ fn normalize_resource_type(value: &str) -> String {
     value.trim().to_lowercase().replace([' ', '-'], "_")
 }
 
+fn parse_observed_at(value: &str) -> Result<OffsetDateTime, GoogleWorkspaceError> {
+    OffsetDateTime::parse(value.trim(), &Rfc3339)
+        .map(|value| value.to_offset(UtcOffset::UTC))
+        .map_err(|_| GoogleWorkspaceError::InvalidObservedAt)
+}
+
+fn provider_time(value: Option<String>) -> Option<OffsetDateTime> {
+    let value = value?;
+    let value = value.trim();
+    if value.is_empty() || value == "1970-01-01T00:00:00.000Z" {
+        return None;
+    }
+    OffsetDateTime::parse(value, &Rfc3339)
+        .ok()
+        .map(|value| value.to_offset(UtcOffset::UTC))
+}
+
+fn first_provider_time<const N: usize>(values: [Option<String>; N]) -> Option<OffsetDateTime> {
+    values.into_iter().find_map(provider_time)
+}
+
+fn format_time(value: OffsetDateTime) -> Result<String, GoogleWorkspaceError> {
+    value
+        .to_offset(UtcOffset::UTC)
+        .format(&Rfc3339)
+        .map_err(|_| GoogleWorkspaceError::InvalidObservedAt)
+}
+
+fn materialize_event(
+    record: &GoogleWorkspaceRecord,
+    observed_at: OffsetDateTime,
+) -> Result<GoogleWorkspaceEvent, GoogleWorkspaceError> {
+    let family = GoogleWorkspaceFamily::from_str(&record.family)?;
+    let object = record
+        .payload
+        .as_object()
+        .ok_or(GoogleWorkspaceError::InvalidRecord)?;
+    let occurred_at = match family {
+        GoogleWorkspaceFamily::User => first_provider_time([
+            scalar(object.get("lastLoginTime")),
+            scalar(object.get("creationTime")),
+        ])
+        .unwrap_or(observed_at),
+        GoogleWorkspaceFamily::Audit => {
+            provider_time(nested_scalar(object, &["id", "time"])).unwrap_or(observed_at)
+        }
+        GoogleWorkspaceFamily::Group
+        | GoogleWorkspaceFamily::GroupMember
+        | GoogleWorkspaceFamily::RoleAssignment => observed_at,
+    };
+    let event_id = go_event_id(family, object, &record.fields, occurred_at)?;
+    let discovery_id = first_nonempty([
+        record.fields.get("user_id").cloned(),
+        record.fields.get("group_id").cloned(),
+        record.fields.get("role_assignment_id").cloned(),
+        record.fields.get("event_type").cloned(),
+    ])
+    .ok_or(GoogleWorkspaceError::MissingDiscoveryIdentity)?;
+    let domain = record
+        .fields
+        .get("domain")
+        .cloned()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or(GoogleWorkspaceError::MissingDomain)?;
+    let mut payload = record.payload.clone();
+    let payload_object = payload
+        .as_object_mut()
+        .ok_or(GoogleWorkspaceError::InvalidRecord)?;
+    payload_object.insert("domain".to_owned(), Value::String(domain.clone()));
+    if family == GoogleWorkspaceFamily::GroupMember {
+        let group_key = record
+            .fields
+            .get("group_id")
+            .cloned()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or(GoogleWorkspaceError::MissingGroupKey)?;
+        payload_object.insert("group_key".to_owned(), Value::String(group_key));
+    }
+    Ok(GoogleWorkspaceEvent {
+        event_id,
+        tenant_id: domain.clone(),
+        source_id: SOURCE_ID.to_owned(),
+        provider_kind: family.provider_kind().to_owned(),
+        schema_ref: family.schema_ref().to_owned(),
+        occurred_at: format_time(occurred_at)?,
+        discovery_urn: format!(
+            "urn:cerebro:{domain}:google_workspace_{}:{discovery_id}",
+            family.as_str()
+        ),
+        attributes: record.fields.clone(),
+        payload,
+    })
+}
+
+fn go_event_id(
+    family: GoogleWorkspaceFamily,
+    object: &Map<String, Value>,
+    fields: &BTreeMap<String, String>,
+    occurred_at: OffsetDateTime,
+) -> Result<String, GoogleWorkspaceError> {
+    let (prefix, identity) = match family {
+        GoogleWorkspaceFamily::User => (
+            "google-workspace-user-",
+            first_values(object, &["id", "primaryEmail"]),
+        ),
+        GoogleWorkspaceFamily::Group => (
+            "google-workspace-group-",
+            first_values(object, &["id", "email"]),
+        ),
+        GoogleWorkspaceFamily::GroupMember => {
+            let group_key = fields.get("group_id").cloned();
+            let member_id = first_values(object, &["id", "email"]);
+            (
+                "google-workspace-group-member-",
+                group_key
+                    .zip(member_id)
+                    .map(|(group, member)| format!("{group}-{member}")),
+            )
+        }
+        GoogleWorkspaceFamily::RoleAssignment => (
+            "google-workspace-role-assignment-",
+            scalar(object.get("roleAssignmentId")),
+        ),
+        GoogleWorkspaceFamily::Audit => (
+            "google-workspace-audit-",
+            first_nonempty([
+                nested_scalar(object, &["id", "uniqueQualifier"]),
+                fields.get("event_type").cloned(),
+                Some((occurred_at.unix_timestamp_nanos() / 1_000_000).to_string()),
+            ]),
+        ),
+    };
+    identity
+        .filter(|value| !value.trim().is_empty())
+        .map(|identity| format!("{prefix}{identity}"))
+        .ok_or(GoogleWorkspaceError::MissingRecordIdentity)
+}
+
 fn first_nonempty<const N: usize>(values: [Option<String>; N]) -> Option<String> {
     values
         .into_iter()
@@ -940,6 +1181,27 @@ mod tests {
     fn fixture_page(family: GoogleWorkspaceFamily, fixture: &[u8]) -> Vec<u8> {
         let records: Value = serde_json::from_slice(fixture).unwrap();
         serde_json::to_vec(&serde_json::json!({family.response_field(): records})).unwrap()
+    }
+
+    fn decoded_fixture_page(family: GoogleWorkspaceFamily, fixture: &[u8]) -> GoogleWorkspacePage {
+        let kernel = kernel(family);
+        let request = kernel.plan(None).unwrap();
+        let outcome = kernel
+            .decode(&request, &fixture_page(family, fixture))
+            .unwrap();
+        let outcome = match outcome {
+            GoogleWorkspaceOutcome::Request(request) => kernel
+                .decode(
+                    &request,
+                    br#"{"id":"1001","primaryEmail":"admin@writer.com","name":{"fullName":"Admin Writer"}}"#,
+                )
+                .unwrap(),
+            page => page,
+        };
+        let GoogleWorkspaceOutcome::Page(page) = outcome else {
+            panic!("fixture required more than one bounded lookup")
+        };
+        page
     }
 
     #[test]
@@ -1046,6 +1308,181 @@ mod tests {
                 .map(String::as_str),
             Some("false")
         );
+        let materialized = page.materialize("2026-08-20T20:00:00-07:00").unwrap();
+        assert_eq!(materialized.next_cursor.as_deref(), Some("page-2"));
+        assert_eq!(materialized.checkpoint_cursor.as_deref(), Some("page-2"));
+        assert_eq!(
+            materialized.watermark.as_deref(),
+            Some("2026-04-23T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn all_five_families_materialize_go_event_and_discovery_contracts() {
+        let cases = [
+            (
+                GoogleWorkspaceFamily::Audit,
+                AUDIT_FIXTURE,
+                "google-workspace-audit-audit-1",
+                "google_workspace/audit/v1",
+                "2026-04-23T00:00:00Z",
+                "urn:cerebro:writer.com:google_workspace_audit:CHANGE_TWO_STEP_VERIFICATION_ENFORCEMENT",
+                "google-workspace-audit-audit-2",
+            ),
+            (
+                GoogleWorkspaceFamily::Group,
+                GROUP_FIXTURE,
+                "google-workspace-group-group-1",
+                "google_workspace/group/v1",
+                "2026-08-21T03:00:00Z",
+                "urn:cerebro:writer.com:google_workspace_group:group-1",
+                "google-workspace-group-group-1",
+            ),
+            (
+                GoogleWorkspaceFamily::GroupMember,
+                GROUP_MEMBER_FIXTURE,
+                "google-workspace-group-member-security@writer.com-member-1",
+                "google_workspace/group_member/v1",
+                "2026-08-21T03:00:00Z",
+                "urn:cerebro:writer.com:google_workspace_group_member:member-1",
+                "google-workspace-group-member-security@writer.com-member-2",
+            ),
+            (
+                GoogleWorkspaceFamily::RoleAssignment,
+                ROLE_FIXTURE,
+                "google-workspace-role-assignment-ra-1",
+                "google_workspace/role_assignment/v1",
+                "2026-08-21T03:00:00Z",
+                "urn:cerebro:writer.com:google_workspace_role_assignment:ra-1",
+                "google-workspace-role-assignment-ra-1",
+            ),
+            (
+                GoogleWorkspaceFamily::User,
+                USER_FIXTURE,
+                "google-workspace-user-1001",
+                "google_workspace/user/v1",
+                "2025-01-15T00:00:00Z",
+                "urn:cerebro:writer.com:google_workspace_user:1001",
+                "google-workspace-user-1002",
+            ),
+        ];
+        for (family, fixture, event_id, schema_ref, occurred_at, discovery_urn, checkpoint) in cases
+        {
+            let page = decoded_fixture_page(family, fixture)
+                .materialize("2026-08-20T20:00:00-07:00")
+                .unwrap();
+            assert_eq!(page.events[0].event_id, event_id);
+            assert_eq!(page.events[0].source_id, "google_workspace");
+            assert_eq!(page.events[0].tenant_id, "writer.com");
+            assert_eq!(page.events[0].provider_kind, family.provider_kind());
+            assert_eq!(page.events[0].schema_ref, schema_ref);
+            assert_eq!(page.events[0].occurred_at, occurred_at);
+            assert_eq!(page.events[0].discovery_urn, discovery_urn);
+            assert_eq!(
+                page.events[0].payload.get("domain").and_then(Value::as_str),
+                Some("writer.com")
+            );
+            assert_eq!(page.checkpoint_cursor.as_deref(), Some(checkpoint));
+            assert_eq!(
+                page.watermark,
+                page.events.last().map(|event| event.occurred_at.clone())
+            );
+        }
+        let memberships =
+            decoded_fixture_page(GoogleWorkspaceFamily::GroupMember, GROUP_MEMBER_FIXTURE)
+                .materialize("2026-08-20T20:00:00-07:00")
+                .unwrap();
+        assert_eq!(
+            memberships.events[0]
+                .payload
+                .get("group_key")
+                .and_then(Value::as_str),
+            Some("security@writer.com")
+        );
+    }
+
+    #[test]
+    fn materialization_matches_go_time_fallback_and_empty_page_semantics() {
+        let kernel = kernel(GoogleWorkspaceFamily::User);
+        let request = kernel.plan(None).unwrap();
+        let GoogleWorkspaceOutcome::Page(page) = kernel
+            .decode(
+                &request,
+                br#"{"users":[{"id":"1003","primaryEmail":"fallback@writer.com","lastLoginTime":"invalid","creationTime":"2026-08-20T01:02:03.456Z"}]}"#,
+            )
+            .unwrap()
+        else {
+            panic!("expected user page")
+        };
+        let materialized = page.materialize("2026-08-21T03:00:00Z").unwrap();
+        assert_eq!(
+            materialized.events[0].occurred_at,
+            "2026-08-20T01:02:03.456Z"
+        );
+        assert!(matches!(
+            page.materialize("not-a-time"),
+            Err(GoogleWorkspaceError::InvalidObservedAt)
+        ));
+
+        let empty = GoogleWorkspacePage {
+            records: Vec::new(),
+            next_cursor: Some("provider-should-not-advance".to_owned()),
+        }
+        .materialize("2026-08-21T03:00:00Z")
+        .unwrap();
+        assert!(empty.events.is_empty());
+        assert_eq!(empty.next_cursor, None);
+        assert_eq!(empty.checkpoint_cursor, None);
+        assert_eq!(empty.watermark, None);
+    }
+
+    #[test]
+    fn materialization_fail_closes_go_read_only_identity_fallbacks() {
+        for (family, body) in [
+            (
+                GoogleWorkspaceFamily::User,
+                br#"{"users":[{"primaryEmail":"fallback@writer.com"}]}"#.as_slice(),
+            ),
+            (
+                GoogleWorkspaceFamily::Group,
+                br#"{"groups":[{"email":"fallback-group@writer.com"}]}"#.as_slice(),
+            ),
+            (
+                GoogleWorkspaceFamily::Audit,
+                br#"{"items":[{"id":{"time":"2026-08-20T01:02:03Z","uniqueQualifier":"audit-without-event"},"events":[{"name":""}]}]}"#.as_slice(),
+            ),
+        ] {
+            let kernel = kernel(family);
+            let request = kernel.plan(None).unwrap();
+            let GoogleWorkspaceOutcome::Page(page) = kernel.decode(&request, body).unwrap()
+            else {
+                panic!("expected direct page")
+            };
+            assert!(matches!(
+                page.materialize("2026-08-21T03:00:00Z"),
+                Err(GoogleWorkspaceError::MissingDiscoveryIdentity)
+            ));
+        }
+    }
+
+    #[test]
+    fn missing_role_assignment_id_and_malformed_records_fail_before_admission() {
+        let role_kernel = kernel(GoogleWorkspaceFamily::RoleAssignment);
+        let request = role_kernel.plan(None).unwrap();
+        assert!(matches!(
+            role_kernel.decode(
+                &request,
+                br#"{"items":[{"roleId":"super-admin","assigneeType":"GROUP"}]}"#,
+            ),
+            Err(GoogleWorkspaceError::MissingRecordIdentity)
+        ));
+
+        let user_kernel = kernel(GoogleWorkspaceFamily::User);
+        let request = user_kernel.plan(None).unwrap();
+        assert!(matches!(
+            user_kernel.decode(&request, br#"{"users":[42]}"#),
+            Err(GoogleWorkspaceError::InvalidRecord)
+        ));
     }
 
     #[test]
