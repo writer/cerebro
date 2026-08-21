@@ -494,7 +494,7 @@ func authorizationPolicyEvent(settings settings, record authorizationPolicyRecor
 		"resource_provider":                  "azure",
 		"resource_type":                      "authorization_policy",
 	}
-	payload, err := payloadWithRaw(record.raw, map[string]any{"tenant_id": settings.tenantID})
+	payload, err := payloadWithRaw(record.raw, map[string]any{"id": firstNonEmpty(record.ID, "authorizationPolicy"), "tenant_id": settings.tenantID})
 	if err != nil {
 		return nil, err
 	}

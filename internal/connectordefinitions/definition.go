@@ -342,6 +342,8 @@ type ResourceFamily struct {
 
 // ResourceReadSpec extends the generic JSON API read shape without adding bespoke code.
 type ResourceReadSpec struct {
+	ProviderKernel        string            `json:"provider_kernel,omitempty"`
+	SingletonFallbackID   string            `json:"singleton_fallback_id,omitempty"`
 	DetailPath            string            `json:"detail_path,omitempty"`
 	AllowBareDetailRecord bool              `json:"allow_bare_detail_record,omitempty"`
 	PathParams            []string          `json:"path_params,omitempty"`
@@ -1367,13 +1369,15 @@ func normalizeResourceReadSpec(read *ResourceReadSpec) *ResourceReadSpec {
 		return nil
 	}
 	next := *read
+	next.ProviderKernel = strings.TrimSpace(next.ProviderKernel)
+	next.SingletonFallbackID = strings.TrimSpace(next.SingletonFallbackID)
 	next.DetailPath = strings.TrimSpace(next.DetailPath)
 	next.PathParams = normalizeOrderedStringList(next.PathParams)
 	next.PathParamFanout = normalizeStringMap(next.PathParamFanout)
 	next.MapRecords = normalizeStringMap(next.MapRecords)
 	next.StaticJSONBody = normalizeJSONMap(next.StaticJSONBody)
 	next.ScalarRecordField = strings.TrimSpace(next.ScalarRecordField)
-	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && len(next.StaticJSONBody) == 0 && next.ScalarRecordField == "" && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
+	if next.ProviderKernel == "" && next.SingletonFallbackID == "" && next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && len(next.StaticJSONBody) == 0 && next.ScalarRecordField == "" && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
 		return nil
 	}
 	return &next

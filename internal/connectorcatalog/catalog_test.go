@@ -9,7 +9,7 @@ import (
 	"github.com/writer/cerebro/internal/connectordefinitions"
 )
 
-const wantBuiltinCatalogEntries = 798
+const wantBuiltinCatalogEntries = 799
 const wantBuiltinCatalogBespokeRuntimeEntries = 1
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
@@ -120,6 +120,51 @@ entries:
 		if !issuesContain(analysis.Issues, want) {
 			t.Fatalf("issues = %#v, want %q", analysis.Issues, want)
 		}
+	}
+}
+
+func TestAnalyzeDirAllowsOneBoundedFirstPartyProviderKernel(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogFile(t, root, `
+entries:
+  - classifier_output: supported
+    definition:
+      schema_version: cerebro.integration/v1
+      id: builtin-bounded
+      tenant_id: builtin_catalog
+      source_id: bounded
+      auth:
+        model: bearer_token
+        credential_fields:
+          - key: token
+            secret: true
+            reference_only: true
+      transport:
+        base_url: https://api.example.test
+        verification:
+          path: /v1/policy
+      resource_families:
+        - id: policy
+          path: /v1/policy
+          method: GET
+          record_selector: $
+          singleton: true
+          read:
+            provider_kernel: bounded.policy
+            singleton_fallback_id: policy
+          id_field: id
+          event: {kind: bounded.policy, schema_ref: bounded/policy/v1}
+          projection: {template: policy}
+          coverage:
+            - {type: entity_family, support: partial, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+`)
+
+	analysis, err := AnalyzeDir(root, Options{})
+	if err != nil {
+		t.Fatalf("AnalyzeDir() error = %v", err)
+	}
+	if issuesContain(analysis.Issues, "definition must include at least 2 resource families") {
+		t.Fatalf("issues = %#v, want bounded first-party provider kernel accepted", analysis.Issues)
 	}
 }
 

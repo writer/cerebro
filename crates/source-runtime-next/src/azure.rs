@@ -1,8 +1,8 @@
-//! Azure Authentication Methods Policy request and response kernel.
+//! Azure Microsoft Graph policy request and response kernels.
 //!
-//! The kernel implements the portable Microsoft Graph contract for the
-//! singleton authentication methods policy. It plans credential-free requests
-//! and decodes provider responses without owning credentials, egress policy,
+//! The kernels implement portable Microsoft Graph contracts for the singleton
+//! authentication methods and authorization policies. They plan credential-free
+//! requests and decode provider responses without owning credentials, egress policy,
 //! deployment routes, or tenant authorization.
 
 use std::{collections::BTreeMap, error::Error, fmt, net::IpAddr, str::FromStr};
@@ -10,14 +10,27 @@ use std::{collections::BTreeMap, error::Error, fmt, net::IpAddr, str::FromStr};
 use reqwest::Url;
 use serde_json::Value;
 
+#[path = "azure/authorization_policy.rs"]
+mod authorization_policy;
+#[cfg(test)]
+#[path = "azure/authorization_policy_tests.rs"]
+mod authorization_policy_tests;
+
 const AUTHENTICATION_METHODS_POLICY_PATH: &str = "/v1.0/policies/authenticationMethodsPolicy";
 const FAMILY: &str = "authentication_methods_policy";
 const PROVIDER_KIND: &str = "azure.authentication_methods_policy";
 
-/// One credential-free Microsoft Graph request for the authentication methods policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AzurePolicyFamily {
+    AuthenticationMethods,
+    Authorization,
+}
+
+/// One credential-free Microsoft Graph policy request.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AzureAuthenticationMethodsPolicyRequest {
     url: Url,
+    family: AzurePolicyFamily,
 }
 
 impl AzureAuthenticationMethodsPolicyRequest {
@@ -37,7 +50,7 @@ impl AzureAuthenticationMethodsPolicyRequest {
     }
 }
 
-/// One normalized Azure authentication methods policy record.
+/// One normalized Azure Microsoft Graph policy record.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AzureAuthenticationMethodsPolicyRecord {
     /// Source-catalog family identifier.
@@ -52,7 +65,7 @@ pub struct AzureAuthenticationMethodsPolicyRecord {
     pub payload: Value,
 }
 
-/// The complete, non-paginated authentication methods policy response.
+/// One complete, non-paginated Azure Microsoft Graph policy response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AzureAuthenticationMethodsPolicyPage {
     /// The singleton provider record.
@@ -61,7 +74,7 @@ pub struct AzureAuthenticationMethodsPolicyPage {
     pub next_cursor: Option<String>,
 }
 
-/// Portable request and response kernel for the Azure authentication methods policy.
+/// Portable request and response kernel for Azure Microsoft Graph policies.
 #[derive(Clone, Debug)]
 pub struct AzureAuthenticationMethodsPolicyKernel {
     graph_base_url: Url,
@@ -88,7 +101,10 @@ impl AzureAuthenticationMethodsPolicyKernel {
             .graph_base_url
             .join(AUTHENTICATION_METHODS_POLICY_PATH)
             .map_err(|_| AzureAuthenticationMethodsPolicyError::InvalidBaseUrl)?;
-        Ok(AzureAuthenticationMethodsPolicyRequest { url })
+        Ok(AzureAuthenticationMethodsPolicyRequest {
+            url,
+            family: AzurePolicyFamily::AuthenticationMethods,
+        })
     }
 
     /// Decode one response for a request produced by this kernel.
@@ -121,7 +137,8 @@ impl AzureAuthenticationMethodsPolicyKernel {
         &self,
         request: &AzureAuthenticationMethodsPolicyRequest,
     ) -> Result<(), AzureAuthenticationMethodsPolicyError> {
-        if request.url.origin() != self.graph_base_url.origin()
+        if request.family != AzurePolicyFamily::AuthenticationMethods
+            || request.url.origin() != self.graph_base_url.origin()
             || request.url.path() != AUTHENTICATION_METHODS_POLICY_PATH
             || request.url.query().is_some()
             || request.url.fragment().is_some()
@@ -132,7 +149,7 @@ impl AzureAuthenticationMethodsPolicyKernel {
     }
 }
 
-/// Stable Azure authentication methods policy kernel failures.
+/// Stable Azure Graph policy kernel failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AzureAuthenticationMethodsPolicyError {
     /// The configured Microsoft Graph base URL is not an allowed secure origin.
@@ -141,6 +158,10 @@ pub enum AzureAuthenticationMethodsPolicyError {
     InvalidResponse,
     /// A response request does not match the kernel's origin and exact endpoint.
     RequestScopeMismatch,
+    /// Authorization policy response JSON is not a valid Microsoft Graph singleton object.
+    AuthorizationPolicyInvalidResponse,
+    /// An authorization policy response request does not match the exact endpoint and origin.
+    AuthorizationPolicyRequestScopeMismatch,
 }
 
 impl fmt::Display for AzureAuthenticationMethodsPolicyError {
@@ -152,6 +173,12 @@ impl fmt::Display for AzureAuthenticationMethodsPolicyError {
             }
             Self::RequestScopeMismatch => {
                 "azure authentication methods policy request does not match the kernel"
+            }
+            Self::AuthorizationPolicyInvalidResponse => {
+                "azure authorization policy response must be a JSON object"
+            }
+            Self::AuthorizationPolicyRequestScopeMismatch => {
+                "azure authorization policy request does not match the kernel"
             }
         })
     }
@@ -355,7 +382,6 @@ mod tests {
         },
         "reportSuspiciousActivitySettings":{"state":"enabled"}
     }"#;
-
     fn kernel() -> AzureAuthenticationMethodsPolicyKernel {
         AzureAuthenticationMethodsPolicyKernel::new("https://graph.microsoft.com").unwrap()
     }
