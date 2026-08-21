@@ -8,6 +8,7 @@ mod aurelius;
 mod aws_account;
 mod aws_secret_store;
 mod cerebro_source;
+mod cosmo;
 mod credential_lease;
 mod deposit;
 mod egress;
@@ -46,6 +47,7 @@ pub use cerebro_source::{
     CerebroSourceError, CerebroSourceFamily, CerebroSourceKernel, CerebroSourcePage,
     CerebroSourceRecord,
 };
+pub use cosmo::{CosmoError, CosmoFamily, CosmoKernel, CosmoPage, CosmoRecord};
 pub use credential_lease::{
     CredentialLeaseError, CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus,
     LeaseClock, OperationScopedCredentialLease,
