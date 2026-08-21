@@ -8,6 +8,7 @@ mod archetype;
 mod aurelius;
 mod aws_account;
 mod aws_secret_store;
+mod azure;
 mod cerebro_source;
 mod cosmo;
 mod credential_lease;
@@ -49,6 +50,11 @@ pub use aws_secret_store::{
     AwsSecretReadError, AwsSecretReader, AwsSecretReference, AwsSecretResolutionError,
     AwsSecretValue, contains_aws_secret_references, parse_aws_secret_reference,
     resolve_aws_secret_references,
+};
+pub use azure::{
+    AzureAuthenticationMethodsPolicyError, AzureAuthenticationMethodsPolicyKernel,
+    AzureAuthenticationMethodsPolicyPage, AzureAuthenticationMethodsPolicyRecord,
+    AzureAuthenticationMethodsPolicyRequest,
 };
 pub use cerebro_source::{
     CerebroSourceError, CerebroSourceFamily, CerebroSourceKernel, CerebroSourcePage,
