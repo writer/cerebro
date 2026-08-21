@@ -20,6 +20,7 @@ pub enum EvidenceFreshness {
 
 /// Fail-closed evidence quality carried by every external producer.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct WireEvidenceState {
     pub completeness: EvidenceCompleteness,
     pub freshness: EvidenceFreshness,

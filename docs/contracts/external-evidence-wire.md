@@ -35,6 +35,10 @@ authorities rather than redefining them.
 - Each family accepts exactly one payload schema in v1.
 - IDs, references, collections, payload depth, payload nodes, and serialized
   payload bytes are bounded before persistence.
+- Envelope attributes accept only `correlation_id`, `environment`,
+  `producer_version`, `region`, `source_kind`, and `trace_id`. Values are
+  identifier-like operational metadata capped at 256 bytes; credentials,
+  authorization data, cookies, secrets, and content are not attribute fields.
 - Event sequences start at one; zero cannot enter the admission path.
 - Observation time cannot precede occurrence time.
 - Omitted evidence quality means `partial` and `unknown`; it cannot authorize a
