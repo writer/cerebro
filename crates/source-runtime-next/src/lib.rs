@@ -12,6 +12,7 @@ mod deposit;
 mod egress;
 mod evidence_cas;
 mod fixture_parity;
+mod gcp;
 mod google_workspace;
 mod http;
 mod mapper;
@@ -57,6 +58,7 @@ pub use fixture_parity::{
     FixtureParityReceipt, build_fixture_parity_matrix, compare_fixture_parity,
     execute_fixture_parity_page, fixture_excluded_family_reasons,
 };
+pub use gcp::{GcpContentInspection, GcpDataClassification, GcpObjectContentKernel};
 pub use google_workspace::{
     GoogleWorkspaceError, GoogleWorkspaceFamily, GoogleWorkspaceFilters, GoogleWorkspaceKernel,
     GoogleWorkspaceOutcome, GoogleWorkspacePage, GoogleWorkspaceRecord, GoogleWorkspaceRequest,
