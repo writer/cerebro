@@ -13,6 +13,7 @@ mod egress;
 mod evidence_cas;
 mod fixture_parity;
 mod google_workspace;
+mod grc;
 mod http;
 mod mapper;
 mod panopticon;
@@ -61,6 +62,7 @@ pub use google_workspace::{
     GoogleWorkspaceError, GoogleWorkspaceFamily, GoogleWorkspaceFilters, GoogleWorkspaceKernel,
     GoogleWorkspaceOutcome, GoogleWorkspacePage, GoogleWorkspaceRecord, GoogleWorkspaceRequest,
 };
+pub use grc::{GrcError, GrcFamily, GrcKernel, GrcPage, GrcRecord, GrcRequest};
 pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 pub use panopticon::{
