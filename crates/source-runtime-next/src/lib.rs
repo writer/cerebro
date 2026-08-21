@@ -33,6 +33,7 @@ mod sdk;
 mod security_tooling_map;
 mod sentinelone;
 mod trivy;
+mod twilio;
 mod vulnview;
 
 pub use amplitude::{
@@ -145,6 +146,9 @@ pub use sentinelone::{
     SentinelOnePage, SentinelOneRecord, SentinelOneRequest,
 };
 pub use trivy::{TrivyError, TrivyFamily, TrivyKernel, TrivyPage, TrivyRecord};
+pub use twilio::{
+    TwilioError, TwilioFamily, TwilioFilters, TwilioKernel, TwilioPage, TwilioRecord, TwilioRequest,
+};
 pub use vulnview::{
     VulnViewError, VulnViewFamily, VulnViewFilters, VulnViewKernel, VulnViewPage, VulnViewRecord,
     VulnViewRequest,
