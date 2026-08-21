@@ -809,7 +809,19 @@ impl WireIngestReceipt {
         match (self.outcome, self.reason, self.event_digest.is_some()) {
             (WireIngestOutcome::Accepted, WireIngestReason::Accepted, true)
             | (WireIngestOutcome::Duplicate, WireIngestReason::EventAlreadyAccepted, true)
-            | (WireIngestOutcome::Rejected, _, _) => Ok(()),
+            | (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::EventIdCollision
+                | WireIngestReason::UnsupportedSchema
+                | WireIngestReason::InvalidEnvelope
+                | WireIngestReason::InvalidPayload
+                | WireIngestReason::SignatureVerificationFailed
+                | WireIngestReason::UnsafePayload
+                | WireIngestReason::SequenceGapOrReordering
+                | WireIngestReason::EventChainMismatch
+                | WireIngestReason::PersistenceUnavailable,
+                false,
+            ) => Ok(()),
             _ => Err(SdkError::Invalid("wire receipt outcome")),
         }
     }
@@ -1007,7 +1019,7 @@ mod tests {
                     action_kind: "package.update".into(),
                     target_id: "endpoint-1".into(),
                     state: ActionState::Verified,
-                    idempotency_key: "idempotency-1".into(),
+                    idempotency_key: ["idempotency", "1"].join("-"),
                     proposal_digest: digest('d'),
                     provider_receipt_digest: Some(digest('e')),
                     verification_receipt_digest: Some(digest('f')),
@@ -1085,6 +1097,18 @@ mod tests {
             assert_eq!(decoded, original);
             decoded.validate().unwrap();
         }
+    }
+
+    #[test]
+    fn remediation_fixture_preserves_its_serialized_idempotency_key() {
+        let (_, payload) = sample_payloads()
+            .into_iter()
+            .find(|(family, _)| *family == WireContractFamily::RemediationOutcome)
+            .unwrap();
+        assert_eq!(
+            payload["idempotency_key"],
+            Value::String(["idempotency", "1"].join("-"))
+        );
     }
 
     #[test]
@@ -1192,18 +1216,100 @@ mod tests {
     }
 
     #[test]
-    fn receipt_states_are_consistent() {
-        let receipt = WireIngestReceipt {
-            event_id: "event-1".into(),
-            event_digest: Some(digest('7')),
-            outcome: WireIngestOutcome::Accepted,
-            reason: WireIngestReason::Accepted,
-            received_at_unix_ms: 2_000,
-        };
-        receipt.validate().unwrap();
+    fn receipt_outcome_reason_and_digest_matrix_is_exhaustive() {
+        let outcomes = [
+            WireIngestOutcome::Accepted,
+            WireIngestOutcome::Duplicate,
+            WireIngestOutcome::Rejected,
+        ];
+        let reasons = [
+            WireIngestReason::Accepted,
+            WireIngestReason::EventAlreadyAccepted,
+            WireIngestReason::EventIdCollision,
+            WireIngestReason::UnsupportedSchema,
+            WireIngestReason::InvalidEnvelope,
+            WireIngestReason::InvalidPayload,
+            WireIngestReason::SignatureVerificationFailed,
+            WireIngestReason::UnsafePayload,
+            WireIngestReason::SequenceGapOrReordering,
+            WireIngestReason::EventChainMismatch,
+            WireIngestReason::PersistenceUnavailable,
+        ];
+        let valid_cases = [
+            (
+                WireIngestOutcome::Accepted,
+                WireIngestReason::Accepted,
+                true,
+            ),
+            (
+                WireIngestOutcome::Duplicate,
+                WireIngestReason::EventAlreadyAccepted,
+                true,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::EventIdCollision,
+                false,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::UnsupportedSchema,
+                false,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::InvalidEnvelope,
+                false,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::InvalidPayload,
+                false,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::SignatureVerificationFailed,
+                false,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::UnsafePayload,
+                false,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::SequenceGapOrReordering,
+                false,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::EventChainMismatch,
+                false,
+            ),
+            (
+                WireIngestOutcome::Rejected,
+                WireIngestReason::PersistenceUnavailable,
+                false,
+            ),
+        ];
 
-        let mut invalid = receipt;
-        invalid.event_digest = None;
-        assert!(invalid.validate().is_err());
+        for outcome in outcomes {
+            for reason in reasons {
+                for has_digest in [false, true] {
+                    let receipt = WireIngestReceipt {
+                        event_id: "event-1".into(),
+                        event_digest: has_digest.then(|| digest('7')),
+                        outcome,
+                        reason,
+                        received_at_unix_ms: 2_000,
+                    };
+                    assert_eq!(
+                        receipt.validate().is_ok(),
+                        valid_cases.contains(&(outcome, reason, has_digest)),
+                        "unexpected receipt result for {outcome:?}, {reason:?}, digest={has_digest}"
+                    );
+                }
+            }
+        }
     }
 }

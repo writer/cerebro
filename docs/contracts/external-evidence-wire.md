@@ -44,8 +44,10 @@ authorities rather than redefining them.
   events plus evidence references.
 - Canonical digests and signing material use RFC 8785 JSON. Signature values are
   excluded from domain-separated signing material.
-- Receipt outcomes and reasons must agree. Accepted and duplicate receipts carry
-  the admitted event digest.
+- Receipt outcomes, reasons, and digests form a closed matrix: `accepted` uses
+  reason `accepted`, `duplicate` uses reason `event_already_accepted`, and both
+  carry the admitted event digest. `rejected` uses only a rejection reason and
+  does not carry an admitted event digest.
 
 The wire does not make an accepted event a graph fact. Source admission,
 normalization, policy evaluation, append-log persistence, and graph projection
