@@ -120,6 +120,7 @@ type Options struct {
 	ResponseError                     func([]byte) error
 	RecordFilters                     map[string]RecordFilter
 	Families                          []Family
+	DoNotRetryStatuses                []int
 }
 
 // Source is a small, safe JSON API source implementation used by endpoint

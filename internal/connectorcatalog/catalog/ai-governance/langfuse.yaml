@@ -1,0 +1,205 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - {key: public_key, label: Langfuse public key, reference_only: true, required: true, secret: true}
+          - {key: secret_key, label: Langfuse secret key, reference_only: true, required: true, secret: true}
+        model: basic
+      categories: [ai, governance]
+      config_fields:
+        - {key: base_url, label: Langfuse API base URL, required: true}
+        - {key: project_id, label: Langfuse project ID}
+        - {key: from_timestamp, label: From timestamp}
+        - {key: to_timestamp, label: To timestamp}
+        - {key: from_start_time, label: From start time}
+        - {key: to_start_time, label: To start time}
+        - {key: trace_id, label: Trace ID}
+        - {key: user_id, label: User ID}
+        - {key: session_id, label: Session ID}
+        - {key: name, label: Name}
+        - {key: type, label: Observation type}
+        - {key: release, label: Release}
+        - {key: version, label: Version}
+        - {key: tags, label: Tags}
+        - {key: fields, label: Response fields}
+        - {key: filter, label: Provider filter}
+        - {key: label, label: Prompt label}
+        - {key: tag, label: Prompt tag}
+        - {key: metrics_query, label: Bounded metrics query JSON}
+      description: Collects Langfuse projects, memberships, API-key metadata, traces, observations, scores, prompts, sessions, metrics, and annotation queues through documented public read APIs.
+      display_name: Langfuse
+      id: builtin-langfuse
+      resource_families:
+        - id: project
+          label: Projects
+          method: GET
+          path: /api/public/projects
+          record_selector: $.data[*]
+          id_field: id|projectId|project_id
+          name_field: name
+          event: {kind: langfuse.project, schema_ref: langfuse/project/v1, urn_kind: langfuse_project, required_payload_fields: [id|projectId|project_id]}
+          pagination: {type: none, disable_page_size: true}
+          projection: &project_asset
+            template: asset
+            fields: {resource_id: "id|projectId|project_id", resource_name: name, resource_type: type}
+            static_fields: {source_product: langfuse}
+          coverage:
+            - {id: projects, type: entity_family, title: Langfuse projects, families: [project], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: project_member
+          label: Project memberships
+          method: GET
+          path: /api/public/projects/{project_id}/memberships
+          record_selector: $.memberships[*]
+          id_field: id|userId|user_id|email
+          name_field: name|email
+          event: {kind: langfuse.project_member, schema_ref: langfuse/project_member/v1, urn_kind: langfuse_project_member, required_payload_fields: [id|userId|user_id|email]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_attributes: {project_id: project_id}
+          projection:
+            template: identity_user
+            fields: {user_id: "userId|user_id|id|email", display_name: "name|user.name|email", email: "email|user.email", status: status}
+            static_fields: {source_product: langfuse, principal_type: user}
+          coverage:
+            - {id: project_memberships, type: app_entitlement, title: Langfuse project memberships, families: [project_member], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
+        - id: api_key
+          label: Project API keys
+          method: GET
+          path: /api/public/projects/{project_id}/apiKeys
+          record_selector: $.apiKeys[*]
+          id_field: id|apiKeyId|publicKey
+          name_field: name|label|note
+          event: {kind: langfuse.api_key, schema_ref: langfuse/api_key/v1, urn_kind: langfuse_api_key, required_payload_fields: [id|apiKeyId|publicKey]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_attributes: {project_id: project_id}
+          projection:
+            template: secret
+            fields: {secret_id: "id|apiKeyId|publicKey", secret_name: "name|label|note", secret_status: status, secret_type: credential_type}
+            static_fields: {source_product: langfuse, credential_type: langfuse_project_api_key}
+          coverage:
+            - {id: project_api_keys, type: app_entitlement, title: Langfuse project API keys, families: [api_key], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
+        - id: trace
+          label: Traces
+          method: GET
+          path: /api/public/traces
+          record_selector: $.data[*]
+          id_field: id|traceId
+          name_field: name
+          event: {kind: langfuse.trace, schema_ref: langfuse/trace/v1, urn_kind: langfuse_trace, required_payload_fields: [id|traceId]}
+          pagination: &langfuse_page {type: page, page_param: page, page_size_param: limit, start_page: 1, page_size: 100}
+          config:
+            config_query: {fromTimestamp: from_timestamp, toTimestamp: to_timestamp, name: name, userId: user_id, sessionId: session_id, release: release, version: version, tags: tags, filter: filter}
+          projection:
+            template: audit_event
+            fields: {event_id: "id|traceId", event_type: name, actor_id: "userId|user_id", resource_id: "sessionId|session_id", resource_type: trace, created_at: "timestamp|createdAt|created_at"}
+            static_fields: {source_product: langfuse}
+          coverage:
+            - {id: traces, type: audit_event, title: Langfuse traces, families: [trace], support: supported, high_value: true, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}
+        - id: observation
+          label: Observations
+          method: GET
+          path: /api/public/v2/observations
+          record_selector: $.data[*]
+          id_field: id|observationId
+          name_field: name
+          event: {kind: langfuse.observation, schema_ref: langfuse/observation/v1, urn_kind: langfuse_observation, required_payload_fields: [id|observationId]}
+          pagination: {type: cursor, cursor_param: cursor, cursor_json_path: $.meta.cursor, page_size_param: limit, page_size: 100}
+          config:
+            config_query: {fromStartTime: from_start_time, toStartTime: to_start_time, traceId: trace_id, userId: user_id, name: name, type: type, fields: fields, filter: filter}
+          projection:
+            template: audit_event
+            fields: {event_id: "id|observationId", event_type: "type|name", actor_id: "userId|user_id", resource_id: "traceId|trace_id", resource_type: observation, created_at: "startTime|createdAt|created_at"}
+            static_fields: {source_product: langfuse}
+          coverage:
+            - {id: observations, type: audit_event, title: Langfuse observations, families: [observation], support: supported, high_value: true, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}
+        - id: score
+          label: Scores
+          method: GET
+          path: /api/public/v2/scores
+          record_selector: $.data[*]
+          id_field: id|scoreId
+          name_field: name
+          event: {kind: langfuse.score, schema_ref: langfuse/score/v1, urn_kind: langfuse_score, required_payload_fields: [id|scoreId]}
+          pagination: *langfuse_page
+          config:
+            config_query: {traceId: trace_id, userId: user_id, name: name, fromTimestamp: from_timestamp, toTimestamp: to_timestamp}
+          projection:
+            template: audit_event
+            fields: {event_id: "id|scoreId", event_type: "dataType|scoreType|type|name", actor_id: "userId|user_id", resource_id: "observationId|observation_id|traceId|trace_id", resource_type: score, created_at: "createdAt|created_at|timestamp"}
+            static_fields: {source_product: langfuse}
+          coverage:
+            - {id: scores, type: audit_event, title: Langfuse scores, families: [score], support: supported, high_value: true, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}
+        - id: prompt
+          label: Prompts
+          method: GET
+          path: /api/public/v2/prompts
+          record_selector: $.data[*]
+          id_field: name
+          name_field: name
+          event: {kind: langfuse.prompt, schema_ref: langfuse/prompt/v1, urn_kind: langfuse_prompt, required_payload_fields: [name]}
+          pagination: *langfuse_page
+          config:
+            config_query: {name: name, label: label, tag: tag}
+          projection:
+            template: asset
+            fields: {resource_id: name, resource_name: name, resource_type: type, versions: versions, last_updated_at: lastUpdatedAt, last_config: lastConfig}
+            static_fields: {source_product: langfuse}
+          coverage:
+            - {id: prompts, type: entity_family, title: Langfuse prompts, families: [prompt], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: session
+          label: Sessions
+          method: GET
+          path: /api/public/sessions
+          record_selector: $.data[*]
+          id_field: id|sessionId
+          name_field: name
+          event: {kind: langfuse.session, schema_ref: langfuse/session/v1, urn_kind: langfuse_session, required_payload_fields: [id|sessionId]}
+          pagination: *langfuse_page
+          config:
+            config_query: {fromTimestamp: from_timestamp, toTimestamp: to_timestamp, userId: user_id}
+          projection:
+            template: asset
+            fields: {resource_id: "id|sessionId", resource_name: name, resource_type: type}
+            static_fields: {source_product: langfuse}
+          coverage:
+            - {id: sessions, type: entity_family, title: Langfuse sessions, families: [session], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: metric
+          label: Metrics
+          method: GET
+          path: /api/public/v2/metrics
+          record_selector: $.data[*]
+          id_field: name|metric
+          name_field: name|metric
+          event: {kind: langfuse.metric, schema_ref: langfuse/metric/v1, urn_kind: langfuse_metric, required_payload_fields: [name|metric]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_query: {query: metrics_query}
+          projection:
+            template: asset
+            fields: {resource_id: "id|name|metric", resource_name: "name|metric", resource_type: "type|metric"}
+            static_fields: {source_product: langfuse}
+          coverage:
+            - {id: metrics, type: entity_family, title: Langfuse metrics, families: [metric], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: annotation_queue
+          label: Annotation queues
+          method: GET
+          path: /api/public/annotation-queues
+          record_selector: $.data[*]
+          id_field: id|queueId|name
+          name_field: name
+          event: {kind: langfuse.annotation_queue, schema_ref: langfuse/annotation_queue/v1, urn_kind: langfuse_annotation_queue, required_payload_fields: [id|queueId|name]}
+          pagination: *langfuse_page
+          projection:
+            template: asset
+            fields: {resource_id: "id|queueId|name", resource_name: name, resource_type: type}
+            static_fields: {source_product: langfuse}
+          coverage:
+            - {id: annotation_queues, type: entity_family, title: Langfuse annotation queues, families: [annotation_queue], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+      schema_version: cerebro.integration/v1
+      source_id: langfuse
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://cloud.langfuse.com
+        verification: {method: GET, path: /api/public/projects, expect_status: [200]}

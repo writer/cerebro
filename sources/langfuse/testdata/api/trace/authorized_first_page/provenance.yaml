@@ -1,0 +1,69 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: langfuse
+family: trace
+case: authorized_first_page
+replay_test: source_test.go#TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies
+request:
+    method: GET
+    url: https://langfuse.example.com/api/public/traces?limit=1&page=1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-08-20T19:43:23Z"
+    sha256: c034c73b6ce05f2238db666447de98dc78e38abf54525db226132dae864321f1
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $request.url
+        - $.data[0].id
+        - $.data[0].input
+        - $.data[0].metadata.action_id
+        - $.data[0].metadata.agent_run_id
+        - $.data[0].metadata.assistant_mode
+        - $.data[0].metadata.billing_model_name
+        - $.data[0].metadata.eb_profile_injected
+        - $.data[0].metadata.harness
+        - $.data[0].metadata.instance_id
+        - $.data[0].metadata.llm_cache_read_pct
+        - $.data[0].metadata.llm_cache_read_ratio
+        - $.data[0].metadata.llm_call_count
+        - $.data[0].metadata.llm_total_cached_tokens
+        - $.data[0].metadata.llm_total_input_tokens
+        - $.data[0].metadata.llm_total_output_tokens
+        - $.data[0].metadata.llm_total_reasoning_tokens
+        - $.data[0].metadata.llm_total_token_details.input_cached_tokens
+        - $.data[0].metadata.llm_total_token_details.output_reasoning_tokens
+        - $.data[0].metadata.llm_total_tokens
+        - $.data[0].metadata.llm_total_usage_details.input
+        - $.data[0].metadata.llm_total_usage_details.output
+        - $.data[0].metadata.llm_total_usage_details.total
+        - $.data[0].metadata.mcp_tools[0]
+        - $.data[0].metadata.mcp_tools[1]
+        - $.data[0].metadata.model_name
+        - $.data[0].metadata.organization_id
+        - $.data[0].metadata.reasoning_effort
+        - $.data[0].metadata.resourceAttributes.service.name
+        - $.data[0].metadata.resourceAttributes.telemetry.sdk.language
+        - $.data[0].metadata.resourceAttributes.telemetry.sdk.name
+        - $.data[0].metadata.resourceAttributes.telemetry.sdk.version
+        - $.data[0].metadata.restate_loop_attempt
+        - $.data[0].metadata.restate_loop_workflow_key
+        - $.data[0].metadata.sandbox_enabled
+        - $.data[0].metadata.scope.attributes.public_key
+        - $.data[0].metadata.scope.name
+        - $.data[0].metadata.scope.version
+        - $.data[0].metadata.subscription_type
+        - $.data[0].metadata.thread_id
+        - $.data[0].metadata.user_id
+        - $.data[0].name
+        - $.data[0].output.final_status
+        - $.data[0].output.total_responses
+        - $.data[0].projectId
+        - $.data[0].sessionId
+        - $.data[0].tags[0]
+        - $.data[0].tags[1]
+        - $.data[0].tags[2]
+        - $.data[0].userId
+origin:
+    type: operator_request

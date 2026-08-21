@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -20,6 +21,7 @@ import (
 
 const maxResponseBytes = 4 << 20
 const maxArtifactBytes = 32 << 20
+const maxRequestBodyBytes = 64 << 10
 
 type stringList []string
 
@@ -31,11 +33,13 @@ func (values *stringList) Set(value string) error {
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(fmt.Errorf("usage: sourcefixture <capture|import|resanitize|verify|packages>"))
+		fail(fmt.Errorf("usage: sourcefixture <capture|request-digest|import|resanitize|verify|packages>"))
 	}
 	switch os.Args[1] {
 	case "capture":
 		capture(os.Args[2:])
+	case "request-digest":
+		requestDigest(os.Args[2:])
 	case "import":
 		importRecording(os.Args[2:])
 	case "resanitize":
@@ -115,14 +119,19 @@ func capture(arguments []string) {
 	family := flags.String("family", "", "runtime family")
 	fixtureCase := flags.String("case", "response", "fixture case")
 	replayTest := flags.String("replay-test", "", "source test reference in source_test.go#TestName format")
-	requestURL := flags.String("url", "", "public HTTPS GET URL")
+	requestURL := flags.String("url", "", "provider HTTPS URL")
+	requestMethod := flags.String("method", "GET", "request method: GET or POST")
+	requestSemantics := flags.String("request-semantics", "", "read_only_query for an approved read-only POST")
+	requestBodyFile := flags.String("request-body-file", "", "credential-free JSON body file used by the approved read-only POST client")
 	stdin := flags.Bool("stdin", false, "read a response captured by an authenticated provider CLI from stdin")
 	status := flags.Int("status", 200, "HTTP status for a stdin capture")
 	contentType := flags.String("content-type", "application/json", "content type for a stdin capture")
 	var changedFields stringList
 	var removedFields stringList
+	var sanitizeKeys stringList
 	flags.Var(&changedFields, "changed-field", "sanitized JSON field path (repeatable)")
 	flags.Var(&removedFields, "removed-field", "removed JSON field path (repeatable)")
+	flags.Var(&sanitizeKeys, "sanitize-key", "replace every response value with this exact key while preserving its JSON type (repeatable)")
 	if err := flags.Parse(arguments); err != nil {
 		fail(err)
 	}
@@ -130,21 +139,46 @@ func capture(arguments []string) {
 	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" || parsedURL.User != nil {
 		fail(fmt.Errorf("-url must be an HTTPS URL without user information"))
 	}
+	method := strings.ToUpper(strings.TrimSpace(*requestMethod))
+	if !*stdin && method != "GET" {
+		fail(fmt.Errorf("authenticated or POST captures must use -stdin"))
+	}
+	requestBodySHA256 := ""
+	switch method {
+	case "POST":
+		if strings.TrimSpace(*requestBodyFile) == "" || strings.TrimSpace(*requestBodyFile) == "-" {
+			fail(fmt.Errorf("approved POST captures require -request-body-file from the exact client request"))
+		}
+		requestBodySHA256, err = canonicalRequestDigestFile(*requestBodyFile)
+		if err != nil {
+			fail(err)
+		}
+	case "GET":
+		if strings.TrimSpace(*requestBodyFile) != "" {
+			fail(fmt.Errorf("GET captures must not provide -request-body-file"))
+		}
+	default:
+		fail(fmt.Errorf("request method must be GET or the approved read-only POST"))
+	}
 	responseStatus := *status
 	responseContentType := strings.TrimSpace(*contentType)
 	responseHeaders := map[string]string(nil)
 	var payload []byte
 	if *stdin {
-		payload, err = io.ReadAll(io.LimitReader(os.Stdin, maxResponseBytes+1))
+		payload, changedFields, err = sanitizedCapturePayload(os.Stdin, sanitizeKeys, changedFields)
 		if err != nil {
-			fail(fmt.Errorf("read provider CLI response: %w", err))
+			fail(err)
 		}
 	} else {
 		response, fetchErr := fetchPublicResponse(parsedURL)
 		if fetchErr != nil {
 			fail(fetchErr)
 		}
-		payload = response.Body
+		payload, changedFields, err = sanitizedCapturePayload(bytes.NewReader(response.Body), sanitizeKeys, changedFields)
+		clear(response.Body)
+		if err != nil {
+			fail(err)
+		}
 		responseStatus = response.StatusCode
 		responseContentType = response.Header.Get("Content-Type")
 		responseHeaders = captureHeaders(response.Header)
@@ -157,7 +191,12 @@ func capture(arguments []string) {
 		Family:     *family,
 		Case:       *fixtureCase,
 		ReplayTest: *replayTest,
-		Request:    sourcefixture.Request{Method: "GET", URL: parsedURL.String()},
+		Request: sourcefixture.Request{
+			Method:     method,
+			URL:        parsedURL.String(),
+			Semantics:  strings.TrimSpace(*requestSemantics),
+			BodySHA256: requestBodySHA256,
+		},
 		Response: sourcefixture.Response{
 			Status:      responseStatus,
 			ContentType: responseContentType,
@@ -172,6 +211,61 @@ func capture(arguments []string) {
 		fail(err)
 	}
 	fmt.Printf("sourcefixture: captured source=%s family=%s case=%s status=%d digest=%s path=%s\n", bundle.Manifest.SourceID, bundle.Manifest.Family, bundle.Manifest.Case, bundle.Manifest.Response.Status, bundle.Manifest.Response.SHA256, bundle.ResponsePath)
+}
+
+func requestDigest(arguments []string) {
+	flags := flag.NewFlagSet("request-digest", flag.ExitOnError)
+	if err := flags.Parse(arguments); err != nil {
+		fail(err)
+	}
+	digest, err := canonicalRequestDigest(os.Stdin)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Println(digest)
+}
+
+func canonicalRequestDigest(reader io.Reader) (string, error) {
+	payload, err := io.ReadAll(io.LimitReader(reader, maxRequestBodyBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read request body: %w", err)
+	}
+	defer clear(payload)
+	if len(payload) > maxRequestBodyBytes {
+		return "", fmt.Errorf("request body exceeds %d bytes", maxRequestBodyBytes)
+	}
+	digest, err := sourcefixture.CanonicalRequestBodySHA256(payload)
+	if err != nil {
+		return "", err
+	}
+	return digest, nil
+}
+
+func canonicalRequestDigestFile(path string) (string, error) {
+	file, err := os.Open(strings.TrimSpace(path)) // #nosec G304 -- operator supplies a bounded credential-free capture request body.
+	if err != nil {
+		return "", fmt.Errorf("open request body file: %w", err)
+	}
+	defer file.Close()
+	return canonicalRequestDigest(file)
+}
+
+func sanitizedCapturePayload(reader io.Reader, sanitizeKeys, declaredChangedFields []string) ([]byte, []string, error) {
+	raw, err := io.ReadAll(io.LimitReader(reader, maxResponseBytes+1))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read provider response from stdin: %w", err)
+	}
+	defer clear(raw)
+	if len(raw) > maxResponseBytes {
+		return nil, nil, fmt.Errorf("provider response exceeds %d bytes", maxResponseBytes)
+	}
+	sanitized, automaticChanges, err := sourcefixture.SanitizeImportedJSONWithKeys(raw, sanitizeKeys)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sanitize provider response: %w", err)
+	}
+	changedFields := append([]string{}, declaredChangedFields...)
+	changedFields = append(changedFields, automaticChanges...)
+	return sanitized, changedFields, nil
 }
 
 func importRecording(arguments []string) {

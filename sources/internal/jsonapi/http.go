@@ -427,7 +427,7 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 		return nil, err
 	}
 	client := s.requestClient(settings)
-	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
+	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{DoNotRetryStatuses: s.options.DoNotRetryStatuses})
 	if err != nil {
 		return nil, err
 	}

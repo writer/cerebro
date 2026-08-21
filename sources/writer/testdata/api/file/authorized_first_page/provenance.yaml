@@ -1,0 +1,24 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: writer
+family: file
+case: authorized_first_page
+replay_test: source_test.go#TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies
+request:
+    method: GET
+    url: https://api.writer.com/v1/files?limit=1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-08-20T19:30:44Z"
+    sha256: 03aee4973e22e9098f6077d8955832ac33edc066fc4279df496f991c8dfda749
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.data[0].graph_ids[0]
+        - $.data[0].id
+        - $.data[0].name
+        - $.first_id
+        - $.last_id
+origin:
+    type: operator_request

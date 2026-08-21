@@ -1,0 +1,281 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: api_key
+            label: LangSmith API key
+            reference_only: true
+            required: true
+            secret: true
+        model: api_key
+        token_header: X-API-Key
+      categories: [ai, governance]
+      config_fields:
+        - {key: base_url, label: LangSmith API base URL, required: true}
+        - {key: organization_id, label: LangSmith organization ID}
+        - {key: workspace_id, label: LangSmith workspace ID}
+        - {key: include_deleted, label: Include deleted workspaces}
+        - {key: data_plane_id, label: Data plane ID}
+        - {key: name, label: Exact name}
+        - {key: name_contains, label: Name contains}
+        - {key: include_stats, label: Include statistics}
+        - {key: filter, label: Provider filter}
+        - {key: run_id, label: Run ID}
+        - {key: feedback_source, label: Feedback source}
+        - {key: start_time, label: Start time}
+        - {key: end_time, label: End time}
+        - {key: event_type, label: Audit event type}
+      description: Collects LangSmith organization, workspace, identity, tracing, feedback, dataset, usage, and audit records through the documented read-only API contracts.
+      display_name: LangChain LangSmith
+      id: builtin-langchain
+      resource_families:
+        - id: organization
+          label: Current organization
+          method: GET
+          path: /api/v1/orgs/current
+          record_selector: $
+          id_field: id|organization_id
+          name_field: display_name|name
+          event: {kind: langchain.organization, schema_ref: langchain/organization/v1, urn_kind: langchain_organization, required_payload_fields: [id]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_headers: {X-Organization-Id: organization_id}
+            config_attributes: {organization_id: organization_id}
+          projection:
+            template: asset
+            fields: {resource_id: "id|organization_id", resource_name: "display_name|name", resource_type: "type|kind|plan"}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: organization_profile, type: entity_family, title: Current LangSmith organization, families: [organization], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: workspace
+          label: Workspaces
+          method: GET
+          path: /api/v1/workspaces
+          record_selector: $[*]
+          id_field: id|tenant_id|workspace_id
+          name_field: display_name|name
+          event: {kind: langchain.workspace, schema_ref: langchain/workspace/v1, urn_kind: langchain_workspace, required_payload_fields: [id]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_query: {include_deleted: include_deleted, data_plane_id: data_plane_id}
+            config_headers: {X-Organization-Id: organization_id}
+            config_attributes: {organization_id: organization_id}
+          projection:
+            template: asset
+            fields: {resource_id: "id|tenant_id|workspace_id", resource_name: "display_name|name", resource_type: "type|kind"}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: workspaces, type: entity_family, title: LangSmith workspaces, families: [workspace], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: organization_member
+          label: Organization members
+          method: GET
+          path: /api/v1/orgs/current/members
+          record_selector: $.members[*]
+          id_field: id|identity_id|user_id|email
+          name_field: full_name|name|display_name|email
+          event: {kind: langchain.organization_member, schema_ref: langchain/organization_member/v1, urn_kind: langchain_organization_member, required_payload_fields: [id|identity_id|user_id|email]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_headers: {X-Organization-Id: organization_id}
+            config_attributes: {organization_id: organization_id}
+          projection:
+            template: identity_user
+            fields: {user_id: "id|identity_id|user_id|email", display_name: "full_name|name|display_name|email", email: "email|user.email", status: status}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: organization_members, type: entity_family, title: LangSmith organization members, families: [organization_member], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
+        - id: workspace_member
+          label: Workspace members
+          method: GET
+          path: /api/v1/workspaces/current/members
+          record_selector: $.members[*]
+          id_field: id|identity_id|user_id|email
+          name_field: full_name|name|display_name|email
+          event: {kind: langchain.workspace_member, schema_ref: langchain/workspace_member/v1, urn_kind: langchain_workspace_member, required_payload_fields: [id|identity_id|user_id|email]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
+            config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
+          projection:
+            template: identity_user
+            fields: {user_id: "id|identity_id|user_id|email", display_name: "full_name|name|display_name|email", email: "email|user.email", status: status}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: workspace_members, type: entity_family, title: LangSmith workspace members, families: [workspace_member], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
+        - id: role
+          label: Organization roles
+          method: GET
+          path: /api/v1/orgs/current/roles
+          record_selector: $[*]
+          id_field: id|role_id|display_name|name
+          name_field: display_name|name
+          event: {kind: langchain.role, schema_ref: langchain/role/v1, urn_kind: langchain_role, required_payload_fields: [id|role_id|display_name|name]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_headers: {X-Organization-Id: organization_id}
+            config_attributes: {organization_id: organization_id}
+          projection:
+            template: policy
+            fields: {policy_id: "id|role_id|display_name|name", policy_name: "display_name|name", description: description}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: roles, type: app_entitlement, title: LangSmith roles, families: [role], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
+        - id: api_key
+          label: Service keys
+          method: GET
+          path: /api/v1/orgs/current/service-keys
+          record_selector: $[*]
+          id_field: id|api_key_id|key_id
+          name_field: name|display_name
+          event: {kind: langchain.api_key, schema_ref: langchain/api_key/v1, urn_kind: langchain_api_key, required_payload_fields: [id|api_key_id|key_id]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_headers: {X-Organization-Id: organization_id}
+            config_attributes: {organization_id: organization_id}
+          projection:
+            template: secret
+            fields: {secret_id: "id|api_key_id|key_id", secret_name: "name|display_name", secret_status: status, secret_type: credential_type}
+            static_fields: {source_product: langchain, product: langsmith, credential_type: langchain_service_key}
+          coverage:
+            - {id: service_keys, type: app_entitlement, title: LangSmith service keys, families: [api_key], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
+        - id: service_account
+          label: Service accounts
+          method: GET
+          path: /api/v1/service-accounts
+          record_selector: $[*]
+          id_field: id|service_account_id
+          name_field: display_name|name
+          event: {kind: langchain.service_account, schema_ref: langchain/service_account/v1, urn_kind: langchain_service_account, required_payload_fields: [id|service_account_id]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_headers: {X-Organization-Id: organization_id}
+            config_attributes: {organization_id: organization_id}
+          projection:
+            template: identity_application
+            fields: {app_id: "id|service_account_id", app_name: "display_name|name", status: status}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: service_accounts, type: app_entitlement, title: LangSmith service accounts, families: [service_account], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
+        - id: project
+          label: Tracing projects
+          method: GET
+          path: /api/v1/sessions
+          record_selector: $[*]
+          id_field: id|session_id
+          name_field: name
+          event: {kind: langchain.project, schema_ref: langchain/project/v1, urn_kind: langchain_project, required_payload_fields: [id]}
+          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
+          config:
+            config_query: {name: name, name_contains: name_contains, include_stats: include_stats, filter: filter}
+            config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
+            config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
+          projection:
+            template: asset
+            fields: {resource_id: "id|session_id", resource_name: name, resource_type: type}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: tracing_projects, type: entity_family, title: LangSmith tracing projects, families: [project], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: run
+          label: Runs
+          method: POST
+          path: /api/v1/runs/query
+          record_selector: $.runs[*]
+          id_field: id|run_id
+          name_field: name
+          event: {kind: langchain.run, schema_ref: langchain/run/v1, urn_kind: langchain_run, required_payload_fields: [id|run_id]}
+          read:
+            static_json_body:
+              limit: 100
+              select: [id, name, run_type, start_time, end_time, status, error, session_id, total_tokens, prompt_tokens, completion_tokens, trace_id]
+          pagination: {type: cursor, cursor_param: cursor, cursor_json_path: $.cursors.next, cursor_in_json_body: true, page_size: 100}
+          config:
+            config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
+            config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
+          projection:
+            template: audit_event
+            fields: {event_id: "id|run_id", event_type: run_type, actor_id: "user_id|metadata.user_id", resource_id: "session_id|project_id", resource_type: run, created_at: "start_time|created_at"}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: runs, type: audit_event, title: LangSmith runs, families: [run], support: supported, high_value: true, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}
+        - id: feedback
+          label: Feedback
+          method: GET
+          path: /api/v1/feedback
+          record_selector: $[*]
+          id_field: id|feedback_id
+          name_field: key
+          event: {kind: langchain.feedback, schema_ref: langchain/feedback/v1, urn_kind: langchain_feedback, required_payload_fields: [id|feedback_id]}
+          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
+          config:
+            config_query: {run: run_id, key: name, feedback_source: feedback_source}
+            config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
+            config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
+          projection:
+            template: audit_event
+            fields: {event_id: "id|feedback_id", event_type: key, resource_id: "run_id|session_id|project_id", resource_type: feedback, created_at: "created_at|modified_at|updated_at"}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: feedback, type: audit_event, title: LangSmith feedback, families: [feedback], support: supported, high_value: true, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}
+        - id: dataset
+          label: Datasets
+          method: GET
+          path: /api/v1/datasets
+          record_selector: $[*]
+          id_field: id|dataset_id|name
+          name_field: name
+          event: {kind: langchain.dataset, schema_ref: langchain/dataset/v1, urn_kind: langchain_dataset, required_payload_fields: [id|dataset_id|name]}
+          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
+          config:
+            config_query: {name: name, name_contains: name_contains}
+            config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
+            config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
+          projection:
+            template: asset
+            fields: {resource_id: "id|dataset_id|name", resource_name: name, resource_type: type}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: datasets, type: entity_family, title: LangSmith datasets, families: [dataset], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
+        - id: usage_limit
+          label: Usage limits
+          method: GET
+          path: /api/v1/usage-limits
+          record_selector: $[*]
+          id_field: id|usage_limit_id|name
+          name_field: name
+          event: {kind: langchain.usage_limit, schema_ref: langchain/usage_limit/v1, urn_kind: langchain_usage_limit, required_payload_fields: [id|usage_limit_id|name]}
+          pagination: {type: none, disable_page_size: true}
+          config:
+            config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
+            config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
+          projection:
+            template: policy
+            fields: {policy_id: "id|usage_limit_id|name", policy_name: name, description: description}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: usage_limits, type: configuration_state, title: LangSmith usage limits, families: [usage_limit], support: supported, high_value: true, evidence_types: [configuration_state], control_domains: [security_operations]}
+        - id: audit_log
+          label: Audit logs
+          method: GET
+          path: /api/v1/audit-logs
+          record_selector: $.items[*]
+          id_field: id|audit_log_id|metadata.uid
+          name_field: activity_name|event_type|action
+          event: {kind: langchain.audit_log, schema_ref: langchain/audit_log/v1, urn_kind: langchain_audit_log, required_payload_fields: [id|audit_log_id|metadata.uid]}
+          pagination: {type: cursor, cursor_param: cursor, cursor_json_path: $.cursor, page_size_param: limit, page_size: 100}
+          config:
+            config_query: {start_time: start_time, end_time: end_time, event_type: event_type}
+            config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
+            config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
+          projection:
+            template: audit_event
+            fields: {event_id: "id|audit_log_id|metadata.uid", event_type: "activity_name|event_type|action", actor_id: "actor.user.uid|actor.id|actor_id|user_id", resource_id: "resources[0].uid|resource.id|resource_id|target_id", resource_type: "resources[0].type|resource.type|resource_type|target_type", created_at: "time|created_at|timestamp"}
+            static_fields: {source_product: langchain, product: langsmith}
+          coverage:
+            - {id: audit_logs, type: audit_event, title: LangSmith audit logs, families: [audit_log], support: supported, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}
+      schema_version: cerebro.integration/v1
+      source_id: langchain
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.smith.langchain.com
+        verification: {method: GET, path: /api/v1/workspaces, expect_status: [200]}

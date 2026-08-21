@@ -1,0 +1,21 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: langfuse
+family: metric
+case: authorized_v1_fallback_first_page
+replay_test: source_test.go#TestGenuineProviderV1FallbackResponsesReplay
+request:
+    method: GET
+    url: https://langfuse.example.com/api/public/metrics?query=%7B%22view%22%3A%22observations%22%2C%22dimensions%22%3A%5B%7B%22field%22%3A%22name%22%7D%5D%2C%22metrics%22%3A%5B%7B%22measure%22%3A%22count%22%2C%22aggregation%22%3A%22count%22%7D%5D%2C%22fromTimestamp%22%3A%222026-08-19T12%3A00%3A00Z%22%2C%22toTimestamp%22%3A%222026-08-20T12%3A00%3A00Z%22%2C%22config%22%3A%7B%22row_limit%22%3A1%7D%7D
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-08-20T20:23:29Z"
+    sha256: 16ecf4738643c0734f29c1013c64bfe6cbb9f4ce034129fc24c90c8129423479
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.data[0].name
+        - $request.url
+origin:
+    type: operator_request

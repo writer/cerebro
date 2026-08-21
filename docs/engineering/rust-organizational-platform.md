@@ -41,7 +41,7 @@ cerebro-source-catalog --> cerebro-source-runtime-next
 
 `cerebro-organizational-graph` is the only crate that advances current organizational graph state. A commit takes a validated `GraphDelta`; there is no public entity/link mutation method.
 
-`cerebro-source-catalog` compiles all 795 checked-in source definitions and 3,896 resource families into a closed runtime grammar. Every family is assigned one Rust-owned projection class: identity, access, resource, finding, activity, or bespoke. Connector YAML cannot declare another class. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed. Bespoke families also remain shadow-only until a native mapper is added.
+`cerebro-source-catalog` compiles all 798 checked-in source definitions and 3,925 resource families into a closed runtime grammar. Every family is assigned one Rust-owned projection class: identity, access, resource, finding, activity, or bespoke. Connector YAML cannot declare another class. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed. Bespoke families also remain shadow-only until a native mapper is added.
 
 `cerebro-source-runtime-next` owns source collection, pagination, mapping, and graph commit sequencing. Provider redirects are disabled, pagination cannot change origin, pages are bounded, and resolved credentials never enter the graph model. A source cannot obtain a graph store or construct an unvalidated graph write.
 
@@ -257,18 +257,18 @@ Each receipt binds the tenant, runtime, source, family, collection, exact input 
 
 The runtime reads the same authority record before every projection. Legacy authority calls only Go. Rust authority calls only Rust, requires a commit receipt, and fails closed. The compatibility mapper remains available for parity comparison, but it is no longer a write fallback for a promoted family.
 
-The current checked-in catalog compiles to 795 sources and 3,896 families:
+The current checked-in catalog compiles to 798 sources and 3,925 families:
 
 | Projection class | Families | Rust meaning |
 | --- | ---: | --- |
-| Identity | 823 | people, provider identities, groups, memberships, credentials, and applications |
-| Access | 371 | policies and application grants |
-| Resource | 1,551 | assets, repositories, deployments, devices, cloud resources, and secrets |
+| Identity | 832 | people, provider identities, groups, memberships, credentials, and applications |
+| Access | 373 | policies and application grants |
+| Resource | 1,566 | assets, repositories, deployments, devices, cloud resources, and secrets |
 | Finding | 407 | findings, vulnerabilities, and alerts |
-| Activity | 738 | audit and operational events |
+| Activity | 744 | audit and operational events |
 | Bespoke | 3 | retained for source coverage but barred from authority |
 
-Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 53 sources and 353 families are authoritative; the other 742 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 53 sources and 355 families are authoritative; the other 745 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
 
 ## Family cutover
 

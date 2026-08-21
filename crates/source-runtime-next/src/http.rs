@@ -459,6 +459,7 @@ impl HttpProviderAccess {
 struct RequestScope {
     url: Url,
     query_parameters: BTreeMap<String, String>,
+    headers: BTreeMap<String, String>,
     record_attributes: BTreeMap<String, String>,
 }
 
@@ -466,6 +467,7 @@ struct RequestScope {
 struct RequestScopeValues {
     path_parameters: BTreeMap<String, String>,
     query_parameters: BTreeMap<String, String>,
+    headers: BTreeMap<String, String>,
     record_attributes: BTreeMap<String, String>,
 }
 
@@ -473,6 +475,7 @@ struct RequestScopeValues {
 enum RequestParameterTarget {
     Path(String),
     Query(String),
+    Header(String),
     RecordAttribute(String),
 }
 
@@ -606,6 +609,13 @@ impl HttpSourceConnector {
                 RequestParameterTarget::Query(parameter.clone()),
             );
         }
+        for (header, binding) in self.family.config_headers() {
+            add_binding_target(
+                &mut binding_targets,
+                binding,
+                RequestParameterTarget::Header(header.clone()),
+            );
+        }
         for (attribute, binding) in self.family.config_attributes() {
             add_binding_target(
                 &mut binding_targets,
@@ -662,6 +672,9 @@ impl HttpSourceConnector {
                                         .query_parameters
                                         .insert(parameter.clone(), value.clone());
                                 }
+                                RequestParameterTarget::Header(header) => {
+                                    scope.headers.insert(header.clone(), value.clone());
+                                }
                                 RequestParameterTarget::RecordAttribute(attribute) => {
                                     scope
                                         .record_attributes
@@ -682,6 +695,7 @@ impl HttpSourceConnector {
                     .map(|url| RequestScope {
                         url,
                         query_parameters: scope.query_parameters,
+                        headers: scope.headers,
                         record_attributes: scope.record_attributes,
                     })
             })
@@ -814,6 +828,7 @@ impl SourceConnector for HttpSourceConnector {
         for RequestScope {
             mut url,
             query_parameters,
+            headers,
             record_attributes,
         } in request_scopes
         {
@@ -867,13 +882,13 @@ impl SourceConnector for HttpSourceConnector {
                     | ResolvedAuth::AwsSigV4 { .. }
                     | ResolvedAuth::DuoHmacV5 { .. } => builder,
                 };
-                if let ResolvedAuth::JsonBodyParameters { parameters } = &self.auth {
-                    let body = json_auth_body(
-                        parameters,
-                        self.family.cursor_in_json_body(),
-                        self.family.pagination(),
-                        cursor.as_deref(),
-                    )?;
+                if let Some(body) = json_request_body(
+                    self.family.static_json_body(),
+                    &self.auth,
+                    self.family.cursor_in_json_body(),
+                    self.family.pagination(),
+                    cursor.as_deref(),
+                )? {
                     builder = builder.json(&body);
                 }
                 let sensitive_query = matches!(self.auth, ResolvedAuth::QueryParameters { .. });
@@ -884,6 +899,7 @@ impl SourceConnector for HttpSourceConnector {
                         HttpConnectorError::Request(error)
                     }
                 })?;
+                apply_config_headers(&mut provider_request, &headers)?;
                 apply_auth_headers(&mut provider_request, &self.auth)?;
                 if sensitive_query {
                     apply_auth_query_parameters(&mut provider_request, &self.auth)?;
@@ -1349,6 +1365,26 @@ fn apply_auth_headers(
     }
 }
 
+fn apply_config_headers(
+    request: &mut Request,
+    headers: &BTreeMap<String, String>,
+) -> Result<(), HttpConnectorError> {
+    for (name, value) in headers {
+        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
+            HttpConnectorError::InvalidConfiguration(
+                "request config header name is invalid".to_owned(),
+            )
+        })?;
+        let value = HeaderValue::from_str(value).map_err(|_| {
+            HttpConnectorError::InvalidConfiguration(format!(
+                "request config header {name} value is invalid"
+            ))
+        })?;
+        request.headers_mut().insert(name, value);
+    }
+    Ok(())
+}
+
 fn insert_sensitive_header(
     request: &mut Request,
     name: &str,
@@ -1418,25 +1454,35 @@ fn valid_auth_query_parameter_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~'))
 }
 
-fn json_auth_body(
-    parameters: &BTreeMap<String, String>,
+fn json_request_body(
+    static_json_body: &BTreeMap<String, Value>,
+    auth: &ResolvedAuth,
     cursor_in_json_body: bool,
     pagination: &Pagination,
     cursor: Option<&str>,
-) -> Result<BTreeMap<String, String>, HttpConnectorError> {
-    if parameters.is_empty() || parameters.len() > 16 {
-        return Err(HttpConnectorError::InvalidConfiguration(
-            "JSON body authentication requires 1 to 16 parameters".to_owned(),
-        ));
-    }
-    let mut body = BTreeMap::new();
-    for (name, value) in parameters {
-        if !valid_auth_query_parameter_name(name) || value.is_empty() {
+) -> Result<Option<BTreeMap<String, Value>>, HttpConnectorError> {
+    let mut body = static_json_body.clone();
+    if let ResolvedAuth::JsonBodyParameters { parameters } = auth {
+        if parameters.is_empty() || parameters.len() > 16 {
             return Err(HttpConnectorError::InvalidConfiguration(
-                "JSON body authentication parameters are invalid".to_owned(),
+                "JSON body authentication requires 1 to 16 parameters".to_owned(),
             ));
         }
-        body.insert(name.clone(), value.clone());
+        for (name, value) in parameters {
+            if !valid_auth_query_parameter_name(name) || value.is_empty() {
+                return Err(HttpConnectorError::InvalidConfiguration(
+                    "JSON body authentication parameters are invalid".to_owned(),
+                ));
+            }
+            if body
+                .insert(name.clone(), Value::String(value.clone()))
+                .is_some()
+            {
+                return Err(HttpConnectorError::InvalidConfiguration(
+                    "static JSON body conflicts with an authentication parameter".to_owned(),
+                ));
+            }
+        }
     }
     if cursor_in_json_body {
         let Pagination::Cursor { parameter, .. } = pagination else {
@@ -1446,14 +1492,17 @@ fn json_auth_body(
         };
         if body.contains_key(parameter) {
             return Err(HttpConnectorError::InvalidConfiguration(
-                "JSON body cursor conflicts with an authentication parameter".to_owned(),
+                "JSON body cursor conflicts with an existing request-body parameter".to_owned(),
             ));
         }
         if let Some(cursor) = cursor.filter(|value| !value.is_empty()) {
-            body.insert(parameter.clone(), cursor.to_owned());
+            body.insert(parameter.clone(), Value::String(cursor.to_owned()));
         }
     }
-    Ok(body)
+    if body.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(body))
 }
 
 fn sign_duo_hmac_v5(
@@ -3036,6 +3085,128 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn langsmith_run_posts_static_body_headers_and_body_cursor_without_query_cursor() {
+        async fn read_request(socket: &mut tokio::net::TcpStream) -> Vec<u8> {
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            loop {
+                let read = socket.read(&mut chunk).await.unwrap();
+                assert!(read > 0, "request closed before body completed");
+                request.extend_from_slice(&chunk[..read]);
+                let Some(header_end) = request.windows(4).position(|part| part == b"\r\n\r\n")
+                else {
+                    continue;
+                };
+                let headers = String::from_utf8_lossy(&request[..header_end]);
+                let content_length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap_or(0);
+                if request.len() >= header_end + 4 + content_length {
+                    return request;
+                }
+            }
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for page in 1..=2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let request = read_request(&mut socket).await;
+                let header_end = request
+                    .windows(4)
+                    .position(|part| part == b"\r\n\r\n")
+                    .unwrap();
+                let headers = String::from_utf8_lossy(&request[..header_end]);
+                let request_line = headers.lines().next().unwrap();
+                assert_eq!(request_line, "POST /api/v1/runs/query HTTP/1.1");
+                let lower_headers = headers.to_ascii_lowercase();
+                assert!(lower_headers.contains("x-api-key: langsmith-secret"));
+                assert!(lower_headers.contains("x-organization-id: organization-example"));
+                assert!(lower_headers.contains("x-tenant-id: workspace-example"));
+                let body: Value = serde_json::from_slice(&request[header_end + 4..]).unwrap();
+                assert_eq!(body["limit"], 100);
+                assert!(
+                    body["select"]
+                        .as_array()
+                        .is_some_and(|values| !values.is_empty())
+                );
+                if page == 1 {
+                    assert!(body.get("cursor").is_none());
+                } else {
+                    assert_eq!(body["cursor"], "next-page");
+                }
+                let next = (page == 1).then_some("next-page");
+                let response_body = serde_json::json!({
+                    "runs": [{
+                        "id": format!("run-{page}"),
+                        "name": format!("Run {page}"),
+                        "run_type": "llm",
+                        "start_time": "2026-08-20T12:00:00Z"
+                    }],
+                    "cursors": {"next": next}
+                })
+                .to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{response_body}",
+                    response_body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("langchain")
+        .unwrap()
+        .clone();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "run",
+                &base_url,
+                BTreeMap::from([
+                    (
+                        "organization_id".to_owned(),
+                        "organization-example".to_owned(),
+                    ),
+                    ("workspace_id".to_owned(), "workspace-example".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "X-API-Key".to_owned(),
+                    value: "langsmith-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "langsmith-prod",
+            &base_url,
+        );
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("langsmith-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].provider_id, "run-1");
+        assert_eq!(batch.records[1].provider_id, "run-2");
     }
 
     #[tokio::test]

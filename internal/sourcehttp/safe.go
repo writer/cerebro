@@ -38,9 +38,10 @@ type ClientOptions struct {
 }
 
 type RetryOptions struct {
-	MaxAttempts  int
-	Backoff      time.Duration
-	MaxBodyBytes int
+	MaxAttempts        int
+	Backoff            time.Duration
+	MaxBodyBytes       int
+	DoNotRetryStatuses []int
 }
 
 type URLValidationOptions struct {
@@ -599,7 +600,7 @@ func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, op
 				return ResponseBody{}, readErr
 			}
 			result := ResponseBody{StatusCode: resp.StatusCode, Header: resp.Header.Clone(), Body: body}
-			if attempt == attempts || !RetryableStatus(resp.StatusCode) {
+			if attempt == attempts || !RetryableStatus(resp.StatusCode) || containsStatus(options.DoNotRetryStatuses, resp.StatusCode) {
 				return result, nil
 			}
 			if err := sleepRetry(ctx, retryDelay(resp.Header.Get("Retry-After"), backoff, attempt)); err != nil {
@@ -615,6 +616,15 @@ func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, op
 		}
 	}
 	return ResponseBody{}, lastErr
+}
+
+func containsStatus(statuses []int, status int) bool {
+	for _, candidate := range statuses {
+		if candidate == status {
+			return true
+		}
+	}
+	return false
 }
 
 func requestBodyReplayable(req *http.Request) bool {

@@ -87,6 +87,24 @@ func TestSanitizeImportedJSONPreservesRetoolUserIDCrossReferences(t *testing.T) 
 	}
 }
 
+func TestSanitizeImportedJSONPreservesUUIDCrossReferences(t *testing.T) {
+	const identifier = "11111111-2222-4333-8444-555555555555"
+	payload, changed, err := SanitizeImportedJSONWithKeys([]byte(`{
+		"id":"`+identifier+`",
+		"application_id":"`+identifier+`",
+		"url":"https://api.example.test/v1/applications/`+identifier+`"
+	}`), []string{"id", "application_id", "url"})
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSONWithKeys() error = %v", err)
+	}
+	if strings.Contains(string(payload), identifier) || strings.Count(string(payload), "example-") != 3 {
+		t.Fatalf("sanitized payload = %s", payload)
+	}
+	if len(changed) != 3 {
+		t.Fatalf("changed fields = %#v, want three UUID replacements", changed)
+	}
+}
+
 func TestSanitizeImportedJSONClearsNestedCredentialValues(t *testing.T) {
 	accessKey := "AKIA" + "IOSFODNN7EXAMPLE"
 	payload, changed, err := SanitizeImportedJSON([]byte(fmt.Sprintf(`{

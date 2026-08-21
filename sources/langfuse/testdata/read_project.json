@@ -1,0 +1,28 @@
+[
+  {
+    "id": "langfuse-writer-project-74c892caaea8f722",
+    "tenant_id": "writer",
+    "source_id": "langfuse",
+    "kind": "langfuse.project",
+    "occurred_at": "2026-08-20T19:43:20Z",
+    "schema_ref": "langfuse/project/v1",
+    "payload": {
+      "id": "example-36bcc519",
+      "metadata": {},
+      "name": "example-875b9380",
+      "organization": {
+        "id": "example-cb149710",
+        "name": "example-b9300677"
+      }
+    },
+    "attributes": {
+      "external_id": "example-36bcc519",
+      "family": "project",
+      "name": "example-875b9380",
+      "project_id": "example-36bcc519",
+      "provider": "langfuse",
+      "source_product": "langfuse",
+      "source_provider": "langfuse"
+    }
+  }
+]
