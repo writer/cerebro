@@ -218,6 +218,10 @@ event_contracts:
     schema_ref: azure/authorization_policy/v1
     required_attributes:
       - family
+      - resource_id
+      - resource_name
+      - resource_provider
+      - resource_type
   - kind: azure.cognitive_services_account
     schema_ref: azure/cognitive_services_account/v1
     required_attributes:

@@ -1,0 +1,82 @@
+package sourceworker
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os/exec"
+	"strconv"
+	"strings"
+
+	"google.golang.org/protobuf/proto"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+)
+
+// ProcessWorker invokes the standalone Rust worker with bounded protobuf I/O.
+type ProcessWorker struct{ path string }
+
+// NewProcessWorker binds the host to one configured worker executable path.
+func NewProcessWorker(path string) *ProcessWorker {
+	return &ProcessWorker{path: strings.TrimSpace(path)}
+}
+
+// Plan invokes the credential-free worker planning command.
+func (w *ProcessWorker) Plan(ctx context.Context, plan *cerebrov1.SourceExecutionPlanV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
+	output, err := w.run(ctx, "plan", plan, workerOverhead)
+	if err != nil {
+		return nil, err
+	}
+	result := new(cerebrov1.SourceWorkerHTTPRequestV1)
+	if err := proto.Unmarshal(output, result); err != nil {
+		return nil, fmt.Errorf("%w: worker plan output is invalid", ErrInvalidExecution)
+	}
+	return result, nil
+}
+
+// Decode invokes the credential-free worker decode command.
+func (w *ProcessWorker) Decode(ctx context.Context, request *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
+	output, err := w.run(ctx, "decode", request, int64(maxResponseBytes)+workerOverhead)
+	if err != nil {
+		return nil, err
+	}
+	result := new(cerebrov1.SourceWorkerDecodeResultV1)
+	if err := proto.Unmarshal(output, result); err != nil {
+		return nil, fmt.Errorf("%w: worker decode output is invalid", ErrInvalidExecution)
+	}
+	return result, nil
+}
+
+func (w *ProcessWorker) run(ctx context.Context, command string, message proto.Message, maxOutput int64) ([]byte, error) {
+	if w == nil || w.path == "" {
+		return nil, fmt.Errorf("%w: worker executable is not configured", ErrInvalidExecution)
+	}
+	input, err := proto.MarshalOptions{Deterministic: true}.Marshal(message)
+	if err != nil {
+		return nil, fmt.Errorf("%w: worker input is invalid", ErrInvalidExecution)
+	}
+	process := exec.CommandContext(ctx, w.path, command)
+	process.Stdin = bytes.NewReader(input)
+	stdout := &boundedBuffer{remaining: maxOutput}
+	stderr := &boundedBuffer{remaining: workerOverhead}
+	process.Stdout = stdout
+	process.Stderr = stderr
+	if err := process.Run(); err != nil {
+		return nil, fmt.Errorf("%w: worker process failed", ErrInvalidExecution)
+	}
+	return stdout.Bytes(), nil
+}
+
+type boundedBuffer struct {
+	bytes.Buffer
+	remaining int64
+}
+
+func (b *boundedBuffer) Write(value []byte) (int, error) {
+	if int64(len(value)) > b.remaining {
+		return 0, fmt.Errorf("%w: worker output exceeds %s bytes", ErrInvalidExecution, strconv.FormatInt(b.remaining, 10))
+	}
+	written, err := b.Buffer.Write(value)
+	b.remaining -= int64(written)
+	return written, err
+}
