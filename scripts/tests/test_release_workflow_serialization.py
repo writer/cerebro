@@ -7,6 +7,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 CUT_RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "cut-release.yml"
+RUST_ONLY_CANDIDATE_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "rust-only-candidate.yml"
+)
 
 
 class ReleaseWorkflowSerializationTest(unittest.TestCase):
@@ -54,6 +57,12 @@ class ReleaseWorkflowSerializationTest(unittest.TestCase):
 
         for job in (manifest, web_manifest):
             self.assertIn("artifact-metadata: write", job)
+
+    def test_rust_only_candidate_attestation_can_index_artifact_metadata(self) -> None:
+        workflow = RUST_ONLY_CANDIDATE_WORKFLOW.read_text(encoding="utf-8")
+        manifest = workflow.split("  manifest:\n", 1)[1].split("\n  e2e:", 1)[0]
+
+        self.assertIn("artifact-metadata: write", manifest)
 
 
 if __name__ == "__main__":
