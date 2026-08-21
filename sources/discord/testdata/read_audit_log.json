@@ -1,14 +1,36 @@
 {
-  "items": [
+  "application_commands": [],
+  "audit_log_entries": [
     {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "action_type": 10,
+      "changes": [
+        {
+          "key": "name",
+          "new_value": "operations"
+        }
+      ],
+      "id": "100000000000000001",
+      "reason": "normalized contract vector",
+      "target_id": "300000000000000001",
+      "user_id": "400000000000000001"
+    },
+    {
+      "action_type": 20,
+      "changes": [],
+      "id": "100000000000000002",
+      "target_id": "300000000000000002",
+      "user_id": null
     }
-  ]
+  ],
+  "auto_moderation_rules": [],
+  "guild_scheduled_events": [],
+  "integrations": [],
+  "threads": [],
+  "users": [
+    {
+      "id": "400000000000000001",
+      "username": "operator-one"
+    }
+  ],
+  "webhooks": []
 }
