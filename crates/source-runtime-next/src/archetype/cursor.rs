@@ -46,6 +46,9 @@ pub(super) fn scan_from_response(scan: ScanResponse) -> Result<ArchetypeScan, Ar
     if scan.id == 0 || scan.repository_id == 0 {
         return Err(ArchetypeError::MissingRecordIdentity);
     }
+    if scan.status.trim().is_empty() {
+        return Err(ArchetypeError::InvalidResponse);
+    }
     let occurred_at = [
         scan.completed_at.as_str(),
         scan.started_at.as_str(),

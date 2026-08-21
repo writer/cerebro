@@ -49,3 +49,38 @@ fn knowledge_uses_repository_fallbacks_and_go_query_escape_identity() {
     assert_eq!(records[0].payload["summary"], "context");
     assert_eq!(records[0].payload["repository_id"], 7);
 }
+
+#[test]
+fn knowledge_rejects_repository_and_entry_scope_mismatches() {
+    let kernel = kernel(ArchetypeFamily::Vulnerability);
+    let scan = scan(&kernel);
+    let request = kernel.plan_knowledge(scan.repository_id).unwrap();
+    let wrong_repository = ArchetypeRepository {
+        id: 999,
+        owner: "Other".to_owned(),
+        name: "Repository".to_owned(),
+    };
+    assert_eq!(
+        kernel
+            .decode_knowledge(
+                &request,
+                br#"{"entries":[]}"#,
+                &scan,
+                Some(&wrong_repository)
+            )
+            .unwrap_err(),
+        ArchetypeError::ResponseScopeMismatch
+    );
+
+    assert_eq!(
+        kernel
+            .decode_knowledge(
+                &request,
+                br#"{"entries":[{"slug":"scope-mismatch","repository_id":999,"owner":"Other","repository_name":"Repository"}]}"#,
+                &scan,
+                None,
+            )
+            .unwrap_err(),
+        ArchetypeError::ResponseScopeMismatch
+    );
+}

@@ -43,6 +43,7 @@ impl ArchetypeKernel {
         repository: Option<&ArchetypeRepository>,
         collection_state: VulnerabilityCollectionState,
     ) -> Result<ArchetypeRecord, ArchetypeError> {
+        require_repository_scope(scan, repository)?;
         match (self.family, collection_state) {
             (ArchetypeFamily::Scan, VulnerabilityCollectionState::NotRequested)
             | (ArchetypeFamily::Vulnerability, VulnerabilityCollectionState::Unavailable)
@@ -84,6 +85,7 @@ impl ArchetypeKernel {
             ArchetypeRequestKind::Vulnerabilities,
             Some(scan.id),
         )?;
+        require_repository_scope(scan, repository)?;
         let raw: Vec<VulnerabilityResponse> =
             serde_json::from_slice(body).map_err(|_| ArchetypeError::InvalidResponse)?;
         let mut identities = HashSet::new();
@@ -94,6 +96,12 @@ impl ArchetypeKernel {
                 }
                 if vulnerability.scan_id != scan.id {
                     return Err(ArchetypeError::ResponseScopeMismatch);
+                }
+                if vulnerability.severity.trim().is_empty()
+                    || vulnerability.category.trim().is_empty()
+                    || vulnerability.file_path.trim().is_empty()
+                {
+                    return Err(ArchetypeError::InvalidResponse);
                 }
                 if !identities.insert(vulnerability.id) {
                     return Err(ArchetypeError::DuplicateRecordIdentity);
@@ -141,6 +149,7 @@ impl ArchetypeKernel {
             ArchetypeRequestKind::Knowledge,
             Some(scan.repository_id),
         )?;
+        require_repository_scope(scan, repository)?;
         let response: KnowledgeResponse =
             serde_json::from_slice(body).map_err(|_| ArchetypeError::InvalidResponse)?;
         let mut identities = HashSet::new();
@@ -149,6 +158,8 @@ impl ArchetypeKernel {
             entry.slug = entry.slug.trim().to_owned();
             if entry.repository_id == 0 {
                 entry.repository_id = scan.repository_id;
+            } else if entry.repository_id != scan.repository_id {
+                return Err(ArchetypeError::ResponseScopeMismatch);
             }
             if entry.owner.trim().is_empty() {
                 entry.owner = repository
@@ -213,6 +224,16 @@ impl ArchetypeKernel {
         }
         Ok(records)
     }
+}
+
+fn require_repository_scope(
+    scan: &ArchetypeScan,
+    repository: Option<&ArchetypeRepository>,
+) -> Result<(), ArchetypeError> {
+    if repository.is_some_and(|repository| repository.id != scan.repository_id) {
+        return Err(ArchetypeError::ResponseScopeMismatch);
+    }
+    Ok(())
 }
 
 fn compact<const N: usize>(values: [(&str, String); N]) -> BTreeMap<String, String> {

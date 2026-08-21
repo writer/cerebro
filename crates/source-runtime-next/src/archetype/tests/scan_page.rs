@@ -71,3 +71,32 @@ fn full_scan_page_exposes_the_oldest_id_without_owning_the_checkpoint() {
     assert_eq!(page.scans.last().map(|scan| scan.id), Some(100));
     assert_eq!(page.next_before_id, Some(1));
 }
+
+#[test]
+fn scan_status_and_repository_scope_fail_closed() {
+    let kernel = kernel(ArchetypeFamily::Vulnerability);
+    let request = kernel.plan_scans(None).unwrap();
+    assert_eq!(
+        kernel
+            .decode_scans(&request, br#"[{"id":9,"repository_id":7,"status":" "}]"#,)
+            .unwrap_err(),
+        ArchetypeError::InvalidResponse
+    );
+
+    let scan = scan(&kernel);
+    let wrong_repository = ArchetypeRepository {
+        id: 999,
+        owner: "Other".to_owned(),
+        name: "Repository".to_owned(),
+    };
+    assert_eq!(
+        kernel
+            .scan_record(
+                &scan,
+                Some(&wrong_repository),
+                VulnerabilityCollectionState::Complete,
+            )
+            .unwrap_err(),
+        ArchetypeError::ResponseScopeMismatch
+    );
+}
