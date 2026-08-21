@@ -8,6 +8,7 @@ mod append_log;
 mod archetype;
 mod aurelius;
 mod aws_account;
+mod aws_codebuild;
 mod aws_network_manager;
 mod aws_secret_store;
 mod azure;
@@ -51,6 +52,10 @@ pub use aws_account::{
     AwsAccountContactError, AwsAccountContactKernel, AwsAccountContactOutcome,
     AwsAccountContactPage, AwsAccountContactRecord, AwsAccountContactRequest,
     AwsAccountContactRequestKind,
+};
+pub use aws_codebuild::{
+    AwsCodeBuildBatch, AwsCodeBuildError, AwsCodeBuildFamily, AwsCodeBuildKernel,
+    AwsCodeBuildRecord, AwsCodeBuildRequest, AwsCodeBuildRequestKind,
 };
 pub use aws_network_manager::{
     AwsNetworkManagerBatch, AwsNetworkManagerError, AwsNetworkManagerFamily,
