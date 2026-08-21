@@ -11,6 +11,7 @@ use std::{collections::BTreeMap, error::Error, fmt, net::IpAddr};
 use reqwest::{StatusCode, Url};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
+use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
 
 const MAX_CURSOR_BYTES: usize = 4_096;
 const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
@@ -376,14 +377,14 @@ impl AwsNetworkManagerKernel {
         if certificate.is_null() {
             return Ok(empty_batch());
         }
-        let certificate = value_object(certificate)?;
-        certificate_identity(certificate)?;
+        let certificate = normalize_certificate_response(value_object(certificate)?)?;
+        certificate_identity(&certificate)?;
         let tags = self.request(
             request.family,
             AwsNetworkManagerRequestKind::ListCertificateTags,
             None,
             request.page_size,
-            Some(Value::Object(certificate.clone())),
+            Some(Value::Object(certificate)),
         )?;
         Ok(AwsNetworkManagerBatch {
             records: Vec::new(),
@@ -433,7 +434,7 @@ impl AwsNetworkManagerKernel {
         let mut requests = Vec::new();
         for value in values {
             let item = value_object(value)?;
-            resolver_identity(item, endpoints)?;
+            resolver_identity(item)?;
             let arn = response_string_member(item, "Arn")?.unwrap_or_default();
             if arn.is_empty() {
                 records.push(build_resolver_record(
@@ -931,23 +932,119 @@ fn string_array(
         })
 }
 
+const ACM_TIME_FIELDS: &[(&str, &str)] = &[
+    ("CreatedAt", "created_at"),
+    ("ImportedAt", "imported_at"),
+    ("IssuedAt", "issued_at"),
+    ("NotAfter", "not_after"),
+    ("NotBefore", "not_before"),
+    ("RevokedAt", "revoked_at"),
+];
+
+fn normalize_certificate_response(
+    certificate: &Map<String, Value>,
+) -> Result<Map<String, Value>, AwsNetworkManagerError> {
+    let mut normalized = certificate.clone();
+    for (provider_key, _) in ACM_TIME_FIELDS {
+        match certificate.get(*provider_key) {
+            None | Some(Value::Null) => {}
+            Some(Value::Number(value)) => {
+                let seconds = value
+                    .as_f64()
+                    .filter(|value| value.is_finite())
+                    .ok_or(AwsNetworkManagerError::InvalidResponse)?;
+                let nanoseconds = (seconds * 1_000_000_000.0).round();
+                if !nanoseconds.is_finite() {
+                    return Err(AwsNetworkManagerError::InvalidResponse);
+                }
+                let timestamp = OffsetDateTime::from_unix_timestamp_nanos(nanoseconds as i128)
+                    .map_err(|_| AwsNetworkManagerError::InvalidResponse)?
+                    .to_offset(UtcOffset::UTC)
+                    .format(&Rfc3339)
+                    .map_err(|_| AwsNetworkManagerError::InvalidResponse)?;
+                normalized.insert((*provider_key).to_owned(), Value::String(timestamp));
+            }
+            Some(_) => return Err(AwsNetworkManagerError::InvalidResponse),
+        }
+    }
+    Ok(normalized)
+}
+
+fn add_certificate_time_attributes(
+    fields: &mut BTreeMap<String, String>,
+    certificate: &Map<String, Value>,
+) -> Result<(), AwsNetworkManagerError> {
+    for (provider_key, field_key) in ACM_TIME_FIELDS {
+        let Some(value) = response_string_member(certificate, provider_key)? else {
+            continue;
+        };
+        let timestamp = OffsetDateTime::parse(value, &Rfc3339)
+            .map_err(|_| AwsNetworkManagerError::InvalidResponse)?;
+        fields.insert((*field_key).to_owned(), format_utc_seconds(timestamp)?);
+    }
+    Ok(())
+}
+
+fn add_resolver_time_attributes(
+    fields: &mut BTreeMap<String, String>,
+    item: &Map<String, Value>,
+) -> Result<(), AwsNetworkManagerError> {
+    for (provider_key, field_key) in [
+        ("CreationTime", "created_at"),
+        ("ModificationTime", "modified_at"),
+    ] {
+        let Some(value) = response_string_member(item, provider_key)? else {
+            continue;
+        };
+        if let Some(timestamp) = parse_aws_string_time(value) {
+            fields.insert(field_key.to_owned(), format_utc_seconds(timestamp)?);
+        }
+    }
+    Ok(())
+}
+
+fn parse_aws_string_time(value: &str) -> Option<OffsetDateTime> {
+    let value = value.trim();
+    OffsetDateTime::parse(value, &Rfc3339).ok().or_else(|| {
+        let bytes = value.as_bytes();
+        if bytes.len() < 5
+            || !matches!(bytes[bytes.len() - 5], b'+' | b'-')
+            || !bytes[bytes.len() - 4..].iter().all(u8::is_ascii_digit)
+        {
+            return None;
+        }
+        let mut normalized = value.to_owned();
+        normalized.insert(value.len() - 2, ':');
+        OffsetDateTime::parse(&normalized, &Rfc3339).ok()
+    })
+}
+
+fn format_utc_seconds(value: OffsetDateTime) -> Result<String, AwsNetworkManagerError> {
+    value
+        .to_offset(UtcOffset::UTC)
+        .replace_nanosecond(0)
+        .map_err(|_| AwsNetworkManagerError::InvalidResponse)?
+        .format(&Rfc3339)
+        .map_err(|_| AwsNetworkManagerError::InvalidResponse)
+}
+
+fn sanitize_event_id(value: &str) -> String {
+    value
+        .replace([' ', '/', ':'], "-")
+        .trim_matches('-')
+        .to_owned()
+}
+
 fn certificate_identity(certificate: &Map<String, Value>) -> Result<&str, AwsNetworkManagerError> {
     response_string_member(certificate, "CertificateArn")?
         .or(response_string_member(certificate, "DomainName")?)
         .ok_or(AwsNetworkManagerError::MissingIdentity)
 }
 
-fn resolver_identity(
-    item: &Map<String, Value>,
-    endpoints: bool,
-) -> Result<&str, AwsNetworkManagerError> {
+fn resolver_identity(item: &Map<String, Value>) -> Result<&str, AwsNetworkManagerError> {
     response_string_member(item, "Arn")?
         .or(response_string_member(item, "Id")?)
-        .or(response_string_member(item, "Name")?)
-        .ok_or_else(|| {
-            let _ = endpoints;
-            AwsNetworkManagerError::MissingIdentity
-        })
+        .ok_or(AwsNetworkManagerError::MissingIdentity)
 }
 
 fn build_certificate_record(
@@ -997,6 +1094,7 @@ fn build_certificate_record(
         "subject_alternative_names".to_owned(),
         string_array(certificate, "SubjectAlternativeNames")?.join(","),
     );
+    add_certificate_time_attributes(&mut fields, certificate)?;
     fields.insert("public".to_owned(), "false".to_owned());
     fields.insert("internet_exposed".to_owned(), "false".to_owned());
     let payload = json!({
@@ -1020,7 +1118,7 @@ fn build_resolver_record(
     tags: BTreeMap<String, String>,
     endpoints: bool,
 ) -> Result<AwsNetworkManagerRecord, AwsNetworkManagerError> {
-    let identity = resolver_identity(item, endpoints)?;
+    let identity = resolver_identity(item)?;
     let arn = response_string_member(item, "Arn")?.unwrap_or_default();
     let id = response_string_member(item, "Id")?.unwrap_or_default();
     let name = response_string_member(item, "Name")?.unwrap_or(id);
@@ -1130,6 +1228,7 @@ fn build_resolver_record(
         fields.insert("target_ports".to_owned(), ports.join(","));
         fields.insert("target_protocols".to_owned(), protocols.join(","));
     }
+    add_resolver_time_attributes(&mut fields, item)?;
     fields.insert("public".to_owned(), "false".to_owned());
     fields.insert("internet_exposed".to_owned(), "false".to_owned());
     let payload_key = if endpoints { "endpoint" } else { "rule" };
@@ -1231,14 +1330,18 @@ fn encode_tags(tags: &BTreeMap<String, String>) -> String {
 fn record(
     family: AwsNetworkManagerFamily,
     provider_id: String,
-    fields: BTreeMap<String, String>,
+    mut fields: BTreeMap<String, String>,
     payload: Value,
 ) -> AwsNetworkManagerRecord {
+    fields.retain(|_, value| {
+        *value = value.trim().to_owned();
+        !value.is_empty()
+    });
     AwsNetworkManagerRecord {
         family: family.id().to_owned(),
         provider_kind: family.provider_kind().to_owned(),
         schema_ref: family.schema_ref().to_owned(),
-        provider_id,
+        provider_id: sanitize_event_id(&provider_id),
         fields,
         payload,
     }
@@ -1306,6 +1409,13 @@ mod tests {
                 &serde_json::to_vec(&body).expect("json"),
             )
             .expect("decode")
+    }
+
+    fn expected_fields(entries: &[(&str, &str)]) -> BTreeMap<String, String> {
+        entries
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect()
     }
 
     #[test]
@@ -1382,6 +1492,12 @@ mod tests {
                 "Status": "ISSUED",
                 "Type": "AMAZON_ISSUED",
                 "KeyAlgorithm": "RSA_2048",
+                "CreatedAt": 1776902400,
+                "ImportedAt": 1776902460,
+                "IssuedAt": 1776902520,
+                "NotBefore": 1776902580,
+                "NotAfter": 1776902640,
+                "RevokedAt": 1776902700,
                 "SubjectAlternativeNames": ["api.writer.com", "www.writer.com"],
                 "InUseBy": ["load-balancer-1"]
             }}),
@@ -1400,7 +1516,7 @@ mod tests {
         let record = &tagged.records[0];
         assert_eq!(
             record.provider_id,
-            format!("aws-acm-certificate-{CERTIFICATE_ARN}")
+            "aws-acm-certificate-arn-aws-acm-us-east-1-123456789012-certificate-cert-123"
         );
         assert_eq!(record.provider_kind, "aws.acm_certificate");
         assert_eq!(record.fields["status"], "ISSUED");
@@ -1409,11 +1525,78 @@ mod tests {
         assert_eq!(record.fields["tags"], "Team=edge");
         assert_eq!(record.fields["team"], "edge");
         assert_eq!(record.fields["domain_name"], "api.writer.com");
+        assert_eq!(record.fields["created_at"], "2026-04-23T00:00:00Z");
+        assert_eq!(record.fields["imported_at"], "2026-04-23T00:01:00Z");
+        assert_eq!(record.fields["issued_at"], "2026-04-23T00:02:00Z");
+        assert_eq!(record.fields["not_before"], "2026-04-23T00:03:00Z");
+        assert_eq!(record.fields["not_after"], "2026-04-23T00:04:00Z");
+        assert_eq!(record.fields["revoked_at"], "2026-04-23T00:05:00Z");
         assert_eq!(
             record.fields["subject_alternative_names"],
             "api.writer.com,www.writer.com"
         );
         assert_eq!(record.payload["tags"]["Team"], "edge");
+        assert_eq!(
+            record.payload["certificate"]["CreatedAt"],
+            "2026-04-23T00:00:00Z"
+        );
+        assert_eq!(
+            record.payload["certificate"]["RevokedAt"],
+            "2026-04-23T00:05:00Z"
+        );
+        assert_eq!(
+            record.fields,
+            expected_fields(&[
+                ("arn", CERTIFICATE_ARN),
+                ("certificate_arn", CERTIFICATE_ARN),
+                ("created_at", "2026-04-23T00:00:00Z"),
+                ("domain", ACCOUNT),
+                ("domain_name", "api.writer.com"),
+                ("family", "acm_certificate"),
+                ("imported_at", "2026-04-23T00:01:00Z"),
+                ("in_use_by", "load-balancer-1"),
+                ("internet_exposed", "false"),
+                ("issued_at", "2026-04-23T00:02:00Z"),
+                ("key_algorithm", "RSA_2048"),
+                ("not_after", "2026-04-23T00:04:00Z"),
+                ("not_before", "2026-04-23T00:03:00Z"),
+                ("public", "false"),
+                ("region", REGION),
+                ("resource_id", CERTIFICATE_ARN),
+                ("resource_name", "api.writer.com"),
+                ("resource_provider", "aws"),
+                ("resource_type", "acm_certificate"),
+                ("revoked_at", "2026-04-23T00:05:00Z"),
+                ("status", "ISSUED"),
+                ("subject_alternative_names", "api.writer.com,www.writer.com",),
+                ("tags", "Team=edge"),
+                ("team", "edge"),
+                ("type", "AMAZON_ISSUED"),
+            ])
+        );
+        assert_eq!(
+            record.payload,
+            json!({
+                "account_id": ACCOUNT,
+                "region": REGION,
+                "certificate": {
+                    "CertificateArn": CERTIFICATE_ARN,
+                    "CreatedAt": "2026-04-23T00:00:00Z",
+                    "DomainName": "api.writer.com",
+                    "ImportedAt": "2026-04-23T00:01:00Z",
+                    "InUseBy": ["load-balancer-1"],
+                    "IssuedAt": "2026-04-23T00:02:00Z",
+                    "KeyAlgorithm": "RSA_2048",
+                    "NotAfter": "2026-04-23T00:04:00Z",
+                    "NotBefore": "2026-04-23T00:03:00Z",
+                    "RevokedAt": "2026-04-23T00:05:00Z",
+                    "Status": "ISSUED",
+                    "SubjectAlternativeNames": ["api.writer.com", "www.writer.com"],
+                    "Type": "AMAZON_ISSUED"
+                },
+                "tags": {"Team": "edge"}
+            })
+        );
     }
 
     #[test]
@@ -1435,6 +1618,8 @@ mod tests {
                 "Protocols": ["Do53"],
                 "SecurityGroupIds": ["sg-53"],
                 "Status": "OPERATIONAL",
+                "CreationTime": "2026-04-23T00:00:00.123+0000",
+                "ModificationTime": "2026-04-23T01:00:00-04:00",
                 "RniEnhancedMetricsEnabled": true
             }]}),
         );
@@ -1465,15 +1650,77 @@ mod tests {
         let record = &tagged.records[0];
         assert_eq!(
             record.provider_id,
-            format!("aws-route53-resolver-endpoint-{ENDPOINT_ARN}")
+            "aws-route53-resolver-endpoint-arn-aws-route53resolver-us-east-1-123456789012-resolver-endpoint-rslvr-in-123"
         );
         assert_eq!(record.fields["host_vpc_id"], "vpc-123");
         assert_eq!(record.fields["protocols"], "Do53");
         assert_eq!(record.fields["rni_enhanced_metrics_enabled"], "true");
+        assert_eq!(record.fields["created_at"], "2026-04-23T00:00:00Z");
+        assert_eq!(record.fields["modified_at"], "2026-04-23T05:00:00Z");
         assert_eq!(record.fields["environment"], "production");
         assert_eq!(record.fields["env"], "production");
         assert_eq!(record.payload["tags"]["Team"], "network");
         assert_eq!(record.payload["tags"]["Environment"], "production");
+        assert_eq!(
+            record.payload["endpoint"]["CreationTime"],
+            "2026-04-23T00:00:00.123+0000"
+        );
+        assert_eq!(
+            record.fields,
+            expected_fields(&[
+                ("arn", ENDPOINT_ARN),
+                ("created_at", "2026-04-23T00:00:00Z"),
+                ("direction", "INBOUND"),
+                ("dns64_enabled", "false"),
+                ("domain", ACCOUNT),
+                ("endpoint_arn", ENDPOINT_ARN),
+                ("endpoint_id", "rslvr-in-123"),
+                ("endpoint_name", "corp-inbound"),
+                ("env", "production"),
+                ("environment", "production"),
+                ("family", "route53_resolver_endpoint"),
+                ("host_vpc_id", "vpc-123"),
+                ("internet_exposed", "false"),
+                ("ip_address_count", "2"),
+                ("ipv6_internet_access_enabled", "false"),
+                ("modified_at", "2026-04-23T05:00:00Z"),
+                ("protocols", "Do53"),
+                ("public", "false"),
+                ("region", REGION),
+                ("resource_id", ENDPOINT_ARN),
+                ("resource_name", "corp-inbound"),
+                ("resource_provider", "aws"),
+                ("resource_type", "route53_resolver_endpoint"),
+                ("rni_enhanced_metrics_enabled", "true"),
+                ("security_group_ids", "sg-53"),
+                ("status", "OPERATIONAL"),
+                ("tags", "Environment=production,Team=network"),
+                ("target_name_server_metrics_enabled", "false"),
+                ("team", "network"),
+            ])
+        );
+        assert_eq!(
+            record.payload,
+            json!({
+                "account_id": ACCOUNT,
+                "region": REGION,
+                "endpoint": {
+                    "Arn": ENDPOINT_ARN,
+                    "CreationTime": "2026-04-23T00:00:00.123+0000",
+                    "Direction": "INBOUND",
+                    "HostVPCId": "vpc-123",
+                    "Id": "rslvr-in-123",
+                    "IpAddressCount": 2,
+                    "ModificationTime": "2026-04-23T01:00:00-04:00",
+                    "Name": "corp-inbound",
+                    "Protocols": ["Do53"],
+                    "RniEnhancedMetricsEnabled": true,
+                    "SecurityGroupIds": ["sg-53"],
+                    "Status": "OPERATIONAL"
+                },
+                "tags": {"Environment": "production", "Team": "network"}
+            })
+        );
     }
 
     #[test]
@@ -1493,6 +1740,8 @@ mod tests {
                 "ResolverEndpointId": "rslvr-out-123",
                 "RuleType": "FORWARD",
                 "Status": "COMPLETE",
+                "CreationTime": "2026-04-23T00:00:00Z",
+                "ModificationTime": "not-a-time",
                 "TargetIps": [
                     {"Ip": "10.0.0.10", "Port": 53, "Protocol": "Do53"},
                     {"Ipv6": "2001:db8::53", "Port": 853, "Protocol": "DoT"}
@@ -1504,11 +1753,63 @@ mod tests {
         let record = &tagged.records[0];
         assert_eq!(
             record.provider_id,
-            format!("aws-route53-resolver-rule-{RULE_ARN}")
+            "aws-route53-resolver-rule-arn-aws-route53resolver-us-east-1-123456789012-resolver-rule-rslvr-rr-123"
         );
         assert_eq!(record.fields["target_ips"], "10.0.0.10,2001:db8::53");
         assert_eq!(record.fields["target_ports"], "53,853");
         assert_eq!(record.fields["target_protocols"], "Do53,DoT");
+        assert_eq!(record.fields["created_at"], "2026-04-23T00:00:00Z");
+        assert!(!record.fields.contains_key("modified_at"));
+        assert_eq!(record.payload["rule"]["ModificationTime"], "not-a-time");
+        assert_eq!(
+            record.fields,
+            expected_fields(&[
+                ("arn", RULE_ARN),
+                ("created_at", "2026-04-23T00:00:00Z"),
+                ("domain", ACCOUNT),
+                ("domain_name", "corp.example.com."),
+                ("family", "route53_resolver_rule"),
+                ("internet_exposed", "false"),
+                ("public", "false"),
+                ("region", REGION),
+                ("resolver_endpoint_id", "rslvr-out-123"),
+                ("resource_id", RULE_ARN),
+                ("resource_name", "corp-example"),
+                ("resource_provider", "aws"),
+                ("resource_type", "route53_resolver_rule"),
+                ("rule_arn", RULE_ARN),
+                ("rule_id", "rslvr-rr-123"),
+                ("rule_name", "corp-example"),
+                ("rule_type", "FORWARD"),
+                ("status", "COMPLETE"),
+                ("target_ips", "10.0.0.10,2001:db8::53"),
+                ("target_ports", "53,853"),
+                ("target_protocols", "Do53,DoT"),
+            ])
+        );
+        assert_eq!(
+            record.payload,
+            json!({
+                "account_id": ACCOUNT,
+                "region": REGION,
+                "rule": {
+                    "Arn": RULE_ARN,
+                    "CreationTime": "2026-04-23T00:00:00Z",
+                    "DomainName": "corp.example.com.",
+                    "Id": "rslvr-rr-123",
+                    "ModificationTime": "not-a-time",
+                    "Name": "corp-example",
+                    "ResolverEndpointId": "rslvr-out-123",
+                    "RuleType": "FORWARD",
+                    "Status": "COMPLETE",
+                    "TargetIps": [
+                        {"Ip": "10.0.0.10", "Port": 53, "Protocol": "Do53"},
+                        {"Ipv6": "2001:db8::53", "Port": 853, "Protocol": "DoT"}
+                    ]
+                },
+                "tags": {}
+            })
+        );
     }
 
     #[test]
@@ -1731,9 +2032,31 @@ mod tests {
                 &request,
                 StatusCode::OK,
                 None,
-                br#"{"ResolverEndpoints":[{"Status":"OPERATIONAL"}]}"#,
+                br#"{"ResolverEndpoints":[{"Name":"name-is-not-identity","Status":"OPERATIONAL"}]}"#,
             ),
             Err(AwsNetworkManagerError::MissingIdentity)
+        );
+    }
+
+    #[test]
+    fn malformed_acm_wire_timestamps_fail_closed_before_fanout() {
+        let kernel = kernel();
+        let list = kernel
+            .plan(AwsNetworkManagerFamily::AcmCertificate, None, 10)
+            .expect("list");
+        let listed = decode(
+            &kernel,
+            &list,
+            json!({"CertificateSummaryList": [{"CertificateArn": CERTIFICATE_ARN}]}),
+        );
+        assert_eq!(
+            kernel.decode(
+                &listed.requests[0],
+                StatusCode::OK,
+                None,
+                br#"{"Certificate":{"CertificateArn":"arn:aws:acm:us-east-1:123456789012:certificate/cert-123","CreatedAt":"yesterday"}}"#,
+            ),
+            Err(AwsNetworkManagerError::InvalidResponse)
         );
     }
 }
