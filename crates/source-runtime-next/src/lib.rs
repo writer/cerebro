@@ -3,6 +3,7 @@
 
 //! Rust-native source collection and graph admission boundary.
 
+mod amplitude;
 mod append_log;
 mod archetype;
 mod aurelius;
@@ -32,6 +33,10 @@ mod sentinelone;
 mod trivy;
 mod vulnview;
 
+pub use amplitude::{
+    AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
+    AmplitudeRequest,
+};
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use archetype::{
     ArchetypeError, ArchetypeFamily, ArchetypeKernel, ArchetypePage, ArchetypeRecord,
