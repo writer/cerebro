@@ -5,6 +5,7 @@
 
 mod append_log;
 mod aws_secret_store;
+mod cerebro_source;
 mod credential_lease;
 mod deposit;
 mod egress;
@@ -23,6 +24,10 @@ pub use aws_secret_store::{
     AwsSecretReadError, AwsSecretReader, AwsSecretReference, AwsSecretResolutionError,
     AwsSecretValue, contains_aws_secret_references, parse_aws_secret_reference,
     resolve_aws_secret_references,
+};
+pub use cerebro_source::{
+    CerebroSourceError, CerebroSourceFamily, CerebroSourceKernel, CerebroSourcePage,
+    CerebroSourceRecord,
 };
 pub use credential_lease::{
     CredentialLeaseError, CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus,
