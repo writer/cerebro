@@ -1,7 +1,9 @@
-use super::response::{
-    MAX_COMMAND_PERMISSION_ENTRIES, MAX_MEMBER_ROLES, MAX_NONPAGED_RECORDS, MAX_RESPONSE_BYTES,
-};
 use super::*;
+use super::{
+    normalize::{MAX_COMMAND_PERMISSION_ENTRIES, MAX_MEMBER_ROLES},
+    wire::{MAX_NONPAGED_RECORDS, MAX_RESPONSE_BYTES},
+};
+use serde_json::Value;
 
 const AUDIT_FIXTURE: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
