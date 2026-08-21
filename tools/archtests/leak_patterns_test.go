@@ -58,6 +58,31 @@ func TestLeakCheckExcludesRootCertificateFiles(t *testing.T) {
 	}
 }
 
+func TestLeakCheckCommitMetadataExcludesRawCommitHashes(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "scripts", "leak_check.sh"))
+	if err != nil {
+		t.Fatalf("read leak_check.sh: %v", err)
+	}
+	script := string(data)
+	const metadataFormat = "commit_metadata_format='Author: %an <%ae>%nCommitter: %cn <%ce>%n%s%n%b%n---'"
+	if strings.Count(script, metadataFormat) != 1 {
+		t.Fatalf("leak_check.sh must define one hash-free commit metadata format")
+	}
+	const metadataScan = `git log --format="$commit_metadata_format"`
+	if strings.Count(script, metadataScan) != 2 {
+		t.Fatalf("range and pushed modes must share the hash-free commit metadata format")
+	}
+	for _, forbidden := range []string{
+		"commit_metadata_format='%H",
+		"git log --format='%H",
+		`git log --format="%H`,
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("leak_check.sh scan metadata includes raw commit hashes")
+		}
+	}
+}
+
 func TestLeakCheckRejectsConcretePRMetadata(t *testing.T) {
 	cases := []string{
 		"Overlay test: alert `123` linked to `internet.ip:198.51.100.24` and `aws.ec2.instance:i-0123456789abcdef0`.",
