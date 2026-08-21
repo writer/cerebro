@@ -47,7 +47,7 @@ use super::slack_agent_session::{
 };
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-conversation-harness/v2";
-const EXPECTED_CASES_PER_PARTITION: usize = 18;
+const EXPECTED_CASES_PER_PARTITION: usize = 21;
 const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 const QUALITY_JUDGE_MAX_TOKENS: i32 = 2_048;
 const QUALITY_JUDGMENT_TOOL: &str = "submit_conversation_quality_judgment";
@@ -7132,6 +7132,36 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: false,
         },
         EvalCase {
+            case_ref: "case://held-out/playful-self-characterization",
+            partition: "held_out",
+            message: "What's your security team superlative? Give me one line, like a teammate.",
+            history: "The thread is trading playful superlatives. The user is asking for an imaginative social answer, not a work log or current capability claim.",
+            working_request: None,
+            expected_route: ExecutionLane::Converse,
+            expected_lane: ExecutionLane::Converse,
+            false_converse: false,
+        },
+        EvalCase {
+            case_ref: "case://held-out/anaphoric-banter",
+            partition: "held_out",
+            message: "you too",
+            history: "User: Give the other agent a funny one-line award.\nAssistant: Most likely to find the missing receipt in a burning building.\nUser: @Cerebro you too",
+            working_request: None,
+            expected_route: ExecutionLane::Converse,
+            expected_lane: ExecutionLane::Converse,
+            false_converse: false,
+        },
+        EvalCase {
+            case_ref: "case://held-out/playful-live-claim",
+            partition: "held_out",
+            message: "Which superlative did today's live detection results actually earn you? Check the current run before answering.",
+            history: "The phrasing is playful, but the answer explicitly requires current run evidence.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
             case_ref: "case://held-out/timeless-explanation",
             partition: "held_out",
             message: "Explain the difference between a control owner and an evidence owner.",
@@ -7310,6 +7340,36 @@ fn eval_cases() -> Vec<EvalCase> {
             expected_route: ExecutionLane::Converse,
             expected_lane: ExecutionLane::Converse,
             false_converse: false,
+        },
+        EvalCase {
+            case_ref: "case://shadow/team-banter",
+            partition: "shadow",
+            message: "Okay, your turn: give yourself a one-line award for surviving this thread.",
+            history: "Several people have been giving each other affectionate, invented awards. No current work evidence is requested.",
+            working_request: None,
+            expected_route: ExecutionLane::Converse,
+            expected_lane: ExecutionLane::Converse,
+            false_converse: false,
+        },
+        EvalCase {
+            case_ref: "case://shadow/social-callback",
+            partition: "shadow",
+            message: "do mine next",
+            history: "User: Make up a gentle security-team superlative for Sam.\nAssistant: Most likely to threat-model the office coffee machine before the first sip.\nUser: do mine next",
+            working_request: None,
+            expected_route: ExecutionLane::Converse,
+            expected_lane: ExecutionLane::Converse,
+            false_converse: false,
+        },
+        EvalCase {
+            case_ref: "case://shadow/social-deployment-boundary",
+            partition: "shadow",
+            message: "That answer sounded human. Is that exact behavior deployed in Slack right now?",
+            history: "A candidate conversation was evaluated, but the operative deployment was not observed.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
         },
         EvalCase {
             case_ref: "case://shadow/concept-chat",
