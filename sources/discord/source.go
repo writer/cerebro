@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ const (
 )
 
 var templateKeys = []string{"application_id", "guild_id", "api_key"}
+var errInvalidCursor, errMissingProviderID, errPermissionScopeMismatch, errInvalidEnvelope = errors.New("discord cursor is invalid"), errors.New("discord provider ID is missing"), errors.New("discord permission scope mismatch"), errors.New("discord response envelope is invalid")
 
 type Source struct {
 	spec   *cerebrov1.SourceSpec
@@ -161,14 +163,14 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	if family == familyAuditLog || family == familyMember {
 		if token := strings.TrimSpace(sourcecdk.CursorToken(cursor)); token != "" {
 			if _, err := positiveSnowflake(token); err != nil {
-				return sourcecdk.Pull{}, fmt.Errorf("discord %s after cursor: %w", family, err)
+				return sourcecdk.Pull{}, fmt.Errorf("%w: discord %s after cursor: %v", errInvalidCursor, family, err)
 			}
 		}
 	}
 	if family == familyPermission {
 		for _, field := range []string{"application_id", "guild_id"} {
 			if _, err := positiveSnowflake(sourcecdk.ConfigValue(runtimeCfg, field)); err != nil {
-				return sourcecdk.Pull{}, fmt.Errorf("discord permission config %s: %w", field, err)
+				return sourcecdk.Pull{}, fmt.Errorf("%w: discord permission config %s: %v", errInvalidCursor, field, err)
 			}
 		}
 	}
@@ -186,12 +188,6 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func adjustProviderCursor(family string, pull *sourcecdk.Pull) error {
-	if pull == nil {
-		return nil
-	}
-	if family == "" {
-		family = defaultFamily
-	}
 	switch family {
 	case familyAuditLog:
 		var previous uint64
@@ -237,17 +233,17 @@ func positiveSnowflake(value string) (uint64, error) {
 }
 
 func validatePermissionScope(family string, cfg sourcecdk.Config, pull *sourcecdk.Pull) error {
-	if family != familyPermission || pull == nil {
+	if family != familyPermission {
 		return nil
 	}
 	expectedApplication := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "application_id"))
 	expectedGuild := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "guild_id"))
 	for index, event := range pull.Events {
 		if event.Attributes["application_id"] != expectedApplication {
-			return fmt.Errorf("discord permission record %d application_id does not match request scope", index)
+			return fmt.Errorf("%w: record %d application_id", errPermissionScopeMismatch, index)
 		}
 		if event.Attributes["guild_id"] != expectedGuild {
-			return fmt.Errorf("discord permission record %d guild_id does not match request scope", index)
+			return fmt.Errorf("%w: record %d guild_id", errPermissionScopeMismatch, index)
 		}
 	}
 	return nil
@@ -268,26 +264,37 @@ func (s *Source) innerFor(cfg sourcecdk.Config) (*jsonapi.Source, error) {
 func validateResponseEnvelope(family string, body []byte) error {
 	var root any
 	if err := json.Unmarshal(body, &root); err != nil {
-		return fmt.Errorf("decode discord %s response: %w", family, err)
+		return fmt.Errorf("%w: decode %s: %v", errInvalidEnvelope, family, err)
 	}
+	var records []any
 	switch family {
 	case familyAuditLog:
 		object, ok := root.(map[string]any)
 		if !ok {
-			return fmt.Errorf("discord audit_log response must be an object envelope")
+			return fmt.Errorf("%w: audit_log must be an object", errInvalidEnvelope)
 		}
-		_, ok = object["audit_log_entries"].([]any)
+		records, ok = object["audit_log_entries"].([]any)
 		if !ok {
-			return fmt.Errorf("discord audit_log response must contain audit_log_entries")
+			return fmt.Errorf("%w: audit_log_entries is required", errInvalidEnvelope)
 		}
 	case familyMember, familyRole, familyPermission:
 		var ok bool
-		_, ok = root.([]any)
+		records, ok = root.([]any)
 		if !ok {
-			return fmt.Errorf("discord %s response must be a bare array", family)
+			return fmt.Errorf("%w: %s must be a bare array", errInvalidEnvelope, family)
 		}
 	default:
 		return fmt.Errorf("discord family %q is unsupported", family)
+	}
+	if family == familyMember {
+		for _, record := range records {
+			object, objectOK := record.(map[string]any)
+			user, userOK := object["user"].(map[string]any)
+			id, idOK := user["id"].(string)
+			if !objectOK || !userOK || !idOK || strings.TrimSpace(id) == "" {
+				return errMissingProviderID
+			}
+		}
 	}
 	return nil
 }
@@ -306,13 +313,4 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	return spec, nil
-}
-
-func (s *Source) allowLoopbackForTest() {
-	if s == nil {
-		return
-	}
-	for _, inner := range s.inners {
-		inner.AllowLoopbackBaseURL = true
-	}
 }

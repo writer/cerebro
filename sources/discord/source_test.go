@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +19,12 @@ var testFiles embed.FS
 
 // These fixtures are normalized provider-contract vectors. They are not live
 // response captures and carry no provider provenance claim.
+
+func (s *Source) allowLoopbackForTest() {
+	for _, inner := range s.inners {
+		inner.AllowLoopbackBaseURL = true
+	}
+}
 
 func TestSourceCheckAndRead(t *testing.T) {
 	source, err := New()
@@ -181,7 +188,7 @@ func TestFullMemberPageWithoutHighestUserIDFails(t *testing.T) {
 		"guild_id": "100000000000000000", "per_page": "2",
 	})
 	_, err = source.Read(context.Background(), cfg, nil)
-	if err == nil || !strings.Contains(err.Error(), "member id is required") {
+	if !errors.Is(err, errMissingProviderID) {
 		t.Fatalf("Read() error = %v, want required highest user id", err)
 	}
 }
@@ -197,7 +204,7 @@ func TestResumedCursorMustBePositiveSnowflake(t *testing.T) {
 	})
 	for _, cursor := range []string{"0", "not-a-snowflake"} {
 		_, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: cursor})
-		if err == nil || !strings.Contains(err.Error(), "positive string snowflake") {
+		if !errors.Is(err, errInvalidCursor) {
 			t.Fatalf("Read(cursor=%q) error = %v, want positive snowflake rejection", cursor, err)
 		}
 	}
@@ -274,10 +281,9 @@ func TestPermissionReadBindsResponseScopeToRequest(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
-		want string
 	}{
-		{name: "application", body: `[{"id":"600000000000000001","application_id":"200000000000000009","guild_id":"100000000000000000","permissions":[]}]`, want: "application_id does not match request scope"},
-		{name: "guild", body: `[{"id":"600000000000000001","application_id":"200000000000000000","guild_id":"100000000000000009","permissions":[]}]`, want: "guild_id does not match request scope"},
+		{name: "application", body: `[{"id":"600000000000000001","application_id":"200000000000000009","guild_id":"100000000000000000","permissions":[]}]`},
+		{name: "guild", body: `[{"id":"600000000000000001","application_id":"200000000000000000","guild_id":"100000000000000009","permissions":[]}]`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -297,8 +303,8 @@ func TestPermissionReadBindsResponseScopeToRequest(t *testing.T) {
 				"guild_id": "100000000000000000",
 			})
 			_, err = source.Read(context.Background(), cfg, nil)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Read() error = %v, want %q", err, test.want)
+			if !errors.Is(err, errPermissionScopeMismatch) {
+				t.Fatalf("Read() error = %v, want permission scope mismatch", err)
 			}
 		})
 	}
@@ -308,12 +314,11 @@ func TestFamiliesRejectWrongResponseEnvelopes(t *testing.T) {
 	tests := []struct {
 		family string
 		body   string
-		want   string
 	}{
-		{family: familyAuditLog, body: `{"items":[]}`, want: "audit_log_entries"},
-		{family: familyMember, body: `{"items":[]}`, want: "bare array"},
-		{family: familyRole, body: `{"items":[]}`, want: "bare array"},
-		{family: familyPermission, body: `{"items":[]}`, want: "bare array"},
+		{family: familyAuditLog, body: `{"items":[]}`},
+		{family: familyMember, body: `{"items":[]}`},
+		{family: familyRole, body: `{"items":[]}`},
+		{family: familyPermission, body: `{"items":[]}`},
 	}
 	for _, test := range tests {
 		t.Run(test.family, func(t *testing.T) {
@@ -333,8 +338,8 @@ func TestFamiliesRejectWrongResponseEnvelopes(t *testing.T) {
 				"guild_id": "100000000000000000", "per_page": "2",
 			})
 			_, err = source.Read(context.Background(), cfg, nil)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Read() error = %v, want %q", err, test.want)
+			if !errors.Is(err, errInvalidEnvelope) {
+				t.Fatalf("Read() error = %v, want invalid envelope", err)
 			}
 		})
 	}
