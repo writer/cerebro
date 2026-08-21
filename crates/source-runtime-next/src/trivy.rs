@@ -11,6 +11,7 @@ use std::{
     str::FromStr,
 };
 
+use packageurl::PackageUrl;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -483,30 +484,24 @@ fn normalize_vulnerability_status(status: &str) -> String {
 }
 
 fn normalized_package_id(purl: &str, ecosystem: &str, name: &str, version: &str) -> Option<String> {
-    if let Some(body) = purl.trim().strip_prefix("pkg:") {
-        let body = body.split(['?', '#']).next().unwrap_or_default();
-        if let Some((package_type, package_path)) = body.split_once('/') {
-            let (package_name, purl_version) = package_path
-                .rsplit_once('@')
-                .map_or((package_path, ""), |(name, version)| (name, version));
-            if !package_type.trim().is_empty()
-                && !package_name.trim_matches('/').trim().is_empty()
-                && !package_type.chars().any(char::is_whitespace)
-                && !package_name.chars().any(char::is_whitespace)
-            {
-                let resolved_version = nonblank(purl_version).or_else(|| nonblank(version))?;
-                return Some(
-                    format!(
-                        "{}|{}|{}",
-                        package_type.trim(),
-                        package_name.trim_matches('/').trim(),
-                        resolved_version
-                    )
-                    .to_lowercase(),
-                );
-            }
+    if valid_percent_encoding(purl)
+        && let Ok(parsed) = PackageUrl::from_str(purl.trim())
+    {
+        let package_name = parsed.namespace().map_or_else(
+            || parsed.name().to_owned(),
+            |namespace| format!("{namespace}/{}", parsed.name()),
+        );
+        if !package_name.is_empty() {
+            let resolved_version = parsed
+                .version()
+                .and_then(nonblank)
+                .or_else(|| nonblank(version))?;
+            return Some(
+                format!("{}|{package_name}|{resolved_version}", parsed.ty()).to_lowercase(),
+            );
         }
     }
+
     let name = nonblank(name)?;
     let version = nonblank(version)?;
     Some(
@@ -516,6 +511,25 @@ fn normalized_package_id(purl: &str, ecosystem: &str, name: &str, version: &str)
         )
         .to_lowercase(),
     )
+}
+
+fn valid_percent_encoding(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit()
+            {
+                return false;
+            }
+            index += 3;
+        } else {
+            index += 1;
+        }
+    }
+    true
 }
 
 fn compact<'a>(values: impl IntoIterator<Item = (&'a str, &'a str)>) -> BTreeMap<String, String> {
@@ -666,6 +680,48 @@ mod tests {
             fields.get("normalized_id").map(String::as_str),
             Some("deb|debian/openssl|1.0.0")
         );
+    }
+
+    #[test]
+    fn normalized_package_ids_match_packageurl_go_parity() {
+        let cases = [
+            (
+                "pkg:npm/%40opentelemetry/sdk-trace-node@2.2.0",
+                "npm",
+                "sdk-trace-node",
+                "2.2.0",
+                "npm|@opentelemetry/sdk-trace-node|2.2.0",
+            ),
+            (
+                "pkg:deb/debian/libstdc%2B%2B6@12.2.0-14",
+                "debian",
+                "libstdc++6",
+                "12.2.0-14",
+                "deb|debian/libstdc++6|12.2.0-14",
+            ),
+            (
+                "pkg:pypi/My_Package@1.0.0",
+                "python-pkg",
+                "My_Package",
+                "1.0.0",
+                "pypi|my-package|1.0.0",
+            ),
+            (
+                "pkg:npm/%4Gbroken@1.0.0",
+                "node-pkg",
+                "Fallback_Name",
+                "9.9.9",
+                "node-pkg|fallback_name|9.9.9",
+            ),
+        ];
+
+        for (purl, ecosystem, name, version, expected) in cases {
+            assert_eq!(
+                normalized_package_id(purl, ecosystem, name, version).as_deref(),
+                Some(expected),
+                "PURL parity mismatch for {purl}"
+            );
+        }
     }
 
     #[test]
