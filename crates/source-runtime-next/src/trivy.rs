@@ -495,7 +495,8 @@ fn normalized_package_id(purl: &str, ecosystem: &str, name: &str, version: &str)
             let resolved_version = parsed
                 .version()
                 .and_then(nonblank)
-                .or_else(|| nonblank(version))?;
+                .or_else(|| nonblank(version))
+                .unwrap_or_default();
             return Some(
                 format!("{}|{package_name}|{resolved_version}", parsed.ty()).to_lowercase(),
             );
@@ -712,6 +713,13 @@ mod tests {
                 "Fallback_Name",
                 "9.9.9",
                 "node-pkg|fallback_name|9.9.9",
+            ),
+            (
+                "pkg:generic/acme/widget",
+                "generic",
+                "widget",
+                "",
+                "generic|acme/widget|",
             ),
         ];
 
