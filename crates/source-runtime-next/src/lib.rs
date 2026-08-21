@@ -12,6 +12,7 @@ mod evidence_cas;
 mod fixture_parity;
 mod http;
 mod mapper;
+mod panopticon;
 mod protocol;
 mod provider_failure;
 mod runtime_config;
@@ -47,6 +48,10 @@ pub use fixture_parity::{
 };
 pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
+pub use panopticon::{
+    PanopticonError, PanopticonFamily, PanopticonKernel, PanopticonOutcome, PanopticonPage,
+    PanopticonRecord, PanopticonRequest,
+};
 pub use protocol::{
     AuthorityEvidence, ProtocolError, SourceRuntimeEnvelope, SourceRuntimeErrorShape,
     SourceRuntimeOperation, SourceRuntimeReceipt, SourceRuntimeResult, canonical_digest,
