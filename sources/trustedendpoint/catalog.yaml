@@ -182,17 +182,23 @@ event_contracts:
       - agent_id
       - device_id
       - receipt_id
+      - receipt_digest
+      - sequence
       - captured_at
       - agent_product
       - session_id
       - phase
       - action
       - evidence_integrity
+      - provider_binding
     required_payload_fields:
       - receipt_id
+      - receipt_digest
+      - sequence
       - captured_at
       - agent_product
       - session_id
       - phase
       - action
       - evidence_integrity
+      - provider_binding

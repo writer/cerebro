@@ -640,6 +640,7 @@ impl SourceCatalog {
                 }
             }
         }
+        reject_dual_mode_source_ids(sources.keys(), &manifests.push_sources)?;
         Ok(Self {
             sources,
             push_sources: manifests.push_sources,
@@ -833,6 +834,19 @@ impl SourceCatalog {
             families,
         }
     }
+}
+
+fn reject_dual_mode_source_ids<'a>(
+    pull_source_ids: impl Iterator<Item = &'a String>,
+    push_sources: &BTreeMap<String, CompiledPushSource>,
+) -> Result<(), CatalogError> {
+    if let Some(source_id) = pull_source_ids
+        .filter(|source_id| push_sources.contains_key(source_id.as_str()))
+        .min()
+    {
+        return Err(CatalogError::DuplicateSource(source_id.clone()));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -3135,7 +3149,45 @@ mod tests {
                 family.id()
             );
         }
+        let receipt = source.family("agent_execution_receipt").unwrap();
+        let required_attributes = receipt
+            .required_attributes()
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let required_payload_fields = receipt
+            .required_payload_fields()
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let producer_authority_fields =
+            BTreeSet::from(["provider_binding", "receipt_digest", "sequence"]);
+        assert!(required_attributes.is_superset(&producer_authority_fields));
+        assert!(required_payload_fields.is_superset(&producer_authority_fields));
         assert!(!catalog.admits_event_family("trusted_endpoint", "unknown"));
+    }
+
+    #[test]
+    fn pull_and_push_source_ids_cannot_intersect() {
+        let pull_sources = BTreeMap::from([("shared_source".to_owned(), ())]);
+        let push_sources = BTreeMap::from([(
+            "shared_source".to_owned(),
+            CompiledPushSource {
+                id: "shared_source".to_owned(),
+                display_name: "Shared Source".to_owned(),
+                families: BTreeMap::new(),
+            },
+        )]);
+        assert_eq!(
+            reject_dual_mode_source_ids(pull_sources.keys(), &push_sources),
+            Err(CatalogError::DuplicateSource("shared_source".to_owned()))
+        );
+
+        let disjoint_pull_sources = BTreeMap::from([("pull_source".to_owned(), ())]);
+        assert_eq!(
+            reject_dual_mode_source_ids(disjoint_pull_sources.keys(), &push_sources),
+            Ok(())
+        );
     }
 
     #[test]
