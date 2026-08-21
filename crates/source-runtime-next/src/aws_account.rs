@@ -17,6 +17,28 @@ const SCHEMA_REF: &str = "aws/account_contact/v1";
 const SIGNING_SERVICE: &str = "account";
 const SECURITY_CONTACT_TYPE: &str = "SECURITY";
 
+const PRIMARY_CONTACT_STRING_MEMBERS: &[&str] = &[
+    "AddressLine1",
+    "AddressLine2",
+    "AddressLine3",
+    "City",
+    "CompanyName",
+    "CountryCode",
+    "DistrictOrCounty",
+    "FullName",
+    "PhoneNumber",
+    "PostalCode",
+    "StateOrRegion",
+    "WebsiteUrl",
+];
+const SECURITY_CONTACT_STRING_MEMBERS: &[&str] = &[
+    "AlternateContactType",
+    "EmailAddress",
+    "Name",
+    "PhoneNumber",
+    "Title",
+];
+
 /// Purpose of one AWS account-contact provider request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AwsAccountContactRequestKind {
@@ -193,8 +215,9 @@ impl AwsAccountContactKernel {
                 if request.primary_contact_configured.is_some() {
                     return Err(AwsAccountContactError::RequestStageMismatch);
                 }
-                let configured = optional_object(response.as_ref(), "ContactInformation")?
-                    .is_some_and(primary_contact_configured);
+                let contact = optional_object(response.as_ref(), "ContactInformation")?;
+                validate_string_members(contact, PRIMARY_CONTACT_STRING_MEMBERS)?;
+                let configured = contact.is_some_and(primary_contact_configured);
                 let next = self.request(
                     AwsAccountContactRequestKind::SecurityAlternateContact,
                     Some(configured),
@@ -206,6 +229,7 @@ impl AwsAccountContactKernel {
                     .primary_contact_configured
                     .ok_or(AwsAccountContactError::RequestStageMismatch)?;
                 let contact = optional_object(response.as_ref(), "AlternateContact")?;
+                validate_string_members(contact, SECURITY_CONTACT_STRING_MEMBERS)?;
                 Ok(AwsAccountContactOutcome::Page(build_page(
                     &self.account_id,
                     primary_contact_configured,
@@ -364,6 +388,21 @@ fn optional_object<'a>(
         return Err(AwsAccountContactError::InvalidResponse);
     }
     Ok(Some(value))
+}
+
+fn validate_string_members(
+    object: Option<&Value>,
+    known_members: &[&str],
+) -> Result<(), AwsAccountContactError> {
+    let Some(object) = object else {
+        return Ok(());
+    };
+    for member in known_members {
+        if object.get(member).is_some_and(|value| !value.is_string()) {
+            return Err(AwsAccountContactError::InvalidResponse);
+        }
+    }
+    Ok(())
 }
 
 fn primary_contact_configured(value: &Value) -> bool {
@@ -692,6 +731,57 @@ mod tests {
             ),
             Err(AwsAccountContactError::InvalidResponse)
         );
+    }
+
+    #[test]
+    fn known_contact_members_reject_wrong_types_and_unknown_members_are_ignored() {
+        let kernel = kernel(ACCOUNT_ID);
+        let invalid_values = ["null", "17", "true", "[]", "{}"];
+        for member in PRIMARY_CONTACT_STRING_MEMBERS {
+            for invalid in invalid_values {
+                let body = format!(r#"{{"ContactInformation":{{"{member}":{invalid}}}}}"#);
+                let request = kernel.plan().unwrap();
+                assert_eq!(
+                    kernel.decode(&request, StatusCode::OK, None, body.as_bytes()),
+                    Err(AwsAccountContactError::InvalidResponse),
+                    "primary member {member} accepted {invalid}",
+                );
+            }
+        }
+
+        let security = security_request(&kernel, br#"{}"#);
+        for member in SECURITY_CONTACT_STRING_MEMBERS {
+            for invalid in invalid_values {
+                let body = format!(r#"{{"AlternateContact":{{"{member}":{invalid}}}}}"#);
+                assert_eq!(
+                    kernel.decode(&security, StatusCode::OK, None, body.as_bytes()),
+                    Err(AwsAccountContactError::InvalidResponse),
+                    "security member {member} accepted {invalid}",
+                );
+            }
+        }
+
+        let primary = kernel.plan().unwrap();
+        let AwsAccountContactOutcome::Request(security) = kernel
+            .decode(
+                &primary,
+                StatusCode::OK,
+                None,
+                br#"{"ContactInformation":{"FutureMember":{"nested":true}}}"#,
+            )
+            .unwrap()
+        else {
+            panic!("expected security request")
+        };
+        assert!(matches!(
+            kernel.decode(
+                &security,
+                StatusCode::OK,
+                None,
+                br#"{"AlternateContact":{"FutureMember":["future"]}}"#,
+            ),
+            Ok(AwsAccountContactOutcome::Page(_))
+        ));
     }
 
     #[test]
