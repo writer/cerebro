@@ -57,7 +57,7 @@ func CompileSourceExecutionPlanV1(definition Definition, familyID string) (*cere
 		return nil, fmt.Errorf("%w: family %q is not defined", ErrInvalidSourceExecutionPlan, familyID)
 	}
 	kernel, registered := registeredSourceExecutionKernel(sourceID, familyID)
-	if !registered || family.ProviderKernel != kernel.providerKernel || origin.String() != kernel.origin || family.Method != kernel.method || family.Path != kernel.path || family.RecordSelector != kernel.recordSelector || family.IDField != kernel.idField || family.SingletonFallbackID != kernel.singletonFallbackID {
+	if family.Read == nil || !registered || family.Read.ProviderKernel != kernel.providerKernel || origin.String() != kernel.origin || family.Method != kernel.method || family.Path != kernel.path || family.RecordSelector != kernel.recordSelector || family.IDField != kernel.idField || family.Read.SingletonFallbackID != kernel.singletonFallbackID {
 		return nil, fmt.Errorf("%w: source family is not bound to a registered provider kernel", ErrInvalidSourceExecutionPlan)
 	}
 	if family.Method != "GET" || !family.Singleton || family.Pagination == nil || strings.TrimSpace(family.Pagination.Type) != "none" {
@@ -66,7 +66,7 @@ func CompileSourceExecutionPlanV1(definition Definition, familyID string) (*cere
 	if family.Path == "" || !strings.HasPrefix(family.Path, "/") || strings.ContainsAny(family.Path, "?#") {
 		return nil, fmt.Errorf("%w: family path is invalid", ErrInvalidSourceExecutionPlan)
 	}
-	if family.RecordSelector != "$" || family.ProviderKernel == "" || family.SingletonFallbackID == "" || family.IDField == "" {
+	if family.RecordSelector != "$" || family.Read.ProviderKernel == "" || family.Read.SingletonFallbackID == "" || family.IDField == "" {
 		return nil, fmt.Errorf("%w: provider kernel, root selector, id field, and singleton fallback are required", ErrInvalidSourceExecutionPlan)
 	}
 	expectedKind := sourceID + "." + familyID
@@ -83,13 +83,13 @@ func CompileSourceExecutionPlanV1(definition Definition, familyID string) (*cere
 		PlanId:                "source-plan-v1:" + sourceID + ":" + familyID,
 		SourceId:              sourceID,
 		FamilyId:              familyID,
-		ProviderKernel:        family.ProviderKernel,
+		ProviderKernel:        family.Read.ProviderKernel,
 		Method:                family.Method,
 		Origin:                origin.String(),
 		Path:                  family.Path,
 		RecordSelector:        family.RecordSelector,
 		IdField:               family.IDField,
-		SingletonFallbackId:   family.SingletonFallbackID,
+		SingletonFallbackId:   family.Read.SingletonFallbackID,
 		MaxResponseBytes:      SourceExecutionPlanV1MaxResponseBytes,
 		EventKind:             family.Event.Kind,
 		SchemaRef:             family.Event.SchemaRef,
@@ -109,7 +109,7 @@ func sourceExecutionPlanDigest(plan *cerebrov1.SourceExecutionPlanV1) (string, e
 	clone.PlanDigestSha256 = ""
 	payload, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
 	if err != nil {
-		return "", fmt.Errorf("%w: encode plan: %v", ErrInvalidSourceExecutionPlan, err)
+		return "", fmt.Errorf("%w: encode plan: %w", ErrInvalidSourceExecutionPlan, err)
 	}
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:]), nil

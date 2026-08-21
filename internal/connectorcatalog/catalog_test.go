@@ -145,12 +145,13 @@ entries:
           path: /v1/policy
       resource_families:
         - id: policy
-          provider_kernel: bounded.policy
           path: /v1/policy
           method: GET
           record_selector: $
           singleton: true
-          singleton_fallback_id: policy
+          read:
+            provider_kernel: bounded.policy
+            singleton_fallback_id: policy
           id_field: id
           event: {kind: bounded.policy, schema_ref: bounded/policy/v1}
           projection: {template: policy}

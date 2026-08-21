@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"sort"
+	"strconv"
 
 	"google.golang.org/protobuf/proto"
 
@@ -39,7 +40,7 @@ func CanonicalRequestIntentDigest(plan *cerebrov1.SourceExecutionPlanV1, scope C
 		[]byte(scope.LeaseOwner),
 		u64Bytes(scope.RuntimeGeneration),
 		u64Bytes(scope.LeaseGeneration),
-		i64Bytes(scope.LeaseExpiresAt.UTC().UnixNano()),
+		[]byte(strconv.FormatInt(scope.LeaseExpiresAt.UTC().UnixNano(), 10)),
 		requestWire,
 	} {
 		writeDigestField(hasher, value)
@@ -53,6 +54,18 @@ func CanonicalResultDigest(result *cerebrov1.SourceWorkerDecodeResultV1, receipt
 	if result == nil {
 		return "", fmt.Errorf("%w: worker result is missing", ErrInvalidExecution)
 	}
+	statusCode, err := safeUint64(receipt.StatusCode)
+	if err != nil {
+		return "", err
+	}
+	responseBytes, err := safeUint64(receipt.ResponseBytes)
+	if err != nil {
+		return "", err
+	}
+	recordCount, err := safeUint64(len(result.GetRecords()))
+	if err != nil {
+		return "", err
+	}
 	hasher := sha256.New()
 	for _, value := range [][]byte{
 		[]byte(receipt.PlanDigestSHA256),
@@ -61,11 +74,11 @@ func CanonicalResultDigest(result *cerebrov1.SourceWorkerDecodeResultV1, receipt
 		u64Bytes(receipt.RuntimeGeneration),
 		u64Bytes(receipt.LeaseGeneration),
 		[]byte(receipt.CredentialOperation),
-		u64Bytes(uint64(receipt.StatusCode)),
-		u64Bytes(uint64(receipt.ResponseBytes)),
+		u64Bytes(statusCode),
+		u64Bytes(responseBytes),
 		[]byte(receipt.ResponseSHA256),
 		[]byte(result.GetNextCursor()),
-		u64Bytes(uint64(len(result.GetRecords()))),
+		u64Bytes(recordCount),
 	} {
 		writeDigestField(hasher, value)
 	}
@@ -79,7 +92,11 @@ func CanonicalResultDigest(result *cerebrov1.SourceWorkerDecodeResultV1, receipt
 			keys = append(keys, key)
 		}
 		sort.Strings(keys)
-		writeDigestField(hasher, u64Bytes(uint64(len(keys))))
+		keyCount, err := safeUint64(len(keys))
+		if err != nil {
+			return "", err
+		}
+		writeDigestField(hasher, u64Bytes(keyCount))
 		for _, key := range keys {
 			writeDigestField(hasher, []byte(key))
 			writeDigestField(hasher, []byte(record.GetAttributes()[key]))
@@ -100,8 +117,6 @@ func u64Bytes(value uint64) []byte {
 	return encoded[:]
 }
 
-func i64Bytes(value int64) []byte { return u64Bytes(uint64(value)) }
-
 func canonicalRequestForPlan(plan *cerebrov1.SourceExecutionPlanV1) *cerebrov1.SourceWorkerHTTPRequestV1 {
 	return &cerebrov1.SourceWorkerHTTPRequestV1{
 		PlanId: plan.GetPlanId(), Method: "GET", Url: "https://graph.microsoft.com/v1.0/policies/authorizationPolicy",
@@ -109,13 +124,13 @@ func canonicalRequestForPlan(plan *cerebrov1.SourceExecutionPlanV1) *cerebrov1.S
 	}
 }
 
-func executionPlanDigest(plan *cerebrov1.SourceExecutionPlanV1) string {
+func executionPlanDigest(plan *cerebrov1.SourceExecutionPlanV1) (string, error) {
 	clone := proto.Clone(plan).(*cerebrov1.SourceExecutionPlanV1)
 	clone.PlanDigestSha256 = ""
 	payload, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
 	if err != nil {
-		panic("compiled source execution plan cannot be encoded: " + err.Error())
+		return "", fmt.Errorf("%w: compiled source execution plan cannot be encoded", ErrWorkerContract)
 	}
 	sum := sha256.Sum256(payload)
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:]), nil
 }

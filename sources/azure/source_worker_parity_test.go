@@ -68,7 +68,7 @@ func TestAuthorizationPolicyWorkerEventMatchesGoOracleSemantics(t *testing.T) {
 	result := &cerebrov1.SourceWorkerDecodeResultV1{
 		PlanId: plan.GetPlanId(), PlanDigestSha256: plan.GetPlanDigestSha256(), LogicalPageId: scope.LogicalPageID,
 		RequestIntentDigest: scope.RequestIntentDigest,
-		Records: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy", Attributes: attributes, PayloadJson: typedRaw}},
+		Records:             []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy", Attributes: attributes, PayloadJson: typedRaw}},
 	}
 	result.ResultDigestSha256, err = sourceworker.CanonicalResultDigest(result, receipt)
 	if err != nil {

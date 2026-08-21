@@ -61,19 +61,34 @@ fn exact_plan() -> SourceExecutionPlanV1 {
 
 #[test]
 fn decodes_the_go_generated_canonical_plan_wire() {
-    let hex = include_str!("../../../../proto/cerebro/v1/testdata/azure_authorization_policy_plan_v1.hex").trim();
-    let wire = hex.as_bytes().chunks_exact(2).map(|pair| {
-        let digit = |byte: u8| match byte {
-            b'0'..=b'9' => byte - b'0',
-            b'a'..=b'f' => byte - b'a' + 10,
-            _ => panic!("canonical plan fixture is not lowercase hex"),
-        };
-        digit(pair[0]) << 4 | digit(pair[1])
-    }).collect::<Vec<_>>();
-    assert_eq!(SourceExecutionPlanV1::decode(wire.as_slice()).unwrap(), exact_plan());
+    let hex = include_str!(
+        "../../../../proto/cerebro/v1/testdata/azure_authorization_policy_plan_v1.hex"
+    )
+    .trim();
+    let wire = hex
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let digit = |byte: u8| match byte {
+                b'0'..=b'9' => byte - b'0',
+                b'a'..=b'f' => byte - b'a' + 10,
+                _ => panic!("canonical plan fixture is not lowercase hex"),
+            };
+            digit(pair[0]) << 4 | digit(pair[1])
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        SourceExecutionPlanV1::decode(wire.as_slice()).unwrap(),
+        exact_plan()
+    );
 }
 
-fn exact_receipt(body: &[u8], status_code: u32, logical_page_id: &str, intent: &str) -> SourceWorkerSafeReceiptV1 {
+fn exact_receipt(
+    body: &[u8],
+    status_code: u32,
+    logical_page_id: &str,
+    intent: &str,
+) -> SourceWorkerSafeReceiptV1 {
     SourceWorkerSafeReceiptV1 {
         plan_digest_sha256: exact_plan().plan_digest_sha256,
         logical_page_id: logical_page_id.to_owned(),
@@ -112,7 +127,12 @@ fn decodes_exact_go_response_and_binds_execution_identity() {
             response_body: GO_LIVE_TEST_RESPONSE.to_vec(),
             logical_page_id: "page-sha256".to_owned(),
             request_intent_digest: intent.clone(),
-            receipt: Some(exact_receipt(GO_LIVE_TEST_RESPONSE, 200, "page-sha256", &intent)),
+            receipt: Some(exact_receipt(
+                GO_LIVE_TEST_RESPONSE,
+                200,
+                "page-sha256",
+                &intent,
+            )),
         }
         .encode_to_vec(),
     )
@@ -148,10 +168,13 @@ fn rejects_tampered_plan_status_oversize_and_missing_identity() {
         Err(WorkerError::InvalidPlan)
     );
 
-    for mutate in [
-        |plan: &mut SourceExecutionPlanV1| plan.required_attributes.remove(0),
-        |plan: &mut SourceExecutionPlanV1| plan.required_payload_fields.clear(),
-    ] {
+    let mutations: [fn(&mut SourceExecutionPlanV1); 2] = [
+        |plan| {
+            plan.required_attributes.remove(0);
+        },
+        |plan| plan.required_payload_fields.clear(),
+    ];
+    for mutate in mutations {
         let mut incomplete = exact_plan();
         mutate(&mut incomplete);
         incomplete.plan_digest_sha256 = plan_digest(&incomplete);
@@ -176,7 +199,12 @@ fn rejects_tampered_plan_status_oversize_and_missing_identity() {
     let mut oversize = base.clone();
     oversize.status_code = 200;
     oversize.response_body = vec![b' '; (MAX_RESPONSE_BYTES + 1) as usize];
-    oversize.receipt = Some(exact_receipt(&oversize.response_body, 200, "page", &"a".repeat(64)));
+    oversize.receipt = Some(exact_receipt(
+        &oversize.response_body,
+        200,
+        "page",
+        &"a".repeat(64),
+    ));
     assert_eq!(
         decode(&oversize.encode_to_vec()),
         Err(WorkerError::ResponseTooLarge)

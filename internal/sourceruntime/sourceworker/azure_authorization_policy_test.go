@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/protobuf/proto"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestAuthorizationPolicyEventSatisfiesAdmissionContract(t *testing.T) {
@@ -16,8 +16,12 @@ func TestAuthorizationPolicyEventSatisfiesAdmissionContract(t *testing.T) {
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	scope := exactScope(plan, now)
 	receipt := exactReceipt(plan, scope, []byte(exactGoAuthorizationPolicyResponse))
+	receiptWire, err := receipt.protobuf()
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := (&fakeWorker{responseBody: []byte(exactGoAuthorizationPolicyResponse)}).Decode(context.Background(), &cerebrov1.SourceWorkerDecodeRequestV1{
-		Plan: plan, StatusCode: 200, ResponseBody: []byte(exactGoAuthorizationPolicyResponse), LogicalPageId: scope.LogicalPageID, RequestIntentDigest: scope.RequestIntentDigest, Receipt: receipt.protobuf(),
+		Plan: plan, StatusCode: 200, ResponseBody: []byte(exactGoAuthorizationPolicyResponse), LogicalPageId: scope.LogicalPageID, RequestIntentDigest: scope.RequestIntentDigest, Receipt: receiptWire,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -88,6 +88,9 @@ func safeHTTPClient(resolver *net.Resolver) *http.Client {
 			}
 			lastErr = dialErr
 		}
+		if lastErr != nil {
+			return nil, fmt.Errorf("%w: provider connection failed: %w", ErrProviderEgress, lastErr)
+		}
 		return nil, fmt.Errorf("%w: provider connection failed", ErrProviderEgress)
 	}
 	return &http.Client{Transport: transport, Timeout: executionTimeout, CheckRedirect: func(*http.Request, []*http.Request) error {

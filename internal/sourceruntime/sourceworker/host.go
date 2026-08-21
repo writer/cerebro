@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,9 +83,17 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	if err := validateSafeReceipt(receipt, input.Plan, input.Scope, responseBody, statusCode); err != nil {
 		return nil, err
 	}
+	statusCodeWire, err := safeUint32(statusCode)
+	if err != nil {
+		return nil, err
+	}
+	receiptWire, err := receipt.protobuf()
+	if err != nil {
+		return nil, err
+	}
 	decodeResult, err := h.worker.Decode(ctx, &cerebrov1.SourceWorkerDecodeRequestV1{
-		Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), StatusCode: uint32(statusCode), ResponseBody: responseBody,
-		LogicalPageId: input.Scope.LogicalPageID, RequestIntentDigest: input.Scope.RequestIntentDigest, Receipt: receipt.protobuf(),
+		Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), StatusCode: statusCodeWire, ResponseBody: responseBody,
+		LogicalPageId: input.Scope.LogicalPageID, RequestIntentDigest: input.Scope.RequestIntentDigest, Receipt: receiptWire,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("credential-free response decoding failed: %w", err)
@@ -120,7 +129,7 @@ func (h *Host) get(ctx context.Context, endpoint *url.URL, accept string, limit 
 		}
 		return nil, 0, fmt.Errorf("%w: provider request failed", ErrProviderEgress)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		switch response.StatusCode {
 		case http.StatusUnauthorized:
@@ -133,7 +142,11 @@ func (h *Host) get(ctx context.Context, endpoint *url.URL, accept string, limit 
 			return nil, response.StatusCode, fmt.Errorf("%w: provider status %d is not allowed", ErrProviderMalformedResponse, response.StatusCode)
 		}
 	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
+	readLimit, err := strconv.ParseInt(strconv.FormatUint(limit, 10), 10, 64)
+	if err != nil || readLimit < 0 || limit > maxResponseBytes {
+		return nil, response.StatusCode, fmt.Errorf("%w: provider response limit is invalid", ErrInvalidExecution)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, readLimit+1))
 	if err != nil {
 		return nil, response.StatusCode, fmt.Errorf("%w: provider response read failed", ErrInvalidExecution)
 	}

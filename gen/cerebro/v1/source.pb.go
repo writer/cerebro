@@ -446,12 +446,13 @@ func (x *SourceWorkerHTTPRequestV1) GetPlanDigestSha256() string {
 // SourceWorkerDecodeRequestV1 carries only bounded provider output and safe
 // execution identity into the capability-free Rust decoder.
 type SourceWorkerDecodeRequestV1 struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Plan                *SourceExecutionPlanV1 `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
-	StatusCode          uint32                 `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
-	ResponseBody        []byte                 `protobuf:"bytes,3,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
-	LogicalPageId       string                 `protobuf:"bytes,4,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
-	RequestIntentDigest string                 `protobuf:"bytes,5,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
+	state               protoimpl.MessageState     `protogen:"open.v1"`
+	Plan                *SourceExecutionPlanV1     `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	StatusCode          uint32                     `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	ResponseBody        []byte                     `protobuf:"bytes,3,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+	LogicalPageId       string                     `protobuf:"bytes,4,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
+	RequestIntentDigest string                     `protobuf:"bytes,5,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
+	Receipt             *SourceWorkerSafeReceiptV1 `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -521,6 +522,123 @@ func (x *SourceWorkerDecodeRequestV1) GetRequestIntentDigest() string {
 	return ""
 }
 
+func (x *SourceWorkerDecodeRequestV1) GetReceipt() *SourceWorkerSafeReceiptV1 {
+	if x != nil {
+		return x.Receipt
+	}
+	return nil
+}
+
+// SourceWorkerSafeReceiptV1 binds normalized output to bounded provider-safe
+// execution evidence. It contains no credential, response body, or private route.
+type SourceWorkerSafeReceiptV1 struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	PlanDigestSha256    string                 `protobuf:"bytes,1,opt,name=plan_digest_sha256,json=planDigestSha256,proto3" json:"plan_digest_sha256,omitempty"`
+	LogicalPageId       string                 `protobuf:"bytes,2,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
+	RequestIntentDigest string                 `protobuf:"bytes,3,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
+	RuntimeGeneration   uint64                 `protobuf:"varint,4,opt,name=runtime_generation,json=runtimeGeneration,proto3" json:"runtime_generation,omitempty"`
+	LeaseGeneration     uint64                 `protobuf:"varint,5,opt,name=lease_generation,json=leaseGeneration,proto3" json:"lease_generation,omitempty"`
+	CredentialOperation string                 `protobuf:"bytes,6,opt,name=credential_operation,json=credentialOperation,proto3" json:"credential_operation,omitempty"`
+	StatusCode          uint32                 `protobuf:"varint,7,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	ResponseBytes       uint64                 `protobuf:"varint,8,opt,name=response_bytes,json=responseBytes,proto3" json:"response_bytes,omitempty"`
+	ResponseSha256      string                 `protobuf:"bytes,9,opt,name=response_sha256,json=responseSha256,proto3" json:"response_sha256,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *SourceWorkerSafeReceiptV1) Reset() {
+	*x = SourceWorkerSafeReceiptV1{}
+	mi := &file_cerebro_v1_source_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SourceWorkerSafeReceiptV1) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SourceWorkerSafeReceiptV1) ProtoMessage() {}
+
+func (x *SourceWorkerSafeReceiptV1) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_source_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SourceWorkerSafeReceiptV1.ProtoReflect.Descriptor instead.
+func (*SourceWorkerSafeReceiptV1) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetPlanDigestSha256() string {
+	if x != nil {
+		return x.PlanDigestSha256
+	}
+	return ""
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetLogicalPageId() string {
+	if x != nil {
+		return x.LogicalPageId
+	}
+	return ""
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetRequestIntentDigest() string {
+	if x != nil {
+		return x.RequestIntentDigest
+	}
+	return ""
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetRuntimeGeneration() uint64 {
+	if x != nil {
+		return x.RuntimeGeneration
+	}
+	return 0
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetLeaseGeneration() uint64 {
+	if x != nil {
+		return x.LeaseGeneration
+	}
+	return 0
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetCredentialOperation() string {
+	if x != nil {
+		return x.CredentialOperation
+	}
+	return ""
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetStatusCode() uint32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetResponseBytes() uint64 {
+	if x != nil {
+		return x.ResponseBytes
+	}
+	return 0
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetResponseSha256() string {
+	if x != nil {
+		return x.ResponseSha256
+	}
+	return ""
+}
+
 // SourceWorkerRecordV1 is one normalized, credential-free provider record.
 type SourceWorkerRecordV1 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -533,7 +651,7 @@ type SourceWorkerRecordV1 struct {
 
 func (x *SourceWorkerRecordV1) Reset() {
 	*x = SourceWorkerRecordV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[6]
+	mi := &file_cerebro_v1_source_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -545,7 +663,7 @@ func (x *SourceWorkerRecordV1) String() string {
 func (*SourceWorkerRecordV1) ProtoMessage() {}
 
 func (x *SourceWorkerRecordV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[6]
+	mi := &file_cerebro_v1_source_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -558,7 +676,7 @@ func (x *SourceWorkerRecordV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerRecordV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerRecordV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{6}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SourceWorkerRecordV1) GetProviderId() string {
@@ -599,7 +717,7 @@ type SourceWorkerDecodeResultV1 struct {
 
 func (x *SourceWorkerDecodeResultV1) Reset() {
 	*x = SourceWorkerDecodeResultV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[7]
+	mi := &file_cerebro_v1_source_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -611,7 +729,7 @@ func (x *SourceWorkerDecodeResultV1) String() string {
 func (*SourceWorkerDecodeResultV1) ProtoMessage() {}
 
 func (x *SourceWorkerDecodeResultV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[7]
+	mi := &file_cerebro_v1_source_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -624,7 +742,7 @@ func (x *SourceWorkerDecodeResultV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerDecodeResultV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerDecodeResultV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{7}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SourceWorkerDecodeResultV1) GetPlanId() string {
@@ -719,14 +837,26 @@ const file_cerebro_v1_source_proto_rawDesc = "" +
 	"\x03url\x18\x03 \x01(\tR\x03url\x12\x16\n" +
 	"\x06accept\x18\x04 \x01(\tR\x06accept\x12,\n" +
 	"\x12max_response_bytes\x18\x05 \x01(\x04R\x10maxResponseBytes\x12,\n" +
-	"\x12plan_digest_sha256\x18\x06 \x01(\tR\x10planDigestSha256\"\xf6\x01\n" +
+	"\x12plan_digest_sha256\x18\x06 \x01(\tR\x10planDigestSha256\"\xb7\x02\n" +
 	"\x1bSourceWorkerDecodeRequestV1\x125\n" +
 	"\x04plan\x18\x01 \x01(\v2!.cerebro.v1.SourceExecutionPlanV1R\x04plan\x12\x1f\n" +
 	"\vstatus_code\x18\x02 \x01(\rR\n" +
 	"statusCode\x12#\n" +
 	"\rresponse_body\x18\x03 \x01(\fR\fresponseBody\x12&\n" +
 	"\x0flogical_page_id\x18\x04 \x01(\tR\rlogicalPageId\x122\n" +
-	"\x15request_intent_digest\x18\x05 \x01(\tR\x13requestIntentDigest\"\xeb\x01\n" +
+	"\x15request_intent_digest\x18\x05 \x01(\tR\x13requestIntentDigest\x12?\n" +
+	"\areceipt\x18\x06 \x01(\v2%.cerebro.v1.SourceWorkerSafeReceiptV1R\areceipt\"\xa3\x03\n" +
+	"\x19SourceWorkerSafeReceiptV1\x12,\n" +
+	"\x12plan_digest_sha256\x18\x01 \x01(\tR\x10planDigestSha256\x12&\n" +
+	"\x0flogical_page_id\x18\x02 \x01(\tR\rlogicalPageId\x122\n" +
+	"\x15request_intent_digest\x18\x03 \x01(\tR\x13requestIntentDigest\x12-\n" +
+	"\x12runtime_generation\x18\x04 \x01(\x04R\x11runtimeGeneration\x12)\n" +
+	"\x10lease_generation\x18\x05 \x01(\x04R\x0fleaseGeneration\x121\n" +
+	"\x14credential_operation\x18\x06 \x01(\tR\x13credentialOperation\x12\x1f\n" +
+	"\vstatus_code\x18\a \x01(\rR\n" +
+	"statusCode\x12%\n" +
+	"\x0eresponse_bytes\x18\b \x01(\x04R\rresponseBytes\x12'\n" +
+	"\x0fresponse_sha256\x18\t \x01(\tR\x0eresponseSha256\"\xeb\x01\n" +
 	"\x14SourceWorkerRecordV1\x12\x1f\n" +
 	"\vprovider_id\x18\x01 \x01(\tR\n" +
 	"providerId\x12P\n" +
@@ -759,7 +889,7 @@ func file_cerebro_v1_source_proto_rawDescGZIP() []byte {
 	return file_cerebro_v1_source_proto_rawDescData
 }
 
-var file_cerebro_v1_source_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_cerebro_v1_source_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_cerebro_v1_source_proto_goTypes = []any{
 	(*SourceSpec)(nil),                  // 0: cerebro.v1.SourceSpec
 	(*SourceCursor)(nil),                // 1: cerebro.v1.SourceCursor
@@ -767,21 +897,23 @@ var file_cerebro_v1_source_proto_goTypes = []any{
 	(*SourceExecutionPlanV1)(nil),       // 3: cerebro.v1.SourceExecutionPlanV1
 	(*SourceWorkerHTTPRequestV1)(nil),   // 4: cerebro.v1.SourceWorkerHTTPRequestV1
 	(*SourceWorkerDecodeRequestV1)(nil), // 5: cerebro.v1.SourceWorkerDecodeRequestV1
-	(*SourceWorkerRecordV1)(nil),        // 6: cerebro.v1.SourceWorkerRecordV1
-	(*SourceWorkerDecodeResultV1)(nil),  // 7: cerebro.v1.SourceWorkerDecodeResultV1
-	nil,                                 // 8: cerebro.v1.SourceWorkerRecordV1.AttributesEntry
-	(*timestamppb.Timestamp)(nil),       // 9: google.protobuf.Timestamp
+	(*SourceWorkerSafeReceiptV1)(nil),   // 6: cerebro.v1.SourceWorkerSafeReceiptV1
+	(*SourceWorkerRecordV1)(nil),        // 7: cerebro.v1.SourceWorkerRecordV1
+	(*SourceWorkerDecodeResultV1)(nil),  // 8: cerebro.v1.SourceWorkerDecodeResultV1
+	nil,                                 // 9: cerebro.v1.SourceWorkerRecordV1.AttributesEntry
+	(*timestamppb.Timestamp)(nil),       // 10: google.protobuf.Timestamp
 }
 var file_cerebro_v1_source_proto_depIdxs = []int32{
-	9, // 0: cerebro.v1.SourceCheckpoint.watermark:type_name -> google.protobuf.Timestamp
-	3, // 1: cerebro.v1.SourceWorkerDecodeRequestV1.plan:type_name -> cerebro.v1.SourceExecutionPlanV1
-	8, // 2: cerebro.v1.SourceWorkerRecordV1.attributes:type_name -> cerebro.v1.SourceWorkerRecordV1.AttributesEntry
-	6, // 3: cerebro.v1.SourceWorkerDecodeResultV1.records:type_name -> cerebro.v1.SourceWorkerRecordV1
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	10, // 0: cerebro.v1.SourceCheckpoint.watermark:type_name -> google.protobuf.Timestamp
+	3,  // 1: cerebro.v1.SourceWorkerDecodeRequestV1.plan:type_name -> cerebro.v1.SourceExecutionPlanV1
+	6,  // 2: cerebro.v1.SourceWorkerDecodeRequestV1.receipt:type_name -> cerebro.v1.SourceWorkerSafeReceiptV1
+	9,  // 3: cerebro.v1.SourceWorkerRecordV1.attributes:type_name -> cerebro.v1.SourceWorkerRecordV1.AttributesEntry
+	7,  // 4: cerebro.v1.SourceWorkerDecodeResultV1.records:type_name -> cerebro.v1.SourceWorkerRecordV1
+	5,  // [5:5] is the sub-list for method output_type
+	5,  // [5:5] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_source_proto_init() }
@@ -795,7 +927,7 @@ func file_cerebro_v1_source_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_source_proto_rawDesc), len(file_cerebro_v1_source_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

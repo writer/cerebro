@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -18,7 +19,11 @@ type ProcessWorker struct{ path string }
 
 // NewProcessWorker binds the host to one configured worker executable path.
 func NewProcessWorker(path string) *ProcessWorker {
-	return &ProcessWorker{path: strings.TrimSpace(path)}
+	path = filepath.Clean(strings.TrimSpace(path))
+	if !filepath.IsAbs(path) || filepath.Base(path) != "source_worker" {
+		path = ""
+	}
+	return &ProcessWorker{path: path}
 }
 
 // Plan invokes the credential-free worker planning command.
@@ -55,6 +60,7 @@ func (w *ProcessWorker) run(ctx context.Context, command string, message proto.M
 	if err != nil {
 		return nil, fmt.Errorf("%w: worker input is invalid", ErrInvalidExecution)
 	}
+	// #nosec G204,G702 -- NewProcessWorker accepts only an absolute executable named source_worker; command is private and closed to plan/decode.
 	process := exec.CommandContext(ctx, w.path, command)
 	process.Env = []string{"LANG=C", "LC_ALL=C"}
 	process.Stdin = bytes.NewReader(input)

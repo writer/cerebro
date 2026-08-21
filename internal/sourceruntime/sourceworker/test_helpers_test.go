@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -37,7 +38,7 @@ func exactScope(plan *cerebrov1.SourceExecutionPlanV1, now time.Time) Credential
 	}
 	digest, err := CanonicalRequestIntentDigest(plan, scope, canonicalRequestForPlan(plan))
 	if err != nil {
-		panic(err)
+		return scope
 	}
 	scope.RequestIntentDigest = digest
 	return scope
@@ -73,11 +74,15 @@ func (w *fakeWorker) Plan(_ context.Context, plan *cerebrov1.SourceExecutionPlan
 func (w *fakeWorker) Decode(_ context.Context, request *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
 	payload, _ := proto.Marshal(request)
 	w.decodeSawSecret = bytes.Contains(payload, []byte("not-in-worker-or-receipt"))
+	payloadJSON, err := goTypedAuthorizationPolicyPayload(w.responseBody)
+	if err != nil {
+		return nil, err
+	}
 	result := &cerebrov1.SourceWorkerDecodeResultV1{
 		PlanId: request.GetPlan().GetPlanId(), PlanDigestSha256: request.GetPlan().GetPlanDigestSha256(), LogicalPageId: request.GetLogicalPageId(), RequestIntentDigest: request.GetRequestIntentDigest(),
 		Records: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy", Attributes: map[string]string{
 			"allow_email_verified_users_to_join": "false", "allow_invites_from": "adminsAndGuestInviters", "allowed_to_sign_up_email": "false", "allowed_to_use_sspr": "true", "block_msol_powershell": "true", "default_user_can_create_apps": "false", "default_user_can_create_groups": "false", "default_user_can_read_bitlocker": "true", "family": "authorization_policy", "resource_id": "authorizationPolicy", "resource_name": "authorizationPolicy", "resource_provider": "azure", "resource_type": "authorization_policy",
-		}, PayloadJson: goTypedAuthorizationPolicyPayload(w.responseBody)}},
+		}, PayloadJson: payloadJSON}},
 	}
 	receipt, err := safeReceiptFromProto(request.GetReceipt())
 	if err != nil {
@@ -93,10 +98,10 @@ func (w *fakeWorker) Decode(_ context.Context, request *cerebrov1.SourceWorkerDe
 	return result, nil
 }
 
-func goTypedAuthorizationPolicyPayload(body []byte) []byte {
+func goTypedAuthorizationPolicyPayload(body []byte) ([]byte, error) {
 	var input map[string]any
 	if err := json.Unmarshal(body, &input); err != nil {
-		panic(err)
+		return nil, err
 	}
 	valueOrNull := func(key string) any {
 		if value, ok := input[key]; ok {
@@ -106,11 +111,11 @@ func goTypedAuthorizationPolicyPayload(body []byte) []byte {
 	}
 	payload := map[string]any{
 		"id": "authorizationPolicy", "allowInvitesFrom": "", "guestUserRoleId": "",
-		"allowedToSignUpEmailBasedSubscriptions": valueOrNull("allowedToSignUpEmailBasedSubscriptions"),
-		"allowedToUseSSPR": valueOrNull("allowedToUseSSPR"),
+		"allowedToSignUpEmailBasedSubscriptions":    valueOrNull("allowedToSignUpEmailBasedSubscriptions"),
+		"allowedToUseSSPR":                          valueOrNull("allowedToUseSSPR"),
 		"allowEmailVerifiedUsersToJoinOrganization": valueOrNull("allowEmailVerifiedUsersToJoinOrganization"),
-		"blockMsolPowerShell": valueOrNull("blockMsolPowerShell"),
-		"defaultUserRolePermissions": valueOrNull("defaultUserRolePermissions"),
+		"blockMsolPowerShell":                       valueOrNull("blockMsolPowerShell"),
+		"defaultUserRolePermissions":                valueOrNull("defaultUserRolePermissions"),
 	}
 	if value, ok := input["id"].(string); ok && strings.TrimSpace(value) != "" {
 		payload["id"] = strings.TrimSpace(value)
@@ -123,9 +128,9 @@ func goTypedAuthorizationPolicyPayload(body []byte) []byte {
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return encoded
+	return encoded, nil
 }
 
 type fakeCredentialLease struct {
@@ -154,6 +159,6 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }
 func errorsIsInvalid(err error) bool {
-	return err != nil && strings.Contains(err.Error(), ErrInvalidExecution.Error())
+	return errors.Is(err, ErrInvalidExecution)
 }
 func errorsNewRedirect() error { return fmt.Errorf("%w: redirect", ErrInvalidExecution) }

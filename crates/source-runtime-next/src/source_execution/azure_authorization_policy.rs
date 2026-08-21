@@ -92,17 +92,16 @@ pub(crate) fn decode(input: &[u8]) -> Result<Vec<u8>, WorkerError> {
     );
     let payload_json = serde_json::to_vec(&provider_record.payload)
         .map_err(|_| WorkerError::InvalidProviderResponse)?;
-    if plan
-        .required_attributes
-        .iter()
-        .any(|required| !attributes.get(required).is_some_and(|value| !value.trim().is_empty()))
-        || plan.required_payload_fields.iter().any(|required| {
-            provider_record
-                .payload
-                .get(required)
-                .is_none_or(serde_json::Value::is_null)
-        })
-    {
+    if plan.required_attributes.iter().any(|required| {
+        attributes
+            .get(required)
+            .is_none_or(|value| value.trim().is_empty())
+    }) || plan.required_payload_fields.iter().any(|required| {
+        provider_record
+            .payload
+            .get(required)
+            .is_none_or(serde_json::Value::is_null)
+    }) {
         return Err(WorkerError::InvalidProviderResponse);
     }
     let result_digest_sha256 = result_digest(

@@ -83,10 +83,10 @@ fn go_typed_payload(payload: &Value, provider_id: &str) -> Value {
     for name in ["allowInvitesFrom", "guestUserRoleId"] {
         normalized.insert(
             name.to_owned(),
-            payload
-                .get(name)
-                .and_then(Value::as_str)
-                .map_or_else(|| Value::String(String::new()), |value| Value::String(value.to_owned())),
+            payload.get(name).and_then(Value::as_str).map_or_else(
+                || Value::String(String::new()),
+                |value| Value::String(value.to_owned()),
+            ),
         );
     }
     for name in [
@@ -95,7 +95,10 @@ fn go_typed_payload(payload: &Value, provider_id: &str) -> Value {
         "allowEmailVerifiedUsersToJoinOrganization",
         "blockMsolPowerShell",
     ] {
-        normalized.insert(name.to_owned(), payload.get(name).cloned().unwrap_or(Value::Null));
+        normalized.insert(
+            name.to_owned(),
+            payload.get(name).cloned().unwrap_or(Value::Null),
+        );
     }
     normalized.insert(
         "defaultUserRolePermissions".to_owned(),

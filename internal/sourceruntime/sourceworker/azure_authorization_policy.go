@@ -54,7 +54,7 @@ func AuthorizationPolicyEvent(plan *cerebrov1.SourceExecutionPlanV1, scope Crede
 	}
 	contract := sourcecdk.EventContract{Kind: plan.GetEventKind(), SchemaRef: plan.GetSchemaRef(), RequiredAttributes: plan.GetRequiredAttributes(), RequiredPayloadFields: plan.GetRequiredPayloadFields()}
 	if err := sourcecdk.ValidateEventEnvelopeWithContracts(event, []sourcecdk.EventContract{contract}); err != nil {
-		return nil, fmt.Errorf("%w: Azure authorization policy admission failed: %v", ErrInvalidExecution, err)
+		return nil, fmt.Errorf("%w: Azure authorization policy admission failed: %w", ErrInvalidExecution, err)
 	}
 	return event, nil
 }

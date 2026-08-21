@@ -2,31 +2,28 @@
 
 package sourceworker
 
-import (
-	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-)
+import cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 
 // AzureAuthorizationPolicyPlan returns the generated, credential-free plan for
 // the first-party Azure authorization policy family. Runtime code does not read
 // the connector catalog YAML.
 func AzureAuthorizationPolicyPlan() *cerebrov1.SourceExecutionPlanV1 {
-	plan := &cerebrov1.SourceExecutionPlanV1{
-		PlanId:              "source-plan-v1:azure:authorization_policy",
-		SourceId:            "azure",
-		FamilyId:            "authorization_policy",
-		ProviderKernel:      "azure.authorization_policy",
-		Method:              "GET",
-		Origin:              "https://graph.microsoft.com",
-		Path:                "/v1.0/policies/authorizationPolicy",
-		RecordSelector:      "$",
-		IdField:             "id",
-		SingletonFallbackId: "authorizationPolicy",
-		MaxResponseBytes:    maxResponseBytes,
-		EventKind:           "azure.authorization_policy",
-		SchemaRef:           "azure/authorization_policy/v1",
+	return &cerebrov1.SourceExecutionPlanV1{
+		PlanId:                "source-plan-v1:azure:authorization_policy",
+		SourceId:              "azure",
+		FamilyId:              "authorization_policy",
+		ProviderKernel:        "azure.authorization_policy",
+		Method:                "GET",
+		Origin:                "https://graph.microsoft.com",
+		Path:                  "/v1.0/policies/authorizationPolicy",
+		RecordSelector:        "$",
+		IdField:               "id",
+		SingletonFallbackId:   "authorizationPolicy",
+		MaxResponseBytes:      8388608,
+		EventKind:             "azure.authorization_policy",
+		SchemaRef:             "azure/authorization_policy/v1",
 		RequiredAttributes:    []string{"family", "resource_id", "resource_name", "resource_provider", "resource_type"},
 		RequiredPayloadFields: []string{"id"},
+		PlanDigestSha256:      "028a16909b64dadb7e50fc6ca28acd19106b947b48c7bac433435ccf485a4739",
 	}
-	plan.PlanDigestSha256 = executionPlanDigest(plan)
-	return plan
 }

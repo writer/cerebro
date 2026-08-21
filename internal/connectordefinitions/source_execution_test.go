@@ -43,10 +43,10 @@ func azureAuthorizationPolicyDefinition() Definition {
 		ResourceFamilies: []ResourceFamily{{
 			ID: "authorization_policy", Method: "GET", Path: "/v1.0/policies/authorizationPolicy",
 			Singleton: true, Pagination: &PaginationSpec{Type: "none"}, RecordSelector: "$",
-			ProviderKernel: "azure.authorization_policy", SingletonFallbackID: "authorizationPolicy", IDField: "id",
+			Read: &ResourceReadSpec{ProviderKernel: "azure.authorization_policy", SingletonFallbackID: "authorizationPolicy"}, IDField: "id",
 			Event: EventMappingSpec{
 				Kind: "azure.authorization_policy", SchemaRef: "azure/authorization_policy/v1",
-				RequiredAttributes: []string{"resource_type", "resource_provider", "resource_name", "resource_id", "family"},
+				RequiredAttributes:    []string{"resource_type", "resource_provider", "resource_name", "resource_id", "family"},
 				RequiredPayloadFields: []string{"id"},
 			},
 		}},
@@ -55,7 +55,7 @@ func azureAuthorizationPolicyDefinition() Definition {
 
 func TestCompileExecutionPlanRejectsUnregisteredKernelAndOrigin(t *testing.T) {
 	for name, mutate := range map[string]func(*Definition){
-		"kernel": func(definition *Definition) { definition.ResourceFamilies[0].ProviderKernel = "azure.arbitrary" },
+		"kernel": func(definition *Definition) { definition.ResourceFamilies[0].Read.ProviderKernel = "azure.arbitrary" },
 		"origin": func(definition *Definition) { definition.Transport.BaseURL = "https://example.com" },
 	} {
 		t.Run(name, func(t *testing.T) {

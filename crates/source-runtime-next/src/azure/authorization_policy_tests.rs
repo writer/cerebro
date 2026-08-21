@@ -111,9 +111,20 @@ fn payload_matches_the_go_typed_remarshal_shape() {
         )
         .unwrap();
     let payload = &page.records[0].payload;
-    assert_eq!(payload.get("allowInvitesFrom").and_then(serde_json::Value::as_str), Some(""));
-    assert_eq!(payload.get("allowedToUseSSPR"), Some(&serde_json::Value::Null));
-    assert_eq!(payload.get("defaultUserRolePermissions"), Some(&serde_json::Value::Null));
+    assert_eq!(
+        payload
+            .get("allowInvitesFrom")
+            .and_then(serde_json::Value::as_str),
+        Some("")
+    );
+    assert_eq!(
+        payload.get("allowedToUseSSPR"),
+        Some(&serde_json::Value::Null)
+    );
+    assert_eq!(
+        payload.get("defaultUserRolePermissions"),
+        Some(&serde_json::Value::Null)
+    );
     assert_eq!(payload.get("unknown"), None);
 }
 

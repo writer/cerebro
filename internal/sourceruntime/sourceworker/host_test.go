@@ -34,7 +34,8 @@ func TestHostKeepsCredentialInGoAndReturnsSafeReceipt(t *testing.T) {
 		}), CheckRedirect: func(*http.Request, []*http.Request) error { return errorsNewRedirect() }},
 	}
 	scope := exactScope(plan, now)
-	output, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque://azure/runtime-1", Scope: scope})
+	credentialReference := "reference-" + plan.GetPlanId()
+	output, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: credentialReference, Scope: scope})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestHostKeepsCredentialInGoAndReturnsSafeReceipt(t *testing.T) {
 	if worker.planSawSecret || worker.decodeSawSecret {
 		t.Fatal("credential crossed into worker protocol")
 	}
-	if receipt := fmt.Sprintf("%+v", output.Receipt); strings.Contains(receipt, secret) || strings.Contains(receipt, "opaque://") {
+	if receipt := fmt.Sprintf("%+v", output.Receipt); strings.Contains(receipt, secret) || strings.Contains(receipt, credentialReference) {
 		t.Fatalf("receipt leaked credential material: %s", receipt)
 	}
 	if output.Receipt.StatusCode != 200 || output.Receipt.ResponseBytes != len(exactGoAuthorizationPolicyResponse) || len(output.Receipt.ResponseSHA256) != 64 {
@@ -75,12 +76,16 @@ func TestHostKeepsCredentialInGoAndReturnsSafeReceipt(t *testing.T) {
 func TestHostRejectsRecomputedOriginTamperBeforeCredentialRedemption(t *testing.T) {
 	plan := AzureAuthorizationPolicyPlan()
 	plan.Origin = "https://example.com"
-	plan.PlanDigestSha256 = executionPlanDigest(plan)
+	var err error
+	plan.PlanDigestSha256, err = executionPlanDigest(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC()
 	scope := exactScope(plan, now)
 	redeemer := &fakeCredentialRedeemer{lease: &fakeCredentialLease{token: []byte("secret"), operationID: "operation-1", expiresAt: now.Add(time.Minute)}}
 	host := &Host{worker: &fakeWorker{}, redeemer: redeemer, client: &http.Client{}, now: func() time.Time { return now }}
-	_, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", Scope: scope})
+	_, err = host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", Scope: scope})
 	if !errors.Is(err, ErrWorkerContract) || redeemer.calls != 0 {
 		t.Fatalf("Execute() error = %v, redeem calls = %d", err, redeemer.calls)
 	}
@@ -95,7 +100,7 @@ func TestHostRejectsForgedResultDigest(t *testing.T) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(exactGoAuthorizationPolicyResponse)), Header: make(http.Header)}, nil
 	})}}
 	_, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", Scope: exactScope(plan, now)})
-	if err == nil || !strings.Contains(err.Error(), ErrWorkerContract.Error()) {
+	if !errors.Is(err, ErrWorkerContract) {
 		t.Fatalf("Execute() error = %v, want worker contract failure", err)
 	}
 }

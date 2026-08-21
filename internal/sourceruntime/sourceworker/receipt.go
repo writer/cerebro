@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -11,25 +12,65 @@ import (
 
 const maxSafeIdentifierBytes = 128
 
-func (receipt SafeReceipt) protobuf() *cerebrov1.SourceWorkerSafeReceiptV1 {
+func (receipt SafeReceipt) protobuf() (*cerebrov1.SourceWorkerSafeReceiptV1, error) {
+	statusCode, err := safeUint32(receipt.StatusCode)
+	if err != nil {
+		return nil, err
+	}
+	responseBytes, err := safeUint64(receipt.ResponseBytes)
+	if err != nil {
+		return nil, err
+	}
 	return &cerebrov1.SourceWorkerSafeReceiptV1{
 		PlanDigestSha256: receipt.PlanDigestSHA256, LogicalPageId: receipt.LogicalPageID,
 		RequestIntentDigest: receipt.RequestIntentDigest, RuntimeGeneration: receipt.RuntimeGeneration,
 		LeaseGeneration: receipt.LeaseGeneration, CredentialOperation: receipt.CredentialOperation,
-		StatusCode: uint32(receipt.StatusCode), ResponseBytes: uint64(receipt.ResponseBytes), ResponseSha256: receipt.ResponseSHA256,
+		StatusCode: statusCode, ResponseBytes: responseBytes, ResponseSha256: receipt.ResponseSHA256,
+	}, nil
+}
+
+func safeUint32(value int) (uint32, error) {
+	var converted uint32
+	if _, err := fmt.Sscan(strconv.Itoa(value), &converted); err != nil {
+		return 0, fmt.Errorf("%w: status code is outside the worker protocol", ErrInvalidExecution)
 	}
+	return converted, nil
+}
+
+func safeUint64(value int) (uint64, error) {
+	converted, err := strconv.ParseUint(strconv.Itoa(value), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%w: byte count is outside the worker protocol", ErrInvalidExecution)
+	}
+	return converted, nil
 }
 
 func safeReceiptFromProto(receipt *cerebrov1.SourceWorkerSafeReceiptV1) (SafeReceipt, error) {
-	if receipt == nil || receipt.GetResponseBytes() > uint64(^uint(0)>>1) {
+	if receipt == nil {
 		return SafeReceipt{}, fmt.Errorf("%w: worker receipt is invalid", ErrWorkerContract)
+	}
+	statusCode, err := safeProtocolInt(strconv.FormatUint(uint64(receipt.GetStatusCode()), 10), "status code")
+	if err != nil {
+		return SafeReceipt{}, err
+	}
+	responseBytes, err := safeProtocolInt(strconv.FormatUint(receipt.GetResponseBytes(), 10), "byte count")
+	if err != nil {
+		return SafeReceipt{}, err
 	}
 	return SafeReceipt{
 		PlanDigestSHA256: receipt.GetPlanDigestSha256(), LogicalPageID: receipt.GetLogicalPageId(),
 		RequestIntentDigest: receipt.GetRequestIntentDigest(), RuntimeGeneration: receipt.GetRuntimeGeneration(),
 		LeaseGeneration: receipt.GetLeaseGeneration(), CredentialOperation: receipt.GetCredentialOperation(),
-		StatusCode: int(receipt.GetStatusCode()), ResponseBytes: int(receipt.GetResponseBytes()), ResponseSHA256: receipt.GetResponseSha256(),
+		StatusCode: statusCode, ResponseBytes: responseBytes, ResponseSHA256: receipt.GetResponseSha256(),
 	}, nil
+}
+
+func safeProtocolInt(value, field string) (int, error) {
+	converted, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s is outside the worker protocol", ErrWorkerContract, field)
+	}
+	return converted, nil
 }
 
 func validateSafeReceipt(receipt SafeReceipt, plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, response []byte, statusCode int) error {

@@ -73,10 +73,11 @@ entries:
               resource_provider: azure
               resource_type: authorization_policy
             template: policy
-          provider_kernel: azure.authorization_policy
+          read:
+            provider_kernel: azure.authorization_policy
+            singleton_fallback_id: authorizationPolicy
           record_selector: $
           singleton: true
-          singleton_fallback_id: authorizationPolicy
       schema_version: cerebro.integration/v1
       source_id: azure
       tenant_id: builtin_catalog
