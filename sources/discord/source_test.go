@@ -210,6 +210,34 @@ func TestResumedCursorMustBePositiveSnowflake(t *testing.T) {
 	}
 }
 
+func TestNilPullHelpersAreSafe(t *testing.T) {
+	if err := adjustProviderCursor(familyMember, nil); err != nil {
+		t.Fatalf("adjustProviderCursor(nil) error = %v", err)
+	}
+	if err := validatePermissionScope(familyPermission, sourcecdk.Config{}, nil); err != nil {
+		t.Fatalf("validatePermissionScope(nil) error = %v", err)
+	}
+}
+
+func TestPermissionConfigIDsHaveDistinctTypedError(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"application_id", "guild_id"} {
+		values := map[string]string{
+			"tenant_id": "tenant", "base_url": "https://discord.com/api/v10", "family": familyPermission,
+			"application_id": "200000000000000000", "guild_id": "100000000000000000",
+		}
+		values[field] = "not-a-snowflake"
+		cfg := sourcecdk.NewConfig(values)
+		_, err := source.Read(context.Background(), cfg, nil)
+		if !errors.Is(err, errInvalidConfigID) || errors.Is(err, errInvalidCursor) {
+			t.Fatalf("Read(%s) error = %v, want config ID error only", field, err)
+		}
+	}
+}
+
 func TestUnsortedMemberPageUsesNumericMaximumUserIDCursor(t *testing.T) {
 	source, err := New()
 	if err != nil {

@@ -29,7 +29,7 @@ const (
 )
 
 var templateKeys = []string{"application_id", "guild_id", "api_key"}
-var errInvalidCursor, errMissingProviderID, errPermissionScopeMismatch, errInvalidEnvelope = errors.New("discord cursor is invalid"), errors.New("discord provider ID is missing"), errors.New("discord permission scope mismatch"), errors.New("discord response envelope is invalid")
+var errInvalidCursor, errInvalidConfigID, errMissingProviderID, errPermissionScopeMismatch, errInvalidEnvelope = errors.New("discord cursor is invalid"), errors.New("discord config provider ID is invalid"), errors.New("discord provider ID is missing"), errors.New("discord permission scope mismatch"), errors.New("discord response envelope is invalid")
 
 type Source struct {
 	spec   *cerebrov1.SourceSpec
@@ -163,14 +163,14 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	if family == familyAuditLog || family == familyMember {
 		if token := strings.TrimSpace(sourcecdk.CursorToken(cursor)); token != "" {
 			if _, err := positiveSnowflake(token); err != nil {
-				return sourcecdk.Pull{}, fmt.Errorf("%w: discord %s after cursor: %v", errInvalidCursor, family, err)
+				return sourcecdk.Pull{}, fmt.Errorf("%w: discord %s after cursor: %w", errInvalidCursor, family, err)
 			}
 		}
 	}
 	if family == familyPermission {
 		for _, field := range []string{"application_id", "guild_id"} {
 			if _, err := positiveSnowflake(sourcecdk.ConfigValue(runtimeCfg, field)); err != nil {
-				return sourcecdk.Pull{}, fmt.Errorf("%w: discord permission config %s: %v", errInvalidCursor, field, err)
+				return sourcecdk.Pull{}, fmt.Errorf("%w: discord permission config %s: %w", errInvalidConfigID, field, err)
 			}
 		}
 	}
@@ -188,6 +188,9 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 }
 
 func adjustProviderCursor(family string, pull *sourcecdk.Pull) error {
+	if pull == nil {
+		return nil
+	}
 	switch family {
 	case familyAuditLog:
 		var previous uint64
@@ -224,8 +227,7 @@ func adjustProviderCursor(family string, pull *sourcecdk.Pull) error {
 }
 
 func positiveSnowflake(value string) (uint64, error) {
-	trimmed := strings.TrimSpace(value)
-	id, err := strconv.ParseUint(trimmed, 10, 64)
+	id, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
 	if err != nil || id == 0 {
 		return 0, fmt.Errorf("must be a positive string snowflake")
 	}
@@ -233,7 +235,7 @@ func positiveSnowflake(value string) (uint64, error) {
 }
 
 func validatePermissionScope(family string, cfg sourcecdk.Config, pull *sourcecdk.Pull) error {
-	if family != familyPermission {
+	if family != familyPermission || pull == nil {
 		return nil
 	}
 	expectedApplication := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "application_id"))
@@ -264,7 +266,7 @@ func (s *Source) innerFor(cfg sourcecdk.Config) (*jsonapi.Source, error) {
 func validateResponseEnvelope(family string, body []byte) error {
 	var root any
 	if err := json.Unmarshal(body, &root); err != nil {
-		return fmt.Errorf("%w: decode %s: %v", errInvalidEnvelope, family, err)
+		return fmt.Errorf("%w: decode %s: %w", errInvalidEnvelope, family, err)
 	}
 	var records []any
 	switch family {
