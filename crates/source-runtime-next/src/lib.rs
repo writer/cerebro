@@ -15,6 +15,7 @@ mod mapper;
 mod protocol;
 mod provider_failure;
 mod runtime_config;
+mod security_tooling_map;
 mod sentinelone;
 mod trivy;
 
@@ -60,6 +61,10 @@ pub use provider_failure::{
 pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,
     resolve_environment_references,
+};
+pub use security_tooling_map::{
+    SecurityToolingMapError, SecurityToolingMapFamily, SecurityToolingMapKernel,
+    SecurityToolingMapPage, SecurityToolingMapRecord, SecurityToolingMapRequest,
 };
 pub use sentinelone::{
     SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
