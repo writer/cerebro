@@ -329,9 +329,9 @@ mod tests {
     }
 
     #[test]
-    fn inspection_recognizes_ssn_and_private_key_markers() {
+    fn inspection_recognizes_pii_and_secret_assignments() {
         let inspection = GcpObjectContentKernel::inspect(
-            b"subject=123-45-6789\n-----BEGIN RSA PRIVATE KEY-----",
+            b"contact=person@example.com\napi_key=syntheticvalue12345",
             false,
         );
         assert!(inspection.contains_pii);
