@@ -260,6 +260,26 @@ fn attributes_accept_only_bounded_non_secret_operational_metadata() {
         );
     }
 
+    for value in [
+        "api_key",
+        "token-value",
+        "password:value",
+        "secret/value",
+        "private_key",
+        "session_cookie",
+        "authorization",
+        "bearer:credential",
+    ] {
+        let mut event = envelope(family, payload.clone());
+        event
+            .attributes
+            .insert("correlation_id".into(), value.into());
+        assert!(
+            event.validate().is_err(),
+            "credential-like attribute value {value} was accepted"
+        );
+    }
+
     let mut event = envelope(family, payload);
     event.attributes.insert(
         "correlation_id".into(),

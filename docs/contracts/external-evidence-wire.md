@@ -38,7 +38,8 @@ authorities rather than redefining them.
 - Envelope attributes accept only `correlation_id`, `environment`,
   `producer_version`, `region`, `source_kind`, and `trace_id`. Values are
   identifier-like operational metadata capped at 256 bytes; credentials,
-  authorization data, cookies, secrets, and content are not attribute fields.
+  authorization data, cookies, secrets, tokens, credential markers, and content
+  are rejected as attribute keys or values.
 - Event sequences start at one; zero cannot enter the admission path.
 - Observation time cannot precede occurrence time.
 - Omitted evidence quality means `partial` and `unknown`; it cannot authorize a

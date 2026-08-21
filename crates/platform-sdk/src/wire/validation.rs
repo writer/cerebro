@@ -14,6 +14,26 @@ pub(super) fn validate_attribute(key: &str, value: &str) -> Result<(), SdkError>
     if value.len() > MAX_EXTERNAL_EVENT_ATTRIBUTE_VALUE_BYTES {
         return Err(SdkError::TooLong("external event attribute value"));
     }
+    let normalized = value
+        .to_ascii_lowercase()
+        .replace(['-', '.', '/', ':', '@', '%'], "_");
+    let compact = normalized.replace('_', "");
+    if [
+        "apikey",
+        "authorization",
+        "bearer",
+        "credential",
+        "password",
+        "privatekey",
+        "secret",
+        "sessioncookie",
+        "token",
+    ]
+    .iter()
+    .any(|marker| compact.contains(marker))
+    {
+        return Err(SdkError::Invalid("external event attribute value"));
+    }
     validate_id(value, "external event attribute value")
 }
 
