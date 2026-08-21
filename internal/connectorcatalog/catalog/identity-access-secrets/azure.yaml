@@ -18,7 +18,7 @@ entries:
           key: base_url
           label: Microsoft Graph base URL
           required: true
-      description: Collects the Microsoft Graph authorization policy and projects its tenant-wide access defaults into the Cerebro graph.
+      description: Collects authorization policy from Azure and projects them into the Cerebro graph as policies for inventory, access review, audit, risk, and operational context.
       display_name: Azure
       id: builtin-azure
       ingest:
@@ -44,13 +44,14 @@ entries:
               - resource_name
               - resource_provider
               - resource_type
+            required_payload_fields:
+              - id
             schema_ref: azure/authorization_policy/v1
             urn_kind: azure_authorization_policy
           id: authorization_policy
           id_field: id
           label: Authorization policy
           method: GET
-          provider_kernel: azure.authorization_policy
           pagination:
             type: none
           path: /v1.0/policies/authorizationPolicy
@@ -71,6 +72,7 @@ entries:
               resource_provider: azure
               resource_type: authorization_policy
             template: policy
+          provider_kernel: azure.authorization_policy
           record_selector: $
           singleton: true
           singleton_fallback_id: authorizationPolicy
