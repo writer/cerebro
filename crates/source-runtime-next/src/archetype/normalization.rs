@@ -43,6 +43,7 @@ impl ArchetypeKernel {
         repository: Option<&ArchetypeRepository>,
         collection_state: VulnerabilityCollectionState,
     ) -> Result<ArchetypeRecord, ArchetypeError> {
+        scan.validate_invariant()?;
         require_repository_scope(scan, repository)?;
         match (self.family, collection_state) {
             (ArchetypeFamily::Scan, VulnerabilityCollectionState::NotRequested)

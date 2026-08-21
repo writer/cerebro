@@ -100,3 +100,55 @@ fn scan_status_and_repository_scope_fail_closed() {
         ArchetypeError::ResponseScopeMismatch
     );
 }
+
+#[test]
+fn scan_record_revalidates_mutable_fields_against_the_decoded_payload() {
+    let kernel = kernel(ArchetypeFamily::Vulnerability);
+    let valid = scan(&kernel);
+
+    let mut missing_id = valid.clone();
+    missing_id.id = 0;
+    assert_eq!(
+        kernel
+            .scan_record(&missing_id, None, VulnerabilityCollectionState::Complete,)
+            .unwrap_err(),
+        ArchetypeError::MissingRecordIdentity
+    );
+
+    let mut missing_repository_id = valid.clone();
+    missing_repository_id.repository_id = 0;
+    assert_eq!(
+        kernel
+            .scan_record(
+                &missing_repository_id,
+                None,
+                VulnerabilityCollectionState::Complete,
+            )
+            .unwrap_err(),
+        ArchetypeError::MissingRecordIdentity
+    );
+
+    let mut changed_id = valid.clone();
+    changed_id.id += 1;
+    let mut changed_repository_id = valid.clone();
+    changed_repository_id.repository_id = 999;
+    let mut changed_status = valid.clone();
+    changed_status.status = "running".to_owned();
+    for inconsistent in [changed_id, changed_repository_id, changed_status] {
+        assert_eq!(
+            kernel
+                .scan_record(&inconsistent, None, VulnerabilityCollectionState::Complete,)
+                .unwrap_err(),
+            ArchetypeError::InvalidResponse
+        );
+    }
+
+    let mut blank_status = valid;
+    blank_status.status = " ".to_owned();
+    assert_eq!(
+        kernel
+            .scan_record(&blank_status, None, VulnerabilityCollectionState::Complete,)
+            .unwrap_err(),
+        ArchetypeError::InvalidResponse
+    );
+}

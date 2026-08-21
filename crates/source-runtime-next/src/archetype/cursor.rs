@@ -43,12 +43,6 @@ impl ArchetypeKernel {
 }
 
 pub(super) fn scan_from_response(scan: ScanResponse) -> Result<ArchetypeScan, ArchetypeError> {
-    if scan.id == 0 || scan.repository_id == 0 {
-        return Err(ArchetypeError::MissingRecordIdentity);
-    }
-    if scan.status.trim().is_empty() {
-        return Err(ArchetypeError::InvalidResponse);
-    }
     let occurred_at = [
         scan.completed_at.as_str(),
         scan.started_at.as_str(),
@@ -57,11 +51,13 @@ pub(super) fn scan_from_response(scan: ScanResponse) -> Result<ArchetypeScan, Ar
     .into_iter()
     .find_map(normalized_timestamp);
     let payload = serde_json::to_value(&scan).map_err(|_| ArchetypeError::InvalidResponse)?;
-    Ok(ArchetypeScan {
+    let scan = ArchetypeScan {
         id: scan.id,
         repository_id: scan.repository_id,
         status: scan.status,
         occurred_at,
         payload,
-    })
+    };
+    scan.validate_invariant()?;
+    Ok(scan)
 }
