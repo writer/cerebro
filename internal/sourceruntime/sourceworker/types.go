@@ -23,6 +23,15 @@ var (
 	// ErrCredentialUnavailable means the trusted host could not redeem the
 	// opaque credential reference for this operation.
 	ErrCredentialUnavailable = errors.New("source worker credential unavailable")
+	ErrProviderAuthentication = errors.New("provider authentication failed; refresh the Azure credential reference")
+	ErrProviderPermission = errors.New("provider permission denied; grant the Azure Graph authorization policy permission")
+	ErrProviderRateLimited = errors.New("provider rate limited the request; retry after the provider backoff window")
+	ErrProviderTimeout = errors.New("provider request timed out; retry the bounded operation")
+	ErrProviderEgress = errors.New("provider egress failed; verify public DNS and outbound HTTPS access")
+	ErrProviderResponseTooLarge = errors.New("provider response exceeded the compiled bound; reduce the provider response")
+	ErrProviderMalformedResponse = errors.New("provider response was malformed; verify the Azure Graph response contract")
+	ErrWorkerContract = errors.New("source worker contract validation failed; regenerate the compiled plan and worker protocol")
+	ErrWorkerInternal = errors.New("source worker failed internally; inspect the bounded worker error class")
 )
 
 // Worker plans and decodes one bounded request without receiving credentials

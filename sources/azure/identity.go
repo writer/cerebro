@@ -325,7 +325,7 @@ func userEvent(settings settings, record userRecord) (*primitives.Event, error) 
 		"status":         enabledStatus(record.AccountEnabled),
 		"user_id":        firstNonEmpty(record.ID, record.UserPrincipalName, email),
 	}
-	payload, err := payloadWithRaw(record.raw, map[string]any{"tenant_id": settings.tenantID})
+	payload, err := payloadWithRaw(record.raw, map[string]any{"id": firstNonEmpty(record.ID, "authorizationPolicy"), "tenant_id": settings.tenantID})
 	if err != nil {
 		return nil, err
 	}

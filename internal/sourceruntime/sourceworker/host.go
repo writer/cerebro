@@ -3,8 +3,8 @@ package sourceworker
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"crypto/subtle"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -39,16 +39,23 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	}
 	ctx, cancel := context.WithTimeout(ctx, executionTimeout)
 	defer cancel()
+	if err := validateCanonicalPlan(input.Plan); err != nil {
+		return nil, err
+	}
 	if err := validateScope(input.Plan, input.CredentialReference, input.Scope, h.now().UTC()); err != nil {
 		return nil, err
 	}
 	requestPlan, err := h.worker.Plan(ctx, proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1))
 	if err != nil {
-		return nil, fmt.Errorf("%w: credential-free request planning failed", ErrInvalidExecution)
+		return nil, fmt.Errorf("%w: credential-free request planning failed: %w", ErrWorkerContract, err)
 	}
 	providerURL, err := validateWorkerRequest(input.Plan, requestPlan)
 	if err != nil {
 		return nil, err
+	}
+	intentDigest, err := CanonicalRequestIntentDigest(input.Plan, input.Scope, requestPlan)
+	if err != nil || subtle.ConstantTimeCompare([]byte(intentDigest), []byte(input.Scope.RequestIntentDigest)) != 1 {
+		return nil, fmt.Errorf("%w: request intent digest does not match the exact plan, scope, and request", ErrWorkerContract)
 	}
 	lease, err := h.redeemer.Redeem(ctx, input.CredentialReference, input.Scope)
 	if err != nil || lease == nil {
@@ -58,27 +65,34 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	if lease.ExpiresAt().UTC().Before(h.now().UTC()) {
 		return nil, ErrCredentialUnavailable
 	}
+	credentialOperation := strings.TrimSpace(lease.OperationID())
+	if !safeIdentifier(credentialOperation) {
+		return nil, fmt.Errorf("%w: credential operation identifier is not provider-safe", ErrCredentialUnavailable)
+	}
 	responseBody, statusCode, err := h.get(ctx, providerURL, requestPlan.GetAccept(), requestPlan.GetMaxResponseBytes(), lease.BearerToken())
 	if err != nil {
 		return nil, err
 	}
-	decodeResult, err := h.worker.Decode(ctx, &cerebrov1.SourceWorkerDecodeRequestV1{
-		Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), StatusCode: uint32(statusCode), ResponseBody: responseBody,
-		LogicalPageId: input.Scope.LogicalPageID, RequestIntentDigest: input.Scope.RequestIntentDigest,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%w: credential-free response decoding failed", ErrInvalidExecution)
-	}
-	if err := validateWorkerResult(input.Plan, input.Scope, decodeResult); err != nil {
-		return nil, err
-	}
-	sum := sha256.Sum256(responseBody)
-	return &ExecutionOutput{Result: decodeResult, Receipt: SafeReceipt{
+	receipt := SafeReceipt{
 		PlanDigestSHA256: input.Plan.GetPlanDigestSha256(), LogicalPageID: input.Scope.LogicalPageID,
 		RequestIntentDigest: input.Scope.RequestIntentDigest, RuntimeGeneration: input.Scope.RuntimeGeneration,
-		LeaseGeneration: input.Scope.LeaseGeneration, CredentialOperation: strings.TrimSpace(lease.OperationID()),
-		StatusCode: statusCode, ResponseBytes: len(responseBody), ResponseSHA256: hex.EncodeToString(sum[:]),
-	}}, nil
+		LeaseGeneration: input.Scope.LeaseGeneration, CredentialOperation: credentialOperation,
+		StatusCode: statusCode, ResponseBytes: len(responseBody), ResponseSHA256: responseSHA256(responseBody),
+	}
+	if err := validateSafeReceipt(receipt, input.Plan, input.Scope, responseBody, statusCode); err != nil {
+		return nil, err
+	}
+	decodeResult, err := h.worker.Decode(ctx, &cerebrov1.SourceWorkerDecodeRequestV1{
+		Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), StatusCode: uint32(statusCode), ResponseBody: responseBody,
+		LogicalPageId: input.Scope.LogicalPageID, RequestIntentDigest: input.Scope.RequestIntentDigest, Receipt: receipt.protobuf(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("credential-free response decoding failed: %w", err)
+	}
+	if err := validateWorkerResult(input.Plan, input.Scope, receipt, decodeResult); err != nil {
+		return nil, err
+	}
+	return &ExecutionOutput{Result: decodeResult, Receipt: receipt}, nil
 }
 
 func (h *Host) get(ctx context.Context, endpoint *url.URL, accept string, limit uint64, bearer []byte) ([]byte, int, error) {
@@ -97,18 +111,34 @@ func (h *Host) get(ctx context.Context, endpoint *url.URL, accept string, limit 
 	req.Header.Del("Authorization")
 	clear(authorization)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: provider request failed", ErrInvalidExecution)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, 0, ErrProviderTimeout
+		}
+		var networkError net.Error
+		if errors.As(err, &networkError) && networkError.Timeout() {
+			return nil, 0, ErrProviderTimeout
+		}
+		return nil, 0, fmt.Errorf("%w: provider request failed", ErrProviderEgress)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, response.StatusCode, fmt.Errorf("%w: provider status %d is not allowed", ErrInvalidExecution, response.StatusCode)
+		switch response.StatusCode {
+		case http.StatusUnauthorized:
+			return nil, response.StatusCode, ErrProviderAuthentication
+		case http.StatusForbidden:
+			return nil, response.StatusCode, ErrProviderPermission
+		case http.StatusTooManyRequests:
+			return nil, response.StatusCode, ErrProviderRateLimited
+		default:
+			return nil, response.StatusCode, fmt.Errorf("%w: provider status %d is not allowed", ErrProviderMalformedResponse, response.StatusCode)
+		}
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
 	if err != nil {
 		return nil, response.StatusCode, fmt.Errorf("%w: provider response read failed", ErrInvalidExecution)
 	}
 	if uint64(len(body)) > limit {
-		return nil, response.StatusCode, fmt.Errorf("%w: provider response exceeds %d bytes", ErrInvalidExecution, limit)
+		return nil, response.StatusCode, fmt.Errorf("%w: limit %d", ErrProviderResponseTooLarge, limit)
 	}
 	return body, response.StatusCode, nil
 }

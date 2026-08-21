@@ -3,7 +3,7 @@ use prost::Message;
 use cerebro_source_runtime_next::AzureAuthenticationMethodsPolicyKernel;
 
 use super::{
-    contract::{result_digest, validate_plan},
+    contract::{lower_sha256, response_digest, result_digest, safe_identifier, validate_plan},
     error::WorkerError,
     wire::{
         SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
@@ -47,6 +47,25 @@ pub(crate) fn decode(input: &[u8]) -> Result<Vec<u8>, WorkerError> {
     {
         return Err(WorkerError::MissingExecutionIdentity);
     }
+    let receipt = request
+        .receipt
+        .as_ref()
+        .ok_or(WorkerError::MissingExecutionIdentity)?;
+    if receipt.plan_digest_sha256 != plan.plan_digest_sha256
+        || receipt.logical_page_id != request.logical_page_id
+        || receipt.request_intent_digest != request.request_intent_digest
+        || receipt.runtime_generation == 0
+        || receipt.lease_generation == 0
+        || !safe_identifier(&receipt.credential_operation)
+        || receipt.status_code != request.status_code
+        || receipt.response_bytes != request.response_body.len() as u64
+        || receipt.response_sha256 != response_digest(&request.response_body)
+        || !lower_sha256(&receipt.plan_digest_sha256)
+        || !lower_sha256(&receipt.request_intent_digest)
+        || !lower_sha256(&receipt.response_sha256)
+    {
+        return Err(WorkerError::MissingExecutionIdentity);
+    }
 
     let kernel = AzureAuthenticationMethodsPolicyKernel::new(&plan.origin)
         .map_err(|_| WorkerError::InvalidPlan)?;
@@ -73,11 +92,22 @@ pub(crate) fn decode(input: &[u8]) -> Result<Vec<u8>, WorkerError> {
     );
     let payload_json = serde_json::to_vec(&provider_record.payload)
         .map_err(|_| WorkerError::InvalidProviderResponse)?;
+    if plan
+        .required_attributes
+        .iter()
+        .any(|required| !attributes.get(required).is_some_and(|value| !value.trim().is_empty()))
+        || plan.required_payload_fields.iter().any(|required| {
+            provider_record
+                .payload
+                .get(required)
+                .is_none_or(serde_json::Value::is_null)
+        })
+    {
+        return Err(WorkerError::InvalidProviderResponse);
+    }
     let result_digest_sha256 = result_digest(
-        &plan.plan_id,
-        &plan.plan_digest_sha256,
-        &request.logical_page_id,
-        &request.request_intent_digest,
+        receipt,
+        "",
         &provider_record.provider_id,
         &attributes,
         &payload_json,

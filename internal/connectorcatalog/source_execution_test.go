@@ -1,6 +1,7 @@
 package connectorcatalog
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
@@ -20,5 +21,8 @@ func TestAzureCatalogCompilesExactAuthorizationPolicyExecutionPlan(t *testing.T)
 	}
 	if plan.GetProviderKernel() != "azure.authorization_policy" || plan.GetSingletonFallbackId() != "authorizationPolicy" {
 		t.Fatalf("unexpected compiled plan: %#v", plan)
+	}
+	if !slices.Equal(plan.GetRequiredAttributes(), []string{"family", "resource_id", "resource_name", "resource_provider", "resource_type"}) || !slices.Equal(plan.GetRequiredPayloadFields(), []string{"id"}) {
+		t.Fatalf("unexpected compiled admission contract: %#v", plan)
 	}
 }

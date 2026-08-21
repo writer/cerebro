@@ -1,6 +1,7 @@
 package connectordefinitions
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -18,6 +19,12 @@ func TestCompileAzureAuthorizationPolicyExecutionPlan(t *testing.T) {
 	}
 	if plan.GetEventKind() != "azure.authorization_policy" || plan.GetSchemaRef() != "azure/authorization_policy/v1" {
 		t.Fatalf("unexpected event contract: %#v", plan)
+	}
+	if got := plan.GetRequiredAttributes(); !slices.Equal(got, []string{"family", "resource_id", "resource_name", "resource_provider", "resource_type"}) {
+		t.Fatalf("required attributes = %v", got)
+	}
+	if got := plan.GetRequiredPayloadFields(); !slices.Equal(got, []string{"id"}) {
+		t.Fatalf("required payload fields = %v", got)
 	}
 	if len(plan.GetPlanDigestSha256()) != 64 {
 		t.Fatalf("plan digest = %q", plan.GetPlanDigestSha256())
@@ -39,9 +46,25 @@ func azureAuthorizationPolicyDefinition() Definition {
 			ProviderKernel: "azure.authorization_policy", SingletonFallbackID: "authorizationPolicy", IDField: "id",
 			Event: EventMappingSpec{
 				Kind: "azure.authorization_policy", SchemaRef: "azure/authorization_policy/v1",
-				RequiredAttributes: []string{"resource_type", "resource_provider", "resource_name", "resource_id"},
+				RequiredAttributes: []string{"resource_type", "resource_provider", "resource_name", "resource_id", "family"},
+				RequiredPayloadFields: []string{"id"},
 			},
 		}},
+	}
+}
+
+func TestCompileExecutionPlanRejectsUnregisteredKernelAndOrigin(t *testing.T) {
+	for name, mutate := range map[string]func(*Definition){
+		"kernel": func(definition *Definition) { definition.ResourceFamilies[0].ProviderKernel = "azure.arbitrary" },
+		"origin": func(definition *Definition) { definition.Transport.BaseURL = "https://example.com" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			definition := azureAuthorizationPolicyDefinition()
+			mutate(&definition)
+			if _, err := CompileSourceExecutionPlanV1(definition, "authorization_policy"); err == nil {
+				t.Fatal("compiler accepted an unregistered provider binding")
+			}
+		})
 	}
 }
 

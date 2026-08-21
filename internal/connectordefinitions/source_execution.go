@@ -56,6 +56,10 @@ func CompileSourceExecutionPlanV1(definition Definition, familyID string) (*cere
 	if family == nil {
 		return nil, fmt.Errorf("%w: family %q is not defined", ErrInvalidSourceExecutionPlan, familyID)
 	}
+	kernel, registered := registeredSourceExecutionKernel(sourceID, familyID)
+	if !registered || family.ProviderKernel != kernel.providerKernel || origin.String() != kernel.origin || family.Method != kernel.method || family.Path != kernel.path || family.RecordSelector != kernel.recordSelector || family.IDField != kernel.idField || family.SingletonFallbackID != kernel.singletonFallbackID {
+		return nil, fmt.Errorf("%w: source family is not bound to a registered provider kernel", ErrInvalidSourceExecutionPlan)
+	}
 	if family.Method != "GET" || !family.Singleton || family.Pagination == nil || strings.TrimSpace(family.Pagination.Type) != "none" {
 		return nil, fmt.Errorf("%w: first-party execution requires singleton GET with no cursor", ErrInvalidSourceExecutionPlan)
 	}
@@ -70,7 +74,7 @@ func CompileSourceExecutionPlanV1(definition Definition, familyID string) (*cere
 		return nil, fmt.Errorf("%w: event kind or schema does not match the family", ErrInvalidSourceExecutionPlan)
 	}
 	requiredAttributes := sortedUnique(family.Event.RequiredAttributes)
-	for _, required := range []string{"resource_id", "resource_name", "resource_provider", "resource_type"} {
+	for _, required := range []string{"family", "resource_id", "resource_name", "resource_provider", "resource_type"} {
 		if !executionPlanContains(requiredAttributes, required) {
 			return nil, fmt.Errorf("%w: event contract is missing %s", ErrInvalidSourceExecutionPlan, required)
 		}

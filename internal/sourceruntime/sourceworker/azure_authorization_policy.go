@@ -9,12 +9,13 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 // AuthorizationPolicyEvent converts one validated worker result into the exact
 // tenant-scoped Azure event contract consumed by native admission and projection.
-func AuthorizationPolicyEvent(plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, result *cerebrov1.SourceWorkerDecodeResultV1, occurredAt time.Time) (*cerebrov1.EventEnvelope, error) {
-	if err := validateWorkerResult(plan, scope, result); err != nil {
+func AuthorizationPolicyEvent(plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, receipt SafeReceipt, result *cerebrov1.SourceWorkerDecodeResultV1, occurredAt time.Time) (*cerebrov1.EventEnvelope, error) {
+	if err := validateWorkerResult(plan, scope, receipt, result); err != nil {
 		return nil, err
 	}
 	record := result.GetRecords()[0]
@@ -37,20 +38,25 @@ func AuthorizationPolicyEvent(plan *cerebrov1.SourceExecutionPlanV1, scope Crede
 			return nil, fmt.Errorf("%w: worker record attribute %s is invalid", ErrInvalidExecution, key)
 		}
 	}
-	var payload map[string]any
-	if err := json.Unmarshal(record.GetPayloadJson(), &payload); err != nil || payload == nil {
+	var raw map[string]any
+	if err := json.Unmarshal(record.GetPayloadJson(), &raw); err != nil || raw == nil {
 		return nil, fmt.Errorf("%w: worker record payload is invalid", ErrInvalidExecution)
 	}
-	payload["tenant_id"] = strings.TrimSpace(scope.TenantID)
+	payload := map[string]any{"id": providerID, "tenant_id": strings.TrimSpace(scope.TenantID), "raw": raw}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("%w: worker record payload is invalid", ErrInvalidExecution)
 	}
-	return &cerebrov1.EventEnvelope{
+	event := &cerebrov1.EventEnvelope{
 		Id: sanitizeEventID("azure-authorization-policy-" + providerID), TenantId: strings.TrimSpace(scope.TenantID),
 		SourceId: "azure", Kind: plan.GetEventKind(), OccurredAt: timestamppb.New(occurredAt.UTC()),
 		SchemaRef: plan.GetSchemaRef(), Payload: payloadJSON, Attributes: attributes,
-	}, nil
+	}
+	contract := sourcecdk.EventContract{Kind: plan.GetEventKind(), SchemaRef: plan.GetSchemaRef(), RequiredAttributes: plan.GetRequiredAttributes(), RequiredPayloadFields: plan.GetRequiredPayloadFields()}
+	if err := sourcecdk.ValidateEventEnvelopeWithContracts(event, []sourcecdk.EventContract{contract}); err != nil {
+		return nil, fmt.Errorf("%w: Azure authorization policy admission failed: %v", ErrInvalidExecution, err)
+	}
+	return event, nil
 }
 
 func sanitizeEventID(value string) string {

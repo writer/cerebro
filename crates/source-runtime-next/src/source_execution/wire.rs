@@ -66,6 +66,30 @@ pub(super) struct SourceWorkerDecodeRequestV1 {
     pub(super) logical_page_id: String,
     #[prost(string, tag = "5")]
     pub(super) request_intent_digest: String,
+    #[prost(message, optional, tag = "6")]
+    pub(super) receipt: Option<SourceWorkerSafeReceiptV1>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(super) struct SourceWorkerSafeReceiptV1 {
+    #[prost(string, tag = "1")]
+    pub(super) plan_digest_sha256: String,
+    #[prost(string, tag = "2")]
+    pub(super) logical_page_id: String,
+    #[prost(string, tag = "3")]
+    pub(super) request_intent_digest: String,
+    #[prost(uint64, tag = "4")]
+    pub(super) runtime_generation: u64,
+    #[prost(uint64, tag = "5")]
+    pub(super) lease_generation: u64,
+    #[prost(string, tag = "6")]
+    pub(super) credential_operation: String,
+    #[prost(uint32, tag = "7")]
+    pub(super) status_code: u32,
+    #[prost(uint64, tag = "8")]
+    pub(super) response_bytes: u64,
+    #[prost(string, tag = "9")]
+    pub(super) response_sha256: String,
 }
 
 #[derive(Clone, PartialEq, Message)]

@@ -84,6 +84,10 @@ fn uses_the_go_singleton_fallback_and_trims_scalars() {
     let record = &page.records[0];
     assert_eq!(record.provider_id, "authorizationPolicy");
     assert_eq!(
+        record.payload.get("id").and_then(serde_json::Value::as_str),
+        Some("authorizationPolicy")
+    );
+    assert_eq!(
         record.fields.get("allow_invites_from").map(String::as_str),
         Some("none")
     );
@@ -94,6 +98,23 @@ fn uses_the_go_singleton_fallback_and_trims_scalars() {
             .map(String::as_str),
         Some("false")
     );
+}
+
+#[test]
+fn payload_matches_the_go_typed_remarshal_shape() {
+    let kernel = kernel();
+    let request = kernel.plan_authorization_policy().unwrap();
+    let page = kernel
+        .decode_authorization_policy(
+            &request,
+            br#"{"id":"authorizationPolicy","allowInvitesFrom":null,"unknown":"discarded"}"#,
+        )
+        .unwrap();
+    let payload = &page.records[0].payload;
+    assert_eq!(payload.get("allowInvitesFrom").and_then(serde_json::Value::as_str), Some(""));
+    assert_eq!(payload.get("allowedToUseSSPR"), Some(&serde_json::Value::Null));
+    assert_eq!(payload.get("defaultUserRolePermissions"), Some(&serde_json::Value::Null));
+    assert_eq!(payload.get("unknown"), None);
 }
 
 #[test]

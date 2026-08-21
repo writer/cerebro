@@ -222,6 +222,8 @@ event_contracts:
       - resource_name
       - resource_provider
       - resource_type
+    required_payload_fields:
+      - id
   - kind: azure.cognitive_services_account
     schema_ref: azure/cognitive_services_account/v1
     required_attributes:

@@ -46,6 +46,7 @@ impl AzureAuthenticationMethodsPolicyKernel {
         let provider_id =
             nonblank_string(payload.get("id")).unwrap_or_else(|| "authorizationPolicy".to_owned());
         let fields = normalize_fields(&payload);
+        let payload = go_typed_payload(&payload, &provider_id);
         Ok(AzureAuthenticationMethodsPolicyPage {
             records: vec![AzureAuthenticationMethodsPolicyRecord {
                 family: FAMILY.to_owned(),
@@ -74,6 +75,36 @@ impl AzureAuthenticationMethodsPolicyKernel {
         }
         Ok(())
     }
+}
+
+fn go_typed_payload(payload: &Value, provider_id: &str) -> Value {
+    let mut normalized = serde_json::Map::new();
+    normalized.insert("id".to_owned(), Value::String(provider_id.to_owned()));
+    for name in ["allowInvitesFrom", "guestUserRoleId"] {
+        normalized.insert(
+            name.to_owned(),
+            payload
+                .get(name)
+                .and_then(Value::as_str)
+                .map_or_else(|| Value::String(String::new()), |value| Value::String(value.to_owned())),
+        );
+    }
+    for name in [
+        "allowedToSignUpEmailBasedSubscriptions",
+        "allowedToUseSSPR",
+        "allowEmailVerifiedUsersToJoinOrganization",
+        "blockMsolPowerShell",
+    ] {
+        normalized.insert(name.to_owned(), payload.get(name).cloned().unwrap_or(Value::Null));
+    }
+    normalized.insert(
+        "defaultUserRolePermissions".to_owned(),
+        payload
+            .get("defaultUserRolePermissions")
+            .cloned()
+            .unwrap_or(Value::Null),
+    );
+    Value::Object(normalized)
 }
 
 fn normalize_fields(payload: &Value) -> BTreeMap<String, String> {

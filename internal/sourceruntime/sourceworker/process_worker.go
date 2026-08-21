@@ -56,15 +56,34 @@ func (w *ProcessWorker) run(ctx context.Context, command string, message proto.M
 		return nil, fmt.Errorf("%w: worker input is invalid", ErrInvalidExecution)
 	}
 	process := exec.CommandContext(ctx, w.path, command)
+	process.Env = []string{"LANG=C", "LC_ALL=C"}
 	process.Stdin = bytes.NewReader(input)
 	stdout := &boundedBuffer{remaining: maxOutput}
 	stderr := &boundedBuffer{remaining: workerOverhead}
 	process.Stdout = stdout
 	process.Stderr = stderr
 	if err := process.Run(); err != nil {
-		return nil, fmt.Errorf("%w: worker process failed", ErrInvalidExecution)
+		return nil, classifyWorkerFailure(stderr.String())
 	}
 	return stdout.Bytes(), nil
+}
+
+func classifyWorkerFailure(stderr string) error {
+	class := strings.TrimSpace(stderr)
+	switch {
+	case strings.HasPrefix(class, "source_worker.response_too_large:"):
+		return ErrProviderResponseTooLarge
+	case strings.HasPrefix(class, "source_worker.invalid_provider_response:"):
+		return ErrProviderMalformedResponse
+	case strings.HasPrefix(class, "source_worker.unsupported_status:"):
+		return ErrProviderMalformedResponse
+	case strings.HasPrefix(class, "source_worker.protobuf:"),
+		strings.HasPrefix(class, "source_worker.invalid_plan:"),
+		strings.HasPrefix(class, "source_worker.missing_execution_identity:"):
+		return ErrWorkerContract
+	default:
+		return ErrWorkerInternal
+	}
 }
 
 type boundedBuffer struct {
