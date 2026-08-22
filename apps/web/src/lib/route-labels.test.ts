@@ -11,7 +11,7 @@ describe("route labels", () => {
     expect(routeLabelForPath("/connectors/activation")).toBe("Source activation");
     expect(routeLabelForPath("/credential-stores")).toBe("Credential stores");
     expect(routeLabelForPath("/identity")).toBe("Members");
-    expect(routeLabelForPath("/reports/audit-packages")).toBe("Packet review");
+    expect(routeLabelForPath("/reports/audit-packages")).toBe("Audit packets");
     expect(routeLabelForPath("/reports/shared/fixture-snapshot-1")).toBe("Shared snapshot");
     expect(routeLabelForPath("/developer/audit-log")).toBe("Audit events");
     expect(routeLabelForPath("/developer/security-producers")).toBe("Security producers");

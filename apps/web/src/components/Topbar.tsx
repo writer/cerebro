@@ -199,7 +199,7 @@ export default function Topbar() {
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-4 w-4 text-[var(--text-muted)]">
             <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
           </svg>
-          <span className="truncate">Search risks, controls, evidence, assets, sources...</span>
+          <span className="truncate">Search work, controls, evidence, and integrations...</span>
           <kbd className="ml-auto rounded border border-[color:var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-muted)]">⌘K</kbd>
         </button>
       </div>
