@@ -14,8 +14,10 @@ func TestGenuineProviderResponsesReplayEveryRuntimeFamily(t *testing.T) {
 		{family: "component", name: "public_first_page"},
 		{family: "system", name: "public_first_page"},
 	} {
-		if _, err := sourcefixture.FindBundle("../..", "backstage", fixture.family, fixture.name); err != nil {
-			t.Fatalf("FindBundle(%s) error = %v", fixture.family, err)
-		}
+		t.Run(fixture.family, func(t *testing.T) {
+			if _, err := sourcefixture.FindBundle("../..", "backstage", fixture.family, fixture.name); err != nil {
+				t.Fatalf("FindBundle(%s) error = %v", fixture.family, err)
+			}
+		})
 	}
 }
