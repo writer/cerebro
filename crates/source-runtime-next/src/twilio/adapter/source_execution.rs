@@ -321,3 +321,142 @@ fn map_provider_error(error: TwilioAccountsAdapterError) -> SourceExecutionError
         ) => SourceExecutionError::InvalidPlan,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::source_execution::{SourceWorkerSafeReceiptV1, response_digest};
+
+    const ACCOUNTS_PAGE: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../sources/twilio/testdata/source_worker_accounts_page.json"
+    ));
+
+    fn context(prior_cursor: &str) -> SourceWorkerExecutionContextV1 {
+        SourceWorkerExecutionContextV1 {
+            tenant_id: "trusted-tenant".to_owned(),
+            runtime_id: "twilio-accounts-runtime".to_owned(),
+            logical_page_id: "accounts-page-1".to_owned(),
+            prior_cursor: prior_cursor.to_owned(),
+            runtime_generation: 7,
+            lease_generation: 11,
+            observed_at_unix_millis: 1_780_372_800_000,
+        }
+    }
+
+    fn exact_plan() -> SourceExecutionPlanV1 {
+        let mut plan = SourceExecutionPlanV1 {
+            plan_id: PLAN_ID.to_owned(),
+            source_id: TwilioAccountsAdapter::source_id().to_owned(),
+            family_id: TwilioAccountsAdapter::family_id().to_owned(),
+            provider_kernel: TwilioAccountsAdapter::provider_kernel().to_owned(),
+            method: "GET".to_owned(),
+            origin: TwilioAccountsAdapter::default_origin().to_owned(),
+            path: TwilioAccountsAdapter::path().to_owned(),
+            record_selector: RECORD_SELECTOR.to_owned(),
+            id_field: ID_FIELD.to_owned(),
+            singleton_fallback_id: String::new(),
+            max_response_bytes: TwilioAccountsAdapter::max_response_bytes(),
+            event_kind: EVENT_KIND.to_owned(),
+            schema_ref: SCHEMA_REF.to_owned(),
+            required_attributes: REQUIRED_ATTRIBUTES.map(str::to_owned).to_vec(),
+            required_payload_fields: REQUIRED_PAYLOAD_FIELDS.map(str::to_owned).to_vec(),
+            plan_digest_sha256: String::new(),
+        };
+        plan.plan_digest_sha256 = canonical_plan_digest(&plan);
+        plan
+    }
+
+    fn decode_request(status_code: u32) -> SourceWorkerDecodeRequestV1 {
+        let plan = exact_plan();
+        let execution = context("accounts-page-1");
+        let intent = TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER
+            .plan(&SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(execution.clone()),
+            })
+            .unwrap()
+            .request_intent_digest;
+        let receipt = SourceWorkerSafeReceiptV1 {
+            plan_digest_sha256: plan.plan_digest_sha256.clone(),
+            logical_page_id: execution.logical_page_id.clone(),
+            request_intent_digest: intent.clone(),
+            runtime_generation: execution.runtime_generation,
+            lease_generation: execution.lease_generation,
+            credential_operation: TwilioAccountsAdapter::credential_operation().to_owned(),
+            status_code,
+            response_bytes: ACCOUNTS_PAGE.len() as u64,
+            response_sha256: response_digest(ACCOUNTS_PAGE),
+            tenant_id: execution.tenant_id.clone(),
+            runtime_id: execution.runtime_id.clone(),
+            observed_at_unix_millis: execution.observed_at_unix_millis,
+        };
+        SourceWorkerDecodeRequestV1 {
+            plan: Some(plan),
+            status_code,
+            response_body: ACCOUNTS_PAGE.to_vec(),
+            logical_page_id: execution.logical_page_id.clone(),
+            request_intent_digest: intent,
+            receipt: Some(receipt),
+            context: Some(execution),
+        }
+    }
+
+    #[test]
+    fn canonical_edge_plans_credential_free_request_and_decodes_fixture() {
+        let request = SourceWorkerPlanRequestV1 {
+            plan: Some(exact_plan()),
+            context: Some(context("accounts-page-1")),
+        };
+        let planned = TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER
+            .plan(&request)
+            .unwrap();
+        assert_eq!(
+            planned.url,
+            "https://api.twilio.com/2010-04-01/Accounts.json?limit=100&cursor=accounts-page-1"
+        );
+        assert!(!planned.url.contains("credential"));
+        assert!(!planned.url.contains("token"));
+        assert_eq!(planned.request_intent_digest.len(), 64);
+
+        let result = TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER
+            .decode(&decode_request(200))
+            .unwrap();
+        assert_eq!(result.next_cursor, "accounts-page-2");
+        assert_eq!(result.records.len(), 1);
+        let record = &result.records[0];
+        assert_eq!(record.provider_id, "record-1");
+        assert_eq!(record.attributes["tenant_id"], "trusted-tenant");
+        assert_eq!(
+            record.event_id,
+            "twilio-trusted-tenant-a92380b4993d-accounts-record-1"
+        );
+        assert_eq!(record.occurred_at_unix_millis, 1_780_272_000_000);
+        assert_eq!(result.tenant_id, "trusted-tenant");
+        assert_eq!(result.result_digest_sha256.len(), 64);
+        TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER
+            .validate_record_identity(&context("accounts-page-1"), record)
+            .unwrap();
+    }
+
+    #[test]
+    fn canonical_edge_rejects_provider_status_and_identity_drift() {
+        assert_eq!(
+            TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER
+                .decode(&decode_request(429))
+                .unwrap_err(),
+            SourceExecutionError::ProviderRateLimit
+        );
+
+        let result = TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER
+            .decode(&decode_request(200))
+            .unwrap();
+        let mut record = result.records[0].clone();
+        record.event_id = "twilio-provider-controlled-tenant-record-1".to_owned();
+        assert_eq!(
+            TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER
+                .validate_record_identity(&context("accounts-page-1"), &record),
+            Err(SourceExecutionError::TenantMismatch)
+        );
+    }
+}
