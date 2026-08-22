@@ -11,7 +11,6 @@ import (
 	adobeworkfrontsource "github.com/writer/cerebro/sources/adobe_workfront"
 	aircallsource "github.com/writer/cerebro/sources/aircall"
 	airfocussource "github.com/writer/cerebro/sources/airfocus"
-	akeylesssource "github.com/writer/cerebro/sources/akeyless"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
 	asanasource "github.com/writer/cerebro/sources/asana"
@@ -19,10 +18,8 @@ import (
 	auth0source "github.com/writer/cerebro/sources/auth0"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
-	backstagesource "github.com/writer/cerebro/sources/backstage"
 	beezupsource "github.com/writer/cerebro/sources/beezup"
 	bitwardensource "github.com/writer/cerebro/sources/bitwarden"
-	boxsource "github.com/writer/cerebro/sources/box"
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
@@ -33,18 +30,14 @@ import (
 	digitaloceansource "github.com/writer/cerebro/sources/digitalocean"
 	discordsource "github.com/writer/cerebro/sources/discord"
 	dopplersource "github.com/writer/cerebro/sources/doppler"
-	duosource "github.com/writer/cerebro/sources/duo"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
-	fivetransource "github.com/writer/cerebro/sources/fivetran"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googledrivesource "github.com/writer/cerebro/sources/google_drive"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	grcsource "github.com/writer/cerebro/sources/grc"
 	hashicorpvaultsource "github.com/writer/cerebro/sources/hashicorp_vault"
-	increasesource "github.com/writer/cerebro/sources/increase"
-	jirasource "github.com/writer/cerebro/sources/jira"
 	jumpcloudsource "github.com/writer/cerebro/sources/jumpcloud"
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
@@ -103,12 +96,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
-		name: "akeyless",
-		load: func() (sourcecdk.Source, error) {
-			return akeylesssource.New()
-		},
-	},
-	{
 		name: "anthropic",
 		load: func() (sourcecdk.Source, error) {
 			return anthropicsource.New()
@@ -151,12 +138,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
-		name: "backstage",
-		load: func() (sourcecdk.Source, error) {
-			return backstagesource.New()
-		},
-	},
-	{
 		name: "beezup",
 		load: func() (sourcecdk.Source, error) {
 			return beezupsource.New()
@@ -166,12 +147,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "bitwarden",
 		load: func() (sourcecdk.Source, error) {
 			return bitwardensource.New()
-		},
-	},
-	{
-		name: "box",
-		load: func() (sourcecdk.Source, error) {
-			return boxsource.New()
 		},
 	},
 	{
@@ -229,12 +204,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
-		name: "duo",
-		load: func() (sourcecdk.Source, error) {
-			return duosource.New()
-		},
-	},
-	{
 		name: "emaildomainhealth",
 		load: func() (sourcecdk.Source, error) {
 			return emaildomainhealthsource.New()
@@ -244,12 +213,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "evidencecas",
 		load: func() (sourcecdk.Source, error) {
 			return evidencecassource.New()
-		},
-	},
-	{
-		name: "fivetran",
-		load: func() (sourcecdk.Source, error) {
-			return fivetransource.New()
 		},
 	},
 	{
@@ -286,18 +249,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "hashicorp_vault",
 		load: func() (sourcecdk.Source, error) {
 			return hashicorpvaultsource.New()
-		},
-	},
-	{
-		name: "increase",
-		load: func() (sourcecdk.Source, error) {
-			return increasesource.New()
-		},
-	},
-	{
-		name: "jira",
-		load: func() (sourcecdk.Source, error) {
-			return jirasource.New()
 		},
 	},
 	{

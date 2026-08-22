@@ -18,6 +18,7 @@ import (
 // Source adapts a normalized connector catalog definition into a runnable JSON API source.
 type Source struct {
 	inner              *jsonapi.Source
+	spec               *cerebrov1.SourceSpec
 	verificationPath   string
 	verificationStatus []int
 }
@@ -33,14 +34,19 @@ func New(entry connectorcatalog.Entry) (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	spec, err := sourcecdk.LoadCatalog(catalogBytes)
+	catalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)
 	if err != nil {
 		return nil, fmt.Errorf("load %s source catalog: %w", entry.Definition.SourceID, err)
 	}
-	if spec == nil || spec.Id != entry.Definition.SourceID {
+	if catalog.Spec == nil || catalog.Spec.Id != entry.Definition.SourceID {
 		return nil, fmt.Errorf("source catalog id does not match connector definition %q", entry.Definition.SourceID)
 	}
-	return NewDefinition(entry.Definition)
+	source, err := NewDefinition(entry.Definition)
+	if err != nil {
+		return nil, err
+	}
+	source.spec = catalog.Spec
+	return source, nil
 }
 
 // NewDefinition creates a runnable source from a connector definition.
@@ -99,7 +105,7 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		return nil, err
 	}
 	inner.AllowLoopbackBaseURL = validationOptions.AllowLoopbackBaseURL
-	source := &Source{inner: inner}
+	source := &Source{inner: inner, spec: spec}
 	if definition.Transport.Verification != nil {
 		source.verificationPath = strings.TrimSpace(definition.Transport.Verification.Path)
 		source.verificationStatus = append([]int(nil), definition.Transport.Verification.ExpectStatus...)
@@ -113,10 +119,10 @@ func familyEventKind(sourceID string, resource connectordefinitions.ResourceFami
 
 // Spec returns static source metadata.
 func (s *Source) Spec() *cerebrov1.SourceSpec {
-	if s == nil || s.inner == nil {
+	if s == nil || s.inner == nil || s.spec == nil {
 		return nil
 	}
-	return s.inner.Spec()
+	return s.spec
 }
 
 // Check validates the catalog verification endpoint when present.

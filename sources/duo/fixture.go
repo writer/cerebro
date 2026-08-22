@@ -8,10 +8,13 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	sourcecatalogs "github.com/writer/cerebro/sources"
 )
 
 //go:embed testdata/*.json
 var fixtureFS embed.FS
+
+const fixtureDefaultFamily = "user"
 
 var duoFixtureFamilies = []string{
 	"user",
@@ -28,7 +31,7 @@ var duoFixtureFamilies = []string{
 }
 
 func NewFixture() (sourcecdk.Source, error) {
-	catalogBytes, err := catalogFS.ReadFile("catalog.yaml")
+	catalogBytes, err := sourcecatalogs.BuiltinCatalog("duo")
 	if err != nil {
 		return nil, fmt.Errorf("read catalog: %w", err)
 	}
@@ -51,7 +54,7 @@ func NewFixture() (sourcecdk.Source, error) {
 	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
 		Spec:          catalog.Spec,
 		Contracts:     catalog.EventContracts,
-		DefaultFamily: defaultFamily,
+		DefaultFamily: fixtureDefaultFamily,
 		Check:         checkFixtureConfig,
 		ResolveFamily: resolveFixtureFamily,
 		Families:      families,
@@ -71,7 +74,7 @@ func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {
 	}
 	family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family"))
 	if family == "" {
-		return defaultFamily, nil
+		return fixtureDefaultFamily, nil
 	}
 	return family, nil
 }
