@@ -62,6 +62,80 @@ fn exact_plan() -> SourceExecutionPlanV1 {
     plan
 }
 
+fn sentinelone_plan() -> SourceExecutionPlanV1 {
+    let mut plan = SourceExecutionPlanV1 {
+        plan_id: "source-plan-v1:sentinelone:agent".to_owned(),
+        source_id: "sentinelone".to_owned(),
+        family_id: "agent".to_owned(),
+        provider_kernel: "sentinelone.agent".to_owned(),
+        method: "GET".to_owned(),
+        origin: "https://sentinelone.example.test".to_owned(),
+        path: "/web/api/v2.1/agents".to_owned(),
+        record_selector: "$.data[*]".to_owned(),
+        id_field: "id".to_owned(),
+        singleton_fallback_id: String::new(),
+        max_response_bytes: 8 << 20,
+        event_kind: "sentinelone.agent".to_owned(),
+        schema_ref: "sentinelone/agent/v1".to_owned(),
+        required_attributes: vec!["family".to_owned()],
+        required_payload_fields: vec!["id".to_owned()],
+        plan_digest_sha256: String::new(),
+    };
+    plan.plan_digest_sha256 = canonical_plan_digest(&plan);
+    plan
+}
+
+fn sentinelone_context(cursor: &str) -> SourceWorkerExecutionContextV1 {
+    SourceWorkerExecutionContextV1 {
+        tenant_id: "sentinelone.example.test".to_owned(),
+        runtime_id: "sentinelone-agent-runtime".to_owned(),
+        logical_page_id: "agent-page-1".to_owned(),
+        prior_cursor: cursor.to_owned(),
+        runtime_generation: 7,
+        lease_generation: 11,
+        observed_at_unix_millis: 1_776_906_123_456,
+    }
+}
+
+fn twilio_plan() -> SourceExecutionPlanV1 {
+    let mut plan = SourceExecutionPlanV1 {
+        plan_id: "source-plan-v1:twilio:accounts".to_owned(),
+        source_id: "twilio".to_owned(),
+        family_id: "accounts".to_owned(),
+        provider_kernel: "twilio.accounts".to_owned(),
+        method: "GET".to_owned(),
+        origin: "https://api.twilio.com".to_owned(),
+        path: "/2010-04-01/Accounts.json".to_owned(),
+        record_selector: "data".to_owned(),
+        id_field: "id".to_owned(),
+        singleton_fallback_id: String::new(),
+        max_response_bytes: 8 << 20,
+        event_kind: "twilio.accounts".to_owned(),
+        schema_ref: "twilio/accounts/v1".to_owned(),
+        required_attributes: vec![
+            "tenant_id".to_owned(),
+            "source_event_id".to_owned(),
+            "user_id".to_owned(),
+        ],
+        required_payload_fields: vec!["id".to_owned()],
+        plan_digest_sha256: String::new(),
+    };
+    plan.plan_digest_sha256 = canonical_plan_digest(&plan);
+    plan
+}
+
+fn twilio_context(cursor: &str) -> SourceWorkerExecutionContextV1 {
+    SourceWorkerExecutionContextV1 {
+        tenant_id: "trusted-tenant".to_owned(),
+        runtime_id: "twilio-accounts-runtime".to_owned(),
+        logical_page_id: "accounts-page-1".to_owned(),
+        prior_cursor: cursor.to_owned(),
+        runtime_generation: 7,
+        lease_generation: 11,
+        observed_at_unix_millis: 1_780_372_800_000,
+    }
+}
+
 fn exact_context(tenant_id: &str) -> SourceWorkerExecutionContextV1 {
     SourceWorkerExecutionContextV1 {
         tenant_id: tenant_id.to_owned(),
@@ -313,6 +387,126 @@ fn closed_dispatcher_rejects_unknown_adapter_tuples() {
         dispatcher.adapter_for(&unknown),
         Err(SourceExecutionError::UnknownAdapter)
     ));
+}
+
+#[test]
+fn closed_dispatcher_registers_and_executes_the_exact_sentinelone_agent_plan() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    let plan = sentinelone_plan();
+    let adapter = dispatcher.adapter_for(&plan).unwrap();
+    assert_eq!(adapter.source_id(), "sentinelone");
+    assert_eq!(adapter.family_id(), "agent");
+    assert_eq!(adapter.provider_kernel(), "sentinelone.agent");
+
+    let paged_context = sentinelone_context("cursor-A-1");
+    let planned = dispatcher
+        .dispatch_plan(&SourceWorkerPlanRequestV1 {
+            plan: Some(plan.clone()),
+            context: Some(paged_context),
+        })
+        .unwrap();
+    assert_eq!(
+        planned.url,
+        "https://sentinelone.example.test/web/api/v2.1/agents?limit=200&cursor=cursor-A-1"
+    );
+
+    let context = sentinelone_context("");
+    let planned = dispatcher
+        .dispatch_plan(&SourceWorkerPlanRequestV1 {
+            plan: Some(plan.clone()),
+            context: Some(context.clone()),
+        })
+        .unwrap();
+    let body = include_bytes!("../sentinelone/fixtures/agent_page.json");
+    let receipt = SourceWorkerSafeReceiptV1 {
+        plan_digest_sha256: plan.plan_digest_sha256.clone(),
+        logical_page_id: context.logical_page_id.clone(),
+        request_intent_digest: planned.request_intent_digest.clone(),
+        runtime_generation: context.runtime_generation,
+        lease_generation: context.lease_generation,
+        credential_operation: "sentinelone-api-token-read".to_owned(),
+        status_code: 200,
+        response_bytes: body.len() as u64,
+        response_sha256: response_digest(body),
+        tenant_id: context.tenant_id.clone(),
+        runtime_id: context.runtime_id.clone(),
+        observed_at_unix_millis: context.observed_at_unix_millis,
+    };
+    let decoded = dispatcher
+        .dispatch_decode(&SourceWorkerDecodeRequestV1 {
+            plan: Some(plan),
+            status_code: 200,
+            response_body: body.to_vec(),
+            logical_page_id: context.logical_page_id.clone(),
+            request_intent_digest: planned.request_intent_digest,
+            receipt: Some(receipt),
+            context: Some(context),
+        })
+        .unwrap();
+    assert_eq!(decoded.next_cursor, "cursor-A-2");
+    assert_eq!(decoded.records.len(), 1);
+    assert_eq!(
+        decoded.records[0].event_id,
+        "sentinelone-agent-sentinelone.example.test-A-1"
+    );
+}
+
+#[test]
+fn closed_dispatcher_registers_and_executes_the_exact_twilio_accounts_plan() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    let plan = twilio_plan();
+    let adapter = dispatcher.adapter_for(&plan).unwrap();
+    assert_eq!(adapter.source_id(), "twilio");
+    assert_eq!(adapter.family_id(), "accounts");
+    assert_eq!(adapter.provider_kernel(), "twilio.accounts");
+
+    let context = twilio_context("accounts-page-1");
+    let planned = dispatcher
+        .dispatch_plan(&SourceWorkerPlanRequestV1 {
+            plan: Some(plan.clone()),
+            context: Some(context.clone()),
+        })
+        .unwrap();
+    assert_eq!(
+        planned.url,
+        "https://api.twilio.com/2010-04-01/Accounts.json?limit=100&cursor=accounts-page-1"
+    );
+
+    let body = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../sources/twilio/testdata/source_worker_accounts_page.json"
+    ));
+    let receipt = SourceWorkerSafeReceiptV1 {
+        plan_digest_sha256: plan.plan_digest_sha256.clone(),
+        logical_page_id: context.logical_page_id.clone(),
+        request_intent_digest: planned.request_intent_digest.clone(),
+        runtime_generation: context.runtime_generation,
+        lease_generation: context.lease_generation,
+        credential_operation: "twilio.basic".to_owned(),
+        status_code: 200,
+        response_bytes: body.len() as u64,
+        response_sha256: response_digest(body),
+        tenant_id: context.tenant_id.clone(),
+        runtime_id: context.runtime_id.clone(),
+        observed_at_unix_millis: context.observed_at_unix_millis,
+    };
+    let decoded = dispatcher
+        .dispatch_decode(&SourceWorkerDecodeRequestV1 {
+            plan: Some(plan),
+            status_code: 200,
+            response_body: body.to_vec(),
+            logical_page_id: context.logical_page_id.clone(),
+            request_intent_digest: planned.request_intent_digest,
+            receipt: Some(receipt),
+            context: Some(context),
+        })
+        .unwrap();
+    assert_eq!(decoded.next_cursor, "accounts-page-2");
+    assert_eq!(decoded.records.len(), 1);
+    assert_eq!(
+        decoded.records[0].event_id,
+        "twilio-trusted-tenant-a92380b4993d-accounts-record-1"
+    );
 }
 
 #[test]

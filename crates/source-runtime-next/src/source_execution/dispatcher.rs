@@ -1,6 +1,7 @@
 use prost::Message;
 
 use crate::sentinelone::SentinelOneAgentSourceExecutionAdapter;
+use crate::twilio::adapter::TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER;
 
 use super::{
     azure_authorization_policy::AzureAuthorizationPolicyAdapter,
@@ -65,6 +66,12 @@ impl SourceExecutionDispatcher {
             && plan.provider_kernel == SENTINELONE_AGENT.provider_kernel()
         {
             return Ok(&SENTINELONE_AGENT);
+        }
+        if plan.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER);
         }
         Err(SourceExecutionError::UnknownAdapter)
     }

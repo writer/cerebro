@@ -1,8 +1,9 @@
 //! SentinelOne `agent` adapter for the canonical source-execution protocol.
 //!
-//! The provider facade exposes this adapter to the shared closed dispatcher.
-//! It consumes the canonical public protocol and does not define a second wire
-//! schema.
+//! This module intentionally remains outside the provider facade until the
+//! shared `source_execution` module publishes its settled public prost types,
+//! closed error type, and digest helpers. It does not define a second wire
+//! schema. Adding the module declaration is owned by the shared-runtime change.
 
 use crate::source_execution::{
     SourceExecutionAdapter, SourceExecutionError, SourceExecutionPlanV1,
