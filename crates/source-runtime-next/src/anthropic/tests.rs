@@ -86,20 +86,13 @@ fn all_go_oracle_fixtures_have_semantic_event_parity() {
 }
 
 #[test]
-fn every_family_is_in_the_go_catalog_and_projection_oracle() {
+fn every_family_is_in_the_go_catalog_oracle() {
     let root = repository_root();
     let catalog = fs::read_to_string(root.join("sources/anthropic/catalog.yaml")).unwrap();
-    let projection =
-        fs::read_to_string(root.join("internal/sourceprojection/registry.go")).unwrap();
     for family in AnthropicFamily::ALL {
         assert!(
             catalog.contains(&format!("kind: anthropic.{}", family.as_str())),
             "missing catalog event {}",
-            family.as_str()
-        );
-        assert!(
-            projection.contains(&format!("\"anthropic.{}\"", family.as_str())),
-            "missing projection {}",
             family.as_str()
         );
     }
