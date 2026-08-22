@@ -10,6 +10,8 @@ entries:
         secret: true
       model: api_key
       requires_references: true
+      token_header: Authorization
+      token_scheme: Token
     categories:
     - saas
     description: "Collects cluster group, secret, connected device, and device role from NetBox and projects them into the Cerebro graph as groups, secrets, and assets for repository, build, deployment, and release context."
