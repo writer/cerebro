@@ -5,6 +5,7 @@
 
 mod abuseipdb;
 mod activecampaign;
+mod ada_support;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -65,6 +66,11 @@ pub use activecampaign::{
     ActiveCampaignEventContract, ActiveCampaignFamily, ActiveCampaignKernel, ActiveCampaignPage,
     ActiveCampaignProjectionFacts, ActiveCampaignRecord, ActiveCampaignRequest,
     ActiveCampaignRuntimeDefinition, project_activecampaign_records,
+};
+pub use ada_support::{
+    AdaSupportCheckpointCandidate, AdaSupportEntityFact, AdaSupportError, AdaSupportEventContract,
+    AdaSupportFamily, AdaSupportKernel, AdaSupportPage, AdaSupportProjectionFacts,
+    AdaSupportRecord, AdaSupportRequest, AdaSupportRuntimeDefinition, project_ada_support_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
