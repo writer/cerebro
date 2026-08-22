@@ -56,7 +56,7 @@ impl OktaKernel {
             .url
             .query_pairs()
             .find_map(|(name, value)| (name == "after").then(|| value.into_owned()));
-        if next_cursor.as_deref() == input_after.as_deref() {
+        if next_cursor.is_some() && next_cursor.as_deref() == input_after.as_deref() {
             return Err(OktaError::InvalidCursor);
         }
         let proposed_checkpoint = normalized.last().map(|record| record.occurred_at.clone());
