@@ -3,6 +3,7 @@
 
 //! Rust-native source collection and graph admission boundary.
 
+mod abuseipdb;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -52,6 +53,12 @@ mod trivy;
 mod twilio;
 mod vulnview;
 
+pub use abuseipdb::{
+    AbuseIpDbCheckpointCandidate, AbuseIpDbEntityFact, AbuseIpDbError, AbuseIpDbEventContract,
+    AbuseIpDbFamily, AbuseIpDbFilters, AbuseIpDbKernel, AbuseIpDbPage, AbuseIpDbProjectionFacts,
+    AbuseIpDbRecord, AbuseIpDbRelationFact, AbuseIpDbRequest, AbuseIpDbRuntimeDefinition,
+    project_abuseipdb_records,
+};
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
     AmplitudeRequest,
