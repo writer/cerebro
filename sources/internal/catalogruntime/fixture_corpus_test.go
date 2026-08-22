@@ -29,6 +29,7 @@ var retiredStaticLoaderFixtureSources = []string{
 	"duo",
 	"fivetran",
 	"langchain",
+	"mailchimp",
 	"openai",
 }
 

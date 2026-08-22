@@ -1,4 +1,4 @@
-package mailchimp_test
+package catalogruntime
 
 import (
 	"context"
@@ -6,17 +6,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcefixture"
-	"github.com/writer/cerebro/sources/catalogruntime"
 )
 
-func TestSourceReplaysCapturedMailchimpFamilies(t *testing.T) {
-	listsBundle, err := sourcefixture.FindBundle("../..", "mailchimp", "lists", "list_lists")
+func TestMailchimpCatalogRuntimeReplaysCapturedFamilies(t *testing.T) {
+	listsBundle, err := sourcefixture.FindBundle("../../..", "mailchimp", "lists", "list_lists")
 	if err != nil {
 		t.Fatalf("FindBundle(lists) error = %v", err)
 	}
@@ -25,7 +25,7 @@ func TestSourceReplaysCapturedMailchimpFamilies(t *testing.T) {
 		Host: "us19.api.mailchimp.com", Path: "/3.0/lists", RawQuery: "",
 	})
 
-	membersBundle, err := sourcefixture.FindBundle("../..", "mailchimp", "members", "list_members")
+	membersBundle, err := sourcefixture.FindBundle("../../..", "mailchimp", "members", "list_members")
 	if err != nil {
 		t.Fatalf("FindBundle(members) error = %v", err)
 	}
@@ -57,8 +57,8 @@ func TestSourceReplaysCapturedMailchimpFamilies(t *testing.T) {
 	}
 }
 
-func TestSourceReplaysSpecShapedMailchimpAuditEvents(t *testing.T) {
-	bundle, err := sourcefixture.FindBundle("../..", "mailchimp", "audit_events", "chimp_chatter")
+func TestMailchimpCatalogRuntimeReplaysSpecShapedAuditEvents(t *testing.T) {
+	bundle, err := sourcefixture.FindBundle("../../..", "mailchimp", "audit_events", "chimp_chatter")
 	if err != nil {
 		t.Fatalf("FindBundle(audit_events) error = %v", err)
 	}
@@ -96,7 +96,7 @@ func replayMailchimpBundle(t *testing.T, entry connectorcatalog.Entry, family, k
 	}))
 	defer server.Close()
 
-	source, err := catalogruntime.NewDefinitionWithValidationOptions(entry.Definition, catalogruntime.ValidationOptions{AllowLoopbackBaseURL: true})
+	source, err := NewDefinitionWithValidationOptions(entry.Definition, ValidationOptions{AllowLoopbackBaseURL: true})
 	if err != nil {
 		t.Fatalf("NewDefinitionWithValidationOptions() error = %v", err)
 	}
@@ -123,7 +123,8 @@ func replayMailchimpBundle(t *testing.T, entry connectorcatalog.Entry, family, k
 	if err := sourcefixture.StabilizeEvents(bundle, pull.Events, captureTime); err != nil {
 		t.Fatalf("StabilizeEvents(%s) error = %v", family, err)
 	}
-	if err := sourcefixture.CompareOrUpdateSourceOutputs(".", family, pull.Events, urns, strings.TrimSpace(os.Getenv("CEREBRO_UPDATE_SOURCE_FIXTURES")) == "1"); err != nil {
+	fixtureRoot := filepath.Join("..", "..", "mailchimp")
+	if err := sourcefixture.CompareOrUpdateSourceOutputs(fixtureRoot, family, pull.Events, urns, strings.TrimSpace(os.Getenv("CEREBRO_UPDATE_SOURCE_FIXTURES")) == "1"); err != nil {
 		t.Fatal(err)
 	}
 }
