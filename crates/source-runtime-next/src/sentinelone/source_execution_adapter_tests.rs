@@ -125,6 +125,36 @@ fn plans_deterministic_agent_request_without_credentials() {
 }
 
 #[test]
+fn shared_dispatcher_registers_and_executes_the_exact_agent_plan() {
+    let dispatcher = crate::source_execution::SourceExecutionDispatcher;
+    let adapter = dispatcher.adapter_for(&exact_plan()).unwrap();
+    assert_eq!(adapter.source_id(), SOURCE_ID);
+    assert_eq!(adapter.family_id(), FAMILY_ID);
+    assert_eq!(adapter.provider_kernel(), PROVIDER_KERNEL);
+
+    let planned = dispatcher
+        .dispatch_plan(&SourceWorkerPlanRequestV1 {
+            plan: Some(exact_plan()),
+            context: Some(context("cursor-A-1")),
+        })
+        .unwrap();
+    assert_eq!(
+        planned.url,
+        "https://sentinelone.example.test/web/api/v2.1/agents?limit=200&cursor=cursor-A-1"
+    );
+
+    let decoded = dispatcher
+        .dispatch_decode(&decode_request(AGENT_PAGE, context("")))
+        .unwrap();
+    assert_eq!(decoded.next_cursor, "cursor-A-2");
+    assert_eq!(decoded.records.len(), 1);
+    assert_eq!(
+        decoded.records[0].event_id,
+        "sentinelone-agent-sentinelone.example.test-A-1"
+    );
+}
+
+#[test]
 fn normalizes_checked_in_agent_fixture_with_go_semantic_parity() {
     let result = decode_agent_response(&decode_request(AGENT_PAGE, context(""))).unwrap();
     assert_eq!(result.next_cursor, "cursor-A-2");

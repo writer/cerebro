@@ -1,9 +1,8 @@
 //! Capability-free source worker process.
 
-#[path = "../source_execution.rs"]
-mod source_execution;
-
 use std::io::{self, Read, Write};
+
+use cerebro_source_runtime_next::source_execution;
 
 const MAX_WORKER_INPUT_BYTES: u64 = (8 << 20) + (64 << 10);
 
