@@ -926,6 +926,8 @@ struct CredentialFieldWire {
 struct FamilyWire {
     id: String,
     #[serde(default)]
+    singleton: bool,
+    #[serde(default)]
     method: String,
     path: String,
     #[serde(default)]
@@ -1616,10 +1618,9 @@ fn compile_family(
         .config
         .as_ref()
         .and_then(|config| optional(config.base_url.trim().to_owned()));
-    if id_template
-        .as_deref()
-        .is_some_and(|template| !valid_id_template(template))
-    {
+    if id_template.as_deref().is_some_and(|template| {
+        !(valid_id_template(template) || family.singleton && valid_singleton_id_literal(template))
+    }) {
         return invalid(
             path,
             &format!("family {} id_template is invalid", family.id),
@@ -1854,6 +1855,15 @@ fn valid_id_template(template: &str) -> bool {
         rest = &rest[field_end + 1..];
     }
     placeholders > 0 && !rest.contains('{') && !rest.contains('}')
+}
+
+fn valid_singleton_id_literal(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 1_024
+        && value.trim() == value
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
+        })
 }
 
 fn validate_id_field(
@@ -2707,7 +2717,7 @@ mod tests {
         .unwrap();
         let summary = catalog.summary();
         assert_eq!(summary.sources, 799);
-        assert_eq!(summary.families, 3_938);
+        assert_eq!(summary.families, 3_973);
         assert_eq!(summary.push_sources, 1);
         assert_eq!(summary.push_families, 10);
         assert_eq!(
@@ -3426,6 +3436,16 @@ mod tests {
             "${{field}}{}",
             "x".repeat(1_024)
         )));
+        assert!(valid_singleton_id_literal("organization:data_retention"));
+        for invalid in [
+            "",
+            " leading",
+            "trailing ",
+            "contains${field}",
+            "line\nbreak",
+        ] {
+            assert!(!valid_singleton_id_literal(invalid), "{invalid:?}");
+        }
     }
 
     #[test]
@@ -3600,7 +3620,7 @@ mod tests {
         .unwrap();
         let report = catalog.unsupported_feature_report();
         assert_eq!(report.total_sources, 799);
-        assert_eq!(report.total_families, 3_938);
+        assert_eq!(report.total_families, 3_973);
         assert_eq!(report.families.len(), report.total_families);
         assert!(report.missing_family_reports.is_empty());
         assert_eq!(
@@ -3649,7 +3669,7 @@ mod tests {
         )
         .unwrap();
         let report = catalog.authority_readiness_report();
-        assert_eq!(report.total_families, 3_938);
+        assert_eq!(report.total_families, 3_973);
         assert_eq!(report.rust_authoritative_families, 0);
         assert_eq!(report.shadow_or_go_families, report.total_families);
         let aws_bedrock = report

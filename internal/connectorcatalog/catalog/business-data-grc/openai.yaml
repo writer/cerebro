@@ -1,193 +1,2168 @@
 entries:
-- classifier_output: supported
-  definition:
-    auth:
-      credential_fields:
-      - key: token
-        label: Bearer token
-        reference_only: true
-        required: true
-        secret: true
-      model: bearer_token
-      requires_references: true
-    categories:
-    - saas
-    config_fields:
-    - help: Path parameter inferred from the OpenAPI operation.
-      key: fine_tune_id
-      label: Fine Tune Id
-      required: true
-    description: "Collects event, file, fine tune, and model from OpenAI and projects them into the Cerebro graph as audit events and assets for owner, account, evidence, and compliance context."
-    display_name: OpenAI
-    id: builtin_catalog-openai
-    resource_families:
-    - coverage:
-      - families:
-        - event
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-        id: audit_events
-        support: partial
-        title: Event
-        type: audit_event
-      default_enabled: true
-      event:
-        kind: openai.event
-        required_payload_fields:
-        - created_at
-        schema_ref: openai/event/v1
-        urn_kind: openai_event
-      event_kind: event
-      id: event
-      id_field: created_at
-      label: Event
-      list_key: data
-      method: GET
-      name_field: created_at
-      pagination:
-        type: none
-      path: "/fine-tunes/${config.fine_tune_id}/events"
-      projection:
-        fields:
-          id: created_at
-          name: created_at
-          provider_id: created_at
-        template: audit_event
-      record_selector: "$.data[*]"
-    - coverage:
-      - families:
-        - file
-        id: file
-        support: partial
-        title: File
-        type: entity_family
-      event:
-        kind: openai.file
-        required_payload_fields:
-        - id
-        schema_ref: openai/file/v1
-        urn_kind: openai_file
-      event_kind: file
-      id: file
-      id_field: id
-      label: File
-      list_key: data
-      method: GET
-      name_field: bytes
-      pagination:
-        type: none
-      path: "/files"
-      projection:
-        fields:
-          id: id
-          name: bytes
-          resource_id: id
-          resource_name: bytes
-          resource_type: file
-        template: asset
-      record_selector: "$.data[*]"
-    - coverage:
-      - families:
-        - fine_tune
-        id: fine_tune
-        support: partial
-        title: Fine Tune
-        type: entity_family
-      event:
-        kind: openai.fine_tune
-        required_payload_fields:
-        - id
-        schema_ref: openai/fine_tune/v1
-        urn_kind: openai_fine_tune
-      event_kind: fine_tune
-      id: fine_tune
-      id_field: id
-      label: Fine Tune
-      list_key: data
-      method: GET
-      name_field: created_at
-      pagination:
-        type: none
-      path: "/fine-tunes"
-      projection:
-        fields:
-          id: id
-          name: created_at
-          resource_id: id
-          resource_name: created_at
-          resource_type: fine_tune
-        template: asset
-      record_selector: "$.data[*]"
-    - coverage:
-      - families:
-        - model
-        id: model
-        support: partial
-        title: Model
-        type: entity_family
-      event:
-        kind: openai.model
-        required_payload_fields:
-        - id
-        schema_ref: openai/model/v1
-        urn_kind: openai_model
-      event_kind: model
-      id: model
-      id_field: id
-      label: Model
-      list_key: data
-      method: GET
-      name_field: created
-      pagination:
-        type: none
-      path: "/models"
-      projection:
-        fields:
-          id: id
-          name: created
-          resource_id: id
-          resource_name: created
-          resource_type: model
-        template: asset
-      record_selector: "$.data[*]"
-    schema_version: cerebro.integration/v1
-    scope_options:
-    - default_enabled: true
-      families:
-      - event
-      id: event
-      label: Event
-    - families:
-      - file
-      id: file
-      label: File
-    - families:
-      - fine_tune
-      id: fine_tune
-      label: Fine Tune
-    - families:
-      - model
-      id: model
-      label: Model
-    source_id: openai
-    tenant_id: builtin_catalog
-    transport:
-      base_url: https://api.openai.com/v1
-      retry:
-        backoff: exponential
-        max_attempts: 3
-        retry_after_header: Retry-After
-        statuses:
-        - 429
-        - 500
-        - 502
-        - 503
-        - 504
-      verification:
-        expect_status:
-        - 200
-        method: GET
-        path: "/fine-tunes/${config.fine_tune_id}/events"
+    - classifier_output: supported
+      definition:
+        auth:
+            credential_fields:
+                - key: token
+                  label: OpenAI admin API key reference
+                  reference_only: true
+                  required: true
+                  secret: true
+            model: bearer_token
+            requires_references: true
+        categories:
+            - saas
+            - ai
+        config_fields:
+            - key: actor_emails
+              label: actor emails
+            - key: actor_ids
+              label: actor ids
+            - key: api_key_ids
+              label: api key ids
+            - key: batch
+              label: batch
+            - key: bucket_width
+              label: bucket width
+            - key: effective_at_gt
+              label: effective at gt
+            - key: effective_at_gte
+              label: effective at gte
+            - key: effective_at_lt
+              label: effective at lt
+            - key: effective_at_lte
+              label: effective at lte
+            - key: end_time
+              label: end time
+            - key: event_types
+              label: event types
+            - key: group_by
+              label: group by
+            - key: group_id
+              label: group id
+            - key: models
+              label: models
+            - key: project_id
+              label: project id
+            - key: project_ids
+              label: project ids
+            - key: resource_ids
+              label: resource ids
+            - key: start_time
+              label: start time
+            - key: tenant_only
+              label: tenant only
+            - key: user_id
+              label: user id
+            - key: user_ids
+              label: user ids
+        description: Collects OpenAI organization governance, access, projects, credentials, usage, costs, retention, spend controls, certificates, rate limits, and model and tool permissions.
+        display_name: OpenAI
+        id: builtin_catalog-openai
+        resource_families:
+            - coverage:
+                - families:
+                    - user
+                  high_value: false
+                  id: user
+                  support: supported
+                  title: user
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.user
+                required_attributes:
+                    - user_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/user/v1
+                urn_kind: openai_user
+              id: user
+              id_field: id
+              label: user
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/users
+              projection:
+                fields:
+                    added_at: added_at
+                    email: email
+                    name: name
+                    role: role
+                    status: status
+                    user_id: id
+                static_fields:
+                    source_product: openai
+                template: identity_user
+              record_selector: $.data[*]
+            - coverage:
+                - families:
+                    - project
+                  high_value: false
+                  id: project
+                  support: supported
+                  title: project
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project
+                required_attributes:
+                    - project_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project/v1
+                urn_kind: openai_project
+              id: project
+              id_field: id
+              label: project
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects
+              projection:
+                fields:
+                    archived_at: archived_at
+                    created_at: created_at
+                    external_key_id: external_key_id
+                    name: name
+                    project_id: id
+                    status: status
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - coverage:
+                - families:
+                    - service_account
+                  high_value: false
+                  id: service_account
+                  support: supported
+                  title: service account
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.service_account
+                required_attributes:
+                    - service_account_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/service_account/v1
+                urn_kind: openai_service_account
+              id: service_account
+              id_field: id
+              label: service account
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/default/service_accounts
+              projection:
+                fields:
+                    created_at: created_at
+                    name: name
+                    project_id: project_id
+                    role: role
+                    service_account_id: id
+                static_fields:
+                    source_product: openai
+                template: identity_application
+              record_selector: $.data[*]
+            - coverage:
+                - families:
+                    - api_key
+                  high_value: false
+                  id: api_key
+                  support: supported
+                  title: api key
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.api_key
+                required_attributes:
+                    - api_key_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/api_key/v1
+                urn_kind: openai_api_key
+              id: api_key
+              id_field: id
+              label: api key
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/default/api_keys
+              projection:
+                fields:
+                    api_key_id: id
+                    created_at: created_at
+                    last_used_at: last_used_at
+                    name: name
+                    owner_service_account_id: owner.service_account.id
+                    owner_type: owner.type
+                    owner_user_id: owner.user.id
+                    project_id: project_id
+                    status: status
+                static_fields:
+                    source_product: openai
+                template: secret
+              record_selector: $.data[*]
+            - coverage:
+                - families:
+                    - admin_api_key
+                  high_value: false
+                  id: admin_api_key
+                  support: supported
+                  title: admin api key
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.admin_api_key
+                required_attributes:
+                    - api_key_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/admin_api_key/v1
+                urn_kind: openai_admin_api_key
+              id: admin_api_key
+              id_field: id
+              label: admin api key
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/admin_api_keys
+              projection:
+                fields:
+                    api_key_id: id
+                    created_at: created_at
+                    last_used_at: last_used_at
+                    name: name
+                    owner_id: owner.id
+                    owner_name: owner.name
+                    owner_object: owner.object
+                    owner_role: owner.role
+                    owner_type: owner.type
+                    status: status
+                static_fields:
+                    key_class: admin
+                    privileged: "true"
+                    source_product: openai
+                template: secret
+              record_selector: $.data[*]
+            - config_query:
+                actor_emails: actor_emails
+                actor_ids: actor_ids
+                effective_at[gt]: effective_at_gt
+                effective_at[gte]: effective_at_gte
+                effective_at[lt]: effective_at_lt
+                effective_at[lte]: effective_at_lte
+                event_types: event_types
+                project_ids: project_ids
+                resource_ids: resource_ids
+                tenant_only: tenant_only
+              coverage:
+                - families:
+                    - audit_log
+                  control_domains:
+                    - logging_monitoring
+                  evidence_types:
+                    - logging_configuration
+                  high_value: true
+                  id: audit_log
+                  support: supported
+                  title: audit log
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.audit_log
+                required_attributes:
+                    - audit_log_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/audit_log/v1
+                urn_kind: openai_audit_log
+              id: audit_log
+              id_field: id
+              label: audit log
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/audit_logs
+              projection:
+                fields:
+                    actor_api_key_id: actor.api_key.id
+                    actor_city: actor.session.ip_address_details.city
+                    actor_country: actor.session.ip_address_details.country
+                    actor_email: actor.session.user.email|actor.api_key.user.email|actor.user.email|actor.email
+                    actor_id: actor.session.user.id|actor.api_key.user.id|actor.api_key.service_account.id|actor.api_key.id|actor.user.id|actor.service_account.id|actor.id
+                    actor_ip_address: actor.session.ip_address
+                    actor_region: actor.session.ip_address_details.region
+                    actor_service_account_id: actor.api_key.service_account.id|actor.service_account.id
+                    actor_type: actor.type|actor.api_key.type
+                    actor_user_agent: actor.session.user_agent
+                    actor_user_id: actor.session.user.id|actor.api_key.user.id|actor.user.id
+                    api_key_id: api_key.created.id|api_key.updated.id|api_key.deleted.id|api_key.id|api_key_id
+                    audit_log_id: id
+                    certificate_id: certificate.created.id|certificate.updated.id|certificate.deleted.id
+                    certificate_name: certificate.created.name|certificate.updated.name|certificate.deleted.name
+                    effective_at: effective_at
+                    event_type: type|event_type
+                    external_key_id: external_key.registered.id|external_key.removed.id
+                    group_id: group.created.id|group.updated.id|group.deleted.id
+                    group_name: group.created.data.group_name|group.updated.changes_requested.group_name
+                    invite_email: invite.sent.data.email
+                    invite_id: invite.sent.id|invite.accepted.id|invite.deleted.id
+                    invite_role: invite.sent.data.role
+                    ip_allowlist_id: ip_allowlist.created.id|ip_allowlist.updated.id|ip_allowlist.deleted.id
+                    ip_allowlist_name: ip_allowlist.created.name|ip_allowlist.deleted.name
+                    organization_id: organization.updated.id|organization_id|org_id
+                    principal_id: role.assignment.created.principal_id|role.assignment.deleted.principal_id
+                    principal_type: role.assignment.created.principal_type|role.assignment.deleted.principal_type
+                    project_id: project.created.id|project.updated.id|project.archived.id|project.deleted.id|checkpoint.permission.created.data.project_id|project.id|project_id
+                    rate_limit_id: rate_limit.updated.id|rate_limit.deleted.id
+                    resource_id: role.assignment.created.resource_id|role.assignment.deleted.resource_id|role.bound_to_resource.resource_id|role.unbound_from_resource.resource_id|resource.deleted.id
+                    resource_type: role.assignment.created.resource_type|role.assignment.deleted.resource_type|role.bound_to_resource.resource_type|role.unbound_from_resource.resource_type|resource.deleted.type
+                    role_assignment_id: role.assignment.created.id|role.assignment.deleted.id
+                    role_id: role.created.id|role.updated.id|role.deleted.id|role.bound_to_resource.role_id|role.unbound_from_resource.role_id
+                    role_name: role.created.data.role_name|role.updated.changes_requested.role_name|role.bound_to_resource.role_name|role.unbound_from_resource.role_name
+                    service_account_id: service_account.created.id|service_account.updated.id|service_account.deleted.id
+                    user_id: user.added.id|user.updated.id|user.deleted.id
+                static_fields:
+                    source_product: openai
+                template: audit_event
+              record_selector: $.data[*]
+            - coverage:
+                - families:
+                    - invite
+                  high_value: false
+                  id: invite
+                  support: supported
+                  title: invite
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.invite
+                required_attributes:
+                    - invite_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/invite/v1
+                urn_kind: openai_invite
+              id: invite
+              id_field: id
+              label: invite
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/invites
+              projection:
+                fields:
+                    accepted_at: accepted_at
+                    created_at: created_at
+                    email: email
+                    expires_at: expires_at
+                    invite_id: id
+                    projects: projects
+                    role: role
+                    status: status
+                static_fields:
+                    source_product: openai
+                template: identity_user
+              record_selector: $.data[*]
+            - coverage:
+                - families:
+                    - role
+                  high_value: false
+                  id: role
+                  support: supported
+                  title: role
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.role
+                required_attributes:
+                    - role_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/role/v1
+                urn_kind: openai_role
+              id: role
+              id_field: id
+              label: role
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/roles
+              projection:
+                fields:
+                    created_at: created_at
+                    created_by: created_by
+                    description: description
+                    name: name
+                    permissions: permissions
+                    predefined_role: predefined_role
+                    resource_type: resource_type
+                    role_id: id
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: policy
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    user_id: user_id
+              coverage:
+                - families:
+                    - user_role
+                  high_value: false
+                  id: user_role
+                  support: supported
+                  title: user role
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.user_role
+                required_attributes:
+                    - role_id
+                    - user_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/user_role/v1
+                urn_kind: openai_user_role
+              id: user_role
+              id_field: id
+              label: user role
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/users/{user_id}/roles
+              projection:
+                fields:
+                    created_at: created_at
+                    created_by: created_by
+                    description: description
+                    name: name
+                    permissions: permissions
+                    predefined_role: predefined_role
+                    resource_type: resource_type
+                    role_id: id
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                path_params:
+                    - user_id
+              record_selector: $.data[*]
+            - coverage:
+                - families:
+                    - group
+                  high_value: false
+                  id: group
+                  support: supported
+                  title: group
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.group
+                required_attributes:
+                    - group_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/group/v1
+                urn_kind: openai_group
+              id: group
+              id_field: id
+              label: group
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/groups
+              projection:
+                fields:
+                    created_at: created_at
+                    group_id: id
+                    name: name
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: identity_group
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    group_id: group_id
+              coverage:
+                - families:
+                    - group_user
+                  high_value: false
+                  id: group_user
+                  support: supported
+                  title: group user
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.group_user
+                required_attributes:
+                    - group_id
+                    - user_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/group_user/v1
+                urn_kind: openai_group_user
+              id: group_user
+              id_field: id|user_id
+              label: group user
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/groups/{group_id}/users
+              projection:
+                fields:
+                    added_at: added_at
+                    email: email
+                    group_id: group_id
+                    name: name
+                    role: role
+                    user_id: id|user_id
+                static_fields:
+                    source_product: openai
+                template: group_membership
+              read:
+                path_params:
+                    - group_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    group_id: group_id
+              coverage:
+                - families:
+                    - group_role
+                  high_value: false
+                  id: group_role
+                  support: supported
+                  title: group role
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.group_role
+                required_attributes:
+                    - group_id
+                    - role_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/group_role/v1
+                urn_kind: openai_group_role
+              id: group_role
+              id_field: id
+              label: group role
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/groups/{group_id}/roles
+              projection:
+                fields:
+                    created_at: created_at
+                    created_by: created_by
+                    description: description
+                    name: name
+                    permissions: permissions
+                    predefined_role: predefined_role
+                    resource_type: resource_type
+                    role_id: id
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                path_params:
+                    - group_id
+              record_selector: $.data[*]
+            - config:
+                id_template: organization:data_retention
+              coverage:
+                - families:
+                    - data_retention
+                  high_value: false
+                  id: data_retention
+                  support: supported
+                  title: data retention
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.data_retention
+                required_attributes:
+                    - external_id
+                schema_ref: openai/data_retention/v1
+                urn_kind: openai_data_retention
+              id: data_retention
+              id_field: id
+              label: data retention
+              method: GET
+              pagination:
+                disable_page_size: true
+                type: none
+              path: /organization/data_retention
+              projection:
+                fields:
+                    object: object
+                    retention_type: type
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                disable_page_size: true
+                singleton: true
+                singleton_fallback_id: data_retention
+              record_selector: $
+              singleton: true
+            - coverage:
+                - families:
+                    - spend_alert
+                  high_value: false
+                  id: spend_alert
+                  support: supported
+                  title: spend alert
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.spend_alert
+                required_attributes:
+                    - spend_alert_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/spend_alert/v1
+                urn_kind: openai_spend_alert
+              id: spend_alert
+              id_field: id
+              label: spend alert
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/spend_alerts
+              projection:
+                fields:
+                    created_at: created_at
+                    name: name
+                    spend_alert_id: id
+                    status: status
+                    threshold: threshold
+                    threshold_amount: threshold_amount
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: alert
+              record_selector: $.data[*]
+            - coverage:
+                - families:
+                    - certificate
+                  high_value: false
+                  id: certificate
+                  support: supported
+                  title: certificate
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.certificate
+                required_attributes:
+                    - certificate_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/certificate/v1
+                urn_kind: openai_certificate
+              id: certificate
+              id_field: id
+              label: certificate
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/certificates
+              projection:
+                fields:
+                    active: active
+                    certificate_id: id
+                    created_at: created_at
+                    expires_at: certificate_details.expires_at
+                    name: name
+                    valid_at: certificate_details.valid_at
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_audio_speech
+                  high_value: false
+                  id: usage_audio_speech
+                  support: supported
+                  title: usage audio speech
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_audio_speech
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_audio_speech/v1
+                urn_kind: openai_usage_audio_speech
+              id: usage_audio_speech
+              id_field: id
+              label: usage audio speech
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/audio_speeches
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_audio_transcription
+                  high_value: false
+                  id: usage_audio_transcription
+                  support: supported
+                  title: usage audio transcription
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_audio_transcription
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_audio_transcription/v1
+                urn_kind: openai_usage_audio_transcription
+              id: usage_audio_transcription
+              id_field: id
+              label: usage audio transcription
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/audio_transcriptions
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_code_interpreter_session
+                  high_value: false
+                  id: usage_code_interpreter_session
+                  support: supported
+                  title: usage code interpreter session
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_code_interpreter_session
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_code_interpreter_session/v1
+                urn_kind: openai_usage_code_interpreter_session
+              id: usage_code_interpreter_session
+              id_field: id
+              label: usage code interpreter session
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/code_interpreter_sessions
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_completion
+                  high_value: false
+                  id: usage_completion
+                  support: supported
+                  title: usage completion
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_completion
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_completion/v1
+                urn_kind: openai_usage_completion
+              id: usage_completion
+              id_field: id
+              label: usage completion
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/completions
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_embedding
+                  high_value: false
+                  id: usage_embedding
+                  support: supported
+                  title: usage embedding
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_embedding
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_embedding/v1
+                urn_kind: openai_usage_embedding
+              id: usage_embedding
+              id_field: id
+              label: usage embedding
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/embeddings
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_image
+                  high_value: false
+                  id: usage_image
+                  support: supported
+                  title: usage image
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_image
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_image/v1
+                urn_kind: openai_usage_image
+              id: usage_image
+              id_field: id
+              label: usage image
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/images
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_moderation
+                  high_value: false
+                  id: usage_moderation
+                  support: supported
+                  title: usage moderation
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_moderation
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_moderation/v1
+                urn_kind: openai_usage_moderation
+              id: usage_moderation
+              id_field: id
+              label: usage moderation
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/moderations
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_vector_store
+                  high_value: false
+                  id: usage_vector_store
+                  support: supported
+                  title: usage vector store
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_vector_store
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_vector_store/v1
+                urn_kind: openai_usage_vector_store
+              id: usage_vector_store
+              id_field: id
+              label: usage vector store
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/vector_stores
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_file_search_call
+                  high_value: false
+                  id: usage_file_search_call
+                  support: supported
+                  title: usage file search call
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_file_search_call
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_file_search_call/v1
+                urn_kind: openai_usage_file_search_call
+              id: usage_file_search_call
+              id_field: id
+              label: usage file search call
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/file_search_calls
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - usage_web_search_call
+                  high_value: false
+                  id: usage_web_search_call
+                  support: supported
+                  title: usage web search call
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.usage_web_search_call
+                required_attributes:
+                    - external_id
+                schema_ref: openai/usage_web_search_call/v1
+                urn_kind: openai_usage_web_search_call
+              id: usage_web_search_call
+              id_field: id
+              label: usage web search call
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/usage/web_search_calls
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config_query:
+                api_key_ids: api_key_ids
+                batch: batch
+                bucket_width: bucket_width
+                end_time: end_time
+                group_by: group_by
+                models: models
+                project_ids: project_ids
+                start_time: start_time
+                user_ids: user_ids
+              coverage:
+                - families:
+                    - cost
+                  high_value: false
+                  id: cost
+                  support: supported
+                  title: cost
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.cost
+                required_attributes:
+                    - external_id
+                schema_ref: openai/cost/v1
+                urn_kind: openai_cost
+              id: cost
+              id_field: id
+              label: cost
+              method: GET
+              pagination:
+                cursor_json_path: $.next_page
+                cursor_param: page
+                next_cursor_keys:
+                    - next_page
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/costs
+              projection:
+                fields:
+                    amount_currency: amount.currency
+                    amount_value: amount.value|amount
+                    api_key_id: api_key_id
+                    end_time: end_time
+                    input_tokens: results.input_tokens.__sum|input_tokens
+                    line_item: line_item
+                    model: model
+                    num_model_requests: results.num_model_requests.__sum|num_model_requests
+                    organization_object: object
+                    output_tokens: results.output_tokens.__sum|output_tokens
+                    project_id: project_id
+                    result_count: results.__count
+                    start_time: start_time
+                    user_id: user_id
+                static_fields:
+                    source_product: openai
+                template: asset
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_user
+                  high_value: false
+                  id: project_user
+                  support: supported
+                  title: project user
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_user
+                required_attributes:
+                    - project_id
+                    - user_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_user/v1
+                urn_kind: openai_project_user
+              id: project_user
+              id_field: id|user_id
+              label: project user
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/{project_id}/users
+              projection:
+                fields:
+                    added_at: added_at
+                    email: email
+                    name: name
+                    project_id: project_id
+                    role: role
+                    user_id: id|user_id
+                static_fields:
+                    source_product: openai
+                template: group_membership
+              read:
+                path_params:
+                    - project_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+                    user_id: user_id
+              coverage:
+                - families:
+                    - project_user_role
+                  high_value: false
+                  id: project_user_role
+                  support: supported
+                  title: project user role
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_user_role
+                required_attributes:
+                    - project_id
+                    - role_id
+                    - user_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_user_role/v1
+                urn_kind: openai_project_user_role
+              id: project_user_role
+              id_field: id
+              label: project user role
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /projects/{project_id}/users/{user_id}/roles
+              projection:
+                fields:
+                    created_at: created_at
+                    created_by: created_by
+                    description: description
+                    name: name
+                    permissions: permissions
+                    predefined_role: predefined_role
+                    resource_type: resource_type
+                    role_id: id
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                path_params:
+                    - project_id
+                    - user_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_service_account
+                  high_value: false
+                  id: project_service_account
+                  support: supported
+                  title: project service account
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_service_account
+                required_attributes:
+                    - project_id
+                    - service_account_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_service_account/v1
+                urn_kind: openai_project_service_account
+              id: project_service_account
+              id_field: id
+              label: project service account
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/{project_id}/service_accounts
+              projection:
+                fields:
+                    created_at: created_at
+                    name: name
+                    project_id: project_id
+                    role: role
+                    service_account_id: id
+                static_fields:
+                    source_product: openai
+                template: identity_application
+              read:
+                path_params:
+                    - project_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_api_key
+                  high_value: false
+                  id: project_api_key
+                  support: supported
+                  title: project api key
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_api_key
+                required_attributes:
+                    - api_key_id
+                    - project_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_api_key/v1
+                urn_kind: openai_project_api_key
+              id: project_api_key
+              id_field: id
+              label: project api key
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/{project_id}/api_keys
+              projection:
+                fields:
+                    api_key_id: id
+                    created_at: created_at
+                    last_used_at: last_used_at
+                    name: name
+                    owner_service_account_id: owner.service_account.id
+                    owner_type: owner.type
+                    owner_user_id: owner.user.id
+                    project_id: project_id
+                    status: status
+                static_fields:
+                    source_product: openai
+                template: secret
+              read:
+                path_params:
+                    - project_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_rate_limit
+                  high_value: false
+                  id: project_rate_limit
+                  support: supported
+                  title: project rate limit
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_rate_limit
+                required_attributes:
+                    - external_id
+                    - project_id
+                schema_ref: openai/project_rate_limit/v1
+                urn_kind: openai_project_rate_limit
+              id: project_rate_limit
+              id_field: id|model
+              label: project rate limit
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/{project_id}/rate_limits
+              projection:
+                fields:
+                    batch_1_day_max_input_tokens: batch_1_day_max_input_tokens
+                    max_images_per_1_minute: max_images_per_1_minute
+                    max_requests_per_1_day: max_requests_per_1_day
+                    max_requests_per_1_minute: max_requests_per_1_minute
+                    max_tokens_per_1_minute: max_tokens_per_1_minute
+                    model: model
+                    project_id: project_id
+                    rate_limit_id: id
+                    created_at: created_at
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                path_params:
+                    - project_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+                id_template: ${project_id}:model_permissions
+              coverage:
+                - families:
+                    - project_model_permission
+                  high_value: false
+                  id: project_model_permission
+                  support: supported
+                  title: project model permission
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_model_permission
+                required_attributes:
+                    - external_id
+                    - project_id
+                schema_ref: openai/project_model_permission/v1
+                urn_kind: openai_project_model_permission
+              id: project_model_permission
+              id_field: id
+              label: project model permission
+              method: GET
+              pagination:
+                disable_page_size: true
+                type: none
+              path: /organization/projects/{project_id}/model_permissions
+              projection:
+                fields:
+                    mode: mode
+                    model_ids: model_ids
+                    project_id: project_id
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                disable_page_size: true
+                path_params:
+                    - project_id
+                singleton: true
+                singleton_fallback_id: project_model_permission
+              record_selector: $
+              singleton: true
+            - config:
+                config_attributes:
+                    project_id: project_id
+                id_template: ${project_id}:hosted_tool_permissions
+              coverage:
+                - families:
+                    - project_hosted_tool_permission
+                  high_value: false
+                  id: project_hosted_tool_permission
+                  support: supported
+                  title: project hosted tool permission
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_hosted_tool_permission
+                required_attributes:
+                    - external_id
+                    - project_id
+                schema_ref: openai/project_hosted_tool_permission/v1
+                urn_kind: openai_project_hosted_tool_permission
+              id: project_hosted_tool_permission
+              id_field: id
+              label: project hosted tool permission
+              method: GET
+              pagination:
+                disable_page_size: true
+                type: none
+              path: /organization/projects/{project_id}/hosted_tool_permissions
+              projection:
+                fields:
+                    code_interpreter_enabled: code_interpreter.enabled
+                    file_search_enabled: file_search.enabled
+                    image_generation_enabled: image_generation.enabled
+                    mcp_enabled: mcp.enabled
+                    project_id: project_id
+                    web_search_enabled: web_search.enabled
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                disable_page_size: true
+                path_params:
+                    - project_id
+                singleton: true
+                singleton_fallback_id: project_hosted_tool_permission
+              record_selector: $
+              singleton: true
+            - config:
+                config_attributes:
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_group
+                  high_value: false
+                  id: project_group
+                  support: supported
+                  title: project group
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_group
+                required_attributes:
+                    - group_id
+                    - project_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_group/v1
+                urn_kind: openai_project_group
+              id: project_group
+              id_field: id
+              label: project group
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/{project_id}/groups
+              projection:
+                fields:
+                    created_at: created_at
+                    group_id: id
+                    name: name
+                    project_id: project_id
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: identity_group
+              read:
+                path_params:
+                    - project_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    group_id: group_id
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_group_role
+                  high_value: false
+                  id: project_group_role
+                  support: supported
+                  title: project group role
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_group_role
+                required_attributes:
+                    - group_id
+                    - project_id
+                    - role_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_group_role/v1
+                urn_kind: openai_project_group_role
+              id: project_group_role
+              id_field: id
+              label: project group role
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/{project_id}/groups/{group_id}/roles
+              projection:
+                fields:
+                    created_at: created_at
+                    created_by: created_by
+                    description: description
+                    name: name
+                    permissions: permissions
+                    predefined_role: predefined_role
+                    resource_type: resource_type
+                    role_id: id
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                path_params:
+                    - project_id
+                    - group_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_role
+                  high_value: false
+                  id: project_role
+                  support: supported
+                  title: project role
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_role
+                required_attributes:
+                    - project_id
+                    - role_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_role/v1
+                urn_kind: openai_project_role
+              id: project_role
+              id_field: id
+              label: project role
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /projects/{project_id}/roles
+              projection:
+                fields:
+                    created_at: created_at
+                    created_by: created_by
+                    description: description
+                    name: name
+                    permissions: permissions
+                    predefined_role: predefined_role
+                    resource_type: resource_type
+                    role_id: id
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                path_params:
+                    - project_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+                id_template: ${project_id}:data_retention
+              coverage:
+                - families:
+                    - project_data_retention
+                  high_value: false
+                  id: project_data_retention
+                  support: supported
+                  title: project data retention
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_data_retention
+                required_attributes:
+                    - external_id
+                    - project_id
+                schema_ref: openai/project_data_retention/v1
+                urn_kind: openai_project_data_retention
+              id: project_data_retention
+              id_field: id
+              label: project data retention
+              method: GET
+              pagination:
+                disable_page_size: true
+                type: none
+              path: /organization/projects/{project_id}/data_retention
+              projection:
+                fields:
+                    object: object
+                    project_id: project_id
+                    retention_type: type
+                static_fields:
+                    source_product: openai
+                template: policy
+              read:
+                disable_page_size: true
+                path_params:
+                    - project_id
+                singleton: true
+                singleton_fallback_id: project_data_retention
+              record_selector: $
+              singleton: true
+            - config:
+                config_attributes:
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_spend_alert
+                  high_value: false
+                  id: project_spend_alert
+                  support: supported
+                  title: project spend alert
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_spend_alert
+                required_attributes:
+                    - project_id
+                    - spend_alert_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_spend_alert/v1
+                urn_kind: openai_project_spend_alert
+              id: project_spend_alert
+              id_field: id
+              label: project spend alert
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/{project_id}/spend_alerts
+              projection:
+                fields:
+                    created_at: created_at
+                    name: name
+                    project_id: project_id
+                    spend_alert_id: id
+                    status: status
+                    threshold: threshold
+                    threshold_amount: threshold_amount
+                    updated_at: updated_at
+                static_fields:
+                    source_product: openai
+                template: alert
+              read:
+                path_params:
+                    - project_id
+              record_selector: $.data[*]
+            - config:
+                config_attributes:
+                    project_id: project_id
+              coverage:
+                - families:
+                    - project_certificate
+                  high_value: false
+                  id: project_certificate
+                  support: supported
+                  title: project certificate
+                  type: entity_family
+              default_enabled: true
+              event:
+                kind: openai.project_certificate
+                required_attributes:
+                    - certificate_id
+                    - project_id
+                required_payload_fields:
+                    - id
+                schema_ref: openai/project_certificate/v1
+                urn_kind: openai_project_certificate
+              id: project_certificate
+              id_field: id
+              label: project certificate
+              method: GET
+              pagination:
+                cursor_json_path: $.next
+                cursor_param: after
+                has_more_key: has_more
+                next_cursor_keys:
+                    - next
+                    - last_id
+                page_size: 100
+                page_size_param: limit
+                type: cursor
+              path: /organization/projects/{project_id}/certificates
+              projection:
+                fields:
+                    active: active
+                    certificate_id: id
+                    created_at: created_at
+                    expires_at: certificate_details.expires_at
+                    name: name
+                    project_id: project_id
+                    valid_at: certificate_details.valid_at
+                static_fields:
+                    source_product: openai
+                template: asset
+              read:
+                path_params:
+                    - project_id
+              record_selector: $.data[*]
+        schema_version: cerebro.integration/v1
+        scope_options:
+            - default_enabled: true
+              families:
+                - user
+                - project
+                - service_account
+                - api_key
+                - admin_api_key
+                - audit_log
+                - invite
+                - role
+                - user_role
+                - group
+                - group_user
+                - group_role
+                - data_retention
+                - spend_alert
+                - certificate
+                - usage_audio_speech
+                - usage_audio_transcription
+                - usage_code_interpreter_session
+                - usage_completion
+                - usage_embedding
+                - usage_image
+                - usage_moderation
+                - usage_vector_store
+                - usage_file_search_call
+                - usage_web_search_call
+                - cost
+                - project_user
+                - project_user_role
+                - project_service_account
+                - project_api_key
+                - project_rate_limit
+                - project_model_permission
+                - project_hosted_tool_permission
+                - project_group
+                - project_group_role
+                - project_role
+                - project_data_retention
+                - project_spend_alert
+                - project_certificate
+              id: openai_governance
+              label: OpenAI governance
+        source_id: openai
+        tenant_id: builtin_catalog
+        transport:
+            base_url: https://api.openai.com/v1
+            retry:
+                backoff: exponential
+                max_attempts: 3
+                retry_after_header: Retry-After
+                statuses:
+                    - 429
+                    - 500
+                    - 502
+                    - 503
+                    - 504
+            verification:
+                expect_status:
+                    - 200
+                method: GET
+                path: /organization/users

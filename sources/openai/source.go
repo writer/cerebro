@@ -134,6 +134,16 @@ func openAISingletonFamily(name string, path string, urnKind string, attrs map[s
 		f.CursorParam = ""
 		f.NextCursorKeys = nil
 		f.HasMoreKey = ""
+		switch name {
+		case "data_retention":
+			f.Config.IDTemplate = "organization:data_retention"
+		case "project_model_permission":
+			f.Config.IDTemplate = "${project_id}:model_permissions"
+		case "project_hosted_tool_permission":
+			f.Config.IDTemplate = "${project_id}:hosted_tool_permissions"
+		case "project_data_retention":
+			f.Config.IDTemplate = "${project_id}:data_retention"
+		}
 	})...)
 }
 

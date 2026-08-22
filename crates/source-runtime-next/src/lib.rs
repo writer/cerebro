@@ -32,6 +32,7 @@ mod kubernetes;
 mod linode;
 mod mapper;
 mod okta;
+mod openai;
 mod panopticon;
 mod protocol;
 mod provider_failure;
@@ -148,6 +149,10 @@ pub use linode::{LinodeError, LinodeKernel, LinodePage, LinodeRecord, LinodeRequ
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 pub use okta::{
     OktaError, OktaFamily, OktaFilters, OktaKernel, OktaPage, OktaRecord, OktaRequest, OktaResponse,
+};
+pub use openai::{
+    OpenAiAuthRequirement, OpenAiCheckpoint, OpenAiError, OpenAiFamily, OpenAiKernel, OpenAiPage,
+    OpenAiRecord, OpenAiRequest, OpenAiRequestInput,
 };
 pub use panopticon::{
     PanopticonError, PanopticonFamily, PanopticonKernel, PanopticonOutcome, PanopticonPage,
