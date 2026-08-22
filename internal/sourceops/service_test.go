@@ -4,16 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	sourcecatalogs "github.com/writer/cerebro/sources"
 	auth0source "github.com/writer/cerebro/sources/auth0"
-	datadogsource "github.com/writer/cerebro/sources/datadog"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -546,7 +548,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	datadog, err := datadogsource.NewFixture()
+	datadog, err := newCatalogFixtureSource("datadog")
 	if err != nil {
 		return nil, err
 	}
@@ -563,6 +565,39 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 		return nil, err
 	}
 	return sourcecdk.NewRegistry(source, auth0, datadog, googleWorkspace, okta, pagerDuty, slack)
+}
+
+func newCatalogFixtureSource(sourceID string) (sourcecdk.Source, error) {
+	payload, err := sourcecatalogs.BuiltinCatalog(sourceID)
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(payload)
+	if err != nil {
+		return nil, err
+	}
+	if catalog.Spec == nil || len(catalog.RuntimeFamilies) == 0 {
+		return nil, fmt.Errorf("%s fixture catalog has no runtime families", sourceID)
+	}
+	fixtureFS := os.DirFS(filepath.Join("..", "..", "sources", sourceID))
+	families := make([]sourcecdk.FixtureFamily, 0, len(catalog.RuntimeFamilies))
+	for _, family := range catalog.RuntimeFamilies {
+		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
+		if err != nil {
+			return nil, err
+		}
+		events, err := sourcecdk.LoadFixtureEventsWithContracts(fixtureFS, "testdata/read_"+family+".json", catalog.EventContracts)
+		if err != nil {
+			return nil, err
+		}
+		families = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})
+	}
+	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
+		Spec:          catalog.Spec,
+		Contracts:     catalog.EventContracts,
+		DefaultFamily: catalog.RuntimeFamilies[0],
+		Families:      families,
+	})
 }
 
 func captureSourceOpsStderr(t *testing.T, fn func()) string {
