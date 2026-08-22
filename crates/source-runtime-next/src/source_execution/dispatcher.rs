@@ -6,16 +6,17 @@ use crate::twilio::adapter::TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER;
 use super::{
     azure_authorization_policy::AzureAuthorizationPolicyAdapter,
     contract::{
-        canonical_http_execution_digest, validate_decode_envelope, validate_decode_result,
-        validate_http_execution, validate_http_request, validate_runtime_metadata,
-        validate_safe_receipt,
+        canonical_http_execution_digest, canonical_response_headers_digest, response_digest,
+        validate_decode_envelope, validate_decode_result, validate_http_execution,
+        validate_http_request, validate_runtime_metadata, validate_safe_receipt,
     },
     error::SourceExecutionError,
     wire::{
         SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
-        SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
-        SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
-        SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+        SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
+        SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1,
+        SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+        SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -235,7 +236,7 @@ impl SourceExecutionDispatcher {
     pub fn dispatch_decode_v2(
         &self,
         envelope: &SourceWorkerDecodeEnvelopeV2,
-    ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
+    ) -> Result<SourceWorkerDecodeOutputV2, SourceExecutionError> {
         validate_decode_envelope(envelope)?;
         let request = envelope
             .request
@@ -255,18 +256,6 @@ impl SourceExecutionDispatcher {
         if request.logical_page_id != context.logical_page_id {
             return Err(SourceExecutionError::MissingExecutionIdentity);
         }
-        let receipt = request
-            .receipt
-            .as_ref()
-            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
-        validate_safe_receipt(
-            receipt,
-            plan,
-            context,
-            &request.response_body,
-            request.status_code,
-            &request.request_intent_digest,
-        )?;
         let adapter = self.adapter_for(plan)?;
         let planned = adapter.plan_v2(&SourceWorkerPlanEnvelopeV2 {
             request: Some(SourceWorkerPlanRequestV1 {
@@ -288,12 +277,45 @@ impl SourceExecutionDispatcher {
         {
             return Err(SourceExecutionError::InvalidDigest);
         }
-        let result = adapter.decode_v2(envelope)?;
-        validate_decode_result(request, &result)?;
+        let response_bytes = u64::try_from(request.response_body.len())
+            .map_err(|_| SourceExecutionError::ResponseTooLarge)?;
+        let receipt = SourceWorkerSafeReceiptV1 {
+            plan_digest_sha256: plan.plan_digest_sha256.clone(),
+            logical_page_id: context.logical_page_id.clone(),
+            request_intent_digest: request.request_intent_digest.clone(),
+            runtime_generation: context.runtime_generation,
+            lease_generation: context.lease_generation,
+            credential_operation: planned.credential_operation,
+            status_code: request.status_code,
+            response_bytes,
+            response_sha256: response_digest(&request.response_body),
+            tenant_id: context.tenant_id.clone(),
+            runtime_id: context.runtime_id.clone(),
+            observed_at_unix_millis: context.observed_at_unix_millis,
+        };
+        validate_safe_receipt(
+            &receipt,
+            plan,
+            context,
+            &request.response_body,
+            request.status_code,
+            &request.request_intent_digest,
+        )?;
+        let mut bound_request = request.clone();
+        bound_request.receipt = Some(receipt.clone());
+        let mut bound_envelope = envelope.clone();
+        bound_envelope.request = Some(bound_request.clone());
+        bound_envelope.response_headers_sha256 =
+            canonical_response_headers_digest(&bound_envelope.response_headers)?;
+        let result = adapter.decode_v2(&bound_envelope)?;
+        validate_decode_result(&bound_request, &result)?;
         for record in &result.records {
             adapter.validate_record_identity(context, record)?;
         }
-        Ok(result)
+        Ok(SourceWorkerDecodeOutputV2 {
+            receipt: Some(receipt),
+            result: Some(result),
+        })
     }
 }
 
@@ -333,7 +355,7 @@ pub fn dispatch_plan_v2_bytes(input: &[u8]) -> Result<Vec<u8>, SourceExecutionEr
         .encode_to_vec())
 }
 
-/// Decodes one metadata-aware bounded response and returns the stable v1 result.
+/// Decodes one metadata-aware response and returns Rust-authored receipt evidence.
 pub fn dispatch_decode_v2_bytes(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     let envelope =
         SourceWorkerDecodeEnvelopeV2::decode(input).map_err(|_| SourceExecutionError::Protobuf)?;

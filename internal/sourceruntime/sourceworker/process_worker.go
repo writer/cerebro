@@ -51,23 +51,13 @@ func (w *ProcessWorker) Context(ctx context.Context, request ContextRequest) (*c
 	return result, nil
 }
 
-func (w *ProcessWorker) Plan(ctx context.Context, request *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
-	result := new(cerebrov1.SourceWorkerHTTPRequestV1)
-	return result, w.runProto(ctx, "plan", request, result, workerOverhead)
-}
-
 func (w *ProcessWorker) PlanV2(ctx context.Context, request *cerebrov1.SourceWorkerPlanEnvelopeV2) (*cerebrov1.SourceWorkerHTTPExecutionV2, error) {
 	result := new(cerebrov1.SourceWorkerHTTPExecutionV2)
 	return result, w.runProto(ctx, "plan-v2", request, result, int64(maxRequestBodyBytes)+workerOverhead)
 }
 
-func (w *ProcessWorker) Decode(ctx context.Context, request *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
-	result := new(cerebrov1.SourceWorkerDecodeResultV1)
-	return result, w.runProto(ctx, "decode", request, result, int64(maxResponseBytes)+workerOverhead)
-}
-
-func (w *ProcessWorker) DecodeV2(ctx context.Context, request *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
-	result := new(cerebrov1.SourceWorkerDecodeResultV1)
+func (w *ProcessWorker) DecodeV2(ctx context.Context, request *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeOutputV2, error) {
+	result := new(cerebrov1.SourceWorkerDecodeOutputV2)
 	return result, w.runProto(ctx, "decode-v2", request, result, int64(maxResponseBytes)+workerOverhead)
 }
 

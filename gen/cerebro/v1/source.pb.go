@@ -1099,6 +1099,60 @@ func (x *SourceWorkerDecodeEnvelopeV2) GetExecutionIntentDigestSha256() string {
 	return ""
 }
 
+// SourceWorkerDecodeOutputV2 returns the Rust-constructed safe receipt and
+// normalized result together so the host never authors receipt digests.
+type SourceWorkerDecodeOutputV2 struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Receipt       *SourceWorkerSafeReceiptV1  `protobuf:"bytes,1,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	Result        *SourceWorkerDecodeResultV1 `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SourceWorkerDecodeOutputV2) Reset() {
+	*x = SourceWorkerDecodeOutputV2{}
+	mi := &file_cerebro_v1_source_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SourceWorkerDecodeOutputV2) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SourceWorkerDecodeOutputV2) ProtoMessage() {}
+
+func (x *SourceWorkerDecodeOutputV2) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_source_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SourceWorkerDecodeOutputV2.ProtoReflect.Descriptor instead.
+func (*SourceWorkerDecodeOutputV2) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *SourceWorkerDecodeOutputV2) GetReceipt() *SourceWorkerSafeReceiptV1 {
+	if x != nil {
+		return x.Receipt
+	}
+	return nil
+}
+
+func (x *SourceWorkerDecodeOutputV2) GetResult() *SourceWorkerDecodeResultV1 {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
 // SourceWorkerRecordV1 is one normalized, credential-free provider record.
 type SourceWorkerRecordV1 struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
@@ -1113,7 +1167,7 @@ type SourceWorkerRecordV1 struct {
 
 func (x *SourceWorkerRecordV1) Reset() {
 	*x = SourceWorkerRecordV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[13]
+	mi := &file_cerebro_v1_source_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1125,7 +1179,7 @@ func (x *SourceWorkerRecordV1) String() string {
 func (*SourceWorkerRecordV1) ProtoMessage() {}
 
 func (x *SourceWorkerRecordV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[13]
+	mi := &file_cerebro_v1_source_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1138,7 +1192,7 @@ func (x *SourceWorkerRecordV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerRecordV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerRecordV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{13}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SourceWorkerRecordV1) GetProviderId() string {
@@ -1198,7 +1252,7 @@ type SourceWorkerDecodeResultV1 struct {
 
 func (x *SourceWorkerDecodeResultV1) Reset() {
 	*x = SourceWorkerDecodeResultV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[14]
+	mi := &file_cerebro_v1_source_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1210,7 +1264,7 @@ func (x *SourceWorkerDecodeResultV1) String() string {
 func (*SourceWorkerDecodeResultV1) ProtoMessage() {}
 
 func (x *SourceWorkerDecodeResultV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[14]
+	mi := &file_cerebro_v1_source_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1223,7 +1277,7 @@ func (x *SourceWorkerDecodeResultV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerDecodeResultV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerDecodeResultV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{14}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SourceWorkerDecodeResultV1) GetPlanId() string {
@@ -1419,7 +1473,10 @@ const file_cerebro_v1_source_proto_rawDesc = "" +
 	"\x1eexecution_intent_digest_sha256\x18\x05 \x01(\tR\x1bexecutionIntentDigestSha256\x1aB\n" +
 	"\x14ResponseHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbd\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9d\x01\n" +
+	"\x1aSourceWorkerDecodeOutputV2\x12?\n" +
+	"\areceipt\x18\x01 \x01(\v2%.cerebro.v1.SourceWorkerSafeReceiptV1R\areceipt\x12>\n" +
+	"\x06result\x18\x02 \x01(\v2&.cerebro.v1.SourceWorkerDecodeResultV1R\x06result\"\xbd\x02\n" +
 	"\x14SourceWorkerRecordV1\x12\x1f\n" +
 	"\vprovider_id\x18\x01 \x01(\tR\n" +
 	"providerId\x12P\n" +
@@ -1461,7 +1518,7 @@ func file_cerebro_v1_source_proto_rawDescGZIP() []byte {
 	return file_cerebro_v1_source_proto_rawDescData
 }
 
-var file_cerebro_v1_source_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_cerebro_v1_source_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_cerebro_v1_source_proto_goTypes = []any{
 	(*SourceSpec)(nil),                     // 0: cerebro.v1.SourceSpec
 	(*SourceCursor)(nil),                   // 1: cerebro.v1.SourceCursor
@@ -1476,36 +1533,39 @@ var file_cerebro_v1_source_proto_goTypes = []any{
 	(*SourceWorkerPlanEnvelopeV2)(nil),     // 10: cerebro.v1.SourceWorkerPlanEnvelopeV2
 	(*SourceWorkerHTTPExecutionV2)(nil),    // 11: cerebro.v1.SourceWorkerHTTPExecutionV2
 	(*SourceWorkerDecodeEnvelopeV2)(nil),   // 12: cerebro.v1.SourceWorkerDecodeEnvelopeV2
-	(*SourceWorkerRecordV1)(nil),           // 13: cerebro.v1.SourceWorkerRecordV1
-	(*SourceWorkerDecodeResultV1)(nil),     // 14: cerebro.v1.SourceWorkerDecodeResultV1
-	nil,                                    // 15: cerebro.v1.SourceWorkerRuntimeMetadataV2.PublicConfigEntry
-	nil,                                    // 16: cerebro.v1.SourceWorkerHTTPExecutionV2.DeclaredHeadersEntry
-	nil,                                    // 17: cerebro.v1.SourceWorkerDecodeEnvelopeV2.ResponseHeadersEntry
-	nil,                                    // 18: cerebro.v1.SourceWorkerRecordV1.AttributesEntry
-	(*timestamppb.Timestamp)(nil),          // 19: google.protobuf.Timestamp
+	(*SourceWorkerDecodeOutputV2)(nil),     // 13: cerebro.v1.SourceWorkerDecodeOutputV2
+	(*SourceWorkerRecordV1)(nil),           // 14: cerebro.v1.SourceWorkerRecordV1
+	(*SourceWorkerDecodeResultV1)(nil),     // 15: cerebro.v1.SourceWorkerDecodeResultV1
+	nil,                                    // 16: cerebro.v1.SourceWorkerRuntimeMetadataV2.PublicConfigEntry
+	nil,                                    // 17: cerebro.v1.SourceWorkerHTTPExecutionV2.DeclaredHeadersEntry
+	nil,                                    // 18: cerebro.v1.SourceWorkerDecodeEnvelopeV2.ResponseHeadersEntry
+	nil,                                    // 19: cerebro.v1.SourceWorkerRecordV1.AttributesEntry
+	(*timestamppb.Timestamp)(nil),          // 20: google.protobuf.Timestamp
 }
 var file_cerebro_v1_source_proto_depIdxs = []int32{
-	19, // 0: cerebro.v1.SourceCheckpoint.watermark:type_name -> google.protobuf.Timestamp
+	20, // 0: cerebro.v1.SourceCheckpoint.watermark:type_name -> google.protobuf.Timestamp
 	3,  // 1: cerebro.v1.SourceWorkerPlanRequestV1.plan:type_name -> cerebro.v1.SourceExecutionPlanV1
 	4,  // 2: cerebro.v1.SourceWorkerPlanRequestV1.context:type_name -> cerebro.v1.SourceWorkerExecutionContextV1
 	3,  // 3: cerebro.v1.SourceWorkerDecodeRequestV1.plan:type_name -> cerebro.v1.SourceExecutionPlanV1
 	8,  // 4: cerebro.v1.SourceWorkerDecodeRequestV1.receipt:type_name -> cerebro.v1.SourceWorkerSafeReceiptV1
 	4,  // 5: cerebro.v1.SourceWorkerDecodeRequestV1.context:type_name -> cerebro.v1.SourceWorkerExecutionContextV1
-	15, // 6: cerebro.v1.SourceWorkerRuntimeMetadataV2.public_config:type_name -> cerebro.v1.SourceWorkerRuntimeMetadataV2.PublicConfigEntry
+	16, // 6: cerebro.v1.SourceWorkerRuntimeMetadataV2.public_config:type_name -> cerebro.v1.SourceWorkerRuntimeMetadataV2.PublicConfigEntry
 	5,  // 7: cerebro.v1.SourceWorkerPlanEnvelopeV2.request:type_name -> cerebro.v1.SourceWorkerPlanRequestV1
 	9,  // 8: cerebro.v1.SourceWorkerPlanEnvelopeV2.metadata:type_name -> cerebro.v1.SourceWorkerRuntimeMetadataV2
 	6,  // 9: cerebro.v1.SourceWorkerHTTPExecutionV2.request:type_name -> cerebro.v1.SourceWorkerHTTPRequestV1
-	16, // 10: cerebro.v1.SourceWorkerHTTPExecutionV2.declared_headers:type_name -> cerebro.v1.SourceWorkerHTTPExecutionV2.DeclaredHeadersEntry
+	17, // 10: cerebro.v1.SourceWorkerHTTPExecutionV2.declared_headers:type_name -> cerebro.v1.SourceWorkerHTTPExecutionV2.DeclaredHeadersEntry
 	7,  // 11: cerebro.v1.SourceWorkerDecodeEnvelopeV2.request:type_name -> cerebro.v1.SourceWorkerDecodeRequestV1
 	9,  // 12: cerebro.v1.SourceWorkerDecodeEnvelopeV2.metadata:type_name -> cerebro.v1.SourceWorkerRuntimeMetadataV2
-	17, // 13: cerebro.v1.SourceWorkerDecodeEnvelopeV2.response_headers:type_name -> cerebro.v1.SourceWorkerDecodeEnvelopeV2.ResponseHeadersEntry
-	18, // 14: cerebro.v1.SourceWorkerRecordV1.attributes:type_name -> cerebro.v1.SourceWorkerRecordV1.AttributesEntry
-	13, // 15: cerebro.v1.SourceWorkerDecodeResultV1.records:type_name -> cerebro.v1.SourceWorkerRecordV1
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	18, // 13: cerebro.v1.SourceWorkerDecodeEnvelopeV2.response_headers:type_name -> cerebro.v1.SourceWorkerDecodeEnvelopeV2.ResponseHeadersEntry
+	8,  // 14: cerebro.v1.SourceWorkerDecodeOutputV2.receipt:type_name -> cerebro.v1.SourceWorkerSafeReceiptV1
+	15, // 15: cerebro.v1.SourceWorkerDecodeOutputV2.result:type_name -> cerebro.v1.SourceWorkerDecodeResultV1
+	19, // 16: cerebro.v1.SourceWorkerRecordV1.attributes:type_name -> cerebro.v1.SourceWorkerRecordV1.AttributesEntry
+	14, // 17: cerebro.v1.SourceWorkerDecodeResultV1.records:type_name -> cerebro.v1.SourceWorkerRecordV1
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_source_proto_init() }
@@ -1519,7 +1579,7 @@ func file_cerebro_v1_source_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_source_proto_rawDesc), len(file_cerebro_v1_source_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

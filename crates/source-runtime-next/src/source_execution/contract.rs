@@ -207,9 +207,10 @@ pub fn validate_decode_envelope(
         .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
     validate_runtime_metadata(metadata)?;
     validate_response_headers(&envelope.response_headers)?;
-    if !lower_sha256(&envelope.response_headers_sha256)
-        || envelope.response_headers_sha256
-            != canonical_response_headers_digest(&envelope.response_headers)?
+    if !envelope.response_headers_sha256.is_empty()
+        && (!lower_sha256(&envelope.response_headers_sha256)
+            || envelope.response_headers_sha256
+                != canonical_response_headers_digest(&envelope.response_headers)?)
     {
         return Err(SourceExecutionError::InvalidDigest);
     }

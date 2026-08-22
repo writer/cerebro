@@ -85,16 +85,13 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	if err != nil {
 		return nil, fmt.Errorf("%w: credential-free request planning failed: %w", ErrWorkerContract, err)
 	}
-	providerURL, err := validateHTTPExecution(input.Plan, executionContext, metadata, execution)
+	providerURL, err := validateHTTPExecution(input.Plan, execution)
 	if err != nil {
 		return nil, err
 	}
 	requestPlan := execution.GetRequest()
 	requestIntentDigest := requestPlan.GetRequestIntentDigest()
 	executionIntentDigest := execution.GetExecutionIntentDigestSha256()
-	if input.Scope.RequestIntentDigest != "" && subtle.ConstantTimeCompare([]byte(input.Scope.RequestIntentDigest), []byte(executionIntentDigest)) != 1 {
-		return nil, fmt.Errorf("%w: caller request intent fence does not match the planned operation", ErrWorkerContract)
-	}
 	if h.credentialExpiresAt.Before(h.now().UTC()) || subtle.ConstantTimeCompare([]byte(h.credentialReference), []byte(strings.TrimSpace(input.CredentialReference))) != 1 {
 		return nil, ErrCredentialUnavailable
 	}
@@ -111,30 +108,20 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	if err != nil {
 		return nil, err
 	}
-	responseBytes, err := safeUint64(len(responseBody))
-	if err != nil {
-		return nil, err
-	}
-	receipt := &cerebrov1.SourceWorkerSafeReceiptV1{
-		PlanDigestSha256: input.Plan.GetPlanDigestSha256(), LogicalPageId: executionContext.GetLogicalPageId(),
-		RequestIntentDigest: requestIntentDigest, RuntimeGeneration: executionContext.GetRuntimeGeneration(),
-		LeaseGeneration: executionContext.GetLeaseGeneration(), CredentialOperation: execution.GetCredentialOperation(),
-		StatusCode: statusCodeWire, ResponseBytes: responseBytes, ResponseSha256: responseSHA256(responseBody),
-		TenantId: executionContext.GetTenantId(), RuntimeId: executionContext.GetRuntimeId(), ObservedAtUnixMillis: executionContext.GetObservedAtUnixMillis(),
-	}
-	decodeResult, err := h.worker.DecodeV2(ctx, &cerebrov1.SourceWorkerDecodeEnvelopeV2{
+	decoded, err := h.worker.DecodeV2(ctx, &cerebrov1.SourceWorkerDecodeEnvelopeV2{
 		Request: &cerebrov1.SourceWorkerDecodeRequestV1{
 			Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), StatusCode: statusCodeWire, ResponseBody: responseBody,
-			LogicalPageId: executionContext.GetLogicalPageId(), RequestIntentDigest: requestIntentDigest, Receipt: receipt, Context: executionContext,
+			LogicalPageId: executionContext.GetLogicalPageId(), RequestIntentDigest: requestIntentDigest, Context: executionContext,
 		},
-		Metadata: metadata, ResponseHeaders: responseHeaders,
-		ResponseHeadersSha256:       responseHeadersSHA256(responseHeaders),
-		ExecutionIntentDigestSha256: executionIntentDigest,
+		Metadata: metadata, ResponseHeaders: responseHeaders, ExecutionIntentDigestSha256: executionIntentDigest,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("credential-free response decoding failed: %w", err)
 	}
-	output := &ExecutionOutput{Plan: input.Plan, Context: executionContext, Receipt: receipt, Result: decodeResult}
+	if decoded.GetReceipt() == nil || decoded.GetResult() == nil {
+		return nil, fmt.Errorf("%w: Rust decode evidence is incomplete", ErrWorkerContract)
+	}
+	output := &ExecutionOutput{Plan: input.Plan, Context: executionContext, Receipt: decoded.GetReceipt(), Result: decoded.GetResult()}
 	program, err := h.worker.SealPage(ctx, PageProgramRequest{
 		Plan: output.Plan, Context: output.Context, Receipt: output.Receipt, Result: output.Result,
 		CurrentLeaseGeneration: input.Scope.LeaseGeneration, Metadata: metadata,

@@ -38,21 +38,13 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	credential := []byte(resolved)
 	host := sourceworker.NewHost(s.sourceWorker, reference, credential, fence.ExpiresAt)
 	clear(credential)
-	plan, err := s.sourceWorker.Compile(ctx, sourceworker.SelectionRequest{SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID)})
-	if errors.Is(err, sourceworker.ErrWorkerUnsupported) {
-		pull, compatibilityErr := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
-		return pull, false, compatibilityErr
-	}
-	if err != nil {
-		return sourcecdk.Pull{}, false, err
-	}
 	publicConfig := publicSourceExecutionConfig(cfg)
 	priorWatermark := int64(0)
 	if watermark := checkpoint.GetWatermark(); watermark != nil && watermark.CheckValid() == nil {
 		priorWatermark = watermark.AsTime().UTC().UnixMilli()
 	}
 	output, err := host.Execute(ctx, sourceworker.ExecutionInput{
-		Plan: plan, SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID), CredentialReference: reference, PageNumber: pageNumber,
+		SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID), CredentialReference: reference, PageNumber: pageNumber,
 		Scope: sourceworker.CredentialScope{
 			TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()),
 			PriorCursor: strings.TrimSpace(cursor.GetOpaque()), LeaseOwner: fence.Owner,

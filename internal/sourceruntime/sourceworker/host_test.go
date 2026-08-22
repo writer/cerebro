@@ -20,15 +20,21 @@ import (
 
 func TestHostKeepsCredentialInsideBoundedEgressBridge(t *testing.T) {
 	plan, now, secret := AzureAuthorizationPolicyPlan(), time.Now().UTC(), "host-only-secret"
-	worker := newFakeWorker()
+	worker, scope := newFakeWorker(), exactScope(plan, now)
+	scope.PublicConfig = map[string]string{"insights_base_url": "https://api.jumpcloud.com/insights/directory/v1"}
+	scope.PriorTerminalWatermarkUnixMillis, scope.PriorCheckpoint = 1_782_000_000_000, "audit-terminal-1"
 	host := NewHost(worker, "opaque-reference", []byte(secret), now.Add(time.Minute))
 	host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Header.Get("Authorization") != "Bearer "+secret {
 			t.Fatal("host did not apply the redeemed credential")
 		}
-		return response(http.StatusOK, `{}`), nil
+		result := response(http.StatusOK)
+		for name, value := range map[string]string{"X-Result-Count": "2", "X-Limit": "2", "X-Search_after": `{"id":"event-2"}`, "Retry-After": "30", "Set-Cookie": "secret-cookie", "Www-Authenticate": "secret-challenge", "X-Api-Key": "secret"} {
+			result.Header.Set(name, value)
+		}
+		return result, nil
 	})}
-	output, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque-reference", PageNumber: 1, Scope: exactScope(plan, now)})
+	output, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque-reference", PageNumber: 1, Scope: scope})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,23 +44,28 @@ func TestHostKeepsCredentialInsideBoundedEgressBridge(t *testing.T) {
 	if encoded := fmt.Sprintf("%+v", output.Receipt); strings.Contains(encoded, secret) || strings.Contains(encoded, "opaque-reference") {
 		t.Fatal("safe receipt leaked credential material")
 	}
+	if got := worker.planEnvelope.GetMetadata(); got.GetPriorCheckpoint() != scope.PriorCheckpoint || got.GetPriorTerminalWatermarkUnixMillis() != scope.PriorTerminalWatermarkUnixMillis || got.GetPublicConfig()["insights_base_url"] == "" {
+		t.Fatalf("planning metadata was dropped: %#v", got)
+	}
+	for _, name := range []string{"x-result-count", "x-limit", "x-search_after", "retry-after"} {
+		if worker.decodeEnvelope.GetResponseHeaders()[name] == "" {
+			t.Fatalf("safe response header %q was dropped", name)
+		}
+	}
+	for _, name := range []string{"set-cookie", "www-authenticate", "x-api-key"} {
+		if _, ok := worker.decodeEnvelope.GetResponseHeaders()[name]; ok {
+			t.Fatalf("sensitive response header %q crossed the wire", name)
+		}
+	}
 }
 
-func TestHostRejectsOriginEscapeAndIntentTamperBeforeRedemption(t *testing.T) {
-	plan, now := AzureAuthorizationPolicyPlan(), time.Now().UTC()
-	for name, mutate := range map[string]func(*fakeWorker, *CredentialScope){
-		"origin": func(worker *fakeWorker, _ *CredentialScope) { worker.endpoint = "https://example.com/escape" },
-		"intent": func(_ *fakeWorker, scope *CredentialScope) { scope.RequestIntentDigest = strings.Repeat("b", 64) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			worker, scope := newFakeWorker(), exactScope(plan, now)
-			mutate(worker, &scope)
-			host := NewHost(worker, "opaque", []byte("secret"), now.Add(time.Minute))
-			host.client, host.now = &http.Client{}, func() time.Time { return now }
-			if _, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: scope}); err == nil || host.credential == nil {
-				t.Fatalf("Execute() error = %v, credential consumed before validation", err)
-			}
-		})
+func TestHostRejectsOriginEscapeBeforeRedemption(t *testing.T) {
+	plan, now, worker := AzureAuthorizationPolicyPlan(), time.Now().UTC(), newFakeWorker()
+	worker.endpoint = "https://example.com/escape"
+	host := NewHost(worker, "opaque", []byte("secret"), now.Add(time.Minute))
+	host.client, host.now = &http.Client{}, func() time.Time { return now }
+	if _, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: exactScope(plan, now)}); err == nil || host.credential == nil {
+		t.Fatalf("Execute() error = %v, credential consumed before validation", err)
 	}
 }
 
@@ -63,7 +74,7 @@ func TestHostClassifiesProviderAndNetworkBounds(t *testing.T) {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			plan, now := AzureAuthorizationPolicyPlan(), time.Now().UTC()
 			host := NewHost(newFakeWorker(), "opaque", []byte("secret"), now.Add(time.Minute))
-			host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return response(status, `{}`), nil })}
+			host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return response(status), nil })}
 			_, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: exactScope(plan, now)})
 			if !errors.Is(err, want) {
 				t.Fatalf("Execute() error = %v, want %v", err, want)
@@ -96,7 +107,6 @@ type fakeWorker struct {
 	declaredHeaders     map[string]string
 	credentialOperation string
 	sawSecret           bool
-	contextRequest      ContextRequest
 	planEnvelope        *cerebrov1.SourceWorkerPlanEnvelopeV2
 	decodeEnvelope      *cerebrov1.SourceWorkerDecodeEnvelopeV2
 }
@@ -108,29 +118,18 @@ func (w *fakeWorker) Compile(context.Context, SelectionRequest) (*cerebrov1.Sour
 	return AzureAuthorizationPolicyPlan(), nil
 }
 func (w *fakeWorker) Context(_ context.Context, request ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error) {
-	w.contextRequest = request
 	return &cerebrov1.SourceWorkerExecutionContextV1{TenantId: request.TenantID, RuntimeId: request.RuntimeID, LogicalPageId: "logical-page-1", RuntimeGeneration: request.RuntimeGeneration, LeaseGeneration: request.LeaseGeneration, ObservedAtUnixMillis: request.ObservedAtUnixMillis}, nil
 }
-func (w *fakeWorker) PlanV2(ctx context.Context, envelope *cerebrov1.SourceWorkerPlanEnvelopeV2) (*cerebrov1.SourceWorkerHTTPExecutionV2, error) {
+func (w *fakeWorker) PlanV2(_ context.Context, envelope *cerebrov1.SourceWorkerPlanEnvelopeV2) (*cerebrov1.SourceWorkerHTTPExecutionV2, error) {
 	w.planEnvelope = proto.Clone(envelope).(*cerebrov1.SourceWorkerPlanEnvelopeV2)
-	request, err := w.Plan(ctx, envelope.GetRequest())
-	if err != nil {
-		return nil, err
-	}
-	execution := &cerebrov1.SourceWorkerHTTPExecutionV2{Request: request, Body: w.body, DeclaredHeaders: w.declaredHeaders, CredentialOperation: w.credentialOperation}
-	execution.ExecutionIntentDigestSha256 = executionIntentSHA256(envelope.GetMetadata(), execution)
+	request := envelope.GetRequest()
+	plan := request.GetPlan()
+	planned := &cerebrov1.SourceWorkerHTTPRequestV1{PlanId: plan.GetPlanId(), Method: w.method, Url: w.endpoint, Accept: "application/json", MaxResponseBytes: plan.GetMaxResponseBytes(), PlanDigestSha256: plan.GetPlanDigestSha256(), RequestIntentDigest: strings.Repeat("1", 64)}
+	execution := &cerebrov1.SourceWorkerHTTPExecutionV2{Request: planned, Body: w.body, DeclaredHeaders: w.declaredHeaders, CredentialOperation: w.credentialOperation}
+	execution.ExecutionIntentDigestSha256 = strings.Repeat("4", 64)
 	return execution, nil
 }
-func (w *fakeWorker) Plan(_ context.Context, request *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
-	result := &cerebrov1.SourceWorkerHTTPRequestV1{PlanId: request.GetPlan().GetPlanId(), Method: w.method, Url: w.endpoint, Accept: "application/json", MaxResponseBytes: request.GetPlan().GetMaxResponseBytes(), PlanDigestSha256: request.GetPlan().GetPlanDigestSha256(), RequestIntentDigest: strings.Repeat("1", 64)}
-	return result, nil
-}
-func (w *fakeWorker) Decode(_ context.Context, request *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
-	wire, _ := proto.Marshal(request)
-	w.sawSecret = bytes.Contains(wire, []byte("host-only-secret"))
-	return &cerebrov1.SourceWorkerDecodeResultV1{PlanId: request.GetPlan().GetPlanId(), PlanDigestSha256: request.GetPlan().GetPlanDigestSha256(), LogicalPageId: request.GetContext().GetLogicalPageId(), RequestIntentDigest: request.GetRequestIntentDigest(), ResultDigestSha256: strings.Repeat("2", 64), TenantId: request.GetContext().GetTenantId(), RuntimeId: request.GetContext().GetRuntimeId(), RuntimeGeneration: request.GetContext().GetRuntimeGeneration(), LeaseGeneration: request.GetContext().GetLeaseGeneration(), ObservedAtUnixMillis: request.GetContext().GetObservedAtUnixMillis(), Records: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy", EventId: "azure-authorization-policy-authorizationPolicy", OccurredAtUnixMillis: request.GetContext().GetObservedAtUnixMillis(), Attributes: map[string]string{"family": "authorization_policy"}, PayloadJson: []byte(`{"id":"authorizationPolicy"}`)}}}, nil
-}
-func (w *fakeWorker) DecodeV2(ctx context.Context, envelope *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
+func (w *fakeWorker) DecodeV2(_ context.Context, envelope *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeOutputV2, error) {
 	w.decodeEnvelope = proto.Clone(envelope).(*cerebrov1.SourceWorkerDecodeEnvelopeV2)
 	switch envelope.GetRequest().GetStatusCode() {
 	case http.StatusUnauthorized:
@@ -140,7 +139,21 @@ func (w *fakeWorker) DecodeV2(ctx context.Context, envelope *cerebrov1.SourceWor
 	case http.StatusTooManyRequests:
 		return nil, ErrProviderRateLimited
 	}
-	return w.Decode(ctx, envelope.GetRequest())
+	request := envelope.GetRequest()
+	wire, _ := proto.Marshal(request)
+	w.sawSecret = bytes.Contains(wire, []byte("host-only-secret"))
+	context := request.GetContext()
+	result := &cerebrov1.SourceWorkerDecodeResultV1{PlanId: request.GetPlan().GetPlanId(), PlanDigestSha256: request.GetPlan().GetPlanDigestSha256(), LogicalPageId: context.GetLogicalPageId(), RequestIntentDigest: request.GetRequestIntentDigest(), ResultDigestSha256: strings.Repeat("2", 64), TenantId: context.GetTenantId(), RuntimeId: context.GetRuntimeId(), RuntimeGeneration: context.GetRuntimeGeneration(), LeaseGeneration: context.GetLeaseGeneration(), ObservedAtUnixMillis: context.GetObservedAtUnixMillis(), Records: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy", EventId: "azure-authorization-policy-authorizationPolicy", OccurredAtUnixMillis: context.GetObservedAtUnixMillis(), Attributes: map[string]string{"family": "authorization_policy"}, PayloadJson: []byte(`{"id":"authorizationPolicy"}`)}}}
+	return &cerebrov1.SourceWorkerDecodeOutputV2{
+		Receipt: &cerebrov1.SourceWorkerSafeReceiptV1{
+			PlanDigestSha256: envelope.GetRequest().GetPlan().GetPlanDigestSha256(),
+			LogicalPageId:    context.GetLogicalPageId(), RequestIntentDigest: envelope.GetRequest().GetRequestIntentDigest(),
+			RuntimeGeneration: context.GetRuntimeGeneration(), LeaseGeneration: context.GetLeaseGeneration(),
+			CredentialOperation: w.credentialOperation, StatusCode: envelope.GetRequest().GetStatusCode(),
+			TenantId: context.GetTenantId(), RuntimeId: context.GetRuntimeId(), ObservedAtUnixMillis: context.GetObservedAtUnixMillis(),
+		},
+		Result: result,
+	}, nil
 }
 func (w *fakeWorker) SealPage(context.Context, PageProgramRequest) (*PageProgram, error) {
 	return &PageProgram{TransitionDigest: strings.Repeat("3", 64), AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy"}}}, nil
@@ -149,8 +162,8 @@ func (w *fakeWorker) SealPage(context.Context, PageProgramRequest) (*PageProgram
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }
-func response(status int, body string) *http.Response {
-	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}
+func response(status int) *http.Response {
+	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}
 }
 func mustURL(t *testing.T) *url.URL {
 	t.Helper()
@@ -162,46 +175,6 @@ func mustURL(t *testing.T) *url.URL {
 }
 func exactScope(plan *cerebrov1.SourceExecutionPlanV1, now time.Time) CredentialScope {
 	return CredentialScope{TenantID: "tenant-1", RuntimeID: "runtime-1", SourceID: plan.GetSourceId(), FamilyID: plan.GetFamilyId(), PlanDigestSHA256: plan.GetPlanDigestSha256(), LogicalPageID: "logical-page-1", LeaseOwner: "owner-1", RuntimeGeneration: 7, LeaseGeneration: 11, LeaseExpiresAt: now.Add(time.Minute)}
-}
-
-func TestHostCarriesPublicResumeMetadataAndRedactedResponseHeaders(t *testing.T) {
-	plan, now := AzureAuthorizationPolicyPlan(), time.Now().UTC()
-	worker, scope := newFakeWorker(), exactScope(plan, now)
-	scope.PublicConfig = map[string]string{"insights_base_url": "https://api.jumpcloud.com/insights/directory/v1"}
-	scope.PriorTerminalWatermarkUnixMillis = 1_782_000_000_000
-	scope.PriorCheckpoint = "audit-terminal-1"
-	host := NewHost(worker, "opaque", []byte("secret"), now.Add(time.Minute))
-	host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		result := response(http.StatusOK, `{}`)
-		result.Header.Set("X-Result-Count", "2")
-		result.Header.Set("X-Limit", "2")
-		result.Header.Set("X-Search_after", `{"id":"event-2"}`)
-		result.Header.Set("Retry-After", "30")
-		result.Header.Set("Set-Cookie", "secret-cookie")
-		result.Header.Set("Www-Authenticate", "secret-challenge")
-		result.Header.Set("X-Api-Key", "secret")
-		return result, nil
-	})}
-	if _, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: scope}); err != nil {
-		t.Fatal(err)
-	}
-	if worker.contextRequest.PriorTerminalWatermarkUnixMillis != scope.PriorTerminalWatermarkUnixMillis || worker.contextRequest.PriorCheckpoint != scope.PriorCheckpoint {
-		t.Fatalf("context metadata was dropped: %#v", worker.contextRequest)
-	}
-	if got := worker.planEnvelope.GetMetadata(); got.GetPriorCheckpoint() != scope.PriorCheckpoint || got.GetPublicConfig()["insights_base_url"] == "" {
-		t.Fatalf("planning metadata was dropped: %#v", got)
-	}
-	headers := worker.decodeEnvelope.GetResponseHeaders()
-	for _, name := range []string{"x-result-count", "x-limit", "x-search_after", "retry-after"} {
-		if headers[name] == "" {
-			t.Fatalf("safe response header %q was dropped: %#v", name, headers)
-		}
-	}
-	for _, name := range []string{"set-cookie", "www-authenticate", "x-api-key"} {
-		if _, ok := headers[name]; ok {
-			t.Fatalf("sensitive response header %q crossed the wire", name)
-		}
-	}
 }
 
 func TestHostCarriesCredentialFreeBodyAndHeadersBeforeApplyingJumpCloudAuth(t *testing.T) {
@@ -224,7 +197,7 @@ func TestHostCarriesCredentialFreeBodyAndHeadersBeforeApplyingJumpCloudAuth(t *t
 		if err != nil || !bytes.Equal(body, worker.body) {
 			t.Fatalf("request body = %q, error = %v", body, err)
 		}
-		return response(http.StatusOK, `{}`), nil
+		return response(http.StatusOK), nil
 	})}
 	if _, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: exactScope(plan, now)}); err != nil {
 		t.Fatal(err)
@@ -243,11 +216,8 @@ func TestSafeResponseHeadersRedactsAndBounds(t *testing.T) {
 	if len(safe) != 4 {
 		t.Fatalf("safe headers = %#v, want four JumpCloud headers", safe)
 	}
-	tooMany := make(http.Header)
-	for index := 0; index <= maxSafeHeaderEntries; index++ {
-		tooMany.Set(fmt.Sprintf("X-Next-%d", index), "value")
-	}
-	if _, err := safeResponseHeaders(tooMany); !errors.Is(err, ErrProviderResponseTooLarge) {
-		t.Fatalf("safeResponseHeaders() error = %v, want response bound", err)
+	headers.Set("X-Result-Count", strings.Repeat("x", maxSafeHeaderValueBytes+1))
+	if _, err := safeResponseHeaders(headers); !errors.Is(err, ErrInvalidExecution) {
+		t.Fatalf("safeResponseHeaders() error = %v, want header value bound", err)
 	}
 }

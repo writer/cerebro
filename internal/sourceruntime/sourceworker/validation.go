@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 
@@ -23,7 +22,7 @@ const (
 )
 
 func validateScope(plan *cerebrov1.SourceExecutionPlanV1, reference string, scope CredentialScope, now time.Time) error {
-	if strings.TrimSpace(reference) == "" || strings.TrimSpace(scope.TenantID) == "" || !safeIdentifier(scope.RuntimeID) || !safeIdentifier(scope.LeaseOwner) || !safeIdentifier(scope.LogicalPageID) || (scope.RequestIntentDigest != "" && !lowerSHA256(scope.RequestIntentDigest)) {
+	if strings.TrimSpace(reference) == "" || strings.TrimSpace(scope.TenantID) == "" || !safeIdentifier(scope.RuntimeID) || !safeIdentifier(scope.LeaseOwner) || !safeIdentifier(scope.LogicalPageID) {
 		return fmt.Errorf("%w: execution scope is incomplete", ErrInvalidExecution)
 	}
 	if scope.SourceID != plan.GetSourceId() || scope.FamilyID != plan.GetFamilyId() || scope.PlanDigestSHA256 != plan.GetPlanDigestSha256() {
@@ -34,9 +33,6 @@ func validateScope(plan *cerebrov1.SourceExecutionPlanV1, reference string, scop
 	}
 	if scope.PriorTerminalWatermarkUnixMillis < 0 || !safeOpaque(scope.PriorCursor) || !safeOpaque(scope.PriorCheckpoint) {
 		return fmt.Errorf("%w: durable resume metadata is invalid", ErrInvalidExecution)
-	}
-	if err := validatePublicConfig(scope.PublicConfig); err != nil {
-		return err
 	}
 	return nil
 }
@@ -53,18 +49,12 @@ func validateWorkerRequest(plan *cerebrov1.SourceExecutionPlanV1, request *cereb
 	if err != nil || actual.Scheme != origin.Scheme || actual.Hostname() != origin.Hostname() || actual.Port() != origin.Port() || actual.User != nil || actual.Fragment != "" || (actual.Path != plan.GetPath() && actual.Path != origin.ResolveReference(&url.URL{Path: plan.GetPath()}).Path) {
 		return nil, fmt.Errorf("%w: worker request escaped the compiled origin", ErrInvalidExecution)
 	}
-	if !lowerSHA256(request.GetRequestIntentDigest()) {
-		return nil, fmt.Errorf("%w: worker request intent digest is invalid", ErrWorkerContract)
-	}
 	return actual, nil
 }
 
-func validateHTTPExecution(plan *cerebrov1.SourceExecutionPlanV1, context *cerebrov1.SourceWorkerExecutionContextV1, metadata *cerebrov1.SourceWorkerRuntimeMetadataV2, execution *cerebrov1.SourceWorkerHTTPExecutionV2) (*url.URL, error) {
-	if execution == nil || metadata == nil || context == nil {
+func validateHTTPExecution(plan *cerebrov1.SourceExecutionPlanV1, execution *cerebrov1.SourceWorkerHTTPExecutionV2) (*url.URL, error) {
+	if execution == nil {
 		return nil, fmt.Errorf("%w: metadata-aware worker request is incomplete", ErrInvalidExecution)
-	}
-	if err := validatePublicConfig(metadata.GetPublicConfig()); err != nil || metadata.GetPriorTerminalWatermarkUnixMillis() < 0 || !safeOpaque(metadata.GetPriorCheckpoint()) {
-		return nil, fmt.Errorf("%w: durable runtime metadata is invalid", ErrInvalidExecution)
 	}
 	requestURL, err := validateWorkerRequest(plan, execution.GetRequest())
 	if err != nil {
@@ -75,12 +65,6 @@ func validateHTTPExecution(plan *cerebrov1.SourceExecutionPlanV1, context *cereb
 	}
 	if len(execution.GetBody()) > maxRequestBodyBytes || (execution.GetRequest().GetMethod() == http.MethodGet && len(execution.GetBody()) != 0) {
 		return nil, fmt.Errorf("%w: worker request body is invalid", ErrInvalidExecution)
-	}
-	if execution.GetCredentialOperation() != "source.bearer" && execution.GetCredentialOperation() != "jumpcloud.x_api_key" {
-		return nil, fmt.Errorf("%w: credential operation is not registered", ErrWorkerContract)
-	}
-	if !lowerSHA256(execution.GetExecutionIntentDigestSha256()) || execution.GetExecutionIntentDigestSha256() != executionIntentSHA256(metadata, execution) {
-		return nil, fmt.Errorf("%w: execution intent digest is invalid", ErrWorkerContract)
 	}
 	return requestURL, nil
 }
@@ -110,7 +94,7 @@ func safeResponseHeaders(headers http.Header) (map[string]string, error) {
 	result := make(map[string]string)
 	for name, values := range headers {
 		name = strings.ToLower(strings.TrimSpace(name))
-		if !safeResponseHeaderName(name) || sensitiveHeaderName(name) {
+		if !safeResponseHeaderName(name) {
 			continue
 		}
 		value := strings.Join(values, ", ")
@@ -128,7 +112,7 @@ func validateHeaderMap(headers map[string]string, response bool) error {
 	}
 	total := 0
 	for name, value := range headers {
-		if name != strings.ToLower(name) || !safeHeaderName(name) || sensitiveHeaderName(name) || (!response && !safeDeclaredHeaderName(name)) || (response && !safeResponseHeaderName(name)) || len(value) > maxSafeHeaderValueBytes || strings.ContainsAny(value, "\r\n") {
+		if name != strings.ToLower(name) || (!response && !safeDeclaredHeaderName(name)) || (response && !safeResponseHeaderName(name)) || len(value) > maxSafeHeaderValueBytes || strings.ContainsAny(value, "\r\n") {
 			return fmt.Errorf("%w: safe header metadata is invalid", ErrInvalidExecution)
 		}
 		total += len(name) + len(value)
@@ -160,46 +144,28 @@ func safeHeaderName(name string) bool {
 		return false
 	}
 	for _, character := range name {
-		if !(character >= 'a' && character <= 'z') && !(character >= '0' && character <= '9') && !strings.ContainsRune("!#$%&'*+-.^_`|~", character) {
-			return false
+		if (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || strings.ContainsRune("!#$%&'*+-.^_`|~", character) {
+			continue
 		}
+		return false
 	}
 	return true
 }
 
-func sensitiveHeaderName(name string) bool {
-	switch name {
-	case "authorization", "proxy-authorization", "cookie", "set-cookie", "www-authenticate", "proxy-authenticate", "x-api-key", "api-key", "x-auth-token", "x-access-token", "host", "content-length", "transfer-encoding", "connection":
-		return true
-	default:
-		return false
-	}
-}
-
 func safeResponseHeaderName(name string) bool {
 	switch name {
-	case "content-type", "date", "etag", "last-modified", "link", "retry-after", "x-limit", "x-result-count", "x-search-after", "x-search_after":
+	case "content-type", "date", "etag", "last-modified", "link", "retry-after",
+		"ratelimit-limit", "ratelimit-remaining", "ratelimit-reset",
+		"x-limit", "x-next-cursor", "x-page", "x-page-count", "x-page-size",
+		"x-pagination-page", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset",
+		"x-result-count", "x-search-after", "x-search_after", "x-total-count", "x-total-pages":
 		return true
-	}
-	for _, prefix := range []string{"ratelimit-", "x-ratelimit-", "x-next-", "x-page-", "x-pagination-", "x-total-"} {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
 	}
 	return false
 }
 
 func safeOpaque(value string) bool {
 	return len(value) <= 4096 && !strings.ContainsAny(value, "\r\n\x00")
-}
-
-func sortedHeaderKeys(headers map[string]string) []string {
-	keys := make([]string, 0, len(headers))
-	for key := range headers {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func safeHTTPClient(resolver *net.Resolver) *http.Client {

@@ -143,6 +143,13 @@ message SourceWorkerDecodeEnvelopeV2 {
   string execution_intent_digest_sha256 = 5;
 }
 
+// SourceWorkerDecodeOutputV2 returns the Rust-constructed safe receipt and
+// normalized result together so the host never authors receipt digests.
+message SourceWorkerDecodeOutputV2 {
+  SourceWorkerSafeReceiptV1 receipt = 1;
+  SourceWorkerDecodeResultV1 result = 2;
+}
+
 // SourceWorkerRecordV1 is one normalized, credential-free provider record.
 message SourceWorkerRecordV1 {
   string provider_id = 1;

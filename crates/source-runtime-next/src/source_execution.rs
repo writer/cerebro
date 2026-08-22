@@ -43,10 +43,11 @@ pub use runtime::{build_execution_context, seal_page_program, seal_page_program_
 pub use wire::{
     SourceExecutionContextRequestV1, SourceExecutionLifecycleDecisionV1,
     SourceExecutionLifecycleEnvelopeV2, SourceExecutionLifecycleRequestV1, SourceExecutionPlanV1,
-    SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeRequestV1,
-    SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2,
-    SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1,
-    SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1,
+    SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeOutputV2,
+    SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
+    SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
+    SourceWorkerPlanRequestV1, SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2,
+    SourceWorkerSafeReceiptV1,
 };
 
 /// Compiles an exact plan through the closed Rust source-family registry.

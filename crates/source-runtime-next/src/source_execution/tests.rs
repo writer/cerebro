@@ -10,15 +10,17 @@ use super::{
         AZURE_SOURCE_ID, MAX_CURSOR_BYTES, MAX_RESPONSE_BYTES, MAX_SAFE_HEADER_BYTES,
         MAX_SAFE_HEADER_ENTRIES,
     },
-    decode,
+    decode, decode_v2,
     error::SourceExecutionError,
-    plan, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
+    plan, plan_v2, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
     validate_cursor, validate_declared_headers, validate_http_request, validate_response_headers,
     validate_runtime_metadata,
     wire::{
-        SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
-        SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1,
-        SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1,
+        SourceExecutionPlanV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeOutputV2,
+        SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
+        SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
+        SourceWorkerPlanRequestV1, SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2,
+        SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -332,6 +334,53 @@ fn v2_header_contract_rejects_credentials_and_bounds_metadata() {
         canonical_response_headers_digest(&first).unwrap(),
         canonical_response_headers_digest(&second).unwrap()
     );
+}
+
+#[test]
+fn rust_constructs_and_validates_v2_receipt_evidence() {
+    let context = exact_context("tenant-a");
+    let metadata = SourceWorkerRuntimeMetadataV2::default();
+    let planned = plan_v2(
+        &SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(exact_plan()),
+                context: Some(context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        }
+        .encode_to_vec(),
+    )
+    .unwrap();
+    let planned = SourceWorkerHttpExecutionV2::decode(planned.as_slice()).unwrap();
+    let request = planned.request.as_ref().unwrap();
+    let output = decode_v2(
+        &SourceWorkerDecodeEnvelopeV2 {
+            request: Some(SourceWorkerDecodeRequestV1 {
+                plan: Some(exact_plan()),
+                status_code: 200,
+                response_body: GO_LIVE_TEST_RESPONSE.to_vec(),
+                logical_page_id: context.logical_page_id.clone(),
+                request_intent_digest: request.request_intent_digest.clone(),
+                receipt: None,
+                context: Some(context.clone()),
+            }),
+            metadata: Some(metadata),
+            response_headers: HashMap::from([("x-result-count".to_owned(), "1".to_owned())]),
+            response_headers_sha256: String::new(),
+            execution_intent_digest_sha256: planned.execution_intent_digest_sha256,
+        }
+        .encode_to_vec(),
+    )
+    .unwrap();
+    let output = SourceWorkerDecodeOutputV2::decode(output.as_slice()).unwrap();
+    let receipt = output.receipt.unwrap();
+    assert_eq!(receipt.credential_operation, "source.bearer");
+    assert_eq!(receipt.response_bytes, GO_LIVE_TEST_RESPONSE.len() as u64);
+    assert_eq!(
+        receipt.response_sha256,
+        response_digest(GO_LIVE_TEST_RESPONSE)
+    );
+    assert_eq!(output.result.unwrap().tenant_id, context.tenant_id);
 }
 
 #[test]

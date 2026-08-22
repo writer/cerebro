@@ -40,10 +40,8 @@ var (
 type Worker interface {
 	Compile(context.Context, SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error)
 	Context(context.Context, ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error)
-	Plan(context.Context, *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error)
 	PlanV2(context.Context, *cerebrov1.SourceWorkerPlanEnvelopeV2) (*cerebrov1.SourceWorkerHTTPExecutionV2, error)
-	Decode(context.Context, *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error)
-	DecodeV2(context.Context, *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeResultV1, error)
+	DecodeV2(context.Context, *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeOutputV2, error)
 	SealPage(context.Context, PageProgramRequest) (*PageProgram, error)
 }
 
@@ -95,7 +93,6 @@ type CredentialScope struct {
 	PublicConfig                     map[string]string
 	PriorTerminalWatermarkUnixMillis int64
 	PriorCheckpoint                  string
-	RequestIntentDigest              string
 	LeaseOwner                       string
 	RuntimeGeneration                uint64
 	LeaseGeneration                  uint64

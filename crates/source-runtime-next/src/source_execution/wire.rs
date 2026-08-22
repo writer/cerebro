@@ -250,6 +250,17 @@ pub struct SourceWorkerDecodeEnvelopeV2 {
     pub execution_intent_digest_sha256: String,
 }
 
+/// Rust-constructed receipt and normalized response returned atomically.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceWorkerDecodeOutputV2 {
+    /// Safe receipt constructed and validated by Rust.
+    #[prost(message, optional, tag = "1")]
+    pub receipt: Option<SourceWorkerSafeReceiptV1>,
+    /// Normalized provider page bound to the receipt.
+    #[prost(message, optional, tag = "2")]
+    pub result: Option<SourceWorkerDecodeResultV1>,
+}
+
 /// One normalized provider record ready for host append admission.
 #[derive(Clone, PartialEq, Message)]
 pub struct SourceWorkerRecordV1 {
