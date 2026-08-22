@@ -32,13 +32,13 @@ import (
 )
 
 const (
-	grcDefaultLimit                  = uint32(100)
-	grcMaxLimit                      = uint32(500)
-	grcMaxRuntimeScope               = uint32(500)
-	grcRuntimeScopeFetchLimit        = grcMaxRuntimeScope + 1
-	grcDashboardPreviewLimit         = uint32(25)
-	grcDashboardRuntimeHealthTimeout = 5 * time.Second
-	grcAuditPacketSchema             = grcauditpacket.SchemaVersion
+	grcDefaultLimit                   = uint32(100)
+	grcMaxLimit                       = uint32(500)
+	grcMaxRuntimeScope                = uint32(500)
+	grcRuntimeScopeFetchLimit         = grcMaxRuntimeScope + 1
+	grcDashboardPreviewLimit          = uint32(25)
+	grcRuntimeHealthEnrichmentTimeout = 5 * time.Second
+	grcAuditPacketSchema              = grcauditpacket.SchemaVersion
 )
 
 type grcScope struct {
@@ -193,7 +193,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		})
 	})
 	group.Go(func() error {
-		runtimeHealthCtx, cancel := context.WithTimeout(groupCtx, grcDashboardRuntimeHealthTimeout)
+		runtimeHealthCtx, cancel := context.WithTimeout(groupCtx, grcRuntimeHealthEnrichmentTimeout)
 		defer cancel()
 		runtimeHealthErr = operationtelemetry.RunMainPhase(runtimeHealthCtx, "grc.dashboard.runtime_health", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
 			var err error
