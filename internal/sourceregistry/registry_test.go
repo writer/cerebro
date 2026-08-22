@@ -353,6 +353,15 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 	}
 }
 
+func TestBuiltinKeepsCloudflareConcreteLoaderUntilSeparateRetirementGate(t *testing.T) {
+	for _, loader := range builtinSourceLoaders {
+		if loader.name == "cloudflare" {
+			return
+		}
+	}
+	t.Fatal("cloudflare concrete source loader retired before the separate authority gate")
+}
+
 func TestBuiltinRegistersGenerateableCatalogSources(t *testing.T) {
 	registry, err := Builtin()
 	if err != nil {
