@@ -41,7 +41,6 @@ import (
 	linodesource "github.com/writer/cerebro/sources/linode"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	oneloginsource "github.com/writer/cerebro/sources/onelogin"
-	openaisource "github.com/writer/cerebro/sources/openai"
 	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
 	panopticonsource "github.com/writer/cerebro/sources/panopticon"
 	sailpointidentitynowsource "github.com/writer/cerebro/sources/sailpoint_identitynow"
@@ -261,12 +260,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "onelogin",
 		load: func() (sourcecdk.Source, error) {
 			return oneloginsource.New()
-		},
-	},
-	{
-		name: "openai",
-		load: func() (sourcecdk.Source, error) {
-			return openaisource.New()
 		},
 	},
 	{

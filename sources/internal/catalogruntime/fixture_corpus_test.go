@@ -21,6 +21,7 @@ var retiredStaticLoaderFixtureSources = []string{
 	"airfocus",
 	"beezup",
 	"bitwarden",
+	"openai",
 }
 
 func TestRetiredStaticLoaderFixturesAreDeterministicCatalogRuntimeInputs(t *testing.T) {
