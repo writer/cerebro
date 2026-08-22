@@ -3,6 +3,10 @@
 //! The wire messages mirror the canonical `cerebro.v1` protobuf definitions.
 //! The Go host owns credentials and all network I/O.
 
+use base64::{Engine as _, prelude::BASE64_STANDARD};
+use prost::Message;
+use serde::{Deserialize, Serialize};
+
 #[path = "source_execution/azure_authorization_policy.rs"]
 mod azure_authorization_policy;
 #[path = "source_execution/contract.rs"]
@@ -43,6 +47,115 @@ pub use wire::{
 /// Compiles an exact plan through the closed Rust source-family registry.
 pub fn compile(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     compile_plan_bytes(input)
+}
+
+#[derive(Deserialize)]
+struct SelectionControl {
+    source_id: String,
+    family_id: String,
+}
+
+#[derive(Deserialize)]
+struct ContextControl {
+    tenant_id: String,
+    runtime_id: String,
+    prior_cursor: String,
+    page_number: u32,
+    runtime_generation: u64,
+    lease_generation: u64,
+    observed_at_unix_millis: i64,
+}
+
+#[derive(Deserialize)]
+struct LifecycleControl {
+    plan: String,
+    context: String,
+    receipt: String,
+    result: String,
+    completed_phase: i32,
+    prior_transition_digest: String,
+    current_lease_generation: u64,
+}
+
+#[derive(Serialize)]
+struct LifecycleDecisionControl {
+    required_phase: i32,
+    transition_digest: String,
+    admitted_records: Vec<String>,
+    checkpoint_cursor: String,
+    checkpoint_watermark_unix_millis: i64,
+}
+
+/// Decodes the private bounded registry-control envelope used by the Go bridge.
+pub fn compile_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    let request = serde_json::from_slice::<SelectionControl>(input)
+        .map_err(|_| SourceExecutionError::Protobuf)?;
+    Ok(SourceExecutionDispatcher
+        .compile_plan(&SourceExecutionSelectionRequestV1 {
+            source_id: request.source_id,
+            family_id: request.family_id,
+        })?
+        .encode_to_vec())
+}
+
+/// Decodes trusted context inputs from the private bounded bridge envelope.
+pub fn context_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    let request = serde_json::from_slice::<ContextControl>(input)
+        .map_err(|_| SourceExecutionError::Protobuf)?;
+    Ok(build_execution_context(&SourceExecutionContextRequestV1 {
+        tenant_id: request.tenant_id,
+        runtime_id: request.runtime_id,
+        prior_cursor: request.prior_cursor,
+        page_number: request.page_number,
+        runtime_generation: request.runtime_generation,
+        lease_generation: request.lease_generation,
+        observed_at_unix_millis: request.observed_at_unix_millis,
+    })?
+    .encode_to_vec())
+}
+
+/// Decodes one completed side effect and returns Rust's only valid next phase.
+pub fn transition_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    let control = serde_json::from_slice::<LifecycleControl>(input)
+        .map_err(|_| SourceExecutionError::Protobuf)?;
+    let decode = |value: &str| {
+        BASE64_STANDARD
+            .decode(value)
+            .map_err(|_| SourceExecutionError::Protobuf)
+    };
+    let decision = transition_lifecycle(&SourceExecutionLifecycleRequestV1 {
+        plan: Some(
+            SourceExecutionPlanV1::decode(decode(&control.plan)?.as_slice())
+                .map_err(|_| SourceExecutionError::Protobuf)?,
+        ),
+        context: Some(
+            SourceWorkerExecutionContextV1::decode(decode(&control.context)?.as_slice())
+                .map_err(|_| SourceExecutionError::Protobuf)?,
+        ),
+        receipt: Some(
+            SourceWorkerSafeReceiptV1::decode(decode(&control.receipt)?.as_slice())
+                .map_err(|_| SourceExecutionError::Protobuf)?,
+        ),
+        result: Some(
+            SourceWorkerDecodeResultV1::decode(decode(&control.result)?.as_slice())
+                .map_err(|_| SourceExecutionError::Protobuf)?,
+        ),
+        completed_phase: control.completed_phase,
+        prior_transition_digest_sha256: control.prior_transition_digest,
+        current_lease_generation: control.current_lease_generation,
+    })?;
+    serde_json::to_vec(&LifecycleDecisionControl {
+        required_phase: decision.required_phase,
+        transition_digest: decision.transition_digest_sha256,
+        admitted_records: decision
+            .admitted_records
+            .into_iter()
+            .map(|record| BASE64_STANDARD.encode(record.encode_to_vec()))
+            .collect(),
+        checkpoint_cursor: decision.checkpoint_cursor,
+        checkpoint_watermark_unix_millis: decision.checkpoint_watermark_unix_millis,
+    })
+    .map_err(|_| SourceExecutionError::InternalRuntime)
 }
 
 /// Dispatches one encoded request plan through the closed adapter registry.

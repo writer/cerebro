@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -78,11 +80,14 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	}
 	events := make([]*cerebrov1.EventEnvelope, 0, len(output.Decision.AdmittedRecords))
 	for _, record := range output.Decision.AdmittedRecords {
-		event, eventErr := sourceworker.AuthorizationPolicyEvent(plan, runtime.GetTenantId(), record)
-		if eventErr != nil {
-			return sourcecdk.Pull{}, nil, eventErr
+		if record == nil {
+			return sourcecdk.Pull{}, nil, fmt.Errorf("%w: Rust admitted a nil record", sourceworker.ErrWorkerContract)
 		}
-		events = append(events, event)
+		events = append(events, &cerebrov1.EventEnvelope{
+			Id: record.GetEventId(), TenantId: runtime.GetTenantId(), SourceId: plan.GetSourceId(),
+			Kind: plan.GetEventKind(), SchemaRef: plan.GetSchemaRef(), Payload: record.GetPayloadJson(),
+			Attributes: record.GetAttributes(), OccurredAt: timestamppb.New(time.UnixMilli(record.GetOccurredAtUnixMillis()).UTC()),
+		})
 	}
 	return sourcecdk.Pull{Events: events}, &sourceExecutionPage{host: host, output: output}, nil
 }

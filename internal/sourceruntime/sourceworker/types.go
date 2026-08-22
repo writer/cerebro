@@ -46,14 +46,20 @@ type Worker interface {
 }
 
 // SelectionRequest is the private bridge input to Rust's closed registry.
-type SelectionRequest struct{ SourceID, FamilyID string }
+type SelectionRequest struct {
+	SourceID string `json:"source_id"`
+	FamilyID string `json:"family_id"`
+}
 
 // ContextRequest contains trusted identity and generation inputs only.
 type ContextRequest struct {
-	TenantID, RuntimeID, PriorCursor   string
-	PageNumber                         uint32
-	RuntimeGeneration, LeaseGeneration uint64
-	ObservedAtUnixMillis               int64
+	TenantID             string `json:"tenant_id"`
+	RuntimeID            string `json:"runtime_id"`
+	PriorCursor          string `json:"prior_cursor"`
+	PageNumber           uint32 `json:"page_number"`
+	RuntimeGeneration    uint64 `json:"runtime_generation"`
+	LeaseGeneration      uint64 `json:"lease_generation"`
+	ObservedAtUnixMillis int64  `json:"observed_at_unix_millis"`
 }
 
 // Phase is the closed Rust-owned durable page lifecycle.
@@ -127,23 +133,6 @@ type ExecutionInput struct {
 	CredentialReference string
 	Scope               CredentialScope
 	PageNumber          uint32
-}
-
-// SafeReceipt contains provider-safe execution evidence and no response body,
-// credential, authorization header, or private route.
-type SafeReceipt struct {
-	PlanDigestSHA256     string
-	LogicalPageID        string
-	RequestIntentDigest  string
-	RuntimeGeneration    uint64
-	LeaseGeneration      uint64
-	CredentialOperation  string
-	StatusCode           int
-	ResponseBytes        int
-	ResponseSHA256       string
-	TenantID             string
-	RuntimeID            string
-	ObservedAtUnixMillis int64
 }
 
 // ExecutionOutput contains the bounded worker result and safe host receipt.

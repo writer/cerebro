@@ -302,6 +302,8 @@ fn hex_bytes(value: &[u8]) -> String {
 mod tests {
     use std::collections::HashMap;
 
+    use base64::{Engine as _, prelude::BASE64_STANDARD};
+
     use super::*;
 
     fn context_request(lease_generation: u64) -> SourceExecutionContextRequestV1 {
@@ -389,6 +391,10 @@ mod tests {
         }
     }
 
+    fn encode_message<M: Message>(message: &M) -> String {
+        BASE64_STANDARD.encode(message.encode_to_vec())
+    }
+
     #[test]
     fn logical_page_identity_is_stable_across_lease_turnover_and_tenant_scoped() {
         let first = build_execution_context(&context_request(9)).expect("first context");
@@ -454,6 +460,50 @@ mod tests {
         assert_eq!(
             transition_lifecycle(&request),
             Err(SourceExecutionError::InvalidDigest)
+        );
+    }
+
+    #[test]
+    fn private_control_envelopes_execute_the_rust_registry_and_lifecycle() {
+        let plan_wire = super::super::compile_control(
+            br#"{"source_id":"azure","family_id":"authorization_policy"}"#,
+        )
+        .expect("compiled Azure plan");
+        let plan = SourceExecutionPlanV1::decode(plan_wire.as_slice()).expect("plan protobuf");
+        assert_eq!(plan.provider_kernel, "azure.authorization_policy");
+
+        let context_wire = super::super::context_control(
+            br#"{"tenant_id":"tenant-a","runtime_id":"runtime-a","prior_cursor":"","page_number":1,"runtime_generation":4,"lease_generation":9,"observed_at_unix_millis":1725000000000}"#,
+        )
+        .expect("trusted context");
+        let context = SourceWorkerExecutionContextV1::decode(context_wire.as_slice())
+            .expect("context protobuf");
+        assert!(context.logical_page_id.starts_with("source-page-v1:"));
+
+        let request = lifecycle_request();
+        let control = serde_json::json!({
+            "plan": encode_message(request.plan.as_ref().expect("plan")),
+            "context": encode_message(request.context.as_ref().expect("context")),
+            "receipt": encode_message(request.receipt.as_ref().expect("receipt")),
+            "result": encode_message(request.result.as_ref().expect("result")),
+            "completed_phase": request.completed_phase,
+            "prior_transition_digest": "",
+            "current_lease_generation": request.current_lease_generation,
+        });
+        let output =
+            super::super::transition_control(&serde_json::to_vec(&control).expect("control JSON"))
+                .expect("append transition");
+        let decision: serde_json::Value = serde_json::from_slice(&output).expect("decision JSON");
+        assert_eq!(
+            decision["required_phase"],
+            SourceExecutionPhaseV1::Appended as i32
+        );
+        assert_eq!(
+            decision["admitted_records"]
+                .as_array()
+                .expect("admitted records")
+                .len(),
+            1
         );
     }
 }

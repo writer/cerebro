@@ -101,11 +101,15 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	if err != nil {
 		return nil, err
 	}
+	responseBytes, err := safeUint64(len(responseBody))
+	if err != nil {
+		return nil, err
+	}
 	receipt := &cerebrov1.SourceWorkerSafeReceiptV1{
 		PlanDigestSha256: input.Plan.GetPlanDigestSha256(), LogicalPageId: executionContext.GetLogicalPageId(),
 		RequestIntentDigest: intentDigest, RuntimeGeneration: executionContext.GetRuntimeGeneration(),
 		LeaseGeneration: executionContext.GetLeaseGeneration(), CredentialOperation: credentialOperation,
-		StatusCode: statusCodeWire, ResponseBytes: uint64(len(responseBody)), ResponseSha256: responseSHA256(responseBody),
+		StatusCode: statusCodeWire, ResponseBytes: responseBytes, ResponseSha256: responseSHA256(responseBody),
 		TenantId: executionContext.GetTenantId(), RuntimeId: executionContext.GetRuntimeId(), ObservedAtUnixMillis: executionContext.GetObservedAtUnixMillis(),
 	}
 	decodeResult, err := h.worker.Decode(ctx, &cerebrov1.SourceWorkerDecodeRequestV1{
