@@ -1,14 +1,20 @@
 {
-  "items": [
+  "data": [
     {
       "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
-      "id": "record-1",
-      "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
+      "evidence_cas_uri": "cas://cases/823",
+      "id": 823,
+      "name": "Managed issue 823",
+      "resource_id": "823",
+      "resource_type": "linode_issue",
+      "resource_urn": "urn:cerebro:tenant:linode_issue:823",
+      "severity": "medium",
+      "status": "open",
+      "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
     }
-  ]
+  ],
+  "page": 1,
+  "pages": 2,
+  "results": 101
 }
