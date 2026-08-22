@@ -98,6 +98,7 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		OAuthTokenParams:            definition.Auth.TokenParams,
 		OAuthTokenRequestAuthMethod: definition.Auth.TokenRequestAuthMethod,
 		StaticHeaders:               definition.Transport.Headers,
+		ConfigHeaders:               definition.Auth.HeaderParameters,
 		Families:                    families,
 	}
 	inner, err := jsonapi.New(spec, options)
@@ -173,6 +174,13 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 	config := familyConfig(resource)
 	config.Method = method
 	config.FinalStaticAttributes = finalStaticAttributes(resource.Projection)
+	attributes := attributePaths(resource, class)
+	static := staticAttributes(sourceID, name, class)
+	if resource.Event.ExactAttributes {
+		attributes = cloneStringMap(resource.Event.Attributes)
+		static = nil
+		config.FinalStaticAttributes = cloneStringMap(resource.Event.StaticAttributes)
+	}
 	return jsonapi.Family{
 		Name:                  name,
 		Path:                  resource.Path,
@@ -187,8 +195,8 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		URNKind:               firstNonEmpty(resource.Event.URNKind, "runtime_"+name),
 		IDKeys:                idKeys(resource, class),
 		TimestampKeys:         timestampKeys(resource),
-		Attributes:            attributePaths(resource, class),
-		StaticAttributes:      staticAttributes(sourceID, name, class),
+		Attributes:            attributes,
+		StaticAttributes:      static,
 		Config:                config,
 		PageSizeParams:        pageSizeParams(resource.Pagination),
 		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
@@ -244,10 +252,20 @@ func linkHeader(pagination *connectordefinitions.PaginationSpec) string {
 }
 
 func pageFirstCursor(pagination *connectordefinitions.PaginationSpec) string {
-	if pagination == nil || strings.TrimSpace(pagination.Type) != "page" || strings.TrimSpace(pagination.PageParam) == "" {
+	if pagination == nil {
 		return ""
 	}
-	return strconv.Itoa(pagination.StartPage)
+	switch strings.TrimSpace(pagination.Type) {
+	case "page":
+		if strings.TrimSpace(pagination.PageParam) != "" {
+			return strconv.Itoa(pagination.StartPage)
+		}
+	case "offset":
+		if pagination.InjectFirstPage && strings.TrimSpace(pagination.OffsetParam) != "" {
+			return strconv.Itoa(pagination.StartPage)
+		}
+	}
+	return ""
 }
 
 func hasMoreKey(pagination *connectordefinitions.PaginationSpec) string {
