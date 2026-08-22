@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use cerebro_source_catalog::{
-    CollectionAuthority, Pagination, PathParameterBinding, SourceCatalog,
+    CollectionAuthority, Pagination, PathParameterBinding, SourceCatalog, UnsupportedReasonCode,
 };
 
 #[test]
@@ -14,7 +14,7 @@ fn mailchimp_compiles_the_provider_shapes_but_stays_unpromoted() {
     .expect("load source catalog");
     let source = catalog.get("mailchimp").expect("Mailchimp source");
 
-    assert_eq!(source.authority(), CollectionAuthority::Authoritative);
+    assert_eq!(source.authority(), CollectionAuthority::ShadowOnly);
     for (family_id, path, selector) in [
         ("lists", "/lists", "$.lists[*]"),
         (
@@ -42,6 +42,12 @@ fn mailchimp_compiles_the_provider_shapes_but_stays_unpromoted() {
                 limit_parameter: "count".to_owned(),
                 page_size: 100,
             }
+        );
+        assert!(
+            family
+                .unsupported_reasons()
+                .contains(&UnsupportedReasonCode::UnboundConfigAttribute),
+            "Mailchimp {family_id} must stay shadow-only until authenticated tenant binding is compiled"
         );
     }
 
