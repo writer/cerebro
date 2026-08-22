@@ -18,7 +18,7 @@ entries:
       key: tailnet
       label: Tailnet
       required: true
-    description: "Collects configuration, user, integration, and device from Tailscale and projects them into the Cerebro graph as audit events, users, policies, and assets for identity, access, device, and secret context."
+    description: "Collects tailnet settings, users, devices, ACL groups, tag owners, services, grants, configuration logs, and posture integrations from Tailscale for identity, access, network, device, and audit context."
     display_name: Tailscale
     id: builtin_catalog-tailscale
     resource_families:
@@ -180,6 +180,268 @@ entries:
           resource_type: device
         template: asset
       record_selector: "$.devices[*]"
+    - coverage:
+      - families:
+        - tailnet
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        - network_security
+        id: tailnet
+        support: supported
+        title: Tailnet settings
+        type: entity_family
+      default_enabled: true
+      event:
+        attributes:
+          devices_approval_on: devicesApprovalOn
+          max_key_duration_days: maxKeyDurationDays
+          network_flow_logging_on: networkFlowLoggingOn
+          regional_routing_on: regionalRoutingOn
+          tailnet: tailnet|organization|id
+          users_approval_on: usersApprovalOn
+        exact_attributes: true
+        kind: tailscale.tailnet
+        required_attributes:
+        - tailnet
+        required_payload_fields:
+        - id
+        schema_ref: tailscale/tailnet/v1
+        static_attributes:
+          source_product: tailscale
+        urn_kind: tailscale_tailnet
+      event_kind: tailnet
+      id: tailnet
+      id_field: id
+      label: Tailnet settings
+      method: GET
+      name_field: tailnet|organization|id
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/settings"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          resource_id: tailnet|organization|id
+          resource_name: tailnet|organization|id
+          tailnet: tailnet|organization|id
+        static_fields:
+          resource_type: tailnet
+        template: asset
+      read:
+        singleton: true
+      record_selector: "$"
+    - coverage:
+      - families:
+        - group
+        high_value: true
+        evidence_types:
+        - identity_configuration
+        - relationship_evidence
+        control_domains:
+        - identity_access
+        id: groups
+        support: supported
+        title: ACL groups
+        type: relationship
+      default_enabled: true
+      event:
+        attributes:
+          group_id: id|name
+          members: members
+          name: name
+        exact_attributes: true
+        kind: tailscale.group
+        required_attributes:
+        - group_id
+        required_payload_fields:
+        - id
+        schema_ref: tailscale/group/v1
+        static_attributes:
+          source_product: tailscale
+        urn_kind: tailscale_group
+      event_kind: group
+      id: group
+      id_field: id
+      label: ACL groups
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/acl"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          group_id: id|name
+          group_name: name
+          members: members
+          resource_id: id|name
+          resource_name: name
+        template: identity_group
+      read:
+        map_records:
+          groups: members
+      record_selector: "$"
+    - coverage:
+      - families:
+        - tag
+        high_value: true
+        evidence_types:
+        - identity_configuration
+        control_domains:
+        - identity_access
+        id: tag_owners
+        support: supported
+        title: Tag owners
+        type: app_entitlement
+      default_enabled: true
+      event:
+        attributes:
+          name: name
+          owners: owners
+          tag_id: id|name
+        exact_attributes: true
+        kind: tailscale.tag
+        required_attributes:
+        - tag_id
+        required_payload_fields:
+        - id
+        schema_ref: tailscale/tag/v1
+        static_attributes:
+          source_product: tailscale
+        urn_kind: tailscale_tag
+      event_kind: tag
+      id: tag
+      id_field: id
+      label: Tag owners
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/acl"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          policy_id: id|name
+          policy_name: name
+          tag_id: id|name
+        static_fields:
+          policy_type: tag_ownership
+        template: policy
+      read:
+        map_records:
+          tagOwners: owners
+      record_selector: "$"
+    - coverage:
+      - families:
+        - service
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+        - network_security
+        id: services
+        support: supported
+        title: Services
+        type: entity_family
+      default_enabled: true
+      event:
+        attributes:
+          addresses: addrs|addresses
+          comment: comment
+          name: name
+          ports: ports
+          service_id: id|service_id|name
+          tags: tags
+        exact_attributes: true
+        kind: tailscale.service
+        required_attributes:
+        - service_id
+        required_payload_fields:
+        - name
+        schema_ref: tailscale/service/v1
+        static_attributes:
+          source_product: tailscale
+        urn_kind: tailscale_service
+      event_kind: service
+      id: service
+      id_field: id|service_id|name
+      label: Services
+      list_key: vipServices
+      method: GET
+      name_field: name
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/vip-services"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          resource_id: id|service_id|name
+          resource_name: name
+          service_id: id|service_id|name
+        static_fields:
+          resource_type: service
+        template: asset
+      record_selector: "$.vipServices[*]"
+    - coverage:
+      - families:
+        - grant
+        high_value: true
+        evidence_types:
+        - identity_configuration
+        control_domains:
+        - identity_access
+        - network_security
+        id: grants
+        support: supported
+        title: ACL grants
+        type: app_entitlement
+      default_enabled: true
+      event:
+        attributes:
+          app: app
+          destinations: dst|destinations
+          disabled: disabled
+          grant_id: id|grant_id
+          ip: ip
+          sources: src|sources
+          via: via
+        exact_attributes: true
+        kind: tailscale.grant
+        required_attributes:
+        - grant_id
+        required_payload_fields:
+        - id
+        schema_ref: tailscale/grant/v1
+        static_attributes:
+          source_product: tailscale
+        urn_kind: tailscale_grant
+      event_kind: grant
+      id: grant
+      id_field: id|grant_id
+      label: ACL grants
+      method: GET
+      name_field: id|grant_id
+      pagination:
+        type: none
+      path: "/tailnet/${config.tailnet}/acl"
+      permissions_needed:
+      - bearerAuth
+      projection:
+        fields:
+          policy_id: id|grant_id
+          policy_name: id|grant_id
+        static_fields:
+          policy_type: acl_grant
+        template: policy
+      record_selector: "$.grants[*]"
     schema_version: cerebro.integration/v1
     scope_options:
     - default_enabled: true
@@ -202,6 +464,31 @@ entries:
       - device
       id: device
       label: Device
+    - default_enabled: true
+      families:
+      - tailnet
+      id: tailnet
+      label: Tailnet settings
+    - default_enabled: true
+      families:
+      - group
+      id: group
+      label: ACL groups
+    - default_enabled: true
+      families:
+      - tag
+      id: tag
+      label: Tag owners
+    - default_enabled: true
+      families:
+      - service
+      id: service
+      label: Services
+    - default_enabled: true
+      families:
+      - grant
+      id: grant
+      label: ACL grants
     source_id: tailscale
     tenant_id: builtin_catalog
     transport:

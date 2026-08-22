@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
+use cerebro_source_catalog::{CollectionAuthority, SourceCatalog, UnsupportedReasonCode};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -8,6 +10,10 @@ use super::*;
 const ORIGIN: &str = "https://api.tailscale.com/api/v2";
 const OBSERVED_AT: &str = "2026-06-01T00:00:00Z";
 const CATALOG: &[u8] = include_bytes!("../../../../sources/tailscale/catalog.yaml");
+const LEGACY_FAMILIES: [&str; 7] = [
+    "device", "grant", "group", "service", "tag", "tailnet", "user",
+];
+const CONNECTOR_ONLY_FAMILIES: [&str; 2] = ["configuration", "integration"];
 
 #[derive(Deserialize)]
 struct CatalogWire {
@@ -51,6 +57,13 @@ struct ConnectorFamilyWire {
     id: String,
     method: String,
     path: String,
+    record_selector: String,
+    event: ConnectorEventWire,
+}
+
+#[derive(Deserialize)]
+struct ConnectorEventWire {
+    kind: String,
 }
 
 #[derive(Deserialize)]
@@ -144,20 +157,127 @@ fn provider_proof_covers_every_public_connector_family() {
             )
         })
         .collect::<BTreeSet<_>>();
+    let legacy = LEGACY_FAMILIES.into_iter().collect::<BTreeSet<_>>();
+    let connector_only = CONNECTOR_ONLY_FAMILIES.into_iter().collect::<BTreeSet<_>>();
+    let compiled = definition
+        .resource_families
+        .iter()
+        .map(|family| family.id.as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(legacy.is_disjoint(&connector_only));
     assert_eq!(
-        definition
-            .resource_families
+        compiled,
+        legacy
+            .union(&connector_only)
+            .copied()
+            .collect::<BTreeSet<_>>()
+    );
+    assert_eq!(
+        catalog
+            .provider_api
+            .families
             .iter()
             .map(|family| family.id.as_str())
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["configuration", "device", "integration", "user"])
+        compiled
     );
     for family in definition.resource_families {
         assert!(
-            proved.contains(&(family.id.as_str(), family.method.as_str(), family.path)),
+            proved.contains(&(
+                family.id.as_str(),
+                family.method.as_str(),
+                family.path.clone(),
+            )),
             "missing provider proof for {}",
             family.id
         );
+        if let Ok(legacy_family) = family.id.parse::<TailscaleFamily>() {
+            assert_eq!(family.event.kind, legacy_family.event_kind());
+            assert_eq!(
+                family.path.replace("${config.tailnet}", "-"),
+                legacy_family.path()
+            );
+        } else {
+            let (kind, path, selector) = match family.id.as_str() {
+                "configuration" => (
+                    "tailscale.configuration",
+                    "/tailnet/${config.tailnet}/logging/configuration",
+                    "$.logs[*]",
+                ),
+                "integration" => (
+                    "tailscale.integration",
+                    "/tailnet/${config.tailnet}/posture/integrations",
+                    "$.integrations[*]",
+                ),
+                _ => panic!("unexpected connector-only family {}", family.id),
+            };
+            assert_eq!(family.event.kind, kind);
+            assert_eq!(family.path, path);
+            assert_eq!(family.record_selector, selector);
+        }
+    }
+}
+
+#[test]
+fn legacy_kernel_and_source_catalog_stay_exactly_seven_families() {
+    let catalog: CatalogWire = serde_saphyr::from_slice(CATALOG).expect("Tailscale catalog YAML");
+    let legacy = LEGACY_FAMILIES.into_iter().collect::<BTreeSet<_>>();
+    assert_eq!(
+        catalog
+            .runtime_families
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        legacy
+    );
+    assert_eq!(
+        TailscaleFamily::ALL
+            .into_iter()
+            .map(TailscaleFamily::as_str)
+            .collect::<BTreeSet<_>>(),
+        legacy
+    );
+}
+
+#[test]
+fn compiled_connector_preserves_seven_legacy_and_two_mapped_auxiliary_families() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let catalog = SourceCatalog::load(
+        root.join("internal/connectorcatalog/catalog"),
+        root.join("sources"),
+    )
+    .expect("compile source catalog");
+    let tailscale = catalog.get("tailscale").expect("compiled Tailscale source");
+    assert_eq!(tailscale.authority(), CollectionAuthority::ShadowOnly);
+    let compiled = tailscale
+        .families()
+        .iter()
+        .map(|family| family.id())
+        .collect::<BTreeSet<_>>();
+    let expected = LEGACY_FAMILIES
+        .into_iter()
+        .chain(CONNECTOR_ONLY_FAMILIES)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(compiled, expected);
+    for family in tailscale.families() {
+        if LEGACY_FAMILIES.contains(&family.id()) {
+            assert!(family.is_authoritative(), "{}", family.id());
+            assert!(family.is_projection_authoritative(), "{}", family.id());
+            assert!(family.unsupported_reasons().is_empty(), "{}", family.id());
+        } else {
+            assert!(CONNECTOR_ONLY_FAMILIES.contains(&family.id()));
+            assert!(!family.is_authoritative(), "{}", family.id());
+            assert!(!family.is_projection_authoritative(), "{}", family.id());
+            assert_eq!(
+                family.unsupported_reasons(),
+                [
+                    UnsupportedReasonCode::MissingProviderProof,
+                    UnsupportedReasonCode::IncompleteRuntimeFamilyProof,
+                ],
+                "{}",
+                family.id()
+            );
+        }
     }
 }
 
@@ -178,6 +298,17 @@ fn plans_all_families_without_credentials_or_redirects() {
         assert!(!request.contains_credentials());
         assert!(!request.allows_redirects());
         assert_eq!(request.max_response_bytes(), 4 * 1024 * 1024);
+        assert_eq!(
+            request
+                .url()
+                .query_pairs()
+                .map(|(key, value)| (key.into_owned(), value.into_owned()))
+                .collect::<BTreeMap<_, _>>(),
+            BTreeMap::from([
+                ("limit".to_owned(), "100".to_owned()),
+                ("per_page".to_owned(), "100".to_owned()),
+            ])
+        );
         let debug = format!("{request:?}");
         assert!(!debug.contains("test-token-secret"));
         assert!(!debug.contains("credential_reference"));
@@ -298,6 +429,41 @@ fn cursor_checkpoint_and_restart_are_bounded_and_round_trippable() {
 }
 
 #[test]
+fn every_legacy_family_preserves_terminal_go_checkpoint_semantics() {
+    for family in TailscaleFamily::ALL {
+        let kernel = kernel(family, 100);
+        let request = kernel.plan(None).unwrap();
+        let page = kernel
+            .decode_http(
+                &request,
+                200,
+                &TailscaleResponseMetadata::default(),
+                fixture(family).as_bytes(),
+            )
+            .unwrap();
+        let checkpoint = kernel
+            .checkpoint_candidate(&request, &page, Some("2026-05-31T00:00:00Z"))
+            .unwrap();
+        let last = page.records.last().expect("fixture record");
+        assert_eq!(
+            checkpoint.cursor.as_deref(),
+            last.attributes.get("external_id").map(String::as_str),
+            "{family}"
+        );
+        assert_eq!(
+            checkpoint.watermark.as_deref(),
+            Some(last.occurred_at.as_str()),
+            "{family}"
+        );
+        assert_eq!(
+            kernel.plan(checkpoint.cursor.as_deref()).unwrap().cursor(),
+            checkpoint.cursor.as_deref(),
+            "{family}"
+        );
+    }
+}
+
+#[test]
 fn rejects_secret_tenant_duplicate_origin_cursor_and_provider_failures() {
     assert!(matches!(
         TailscaleKernel::new(
@@ -412,16 +578,20 @@ fn projection_preserves_network_identity_and_acl_semantics() {
         .iter()
         .map(|entity| entity.urn.as_str())
         .collect::<BTreeSet<_>>();
-    for expected in [
+    let expected_entities = BTreeSet::from([
+        "urn:cerebro:tenant:tailscale_tailnet:writer.com",
         "urn:cerebro:tenant:tailscale_user:user-1",
         "urn:cerebro:tenant:tailscale_device:device-1",
+        "urn:cerebro:tenant:tailscale_user:alice@writer.com",
+        "urn:cerebro:tenant:tailscale_user:bob@writer.com",
         "urn:cerebro:tenant:tailscale_group:group:eng",
         "urn:cerebro:tenant:tailscale_tag:tag:prod",
+        "urn:cerebro:tenant:tailscale_tag:tag:eng",
         "urn:cerebro:tenant:tailscale_service:svc:api",
         "urn:cerebro:tenant:tailscale_grant:grant-1",
-    ] {
-        assert!(entities.contains(expected), "missing {expected}");
-    }
+        "urn:cerebro:tenant:tailscale_destination:tag:prod:443",
+    ]);
+    assert_eq!(entities, expected_entities);
     let relations = facts
         .relations
         .iter()
@@ -433,11 +603,26 @@ fn projection_preserves_network_identity_and_acl_semantics() {
             )
         })
         .collect::<BTreeSet<_>>();
-    for expected in [
+    let expected_relations = BTreeSet::from([
         (
             "urn:cerebro:tenant:tailscale_device:device-1",
             "owned_by",
             "urn:cerebro:tenant:tailscale_user:alice@writer.com",
+        ),
+        (
+            "urn:cerebro:tenant:tailscale_user:alice@writer.com",
+            "can_reach",
+            "urn:cerebro:tenant:tailscale_device:device-1",
+        ),
+        (
+            "urn:cerebro:tenant:tailscale_device:device-1",
+            "tagged_as",
+            "urn:cerebro:tenant:tailscale_tag:tag:prod",
+        ),
+        (
+            "urn:cerebro:tenant:tailscale_device:device-1",
+            "tagged_as",
+            "urn:cerebro:tenant:tailscale_tag:tag:eng",
         ),
         (
             "urn:cerebro:tenant:tailscale_group:group:eng",
@@ -445,8 +630,33 @@ fn projection_preserves_network_identity_and_acl_semantics() {
             "urn:cerebro:tenant:tailscale_user:alice@writer.com",
         ),
         (
+            "urn:cerebro:tenant:tailscale_user:alice@writer.com",
+            "member_of",
+            "urn:cerebro:tenant:tailscale_group:group:eng",
+        ),
+        (
+            "urn:cerebro:tenant:tailscale_group:group:eng",
+            "contains",
+            "urn:cerebro:tenant:tailscale_user:bob@writer.com",
+        ),
+        (
+            "urn:cerebro:tenant:tailscale_user:bob@writer.com",
+            "member_of",
+            "urn:cerebro:tenant:tailscale_group:group:eng",
+        ),
+        (
             "urn:cerebro:tenant:tailscale_tag:tag:prod",
             "owned_by",
+            "urn:cerebro:tenant:tailscale_group:group:eng",
+        ),
+        (
+            "urn:cerebro:tenant:tailscale_service:svc:api",
+            "tagged_as",
+            "urn:cerebro:tenant:tailscale_tag:tag:prod",
+        ),
+        (
+            "urn:cerebro:tenant:tailscale_grant:grant-1",
+            "grants_entitlement",
             "urn:cerebro:tenant:tailscale_group:group:eng",
         ),
         (
@@ -454,9 +664,8 @@ fn projection_preserves_network_identity_and_acl_semantics() {
             "can_reach",
             "urn:cerebro:tenant:tailscale_destination:tag:prod:443",
         ),
-    ] {
-        assert!(relations.contains(&expected), "missing {expected:?}");
-    }
+    ]);
+    assert_eq!(relations, expected_relations);
 }
 
 fn fixture(family: TailscaleFamily) -> String {
