@@ -32,6 +32,7 @@ var retiredStaticLoaderFixtureSources = []string{
 	"fivetran",
 	"hashicorp_vault",
 	"langchain",
+	"mailchimp",
 	"openai",
 }
 
