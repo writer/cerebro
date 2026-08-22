@@ -59,8 +59,11 @@ func TestGeneratedProviderPilotsAreHighFidelity(t *testing.T) {
 		if source.Score != 100 || source.Level != "reference" {
 			t.Fatalf("%s fidelity = %d (%s), missing %#v", pilot.name, source.Score, source.Level, source.Missing)
 		}
-		if !source.IsGeneratedScaffold {
-			t.Fatalf("%s was not recognized as sourcegen output", pilot.name)
+		if !source.UsesCatalogRuntime {
+			t.Fatalf("%s was not recognized as a catalog-runtime source", pilot.name)
+		}
+		if source.IsGeneratedScaffold {
+			t.Fatalf("%s retained a provider-local Go scaffold", pilot.name)
 		}
 	}
 }
