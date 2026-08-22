@@ -30,6 +30,7 @@ mod github;
 mod google_workspace;
 mod grc;
 mod http;
+mod jumpcloud;
 mod kubernetes;
 mod linode;
 mod mapper;
@@ -147,6 +148,12 @@ pub use google_workspace::{
 };
 pub use grc::{GrcError, GrcFamily, GrcKernel, GrcPage, GrcRecord, GrcRequest};
 pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
+pub use jumpcloud::{
+    JumpCloudCheckpointCandidate, JumpCloudEntityFact, JumpCloudError, JumpCloudEventContract,
+    JumpCloudFamily, JumpCloudFilters, JumpCloudKernel, JumpCloudPage, JumpCloudProjectionFacts,
+    JumpCloudRecord, JumpCloudRelationFact, JumpCloudRequest, JumpCloudResponseMetadata,
+    JumpCloudRuntimeDefinition, project_jumpcloud_records,
+};
 pub use kubernetes::{
     KubernetesConfig, KubernetesError, KubernetesFamily, KubernetesKernel, KubernetesPage,
     KubernetesProjection, KubernetesProjectionEntity, KubernetesProjectionLink, KubernetesRecord,
