@@ -27,7 +27,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let output = match command.as_str() {
         "compile" => source_execution::compile_control(&input)?,
         "plan" => source_execution::plan(&input)?,
+        "plan-v2" => source_execution::plan_v2(&input)?,
         "decode" => source_execution::decode(&input)?,
+        "decode-v2" => source_execution::decode_v2(&input)?,
         "context" => source_execution::context_control(&input)?,
         "transition" => source_execution::transition_control(&input)?,
         _ => return Err("source worker command is invalid".into()),

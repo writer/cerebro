@@ -1,20 +1,26 @@
+use std::collections::HashMap;
+
 use prost::Message;
 
 use super::{
-    canonical_plan_digest,
+    canonical_plan_digest, canonical_response_headers_digest,
     contract::{
         AUTHORIZATION_POLICY_FALLBACK_ID, AUTHORIZATION_POLICY_FAMILY, AUTHORIZATION_POLICY_KERNEL,
         AUTHORIZATION_POLICY_KIND, AUTHORIZATION_POLICY_PATH, AUTHORIZATION_POLICY_SCHEMA,
-        AZURE_SOURCE_ID, MAX_CURSOR_BYTES, MAX_RESPONSE_BYTES,
+        AZURE_SOURCE_ID, MAX_CURSOR_BYTES, MAX_RESPONSE_BYTES, MAX_SAFE_HEADER_BYTES,
+        MAX_SAFE_HEADER_ENTRIES,
     },
-    decode,
+    decode, decode_v2,
     error::SourceExecutionError,
-    plan, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
-    validate_cursor, validate_http_request,
+    plan, plan_v2, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
+    validate_cursor, validate_declared_headers, validate_http_request, validate_response_headers,
+    validate_runtime_metadata,
     wire::{
-        SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
-        SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1,
-        SourceWorkerRecordV1, SourceWorkerSafeReceiptV1,
+        SourceExecutionPlanV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeOutputV2,
+        SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
+        SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
+        SourceWorkerPlanRequestV1, SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2,
+        SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -243,6 +249,138 @@ fn plans_exact_credential_free_request_bound_to_context() {
         request.request_intent_digest,
         other_tenant.request_intent_digest
     );
+}
+
+#[test]
+fn v2_wire_round_trips_validated_public_metadata_without_credentials() {
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: HashMap::from([(
+            "insights_origin".to_owned(),
+            "https://api.jumpcloud.com/insights/directory/v1".to_owned(),
+        )]),
+        prior_terminal_watermark_unix_millis: 1_782_000_000_000,
+        prior_checkpoint: "audit-terminal-1".to_owned(),
+    };
+    validate_runtime_metadata(&metadata).unwrap();
+    let wire = metadata.encode_to_vec();
+    assert_eq!(
+        SourceWorkerRuntimeMetadataV2::decode(wire.as_slice()).unwrap(),
+        metadata
+    );
+    assert!(!wire.windows(10).any(|value| value == b"credential"));
+
+    let mut unsafe_metadata = metadata;
+    unsafe_metadata
+        .public_config
+        .insert("api_token".to_owned(), "redacted".to_owned());
+    assert_eq!(
+        validate_runtime_metadata(&unsafe_metadata),
+        Err(SourceExecutionError::InvalidExecutionContext)
+    );
+}
+
+#[test]
+fn v2_header_contract_rejects_credentials_and_bounds_metadata() {
+    assert!(
+        validate_declared_headers(&HashMap::from([(
+            "content-type".to_owned(),
+            "application/json".to_owned(),
+        )]))
+        .is_ok()
+    );
+    for name in ["authorization", "x-api-key"] {
+        assert_eq!(
+            validate_declared_headers(&HashMap::from([(name.to_owned(), "secret".to_owned())])),
+            Err(SourceExecutionError::InvalidExecutionContext)
+        );
+    }
+
+    let too_many = (0..=MAX_SAFE_HEADER_ENTRIES)
+        .map(|index| (format!("x-next-{index}"), "value".to_owned()))
+        .collect();
+    assert_eq!(
+        validate_response_headers(&too_many),
+        Err(SourceExecutionError::ResultTooLarge)
+    );
+    let oversized = HashMap::from([(
+        "x-search_after".to_owned(),
+        "x".repeat(MAX_SAFE_HEADER_BYTES + 1),
+    )]);
+    assert_eq!(
+        validate_response_headers(&oversized),
+        Err(SourceExecutionError::InvalidExecutionContext)
+    );
+    let aggregate = (0..5)
+        .map(|index| (format!("x-next-{index}"), "x".repeat(4090)))
+        .collect();
+    assert_eq!(
+        validate_response_headers(&aggregate),
+        Err(SourceExecutionError::ResultTooLarge)
+    );
+
+    let first = HashMap::from([
+        ("x-result-count".to_owned(), "2".to_owned()),
+        ("x-limit".to_owned(), "2".to_owned()),
+        ("x-search_after".to_owned(), "cursor".to_owned()),
+        ("retry-after".to_owned(), "30".to_owned()),
+    ]);
+    let second = HashMap::from([
+        ("retry-after".to_owned(), "30".to_owned()),
+        ("x-search_after".to_owned(), "cursor".to_owned()),
+        ("x-limit".to_owned(), "2".to_owned()),
+        ("x-result-count".to_owned(), "2".to_owned()),
+    ]);
+    assert_eq!(
+        canonical_response_headers_digest(&first).unwrap(),
+        canonical_response_headers_digest(&second).unwrap()
+    );
+}
+
+#[test]
+fn rust_constructs_and_validates_v2_receipt_evidence() {
+    let context = exact_context("tenant-a");
+    let metadata = SourceWorkerRuntimeMetadataV2::default();
+    let planned = plan_v2(
+        &SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(exact_plan()),
+                context: Some(context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        }
+        .encode_to_vec(),
+    )
+    .unwrap();
+    let planned = SourceWorkerHttpExecutionV2::decode(planned.as_slice()).unwrap();
+    let request = planned.request.as_ref().unwrap();
+    let output = decode_v2(
+        &SourceWorkerDecodeEnvelopeV2 {
+            request: Some(SourceWorkerDecodeRequestV1 {
+                plan: Some(exact_plan()),
+                status_code: 200,
+                response_body: GO_LIVE_TEST_RESPONSE.to_vec(),
+                logical_page_id: context.logical_page_id.clone(),
+                request_intent_digest: request.request_intent_digest.clone(),
+                receipt: None,
+                context: Some(context.clone()),
+            }),
+            metadata: Some(metadata),
+            response_headers: HashMap::from([("x-result-count".to_owned(), "1".to_owned())]),
+            response_headers_sha256: String::new(),
+            execution_intent_digest_sha256: planned.execution_intent_digest_sha256,
+        }
+        .encode_to_vec(),
+    )
+    .unwrap();
+    let output = SourceWorkerDecodeOutputV2::decode(output.as_slice()).unwrap();
+    let receipt = output.receipt.unwrap();
+    assert_eq!(receipt.credential_operation, "source.bearer");
+    assert_eq!(receipt.response_bytes, GO_LIVE_TEST_RESPONSE.len() as u64);
+    assert_eq!(
+        receipt.response_sha256,
+        response_digest(GO_LIVE_TEST_RESPONSE)
+    );
+    assert_eq!(output.result.unwrap().tenant_id, context.tenant_id);
 }
 
 #[test]

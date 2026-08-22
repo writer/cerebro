@@ -9,8 +9,9 @@ use super::{
     error::SourceExecutionError,
     wire::{
         SourceExecutionContextRequestV1, SourceExecutionLifecycleDecisionV1,
-        SourceExecutionLifecycleRequestV1, SourceExecutionPlanV1, SourceWorkerDecodeResultV1,
-        SourceWorkerExecutionContextV1, SourceWorkerRecordV1, SourceWorkerSafeReceiptV1,
+        SourceExecutionLifecycleEnvelopeV2, SourceExecutionLifecycleRequestV1,
+        SourceExecutionPlanV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
+        SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -37,6 +38,29 @@ pub fn build_execution_context(
 pub fn seal_page_program(
     request: &SourceExecutionLifecycleRequestV1,
 ) -> Result<SourceExecutionLifecycleDecisionV1, SourceExecutionError> {
+    seal_page_program_inner(request, None)
+}
+
+/// Seals one page while retaining the last durable terminal watermark on empty pages.
+pub fn seal_page_program_v2(
+    envelope: &SourceExecutionLifecycleEnvelopeV2,
+) -> Result<SourceExecutionLifecycleDecisionV1, SourceExecutionError> {
+    let request = envelope
+        .request
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    let metadata = envelope
+        .metadata
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    super::contract::validate_runtime_metadata(metadata)?;
+    seal_page_program_inner(request, Some(metadata))
+}
+
+fn seal_page_program_inner(
+    request: &SourceExecutionLifecycleRequestV1,
+    metadata: Option<&SourceWorkerRuntimeMetadataV2>,
+) -> Result<SourceExecutionLifecycleDecisionV1, SourceExecutionError> {
     let plan = request
         .plan
         .as_ref()
@@ -60,14 +84,24 @@ pub fn seal_page_program(
     }
 
     let records = admit_records(plan, context, &result.records)?;
+    let prior_watermark = metadata.map_or(0, |value| value.prior_terminal_watermark_unix_millis);
     let checkpoint_watermark_unix_millis = records
         .iter()
         .map(|record| record.occurred_at_unix_millis)
         .max()
-        .unwrap_or(context.observed_at_unix_millis);
+        .map_or_else(
+            || {
+                if prior_watermark > 0 {
+                    prior_watermark
+                } else {
+                    context.observed_at_unix_millis
+                }
+            },
+            |watermark| watermark.max(prior_watermark),
+        );
 
     Ok(SourceExecutionLifecycleDecisionV1 {
-        transition_digest_sha256: page_program_digest(plan, context, result),
+        transition_digest_sha256: page_program_digest(plan, context, result, metadata),
         admitted_records: records,
         checkpoint_cursor: result.next_cursor.clone(),
         checkpoint_watermark_unix_millis,
@@ -97,10 +131,13 @@ fn validate_context_request(
         || request.runtime_generation == 0
         || request.lease_generation == 0
         || request.observed_at_unix_millis <= 0
+        || request.prior_terminal_watermark_unix_millis < 0
     {
         return Err(SourceExecutionError::InvalidExecutionContext);
     }
-    validate_cursor(&request.prior_cursor)
+    validate_cursor(&request.prior_cursor)?;
+    validate_cursor(&request.prior_checkpoint)?;
+    super::contract::validate_public_config(&request.public_config)
 }
 
 fn validate_lifecycle_inputs(
@@ -208,13 +245,34 @@ fn logical_page_id(request: &SourceExecutionContextRequestV1) -> String {
     ] {
         update_length_prefixed(&mut hasher, value);
     }
-    format!("source-page-v1:{}", hex_bytes(&hasher.finalize()))
+    if request.public_config.is_empty()
+        && request.prior_terminal_watermark_unix_millis == 0
+        && request.prior_checkpoint.is_empty()
+    {
+        return format!("source-page-v1:{}", hex_bytes(&hasher.finalize()));
+    }
+    update_length_prefixed(&mut hasher, b"source-page-v2");
+    update_length_prefixed(&mut hasher, request.prior_checkpoint.as_bytes());
+    update_length_prefixed(
+        &mut hasher,
+        &request.prior_terminal_watermark_unix_millis.to_be_bytes(),
+    );
+    for (key, value) in request
+        .public_config
+        .iter()
+        .collect::<std::collections::BTreeMap<_, _>>()
+    {
+        update_length_prefixed(&mut hasher, key.as_bytes());
+        update_length_prefixed(&mut hasher, value.as_bytes());
+    }
+    format!("source-page-v2:{}", hex_bytes(&hasher.finalize()))
 }
 
 fn page_program_digest(
     plan: &SourceExecutionPlanV1,
     context: &SourceWorkerExecutionContextV1,
     result: &SourceWorkerDecodeResultV1,
+    metadata: Option<&SourceWorkerRuntimeMetadataV2>,
 ) -> String {
     let mut hasher = Sha256::new();
     for value in [
@@ -230,6 +288,26 @@ fn page_program_digest(
     }
     update_length_prefixed(&mut hasher, &context.runtime_generation.to_be_bytes());
     update_length_prefixed(&mut hasher, &context.lease_generation.to_be_bytes());
+    if let Some(metadata) = metadata {
+        update_length_prefixed(&mut hasher, b"source-execution-transition-v2");
+        update_length_prefixed(
+            &mut hasher,
+            &metadata.prior_terminal_watermark_unix_millis.to_be_bytes(),
+        );
+        update_length_prefixed(&mut hasher, metadata.prior_checkpoint.as_bytes());
+        update_length_prefixed(
+            &mut hasher,
+            &(metadata.public_config.len() as u64).to_be_bytes(),
+        );
+        for (key, value) in metadata
+            .public_config
+            .iter()
+            .collect::<std::collections::BTreeMap<_, _>>()
+        {
+            update_length_prefixed(&mut hasher, key.as_bytes());
+            update_length_prefixed(&mut hasher, value.as_bytes());
+        }
+    }
     hex_bytes(&hasher.finalize())
 }
 
@@ -275,6 +353,9 @@ mod tests {
             runtime_generation: 4,
             lease_generation,
             observed_at_unix_millis: 1_725_000_000_000,
+            public_config: HashMap::new(),
+            prior_terminal_watermark_unix_millis: 0,
+            prior_checkpoint: String::new(),
         }
     }
 
@@ -366,12 +447,52 @@ mod tests {
     }
 
     #[test]
+    fn context_rejects_malformed_resume_cursor_and_checkpoint() {
+        let mut malformed = context_request(9);
+        malformed.prior_checkpoint = "checkpoint\nother-origin".into();
+        assert_eq!(
+            build_execution_context(&malformed),
+            Err(SourceExecutionError::InvalidCursor)
+        );
+        malformed.prior_checkpoint = "x".repeat(super::super::contract::MAX_CURSOR_BYTES + 1);
+        assert_eq!(
+            build_execution_context(&malformed),
+            Err(SourceExecutionError::InvalidCursor)
+        );
+    }
+
+    #[test]
     fn rust_seals_the_append_projection_checkpoint_program() {
         let program = seal_page_program(&lifecycle_request()).expect("page program");
         assert_eq!(program.admitted_records.len(), 1);
         assert_eq!(program.checkpoint_cursor, "cursor-2");
         assert_eq!(program.checkpoint_watermark_unix_millis, 1_725_000_000_000);
         assert_eq!(program.transition_digest_sha256.len(), 64);
+    }
+
+    #[test]
+    fn empty_terminal_page_retains_prior_watermark() {
+        let mut request = lifecycle_request();
+        let receipt = request.receipt.as_ref().expect("receipt").clone();
+        let result = request.result.as_mut().expect("result");
+        result.records.clear();
+        result.next_cursor.clear();
+        result.result_digest_sha256 =
+            canonical_result_digest(&receipt, &result.next_cursor, &result.records)
+                .expect("empty result digest");
+        let prior_watermark = 1_724_999_999_999;
+        let program = seal_page_program_v2(&SourceExecutionLifecycleEnvelopeV2 {
+            request: Some(request),
+            metadata: Some(SourceWorkerRuntimeMetadataV2 {
+                public_config: HashMap::new(),
+                prior_terminal_watermark_unix_millis: prior_watermark,
+                prior_checkpoint: "audit-terminal-1".into(),
+            }),
+        })
+        .expect("metadata-aware page program");
+        assert!(program.admitted_records.is_empty());
+        assert!(program.checkpoint_cursor.is_empty());
+        assert_eq!(program.checkpoint_watermark_unix_millis, prior_watermark);
     }
 
     #[test]
