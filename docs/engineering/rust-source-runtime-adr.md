@@ -90,7 +90,9 @@ The current repository snapshot, measured with `tools/codegenstatus` and
 - 743 sources that still need realistic fixtures;
 - 736 sources that still need every-family tests;
 - 752 sources that still need deploy-family coverage;
-- a 5,827-line compile-time source registry;
+- a 521-line compile-time source registry with 61 explicit deep, push, bespoke,
+  and catalog-compatibility loaders; 756 standard catalog sources load through
+  the shared definition-driven runtime instead of provider-specific imports;
 - a 6,407-line compile-time projector registry;
 - generated adapters that repeat large maps of paths, selectors, identity keys, and static attributes already present in connector definitions.
 
@@ -775,7 +777,14 @@ provider evidence
   -> signed promotion receipt
 ```
 
-Registration becomes data-driven. The runtime loads the compiled first-party plan index instead of importing every standard source package. The plan index is deterministic, checked into release provenance, and validated before serving traffic.
+Registration is data-driven for standard Go compatibility sources: the runtime
+loads normalized catalog definitions instead of importing 756 provider-specific
+packages. The remaining explicit loaders cover deep, push, bespoke, and
+metadata-incompatible sources. A single embedded portable source-catalog index
+preserves the same event, coverage, and lifecycle contracts for those standard
+sources without restoring their provider-package imports. The Rust runtime
+target remains a compiled first-party plan index that is deterministic,
+included in release provenance, and validated before serving traffic.
 
 ## Migration plan
 

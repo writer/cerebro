@@ -227,8 +227,7 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		NextSteps: []string{
 			"Review generated adapter field mappings and provider paths.",
 			fmt.Sprintf("Run: go run ./tools/sourceproofcheck -source-id %s", normalized.SourceID),
-			"Register the source loader in internal/sourceregistry/registry.go.",
-			"Register generated projector functions in internal/sourceprojection/registry.go.",
+			"Keep runtime registration and projector dispatch data-driven from the connector definition.",
 			fmt.Sprintf("Run: go test ./sources/%s ./internal/sourceprojection -count=1", normalized.SourceID),
 			"Run: make catalog-check",
 		},
