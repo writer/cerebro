@@ -4,12 +4,13 @@ use serde_json::{Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::{
-    JumpCloudError, JumpCloudFamily, JumpCloudKernel, JumpCloudRecord, JumpCloudRuntimeDefinition,
-    identity,
+    JumpCloudError, JumpCloudFamily, JumpCloudKernel, JumpCloudRecord, JumpCloudRequest,
+    JumpCloudRuntimeDefinition, identity,
 };
 
 pub(super) fn normalize(
     kernel: &JumpCloudKernel,
+    request: &JumpCloudRequest,
     raw: Value,
     raw_bytes: Option<&[u8]>,
 ) -> Result<JumpCloudRecord, JumpCloudError> {
@@ -17,9 +18,10 @@ pub(super) fn normalize(
     let values = raw
         .as_object()
         .ok_or(JumpCloudError::InvalidProviderRecord)?;
-    let identity = identity::material(kernel, values, raw_bytes)?;
+    let identity = identity::material(kernel, request, values, raw_bytes)?;
     let occurred_at = occurred_at(kernel.family, values, &kernel.observed_at)?;
-    let (attributes, payload) = family_values(kernel, values, &identity.external_id)?;
+    let (attributes, payload) =
+        family_values(kernel, request.group_id(), values, &identity.external_id)?;
     validate_contract(kernel.family, &attributes, &payload)?;
     Ok(JumpCloudRecord {
         tenant_id: kernel.tenant_id.clone(),
@@ -36,6 +38,7 @@ pub(super) fn normalize(
 
 fn family_values(
     kernel: &JumpCloudKernel,
+    request_group_id: Option<&str>,
     values: &Map<String, Value>,
     external_id: &str,
 ) -> Result<(BTreeMap<String, String>, Value), JumpCloudError> {
@@ -199,11 +202,8 @@ fn family_values(
             attributes.insert("resource_type".to_owned(), resource_type.to_owned());
         }
         JumpCloudFamily::GroupMembers => {
-            let group_id = kernel
-                .filters
-                .group_id
-                .as_deref()
-                .ok_or(JumpCloudError::MissingConfiguration("group_id"))?;
+            let group_id =
+                request_group_id.ok_or(JumpCloudError::MissingConfiguration("group_id"))?;
             attributes.insert("group_id".to_owned(), group_id.to_owned());
             copy(&mut attributes, values, &["to.id", "id"], "member_id");
             copy(&mut attributes, values, &["to.id", "id"], "member_user_id");
