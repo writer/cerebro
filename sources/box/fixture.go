@@ -7,19 +7,28 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	sourcecatalogs "github.com/writer/cerebro/sources"
 )
 
 //go:embed testdata/*.json
 var fixtureFS embed.FS
 
+const fixtureDefaultFamily = "users"
+
+var fixtureFamilies = []string{"users", "content_assets", "groups", "group_memberships", "audit_events"}
+
 // NewFixture constructs the deterministic Box source used by tests.
 func NewFixture() (sourcecdk.Source, error) {
-	spec, err := loadSpec()
+	catalogBytes, err := sourcecatalogs.BuiltinCatalog("box")
 	if err != nil {
 		return nil, err
 	}
+	catalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)
+	if err != nil {
+		return nil, fmt.Errorf("load catalog: %w", err)
+	}
 	families := []sourcecdk.FixtureFamily{}
-	for _, family := range []string{familyUsers, familyContentAssets, familyGroups, familyGroupMemberships, familyAuditEvents} {
+	for _, family := range fixtureFamilies {
 		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
 		if err != nil {
 			return nil, err
@@ -31,8 +40,9 @@ func NewFixture() (sourcecdk.Source, error) {
 		families = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})
 	}
 	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
-		Spec:          spec,
-		DefaultFamily: defaultFamily,
+		Spec:          catalog.Spec,
+		Contracts:     catalog.EventContracts,
+		DefaultFamily: fixtureDefaultFamily,
 		Check:         checkFixtureConfig,
 		ResolveFamily: resolveFixtureFamily,
 		Families:      families,
@@ -52,7 +62,7 @@ func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {
 	}
 	family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family"))
 	if family == "" {
-		return defaultFamily, nil
+		return fixtureDefaultFamily, nil
 	}
 	return family, nil
 }

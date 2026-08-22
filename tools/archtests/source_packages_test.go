@@ -22,6 +22,20 @@ var deepTierSourcePackages = map[string]struct{}{
 	"digitalocean": {},
 }
 
+// catalogRuntimeOnlySourcePackages have retired their provider-local Go
+// runtime. Their portable catalog and Rust catalog-runtime coverage remain the
+// production and parity contracts, so source.go and Go-only runtime tests must
+// not be restored.
+var catalogRuntimeOnlySourcePackages = map[string]struct{}{
+	"akeyless":  {},
+	"backstage": {},
+	"box":       {},
+	"duo":       {},
+	"fivetran":  {},
+	"increase":  {},
+	"jira":      {},
+}
+
 const deepTierDepthContractScore = 100
 
 // Grandfathered budgets are exact current nonblank Go LOC ceilings for legacy
@@ -55,8 +69,16 @@ func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {
 			continue
 		}
 		sourceDir := filepath.Join("..", "..", "sources", entry.Name())
+		_, catalogRuntimeOnly := catalogRuntimeOnlySourcePackages[entry.Name()]
 		if _, err := os.Stat(filepath.Join(sourceDir, "catalog.yaml")); err != nil {
 			t.Fatalf("%s missing catalog.yaml: %v", entry.Name(), err)
+		}
+		if catalogRuntimeOnly {
+			if _, err := os.Stat(filepath.Join(sourceDir, "source.go")); err == nil {
+				t.Fatalf("%s restored retired provider-local Go runtime", entry.Name())
+			} else if !os.IsNotExist(err) {
+				t.Fatalf("stat %s source.go: %v", entry.Name(), err)
+			}
 		}
 		files, err := os.ReadDir(sourceDir)
 		if err != nil {
@@ -69,7 +91,7 @@ func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {
 				break
 			}
 		}
-		if !hasTest {
+		if !hasTest && !catalogRuntimeOnly {
 			t.Fatalf("%s missing replay/unit test", entry.Name())
 		}
 		testdata, err := os.ReadDir(filepath.Join(sourceDir, "testdata"))

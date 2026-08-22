@@ -289,27 +289,20 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"adobe_workfront":       true,
 		"aircall":               true,
 		"airfocus":              true,
-		"akeyless":              true,
 		"anthropic":             true,
 		"asana":                 true,
 		"azure":                 true,
-		"backstage":             true,
 		"beezup":                true,
 		"bitwarden":             true,
-		"box":                   true,
 		"cloudflare":            true,
 		"conjur":                true,
 		"datadog":               true,
 		"deepseek":              true,
 		"digitalocean":          true,
 		"doppler":               true,
-		"duo":                   true,
-		"fivetran":              true,
 		"github":                true,
 		"google_drive":          true,
 		"hashicorp_vault":       true,
-		"increase":              true,
-		"jira":                  true,
 		"jumpcloud":             true,
 		"kandji":                true,
 		"kolide":                true,
@@ -359,6 +352,26 @@ func TestBuiltinKeepsCloudflareConcreteLoaderUntilSeparateRetirementGate(t *test
 		}
 	}
 	t.Fatal("cloudflare concrete source loader retired before the separate authority gate")
+}
+
+func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
+	retired := []string{"akeyless", "backstage", "box", "duo", "fivetran", "increase", "jira"}
+	static := make(map[string]struct{}, len(builtinSourceLoaders))
+	for _, loader := range builtinSourceLoaders {
+		static[loader.name] = struct{}{}
+	}
+	registry, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+	for _, sourceID := range retired {
+		if _, ok := static[sourceID]; ok {
+			t.Errorf("retired provider %q still has a static Go loader", sourceID)
+		}
+		if _, ok := registry.Get(sourceID); !ok {
+			t.Errorf("retired provider %q is not runnable through the catalog runtime", sourceID)
+		}
+	}
 }
 
 func TestBuiltinRegistersGenerateableCatalogSources(t *testing.T) {
