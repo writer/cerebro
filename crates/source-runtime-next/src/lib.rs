@@ -27,6 +27,7 @@ mod github;
 mod google_workspace;
 mod grc;
 mod http;
+mod linode;
 mod mapper;
 mod okta;
 mod panopticon;
@@ -36,6 +37,7 @@ mod runtime_config;
 mod sdk;
 mod security_tooling_map;
 mod sentinelone;
+pub mod source_execution;
 mod trivy;
 mod twilio;
 mod vulnview;
@@ -130,6 +132,7 @@ pub use google_workspace::{
 };
 pub use grc::{GrcError, GrcFamily, GrcKernel, GrcPage, GrcRecord, GrcRequest};
 pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
+pub use linode::{LinodeError, LinodeKernel, LinodePage, LinodeRecord, LinodeRequest};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 pub use okta::{
     OktaError, OktaFamily, OktaFilters, OktaKernel, OktaPage, OktaRecord, OktaRequest, OktaResponse,

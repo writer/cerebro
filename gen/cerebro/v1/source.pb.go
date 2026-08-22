@@ -356,24 +356,173 @@ func (x *SourceExecutionPlanV1) GetPlanDigestSha256() string {
 	return ""
 }
 
+// SourceWorkerExecutionContextV1 is trusted host state for one bounded page.
+// Provider response fields cannot supply or override any value in this message.
+type SourceWorkerExecutionContextV1 struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	TenantId             string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	RuntimeId            string                 `protobuf:"bytes,2,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
+	LogicalPageId        string                 `protobuf:"bytes,3,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
+	PriorCursor          string                 `protobuf:"bytes,4,opt,name=prior_cursor,json=priorCursor,proto3" json:"prior_cursor,omitempty"`
+	RuntimeGeneration    uint64                 `protobuf:"varint,5,opt,name=runtime_generation,json=runtimeGeneration,proto3" json:"runtime_generation,omitempty"`
+	LeaseGeneration      uint64                 `protobuf:"varint,6,opt,name=lease_generation,json=leaseGeneration,proto3" json:"lease_generation,omitempty"`
+	ObservedAtUnixMillis int64                  `protobuf:"varint,7,opt,name=observed_at_unix_millis,json=observedAtUnixMillis,proto3" json:"observed_at_unix_millis,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *SourceWorkerExecutionContextV1) Reset() {
+	*x = SourceWorkerExecutionContextV1{}
+	mi := &file_cerebro_v1_source_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SourceWorkerExecutionContextV1) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SourceWorkerExecutionContextV1) ProtoMessage() {}
+
+func (x *SourceWorkerExecutionContextV1) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_source_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SourceWorkerExecutionContextV1.ProtoReflect.Descriptor instead.
+func (*SourceWorkerExecutionContextV1) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SourceWorkerExecutionContextV1) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *SourceWorkerExecutionContextV1) GetRuntimeId() string {
+	if x != nil {
+		return x.RuntimeId
+	}
+	return ""
+}
+
+func (x *SourceWorkerExecutionContextV1) GetLogicalPageId() string {
+	if x != nil {
+		return x.LogicalPageId
+	}
+	return ""
+}
+
+func (x *SourceWorkerExecutionContextV1) GetPriorCursor() string {
+	if x != nil {
+		return x.PriorCursor
+	}
+	return ""
+}
+
+func (x *SourceWorkerExecutionContextV1) GetRuntimeGeneration() uint64 {
+	if x != nil {
+		return x.RuntimeGeneration
+	}
+	return 0
+}
+
+func (x *SourceWorkerExecutionContextV1) GetLeaseGeneration() uint64 {
+	if x != nil {
+		return x.LeaseGeneration
+	}
+	return 0
+}
+
+func (x *SourceWorkerExecutionContextV1) GetObservedAtUnixMillis() int64 {
+	if x != nil {
+		return x.ObservedAtUnixMillis
+	}
+	return 0
+}
+
+// SourceWorkerPlanRequestV1 closes request planning over a compiled plan and
+// trusted execution context. It contains no credential material.
+type SourceWorkerPlanRequestV1 struct {
+	state         protoimpl.MessageState          `protogen:"open.v1"`
+	Plan          *SourceExecutionPlanV1          `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	Context       *SourceWorkerExecutionContextV1 `protobuf:"bytes,2,opt,name=context,proto3" json:"context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SourceWorkerPlanRequestV1) Reset() {
+	*x = SourceWorkerPlanRequestV1{}
+	mi := &file_cerebro_v1_source_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SourceWorkerPlanRequestV1) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SourceWorkerPlanRequestV1) ProtoMessage() {}
+
+func (x *SourceWorkerPlanRequestV1) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_source_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SourceWorkerPlanRequestV1.ProtoReflect.Descriptor instead.
+func (*SourceWorkerPlanRequestV1) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SourceWorkerPlanRequestV1) GetPlan() *SourceExecutionPlanV1 {
+	if x != nil {
+		return x.Plan
+	}
+	return nil
+}
+
+func (x *SourceWorkerPlanRequestV1) GetContext() *SourceWorkerExecutionContextV1 {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
 // SourceWorkerHTTPRequestV1 is a safe request plan returned by the
 // capability-free Rust worker. The Go host owns credential redemption,
 // authorization headers, DNS, egress, redirects, deadlines, and network I/O.
 type SourceWorkerHTTPRequestV1 struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	PlanId           string                 `protobuf:"bytes,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
-	Method           string                 `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`
-	Url              string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
-	Accept           string                 `protobuf:"bytes,4,opt,name=accept,proto3" json:"accept,omitempty"`
-	MaxResponseBytes uint64                 `protobuf:"varint,5,opt,name=max_response_bytes,json=maxResponseBytes,proto3" json:"max_response_bytes,omitempty"`
-	PlanDigestSha256 string                 `protobuf:"bytes,6,opt,name=plan_digest_sha256,json=planDigestSha256,proto3" json:"plan_digest_sha256,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	PlanId              string                 `protobuf:"bytes,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	Method              string                 `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`
+	Url                 string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	Accept              string                 `protobuf:"bytes,4,opt,name=accept,proto3" json:"accept,omitempty"`
+	MaxResponseBytes    uint64                 `protobuf:"varint,5,opt,name=max_response_bytes,json=maxResponseBytes,proto3" json:"max_response_bytes,omitempty"`
+	PlanDigestSha256    string                 `protobuf:"bytes,6,opt,name=plan_digest_sha256,json=planDigestSha256,proto3" json:"plan_digest_sha256,omitempty"`
+	RequestIntentDigest string                 `protobuf:"bytes,7,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *SourceWorkerHTTPRequestV1) Reset() {
 	*x = SourceWorkerHTTPRequestV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[4]
+	mi := &file_cerebro_v1_source_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -385,7 +534,7 @@ func (x *SourceWorkerHTTPRequestV1) String() string {
 func (*SourceWorkerHTTPRequestV1) ProtoMessage() {}
 
 func (x *SourceWorkerHTTPRequestV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[4]
+	mi := &file_cerebro_v1_source_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -398,7 +547,7 @@ func (x *SourceWorkerHTTPRequestV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerHTTPRequestV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerHTTPRequestV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{4}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SourceWorkerHTTPRequestV1) GetPlanId() string {
@@ -443,23 +592,31 @@ func (x *SourceWorkerHTTPRequestV1) GetPlanDigestSha256() string {
 	return ""
 }
 
+func (x *SourceWorkerHTTPRequestV1) GetRequestIntentDigest() string {
+	if x != nil {
+		return x.RequestIntentDigest
+	}
+	return ""
+}
+
 // SourceWorkerDecodeRequestV1 carries only bounded provider output and safe
 // execution identity into the capability-free Rust decoder.
 type SourceWorkerDecodeRequestV1 struct {
-	state               protoimpl.MessageState     `protogen:"open.v1"`
-	Plan                *SourceExecutionPlanV1     `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
-	StatusCode          uint32                     `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
-	ResponseBody        []byte                     `protobuf:"bytes,3,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
-	LogicalPageId       string                     `protobuf:"bytes,4,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
-	RequestIntentDigest string                     `protobuf:"bytes,5,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
-	Receipt             *SourceWorkerSafeReceiptV1 `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	state               protoimpl.MessageState          `protogen:"open.v1"`
+	Plan                *SourceExecutionPlanV1          `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	StatusCode          uint32                          `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	ResponseBody        []byte                          `protobuf:"bytes,3,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+	LogicalPageId       string                          `protobuf:"bytes,4,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
+	RequestIntentDigest string                          `protobuf:"bytes,5,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
+	Receipt             *SourceWorkerSafeReceiptV1      `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	Context             *SourceWorkerExecutionContextV1 `protobuf:"bytes,7,opt,name=context,proto3" json:"context,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
 
 func (x *SourceWorkerDecodeRequestV1) Reset() {
 	*x = SourceWorkerDecodeRequestV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[5]
+	mi := &file_cerebro_v1_source_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -471,7 +628,7 @@ func (x *SourceWorkerDecodeRequestV1) String() string {
 func (*SourceWorkerDecodeRequestV1) ProtoMessage() {}
 
 func (x *SourceWorkerDecodeRequestV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[5]
+	mi := &file_cerebro_v1_source_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -484,7 +641,7 @@ func (x *SourceWorkerDecodeRequestV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerDecodeRequestV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerDecodeRequestV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{5}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SourceWorkerDecodeRequestV1) GetPlan() *SourceExecutionPlanV1 {
@@ -529,26 +686,36 @@ func (x *SourceWorkerDecodeRequestV1) GetReceipt() *SourceWorkerSafeReceiptV1 {
 	return nil
 }
 
+func (x *SourceWorkerDecodeRequestV1) GetContext() *SourceWorkerExecutionContextV1 {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
 // SourceWorkerSafeReceiptV1 binds normalized output to bounded provider-safe
 // execution evidence. It contains no credential, response body, or private route.
 type SourceWorkerSafeReceiptV1 struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	PlanDigestSha256    string                 `protobuf:"bytes,1,opt,name=plan_digest_sha256,json=planDigestSha256,proto3" json:"plan_digest_sha256,omitempty"`
-	LogicalPageId       string                 `protobuf:"bytes,2,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
-	RequestIntentDigest string                 `protobuf:"bytes,3,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
-	RuntimeGeneration   uint64                 `protobuf:"varint,4,opt,name=runtime_generation,json=runtimeGeneration,proto3" json:"runtime_generation,omitempty"`
-	LeaseGeneration     uint64                 `protobuf:"varint,5,opt,name=lease_generation,json=leaseGeneration,proto3" json:"lease_generation,omitempty"`
-	CredentialOperation string                 `protobuf:"bytes,6,opt,name=credential_operation,json=credentialOperation,proto3" json:"credential_operation,omitempty"`
-	StatusCode          uint32                 `protobuf:"varint,7,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
-	ResponseBytes       uint64                 `protobuf:"varint,8,opt,name=response_bytes,json=responseBytes,proto3" json:"response_bytes,omitempty"`
-	ResponseSha256      string                 `protobuf:"bytes,9,opt,name=response_sha256,json=responseSha256,proto3" json:"response_sha256,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	PlanDigestSha256     string                 `protobuf:"bytes,1,opt,name=plan_digest_sha256,json=planDigestSha256,proto3" json:"plan_digest_sha256,omitempty"`
+	LogicalPageId        string                 `protobuf:"bytes,2,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
+	RequestIntentDigest  string                 `protobuf:"bytes,3,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
+	RuntimeGeneration    uint64                 `protobuf:"varint,4,opt,name=runtime_generation,json=runtimeGeneration,proto3" json:"runtime_generation,omitempty"`
+	LeaseGeneration      uint64                 `protobuf:"varint,5,opt,name=lease_generation,json=leaseGeneration,proto3" json:"lease_generation,omitempty"`
+	CredentialOperation  string                 `protobuf:"bytes,6,opt,name=credential_operation,json=credentialOperation,proto3" json:"credential_operation,omitempty"`
+	StatusCode           uint32                 `protobuf:"varint,7,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	ResponseBytes        uint64                 `protobuf:"varint,8,opt,name=response_bytes,json=responseBytes,proto3" json:"response_bytes,omitempty"`
+	ResponseSha256       string                 `protobuf:"bytes,9,opt,name=response_sha256,json=responseSha256,proto3" json:"response_sha256,omitempty"`
+	TenantId             string                 `protobuf:"bytes,10,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	RuntimeId            string                 `protobuf:"bytes,11,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
+	ObservedAtUnixMillis int64                  `protobuf:"varint,12,opt,name=observed_at_unix_millis,json=observedAtUnixMillis,proto3" json:"observed_at_unix_millis,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SourceWorkerSafeReceiptV1) Reset() {
 	*x = SourceWorkerSafeReceiptV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[6]
+	mi := &file_cerebro_v1_source_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -560,7 +727,7 @@ func (x *SourceWorkerSafeReceiptV1) String() string {
 func (*SourceWorkerSafeReceiptV1) ProtoMessage() {}
 
 func (x *SourceWorkerSafeReceiptV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[6]
+	mi := &file_cerebro_v1_source_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -573,7 +740,7 @@ func (x *SourceWorkerSafeReceiptV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerSafeReceiptV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerSafeReceiptV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{6}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SourceWorkerSafeReceiptV1) GetPlanDigestSha256() string {
@@ -639,19 +806,42 @@ func (x *SourceWorkerSafeReceiptV1) GetResponseSha256() string {
 	return ""
 }
 
+func (x *SourceWorkerSafeReceiptV1) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetRuntimeId() string {
+	if x != nil {
+		return x.RuntimeId
+	}
+	return ""
+}
+
+func (x *SourceWorkerSafeReceiptV1) GetObservedAtUnixMillis() int64 {
+	if x != nil {
+		return x.ObservedAtUnixMillis
+	}
+	return 0
+}
+
 // SourceWorkerRecordV1 is one normalized, credential-free provider record.
 type SourceWorkerRecordV1 struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProviderId    string                 `protobuf:"bytes,1,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
-	Attributes    map[string]string      `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PayloadJson   []byte                 `protobuf:"bytes,3,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	ProviderId           string                 `protobuf:"bytes,1,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	Attributes           map[string]string      `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	PayloadJson          []byte                 `protobuf:"bytes,3,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
+	EventId              string                 `protobuf:"bytes,4,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	OccurredAtUnixMillis int64                  `protobuf:"varint,5,opt,name=occurred_at_unix_millis,json=occurredAtUnixMillis,proto3" json:"occurred_at_unix_millis,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SourceWorkerRecordV1) Reset() {
 	*x = SourceWorkerRecordV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[7]
+	mi := &file_cerebro_v1_source_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -663,7 +853,7 @@ func (x *SourceWorkerRecordV1) String() string {
 func (*SourceWorkerRecordV1) ProtoMessage() {}
 
 func (x *SourceWorkerRecordV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[7]
+	mi := &file_cerebro_v1_source_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -676,7 +866,7 @@ func (x *SourceWorkerRecordV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerRecordV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerRecordV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{7}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SourceWorkerRecordV1) GetProviderId() string {
@@ -700,24 +890,43 @@ func (x *SourceWorkerRecordV1) GetPayloadJson() []byte {
 	return nil
 }
 
+func (x *SourceWorkerRecordV1) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *SourceWorkerRecordV1) GetOccurredAtUnixMillis() int64 {
+	if x != nil {
+		return x.OccurredAtUnixMillis
+	}
+	return 0
+}
+
 // SourceWorkerDecodeResultV1 binds normalized records to the exact plan and
 // logical page. Singleton families leave next_cursor empty.
 type SourceWorkerDecodeResultV1 struct {
-	state               protoimpl.MessageState  `protogen:"open.v1"`
-	PlanId              string                  `protobuf:"bytes,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
-	PlanDigestSha256    string                  `protobuf:"bytes,2,opt,name=plan_digest_sha256,json=planDigestSha256,proto3" json:"plan_digest_sha256,omitempty"`
-	LogicalPageId       string                  `protobuf:"bytes,3,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
-	RequestIntentDigest string                  `protobuf:"bytes,4,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
-	Records             []*SourceWorkerRecordV1 `protobuf:"bytes,5,rep,name=records,proto3" json:"records,omitempty"`
-	NextCursor          string                  `protobuf:"bytes,6,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	ResultDigestSha256  string                  `protobuf:"bytes,7,opt,name=result_digest_sha256,json=resultDigestSha256,proto3" json:"result_digest_sha256,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                protoimpl.MessageState  `protogen:"open.v1"`
+	PlanId               string                  `protobuf:"bytes,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	PlanDigestSha256     string                  `protobuf:"bytes,2,opt,name=plan_digest_sha256,json=planDigestSha256,proto3" json:"plan_digest_sha256,omitempty"`
+	LogicalPageId        string                  `protobuf:"bytes,3,opt,name=logical_page_id,json=logicalPageId,proto3" json:"logical_page_id,omitempty"`
+	RequestIntentDigest  string                  `protobuf:"bytes,4,opt,name=request_intent_digest,json=requestIntentDigest,proto3" json:"request_intent_digest,omitempty"`
+	Records              []*SourceWorkerRecordV1 `protobuf:"bytes,5,rep,name=records,proto3" json:"records,omitempty"`
+	NextCursor           string                  `protobuf:"bytes,6,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
+	ResultDigestSha256   string                  `protobuf:"bytes,7,opt,name=result_digest_sha256,json=resultDigestSha256,proto3" json:"result_digest_sha256,omitempty"`
+	TenantId             string                  `protobuf:"bytes,8,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	RuntimeId            string                  `protobuf:"bytes,9,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
+	RuntimeGeneration    uint64                  `protobuf:"varint,10,opt,name=runtime_generation,json=runtimeGeneration,proto3" json:"runtime_generation,omitempty"`
+	LeaseGeneration      uint64                  `protobuf:"varint,11,opt,name=lease_generation,json=leaseGeneration,proto3" json:"lease_generation,omitempty"`
+	ObservedAtUnixMillis int64                   `protobuf:"varint,12,opt,name=observed_at_unix_millis,json=observedAtUnixMillis,proto3" json:"observed_at_unix_millis,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SourceWorkerDecodeResultV1) Reset() {
 	*x = SourceWorkerDecodeResultV1{}
-	mi := &file_cerebro_v1_source_proto_msgTypes[8]
+	mi := &file_cerebro_v1_source_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -729,7 +938,7 @@ func (x *SourceWorkerDecodeResultV1) String() string {
 func (*SourceWorkerDecodeResultV1) ProtoMessage() {}
 
 func (x *SourceWorkerDecodeResultV1) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_source_proto_msgTypes[8]
+	mi := &file_cerebro_v1_source_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -742,7 +951,7 @@ func (x *SourceWorkerDecodeResultV1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceWorkerDecodeResultV1.ProtoReflect.Descriptor instead.
 func (*SourceWorkerDecodeResultV1) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{8}
+	return file_cerebro_v1_source_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SourceWorkerDecodeResultV1) GetPlanId() string {
@@ -794,6 +1003,41 @@ func (x *SourceWorkerDecodeResultV1) GetResultDigestSha256() string {
 	return ""
 }
 
+func (x *SourceWorkerDecodeResultV1) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *SourceWorkerDecodeResultV1) GetRuntimeId() string {
+	if x != nil {
+		return x.RuntimeId
+	}
+	return ""
+}
+
+func (x *SourceWorkerDecodeResultV1) GetRuntimeGeneration() uint64 {
+	if x != nil {
+		return x.RuntimeGeneration
+	}
+	return 0
+}
+
+func (x *SourceWorkerDecodeResultV1) GetLeaseGeneration() uint64 {
+	if x != nil {
+		return x.LeaseGeneration
+	}
+	return 0
+}
+
+func (x *SourceWorkerDecodeResultV1) GetObservedAtUnixMillis() int64 {
+	if x != nil {
+		return x.ObservedAtUnixMillis
+	}
+	return 0
+}
+
 var File_cerebro_v1_source_proto protoreflect.FileDescriptor
 
 const file_cerebro_v1_source_proto_rawDesc = "" +
@@ -830,14 +1074,27 @@ const file_cerebro_v1_source_proto_rawDesc = "" +
 	"schema_ref\x18\r \x01(\tR\tschemaRef\x12/\n" +
 	"\x13required_attributes\x18\x0e \x03(\tR\x12requiredAttributes\x126\n" +
 	"\x17required_payload_fields\x18\x0f \x03(\tR\x15requiredPayloadFields\x12,\n" +
-	"\x12plan_digest_sha256\x18\x10 \x01(\tR\x10planDigestSha256\"\xd2\x01\n" +
+	"\x12plan_digest_sha256\x18\x10 \x01(\tR\x10planDigestSha256\"\xb8\x02\n" +
+	"\x1eSourceWorkerExecutionContextV1\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1d\n" +
+	"\n" +
+	"runtime_id\x18\x02 \x01(\tR\truntimeId\x12&\n" +
+	"\x0flogical_page_id\x18\x03 \x01(\tR\rlogicalPageId\x12!\n" +
+	"\fprior_cursor\x18\x04 \x01(\tR\vpriorCursor\x12-\n" +
+	"\x12runtime_generation\x18\x05 \x01(\x04R\x11runtimeGeneration\x12)\n" +
+	"\x10lease_generation\x18\x06 \x01(\x04R\x0fleaseGeneration\x125\n" +
+	"\x17observed_at_unix_millis\x18\a \x01(\x03R\x14observedAtUnixMillis\"\x98\x01\n" +
+	"\x19SourceWorkerPlanRequestV1\x125\n" +
+	"\x04plan\x18\x01 \x01(\v2!.cerebro.v1.SourceExecutionPlanV1R\x04plan\x12D\n" +
+	"\acontext\x18\x02 \x01(\v2*.cerebro.v1.SourceWorkerExecutionContextV1R\acontext\"\x86\x02\n" +
 	"\x19SourceWorkerHTTPRequestV1\x12\x17\n" +
 	"\aplan_id\x18\x01 \x01(\tR\x06planId\x12\x16\n" +
 	"\x06method\x18\x02 \x01(\tR\x06method\x12\x10\n" +
 	"\x03url\x18\x03 \x01(\tR\x03url\x12\x16\n" +
 	"\x06accept\x18\x04 \x01(\tR\x06accept\x12,\n" +
 	"\x12max_response_bytes\x18\x05 \x01(\x04R\x10maxResponseBytes\x12,\n" +
-	"\x12plan_digest_sha256\x18\x06 \x01(\tR\x10planDigestSha256\"\xb7\x02\n" +
+	"\x12plan_digest_sha256\x18\x06 \x01(\tR\x10planDigestSha256\x122\n" +
+	"\x15request_intent_digest\x18\a \x01(\tR\x13requestIntentDigest\"\xfd\x02\n" +
 	"\x1bSourceWorkerDecodeRequestV1\x125\n" +
 	"\x04plan\x18\x01 \x01(\v2!.cerebro.v1.SourceExecutionPlanV1R\x04plan\x12\x1f\n" +
 	"\vstatus_code\x18\x02 \x01(\rR\n" +
@@ -845,7 +1102,8 @@ const file_cerebro_v1_source_proto_rawDesc = "" +
 	"\rresponse_body\x18\x03 \x01(\fR\fresponseBody\x12&\n" +
 	"\x0flogical_page_id\x18\x04 \x01(\tR\rlogicalPageId\x122\n" +
 	"\x15request_intent_digest\x18\x05 \x01(\tR\x13requestIntentDigest\x12?\n" +
-	"\areceipt\x18\x06 \x01(\v2%.cerebro.v1.SourceWorkerSafeReceiptV1R\areceipt\"\xa3\x03\n" +
+	"\areceipt\x18\x06 \x01(\v2%.cerebro.v1.SourceWorkerSafeReceiptV1R\areceipt\x12D\n" +
+	"\acontext\x18\a \x01(\v2*.cerebro.v1.SourceWorkerExecutionContextV1R\acontext\"\x96\x04\n" +
 	"\x19SourceWorkerSafeReceiptV1\x12,\n" +
 	"\x12plan_digest_sha256\x18\x01 \x01(\tR\x10planDigestSha256\x12&\n" +
 	"\x0flogical_page_id\x18\x02 \x01(\tR\rlogicalPageId\x122\n" +
@@ -856,17 +1114,24 @@ const file_cerebro_v1_source_proto_rawDesc = "" +
 	"\vstatus_code\x18\a \x01(\rR\n" +
 	"statusCode\x12%\n" +
 	"\x0eresponse_bytes\x18\b \x01(\x04R\rresponseBytes\x12'\n" +
-	"\x0fresponse_sha256\x18\t \x01(\tR\x0eresponseSha256\"\xeb\x01\n" +
+	"\x0fresponse_sha256\x18\t \x01(\tR\x0eresponseSha256\x12\x1b\n" +
+	"\ttenant_id\x18\n" +
+	" \x01(\tR\btenantId\x12\x1d\n" +
+	"\n" +
+	"runtime_id\x18\v \x01(\tR\truntimeId\x125\n" +
+	"\x17observed_at_unix_millis\x18\f \x01(\x03R\x14observedAtUnixMillis\"\xbd\x02\n" +
 	"\x14SourceWorkerRecordV1\x12\x1f\n" +
 	"\vprovider_id\x18\x01 \x01(\tR\n" +
 	"providerId\x12P\n" +
 	"\n" +
 	"attributes\x18\x02 \x03(\v20.cerebro.v1.SourceWorkerRecordV1.AttributesEntryR\n" +
 	"attributes\x12!\n" +
-	"\fpayload_json\x18\x03 \x01(\fR\vpayloadJson\x1a=\n" +
+	"\fpayload_json\x18\x03 \x01(\fR\vpayloadJson\x12\x19\n" +
+	"\bevent_id\x18\x04 \x01(\tR\aeventId\x125\n" +
+	"\x17occurred_at_unix_millis\x18\x05 \x01(\x03R\x14occurredAtUnixMillis\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xce\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9b\x04\n" +
 	"\x1aSourceWorkerDecodeResultV1\x12\x17\n" +
 	"\aplan_id\x18\x01 \x01(\tR\x06planId\x12,\n" +
 	"\x12plan_digest_sha256\x18\x02 \x01(\tR\x10planDigestSha256\x12&\n" +
@@ -875,7 +1140,14 @@ const file_cerebro_v1_source_proto_rawDesc = "" +
 	"\arecords\x18\x05 \x03(\v2 .cerebro.v1.SourceWorkerRecordV1R\arecords\x12\x1f\n" +
 	"\vnext_cursor\x18\x06 \x01(\tR\n" +
 	"nextCursor\x120\n" +
-	"\x14result_digest_sha256\x18\a \x01(\tR\x12resultDigestSha256B4Z2github.com/writer/cerebro/gen/cerebro/v1;cerebrov1b\x06proto3"
+	"\x14result_digest_sha256\x18\a \x01(\tR\x12resultDigestSha256\x12\x1b\n" +
+	"\ttenant_id\x18\b \x01(\tR\btenantId\x12\x1d\n" +
+	"\n" +
+	"runtime_id\x18\t \x01(\tR\truntimeId\x12-\n" +
+	"\x12runtime_generation\x18\n" +
+	" \x01(\x04R\x11runtimeGeneration\x12)\n" +
+	"\x10lease_generation\x18\v \x01(\x04R\x0fleaseGeneration\x125\n" +
+	"\x17observed_at_unix_millis\x18\f \x01(\x03R\x14observedAtUnixMillisB4Z2github.com/writer/cerebro/gen/cerebro/v1;cerebrov1b\x06proto3"
 
 var (
 	file_cerebro_v1_source_proto_rawDescOnce sync.Once
@@ -889,31 +1161,36 @@ func file_cerebro_v1_source_proto_rawDescGZIP() []byte {
 	return file_cerebro_v1_source_proto_rawDescData
 }
 
-var file_cerebro_v1_source_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_cerebro_v1_source_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_cerebro_v1_source_proto_goTypes = []any{
-	(*SourceSpec)(nil),                  // 0: cerebro.v1.SourceSpec
-	(*SourceCursor)(nil),                // 1: cerebro.v1.SourceCursor
-	(*SourceCheckpoint)(nil),            // 2: cerebro.v1.SourceCheckpoint
-	(*SourceExecutionPlanV1)(nil),       // 3: cerebro.v1.SourceExecutionPlanV1
-	(*SourceWorkerHTTPRequestV1)(nil),   // 4: cerebro.v1.SourceWorkerHTTPRequestV1
-	(*SourceWorkerDecodeRequestV1)(nil), // 5: cerebro.v1.SourceWorkerDecodeRequestV1
-	(*SourceWorkerSafeReceiptV1)(nil),   // 6: cerebro.v1.SourceWorkerSafeReceiptV1
-	(*SourceWorkerRecordV1)(nil),        // 7: cerebro.v1.SourceWorkerRecordV1
-	(*SourceWorkerDecodeResultV1)(nil),  // 8: cerebro.v1.SourceWorkerDecodeResultV1
-	nil,                                 // 9: cerebro.v1.SourceWorkerRecordV1.AttributesEntry
-	(*timestamppb.Timestamp)(nil),       // 10: google.protobuf.Timestamp
+	(*SourceSpec)(nil),                     // 0: cerebro.v1.SourceSpec
+	(*SourceCursor)(nil),                   // 1: cerebro.v1.SourceCursor
+	(*SourceCheckpoint)(nil),               // 2: cerebro.v1.SourceCheckpoint
+	(*SourceExecutionPlanV1)(nil),          // 3: cerebro.v1.SourceExecutionPlanV1
+	(*SourceWorkerExecutionContextV1)(nil), // 4: cerebro.v1.SourceWorkerExecutionContextV1
+	(*SourceWorkerPlanRequestV1)(nil),      // 5: cerebro.v1.SourceWorkerPlanRequestV1
+	(*SourceWorkerHTTPRequestV1)(nil),      // 6: cerebro.v1.SourceWorkerHTTPRequestV1
+	(*SourceWorkerDecodeRequestV1)(nil),    // 7: cerebro.v1.SourceWorkerDecodeRequestV1
+	(*SourceWorkerSafeReceiptV1)(nil),      // 8: cerebro.v1.SourceWorkerSafeReceiptV1
+	(*SourceWorkerRecordV1)(nil),           // 9: cerebro.v1.SourceWorkerRecordV1
+	(*SourceWorkerDecodeResultV1)(nil),     // 10: cerebro.v1.SourceWorkerDecodeResultV1
+	nil,                                    // 11: cerebro.v1.SourceWorkerRecordV1.AttributesEntry
+	(*timestamppb.Timestamp)(nil),          // 12: google.protobuf.Timestamp
 }
 var file_cerebro_v1_source_proto_depIdxs = []int32{
-	10, // 0: cerebro.v1.SourceCheckpoint.watermark:type_name -> google.protobuf.Timestamp
-	3,  // 1: cerebro.v1.SourceWorkerDecodeRequestV1.plan:type_name -> cerebro.v1.SourceExecutionPlanV1
-	6,  // 2: cerebro.v1.SourceWorkerDecodeRequestV1.receipt:type_name -> cerebro.v1.SourceWorkerSafeReceiptV1
-	9,  // 3: cerebro.v1.SourceWorkerRecordV1.attributes:type_name -> cerebro.v1.SourceWorkerRecordV1.AttributesEntry
-	7,  // 4: cerebro.v1.SourceWorkerDecodeResultV1.records:type_name -> cerebro.v1.SourceWorkerRecordV1
-	5,  // [5:5] is the sub-list for method output_type
-	5,  // [5:5] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	12, // 0: cerebro.v1.SourceCheckpoint.watermark:type_name -> google.protobuf.Timestamp
+	3,  // 1: cerebro.v1.SourceWorkerPlanRequestV1.plan:type_name -> cerebro.v1.SourceExecutionPlanV1
+	4,  // 2: cerebro.v1.SourceWorkerPlanRequestV1.context:type_name -> cerebro.v1.SourceWorkerExecutionContextV1
+	3,  // 3: cerebro.v1.SourceWorkerDecodeRequestV1.plan:type_name -> cerebro.v1.SourceExecutionPlanV1
+	8,  // 4: cerebro.v1.SourceWorkerDecodeRequestV1.receipt:type_name -> cerebro.v1.SourceWorkerSafeReceiptV1
+	4,  // 5: cerebro.v1.SourceWorkerDecodeRequestV1.context:type_name -> cerebro.v1.SourceWorkerExecutionContextV1
+	11, // 6: cerebro.v1.SourceWorkerRecordV1.attributes:type_name -> cerebro.v1.SourceWorkerRecordV1.AttributesEntry
+	9,  // 7: cerebro.v1.SourceWorkerDecodeResultV1.records:type_name -> cerebro.v1.SourceWorkerRecordV1
+	8,  // [8:8] is the sub-list for method output_type
+	8,  // [8:8] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_source_proto_init() }
@@ -927,7 +1204,7 @@ func file_cerebro_v1_source_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_source_proto_rawDesc), len(file_cerebro_v1_source_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
