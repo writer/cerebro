@@ -178,7 +178,7 @@ jobs:
           '
           summary="$(docker run --rm "${CANDIDATE_IMAGE}" catalog-summary)"
           test "$(jq -r .sources <<<"${summary}")" -eq 799
-          test "$(jq -r .families <<<"${summary}")" -eq 3926
+          test "$(jq -r .families <<<"${summary}")" -eq 3938
       - name: Start disposable PostgreSQL, Neo4j, and JetStream
         run: |
           set -euo pipefail
@@ -246,7 +246,7 @@ jobs:
             | .checks += [
                 {name:"rust_entrypoint",status:"passed",evidence:"image starts cerebro-platform directly"},
                 {name:"go_binary_absent",status:"passed",evidence:"/usr/local/bin/cerebro is absent"},
-                {name:"source_catalog",status:"passed",evidence:"799 sources and 3926 families loaded"}
+                {name:"source_catalog",status:"passed",evidence:"799 sources and 3938 families loaded"}
               ]
           ' .dist/rust-only-e2e/rust-only-e2e-receipt.json \
             > .dist/rust-only-e2e/receipt.tmp
