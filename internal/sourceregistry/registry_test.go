@@ -212,6 +212,76 @@ func TestBuiltinLoadsDockerHubFromConnectorCatalog(t *testing.T) {
 	}
 }
 
+func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testing.T) {
+	compatibilityExceptions := map[string]bool{
+		"acunetix":              true,
+		"adobe_workfront":       true,
+		"aircall":               true,
+		"airfocus":              true,
+		"akeyless":              true,
+		"anthropic":             true,
+		"asana":                 true,
+		"azure":                 true,
+		"backstage":             true,
+		"beezup":                true,
+		"bitwarden":             true,
+		"box":                   true,
+		"cloudflare":            true,
+		"conjur":                true,
+		"datadog":               true,
+		"deepseek":              true,
+		"digitalocean":          true,
+		"doppler":               true,
+		"duo":                   true,
+		"fivetran":              true,
+		"github":                true,
+		"google_drive":          true,
+		"hashicorp_vault":       true,
+		"increase":              true,
+		"jira":                  true,
+		"jumpcloud":             true,
+		"kandji":                true,
+		"kolide":                true,
+		"kubernetes":            true,
+		"langchain":             true,
+		"langfuse":              true,
+		"okta":                  true,
+		"onelogin":              true,
+		"openai":                true,
+		"pagerduty":             true,
+		"sailpoint_identitynow": true,
+		"slack":                 true,
+		"snyk":                  true,
+		"tailscale":             true,
+		"writer":                true,
+	}
+	catalog, err := connectorcatalog.BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("connectorcatalog.BuiltinRuntime() error = %v", err)
+	}
+	entries := make(map[string]connectorcatalog.Entry, len(catalog.Entries))
+	for _, entry := range catalog.Entries {
+		entries[entry.Definition.SourceID] = entry
+	}
+	seenExceptions := make(map[string]bool, len(compatibilityExceptions))
+	for _, loader := range builtinSourceLoaders {
+		entry, ok := entries[loader.name]
+		if !ok || entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
+			continue
+		}
+		if !compatibilityExceptions[loader.name] {
+			t.Errorf("catalog-supported source %q has a redundant compile-time loader", loader.name)
+			continue
+		}
+		seenExceptions[loader.name] = true
+	}
+	for sourceID := range compatibilityExceptions {
+		if !seenExceptions[sourceID] {
+			t.Errorf("catalog compatibility exception %q has no static loader", sourceID)
+		}
+	}
+}
+
 func TestBuiltinRegistersGenerateableCatalogSources(t *testing.T) {
 	registry, err := Builtin()
 	if err != nil {

@@ -52,17 +52,20 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		return nil, fmt.Errorf("%s resource families are required", definition.SourceID)
 	}
 	families := make([]jsonapi.Family, 0, len(definition.ResourceFamilies))
+	emittedKinds := make([]string, 0, len(definition.ResourceFamilies))
 	for _, resource := range definition.ResourceFamilies {
 		family, err := jsonapiFamily(definition.SourceID, resource)
 		if err != nil {
 			return nil, err
 		}
 		families = append(families, family)
+		emittedKinds = append(emittedKinds, familyEventKind(definition.SourceID, resource))
 	}
 	spec := &cerebrov1.SourceSpec{
-		Id:          definition.SourceID,
-		Name:        firstNonEmpty(definition.DisplayName, titleFromID(definition.SourceID)),
-		Description: definition.Description,
+		Id:           definition.SourceID,
+		Name:         firstNonEmpty(definition.DisplayName, titleFromID(definition.SourceID)),
+		Description:  definition.Description,
+		EmittedKinds: emittedKinds,
 	}
 	options := jsonapi.Options{
 		SourceID:                    definition.SourceID,
@@ -90,6 +93,10 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		source.verificationStatus = append([]int(nil), definition.Transport.Verification.ExpectStatus...)
 	}
 	return source, nil
+}
+
+func familyEventKind(sourceID string, resource connectordefinitions.ResourceFamily) string {
+	return firstNonEmpty(resource.Event.Kind, resource.EventKind, sourceID+"."+resource.ID)
 }
 
 // Spec returns static source metadata.
