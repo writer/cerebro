@@ -7,6 +7,7 @@ entries:
             reference_only: true
             secret: true
         model: api_key
+        token_header: hibp-api-key
       categories:
         - threat_intel
         - identity
