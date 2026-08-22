@@ -16,7 +16,6 @@ import (
 	azuresource "github.com/writer/cerebro/sources/azure"
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
-	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	digitaloceansource "github.com/writer/cerebro/sources/digitalocean"
 	discordsource "github.com/writer/cerebro/sources/discord"
@@ -104,12 +103,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "cerebro",
 		load: func() (sourcecdk.Source, error) {
 			return cerebrosource.New()
-		},
-	},
-	{
-		name: "cloudflare",
-		load: func() (sourcecdk.Source, error) {
-			return cloudflaresource.New()
 		},
 	},
 	{
