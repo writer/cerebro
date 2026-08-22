@@ -20,6 +20,26 @@ func TestDockerHubAssetProjection(t *testing.T) {
 	}
 }
 
+func TestDockerHubRepositoryProjectionPreservesCatalogRuntimeIdentity(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "docker_hub", Kind: "docker_hub.repositories", Attributes: map[string]string{
+		"resource_id":   "library/ubuntu",
+		"resource_name": "ubuntu",
+		"resource_type": "container.repository",
+		"resource_urn":  "urn:cerebro:tenant:docker_hub_repositories:library%2Fubuntu",
+	}}
+	entities, links, err := BuiltinRegistry().Project(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) != 1 || len(links) != 0 {
+		t.Fatalf("entities/links = %d/%d, want 1/0", len(entities), len(links))
+	}
+	entity := entities[0]
+	if entity.URN != event.Attributes["resource_urn"] || entity.EntityType != "runtime.container.repository" || entity.Label != "ubuntu" {
+		t.Fatalf("projected repository = %#v", entity)
+	}
+}
+
 func TestDockerHubIdentityUserProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "docker_hub", Kind: "docker_hub.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
 	entities, _, err := BuiltinRegistry().Project(event)

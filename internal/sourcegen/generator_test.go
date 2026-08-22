@@ -176,9 +176,96 @@ func TestGenerateDryRunDoesNotWriteFiles(t *testing.T) {
 	}
 }
 
+func TestGenerateDefinitionUsesCatalogRuntimeWithoutProviderGoPackage(t *testing.T) {
+	outputDir := t.TempDir()
+	result, err := GenerateDefinition(DefinitionRequest{
+		Definition: proofVerificationDefinition(),
+		OutputDir:  outputDir,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+	for _, path := range result.Files {
+		if path == filepath.Join(outputDir, "sources", "proof_source", "source.go") ||
+			path == filepath.Join(outputDir, "sources", "proof_source", "source_test.go") {
+			t.Fatalf("catalog-runtime generation reported retired Go output %q", path)
+		}
+	}
+	for _, name := range []string{"source.go", "source_test.go"} {
+		path := filepath.Join(outputDir, "sources", "proof_source", name)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("retired catalog-runtime output %s exists, err=%v", path, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "internal", "sourceprojection", "proof_source.go")); err != nil {
+		t.Fatalf("projection authority output missing: %v", err)
+	}
+	proofPayload := readGeneratedFile(t, outputDir, "sources/proof_source/.sourcegen-proof.json")
+	var proof ProofBundle
+	if err := json.Unmarshal([]byte(proofPayload), &proof); err != nil {
+		t.Fatalf("decode proof bundle: %v", err)
+	}
+	if proof.RuntimeMode != "catalog_runtime" {
+		t.Fatalf("proof runtime mode = %q, want catalog_runtime", proof.RuntimeMode)
+	}
+	manifestPayload := readGeneratedFile(t, outputDir, "sources/proof_source/.sourcegen-manifest.json")
+	var manifest generationManifest
+	if err := json.Unmarshal([]byte(manifestPayload), &manifest); err != nil {
+		t.Fatalf("decode generation manifest: %v", err)
+	}
+	for path := range manifest.Outputs {
+		if path == "sources/proof_source/source.go" || path == "sources/proof_source/source_test.go" {
+			t.Fatalf("generation manifest retained retired Go output %q", path)
+		}
+	}
+}
+
+func TestGenerateDefinitionRetiresOwnedGoDifferentialOracle(t *testing.T) {
+	outputDir := t.TempDir()
+	request := DefinitionRequest{
+		Definition:               proofVerificationDefinition(),
+		OutputDir:                outputDir,
+		EmitGoDifferentialOracle: true,
+	}
+	if _, err := GenerateDefinition(request); err != nil {
+		t.Fatalf("GenerateDefinition(differential oracle) error = %v", err)
+	}
+	request.EmitGoDifferentialOracle = false
+	request.DryRun = true
+	plan, err := GenerateDefinition(request)
+	if err != nil {
+		t.Fatalf("GenerateDefinition(catalog-runtime dry run) error = %v", err)
+	}
+	for _, retired := range []string{"sources/proof_source/source.go", "sources/proof_source/source_test.go"} {
+		if !hasFileChange(plan.ChangePlan.Changes, retired, ChangeActionDelete, "sourcegen") {
+			t.Fatalf("change plan does not retire owned output %q: %#v", retired, plan.ChangePlan.Changes)
+		}
+	}
+	request.DryRun = false
+	if _, err := GenerateDefinition(request); err != nil {
+		t.Fatalf("GenerateDefinition(catalog runtime) error = %v", err)
+	}
+	for _, retired := range []string{"source.go", "source_test.go"} {
+		path := filepath.Join(outputDir, "sources", "proof_source", retired)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("retired differential output %s exists, err=%v", path, err)
+		}
+	}
+}
+
+func hasFileChange(changes []FileChange, path string, action string, ownership string) bool {
+	for _, change := range changes {
+		if change.Path == path && change.Action == action && change.Ownership == ownership {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 	outputDir := t.TempDir()
 	result, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-example_idp",
@@ -330,6 +417,7 @@ func TestGenerateDefinitionWritesIdentitySource(t *testing.T) {
 func TestGenerateDefinitionSourceTestUsesEveryFamilyProviderResponses(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-provider_shapes",
@@ -524,6 +612,7 @@ func TestIDKeysForResourcePreservesOrderedIdentityFallback(t *testing.T) {
 
 func TestPlanDefinitionBuildsPromotionChecklist(t *testing.T) {
 	plan, err := PlanDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-example_idp",
@@ -633,8 +722,9 @@ func TestPlanDefinitionAddsRuntimeDepthChecklist(t *testing.T) {
 		}},
 	}
 	plan, err := PlanDefinition(DefinitionRequest{
-		Definition: definition,
-		OutputDir:  t.TempDir(),
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		OutputDir:                t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("PlanDefinition() error = %v", err)
@@ -657,8 +747,9 @@ func TestPlanDefinitionAddsRuntimeDepthChecklist(t *testing.T) {
 
 	definition.ProviderAPI.Families = nil
 	warningPlan, err := PlanDefinition(DefinitionRequest{
-		Definition: definition,
-		OutputDir:  t.TempDir(),
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		OutputDir:                t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("PlanDefinition() warning path error = %v", err)
@@ -676,8 +767,9 @@ func TestPlanDefinitionAddsRuntimeDepthChecklist(t *testing.T) {
 		Path: "/v1/users",
 	}}
 	pathOnlyPlan, err := PlanDefinition(DefinitionRequest{
-		Definition: definition,
-		OutputDir:  t.TempDir(),
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		OutputDir:                t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("PlanDefinition() partial family path error = %v", err)
@@ -692,8 +784,9 @@ func TestPlanDefinitionAddsRuntimeDepthChecklist(t *testing.T) {
 		Method: "GET",
 	}}
 	warningPlan, err = PlanDefinition(DefinitionRequest{
-		Definition: definition,
-		OutputDir:  t.TempDir(),
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		OutputDir:                t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("PlanDefinition() partial family method error = %v", err)
@@ -755,8 +848,9 @@ func TestPlanDefinitionAcceptsGraphQLProviderProof(t *testing.T) {
 		}},
 	}
 	plan, err := PlanDefinition(DefinitionRequest{
-		Definition: definition,
-		OutputDir:  t.TempDir(),
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		OutputDir:                t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("PlanDefinition() error = %v", err)
@@ -771,8 +865,9 @@ func TestPlanDefinitionAcceptsGraphQLProviderProof(t *testing.T) {
 
 	definition.ProviderAPI.Families[0].Operation = ""
 	warningPlan, err := PlanDefinition(DefinitionRequest{
-		Definition: definition,
-		OutputDir:  t.TempDir(),
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		OutputDir:                t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("PlanDefinition() warning path error = %v", err)
@@ -788,6 +883,7 @@ func TestPlanDefinitionAcceptsGraphQLProviderProof(t *testing.T) {
 
 func TestPlanDefinitionReportsGrammarBlockers(t *testing.T) {
 	plan, err := PlanDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-a-example_api",
 			TenantID:    "tenant-a",
@@ -832,6 +928,7 @@ func requirePlanStep(t *testing.T, plan *PromotionPlan, id string) PromotionPlan
 func TestGenerateDefinitionCarriesProjectionRelationships(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-example_vault",
@@ -913,6 +1010,7 @@ func TestGenerateDefinitionCarriesProjectionRelationships(t *testing.T) {
 func TestGenerateDefinitionCarriesAuditEventProjectionEntity(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-example_audit",
@@ -975,6 +1073,7 @@ func TestGenerateDefinitionCarriesAuditEventProjectionEntity(t *testing.T) {
 func TestGenerateDefinitionHealthPathWithQueryUsesRequestURI(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-query_health",
@@ -1026,6 +1125,7 @@ func TestGenerateDefinitionHealthPathWithQueryUsesRequestURI(t *testing.T) {
 func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
 	outputDir := t.TempDir()
 	result, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-auth0",
@@ -1133,6 +1233,7 @@ func TestGenerateDefinitionWritesOAuthClientCredentialsSource(t *testing.T) {
 func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
 	outputDir := t.TempDir()
 	result, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-a-example",
 			TenantID:    "tenant-a",
@@ -1189,6 +1290,7 @@ func TestGenerateDefinitionSupportsOAuthAuthorizationCode(t *testing.T) {
 func TestGenerateDefinitionSupportsNoAuth(t *testing.T) {
 	outputDir := t.TempDir()
 	result, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "builtin-public_api",
 			TenantID:    "builtin",
@@ -1237,6 +1339,7 @@ func TestGenerateDefinitionSupportsNoAuth(t *testing.T) {
 func TestGenerateDefinitionCatalogUsesProjectionCoverageDimensions(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-demo_runtime",
@@ -1337,6 +1440,7 @@ func projectionCoverageFamily(id string, template string) connectordefinitions.R
 func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-huggingface",
 			TenantID:    "tenant",
@@ -1456,6 +1560,7 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 func TestGenerateDefinitionCarriesPathParams(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			SchemaVersion: connectordefinitions.SchemaVersionIntegrationV1,
 			ID:            "tenant-a-example_idp",
@@ -1530,6 +1635,7 @@ func TestGenerateDefinitionCarriesPathParams(t *testing.T) {
 func TestGenerateDefinitionCarriesDetailReadMetadata(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-example_assets",
 			TenantID:    "tenant",
@@ -1615,6 +1721,7 @@ func TestGenerateDefinitionCarriesDetailReadMetadata(t *testing.T) {
 func TestGenerateDefinitionSupportsCustomTokenHeader(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-anthropic",
 			TenantID:    "tenant",
@@ -1673,6 +1780,7 @@ func TestGenerateDefinitionSupportsCustomTokenHeader(t *testing.T) {
 func TestGenerateDefinitionSupportsAWSSigV4Auth(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-aws-bedrock",
 			TenantID:    "tenant",
@@ -1751,6 +1859,7 @@ func TestGenerateDefinitionSupportsAWSSigV4Auth(t *testing.T) {
 func TestGenerateDefinitionSupportsDuoHMACAuth(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-duo",
 			TenantID:    "tenant",
@@ -1831,6 +1940,7 @@ func TestGenerateDefinitionSupportsDuoHMACAuth(t *testing.T) {
 func TestGenerateDefinitionSupportsFamilyLevelDuoHMACAuth(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-mixed-auth",
 			TenantID:    "tenant",
@@ -1932,6 +2042,7 @@ func TestGenerateDefinitionSupportsFamilyLevelDuoHMACAuth(t *testing.T) {
 func TestGenerateDefinitionSupportsFamilyLevelBearerOverrideUnderDuoHMACAuth(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-duo-mixed-auth",
 			TenantID:    "tenant",
@@ -2024,6 +2135,7 @@ func TestGenerateDefinitionSupportsFamilyLevelBearerOverrideUnderDuoHMACAuth(t *
 func TestGenerateDefinitionUsesDefaultFamilyAuthForDuoHealthCheck(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-duo-default-bearer",
 			TenantID:    "tenant",
@@ -2104,6 +2216,7 @@ func TestGenerateDefinitionUsesDefaultFamilyAuthForDuoHealthCheck(t *testing.T) 
 func TestGenerateDefinitionSupportsSingletonFamily(t *testing.T) {
 	outputDir := t.TempDir()
 	_, err := GenerateDefinition(DefinitionRequest{
+		EmitGoDifferentialOracle: true,
 		Definition: connectordefinitions.Definition{
 			ID:          "tenant-stability",
 			TenantID:    "tenant",
@@ -2340,7 +2453,7 @@ func TestGenerateEmitsDeterministicProofBundleAndChangePlan(t *testing.T) {
 	if err := json.Unmarshal(manifestPayload, &manifest); err != nil {
 		t.Fatalf("decode generation manifest: %v", err)
 	}
-	if manifest.GeneratorVersion != "sourcegen/v3" || !digestMatches(firstPayload, manifest.ProofDigest) {
+	if manifest.GeneratorVersion != "sourcegen/v4" || !digestMatches(firstPayload, manifest.ProofDigest) {
 		t.Fatalf("generation manifest does not bind proof bundle: %#v", manifest)
 	}
 

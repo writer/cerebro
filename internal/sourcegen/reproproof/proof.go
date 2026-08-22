@@ -110,9 +110,10 @@ func Prove(outputRoot string) (Report, error) {
 	run("regeneration_idempotence", "regenerate unchanged inputs in the same output root", func() error {
 		root := filepath.Join(outputRoot, "repeat")
 		first, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
-			Definition:       fixtureDefinition(),
-			ProviderContract: fixtureContractEvidence(),
-			OutputDir:        root,
+			EmitGoDifferentialOracle: true,
+			Definition:               fixtureDefinition(),
+			ProviderContract:         fixtureContractEvidence(),
+			OutputDir:                root,
 		})
 		if err != nil {
 			return err
@@ -122,9 +123,10 @@ func Prove(outputRoot string) (Report, error) {
 			return err
 		}
 		second, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
-			Definition:       fixtureDefinition(),
-			ProviderContract: fixtureContractEvidence(),
-			OutputDir:        root,
+			EmitGoDifferentialOracle: true,
+			Definition:               fixtureDefinition(),
+			ProviderContract:         fixtureContractEvidence(),
+			OutputDir:                root,
 		})
 		if err != nil {
 			return err
@@ -144,7 +146,7 @@ func Prove(outputRoot string) (Report, error) {
 	run("auth_credential_mutation", "remove the required bearer credential field", func() error {
 		mutation := fixtureDefinition()
 		mutation.Auth.CredentialFields = nil
-		_, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{Definition: mutation, OutputDir: filepath.Join(outputRoot, "mutation-auth"), DryRun: true})
+		_, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{EmitGoDifferentialOracle: true, Definition: mutation, OutputDir: filepath.Join(outputRoot, "mutation-auth"), DryRun: true})
 		if err == nil {
 			return fmt.Errorf("sourcegen accepted a bearer auth definition without a credential field")
 		}
@@ -158,7 +160,7 @@ func Prove(outputRoot string) (Report, error) {
 			URNKind:      "resource",
 			IDAttributes: []string{"timestamp"},
 		}
-		_, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{Definition: mutation, OutputDir: filepath.Join(outputRoot, "mutation-identity"), DryRun: true})
+		_, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{EmitGoDifferentialOracle: true, Definition: mutation, OutputDir: filepath.Join(outputRoot, "mutation-identity"), DryRun: true})
 		if err == nil {
 			return fmt.Errorf("sourcegen accepted an ephemeral projection identity")
 		}
@@ -167,7 +169,7 @@ func Prove(outputRoot string) (Report, error) {
 
 	run("generated_output_mutation", "modify one sourcegen-owned output before regeneration", func() error {
 		root := filepath.Join(outputRoot, "mutation-output")
-		_, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{Definition: fixtureDefinition(), OutputDir: root})
+		_, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{EmitGoDifferentialOracle: true, Definition: fixtureDefinition(), OutputDir: root})
 		if err != nil {
 			return err
 		}
@@ -175,7 +177,7 @@ func Prove(outputRoot string) (Report, error) {
 		if err := os.WriteFile(path, []byte("package reprosource\n\n// operator mutation\n"), 0o600); err != nil {
 			return err
 		}
-		_, err = sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{Definition: fixtureDefinition(), OutputDir: root})
+		_, err = sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{EmitGoDifferentialOracle: true, Definition: fixtureDefinition(), OutputDir: root})
 		if err == nil {
 			return fmt.Errorf("regeneration succeeded, want generated-output ownership rejection")
 		}
@@ -190,9 +192,10 @@ func Prove(outputRoot string) (Report, error) {
 
 func generateProof(root string, definition connectordefinitions.Definition, evidence *sourcegen.ProviderContractEvidence) ([]byte, error) {
 	result, err := sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
-		Definition:       definition,
-		ProviderContract: evidence,
-		OutputDir:        root,
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		ProviderContract:         evidence,
+		OutputDir:                root,
 	})
 	if err != nil {
 		return nil, err

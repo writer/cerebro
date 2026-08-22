@@ -20,7 +20,7 @@ var (
 )
 
 const (
-	generatorVersion = "sourcegen/v3"
+	generatorVersion = "sourcegen/v4"
 	manifestName     = ".sourcegen-manifest.json"
 
 	ChangePlanReady   = "ready"
@@ -259,10 +259,13 @@ func buildChangePlan(request normalizedRequest, files []generatedFile, plan gene
 	changePlan := ChangePlan{
 		Status: ChangePlanReady,
 		RequiredChecks: []string{
-			fmt.Sprintf("go test ./sources/%s ./internal/sourceprojection -count=1", request.SourceID),
+			"go test ./internal/sourceprojection -count=1",
 			"make catalog-check",
 			"make sourcegen-grammar-check",
 		},
+	}
+	if request.EmitGoDifferentialOracle {
+		changePlan.RequiredChecks[0] = fmt.Sprintf("go test ./sources/%s ./internal/sourceprojection -count=1", request.SourceID)
 	}
 	for _, file := range files {
 		relativePath, err := manifestRelativePath(request.OutputDir, file.Path)

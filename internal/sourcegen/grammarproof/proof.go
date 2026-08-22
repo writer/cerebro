@@ -258,9 +258,10 @@ func proveWitness(outputRoot string, grammar connectordefinitions.Grammar, item 
 		return proof
 	}
 	_, err = sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
-		Definition: definition,
-		OutputDir:  filepath.Join(outputRoot, sourceID),
-		DryRun:     true,
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		OutputDir:                filepath.Join(outputRoot, sourceID),
+		DryRun:                   true,
 	})
 	if err != nil {
 		proof.Error = "render witness: " + err.Error()
@@ -284,9 +285,10 @@ func proveInteraction(outputRoot string, grammar connectordefinitions.Grammar, i
 		return proof
 	}
 	_, err = sourcegen.GenerateDefinition(sourcegen.DefinitionRequest{
-		Definition: definition,
-		OutputDir:  filepath.Join(outputRoot, sourceID),
-		DryRun:     true,
+		EmitGoDifferentialOracle: true,
+		Definition:               definition,
+		OutputDir:                filepath.Join(outputRoot, sourceID),
+		DryRun:                   true,
 	})
 	if err != nil {
 		proof.Error = "render witness: " + err.Error()

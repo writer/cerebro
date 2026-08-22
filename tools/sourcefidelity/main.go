@@ -55,6 +55,7 @@ type sourceReport struct {
 	CoverageWithControlRefs   int      `json:"coverage_with_control_refs"`
 	CoverageWithKnownGaps     int      `json:"coverage_with_known_gaps"`
 	UsesJSONAPI               bool     `json:"uses_json_api"`
+	UsesCatalogRuntime        bool     `json:"uses_catalog_runtime"`
 	HasHTTPTest               bool     `json:"has_http_test"`
 	HasGenericRecordTest      bool     `json:"has_generic_record_test"`
 	HasEveryFamilyTest        bool     `json:"has_every_family_test"`
@@ -227,6 +228,7 @@ func analyzeSource(sourceRoot string) (sourceReport, error) {
 	}
 	source.DeployRuntimes, source.DeployRuntimeFamilies = deploySignals(filepath.Join(sourceRoot, "deploy.yaml"))
 	source.UsesJSONAPI = fileContains(filepath.Join(sourceRoot, "source.go"), "sources/internal/jsonapi")
+	source.UsesCatalogRuntime = !fileExists(filepath.Join(sourceRoot, "source.go"))
 	testPath := filepath.Join(sourceRoot, "source_test.go")
 	source.HasHTTPTest = fileContains(testPath, "httptest.NewServer")
 	source.HasGenericRecordTest = hasGenericRecordTest(testPath)
@@ -484,16 +486,16 @@ func scoreSource(source *sourceReport) {
 	}
 	add(fixturePairScore, true, source.ReadFixtures >= runtimeFamilies && source.DiscoverFixtures >= runtimeFamilies, "fixture pairs do not cover every runtime family")
 	add(providerLikeFixtureScore, true, source.ReadFixtures > 0 && source.ProviderLikeReadFixtures >= source.ReadFixtures-source.ReadFixtures/5, "read fixtures are still mostly generated or generic")
-	add(everyFamilyTestScore, true, source.HasEveryFamilyTest, "source tests do not replay every runtime family")
+	add(everyFamilyTestScore, !source.UsesCatalogRuntime, source.HasEveryFamilyTest, "source tests do not replay every runtime family")
 	add(deployFamilyCoverageScore, true, source.DeployRuntimeFamilies >= runtimeFamilies || source.RuntimeFamilies <= 1, "deploy manifest does not configure every runtime family")
 	add(coverageSpecificityScore, true, source.CoverageDimensions > 0 && source.GenericCoverageDimensions == 0 && source.CoverageWithControlRefs > 0, "coverage contract lacks provider-specific control mapping")
-	add(httpProviderBehaviorScore, true, source.HasHTTPTest && !source.HasGenericRecordTest, "HTTP test still uses a generic fixture response")
-	add(incrementalCheckpointCoverageScore, source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0, source.HasCheckpointTest, "incremental or freshness families lack checkpoint tests")
-	add(providerUnavailableScore, source.RuntimeFamilies > 1, source.HasProviderUnavailable, "provider-unavailable behavior is not covered")
+	add(httpProviderBehaviorScore, !source.UsesCatalogRuntime, source.HasHTTPTest && !source.HasGenericRecordTest, "HTTP test still uses a generic fixture response")
+	add(incrementalCheckpointCoverageScore, !source.UsesCatalogRuntime && (source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0), source.HasCheckpointTest, "incremental or freshness families lack checkpoint tests")
+	add(providerUnavailableScore, !source.UsesCatalogRuntime && source.RuntimeFamilies > 1, source.HasProviderUnavailable, "provider-unavailable behavior is not covered")
 	source.Score = normalizeScore(earned, possible)
 	source.PossibleScore = maxSourceFidelityScore
 	source.Advisory = append(source.Advisory, source.Missing...)
-	if source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
+	if !source.UsesCatalogRuntime && source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
 		source.BlockingCandidate = append(source.BlockingCandidate, "source tests must replay every runtime family before promotion")
 	}
 	if source.RuntimeFamilies > 1 && source.DeployRuntimeFamilies < source.RuntimeFamilies {
@@ -542,7 +544,7 @@ func accumulateSummary(summary *summary, source sourceReport) {
 	if source.GenuineAPIBundles > 0 {
 		summary.GenuineAPISources++
 	}
-	if source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
+	if !source.UsesCatalogRuntime && source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
 		summary.NeedsEveryFamilyTests++
 	}
 	if source.RuntimeFamilies > 1 && source.DeployRuntimeFamilies < source.RuntimeFamilies {
@@ -551,7 +553,7 @@ func accumulateSummary(summary *summary, source sourceReport) {
 	if source.GenericCoverageDimensions > 0 || source.CoverageWithControlRefs == 0 {
 		summary.NeedsCoverageSpecificity++
 	}
-	if (source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0) && !source.HasCheckpointTest {
+	if !source.UsesCatalogRuntime && (source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0) && !source.HasCheckpointTest {
 		summary.NeedsIncrementalCheckpointTests++
 	}
 }
