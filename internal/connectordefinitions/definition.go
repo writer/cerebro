@@ -831,7 +831,10 @@ func validHTTPHeaderName(value string) bool {
 		return false
 	}
 	for _, character := range value {
-		if !((character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || strings.ContainsRune("!#$%&'*+-.^_`|~", character)) {
+		if (character < 'a' || character > 'z') &&
+			(character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') &&
+			!strings.ContainsRune("!#$%&'*+-.^_`|~", character) {
 			return false
 		}
 	}
