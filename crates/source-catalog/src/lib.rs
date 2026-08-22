@@ -1308,15 +1308,15 @@ fn compile_source(
             "model_config_key requires more than one configurable auth model",
         );
     }
-    let generic_runtime_supported = classifier_supported
-        && configurable_auth_models
-            .iter()
-            .all(AuthModel::supports_generic_runtime)
+    let auth_runtime_supported = configurable_auth_models
+        .iter()
+        .all(AuthModel::supports_generic_runtime)
         && (auth != AuthModel::ApiKey
             || !token_header.is_empty()
             || !auth_header_parameters.is_empty()
             || !auth_query_parameters.is_empty()
             || !auth_json_body_parameters.is_empty());
+    let generic_runtime_supported = classifier_supported && auth_runtime_supported;
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
     let mut families = Vec::with_capacity(entry.definition.resource_families.len());
@@ -1329,6 +1329,8 @@ fn compile_source(
             family,
             &verified_families,
             generic_runtime_supported,
+            classifier_supported,
+            auth_runtime_supported,
             &config_fields,
         )?);
     }
@@ -1530,6 +1532,8 @@ fn compile_family(
     family: FamilyWire,
     verified: &BTreeSet<(String, String, String)>,
     generic_runtime_supported: bool,
+    classifier_supported: bool,
+    auth_runtime_supported: bool,
     config_fields: &BTreeMap<&str, bool>,
 ) -> Result<CompiledFamily, CatalogError> {
     let method = match family.method.trim() {
@@ -1857,8 +1861,11 @@ fn compile_family(
     let projection_authoritative =
         provider_contract_verified && projection_class.can_be_authoritative();
     let mut unsupported_reasons = Vec::new();
-    if !generic_runtime_supported {
+    if !auth_runtime_supported {
         unsupported_reasons.push(UnsupportedReasonCode::UnsupportedAuthModel);
+    }
+    if !classifier_supported {
+        unsupported_reasons.push(UnsupportedReasonCode::BespokeRuntime);
     }
     if !provider_contract_verified {
         unsupported_reasons.push(UnsupportedReasonCode::MissingProviderProof);
@@ -2964,7 +2971,7 @@ mod tests {
         .unwrap();
         let summary = catalog.summary();
         assert_eq!(summary.sources, 799);
-        assert_eq!(summary.families, 3_978);
+        assert_eq!(summary.families, 3_986);
         assert_eq!(summary.push_sources, 1);
         assert_eq!(summary.push_families, 10);
         assert_eq!(
@@ -3700,6 +3707,33 @@ mod tests {
     }
 
     #[test]
+    fn bespoke_classifier_is_not_reported_as_an_auth_failure() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        for source_id in ["auth0", "kubernetes"] {
+            let source = catalog.get(source_id).unwrap();
+            assert!(source.auth().supports_generic_runtime());
+            for family in source.families() {
+                assert!(
+                    !family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::UnsupportedAuthModel)
+                );
+                assert!(
+                    family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::BespokeRuntime)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn composite_id_templates_are_closed_and_bounded() {
         for valid in [
             "${reportedAt}:${reporterId}",
@@ -3908,7 +3942,7 @@ mod tests {
         .unwrap();
         let report = catalog.unsupported_feature_report();
         assert_eq!(report.total_sources, 799);
-        assert_eq!(report.total_families, 3_978);
+        assert_eq!(report.total_families, 3_986);
         assert_eq!(report.families.len(), report.total_families);
         assert!(report.missing_family_reports.is_empty());
         assert_eq!(
@@ -3957,7 +3991,7 @@ mod tests {
         )
         .unwrap();
         let report = catalog.authority_readiness_report();
-        assert_eq!(report.total_families, 3_978);
+        assert_eq!(report.total_families, 3_986);
         assert_eq!(report.rust_authoritative_families, 0);
         assert_eq!(report.shadow_or_go_families, report.total_families);
         let aws_bedrock = report
