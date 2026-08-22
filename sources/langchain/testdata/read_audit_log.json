@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "id": "audit_123",
+      "activity_name": "workspace.member.updated",
+      "actor": {
+        "id": "user_123"
+      },
+      "resources": [
+        {
+          "uid": "workspace_123",
+          "type": "workspace"
+        }
+      ],
+      "time": "2026-06-24T12:00:00Z"
+    }
+  ],
+  "cursor": "audit-cursor-2"
+}

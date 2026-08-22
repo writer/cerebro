@@ -1,0 +1,10 @@
+{
+  "members": [
+    {
+      "id": "user_123",
+      "email": "ada@example.com",
+      "full_name": "Ada Lovelace",
+      "role_name": "Admin"
+    }
+  ]
+}

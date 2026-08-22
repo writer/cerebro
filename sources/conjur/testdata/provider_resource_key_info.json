@@ -1,0 +1,14 @@
+{
+  "data": {
+    "key_info": {
+      "myorg:variable:apps/api/password": {
+        "annotations": "API password",
+        "kind": "variable"
+      },
+      "myorg:variable:apps/web/password": {
+        "annotations": "Web password",
+        "kind": "variable"
+      }
+    }
+  }
+}
