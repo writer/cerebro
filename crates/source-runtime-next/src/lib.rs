@@ -26,6 +26,7 @@ mod google_workspace;
 mod grc;
 mod http;
 mod mapper;
+mod okta;
 mod panopticon;
 mod protocol;
 mod provider_failure;
@@ -119,6 +120,9 @@ pub use google_workspace::{
 pub use grc::{GrcError, GrcFamily, GrcKernel, GrcPage, GrcRecord, GrcRequest};
 pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
+pub use okta::{
+    OktaError, OktaFamily, OktaFilters, OktaKernel, OktaPage, OktaRecord, OktaRequest, OktaResponse,
+};
 pub use panopticon::{
     PanopticonError, PanopticonFamily, PanopticonKernel, PanopticonOutcome, PanopticonPage,
     PanopticonRecord, PanopticonRequest,
