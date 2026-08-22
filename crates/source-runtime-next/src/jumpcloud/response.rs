@@ -5,7 +5,9 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::{
     JumpCloudCheckpointCandidate, JumpCloudError, JumpCloudFamily, JumpCloudKernel, JumpCloudPage,
-    JumpCloudRequest, JumpCloudResponseMetadata, normalize,
+    JumpCloudRequest, JumpCloudResponseMetadata,
+    cursor::encode_fanout_cursor,
+    normalize,
     request::{validate_audit_cursor, validate_offset, validate_request},
 };
 
@@ -44,7 +46,7 @@ pub(super) fn decode(
         let raw_bytes = audit_rows
             .as_ref()
             .and_then(|rows| rows.get(index).copied());
-        let record = normalize::normalize(kernel, raw.clone(), raw_bytes)?;
+        let record = normalize::normalize(kernel, request, raw.clone(), raw_bytes)?;
         let canonical = serde_json::to_vec(&record.payload)
             .map_err(|_| JumpCloudError::InvalidProviderRecord)?;
         match seen.get(&record.event_id) {
@@ -56,7 +58,7 @@ pub(super) fn decode(
             }
         }
     }
-    let next_cursor = next_cursor(kernel.family, request, metadata, &root, items.len())?;
+    let next_cursor = next_cursor(kernel, request, metadata, &root, items.len())?;
     Ok(JumpCloudPage {
         records: normalized,
         next_cursor,
@@ -187,13 +189,14 @@ fn records(family: JumpCloudFamily, root: &Value) -> Result<&[Value], JumpCloudE
 }
 
 fn next_cursor(
-    family: JumpCloudFamily,
+    kernel: &JumpCloudKernel,
     request: &JumpCloudRequest,
     metadata: &JumpCloudResponseMetadata,
     root: &Value,
     raw_count: usize,
 ) -> Result<Option<String>, JumpCloudError> {
-    let next = if family == JumpCloudFamily::AuditEvents {
+    let family = kernel.family;
+    let provider_next = if family == JumpCloudFamily::AuditEvents {
         let limit = metadata.limit.unwrap_or(request.page_size);
         match (metadata.result_count, metadata.search_after.as_deref()) {
             (Some(count), Some(cursor)) if limit > 0 && count >= limit => {
@@ -218,10 +221,23 @@ fn next_cursor(
         let more = total.map_or(raw_count == request.page_size, |total| candidate < total);
         (more && raw_count > 0).then(|| candidate.to_string())
     };
-    if next.is_some() && next == request.cursor {
+    if provider_next.is_some() && provider_next == request.cursor {
         return Err(JumpCloudError::InvalidCursor);
     }
-    Ok(next)
+    if family != JumpCloudFamily::GroupMembers {
+        return Ok(provider_next);
+    }
+    let index = request
+        .fanout_index
+        .ok_or(JumpCloudError::RequestScopeMismatch)?;
+    if let Some(offset) = provider_next {
+        return encode_fanout_cursor(index, Some(validate_offset(&offset)?)).map(Some);
+    }
+    let next_index = index.checked_add(1).ok_or(JumpCloudError::InvalidCursor)?;
+    if next_index < kernel.filters.group_ids.len() {
+        return encode_fanout_cursor(next_index, None).map(Some);
+    }
+    Ok(None)
 }
 
 fn classify_status(status: u16, retry_after_seconds: Option<u64>) -> Result<(), JumpCloudError> {

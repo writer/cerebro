@@ -1,8 +1,12 @@
+use std::collections::BTreeSet;
+
 use serde_json::{Map, Value};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::{
-    JumpCloudError, JumpCloudFamily, JumpCloudFilters, JumpCloudKernel, JumpCloudRequest, origin,
+    JumpCloudError, JumpCloudFamily, JumpCloudFilters, JumpCloudKernel, JumpCloudRequest,
+    cursor::{MAX_GROUP_FANOUT, parse_fanout_cursor},
+    origin,
 };
 
 const MAX_CURSOR_BYTES: usize = 4_096;
@@ -59,35 +63,66 @@ pub(super) fn plan_with_checkpoint(
     } else {
         &kernel.directory_origin
     };
-    let path = if kernel.family == JumpCloudFamily::GroupMembers {
-        let group_id = kernel
-            .filters
-            .group_id
-            .as_deref()
-            .ok_or(JumpCloudError::MissingConfiguration("group_id"))?;
-        kernel.family.path().replace("{group_id}", group_id)
-    } else {
-        kernel.family.path().to_owned()
-    };
+    let input_cursor = cursor.map(str::to_owned);
+    let (fanout_index, group_id, provider_cursor) =
+        if kernel.family == JumpCloudFamily::GroupMembers {
+            let state = parse_fanout_cursor(kernel.filters.group_ids.len(), cursor)?;
+            let group_id = kernel
+                .filters
+                .group_ids
+                .get(state.index)
+                .cloned()
+                .ok_or(JumpCloudError::InvalidCursor)?;
+            (
+                Some(state.index),
+                Some(group_id),
+                state.offset.map(|offset| offset.to_string()),
+            )
+        } else {
+            (None, None, cursor.map(str::to_owned))
+        };
     let mut url = origin.clone();
-    url.set_path(&format!("{}{}", origin.path().trim_end_matches('/'), path));
+    if let Some(group_id) = group_id.as_deref() {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| JumpCloudError::InvalidOrigin)?;
+        segments
+            .pop_if_empty()
+            .push("v2")
+            .push("usergroups")
+            .push(group_id)
+            .push("members");
+    } else {
+        url.set_path(&format!(
+            "{}{}",
+            origin.path().trim_end_matches('/'),
+            kernel.family.path()
+        ));
+    }
     if url.origin() != origin.origin() {
         return Err(JumpCloudError::InvalidOrigin);
     }
     let (cursor, body) = if kernel.family == JumpCloudFamily::AuditEvents {
-        let cursor = cursor.map(validate_audit_cursor).transpose()?;
+        let cursor = provider_cursor
+            .as_deref()
+            .map(validate_audit_cursor)
+            .transpose()?;
         (
             cursor.clone(),
             Some(audit_body(kernel, cursor.as_deref(), prior_watermark)?),
         )
     } else {
-        let offset = cursor.map(validate_offset).transpose()?.unwrap_or(0);
+        let offset = provider_cursor
+            .as_deref()
+            .map(validate_offset)
+            .transpose()?
+            .unwrap_or(0);
         {
             let mut query = url.query_pairs_mut();
             query.append_pair("limit", &kernel.page_size.to_string());
             query.append_pair("skip", &offset.to_string());
         }
-        (cursor.map(str::to_owned), None)
+        (provider_cursor, None)
     };
     Ok(JumpCloudRequest {
         family: kernel.family,
@@ -95,6 +130,9 @@ pub(super) fn plan_with_checkpoint(
         method: kernel.family.method(),
         page_size: kernel.page_size,
         cursor,
+        input_cursor,
+        fanout_index,
+        group_id,
         body,
         org_id: kernel.filters.org_id.clone(),
         checkpoint_watermark: prior_watermark.map(normalize_watermark).transpose()?,
@@ -108,7 +146,7 @@ pub(super) fn validate_request(
     if request
         != &plan_with_checkpoint(
             kernel,
-            request.cursor.as_deref(),
+            request.input_cursor.as_deref(),
             request.checkpoint_watermark.as_deref(),
         )?
     {
@@ -146,11 +184,39 @@ fn validate_filters(
     family: JumpCloudFamily,
     filters: &mut JumpCloudFilters,
 ) -> Result<(), JumpCloudError> {
-    for value in [&filters.org_id, &filters.group_id].into_iter().flatten() {
+    if let Some(value) = &filters.org_id {
         origin::bounded(value, 256).ok_or(JumpCloudError::InvalidConfiguration("scope"))?;
     }
-    if family == JumpCloudFamily::GroupMembers && filters.group_id.is_none() {
-        return Err(JumpCloudError::MissingConfiguration("group_id"));
+    if family == JumpCloudFamily::GroupMembers {
+        let singular = filters.group_id.iter().map(String::as_str);
+        let mut seen = BTreeSet::new();
+        let mut group_ids = Vec::new();
+        for value in filters
+            .group_ids
+            .iter()
+            .map(String::as_str)
+            .chain(singular)
+            .flat_map(|value| value.split(','))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if value.len() > 256 || value.chars().any(char::is_control) {
+                return Err(JumpCloudError::InvalidConfiguration("group_ids"));
+            }
+            if seen.insert(value.to_owned()) {
+                group_ids.push(value.to_owned());
+                if group_ids.len() > MAX_GROUP_FANOUT {
+                    return Err(JumpCloudError::InvalidConfiguration("group_ids"));
+                }
+            }
+        }
+        if group_ids.is_empty() {
+            return Err(JumpCloudError::MissingConfiguration("group_ids"));
+        }
+        filters.group_id = group_ids.first().cloned();
+        filters.group_ids = group_ids;
+    } else if let Some(value) = &filters.group_id {
+        origin::bounded(value, 256).ok_or(JumpCloudError::InvalidConfiguration("scope"))?;
     }
     for value in [&filters.audit_start_time, &filters.audit_end_time]
         .into_iter()

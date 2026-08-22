@@ -15,6 +15,8 @@ mod contract;
 mod dispatcher;
 #[path = "source_execution/error.rs"]
 mod error;
+#[path = "source_execution/jumpcloud.rs"]
+mod jumpcloud;
 #[path = "source_execution/runtime.rs"]
 mod runtime;
 #[path = "source_execution/wire.rs"]
@@ -22,25 +24,31 @@ mod wire;
 
 #[allow(unused_imports)]
 pub use contract::{
-    MAX_CONTEXT_IDENTIFIER_BYTES, MAX_CURSOR_BYTES, MAX_RECORD_PAYLOAD_BYTES,
-    MAX_RECORDS_PER_RESULT, canonical_plan_digest, canonical_request_intent_digest,
-    canonical_result_digest, response_digest, tenant_scoped_event_id,
-    validate_and_deduplicate_records, validate_cursor, validate_decode_result,
-    validate_execution_context, validate_http_request, validate_safe_receipt,
+    MAX_CONTEXT_IDENTIFIER_BYTES, MAX_CURSOR_BYTES, MAX_PUBLIC_CONFIG_BYTES,
+    MAX_PUBLIC_CONFIG_ENTRIES, MAX_RECORD_PAYLOAD_BYTES, MAX_RECORDS_PER_RESULT,
+    MAX_REQUEST_BODY_BYTES, MAX_SAFE_HEADER_BYTES, MAX_SAFE_HEADER_ENTRIES, canonical_plan_digest,
+    canonical_request_intent_digest, canonical_response_headers_digest, canonical_result_digest,
+    response_digest, tenant_scoped_event_id, validate_and_deduplicate_records, validate_cursor,
+    validate_declared_headers, validate_decode_envelope, validate_decode_result,
+    validate_execution_context, validate_http_execution, validate_http_request,
+    validate_public_config, validate_response_headers, validate_runtime_metadata,
+    validate_safe_receipt,
 };
 #[allow(unused_imports)]
 pub use dispatcher::{
     SourceExecutionAdapter, SourceExecutionDispatcher, compile_plan_bytes, dispatch_decode_bytes,
-    dispatch_plan_bytes,
+    dispatch_decode_v2_bytes, dispatch_plan_bytes, dispatch_plan_v2_bytes,
 };
 pub use error::SourceExecutionError;
-pub use runtime::{build_execution_context, seal_page_program};
+pub use runtime::{build_execution_context, seal_page_program, seal_page_program_v2};
 #[allow(unused_imports)]
 pub use wire::{
     SourceExecutionContextRequestV1, SourceExecutionLifecycleDecisionV1,
-    SourceExecutionLifecycleRequestV1, SourceExecutionPlanV1, SourceExecutionSelectionRequestV1,
+    SourceExecutionLifecycleEnvelopeV2, SourceExecutionLifecycleRequestV1, SourceExecutionPlanV1,
+    SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeOutputV2,
     SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
-    SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+    SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
+    SourceWorkerPlanRequestV1, SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2,
     SourceWorkerSafeReceiptV1,
 };
 
@@ -64,6 +72,12 @@ struct ContextControl {
     runtime_generation: u64,
     lease_generation: u64,
     observed_at_unix_millis: i64,
+    #[serde(default)]
+    public_config: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    prior_terminal_watermark_unix_millis: i64,
+    #[serde(default)]
+    prior_checkpoint: String,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +87,12 @@ struct LifecycleControl {
     receipt: String,
     result: String,
     current_lease_generation: u64,
+    #[serde(default)]
+    public_config: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    prior_terminal_watermark_unix_millis: i64,
+    #[serde(default)]
+    prior_checkpoint: String,
 }
 
 #[derive(Serialize)]
@@ -107,6 +127,9 @@ pub fn context_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
         runtime_generation: request.runtime_generation,
         lease_generation: request.lease_generation,
         observed_at_unix_millis: request.observed_at_unix_millis,
+        public_config: request.public_config,
+        prior_terminal_watermark_unix_millis: request.prior_terminal_watermark_unix_millis,
+        prior_checkpoint: request.prior_checkpoint,
     })?
     .encode_to_vec())
 }
@@ -120,7 +143,7 @@ pub fn transition_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError>
             .decode(value)
             .map_err(|_| SourceExecutionError::Protobuf)
     };
-    let decision = seal_page_program(&SourceExecutionLifecycleRequestV1 {
+    let request = SourceExecutionLifecycleRequestV1 {
         plan: Some(
             SourceExecutionPlanV1::decode(decode(&control.plan)?.as_slice())
                 .map_err(|_| SourceExecutionError::Protobuf)?,
@@ -138,7 +161,23 @@ pub fn transition_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError>
                 .map_err(|_| SourceExecutionError::Protobuf)?,
         ),
         current_lease_generation: control.current_lease_generation,
-    })?;
+    };
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: control.public_config,
+        prior_terminal_watermark_unix_millis: control.prior_terminal_watermark_unix_millis,
+        prior_checkpoint: control.prior_checkpoint,
+    };
+    let decision = if metadata.public_config.is_empty()
+        && metadata.prior_terminal_watermark_unix_millis == 0
+        && metadata.prior_checkpoint.is_empty()
+    {
+        seal_page_program(&request)?
+    } else {
+        seal_page_program_v2(&SourceExecutionLifecycleEnvelopeV2 {
+            request: Some(request),
+            metadata: Some(metadata),
+        })?
+    };
     serde_json::to_vec(&LifecycleDecisionControl {
         transition_digest: decision.transition_digest_sha256,
         admitted_records: decision
@@ -157,9 +196,19 @@ pub fn plan(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     dispatch_plan_bytes(input)
 }
 
+/// Dispatches one additive metadata-aware plan through the closed registry.
+pub fn plan_v2(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    dispatch_plan_v2_bytes(input)
+}
+
 /// Dispatches one encoded provider response through the closed adapter registry.
 pub fn decode(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     dispatch_decode_bytes(input)
+}
+
+/// Dispatches one bounded metadata-aware response through the closed registry.
+pub fn decode_v2(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    dispatch_decode_v2_bytes(input)
 }
 
 /// Constructs one trusted execution context with a Rust-owned logical page ID.

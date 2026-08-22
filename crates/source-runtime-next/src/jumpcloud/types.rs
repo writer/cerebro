@@ -12,6 +12,8 @@ pub struct JumpCloudFilters {
     pub org_id: Option<String>,
     /// User group selected for a membership page.
     pub group_id: Option<String>,
+    /// Ordered user-group fanout configured through plural or singular aliases.
+    pub group_ids: Vec<String>,
     /// Directory Insights lower time bound.
     pub audit_start_time: Option<String>,
     /// Optional Directory Insights upper time bound.
@@ -22,6 +24,33 @@ pub struct JumpCloudFilters {
     pub audit_sort: Option<String>,
 }
 
+impl JumpCloudFilters {
+    /// Apply Go-compatible group-member aliases in their production precedence.
+    ///
+    /// Values are normalized, deduplicated, and bounded when the kernel is
+    /// constructed; keeping alias parsing here lets the shared bridge remain
+    /// provider-neutral.
+    #[must_use]
+    pub fn with_group_member_config(
+        mut self,
+        group_ids: Option<&str>,
+        user_group_ids: Option<&str>,
+        group_id: Option<&str>,
+        user_group_id: Option<&str>,
+    ) -> Self {
+        self.group_ids.extend(
+            [group_ids, user_group_ids, group_id, user_group_id]
+                .into_iter()
+                .flatten()
+                .flat_map(|value| value.split(','))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned),
+        );
+        self
+    }
+}
+
 /// Credential-free request intent for the trusted JumpCloud HTTP host.
 #[derive(Clone, Eq, PartialEq)]
 pub struct JumpCloudRequest {
@@ -30,6 +59,9 @@ pub struct JumpCloudRequest {
     pub(super) method: &'static str,
     pub(super) page_size: usize,
     pub(super) cursor: Option<String>,
+    pub(super) input_cursor: Option<String>,
+    pub(super) fanout_index: Option<usize>,
+    pub(super) group_id: Option<String>,
     pub(super) body: Option<Vec<u8>>,
     pub(super) org_id: Option<String>,
     pub(super) checkpoint_watermark: Option<String>,
@@ -44,6 +76,7 @@ impl fmt::Debug for JumpCloudRequest {
             .field("method", &self.method)
             .field("page_size", &self.page_size)
             .field("has_cursor", &self.cursor.is_some())
+            .field("has_fanout", &self.fanout_index.is_some())
             .field("has_body", &self.body.is_some())
             .field("has_org_id", &self.org_id.is_some())
             .field(
@@ -86,6 +119,10 @@ impl JumpCloudRequest {
     /// Prior terminal audit watermark bound into this request, when present.
     pub fn checkpoint_watermark(&self) -> Option<&str> {
         self.checkpoint_watermark.as_deref()
+    }
+    /// Request-bound group scope for membership fanout.
+    pub fn group_id(&self) -> Option<&str> {
+        self.group_id.as_deref()
     }
     /// Request media type required by the trusted host.
     pub const fn content_type(&self) -> Option<&'static str> {
