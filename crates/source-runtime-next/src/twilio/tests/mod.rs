@@ -28,6 +28,7 @@ fn kernel(family: TwilioFamily) -> TwilioKernel {
 }
 
 mod accounts;
+mod adapter;
 mod audit_events;
 mod failure;
 mod keys;

@@ -1,5 +1,8 @@
 //! Credential-free Twilio provider kernel facade.
 
+// Registration in the closed dispatcher remains owned by the shared runtime.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) mod adapter;
 mod cursor;
 mod error;
 mod family;
