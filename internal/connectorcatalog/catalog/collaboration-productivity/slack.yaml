@@ -32,7 +32,31 @@ entries:
         - help: Slack Audit Logs API host. Keep the default unless using a test endpoint.
           key: audit_log_base_url
           label: Audit Logs API host
-      description: Collects Slack workspaces, users, channels, user groups, memberships, team access logs, and Enterprise Grid audit logs and projects them into the Cerebro graph for inventory, access review, membership review, login review, and collaboration audit context.
+        - help: Optional channel selected for channel membership collection.
+          key: channel_id
+          label: Channel ID
+        - help: Optional user group selected for user group membership collection.
+          key: usergroup_id
+          label: User group ID
+        - help: Optional Unix timestamp upper bound for team access logs.
+          key: before
+          label: Access log before
+        - help: Optional Enterprise audit action filter.
+          key: action
+          label: Audit action
+        - help: Optional Enterprise audit actor filter.
+          key: actor
+          label: Audit actor
+        - help: Optional Enterprise audit entity filter.
+          key: entity
+          label: Audit entity
+        - help: Optional Enterprise audit lower Unix timestamp bound.
+          key: oldest
+          label: Audit oldest
+        - help: Optional Enterprise audit upper Unix timestamp bound.
+          key: latest
+          label: Audit latest
+      description: Slack collaboration governance source covering workspaces, users, public and private channels, user groups, memberships, team access logs, and Enterprise Grid audit logs. The runtime emits team context, user privilege and MFA enrollment posture, channel ownership context, membership edges, login activity, and audit events for graph projection and review.
       display_name: Slack
       id: builtin_catalog-slack
       ingest:
@@ -68,7 +92,10 @@ entries:
           projection:
             fields:
               domain: domain
+              name: name
               team_id: id
+            static_fields:
+              source_product: slack
             template: asset
           record_selector: $.teams[*]
         - coverage:
@@ -101,9 +128,23 @@ entries:
           permissions_needed: [users:read, users:read.email]
           projection:
             fields:
+              deleted: deleted
               email: profile.email
               has_mfa: has_2fa
+              has_2fa: has_2fa
+              is_admin: is_admin
+              is_bot: is_bot
+              is_owner: is_owner
+              is_primary_owner: is_primary_owner
+              is_restricted: is_restricted
+              is_ultra_restricted: is_ultra_restricted
+              name: name
+              real_name: real_name|profile.real_name
+              team_id: team_id
+              two_factor_type: two_factor_type
               user_id: id
+            static_fields:
+              source_product: slack
             template: identity_user
           record_selector: $.members[*]
         - coverage:
@@ -138,7 +179,14 @@ entries:
             fields:
               channel_id: id
               creator: creator
+              is_archived: is_archived
+              is_private: is_private
+              name: name
+              num_members: num_members
+              shared_team_ids: shared_team_ids|internal_team_ids
               team_id: context_team_id
+            static_fields:
+              source_product: slack
             template: asset
           record_selector: $.channels[*]
           static_query:
@@ -171,9 +219,14 @@ entries:
           permissions_needed: [usergroups:read]
           projection:
             fields:
+              description: description
               group_id: id
               handle: handle
+              is_disabled: is_disabled
+              name: name
               team_id: team_id
+            static_fields:
+              source_product: slack
             template: identity_group
           record_selector: $.usergroups[*]
         - coverage:
@@ -211,8 +264,16 @@ entries:
           projection:
             fields:
               actor_id: user_id
+              actor_name: username
               event_type: team_access
               ip_address: ip
+              login_count: count
+              user_agent: user_agent
+              user_id: user_id
+              username: username
+            static_fields:
+              event_type: team_access
+              source_product: slack
             template: audit_event
           record_selector: $.logins[*]
         - coverage:
@@ -232,6 +293,10 @@ entries:
             urn_kind: slack_channel_member
           config_query:
             channel: channel_id
+          config:
+            config_attributes:
+              channel_id: channel_id
+            id_template: ${channel_id}-${user_id}
           id: channel_member
           id_field: user_id
           label: Channel members
@@ -249,6 +314,9 @@ entries:
             fields:
               channel_id: channel_id
               user_id: user_id
+            static_fields:
+              membership_type: channel
+              source_product: slack
             template: group_membership
           read:
             path_params: [channel_id]
@@ -270,6 +338,10 @@ entries:
             urn_kind: slack_user_group_member
           config_query:
             usergroup: usergroup_id
+          config:
+            config_attributes:
+              usergroup_id: usergroup_id
+            id_template: ${usergroup_id}-${user_id}
           id: user_group_member
           id_field: user_id
           label: User group members
@@ -287,6 +359,9 @@ entries:
             fields:
               user_id: user_id
               usergroup_id: usergroup_id
+            static_fields:
+              membership_type: user_group
+              source_product: slack
             template: group_membership
           read:
             path_params: [usergroup_id]
@@ -310,6 +385,12 @@ entries:
             urn_kind: slack_audit_log
           config:
             base_url: https://api.slack.com/audit/v1
+            config_query:
+              action: action
+              actor: actor
+              entity: entity
+              latest: latest
+              oldest: oldest
           id: audit_log
           id_field: id
           label: Enterprise audit logs
@@ -325,10 +406,19 @@ entries:
           permissions_needed: [auditlogs:read]
           projection:
             fields:
+              actor_email: actor.user.email
               actor_id: actor.user.id
+              actor_name: actor.user.name|actor.name
+              actor_type: actor.type
               event_type: action
-              resource_id: entity.id
+              ip_address: context.ip_address
+              resource_id: entity.user.id|entity.channel.id|entity.file.id|entity.id
+              resource_name: entity.user.name|entity.channel.name|entity.file.name|entity.name
               resource_type: entity.type
+              team_id: actor.user.team|entity.user.team|entity.channel.team|context.team_id
+              user_agent: context.ua
+            static_fields:
+              source_product: slack
             template: audit_event
           record_selector: $.entries[*]
       schema_version: cerebro.integration/v1

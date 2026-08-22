@@ -5,12 +5,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/connectorcatalog"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/catalogruntime"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -20,6 +26,99 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 	if got := source.Spec().GetId(); got != "slack" {
 		t.Fatalf("Spec().Id = %q, want slack", got)
+	}
+}
+
+func TestCatalogRuntimeMatchesCheckedInSlackOracleFixtures(t *testing.T) {
+	entry, ok, err := connectorcatalog.BuiltinEntry("slack")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(slack) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(slack) ok = false")
+	}
+	listKeys := map[string]string{
+		familyTeam: "teams", familyUser: "members", familyChannel: "channels",
+		familyUserGroup: "usergroups", familyAccessLog: "logins",
+		familyChannelMember: "members", familyUserGroupMember: "users", familyAuditLog: "entries",
+	}
+	for _, familyID := range []string{
+		familyTeam, familyUser, familyChannel, familyUserGroup, familyAccessLog,
+		familyChannelMember, familyUserGroupMember, familyAuditLog,
+	} {
+		t.Run(familyID, func(t *testing.T) {
+			fixturePath := filepath.Join("testdata", "read_"+familyID+".json")
+			expected, err := sourcecdk.LoadFixtureEvents(os.DirFS("."), fixturePath)
+			if err != nil {
+				t.Fatalf("LoadFixtureEvents(%s) error = %v", fixturePath, err)
+			}
+			if len(expected) != 1 {
+				t.Fatalf("oracle events = %d, want 1", len(expected))
+			}
+			body, err := json.Marshal(map[string]any{
+				"ok":               true,
+				listKeys[familyID]: []json.RawMessage{expected[0].Payload},
+			})
+			if err != nil {
+				t.Fatalf("encode provider response: %v", err)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write(body)
+			}))
+			defer server.Close()
+
+			definition := entry.Definition
+			transport := *definition.Transport
+			transport.BaseURL = server.URL
+			definition.Transport = &transport
+			definition.ResourceFamilies = append([]connectordefinitions.ResourceFamily(nil), definition.ResourceFamilies...)
+			for index := range definition.ResourceFamilies {
+				family := &definition.ResourceFamilies[index]
+				if family.ID == familyAuditLog && family.Config != nil {
+					config := *family.Config
+					config.BaseURL = server.URL
+					family.Config = &config
+				}
+			}
+			source, err := catalogruntime.NewDefinitionWithValidationOptions(
+				definition,
+				catalogruntime.ValidationOptions{AllowLoopbackBaseURL: true},
+			)
+			if err != nil {
+				t.Fatalf("NewDefinitionWithValidationOptions() error = %v", err)
+			}
+			config := map[string]string{
+				"base_url": server.URL, "family": familyID, "tenant_id": "writer", "token": "fixture-token",
+				"channel_id": "C1", "usergroup_id": "S1",
+			}
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
+			if err != nil {
+				t.Fatalf("catalog Read() error = %v", err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("catalog events = %d, want 1", len(pull.Events))
+			}
+			actual := pull.Events[0]
+			if actual.Kind != expected[0].Kind || actual.SchemaRef != expected[0].SchemaRef {
+				t.Fatalf("contract = %s %s, want %s %s", actual.Kind, actual.SchemaRef, expected[0].Kind, expected[0].SchemaRef)
+			}
+			for key, want := range expected[0].Attributes {
+				if got := actual.Attributes[key]; got != want {
+					t.Fatalf("attribute %s = %q, want %q", key, got, want)
+				}
+			}
+			var actualPayload, expectedPayload any
+			if err := json.Unmarshal(actual.Payload, &actualPayload); err != nil {
+				t.Fatalf("decode actual payload: %v", err)
+			}
+			if err := json.Unmarshal(expected[0].Payload, &expectedPayload); err != nil {
+				t.Fatalf("decode expected payload: %v", err)
+			}
+			if !reflect.DeepEqual(actualPayload, expectedPayload) {
+				t.Fatalf("payload = %#v, want %#v", actualPayload, expectedPayload)
+			}
+		})
 	}
 }
 
