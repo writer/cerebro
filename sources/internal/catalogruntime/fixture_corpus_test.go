@@ -25,6 +25,13 @@ var retiredStaticLoaderFixtureSources = []string{
 
 func TestRetiredStaticLoaderFixturesAreDeterministicCatalogRuntimeInputs(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
+	repoRoot, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatalf("open repository root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = repoRoot.Close()
+	})
 	for _, sourceID := range retiredStaticLoaderFixtureSources {
 		t.Run(sourceID, func(t *testing.T) {
 			entry, found, err := connectorcatalog.BuiltinEntry(sourceID)
@@ -47,7 +54,11 @@ func TestRetiredStaticLoaderFixturesAreDeterministicCatalogRuntimeInputs(t *test
 				if !found {
 					t.Fatalf("fixture family %s/%s is missing from the connector definition", sourceID, familyID)
 				}
-				body, err := os.ReadFile(path)
+				relativePath, err := filepath.Rel(root, path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				body, err := repoRoot.ReadFile(filepath.ToSlash(relativePath))
 				if err != nil {
 					t.Fatal(err)
 				}

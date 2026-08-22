@@ -3312,12 +3312,16 @@ mod tests {
                 "{source_id} must keep complete Rust collection authority"
             );
             assert!(
-                source.families().all(CompiledFamily::is_authoritative),
+                source
+                    .families()
+                    .iter()
+                    .all(CompiledFamily::is_authoritative),
                 "{source_id} contains a non-authoritative collection family"
             );
             assert!(
                 source
                     .families()
+                    .iter()
                     .all(CompiledFamily::is_projection_authoritative),
                 "{source_id} contains a non-authoritative projection family"
             );
