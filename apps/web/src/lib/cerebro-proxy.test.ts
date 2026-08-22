@@ -194,7 +194,7 @@ describe("cerebro proxy cache headers", () => {
   it("aborts upstream fetches when the caller signal aborts", async () => {
     let upstreamSignal: AbortSignal | undefined;
     vi.stubGlobal("fetch", vi.fn(async (_target: URL | RequestInfo, init?: RequestInit) => {
-      upstreamSignal = init?.signal;
+      upstreamSignal = init?.signal ?? undefined;
       return await new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
       });
