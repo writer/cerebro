@@ -4,6 +4,7 @@
 //! Rust-native source collection and graph admission boundary.
 
 mod abuseipdb;
+mod activecampaign;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -58,6 +59,12 @@ pub use abuseipdb::{
     AbuseIpDbFamily, AbuseIpDbFilters, AbuseIpDbKernel, AbuseIpDbPage, AbuseIpDbProjectionFacts,
     AbuseIpDbRecord, AbuseIpDbRelationFact, AbuseIpDbRequest, AbuseIpDbRuntimeDefinition,
     project_abuseipdb_records,
+};
+pub use activecampaign::{
+    ActiveCampaignCheckpointCandidate, ActiveCampaignEntityFact, ActiveCampaignError,
+    ActiveCampaignEventContract, ActiveCampaignFamily, ActiveCampaignKernel, ActiveCampaignPage,
+    ActiveCampaignProjectionFacts, ActiveCampaignRecord, ActiveCampaignRequest,
+    ActiveCampaignRuntimeDefinition, project_activecampaign_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
