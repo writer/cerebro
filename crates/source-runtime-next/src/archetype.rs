@@ -4,9 +4,11 @@
 //! provider requests and decodes responses without performing network I/O,
 //! accepting credential material, or owning durable checkpoint advancement.
 
+mod adapter;
 mod cursor;
 mod error;
 mod family;
+mod knowledge;
 mod normalization;
 mod request;
 mod types;

@@ -11,15 +11,25 @@ pub enum ArchetypeError {
     InvalidApiPrefix,
     /// Fanout concurrency is outside the Go-compatible 1 through 16 bound.
     InvalidFanoutConcurrency,
+    /// The trusted runtime context did not bind a tenant identity.
+    MissingTenantId,
+    /// The explicit observation timestamp is not RFC 3339.
+    InvalidObservedAt,
     /// A scan or repository scope ID is zero.
     InvalidScopedId,
     /// Response JSON does not match the selected Archetype contract.
     InvalidResponse,
     /// The provider returned more scans than the fixed page limit.
     ResponseLimitExceeded,
-    /// A provider record omitted its stable positive identity.
+    /// A provider response exceeded the byte limit before decoding.
+    ResponseTooLarge,
+    /// A provider enrichment response exceeded its record-count limit.
+    TooManyRecords,
+    /// Provider metadata contained a credential-shaped field name.
+    SecretFieldRejected,
+    /// A provider identity is missing or outside the Go-compatible positive range.
     MissingRecordIdentity,
-    /// One response contains colliding stable provider identities.
+    /// One response contains the same identity with conflicting content.
     DuplicateRecordIdentity,
     /// A response record belongs to a different request-bound scan.
     ResponseScopeMismatch,
@@ -40,10 +50,19 @@ impl fmt::Display for ArchetypeError {
             Self::InvalidFanoutConcurrency => {
                 "archetype fanout concurrency must be between 1 and 16"
             }
+            Self::MissingTenantId => "archetype tenant_id is required for event materialization",
+            Self::InvalidObservedAt => "archetype observed_at must be an RFC 3339 timestamp",
             Self::InvalidScopedId => "archetype request scope ID must be positive",
             Self::InvalidResponse => "archetype response does not match the selected contract",
             Self::ResponseLimitExceeded => "archetype scan response exceeds the page limit",
-            Self::MissingRecordIdentity => "archetype record identity is missing",
+            Self::ResponseTooLarge => "archetype response exceeds 8388608 bytes",
+            Self::TooManyRecords => "archetype enrichment response exceeds the record limit",
+            Self::SecretFieldRejected => {
+                "archetype provider metadata contains a credential-shaped field"
+            }
+            Self::MissingRecordIdentity => {
+                "archetype record identity is missing or outside the supported range"
+            }
             Self::DuplicateRecordIdentity => "archetype record identity is duplicated",
             Self::ResponseScopeMismatch => {
                 "archetype response record does not match the requested scan"

@@ -2,7 +2,7 @@ use std::{net::IpAddr, str::FromStr};
 
 use reqwest::Url;
 
-use super::{ArchetypeError, ArchetypeFamily};
+use super::{ArchetypeError, ArchetypeFamily, types::valid_provider_id};
 
 const DEFAULT_API_PREFIX: &str = "/api/v1";
 pub(super) const SCAN_PAGE_LIMIT: usize = 100;
@@ -22,12 +22,25 @@ pub enum ArchetypeRequestKind {
     Knowledge,
 }
 
+impl ArchetypeRequestKind {
+    /// Return the stable provider operation name used in request provenance.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Scans => "scans",
+            Self::Repositories => "repositories",
+            Self::Vulnerabilities => "vulnerabilities",
+            Self::Knowledge => "knowledge",
+        }
+    }
+}
+
 /// One credential-free HTTP request planned by the Archetype kernel.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArchetypeRequest {
-    url: Url,
-    kind: ArchetypeRequestKind,
-    scoped_id: Option<u64>,
+    pub(super) url: Url,
+    pub(super) family: ArchetypeFamily,
+    pub(super) kind: ArchetypeRequestKind,
+    pub(super) scoped_id: Option<u64>,
 }
 
 impl ArchetypeRequest {
@@ -55,6 +68,13 @@ impl ArchetypeRequest {
     pub const fn accept(&self) -> &'static str {
         "application/json"
     }
+
+    pub(super) fn provenance(&self) -> String {
+        self.url.query().map_or_else(
+            || self.url.path().to_owned(),
+            |query| format!("{}?{query}", self.url.path()),
+        )
+    }
 }
 /// Provider-specific Archetype request and response kernel.
 #[derive(Clone, Debug)]
@@ -63,6 +83,7 @@ pub struct ArchetypeKernel {
     pub(super) api_prefix: String,
     pub(super) family: ArchetypeFamily,
     pub(super) fanout_concurrency: usize,
+    pub(super) tenant_id: Option<String>,
 }
 
 impl ArchetypeKernel {
@@ -87,6 +108,7 @@ impl ArchetypeKernel {
             api_prefix,
             family,
             fanout_concurrency,
+            tenant_id: None,
         })
     }
 
@@ -97,7 +119,7 @@ impl ArchetypeKernel {
 
     /// Plan one descending scan-page request.
     pub fn plan_scans(&self, before_id: Option<u64>) -> Result<ArchetypeRequest, ArchetypeError> {
-        if before_id == Some(0) {
+        if before_id.is_some_and(|value| !valid_provider_id(value)) {
             return Err(ArchetypeError::InvalidScopedId);
         }
         let mut request = self.request("/scans", ArchetypeRequestKind::Scans, None)?;
@@ -119,7 +141,7 @@ impl ArchetypeKernel {
     /// Plan vulnerability enrichment for one positive scan ID.
     pub fn plan_vulnerabilities(&self, scan_id: u64) -> Result<ArchetypeRequest, ArchetypeError> {
         self.require_vulnerability_family()?;
-        if scan_id == 0 {
+        if !valid_provider_id(scan_id) {
             return Err(ArchetypeError::InvalidScopedId);
         }
         self.request(
@@ -132,7 +154,7 @@ impl ArchetypeKernel {
     /// Plan knowledge enrichment for one positive repository ID.
     pub fn plan_knowledge(&self, repository_id: u64) -> Result<ArchetypeRequest, ArchetypeError> {
         self.require_vulnerability_family()?;
-        if repository_id == 0 {
+        if !valid_provider_id(repository_id) {
             return Err(ArchetypeError::InvalidScopedId);
         }
         self.request(
@@ -154,6 +176,7 @@ impl ArchetypeKernel {
             .map_err(|_| ArchetypeError::InvalidApiPrefix)?;
         Ok(ArchetypeRequest {
             url,
+            family: self.family,
             kind,
             scoped_id,
         })
@@ -165,14 +188,33 @@ impl ArchetypeKernel {
         kind: ArchetypeRequestKind,
         scoped_id: Option<u64>,
     ) -> Result<(), ArchetypeError> {
-        if request.kind != kind
+        if request.family != self.family
+            || request.kind != kind
             || request.scoped_id != scoped_id
             || request.url.origin() != self.base_url.origin()
-            || !request
-                .url
-                .path()
-                .starts_with(&format!("{}/", self.api_prefix))
+            || request.url.fragment().is_some()
         {
+            return Err(ArchetypeError::RequestScopeMismatch);
+        }
+        let expected_path = match (kind, scoped_id) {
+            (ArchetypeRequestKind::Scans, None) => format!("{}/scans", self.api_prefix),
+            (ArchetypeRequestKind::Repositories, None) => {
+                format!("{}/repositories", self.api_prefix)
+            }
+            (ArchetypeRequestKind::Vulnerabilities, Some(scan_id)) => {
+                format!("{}/scans/{scan_id}/vulnerabilities", self.api_prefix)
+            }
+            (ArchetypeRequestKind::Knowledge, Some(repository_id)) => {
+                format!("{}/repositories/{repository_id}/knowledge", self.api_prefix)
+            }
+            _ => return Err(ArchetypeError::RequestScopeMismatch),
+        };
+        if request.url.path() != expected_path {
+            return Err(ArchetypeError::RequestScopeMismatch);
+        }
+        if kind == ArchetypeRequestKind::Scans {
+            validate_scan_query(&request.url)?;
+        } else if request.url.query().is_some() {
             return Err(ArchetypeError::RequestScopeMismatch);
         }
         Ok(())
@@ -184,6 +226,30 @@ impl ArchetypeKernel {
         }
         Ok(())
     }
+}
+
+fn validate_scan_query(url: &Url) -> Result<(), ArchetypeError> {
+    let mut limit = None;
+    let mut before_id = None;
+    for (name, value) in url.query_pairs() {
+        match name.as_ref() {
+            "limit" if limit.is_none() => limit = Some(value.into_owned()),
+            "before_id" if before_id.is_none() => {
+                let value = value
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|value| valid_provider_id(*value))
+                    .ok_or(ArchetypeError::RequestScopeMismatch)?;
+                before_id = Some(value);
+            }
+            _ => return Err(ArchetypeError::RequestScopeMismatch),
+        }
+    }
+    let expected_limit = SCAN_PAGE_LIMIT.to_string();
+    if limit.as_deref() != Some(expected_limit.as_str()) {
+        return Err(ArchetypeError::RequestScopeMismatch);
+    }
+    Ok(())
 }
 fn validate_origin(raw: &str) -> Result<Url, ArchetypeError> {
     let mut url = Url::parse(raw.trim()).map_err(|_| ArchetypeError::InvalidBaseUrl)?;
