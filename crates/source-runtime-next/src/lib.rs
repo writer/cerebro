@@ -46,6 +46,7 @@ mod security_tooling_map;
 mod sentinelone;
 mod slack;
 pub mod source_execution;
+mod tailscale;
 mod trivy;
 mod twilio;
 mod vulnview;
@@ -207,6 +208,12 @@ pub use sentinelone::{
 pub use slack::{
     SlackCheckpoint, SlackError, SlackFamily, SlackFilters, SlackKernel, SlackPage, SlackRecord,
     SlackRequest,
+};
+pub use tailscale::{
+    TailscaleCheckpointCandidate, TailscaleEntityFact, TailscaleError, TailscaleEventContract,
+    TailscaleFamily, TailscaleKernel, TailscalePage, TailscaleProjectionFacts, TailscaleRecord,
+    TailscaleRelationFact, TailscaleRequest, TailscaleResponseMetadata, TailscaleRuntimeDefinition,
+    project_tailscale_records,
 };
 pub use trivy::{TrivyError, TrivyFamily, TrivyKernel, TrivyPage, TrivyRecord};
 pub use twilio::{
