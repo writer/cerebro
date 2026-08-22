@@ -478,6 +478,74 @@ func TestBuiltinEntryFindsNormalizedSourceID(t *testing.T) {
 	}
 }
 
+func TestBuiltinCloudflareCatalogClosesTheProviderFamilyAndCredentialContracts(t *testing.T) {
+	entry, ok, err := BuiltinEntry("cloudflare")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(cloudflare) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(cloudflare) ok = false")
+	}
+	definition := entry.Definition
+	if definition.Auth.Model != "bearer_token" || !definition.Auth.RequiresReferences {
+		t.Fatalf("auth = %#v, want reference-only bearer token", definition.Auth)
+	}
+	if len(definition.Auth.CredentialFields) != 1 {
+		t.Fatalf("credential fields = %d, want one token reference", len(definition.Auth.CredentialFields))
+	}
+	credential := definition.Auth.CredentialFields[0]
+	if credential.Key != "token" || !credential.Secret || !credential.ReferenceOnly {
+		t.Fatalf("credential = %#v, want secret reference-only token", credential)
+	}
+
+	want := map[string][]string{
+		"access_application":      {"account_id", "application_id"},
+		"access_group":            {"account_id", "group_id"},
+		"account":                 {"account_id"},
+		"account_ruleset":         {"account_id", "ruleset_id"},
+		"audit_log":               {"account_id", "audit_id"},
+		"member":                  {"account_id", "member_id"},
+		"gateway_rule":            {"account_id", "rule_id"},
+		"load_balancer":           {"load_balancer_id", "zone_id"},
+		"load_balancer_pool":      {"account_id", "pool_id"},
+		"role":                    {"account_id", "role_id"},
+		"worker_script":           {"account_id", "script_id"},
+		"zone":                    {"zone_id"},
+		"zone_access_application": {"application_id", "zone_id"},
+		"zone_access_group":       {"group_id", "zone_id"},
+		"zone_ruleset":            {"ruleset_id", "zone_id"},
+		"dns_record":              {"record_id", "zone_id"},
+	}
+	if len(definition.ResourceFamilies) != len(want) {
+		t.Fatalf("families = %d, want %d", len(definition.ResourceFamilies), len(want))
+	}
+	for _, family := range definition.ResourceFamilies {
+		required, ok := want[family.ID]
+		if !ok {
+			t.Fatalf("unexpected family %q", family.ID)
+		}
+		if family.Event.Kind != "cloudflare."+family.ID || family.Event.SchemaRef != "cloudflare/"+family.ID+"/v1" {
+			t.Fatalf("%s event = %#v", family.ID, family.Event)
+		}
+		if strings.Join(family.Event.RequiredAttributes, ",") != strings.Join(required, ",") {
+			t.Fatalf("%s required attributes = %#v, want %#v", family.ID, family.Event.RequiredAttributes, required)
+		}
+		if family.Pagination == nil || family.Pagination.Type != "page" || family.Pagination.PageParam != "page" || family.Pagination.PageSizeParam != "per_page" {
+			t.Fatalf("%s pagination = %#v", family.ID, family.Pagination)
+		}
+		if family.Config == nil || family.Config.ConfigAttributes["tenant_id"] != "tenant_id" {
+			t.Fatalf("%s config = %#v, want authenticated tenant binding", family.ID, family.Config)
+		}
+		if family.Projection == nil || strings.TrimSpace(family.Projection.Template) == "" {
+			t.Fatalf("%s projection is not compiled", family.ID)
+		}
+		delete(want, family.ID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing families = %#v", want)
+	}
+}
+
 func TestBuiltinCatalogHashicorpVaultFamiliesMirrorRuntimeConfig(t *testing.T) {
 	entry, ok, err := BuiltinEntry("hashicorp_vault")
 	if err != nil {
