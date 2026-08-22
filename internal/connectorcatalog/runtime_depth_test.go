@@ -87,6 +87,65 @@ func TestProjectGitHubAudit(t *testing.T) {
 	}
 }
 
+func TestDiscoverRuntimeDepthScoresSharedCatalogRuntimeSourcePackage(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeDepthFile(t, root, "sources/example/catalog.yaml", `
+id: example
+name: Example
+emitted_kinds: [example.assets]
+runtime_families: [assets]
+provider_api:
+  status: verified
+  basis: detected
+  verified_at: 2026-08-22T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_header
+  base_url: https://api.github.com
+  spec_url: https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+  spec_kind: openapi
+  references:
+    - https://docs.github.com/rest
+    - https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+  auth_evidence:
+    - https://docs.github.com/rest/authentication/authenticating-to-the-rest-api
+  families:
+    - id: assets
+      method: GET
+      path: /assets
+coverage_contract:
+  dimensions:
+    - id: assets
+      type: entity_family
+event_contracts:
+  - kind: example.assets
+    schema_ref: example/assets/v1
+`)
+	writeRuntimeDepthFile(t, root, "sources/internal/catalogruntime/source.go", "package catalogruntime\n\nimport _ \"github.com/writer/cerebro/sources/internal/jsonapi\"\n")
+	writeRuntimeDepthFile(t, root, "sources/internal/catalogruntime/source_test.go", "package catalogruntime\n")
+	writeRuntimeDepthFile(t, root, "sources/example/deploy.yaml", "sourceId: example\n")
+	writeRuntimeDepthFile(t, root, "sources/example/testdata/discover_assets.json", "[]")
+	writeRuntimeDepthFile(t, root, "sources/example/testdata/read_assets.json", "[]")
+	writeRuntimeDepthFile(t, root, "internal/sourceprojection/example_test.go", `package sourceprojection
+
+func TestProjectExampleAsset(t *testing.T) {
+	_ = struct{ SourceId, Kind string }{SourceId: "example", Kind: "example.assets"}
+}
+`)
+
+	inventory, err := DiscoverRuntimeDepth(root)
+	if err != nil {
+		t.Fatalf("DiscoverRuntimeDepth() error = %v", err)
+	}
+	depth := inventory["example"]
+	if depth.Score != 100 {
+		t.Fatalf("runtime depth score = %d missing=%v, want 100", depth.Score, depth.Missing)
+	}
+	if !depth.HasSourceImplementation || !depth.HasSourceTests || !depth.ProviderAPI.HasRuntimeTransport {
+		t.Fatalf("shared catalog runtime flags = %#v, want implementation, tests, and transport", depth)
+	}
+}
+
 func TestDiscoverRuntimeDepthRequiresDeclaredFamilyFixturesAndProjectorKinds(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeDepthFile(t, root, "sources/github/catalog.yaml", `
