@@ -19,8 +19,12 @@ var retiredStaticLoaderFixtureSources = []string{
 	"adobe_workfront",
 	"aircall",
 	"airfocus",
+	"backstage",
 	"beezup",
 	"bitwarden",
+	"box",
+	"duo",
+	"fivetran",
 	"openai",
 }
 
