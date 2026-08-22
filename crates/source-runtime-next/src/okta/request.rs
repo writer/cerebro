@@ -197,7 +197,7 @@ fn validate_filters(family: OktaFamily, filters: &OktaFilters) -> Result<(), Okt
         _ => None,
     };
     if let Some((value, name)) = required {
-        let value = value.as_deref().ok_or(OktaError::MissingScope(name))?;
+        let value = value.ok_or(OktaError::MissingScope(name))?;
         require_identity_component(value).map_err(|_| OktaError::MissingScope(name))?;
     }
     if family == OktaFamily::Audit {
