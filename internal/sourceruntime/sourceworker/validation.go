@@ -2,15 +2,12 @@ package sourceworker
 
 import (
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
@@ -28,22 +25,7 @@ func validateScope(plan *cerebrov1.SourceExecutionPlanV1, reference string, scop
 	return nil
 }
 
-func executionContextFor(scope CredentialScope, observedAt time.Time) *cerebrov1.SourceWorkerExecutionContextV1 {
-	return &cerebrov1.SourceWorkerExecutionContextV1{
-		TenantId: scope.TenantID, RuntimeId: scope.RuntimeID, LogicalPageId: scope.LogicalPageID,
-		PriorCursor: scope.PriorCursor, RuntimeGeneration: scope.RuntimeGeneration,
-		LeaseGeneration: scope.LeaseGeneration, ObservedAtUnixMillis: observedAt.UTC().UnixMilli(),
-	}
-}
-
-func validateCanonicalPlan(plan *cerebrov1.SourceExecutionPlanV1) error {
-	if plan == nil || !proto.Equal(plan, AzureAuthorizationPolicyPlan()) {
-		return fmt.Errorf("%w: plan is not the registered Azure authorization policy plan", ErrWorkerContract)
-	}
-	return nil
-}
-
-func validateWorkerRequest(plan *cerebrov1.SourceExecutionPlanV1, executionContext *cerebrov1.SourceWorkerExecutionContextV1, request *cerebrov1.SourceWorkerHTTPRequestV1) (*url.URL, error) {
+func validateWorkerRequest(plan *cerebrov1.SourceExecutionPlanV1, request *cerebrov1.SourceWorkerHTTPRequestV1) (*url.URL, error) {
 	if request == nil || request.GetPlanId() != plan.GetPlanId() || request.GetPlanDigestSha256() != plan.GetPlanDigestSha256() || request.GetMethod() != http.MethodGet || request.GetAccept() != "application/json" || request.GetMaxResponseBytes() != plan.GetMaxResponseBytes() || request.GetMaxResponseBytes() == 0 || request.GetMaxResponseBytes() > maxResponseBytes {
 		return nil, fmt.Errorf("%w: worker request does not match the compiled plan", ErrInvalidExecution)
 	}
@@ -59,27 +41,10 @@ func validateWorkerRequest(plan *cerebrov1.SourceExecutionPlanV1, executionConte
 	if err != nil || actual.String() != expected.String() || actual.User != nil || actual.RawQuery != "" || actual.Fragment != "" {
 		return nil, fmt.Errorf("%w: worker request escaped the compiled origin", ErrInvalidExecution)
 	}
-	intentDigest, err := canonicalRequestIntentDigestForContext(plan, executionContext, request)
-	if err != nil || !lowerSHA256(request.GetRequestIntentDigest()) || subtle.ConstantTimeCompare([]byte(intentDigest), []byte(request.GetRequestIntentDigest())) != 1 {
+	if !lowerSHA256(request.GetRequestIntentDigest()) {
 		return nil, fmt.Errorf("%w: worker request intent digest is invalid", ErrWorkerContract)
 	}
 	return actual, nil
-}
-
-func validateWorkerResult(plan *cerebrov1.SourceExecutionPlanV1, executionContext *cerebrov1.SourceWorkerExecutionContextV1, receipt SafeReceipt, result *cerebrov1.SourceWorkerDecodeResultV1) error {
-	if executionContext == nil || result == nil || result.GetPlanId() != plan.GetPlanId() || result.GetPlanDigestSha256() != plan.GetPlanDigestSha256() || result.GetLogicalPageId() != executionContext.GetLogicalPageId() || result.GetRequestIntentDigest() != receipt.RequestIntentDigest || result.GetTenantId() != executionContext.GetTenantId() || result.GetRuntimeId() != executionContext.GetRuntimeId() || result.GetRuntimeGeneration() != executionContext.GetRuntimeGeneration() || result.GetLeaseGeneration() != executionContext.GetLeaseGeneration() || result.GetObservedAtUnixMillis() != executionContext.GetObservedAtUnixMillis() || result.GetNextCursor() != "" || len(result.GetRecords()) != 1 || !lowerSHA256(result.GetResultDigestSha256()) {
-		return fmt.Errorf("%w: worker result is not bound to the execution", ErrInvalidExecution)
-	}
-	for _, record := range result.GetRecords() {
-		if record == nil || strings.TrimSpace(record.GetEventId()) == "" || record.GetOccurredAtUnixMillis() != executionContext.GetObservedAtUnixMillis() {
-			return fmt.Errorf("%w: worker record identity is not bound to the execution", ErrInvalidExecution)
-		}
-	}
-	expected, err := CanonicalResultDigest(result, receipt)
-	if err != nil || subtle.ConstantTimeCompare([]byte(expected), []byte(result.GetResultDigestSha256())) != 1 {
-		return fmt.Errorf("%w: worker result digest does not match the safe receipt", ErrWorkerContract)
-	}
-	return nil
 }
 
 func safeHTTPClient(resolver *net.Resolver) *http.Client {

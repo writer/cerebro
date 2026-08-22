@@ -31,14 +31,60 @@ var (
 	ErrProviderResponseTooLarge  = errors.New("provider response exceeded the compiled bound; reduce the provider response")
 	ErrProviderMalformedResponse = errors.New("provider response was malformed; verify the Azure Graph response contract")
 	ErrWorkerContract            = errors.New("source worker contract validation failed; regenerate the compiled plan and worker protocol")
+	ErrWorkerUnsupported         = errors.New("source family is not Rust-authoritative")
 	ErrWorkerInternal            = errors.New("source worker failed internally; inspect the bounded worker error class")
 )
 
 // Worker plans and decodes one bounded request without receiving credentials
 // or owning network access.
 type Worker interface {
+	Compile(context.Context, SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error)
+	Context(context.Context, ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error)
 	Plan(context.Context, *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error)
 	Decode(context.Context, *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error)
+	Transition(context.Context, LifecycleRequest) (*LifecycleDecision, error)
+}
+
+// SelectionRequest is the private bridge input to Rust's closed registry.
+type SelectionRequest struct{ SourceID, FamilyID string }
+
+// ContextRequest contains trusted identity and generation inputs only.
+type ContextRequest struct {
+	TenantID, RuntimeID, PriorCursor   string
+	PageNumber                         uint32
+	RuntimeGeneration, LeaseGeneration uint64
+	ObservedAtUnixMillis               int64
+}
+
+// Phase is the closed Rust-owned durable page lifecycle.
+type Phase uint32
+
+const (
+	PhaseDecoded Phase = iota + 1
+	PhaseAppended
+	PhaseProjected
+	PhaseCheckpointed
+	PhaseComplete
+)
+
+// LifecycleRequest reports one completed side effect to Rust.
+type LifecycleRequest struct {
+	Plan                   *cerebrov1.SourceExecutionPlanV1
+	Context                *cerebrov1.SourceWorkerExecutionContextV1
+	Receipt                *cerebrov1.SourceWorkerSafeReceiptV1
+	Result                 *cerebrov1.SourceWorkerDecodeResultV1
+	CompletedPhase         Phase
+	PriorTransitionDigest  string
+	CurrentLeaseGeneration uint64
+}
+
+// LifecycleDecision is the only authority for the next Go side effect.
+type LifecycleDecision struct {
+	RequiredPhase                 Phase
+	TransitionDigest              string
+	AdmittedRecords               []*cerebrov1.SourceWorkerRecordV1
+	CheckpointCursor              string
+	CheckpointWatermarkUnixMillis int64
 }
 
 // CredentialScope binds one redemption to a runtime lease and logical page.
@@ -76,8 +122,11 @@ type CredentialRedeemer interface {
 // logical page.
 type ExecutionInput struct {
 	Plan                *cerebrov1.SourceExecutionPlanV1
+	SourceID            string
+	FamilyID            string
 	CredentialReference string
 	Scope               CredentialScope
+	PageNumber          uint32
 }
 
 // SafeReceipt contains provider-safe execution evidence and no response body,
@@ -99,6 +148,9 @@ type SafeReceipt struct {
 
 // ExecutionOutput contains the bounded worker result and safe host receipt.
 type ExecutionOutput struct {
-	Result  *cerebrov1.SourceWorkerDecodeResultV1
-	Receipt SafeReceipt
+	Plan     *cerebrov1.SourceExecutionPlanV1
+	Context  *cerebrov1.SourceWorkerExecutionContextV1
+	Receipt  *cerebrov1.SourceWorkerSafeReceiptV1
+	Result   *cerebrov1.SourceWorkerDecodeResultV1
+	Decision *LifecycleDecision
 }

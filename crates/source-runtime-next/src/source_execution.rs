@@ -11,6 +11,8 @@ mod contract;
 mod dispatcher;
 #[path = "source_execution/error.rs"]
 mod error;
+#[path = "source_execution/runtime.rs"]
+mod runtime;
 #[path = "source_execution/wire.rs"]
 mod wire;
 
@@ -24,15 +26,24 @@ pub use contract::{
 };
 #[allow(unused_imports)]
 pub use dispatcher::{
-    SourceExecutionAdapter, SourceExecutionDispatcher, dispatch_decode_bytes, dispatch_plan_bytes,
+    SourceExecutionAdapter, SourceExecutionDispatcher, compile_plan_bytes, dispatch_decode_bytes,
+    dispatch_plan_bytes,
 };
 pub use error::SourceExecutionError;
+pub use runtime::{build_execution_context, transition_lifecycle};
 #[allow(unused_imports)]
 pub use wire::{
-    SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
+    SourceExecutionContextRequestV1, SourceExecutionLifecycleDecisionV1,
+    SourceExecutionLifecycleRequestV1, SourceExecutionPhaseV1, SourceExecutionPlanV1,
+    SourceExecutionSelectionRequestV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
     SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1,
     SourceWorkerRecordV1, SourceWorkerSafeReceiptV1,
 };
+
+/// Compiles an exact plan through the closed Rust source-family registry.
+pub fn compile(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    compile_plan_bytes(input)
+}
 
 /// Dispatches one encoded request plan through the closed adapter registry.
 pub fn plan(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
@@ -42,6 +53,16 @@ pub fn plan(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
 /// Dispatches one encoded provider response through the closed adapter registry.
 pub fn decode(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     dispatch_decode_bytes(input)
+}
+
+/// Constructs one trusted execution context with a Rust-owned logical page ID.
+pub fn context(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    runtime::context_bytes(input)
+}
+
+/// Advances the digest-chained durable page lifecycle by exactly one phase.
+pub fn transition(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    runtime::transition_bytes(input)
 }
 
 #[cfg(test)]

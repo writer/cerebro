@@ -52,14 +52,26 @@ func TestProcessWorkerProtocol(t *testing.T) {
 		t.Skip("SOURCE_WORKER_BINARY is not set")
 	}
 	worker := NewProcessWorker(path)
-	plan := AzureAuthorizationPolicyPlan()
+	plan, err := worker.Compile(context.Background(), SelectionRequest{SourceID: "azure", FamilyID: "authorization_policy"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC()
 	scope := exactScope(plan, now)
-	executionContext := executionContextFor(scope, now)
+	executionContext, err := worker.Context(context.Background(), ContextRequest{
+		TenantID: scope.TenantID, RuntimeID: scope.RuntimeID, PageNumber: 1,
+		RuntimeGeneration: scope.RuntimeGeneration, LeaseGeneration: scope.LeaseGeneration,
+		ObservedAtUnixMillis: now.UnixMilli(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.LogicalPageID = executionContext.GetLogicalPageId()
 	request, err := worker.Plan(context.Background(), &cerebrov1.SourceWorkerPlanRequestV1{Plan: plan, Context: executionContext})
 	if err != nil {
 		t.Fatal(err)
 	}
+	scope.RequestIntentDigest = request.GetRequestIntentDigest()
 	if request.GetUrl() != "https://graph.microsoft.com/v1.0/policies/authorizationPolicy" {
 		t.Fatalf("worker URL = %s", request.GetUrl())
 	}
@@ -77,8 +89,16 @@ func TestProcessWorkerProtocol(t *testing.T) {
 	if len(result.GetRecords()) != 1 || result.GetRecords()[0].GetProviderId() != "authorizationPolicy" {
 		t.Fatalf("worker result = %#v", result)
 	}
-	if err := validateWorkerResult(plan, executionContext, receipt, result); err != nil {
-		t.Fatalf("worker result contract: %v", err)
+	decision, err := worker.Transition(context.Background(), LifecycleRequest{
+		Plan: plan, Context: executionContext, Receipt: receiptWire, Result: result,
+		CompletedPhase:         PhaseDecoded,
+		CurrentLeaseGeneration: scope.LeaseGeneration,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.RequiredPhase != PhaseAppended || len(decision.AdmittedRecords) != 1 {
+		t.Fatalf("Rust lifecycle decision = %#v", decision)
 	}
 }
 

@@ -299,6 +299,9 @@ WHERE id = $1
   AND lease_expires_at > NOW()`, id, leaseOwner).Scan(&generation, &expiresAt); err != nil {
 		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("read source runtime lease fence %q: %w", id, err)
 	}
+	if generation <= 0 {
+		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("read source runtime lease fence %q: invalid generation", id)
+	}
 	return ports.SourceRuntimeLeaseFence{Owner: leaseOwner, Generation: uint64(generation), ExpiresAt: expiresAt.UTC()}, nil
 }
 

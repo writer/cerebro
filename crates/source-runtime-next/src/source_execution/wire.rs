@@ -245,3 +245,104 @@ pub struct SourceWorkerDecodeResultV1 {
     #[prost(int64, tag = "12")]
     pub observed_at_unix_millis: i64,
 }
+
+/// Trusted inputs used by Rust to construct a stable execution context.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionContextRequestV1 {
+    /// Authenticated tenant identifier.
+    #[prost(string, tag = "1")]
+    pub tenant_id: String,
+    /// Durable source-runtime identifier.
+    #[prost(string, tag = "2")]
+    pub runtime_id: String,
+    /// Last durably committed provider cursor.
+    #[prost(string, tag = "3")]
+    pub prior_cursor: String,
+    /// One-based page number within the current execution.
+    #[prost(uint32, tag = "4")]
+    pub page_number: u32,
+    /// Current source authority generation.
+    #[prost(uint64, tag = "5")]
+    pub runtime_generation: u64,
+    /// Current exclusive lease generation.
+    #[prost(uint64, tag = "6")]
+    pub lease_generation: u64,
+    /// Host-captured observation time.
+    #[prost(int64, tag = "7")]
+    pub observed_at_unix_millis: i64,
+}
+
+/// Public source and family selected through the closed Rust registry.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionSelectionRequestV1 {
+    /// Catalog source identifier.
+    #[prost(string, tag = "1")]
+    pub source_id: String,
+    /// Catalog family identifier.
+    #[prost(string, tag = "2")]
+    pub family_id: String,
+}
+
+/// Closed durable page lifecycle owned by the Rust runtime.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
+#[repr(i32)]
+pub enum SourceExecutionPhaseV1 {
+    /// No valid lifecycle phase was supplied.
+    Unspecified = 0,
+    /// Provider bytes have been decoded and validated.
+    Decoded = 1,
+    /// Canonical records have been durably appended.
+    Appended = 2,
+    /// Appended records have been projected.
+    Projected = 3,
+    /// The validated continuation has been durably checkpointed.
+    Checkpointed = 4,
+    /// The logical page lifecycle is complete.
+    Complete = 5,
+}
+
+/// One completed durable action reported back to Rust.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionLifecycleRequestV1 {
+    /// Exact catalog-compiled plan.
+    #[prost(message, optional, tag = "1")]
+    pub plan: Option<SourceExecutionPlanV1>,
+    /// Trusted execution context minted by Rust.
+    #[prost(message, optional, tag = "2")]
+    pub context: Option<SourceWorkerExecutionContextV1>,
+    /// Provider-safe host receipt.
+    #[prost(message, optional, tag = "3")]
+    pub receipt: Option<SourceWorkerSafeReceiptV1>,
+    /// Validated normalized page result.
+    #[prost(message, optional, tag = "4")]
+    pub result: Option<SourceWorkerDecodeResultV1>,
+    /// Durable phase the bridge reports as completed.
+    #[prost(enumeration = "SourceExecutionPhaseV1", tag = "5")]
+    pub completed_phase: i32,
+    /// Rust-issued digest authorizing the completed phase.
+    #[prost(string, tag = "6")]
+    pub prior_transition_digest_sha256: String,
+    /// Lease generation observed immediately before this transition.
+    #[prost(uint64, tag = "7")]
+    pub current_lease_generation: u64,
+}
+
+/// Rust-authoritative next action and checkpoint candidate.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionLifecycleDecisionV1 {
+    /// Exact next phase the bridge may perform.
+    #[prost(enumeration = "SourceExecutionPhaseV1", tag = "1")]
+    pub required_phase: i32,
+    /// Digest authorizing and binding the next phase.
+    #[prost(string, tag = "2")]
+    pub transition_digest_sha256: String,
+    /// Validated records supplied only for append admission.
+    #[prost(message, repeated, tag = "3")]
+    pub admitted_records: Vec<SourceWorkerRecordV1>,
+    /// Cursor supplied only after projection succeeds.
+    #[prost(string, tag = "4")]
+    pub checkpoint_cursor: String,
+    /// Page watermark supplied only after projection succeeds.
+    #[prost(int64, tag = "5")]
+    pub checkpoint_watermark_unix_millis: i64,
+}

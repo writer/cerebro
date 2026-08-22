@@ -2,10 +2,8 @@ package sourceruntime
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,73 +13,78 @@ import (
 	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 )
 
-const azureAuthorizationPolicyFamily = "authorization_policy"
-
-type sourceExecutionHost interface {
-	Execute(context.Context, sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error)
+// sourceExecutionPage is the temporary Go side-effect bridge. Rust owns the
+// plan, execution identity, admitted records, phase sequence, and checkpoint
+// candidate. Delete this type when Rust can call the private durable ports.
+type sourceExecutionPage struct {
+	host   *sourceworker.Host
+	output *sourceworker.ExecutionOutput
 }
 
-func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceRuntime, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, pageNumber uint32) (sourcecdk.Pull, error) {
-	if s == nil || s.sourceHostFactory == nil || !isSourceExecutionFamily(runtime, cfg) {
-		return readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
+func (p *sourceExecutionPage) advance(ctx context.Context, completed sourceworker.Phase, priorDigest string) (*sourceworker.LifecycleDecision, error) {
+	if p == nil || p.host == nil || p.output == nil {
+		return nil, fmt.Errorf("%w: source execution lifecycle is unavailable", ErrRuntimeUnavailable)
 	}
-	return s.readAzureAuthorizationPolicyPull(ctx, runtime, cfg, cursor, pageNumber)
+	generation, err := currentSourceRuntimeLeaseGeneration(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return p.host.Advance(ctx, p.output, completed, priorDigest, generation)
 }
 
-func (s *Service) readAzureAuthorizationPolicyPull(ctx context.Context, runtime *cerebrov1.SourceRuntime, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, pageNumber uint32) (sourcecdk.Pull, error) {
+func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceRuntime, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, pageNumber uint32) (sourcecdk.Pull, *sourceExecutionPage, error) {
+	if s == nil || s.sourceWorker == nil {
+		pull, err := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
+		return pull, nil, err
+	}
+	familyID := strings.TrimSpace(configValue(cfg, "family"))
+	plan, err := s.sourceWorker.Compile(ctx, sourceworker.SelectionRequest{
+		SourceID: runtime.GetSourceId(), FamilyID: familyID,
+	})
+	if errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		pull, compatibilityErr := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
+		return pull, nil, compatibilityErr
+	}
+	if err != nil {
+		return sourcecdk.Pull{}, nil, err
+	}
 	fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
 	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
-		return sourcecdk.Pull{}, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
+		return sourcecdk.Pull{}, nil, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
 	}
 	reference := firstConfigValue(runtime.GetConfig(), "graph_token", "token")
 	resolved := firstConfigValue(cfg.Values(), "graph_token", "token")
 	if reference == "" || resolved == "" || reference == resolved || (!sourceconfig.IsCredentialReference(reference) && !sourceconfig.IsSecretReference(reference)) {
-		return sourcecdk.Pull{}, fmt.Errorf("%w: Azure authorization policy requires an opaque credential reference", ErrInvalidRequest)
+		return sourcecdk.Pull{}, nil, fmt.Errorf("%w: Rust source execution requires an opaque credential reference", ErrInvalidRequest)
 	}
-	priorCursor := strings.TrimSpace(cursor.GetOpaque())
-	logicalPageID := sourceWorkerLogicalPageID(runtime.GetId(), pageNumber, priorCursor)
 	credential := []byte(resolved)
-	redeemer := sourceworker.NewOneOperationCredentialRedeemer(
-		reference,
-		credential,
-		"source-page-"+logicalPageID[:32],
-		fence.ExpiresAt,
-	)
+	redeemer := sourceworker.NewOneOperationCredentialRedeemer(reference, credential, "source-page-redemption", fence.ExpiresAt)
 	clear(credential)
-	plan := sourceworker.AzureAuthorizationPolicyPlan()
-	scope := sourceworker.CredentialScope{
-		TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()),
-		SourceID: plan.GetSourceId(), FamilyID: plan.GetFamilyId(), PlanDigestSHA256: plan.GetPlanDigestSha256(),
-		LogicalPageID: logicalPageID, PriorCursor: priorCursor, LeaseOwner: fence.Owner,
-		RuntimeGeneration: fence.Generation, LeaseGeneration: fence.Generation, LeaseExpiresAt: fence.ExpiresAt,
-	}
-	output, err := s.sourceHostFactory(redeemer).Execute(ctx, sourceworker.ExecutionInput{
-		Plan: plan, CredentialReference: reference, Scope: scope,
+	host := sourceworker.NewHost(s.sourceWorker, redeemer)
+	output, err := host.Execute(ctx, sourceworker.ExecutionInput{
+		Plan: plan, CredentialReference: reference, PageNumber: pageNumber,
+		Scope: sourceworker.CredentialScope{
+			TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()),
+			SourceID: plan.GetSourceId(), FamilyID: plan.GetFamilyId(), PlanDigestSHA256: plan.GetPlanDigestSha256(),
+			PriorCursor: strings.TrimSpace(cursor.GetOpaque()), LeaseOwner: fence.Owner,
+			RuntimeGeneration: fence.Generation, LeaseGeneration: fence.Generation, LeaseExpiresAt: fence.ExpiresAt,
+		},
 	})
 	if err != nil {
-		return sourcecdk.Pull{}, err
+		return sourcecdk.Pull{}, nil, err
 	}
-	if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
-		return sourcecdk.Pull{}, err
+	if output.Decision.RequiredPhase != sourceworker.PhaseAppended {
+		return sourcecdk.Pull{}, nil, fmt.Errorf("%w: Rust did not authorize append", sourceworker.ErrWorkerContract)
 	}
-	event, err := sourceworker.AuthorizationPolicyEvent(plan, scope, output.Receipt, output.Result, time.UnixMilli(output.Receipt.ObservedAtUnixMillis))
-	if err != nil {
-		return sourcecdk.Pull{}, err
+	events := make([]*cerebrov1.EventEnvelope, 0, len(output.Decision.AdmittedRecords))
+	for _, record := range output.Decision.AdmittedRecords {
+		event, eventErr := sourceworker.AuthorizationPolicyEvent(plan, runtime.GetTenantId(), record)
+		if eventErr != nil {
+			return sourcecdk.Pull{}, nil, eventErr
+		}
+		events = append(events, event)
 	}
-	pull := sourcecdk.Pull{
-		Events: []*cerebrov1.EventEnvelope{event},
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark: event.GetOccurredAt(), CursorOpaque: output.Result.GetResultDigestSha256(),
-		},
-	}
-	if nextCursor := strings.TrimSpace(output.Result.GetNextCursor()); nextCursor != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
-	}
-	return pull, nil
-}
-
-func isSourceExecutionFamily(runtime *cerebrov1.SourceRuntime, cfg sourcecdk.Config) bool {
-	return runtime.GetSourceId() == "azure" && strings.TrimSpace(configValue(cfg, "family")) == azureAuthorizationPolicyFamily
+	return sourcecdk.Pull{Events: events}, &sourceExecutionPage{host: host, output: output}, nil
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {
@@ -96,14 +99,4 @@ func firstConfigValue(values map[string]string, keys ...string) string {
 		}
 	}
 	return ""
-}
-
-func sourceWorkerLogicalPageID(runtimeID string, pageNumber uint32, priorCursor string) string {
-	hasher := sha256.New()
-	for _, value := range []string{strings.TrimSpace(runtimeID), strconv.FormatUint(uint64(pageNumber), 10), strings.TrimSpace(priorCursor)} {
-		hasher.Write([]byte(strconv.Itoa(len(value))))
-		hasher.Write([]byte{0})
-		hasher.Write([]byte(value))
-	}
-	return hex.EncodeToString(hasher.Sum(nil))
 }

@@ -48,11 +48,11 @@ func TestHostKeepsCredentialInGoAndReturnsSafeReceipt(t *testing.T) {
 	if receipt := fmt.Sprintf("%+v", output.Receipt); strings.Contains(receipt, secret) || strings.Contains(receipt, credentialReference) {
 		t.Fatalf("receipt leaked credential material: %s", receipt)
 	}
-	if output.Receipt.StatusCode != 200 || output.Receipt.ResponseBytes != len(exactGoAuthorizationPolicyResponse) || len(output.Receipt.ResponseSHA256) != 64 {
+	if output.Receipt.GetStatusCode() != 200 || output.Receipt.GetResponseBytes() != uint64(len(exactGoAuthorizationPolicyResponse)) || len(output.Receipt.GetResponseSha256()) != 64 {
 		t.Fatalf("receipt = %#v", output.Receipt)
 	}
 
-	event, err := AuthorizationPolicyEvent(plan, scope, output.Receipt, output.Result, now)
+	event, err := AuthorizationPolicyEvent(plan, scope.TenantID, output.Decision.AdmittedRecords[0])
 	if err != nil {
 		t.Fatal(err)
 	}

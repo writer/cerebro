@@ -25,8 +25,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("source worker input exceeds the process bound".into());
     }
     let output = match command.as_str() {
+        "compile" => source_execution::compile(&input)?,
         "plan" => source_execution::plan(&input)?,
         "decode" => source_execution::decode(&input)?,
+        "context" => source_execution::context(&input)?,
+        "transition" => source_execution::transition(&input)?,
         _ => return Err("source worker command is invalid".into()),
     };
     io::stdout().write_all(&output)?;

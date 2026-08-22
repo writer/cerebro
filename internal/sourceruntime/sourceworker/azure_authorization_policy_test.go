@@ -1,10 +1,8 @@
 package sourceworker
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -13,20 +11,13 @@ import (
 
 func TestAuthorizationPolicyEventSatisfiesAdmissionContract(t *testing.T) {
 	plan := AzureAuthorizationPolicyPlan()
-	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
-	scope := exactScope(plan, now)
-	receipt := exactReceipt(plan, scope, []byte(exactGoAuthorizationPolicyResponse))
-	receiptWire, err := receipt.protobuf()
-	if err != nil {
-		t.Fatal(err)
+	record := &cerebrov1.SourceWorkerRecordV1{
+		ProviderId: "authorizationPolicy", EventId: "azure-authorization-policy-authorizationPolicy",
+		OccurredAtUnixMillis: 1_725_000_000_000,
+		Attributes:           map[string]string{"domain": "tenant-1", "family": "authorization_policy", "resource_id": "authorizationPolicy", "resource_name": "authorizationPolicy", "resource_provider": "azure", "resource_type": "authorization_policy"},
+		PayloadJson:          []byte(`{"id":"authorizationPolicy","tenant_id":"tenant-1","raw":{"id":"authorizationPolicy"}}`),
 	}
-	result, err := (&fakeWorker{responseBody: []byte(exactGoAuthorizationPolicyResponse)}).Decode(context.Background(), &cerebrov1.SourceWorkerDecodeRequestV1{
-		Plan: plan, StatusCode: 200, ResponseBody: []byte(exactGoAuthorizationPolicyResponse), LogicalPageId: scope.LogicalPageID, RequestIntentDigest: scope.RequestIntentDigest, Receipt: receiptWire, Context: executionContextFor(scope, now),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	event, err := AuthorizationPolicyEvent(plan, scope, receipt, result, now)
+	event, err := AuthorizationPolicyEvent(plan, "tenant-1", record)
 	if err != nil {
 		t.Fatal(err)
 	}

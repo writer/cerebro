@@ -31,18 +31,12 @@ const exactGoAuthorizationPolicyResponse = `{
 }`
 
 func exactScope(plan *cerebrov1.SourceExecutionPlanV1, now time.Time) CredentialScope {
-	scope := CredentialScope{
+	return CredentialScope{
 		TenantID: "tenant-1", RuntimeID: "runtime-1", SourceID: "azure", FamilyID: "authorization_policy",
 		PlanDigestSHA256: plan.GetPlanDigestSha256(), LogicalPageID: "logical-page-1",
 		LeaseOwner: "owner-1", RuntimeGeneration: 7, LeaseGeneration: 11, LeaseExpiresAt: now.Add(time.Minute),
 		ObservedAtUnixMillis: now.UTC().UnixMilli(),
 	}
-	digest, err := CanonicalRequestIntentDigest(plan, scope, canonicalRequestForPlan(plan))
-	if err != nil {
-		return scope
-	}
-	scope.RequestIntentDigest = digest
-	return scope
 }
 
 func exactReceipt(plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, body []byte) SafeReceipt {
@@ -61,6 +55,18 @@ type fakeWorker struct {
 	tamperedDigest  bool
 	planSawSecret   bool
 	decodeSawSecret bool
+}
+
+func (w *fakeWorker) Compile(_ context.Context, _ SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error) {
+	return AzureAuthorizationPolicyPlan(), nil
+}
+
+func (w *fakeWorker) Context(_ context.Context, request ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error) {
+	return &cerebrov1.SourceWorkerExecutionContextV1{
+		TenantId: request.TenantID, RuntimeId: request.RuntimeID, LogicalPageId: "logical-page-1",
+		PriorCursor: request.PriorCursor, RuntimeGeneration: request.RuntimeGeneration,
+		LeaseGeneration: request.LeaseGeneration, ObservedAtUnixMillis: request.ObservedAtUnixMillis,
+	}, nil
 }
 
 func (w *fakeWorker) Plan(_ context.Context, request *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
@@ -104,6 +110,30 @@ func (w *fakeWorker) Decode(_ context.Context, request *cerebrov1.SourceWorkerDe
 		result.ResultDigestSha256 = strings.Repeat("a", 64)
 	}
 	return result, nil
+}
+
+func (w *fakeWorker) Transition(_ context.Context, request LifecycleRequest) (*LifecycleDecision, error) {
+	if w.tamperedDigest {
+		return nil, ErrWorkerContract
+	}
+	required := PhaseAppended
+	if request.CompletedPhase == PhaseAppended {
+		required = PhaseProjected
+	} else if request.CompletedPhase == PhaseProjected {
+		required = PhaseCheckpointed
+	} else if request.CompletedPhase == PhaseCheckpointed {
+		required = PhaseComplete
+	}
+	decision := &LifecycleDecision{RequiredPhase: required, TransitionDigest: strings.Repeat("d", 64)}
+	if required == PhaseAppended {
+		record := proto.Clone(request.Result.GetRecords()[0]).(*cerebrov1.SourceWorkerRecordV1)
+		record.Attributes["domain"] = request.Context.GetTenantId()
+		var raw map[string]any
+		_ = json.Unmarshal(record.GetPayloadJson(), &raw)
+		record.PayloadJson, _ = json.Marshal(map[string]any{"id": record.GetProviderId(), "tenant_id": request.Context.GetTenantId(), "raw": raw})
+		decision.AdmittedRecords = []*cerebrov1.SourceWorkerRecordV1{record}
+	}
+	return decision, nil
 }
 
 func goTypedAuthorizationPolicyPayload(body []byte) ([]byte, error) {

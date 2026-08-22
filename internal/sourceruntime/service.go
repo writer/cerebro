@@ -73,14 +73,14 @@ var (
 
 // Service persists and executes source runtimes against the append log.
 type Service struct {
-	registry          *sourcecdk.Registry
-	store             ports.SourceRuntimeStore
-	definitionStore   ports.ConnectorDefinitionStore
-	appendLog         ports.AppendLog
-	projector         ports.SourceProjector
-	resolver          sourceconfig.Resolver
-	eventAdmitter     eventadmission.Admitter
-	sourceHostFactory func(sourceworker.CredentialRedeemer) sourceExecutionHost
+	registry        *sourcecdk.Registry
+	store           ports.SourceRuntimeStore
+	definitionStore ports.ConnectorDefinitionStore
+	appendLog       ports.AppendLog
+	projector       ports.SourceProjector
+	resolver        sourceconfig.Resolver
+	eventAdmitter   eventadmission.Admitter
+	sourceWorker    sourceworker.Worker
 }
 
 // WithSourceExecutionWorker enables the closed credential-free worker path for
@@ -89,9 +89,7 @@ func (s *Service) WithSourceExecutionWorker(worker sourceworker.Worker) *Service
 	if s == nil {
 		return nil
 	}
-	s.sourceHostFactory = func(redeemer sourceworker.CredentialRedeemer) sourceExecutionHost {
-		return sourceworker.NewHost(worker, redeemer)
-	}
+	s.sourceWorker = worker
 	return s
 }
 
@@ -348,11 +346,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			status = "failed"
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
 			telemetry.IncrementMain(ctx, "source_runtime.sync.error.count", 1)
-			if runtimeLoadedForRun && !runtimeSyncCompleted {
+			if runtimeLoadedForRun && !runtimeSyncCompleted && !sourceExecutionFamily {
 				failureContext := context.WithoutCancel(ctx)
-				if !sourceExecutionFamily || validateSourceRuntimeLeaseFence(failureContext) == nil {
-					_ = s.recordRuntimeSyncFailure(failureContext, runtime, err, contractConfigured)
-				}
+				_ = s.recordRuntimeSyncFailure(failureContext, runtime, err, contractConfigured)
 			}
 		}
 		telemetry.IncrementMain(ctx, "source_runtime.sync.count", 1)
@@ -440,16 +436,17 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	contractConfigured = len(eventContracts) > 0
 	sourceConfig := sourcecdk.NewConfig(runtimeConfig)
-	sourceExecutionFamily = s.sourceHostFactory != nil && isSourceExecutionFamily(runtime, sourceConfig)
+	sourceExecutionFamily = false
 	originalCheckpoint := cloneCheckpoint(runtime.GetCheckpoint())
 	collectionID := sourceRuntimeCollectionID(runtime.GetId(), started)
 	for i := uint32(0); i < pageLimit; i++ {
 		pageStarted := time.Now()
 		phaseStarted := pageStarted
-		pull, err := s.readSourcePull(ctx, runtime, source, sourceConfig, cursor, originalCheckpoint, i+1)
+		pull, executionPage, err := s.readSourcePull(ctx, runtime, source, sourceConfig, cursor, originalCheckpoint, i+1)
 		if err != nil {
 			return nil, err
 		}
+		sourceExecutionFamily = executionPage != nil
 		pullDuration := time.Since(phaseStarted)
 		pageNumber := i + 1
 		pageShortCircuitReason := string(pullShortCircuitReason(pull))
@@ -481,11 +478,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		admissionDuration := time.Since(phaseStarted)
 		acceptedEvents := admission.Events
-		if sourceExecutionFamily {
-			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
-				return nil, err
-			}
-		}
 		eventLimit := req.GetEventLimit()
 		if eventLimit > 0 && uint64(eventsAppended)+uint64(len(acceptedEvents)) > uint64(eventLimit) {
 			eventLimitReached = true
@@ -569,10 +561,12 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		telemetry.Event(ctx, "source_runtime.event_admission", admissionAttrs)
 		telemetry.IncrementMain(ctx, "source_runtime.event_admission.count", 1)
 		telemetry.AnnotateMain(ctx, admissionAttrs)
-		if pull.Checkpoint != nil {
+		if pull.Checkpoint != nil && executionPage == nil {
 			advanceRuntimeCheckpoint(candidateRuntime, pull.Checkpoint)
 		}
-		candidateRuntime.NextCursor = cloneCursor(pull.NextCursor)
+		if executionPage == nil {
+			candidateRuntime.NextCursor = cloneCursor(pull.NextCursor)
+		}
 		pagesRead++
 		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
 		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
@@ -606,11 +600,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		ledgerDuration += time.Since(phaseStarted)
 		pageEntitiesProjected := uint32(0)
 		pageLinksProjected := uint32(0)
-		if sourceExecutionFamily {
-			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
-				return nil, err
-			}
-		}
 		phaseStarted = time.Now()
 		if batcher, ok := s.appendLog.(ports.AppendLogBatcher); ok {
 			if err := batcher.AppendBatch(ctx, acceptedEvents); err != nil {
@@ -626,11 +615,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		appendDuration := time.Since(phaseStarted)
-		if sourceExecutionFamily {
-			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
-				return nil, err
-			}
-		}
 		for _, syncedEvent := range acceptedEvents {
 			if familyID := sourceEventFamilyID(syncedEvent); familyID != "" {
 				observedFamilies[familyID] = struct{}{}
@@ -643,9 +627,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		ledgerDuration += time.Since(phaseStarted)
-		if sourceExecutionFamily {
-			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
+		var projectionDecision *sourceworker.LifecycleDecision
+		if executionPage != nil {
+			projectionDecision, err = executionPage.advance(ctx, sourceworker.PhaseAppended, executionPage.output.Decision.TransitionDigest)
+			if err != nil {
 				return nil, err
+			}
+			if projectionDecision.RequiredPhase != sourceworker.PhaseProjected {
+				return nil, fmt.Errorf("%w: Rust did not authorize projection", sourceworker.ErrWorkerContract)
 			}
 		}
 		phaseStarted = time.Now()
@@ -662,11 +651,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		projectionDuration := time.Since(phaseStarted)
-		if sourceExecutionFamily {
-			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
-				return nil, err
-			}
-		}
 		phaseStarted = time.Now()
 		if ledgerEnabled {
 			if err := ledger.MarkSourceRuntimePageProjected(ctx, attemptID, ports.SourceRuntimePageProjection{
@@ -677,6 +661,25 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		ledgerDuration += time.Since(phaseStarted)
+		var checkpointDecision *sourceworker.LifecycleDecision
+		if executionPage != nil {
+			checkpointDecision, err = executionPage.advance(ctx, sourceworker.PhaseProjected, projectionDecision.TransitionDigest)
+			if err != nil {
+				return nil, err
+			}
+			if checkpointDecision.RequiredPhase != sourceworker.PhaseCheckpointed {
+				return nil, fmt.Errorf("%w: Rust did not authorize checkpoint", sourceworker.ErrWorkerContract)
+			}
+			candidateRuntime.Checkpoint = &cerebrov1.SourceCheckpoint{
+				Watermark:    timestamppb.New(time.UnixMilli(checkpointDecision.CheckpointWatermarkUnixMillis).UTC()),
+				CursorOpaque: executionPage.output.Result.GetResultDigestSha256(),
+			}
+			if checkpointDecision.CheckpointCursor == "" {
+				candidateRuntime.NextCursor = nil
+			} else {
+				candidateRuntime.NextCursor = &cerebrov1.SourceCursor{Opaque: checkpointDecision.CheckpointCursor}
+			}
+		}
 		candidateRuntime.LastSyncedAt = timestamppb.Now()
 		updateRuntimeSyncStatus(candidateRuntime, runtimeSyncStatus{
 			Status:               "completed",
@@ -713,6 +716,15 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		commitDuration := time.Since(phaseStarted)
+		if executionPage != nil {
+			completeDecision, transitionErr := executionPage.advance(ctx, sourceworker.PhaseCheckpointed, checkpointDecision.TransitionDigest)
+			if transitionErr != nil {
+				return nil, transitionErr
+			}
+			if completeDecision.RequiredPhase != sourceworker.PhaseComplete {
+				return nil, fmt.Errorf("%w: Rust did not complete the durable page", sourceworker.ErrWorkerContract)
+			}
+		}
 		runtime = candidateRuntime
 		checkpointAdvanced = runtimeCheckpointAdvanced(originalCheckpoint, runtime.GetCheckpoint())
 		pageCommittedAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(

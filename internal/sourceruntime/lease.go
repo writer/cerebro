@@ -65,19 +65,19 @@ func sourceRuntimeLeaseFenceFromContext(ctx context.Context) (ports.SourceRuntim
 	return fence, ok && strings.TrimSpace(fence.Owner) != "" && fence.Generation > 0 && !fence.ExpiresAt.IsZero()
 }
 
-func validateSourceRuntimeLeaseFence(ctx context.Context) error {
+func currentSourceRuntimeLeaseGeneration(ctx context.Context) (uint64, error) {
 	authority, ok := ctx.Value(sourceRuntimeLeaseFenceContextKey{}).(sourceRuntimeLeaseAuthority)
 	if !ok || authority.reader == nil {
-		return nil
+		return 0, fmt.Errorf("%w: durable lease reader is unavailable", ports.ErrSourceRuntimeLeaseLost)
 	}
 	current, err := authority.reader.ReadSourceRuntimeLeaseFence(ctx, authority.runtimeID, authority.fence.Owner)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ports.ErrSourceRuntimeLeaseLost, err)
+		return 0, fmt.Errorf("%w: %w", ports.ErrSourceRuntimeLeaseLost, err)
 	}
-	if current.Generation != authority.fence.Generation || current.Owner != authority.fence.Owner || !current.ExpiresAt.After(time.Now().UTC()) {
-		return fmt.Errorf("%w: expected owner %q generation %d", ports.ErrSourceRuntimeLeaseLost, authority.fence.Owner, authority.fence.Generation)
+	if current.Owner != authority.fence.Owner || !current.ExpiresAt.After(time.Now().UTC()) {
+		return 0, fmt.Errorf("%w: expected owner %q", ports.ErrSourceRuntimeLeaseLost, authority.fence.Owner)
 	}
-	return nil
+	return current.Generation, nil
 }
 
 // SyncWithLease wraps Sync with a durable, renewable runtime lease so the
