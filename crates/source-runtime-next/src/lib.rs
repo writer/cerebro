@@ -5,6 +5,7 @@
 
 mod abuseipdb;
 mod activecampaign;
+mod addigy;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -65,6 +66,11 @@ pub use activecampaign::{
     ActiveCampaignEventContract, ActiveCampaignFamily, ActiveCampaignKernel, ActiveCampaignPage,
     ActiveCampaignProjectionFacts, ActiveCampaignRecord, ActiveCampaignRequest,
     ActiveCampaignRuntimeDefinition, project_activecampaign_records,
+};
+pub use addigy::{
+    AddigyCheckpointCandidate, AddigyEntityFact, AddigyError, AddigyEventContract, AddigyFamily,
+    AddigyKernel, AddigyPage, AddigyProjectionFacts, AddigyRecord, AddigyRequest,
+    AddigyRuntimeDefinition, project_addigy_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
