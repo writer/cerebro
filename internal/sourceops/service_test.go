@@ -20,7 +20,6 @@ import (
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
-	slacksource "github.com/writer/cerebro/sources/slack"
 )
 
 func TestList(t *testing.T) {
@@ -556,7 +555,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	slack, err := slacksource.NewFixture()
+	slack, err := newCatalogFixtureSource("slack")
 	if err != nil {
 		return nil, err
 	}
