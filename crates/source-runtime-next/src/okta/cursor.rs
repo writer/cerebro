@@ -19,15 +19,22 @@ pub(super) fn bounded_cursor(cursor: Option<&str>) -> Result<Option<String>, Okt
     Ok(cursor.map(str::to_owned))
 }
 
-pub(super) fn assignment_cursor(cursor: Option<&str>) -> Result<(&str, Option<String>), OktaError> {
+pub(super) fn assignment_cursor(
+    cursor: Option<&str>,
+) -> Result<(&'static str, Option<String>), OktaError> {
     let cursor = bounded_cursor(cursor)?;
     let Some(cursor) = cursor.as_deref() else {
         return Ok(("users", None));
     };
-    if let Some((phase, value)) = cursor.split_once(':')
-        && matches!(phase.trim(), "users" | "groups")
-    {
-        return Ok((phase.trim(), bounded_cursor(Some(value))?));
+    if let Some((phase, value)) = cursor.split_once(':') {
+        let phase = match phase.trim() {
+            "users" => Some("users"),
+            "groups" => Some("groups"),
+            _ => None,
+        };
+        if let Some(phase) = phase {
+            return Ok((phase, bounded_cursor(Some(value))?));
+        }
     }
     Ok(("users", Some(cursor.to_owned())))
 }

@@ -1,7 +1,5 @@
 //! Credential-free Okta request planning and scope validation.
 
-use reqwest::Url;
-
 use super::{
     OktaError, OktaFamily, OktaFilters, OktaKernel, OktaRequest,
     cursor::{assignment_cursor, bounded_cursor},
