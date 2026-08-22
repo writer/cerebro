@@ -10,6 +10,8 @@ entries:
         secret: true
       model: api_key
       requires_references: true
+      token_header: Authorization
+      token_scheme: Token
     categories:
     - saas
     config_fields:
