@@ -47,6 +47,25 @@ message SourceExecutionPlanV1 {
   string plan_digest_sha256 = 16;
 }
 
+// SourceWorkerExecutionContextV1 is trusted host state for one bounded page.
+// Provider response fields cannot supply or override any value in this message.
+message SourceWorkerExecutionContextV1 {
+  string tenant_id = 1;
+  string runtime_id = 2;
+  string logical_page_id = 3;
+  string prior_cursor = 4;
+  uint64 runtime_generation = 5;
+  uint64 lease_generation = 6;
+  int64 observed_at_unix_millis = 7;
+}
+
+// SourceWorkerPlanRequestV1 closes request planning over a compiled plan and
+// trusted execution context. It contains no credential material.
+message SourceWorkerPlanRequestV1 {
+  SourceExecutionPlanV1 plan = 1;
+  SourceWorkerExecutionContextV1 context = 2;
+}
+
 // SourceWorkerHTTPRequestV1 is a safe request plan returned by the
 // capability-free Rust worker. The Go host owns credential redemption,
 // authorization headers, DNS, egress, redirects, deadlines, and network I/O.
@@ -57,6 +76,7 @@ message SourceWorkerHTTPRequestV1 {
   string accept = 4;
   uint64 max_response_bytes = 5;
   string plan_digest_sha256 = 6;
+  string request_intent_digest = 7;
 }
 
 // SourceWorkerDecodeRequestV1 carries only bounded provider output and safe
@@ -68,6 +88,7 @@ message SourceWorkerDecodeRequestV1 {
   string logical_page_id = 4;
   string request_intent_digest = 5;
   SourceWorkerSafeReceiptV1 receipt = 6;
+  SourceWorkerExecutionContextV1 context = 7;
 }
 
 // SourceWorkerSafeReceiptV1 binds normalized output to bounded provider-safe
@@ -82,6 +103,9 @@ message SourceWorkerSafeReceiptV1 {
   uint32 status_code = 7;
   uint64 response_bytes = 8;
   string response_sha256 = 9;
+  string tenant_id = 10;
+  string runtime_id = 11;
+  int64 observed_at_unix_millis = 12;
 }
 
 // SourceWorkerRecordV1 is one normalized, credential-free provider record.
@@ -89,6 +113,8 @@ message SourceWorkerRecordV1 {
   string provider_id = 1;
   map<string, string> attributes = 2;
   bytes payload_json = 3;
+  string event_id = 4;
+  int64 occurred_at_unix_millis = 5;
 }
 
 // SourceWorkerDecodeResultV1 binds normalized records to the exact plan and
@@ -101,4 +127,9 @@ message SourceWorkerDecodeResultV1 {
   repeated SourceWorkerRecordV1 records = 5;
   string next_cursor = 6;
   string result_digest_sha256 = 7;
+  string tenant_id = 8;
+  string runtime_id = 9;
+  uint64 runtime_generation = 10;
+  uint64 lease_generation = 11;
+  int64 observed_at_unix_millis = 12;
 }
