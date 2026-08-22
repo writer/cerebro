@@ -8,16 +8,22 @@
 //! This fails closed for fallback-only records that Go Read can emit but Go
 //! Discover cannot turn into a canonical source URN.
 
-use std::{collections::BTreeMap, error::Error, fmt, str::FromStr};
+use std::{collections::BTreeMap, str::FromStr};
 
 use reqwest::Url;
 use serde_json::Value;
 
+mod error;
 mod materialization;
 mod normalization;
+mod user_adapter;
+
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod user_adapter_tests;
 
+pub use error::GoogleWorkspaceError;
 use normalization::*;
 
 const SOURCE_ID: &str = "google_workspace";
@@ -427,55 +433,3 @@ impl GoogleWorkspaceKernel {
         Ok(url)
     }
 }
-
-/// Safe Google Workspace kernel failures. Messages never include credentials.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum GoogleWorkspaceError {
-    /// Family identifier is not one of the five supported contracts.
-    InvalidFamily,
-    /// Base URL is not a secure provider origin.
-    InvalidBaseUrl,
-    /// Tenant domain is blank.
-    MissingDomain,
-    /// Group-member collection omitted its group key.
-    MissingGroupKey,
-    /// Page size is outside the provider's 1 through 200 bound.
-    InvalidPageSize,
-    /// Response JSON does not match the family page contract.
-    InvalidResponse,
-    /// A provider record is not an object.
-    InvalidRecord,
-    /// A provider record omitted its stable identity.
-    MissingRecordIdentity,
-    /// Role-assignee response decoding lost its request-bound state.
-    MissingRoleState,
-    /// A request was decoded by a kernel configured for another family or origin.
-    RequestScopeMismatch,
-    /// Caller-supplied page observation time is not RFC 3339.
-    InvalidObservedAt,
-    /// A normalized record cannot produce the Go discovery identity.
-    MissingDiscoveryIdentity,
-}
-
-impl fmt::Display for GoogleWorkspaceError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::InvalidFamily => "google_workspace family is invalid",
-            Self::InvalidBaseUrl => "google_workspace base URL must be a secure origin",
-            Self::MissingDomain => "google_workspace domain is required",
-            Self::MissingGroupKey => "google_workspace group key is required for group members",
-            Self::InvalidPageSize => "google_workspace page size must be between 1 and 200",
-            Self::InvalidResponse => "google_workspace response does not match the page contract",
-            Self::InvalidRecord => "google_workspace record must be an object",
-            Self::MissingRecordIdentity => "google_workspace record identity is missing",
-            Self::MissingRoleState => "google_workspace role lookup state is missing",
-            Self::RequestScopeMismatch => {
-                "google_workspace request family or origin does not match the kernel"
-            }
-            Self::InvalidObservedAt => "google_workspace observed_at must be RFC 3339",
-            Self::MissingDiscoveryIdentity => "google_workspace discovery identity is missing",
-        })
-    }
-}
-
-impl Error for GoogleWorkspaceError {}

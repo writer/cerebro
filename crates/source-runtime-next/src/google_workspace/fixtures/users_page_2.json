@@ -1,0 +1,18 @@
+{
+  "users": [
+    {
+      "id": "1002",
+      "primaryEmail": "alice@writer.com",
+      "name": { "fullName": "Alice Writer" },
+      "isAdmin": false,
+      "isDelegatedAdmin": false,
+      "isEnrolledIn2Sv": true,
+      "isEnforcedIn2Sv": true,
+      "suspended": false,
+      "archived": false,
+      "creationTime": "2026-04-20T00:00:00.000Z",
+      "lastLoginTime": "2026-04-23T00:00:00.000Z",
+      "orgUnitPath": "/Engineering"
+    }
+  ]
+}
