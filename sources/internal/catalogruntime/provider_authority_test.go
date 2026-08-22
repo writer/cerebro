@@ -249,7 +249,15 @@ func TestLangSmithCatalogRuntimeAuthHeadersBodyAndCursor(t *testing.T) {
 
 func TestLangSmithCatalogRuntimeThirteenFamilyFixtureCorpus(t *testing.T) {
 	definition := supportedCatalogEntry(t, "langchain").Definition
-	paths, err := filepath.Glob(filepath.Join("..", "..", "langchain", "testdata", "read_*.json"))
+	fixtureDirectory := filepath.Join("..", "..", "langchain", "testdata")
+	fixtureRoot, err := os.OpenRoot(fixtureDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = fixtureRoot.Close()
+	})
+	paths, err := filepath.Glob(filepath.Join(fixtureDirectory, "read_*.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +272,7 @@ func TestLangSmithCatalogRuntimeThirteenFamilyFixtureCorpus(t *testing.T) {
 	gotFamilies := make([]string, 0, len(paths))
 	for _, path := range paths {
 		familyID := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "read_"), ".json")
-		body, err := os.ReadFile(path)
+		body, err := fixtureRoot.ReadFile(filepath.Base(path))
 		if err != nil {
 			t.Fatal(err)
 		}

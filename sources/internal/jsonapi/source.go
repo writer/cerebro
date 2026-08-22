@@ -52,11 +52,10 @@ type FamilyConfig struct {
 	BaseURL               string
 	StaticQuery           map[string]string
 	ConfigQuery           map[string]string
-	JSONBody              JSONBodyConfig
+	Request               FamilyRequestConfig
 	ConfigAttributes      map[string]string
 	FinalStaticAttributes map[string]string
 	StaticHeaders         map[string]string
-	ConfigHeaders         map[string]string
 	RedactPayloadKeys     []string
 	IDTemplate            string
 	EncodeURNID           bool
@@ -74,6 +73,12 @@ type FamilyConfig struct {
 	Method                string
 	AuthModel             string
 	DefaultPageSize       int
+}
+
+// FamilyRequestConfig groups request values that are bound per family.
+type FamilyRequestConfig struct {
+	JSONBody      JSONBodyConfig
+	ConfigHeaders map[string]string
 }
 
 type JSONBodyConfig struct {

@@ -145,7 +145,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return resolved, err
 		}
 	}
-	configHeaders := mergeConfigBindings(s.options.ConfigHeaders, family.Config.ConfigHeaders)
+	configHeaders := mergeConfigBindings(s.options.ConfigHeaders, family.Config.Request.ConfigHeaders)
 	resolved.request.headers = mergeStaticHeaders(family.Config.StaticHeaders, headersFromConfig(cfg, configHeaders))
 	if key := strings.TrimSpace(s.options.PrivateEndpointAllowlistConfigKey); key != "" {
 		allowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(s.options.SourceID, sourcecdk.ConfigValue(cfg, key))
@@ -193,7 +193,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	resolved.request.configAttributes = attributesFromConfig(cfg, family.Config.ConfigAttributes)
 	resolved.request.query = queryFromConfig(cfg, family.Config.ConfigQuery)
-	resolved.request.jsonBody = jsonBodyFromConfig(cfg, family.Config.JSONBody.Config)
+	resolved.request.jsonBody = jsonBodyFromConfig(cfg, family.Config.Request.JSONBody.Config)
 	return resolved, nil
 }
 

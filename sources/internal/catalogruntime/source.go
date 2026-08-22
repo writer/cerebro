@@ -300,7 +300,7 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		out.AuthModel = strings.TrimSpace(resource.Config.AuthModel)
 		out.StaticQuery = mergeStringMaps(out.StaticQuery, resource.Config.StaticQuery)
 		out.ConfigQuery = mergeStringMaps(out.ConfigQuery, resource.Config.ConfigQuery)
-		out.ConfigHeaders = cloneStringMap(resource.Config.ConfigHeaders)
+		out.Request.ConfigHeaders = cloneStringMap(resource.Config.ConfigHeaders)
 		out.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
 		out.IDTemplate = strings.TrimSpace(resource.Config.IDTemplate)
 		out.EncodeURNID = resource.Config.EncodeURNID
@@ -308,12 +308,12 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		out.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
 	}
 	if resource.Read != nil {
-		out.JSONBody.Static = cloneJSONMap(resource.Read.StaticJSONBody)
-		out.JSONBody.Config = cloneStringMap(resource.Read.ConfigJSONBody)
+		out.Request.JSONBody.Static = cloneJSONMap(resource.Read.StaticJSONBody)
+		out.Request.JSONBody.Config = cloneStringMap(resource.Read.ConfigJSONBody)
 	}
 	if resource.Pagination != nil && resource.Pagination.CursorInJSONBody {
-		out.JSONBody.CursorParam = strings.TrimSpace(resource.Pagination.CursorParam)
-		out.JSONBody.SizeParam = strings.TrimSpace(resource.Pagination.PageSizeParam)
+		out.Request.JSONBody.CursorParam = strings.TrimSpace(resource.Pagination.CursorParam)
+		out.Request.JSONBody.SizeParam = strings.TrimSpace(resource.Pagination.PageSizeParam)
 	}
 	return out
 }

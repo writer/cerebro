@@ -46,14 +46,14 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			query.Set(strings.TrimSpace(key), strings.TrimSpace(value))
 		}
 	}
-	requestBody := jsonBody(family.Config.JSONBody.Static, settings.request.jsonBody)
+	requestBody := jsonBody(family.Config.Request.JSONBody.Static, settings.request.jsonBody)
 	for key, values := range settings.request.query {
 		for _, value := range values {
 			query.Add(key, value)
 		}
 	}
 	if !family.DisablePageSize {
-		if param := strings.TrimSpace(family.Config.JSONBody.SizeParam); param != "" {
+		if param := strings.TrimSpace(family.Config.Request.JSONBody.SizeParam); param != "" {
 			requestBody[param] = pageSize
 		} else {
 			for _, param := range pageSizeParams(family) {
@@ -67,7 +67,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	}
 	useNextURL := isAbsoluteHTTPURL(pageCursor)
 	if pageCursor != "" && !useNextURL {
-		if param := strings.TrimSpace(family.Config.JSONBody.CursorParam); param != "" {
+		if param := strings.TrimSpace(family.Config.Request.JSONBody.CursorParam); param != "" {
 			requestBody[param] = jsonScalar(pageCursor)
 		} else {
 			addCursorQuery(query, family, pageCursor)
@@ -79,7 +79,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 	if useNextURL {
 		headers, err = s.doRequest(ctx, settings, pageCursor, nil, nil, &body, nil)
 	} else {
-		headers, err = s.doRequest(ctx, settings, settings.path, query, emptyBodyNil(requestBody, family.Config.JSONBody.SendEmpty), &body, nil)
+		headers, err = s.doRequest(ctx, settings, settings.path, query, emptyBodyNil(requestBody, family.Config.Request.JSONBody.SendEmpty), &body, nil)
 	}
 	if err != nil {
 		return nil, "", err
