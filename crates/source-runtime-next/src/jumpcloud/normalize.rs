@@ -1,49 +1,30 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::{
     JumpCloudError, JumpCloudFamily, JumpCloudKernel, JumpCloudRecord, JumpCloudRuntimeDefinition,
+    identity,
 };
 
 pub(super) fn normalize(
     kernel: &JumpCloudKernel,
     raw: Value,
+    raw_bytes: Option<&[u8]>,
 ) -> Result<JumpCloudRecord, JumpCloudError> {
     reject_untrusted(&raw, 0)?;
     let values = raw
         .as_object()
         .ok_or(JumpCloudError::InvalidProviderRecord)?;
-    let external_id = external_id(kernel.family, values)?;
-    let provider_id = if kernel.family == JumpCloudFamily::GroupMembers {
-        let group_id = kernel
-            .filters
-            .group_id
-            .as_deref()
-            .ok_or(JumpCloudError::MissingConfiguration("group_id"))?;
-        format!("{group_id}\0{external_id}")
-    } else {
-        external_id.clone()
-    };
+    let identity = identity::material(kernel, values, raw_bytes)?;
     let occurred_at = occurred_at(kernel.family, values, &kernel.observed_at)?;
-    let (attributes, payload) = family_values(kernel, values, &external_id)?;
+    let (attributes, payload) = family_values(kernel, values, &identity.external_id)?;
     validate_contract(kernel.family, &attributes, &payload)?;
-    let digest = Sha256::digest(format!(
-        "{}\0{}\0{}",
-        kernel.tenant_id,
-        kernel.family.as_str(),
-        provider_id
-    ));
-    let suffix = digest[..12]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
     Ok(JumpCloudRecord {
         tenant_id: kernel.tenant_id.clone(),
-        event_id: format!("jumpcloud-{}-{suffix}", kernel.family.as_str()),
-        provider_id,
+        event_id: identity.event_id,
+        provider_id: identity.provider_id,
         family: kernel.family,
         kind: kernel.family.event_kind().to_owned(),
         schema_ref: kernel.family.schema_ref().to_owned(),
@@ -330,21 +311,6 @@ fn family_values(
     Ok((attributes, Value::Object(payload)))
 }
 
-fn external_id(
-    family: JumpCloudFamily,
-    values: &Map<String, Value>,
-) -> Result<String, JumpCloudError> {
-    let paths: &[&str] = match family {
-        JumpCloudFamily::Users => &["_id", "id", "email", "username"],
-        JumpCloudFamily::Groups | JumpCloudFamily::SystemGroups => &["id", "name"],
-        JumpCloudFamily::Systems => &["_id", "id", "displayName", "hostname"],
-        JumpCloudFamily::Applications => &["_id", "id", "displayName", "name"],
-        JumpCloudFamily::GroupMembers => &["to.id", "id"],
-        JumpCloudFamily::AuditEvents => &["id", "event_id", "uuid", "request_id"],
-    };
-    provider_component(&string_first(values, paths).ok_or(JumpCloudError::MissingStableIdentity)?)
-}
-
 fn validate_contract(
     family: JumpCloudFamily,
     attributes: &BTreeMap<String, String>,
@@ -425,18 +391,6 @@ fn string_first(values: &Map<String, Value>, paths: &[&str]) -> Option<String> {
 fn value_at<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     path.split('.')
         .try_fold(value, |value, segment| value.get(segment))
-}
-
-fn provider_component(value: &str) -> Result<String, JumpCloudError> {
-    let value = value.trim();
-    if value.is_empty()
-        || value.len() > 512
-        || value.chars().any(char::is_control)
-        || value.contains([':', '/', '\\'])
-    {
-        return Err(JumpCloudError::MissingStableIdentity);
-    }
-    Ok(value.to_owned())
 }
 
 fn reject_untrusted(value: &Value, depth: usize) -> Result<(), JumpCloudError> {

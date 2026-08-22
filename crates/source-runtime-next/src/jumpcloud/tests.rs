@@ -19,6 +19,8 @@ const GROUP_MEMBERS_ORACLE: &[u8] =
     include_bytes!("../../../../sources/jumpcloud/testdata/read_group_members.json");
 const AUDIT_ORACLE: &[u8] =
     include_bytes!("../../../../sources/jumpcloud/testdata/read_audit_events.json");
+const IDLESS_AUDIT_ORACLE: &[u8] =
+    include_bytes!("../../../../sources/jumpcloud/testdata/idless_audit_events.json");
 
 #[derive(serde::Deserialize)]
 struct CatalogWire {
@@ -165,14 +167,42 @@ fn plans_all_families_without_credentials_or_redirects() {
 
 #[test]
 fn checked_in_go_oracles_match_all_rust_families() {
-    for (family, oracle) in [
-        (JumpCloudFamily::Users, USERS_ORACLE),
-        (JumpCloudFamily::Groups, GROUPS_ORACLE),
-        (JumpCloudFamily::Systems, SYSTEMS_ORACLE),
-        (JumpCloudFamily::Applications, APPLICATIONS_ORACLE),
-        (JumpCloudFamily::SystemGroups, SYSTEM_GROUPS_ORACLE),
-        (JumpCloudFamily::GroupMembers, GROUP_MEMBERS_ORACLE),
-        (JumpCloudFamily::AuditEvents, AUDIT_ORACLE),
+    for (family, oracle, event_id) in [
+        (
+            JumpCloudFamily::Users,
+            USERS_ORACLE,
+            "jumpcloud-tenant-7b2f83dc868b-users-user-1",
+        ),
+        (
+            JumpCloudFamily::Groups,
+            GROUPS_ORACLE,
+            "jumpcloud-tenant-101a38d129e6-groups-group-1",
+        ),
+        (
+            JumpCloudFamily::Systems,
+            SYSTEMS_ORACLE,
+            "jumpcloud-tenant-2922a216fe1a-systems-system-1",
+        ),
+        (
+            JumpCloudFamily::Applications,
+            APPLICATIONS_ORACLE,
+            "jumpcloud-tenant-52cd854825d7-applications-app-1",
+        ),
+        (
+            JumpCloudFamily::SystemGroups,
+            SYSTEM_GROUPS_ORACLE,
+            "jumpcloud-tenant-93d3aa9d2bf0-system_groups-system-group-1",
+        ),
+        (
+            JumpCloudFamily::GroupMembers,
+            GROUP_MEMBERS_ORACLE,
+            "jumpcloud-tenant-3436a8f4ca37-group_members-user-1-0e0c6c2b62ad1daf6ed6f4b9",
+        ),
+        (
+            JumpCloudFamily::AuditEvents,
+            AUDIT_ORACLE,
+            "id-110a0d85f5ff3756b59221395dcc5752",
+        ),
     ] {
         let expected = oracle_event(oracle);
         let raw = expected["payload"].clone();
@@ -194,8 +224,45 @@ fn checked_in_go_oracles_match_all_rust_families() {
             )
             .expect("fixture page");
         assert_eq!(page.records.len(), 1, "family {family:?}");
-        assert_oracle(&page.records[0], &expected);
+        assert_oracle(&page.records[0], &expected, event_id);
     }
+}
+
+#[test]
+fn idless_audit_identity_hashes_exact_provider_row_bytes_like_go() {
+    let audit = kernel("tenant", JumpCloudFamily::AuditEvents);
+    let page = audit
+        .decode(
+            &audit.plan(None).unwrap(),
+            200,
+            &JumpCloudResponseMetadata::default(),
+            IDLESS_AUDIT_ORACLE,
+        )
+        .expect("idless audit row");
+    assert_eq!(page.records.len(), 1);
+    assert_eq!(
+        page.records[0].provider_id,
+        "id-5bded99005439a1abf0d1e0fbee3f84b"
+    );
+    assert_eq!(
+        page.records[0].event_id,
+        "id-e7af2eebff7e584819c58bd1b5c3970c"
+    );
+    assert_eq!(
+        page.records[0].attributes["source_event_id"],
+        "id-5bded99005439a1abf0d1e0fbee3f84b"
+    );
+
+    let reordered = br#"[{"timestamp":"2026-06-02T03:04:05Z","initiated_by":{"id":"actor-1"},"event_type":"login"}]"#;
+    let other = audit
+        .decode(
+            &audit.plan(None).unwrap(),
+            200,
+            &JumpCloudResponseMetadata::default(),
+            reordered,
+        )
+        .unwrap();
+    assert_ne!(page.records[0].provider_id, other.records[0].provider_id);
 }
 
 #[test]
@@ -251,6 +318,189 @@ fn offset_and_search_after_checkpoints_round_trip_after_restart() {
         audit.plan(Some("not-json")),
         Err(JumpCloudError::InvalidCursor)
     );
+}
+
+#[test]
+fn terminal_audit_watermark_drives_the_next_request_after_restart() {
+    let filters = JumpCloudFilters {
+        org_id: Some("org-1".to_owned()),
+        ..JumpCloudFilters::default()
+    };
+    let audit = JumpCloudKernel::new(
+        "https://console.jumpcloud.com/api",
+        "https://api.jumpcloud.com/insights/directory/v1",
+        "tenant",
+        JumpCloudFamily::AuditEvents,
+        filters.clone(),
+        Some(100),
+        "2026-06-03T00:00:00Z",
+    )
+    .unwrap();
+    let request = audit.plan(None).unwrap();
+    let body: Value = serde_json::from_slice(request.body().unwrap()).unwrap();
+    assert_eq!(body["start_time"], "2026-06-02T00:00:00Z");
+    let page = audit
+        .decode(
+            &request,
+            200,
+            &JumpCloudResponseMetadata {
+                result_count: Some(1),
+                limit: Some(100),
+                ..JumpCloudResponseMetadata::default()
+            },
+            br#"[{"id":"event-1","event_type":"login","initiated_by":{"id":"actor-1"},"timestamp":"2026-06-02T03:04:05Z"}]"#,
+        )
+        .unwrap();
+    assert_eq!(page.next_cursor, None);
+    let checkpoint = audit
+        .checkpoint_candidate(&request, &page, None)
+        .expect("terminal checkpoint");
+    assert_eq!(
+        checkpoint.watermark.as_deref(),
+        Some("2026-06-02T03:04:05Z")
+    );
+
+    let restarted = JumpCloudKernel::new(
+        "https://console.jumpcloud.com/api",
+        "https://api.jumpcloud.com/insights/directory/v1",
+        "tenant",
+        JumpCloudFamily::AuditEvents,
+        filters,
+        Some(100),
+        "2026-06-04T00:00:00Z",
+    )
+    .unwrap();
+    let resumed = restarted
+        .plan_with_checkpoint(None, checkpoint.watermark.as_deref())
+        .unwrap();
+    assert_eq!(resumed.checkpoint_watermark(), Some("2026-06-02T03:04:05Z"));
+    let body: Value = serde_json::from_slice(resumed.body().unwrap()).unwrap();
+    assert_eq!(body["start_time"], "2026-06-02T03:04:05Z");
+
+    let configured = kernel("tenant", JumpCloudFamily::AuditEvents)
+        .plan_with_checkpoint(None, Some("2026-05-01T00:00:00Z"))
+        .unwrap();
+    let body: Value = serde_json::from_slice(configured.body().unwrap()).unwrap();
+    assert_eq!(body["start_time"], "2026-06-01T00:00:00Z");
+}
+
+#[test]
+fn audit_dynamic_body_safe_headers_and_alternate_origins_are_exact() {
+    let filters = JumpCloudFilters {
+        org_id: Some("org-1".to_owned()),
+        audit_start_time: Some("2026-06-01T00:00:00Z".to_owned()),
+        audit_end_time: Some("2026-06-02T00:00:00Z".to_owned()),
+        audit_services: vec!["sso".to_owned(), "directory".to_owned()],
+        audit_sort: Some("desc".to_owned()),
+        ..JumpCloudFilters::default()
+    };
+    for origin in [
+        "https://api.eu.jumpcloud.com/insights/directory/v1",
+        "https://api.in.jumpcloud.com/insights/directory/v1",
+    ] {
+        let audit = JumpCloudKernel::new(
+            "https://console.jumpcloud.com/api",
+            origin,
+            "tenant",
+            JumpCloudFamily::AuditEvents,
+            filters.clone(),
+            Some(250),
+            "2026-06-03T00:00:00Z",
+        )
+        .unwrap();
+        let request = audit.plan(Some(r#"[1719849600000,"event-2"]"#)).unwrap();
+        assert_eq!(request.url().as_str(), format!("{origin}/events"));
+        assert_eq!(request.content_type(), Some("application/json"));
+        let body: Value = serde_json::from_slice(request.body().unwrap()).unwrap();
+        assert_eq!(body["service"], json!(["sso", "directory"]));
+        assert_eq!(body["start_time"], "2026-06-01T00:00:00Z");
+        assert_eq!(body["end_time"], "2026-06-02T00:00:00Z");
+        assert_eq!(body["limit"], 250);
+        assert_eq!(body["sort"], "DESC");
+        assert_eq!(body["search_after"], json!([1719849600000_u64, "event-2"]));
+    }
+
+    let headers = BTreeMap::from([
+        ("X-Result-Count".to_owned(), "250".to_owned()),
+        ("X-Limit".to_owned(), "250".to_owned()),
+        (
+            "X-Search_after".to_owned(),
+            r#"[1719849600000,"event-2"]"#.to_owned(),
+        ),
+        ("Retry-After".to_owned(), "30".to_owned()),
+    ]);
+    assert_eq!(
+        JumpCloudResponseMetadata::from_headers(&headers).unwrap(),
+        JumpCloudResponseMetadata {
+            result_count: Some(250),
+            limit: Some(250),
+            search_after: Some(r#"[1719849600000,"event-2"]"#.to_owned()),
+            retry_after_seconds: Some(30),
+        }
+    );
+    assert_eq!(
+        JumpCloudResponseMetadata::from_headers(&BTreeMap::from([(
+            "X-Result-Count".to_owned(),
+            "not-an-integer".to_owned(),
+        )])),
+        Err(JumpCloudError::MalformedResponse)
+    );
+}
+
+#[test]
+fn provider_local_source_execution_contract_covers_all_seven_families() {
+    assert_eq!(adapter::JUMPCLOUD_SOURCE_EXECUTION_ADAPTERS.len(), 7);
+    for adapter in adapter::JUMPCLOUD_SOURCE_EXECUTION_ADAPTERS {
+        let contract = adapter.contract().unwrap();
+        assert_eq!(contract.source_id, "jumpcloud");
+        assert_eq!(contract.family_id, adapter.family().as_str());
+        assert_eq!(contract.method, adapter.family().method());
+        assert_eq!(contract.path, adapter.family().path());
+        assert_eq!(contract.credential_operation, "jumpcloud.x_api_key");
+        assert_eq!(
+            contract.provider_kernel,
+            format!("jumpcloud.{}", adapter.family().as_str())
+        );
+        let audit = adapter.family() == JumpCloudFamily::AuditEvents;
+        assert_eq!(contract.request_body, audit);
+        assert_eq!(
+            contract.response_cursor_header,
+            audit.then_some("X-Search_after")
+        );
+        assert_eq!(
+            contract.origin,
+            if audit {
+                "https://api.jumpcloud.com/insights/directory/v1"
+            } else {
+                "https://console.jumpcloud.com/api"
+            }
+        );
+        let planned = adapter
+            .plan(&kernel("tenant", adapter.family()), None, None)
+            .unwrap();
+        assert_eq!(planned.family(), adapter.family());
+        let response = if adapter.family() == JumpCloudFamily::AuditEvents {
+            br#"[{"id":"event-1","event_type":"login","initiated_by":{"id":"actor-1"},"timestamp":"2026-06-02T03:04:05Z"}]"#.as_slice()
+        } else if matches!(
+            adapter.family(),
+            JumpCloudFamily::Users | JumpCloudFamily::Systems | JumpCloudFamily::Applications
+        ) {
+            br#"{"results":[]}"#.as_slice()
+        } else {
+            br#"[]"#.as_slice()
+        };
+        assert!(
+            adapter
+                .decode(
+                    &kernel("tenant", adapter.family()),
+                    &planned,
+                    200,
+                    &JumpCloudResponseMetadata::default(),
+                    response,
+                )
+                .is_ok()
+        );
+    }
 }
 
 #[test]
@@ -395,14 +645,14 @@ fn oracle_event(bytes: &[u8]) -> Value {
         .remove(0)
 }
 
-fn assert_oracle(record: &JumpCloudRecord, expected: &Value) {
+fn assert_oracle(record: &JumpCloudRecord, expected: &Value, event_id: &str) {
     assert_eq!(record.tenant_id, expected["tenant_id"]);
     assert_eq!(record.kind, expected["kind"]);
     assert_eq!(record.schema_ref, expected["schema_ref"]);
     assert_eq!(record.occurred_at, expected["occurred_at"]);
     assert_eq!(record.attributes, attributes(&expected["attributes"]));
     assert_eq!(record.payload, expected["payload"]);
-    assert!(!record.event_id.is_empty());
+    assert_eq!(record.event_id, event_id);
 }
 
 fn attributes(value: &Value) -> BTreeMap<String, String> {

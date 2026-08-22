@@ -20,6 +20,12 @@ pub struct JumpCloudRuntimeDefinition {
     pub source_id: &'static str,
     /// Selected family.
     pub family: JumpCloudFamily,
+    /// Exact provider HTTP method.
+    pub method: &'static str,
+    /// Default credential-free provider origin.
+    pub origin: &'static str,
+    /// Provider operation path, relative to the selected origin.
+    pub path: &'static str,
     /// Exact event contract.
     pub event_contract: JumpCloudEventContract,
     /// JumpCloud families are bounded pull operations.
@@ -63,12 +69,19 @@ impl JumpCloudRuntimeDefinition {
             JumpCloudFamily::AuditEvents => contract(
                 family,
                 &["tenant_id", "source_event_id", "event_type", "actor_id"],
-                &["id"],
+                &[],
             ),
         };
         Ok(Self {
             source_id: "jumpcloud",
             family,
+            method: family.method(),
+            origin: if family.uses_insights_origin() {
+                "https://api.jumpcloud.com/insights/directory/v1"
+            } else {
+                "https://console.jumpcloud.com/api"
+            },
+            path: family.path(),
             event_contract,
             pull: true,
         })

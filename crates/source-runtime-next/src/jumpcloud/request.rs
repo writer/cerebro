@@ -1,5 +1,5 @@
 use serde_json::{Map, Value};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::{
     JumpCloudError, JumpCloudFamily, JumpCloudFilters, JumpCloudKernel, JumpCloudRequest, origin,
@@ -46,6 +46,14 @@ pub(super) fn plan(
     kernel: &JumpCloudKernel,
     cursor: Option<&str>,
 ) -> Result<JumpCloudRequest, JumpCloudError> {
+    plan_with_checkpoint(kernel, cursor, None)
+}
+
+pub(super) fn plan_with_checkpoint(
+    kernel: &JumpCloudKernel,
+    cursor: Option<&str>,
+    prior_watermark: Option<&str>,
+) -> Result<JumpCloudRequest, JumpCloudError> {
     let origin = if kernel.family.uses_insights_origin() {
         &kernel.insights_origin
     } else {
@@ -68,7 +76,10 @@ pub(super) fn plan(
     }
     let (cursor, body) = if kernel.family == JumpCloudFamily::AuditEvents {
         let cursor = cursor.map(validate_audit_cursor).transpose()?;
-        (cursor.clone(), Some(audit_body(kernel, cursor.as_deref())?))
+        (
+            cursor.clone(),
+            Some(audit_body(kernel, cursor.as_deref(), prior_watermark)?),
+        )
     } else {
         let offset = cursor.map(validate_offset).transpose()?.unwrap_or(0);
         {
@@ -86,6 +97,7 @@ pub(super) fn plan(
         cursor,
         body,
         org_id: kernel.filters.org_id.clone(),
+        checkpoint_watermark: prior_watermark.map(normalize_watermark).transpose()?,
     })
 }
 
@@ -93,7 +105,13 @@ pub(super) fn validate_request(
     kernel: &JumpCloudKernel,
     request: &JumpCloudRequest,
 ) -> Result<(), JumpCloudError> {
-    if request != &plan(kernel, request.cursor.as_deref())? {
+    if request
+        != &plan_with_checkpoint(
+            kernel,
+            request.cursor.as_deref(),
+            request.checkpoint_watermark.as_deref(),
+        )?
+    {
         return Err(JumpCloudError::RequestScopeMismatch);
     }
     Ok(())
@@ -159,7 +177,24 @@ fn validate_filters(
     Ok(())
 }
 
-fn audit_body(kernel: &JumpCloudKernel, cursor: Option<&str>) -> Result<Vec<u8>, JumpCloudError> {
+fn audit_body(
+    kernel: &JumpCloudKernel,
+    cursor: Option<&str>,
+    prior_watermark: Option<&str>,
+) -> Result<Vec<u8>, JumpCloudError> {
+    let start_time = match &kernel.filters.audit_start_time {
+        Some(configured) => configured.clone(),
+        None => match prior_watermark {
+            Some(watermark) => normalize_watermark(watermark)?,
+            None => (OffsetDateTime::parse(&kernel.observed_at, &Rfc3339)
+                .map_err(|_| JumpCloudError::InvalidConfiguration("observed_at"))?
+                - Duration::days(1))
+            .replace_nanosecond(0)
+            .map_err(|_| JumpCloudError::InvalidConfiguration("observed_at"))?
+            .format(&Rfc3339)
+            .map_err(|_| JumpCloudError::InternalRuntimeFailure)?,
+        },
+    };
     let mut body = Map::from_iter([
         (
             "service".to_owned(),
@@ -173,16 +208,7 @@ fn audit_body(kernel: &JumpCloudKernel, cursor: Option<&str>) -> Result<Vec<u8>,
                     .collect(),
             ),
         ),
-        (
-            "start_time".to_owned(),
-            Value::String(
-                kernel
-                    .filters
-                    .audit_start_time
-                    .clone()
-                    .unwrap_or_else(|| kernel.observed_at.clone()),
-            ),
-        ),
+        ("start_time".to_owned(), Value::String(start_time)),
         ("limit".to_owned(), Value::from(kernel.page_size)),
         (
             "sort".to_owned(),
@@ -203,6 +229,15 @@ fn audit_body(kernel: &JumpCloudKernel, cursor: Option<&str>) -> Result<Vec<u8>,
         body.insert("search_after".to_owned(), value);
     }
     serde_json::to_vec(&Value::Object(body)).map_err(|_| JumpCloudError::InternalRuntimeFailure)
+}
+
+fn normalize_watermark(value: &str) -> Result<String, JumpCloudError> {
+    OffsetDateTime::parse(value.trim(), &Rfc3339)
+        .map_err(|_| JumpCloudError::InvalidConfiguration("checkpoint_watermark"))?
+        .replace_nanosecond(0)
+        .map_err(|_| JumpCloudError::InvalidConfiguration("checkpoint_watermark"))?
+        .format(&Rfc3339)
+        .map_err(|_| JumpCloudError::InternalRuntimeFailure)
 }
 
 fn reject_depth(value: &Value, depth: usize) -> Result<(), JumpCloudError> {
