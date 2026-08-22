@@ -31,6 +31,29 @@ struct ProviderFamilyWire {
 }
 
 #[derive(Deserialize)]
+struct ConnectorCatalogWire {
+    entries: Vec<ConnectorEntryWire>,
+}
+
+#[derive(Deserialize)]
+struct ConnectorEntryWire {
+    definition: ConnectorDefinitionWire,
+}
+
+#[derive(Deserialize)]
+struct ConnectorDefinitionWire {
+    source_id: String,
+    resource_families: Vec<ConnectorFamilyWire>,
+}
+
+#[derive(Deserialize)]
+struct ConnectorFamilyWire {
+    id: String,
+    method: String,
+    path: String,
+}
+
+#[derive(Deserialize)]
 struct EventContractWire {
     kind: String,
     schema_ref: String,
@@ -97,6 +120,48 @@ fn closed_runtime_definition_matches_provider_catalog_exactly() {
 }
 
 #[test]
+fn provider_proof_covers_every_public_connector_family() {
+    let catalog: CatalogWire = serde_saphyr::from_slice(CATALOG).expect("Tailscale catalog YAML");
+    let connector: ConnectorCatalogWire = serde_saphyr::from_slice(include_bytes!(
+        "../../../../internal/connectorcatalog/catalog/identity-access-secrets/tailscale.yaml"
+    ))
+    .expect("Tailscale connector YAML");
+    let definition = connector
+        .entries
+        .into_iter()
+        .find(|entry| entry.definition.source_id == "tailscale")
+        .expect("Tailscale connector definition")
+        .definition;
+    let proved = catalog
+        .provider_api
+        .families
+        .iter()
+        .map(|family| {
+            (
+                family.id.as_str(),
+                family.method.as_str(),
+                family.path.replace("{tailnet}", "${config.tailnet}"),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        definition
+            .resource_families
+            .iter()
+            .map(|family| family.id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["configuration", "device", "integration", "user"])
+    );
+    for family in definition.resource_families {
+        assert!(
+            proved.contains(&(family.id.as_str(), family.method.as_str(), family.path)),
+            "missing provider proof for {}",
+            family.id
+        );
+    }
+}
+
+#[test]
 fn plans_all_families_without_credentials_or_redirects() {
     for family in TailscaleFamily::ALL {
         let request = kernel(family, 100).plan(None).expect("request");
@@ -141,21 +206,29 @@ fn checked_in_provider_fixtures_match_go_oracle_semantics() {
             assert_eq!(record.tenant_id, expected["tenant_id"]);
             assert_eq!(record.payload, expected["payload"]);
             assert_eq!(record.occurred_at, expected["occurred_at"]);
-            for (key, value) in expected["attributes"].as_object().unwrap() {
-                // Fixture display labels for ACL map keys are editorial labels;
-                // live Go normalization derives the provider key as the name.
-                if key == "resource_name"
-                    && matches!(family, TailscaleFamily::Group | TailscaleFamily::Tag)
-                {
-                    continue;
-                }
-                assert_eq!(
-                    record.attributes.get(key).map(String::as_str),
-                    value.as_str(),
-                    "{family}:{key}"
+            let mut expected_attributes = expected["attributes"]
+                .as_object()
+                .unwrap()
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.clone(),
+                        value.as_str().expect("string fixture attribute").to_owned(),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            expected_attributes.insert("provider".to_owned(), "tailscale".to_owned());
+            expected_attributes.insert("source_provider".to_owned(), "tailscale".to_owned());
+            if matches!(family, TailscaleFamily::Group | TailscaleFamily::Tag) {
+                // ACL map keys are the only live provider name available. The
+                // checked fixtures retain editorial labels for UI presentation.
+                expected_attributes.insert(
+                    "resource_name".to_owned(),
+                    expected_attributes["external_id"].clone(),
                 );
             }
-            assert!(record.event_id.starts_with("tailscale-tenant-"));
+            assert_eq!(record.attributes, expected_attributes, "{family}");
+            assert_eq!(record.event_id, go_oracle_event_id(family), "{family}");
         }
     }
 }
@@ -203,6 +276,25 @@ fn cursor_checkpoint_and_restart_are_bounded_and_round_trippable() {
         ),
         Err(TailscaleError::InvalidCursor)
     );
+
+    let terminal = kernel
+        .decode_http(
+            &resumed,
+            200,
+            &TailscaleResponseMetadata::default(),
+            br#"{"users":[{"id":"user-2","loginName":"b@example.test","created":"2026-06-02T00:00:00Z"}]}"#,
+        )
+        .unwrap();
+    let terminal_checkpoint = kernel
+        .checkpoint_candidate(&resumed, &terminal, Some("2026-06-01T12:00:00Z"))
+        .unwrap();
+    assert_eq!(terminal_checkpoint.cursor.as_deref(), Some("user-2"));
+    assert_eq!(
+        terminal_checkpoint.watermark.as_deref(),
+        Some("2026-06-02T00:00:00Z")
+    );
+    let restarted = kernel.plan(terminal_checkpoint.cursor.as_deref()).unwrap();
+    assert_eq!(restarted.cursor(), Some("user-2"));
 }
 
 #[test]
@@ -418,4 +510,16 @@ fn oracle(family: TailscaleFamily) -> Vec<Value> {
         }
     };
     serde_json::from_slice(bytes).expect("Go fixture oracle")
+}
+
+fn go_oracle_event_id(family: TailscaleFamily) -> &'static str {
+    match family {
+        TailscaleFamily::Tailnet => "tailscale-tenant-fb119763df3d-tailnet-writer.com",
+        TailscaleFamily::User => "tailscale-tenant-d997fe6a82ab-user-user-1",
+        TailscaleFamily::Device => "tailscale-tenant-4ee73982e195-device-device-1",
+        TailscaleFamily::Group => "tailscale-tenant-9980b6ff061b-group-group-eng",
+        TailscaleFamily::Tag => "tailscale-tenant-9980b6ff061b-tag-tag-prod",
+        TailscaleFamily::Service => "tailscale-tenant-aa65280fbb01-service-svc-api",
+        TailscaleFamily::Grant => "tailscale-tenant-9980b6ff061b-grant-grant-1",
+    }
 }
