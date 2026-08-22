@@ -290,7 +290,6 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"azure":                 true,
 		"cloudflare":            true,
 		"conjur":                true,
-		"datadog":               true,
 		"deepseek":              true,
 		"digitalocean":          true,
 		"doppler":               true,

@@ -246,6 +246,9 @@ pub struct CompiledFamily {
     config_headers: BTreeMap<String, PathParameterBinding>,
     config_attributes: BTreeMap<String, PathParameterBinding>,
     static_json_body: BTreeMap<String, serde_json::Value>,
+    event_attributes: BTreeMap<String, String>,
+    event_static_attributes: BTreeMap<String, String>,
+    exact_event_attributes: bool,
     pagination: Pagination,
     cursor_in_json_body: bool,
     path_parameters: BTreeMap<String, PathParameterBinding>,
@@ -312,6 +315,18 @@ impl CompiledFamily {
 
     pub fn static_json_body(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.static_json_body
+    }
+
+    pub fn event_attributes(&self) -> &BTreeMap<String, String> {
+        &self.event_attributes
+    }
+
+    pub fn event_static_attributes(&self) -> &BTreeMap<String, String> {
+        &self.event_static_attributes
+    }
+
+    pub fn exact_event_attributes(&self) -> bool {
+        self.exact_event_attributes
     }
 
     pub fn pagination(&self) -> &Pagination {
@@ -945,8 +960,20 @@ struct FamilyWire {
     config: Option<FamilyConfigWire>,
     #[serde(default)]
     read: Option<FamilyReadWire>,
+    #[serde(default)]
+    event: EventWire,
     pagination: Option<PaginationWire>,
     projection: Option<ProjectionWire>,
+}
+
+#[derive(Default, Deserialize)]
+struct EventWire {
+    #[serde(default)]
+    attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    static_attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    exact_attributes: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -996,7 +1023,7 @@ struct PaginationWire {
     #[serde(default)]
     next_url_json_path: String,
     #[serde(default)]
-    start_page: usize,
+    start_page: Option<usize>,
     #[serde(default)]
     page_size: usize,
     #[serde(default)]
@@ -1771,6 +1798,9 @@ fn compile_family(
         config_headers,
         config_attributes,
         static_json_body,
+        event_attributes: family.event.attributes,
+        event_static_attributes: family.event.static_attributes,
+        exact_event_attributes: family.event.exact_attributes,
         pagination: compile_pagination(path, family.pagination)?,
         cursor_in_json_body,
         path_parameters,
@@ -1932,8 +1962,18 @@ fn compile_pagination(
             },
             response_path: if !wire.cursor_json_path.is_empty() {
                 wire.cursor_json_path
-            } else if let Some(key) = wire.next_cursor_keys.first() {
-                format!("$.{key}")
+            } else if !wire.next_cursor_keys.is_empty() {
+                wire.next_cursor_keys
+                    .iter()
+                    .map(|key| {
+                        if key.starts_with('$') {
+                            key.clone()
+                        } else {
+                            format!("$.{key}")
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("|")
             } else {
                 "$.next_cursor".to_owned()
             },
@@ -1946,7 +1986,7 @@ fn compile_pagination(
             } else {
                 wire.page_param
             },
-            start: wire.start_page.max(1),
+            start: wire.start_page.unwrap_or(1),
             page_size_parameter: optional(wire.page_size_param),
             page_size,
         },
@@ -2708,6 +2748,99 @@ mod tests {
     }
 
     #[test]
+    fn datadog_compiles_exact_provider_runtime_contract() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let datadog = catalog.get("datadog").unwrap();
+        assert_eq!(
+            datadog.auth_header_parameters(),
+            &BTreeMap::from([
+                ("DD-API-KEY".to_owned(), "api_key".to_owned()),
+                (
+                    "DD-APPLICATION-KEY".to_owned(),
+                    "application_key".to_owned(),
+                ),
+            ])
+        );
+        assert_eq!(datadog.families().len(), 8);
+        assert!(
+            datadog
+                .families()
+                .iter()
+                .all(|family| family.is_authoritative() && family.is_projection_authoritative())
+        );
+        let family = |id: &str| {
+            datadog
+                .families()
+                .iter()
+                .find(|family| family.id() == id)
+                .unwrap()
+        };
+        assert!(matches!(
+            family("users").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[cursor]"
+                && response_path == "$.meta.page.after|$.meta.page.cursor"
+                && page_size_parameter == "page[size]"
+        ));
+        assert!(matches!(
+            family("monitors").pagination(),
+            Pagination::Page {
+                parameter,
+                start: 0,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page" && page_size_parameter == "page_size"
+        ));
+        assert!(matches!(
+            family("slos").pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100,
+            } if parameter == "offset" && limit_parameter == "limit"
+        ));
+        assert!(matches!(
+            family("dashboards").pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100,
+            } if parameter == "start" && limit_parameter == "count"
+        ));
+        assert!(matches!(
+            family("incidents").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[offset]"
+                && response_path == "$.meta.pagination.next_offset"
+                && page_size_parameter == "page[size]"
+        ));
+        assert!(matches!(
+            family("audit_events").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[cursor]"
+                && response_path == "$.meta.page.after|$.meta.page.cursor|$.links.next"
+                && page_size_parameter == "page[limit]"
+        ));
+    }
+
+    #[test]
     fn compiles_the_complete_checked_in_catalog() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -2717,7 +2850,7 @@ mod tests {
         .unwrap();
         let summary = catalog.summary();
         assert_eq!(summary.sources, 799);
-        assert_eq!(summary.families, 3_973);
+        assert_eq!(summary.families, 3_978);
         assert_eq!(summary.push_sources, 1);
         assert_eq!(summary.push_families, 10);
         assert_eq!(
@@ -3660,7 +3793,7 @@ mod tests {
         .unwrap();
         let report = catalog.unsupported_feature_report();
         assert_eq!(report.total_sources, 799);
-        assert_eq!(report.total_families, 3_973);
+        assert_eq!(report.total_families, 3_978);
         assert_eq!(report.families.len(), report.total_families);
         assert!(report.missing_family_reports.is_empty());
         assert_eq!(
@@ -3709,7 +3842,7 @@ mod tests {
         )
         .unwrap();
         let report = catalog.authority_readiness_report();
-        assert_eq!(report.total_families, 3_973);
+        assert_eq!(report.total_families, 3_978);
         assert_eq!(report.rust_authoritative_families, 0);
         assert_eq!(report.shadow_or_go_families, report.total_families);
         let aws_bedrock = report

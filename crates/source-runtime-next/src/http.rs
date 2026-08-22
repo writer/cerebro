@@ -947,7 +947,18 @@ impl SourceConnector for HttpSourceConnector {
                             ))
                         })?
                     };
-                    let mut fields = flatten_scalars(&value);
+                    let mut fields = if self.family.exact_event_attributes() {
+                        exact_event_fields(
+                            &value,
+                            self.source.id(),
+                            self.family.id(),
+                            &provider_id,
+                            self.family.event_attributes(),
+                            self.family.event_static_attributes(),
+                        )
+                    } else {
+                        flatten_scalars(&value)
+                    };
                     fields.extend(record_attributes.clone());
                     records.push(SourceRecord {
                         observation_id: observation_id(
@@ -970,8 +981,13 @@ impl SourceConnector for HttpSourceConnector {
                         exhausted = true;
                         break;
                     }
-                    Pagination::Cursor { response_path, .. } => {
-                        cursor = scalar_at_path(&body, response_path);
+                    Pagination::Cursor {
+                        parameter,
+                        response_path,
+                        ..
+                    } => {
+                        cursor = scalar_at_candidates(&body, response_path)
+                            .and_then(|value| provider_cursor_value(&value, parameter));
                         if cursor.as_deref().is_none_or(str::is_empty) {
                             exhausted = true;
                             break;
@@ -1966,6 +1982,29 @@ fn scalar_at_candidates(value: &Value, expression: &str) -> Option<String> {
         .find_map(|path| scalar_at_path(value, path))
 }
 
+fn provider_cursor_value(value: &str, parameter: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let parsed = Url::parse(value).or_else(|_| {
+        Url::parse("https://cursor.invalid/")
+            .expect("static cursor base URL is valid")
+            .join(value)
+    });
+    if let Ok(parsed) = parsed
+        && let Some((_, cursor)) = parsed
+            .query_pairs()
+            .find(|(name, _)| name.as_ref() == parameter)
+    {
+        let cursor = cursor.trim();
+        if !cursor.is_empty() {
+            return Some(cursor.to_owned());
+        }
+    }
+    Some(value.to_owned())
+}
+
 fn render_id_template(
     family_id: &str,
     template: &str,
@@ -2053,6 +2092,46 @@ fn flatten_scalars(value: &Value) -> BTreeMap<String, String> {
         }
     }
     fields
+}
+
+fn exact_event_fields(
+    value: &Value,
+    source_id: &str,
+    family_id: &str,
+    provider_id: &str,
+    attributes: &BTreeMap<String, String>,
+    static_attributes: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut fields = BTreeMap::from([
+        ("external_id".to_owned(), provider_id.to_owned()),
+        ("family".to_owned(), family_id.to_owned()),
+        ("provider".to_owned(), source_id.to_owned()),
+        ("source_provider".to_owned(), source_id.to_owned()),
+    ]);
+    for (attribute, candidates) in attributes {
+        if let Some(value) = semantic_at_candidates(value, candidates) {
+            fields.insert(attribute.clone(), value);
+        }
+    }
+    fields.extend(static_attributes.clone());
+    fields
+}
+
+fn semantic_at_candidates(value: &Value, expression: &str) -> Option<String> {
+    expression.split('|').find_map(|path| {
+        let path = path.trim().trim_start_matches("$.").trim_start_matches('$');
+        value_at_path(value, path).and_then(semantic_scalar)
+    })
+}
+
+fn semantic_scalar(value: &Value) -> Option<String> {
+    match value {
+        Value::Array(values) => {
+            let values = values.iter().filter_map(scalar).collect::<Vec<_>>();
+            (!values.is_empty()).then(|| values.join(","))
+        }
+        _ => scalar(value),
+    }
 }
 
 fn validate_record_scope(
@@ -3340,6 +3419,150 @@ mod tests {
         server.await.unwrap();
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "group-1");
+    }
+
+    #[tokio::test]
+    async fn datadog_uses_dual_sensitive_headers_audit_cursor_and_exact_event_fields() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for page in 1..=2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 8192];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                let request_line = request.lines().next().unwrap();
+                assert!(request_line.starts_with("GET /api/v2/audit/events?"));
+                assert!(request_line.contains("page%5Blimit%5D=100"));
+                assert_eq!(
+                    request_line.contains("page%5Bcursor%5D=cursor-2"),
+                    page == 2
+                );
+                assert!(
+                    request.lines().any(|line| {
+                        line.eq_ignore_ascii_case("dd-api-key: datadog-api-secret")
+                    })
+                );
+                assert!(request.lines().any(|line| {
+                    line.eq_ignore_ascii_case("dd-application-key: datadog-application-secret")
+                }));
+                let body = if page == 1 {
+                    serde_json::json!({
+                        "data": [{
+                            "id": "audit-1",
+                            "type": "audit_events",
+                            "attributes": {
+                                "timestamp": "2026-08-22T00:00:00Z",
+                                "evt": {"name": "role.updated"},
+                                "usr": {"id": "user-1", "email": "user@example.test"}
+                            }
+                        }],
+                        "links": {"next": "/api/v2/audit/events?page%5Bcursor%5D=cursor-2"}
+                    })
+                } else {
+                    serde_json::json!({"data": []})
+                }
+                .to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("datadog")
+        .unwrap()
+        .clone();
+        let auth = ResolvedAuth::HeaderParameters {
+            parameters: BTreeMap::from([
+                ("DD-API-KEY".to_owned(), "datadog-api-secret".to_owned()),
+                (
+                    "DD-APPLICATION-KEY".to_owned(),
+                    "datadog-application-secret".to_owned(),
+                ),
+            ]),
+        };
+        assert!(!format!("{auth:?}").contains("datadog-api-secret"));
+        let mut request = Client::new()
+            .get("https://api.example.test/resource")
+            .build()
+            .unwrap();
+        apply_auth_headers(&mut request, &auth).unwrap();
+        assert!(request.headers()["DD-API-KEY"].is_sensitive());
+        assert!(request.headers()["DD-APPLICATION-KEY"].is_sensitive());
+
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "audit_events",
+                &base_url,
+                BTreeMap::new(),
+                auth.clone(),
+            )
+            .unwrap(),
+            "tenant-a",
+            "datadog-prod",
+            &base_url,
+        );
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("datadog-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "audit-1");
+        assert_eq!(batch.records[0].payload["id"], "audit-1");
+        assert_eq!(batch.records[0].fields["audit_id"], "audit-1");
+        assert_eq!(batch.records[0].fields["event_type"], "role.updated");
+        assert_eq!(batch.records[0].fields["actor_email"], "user@example.test");
+        assert_eq!(batch.records[0].fields["source_product"], "datadog");
+        assert!(!batch.records[0].fields.contains_key("record_class"));
+
+        let failure_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let failure_address = failure_listener.local_addr().unwrap();
+        let failure_server = tokio::spawn(async move {
+            let (mut socket, _) = failure_listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            let body = r#"{"errors":["service unavailable"]}"#;
+            let response = format!(
+                "HTTP/1.1 503 Service Unavailable\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+        let failure_url = format!("http://{failure_address}");
+        let mut failing = with_test_provider_access(
+            HttpSourceConnector::new(source, "audit_events", &failure_url, BTreeMap::new(), auth)
+                .unwrap(),
+            "tenant-a",
+            "datadog-failure",
+            &failure_url,
+        );
+        assert!(matches!(
+            failing
+                .collect(CollectionRequest {
+                    tenant_id: TenantId::parse("tenant-a").unwrap(),
+                    source_runtime_id: SourceRuntimeId::parse("datadog-failure").unwrap(),
+                    cursor: None,
+                })
+                .await,
+            Err(HttpConnectorError::ProviderStatus(status))
+                if status == StatusCode::SERVICE_UNAVAILABLE
+        ));
+        failure_server.await.unwrap();
     }
 
     #[tokio::test]
