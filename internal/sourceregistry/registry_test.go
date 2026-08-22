@@ -321,7 +321,6 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"openai":                true,
 		"pagerduty":             true,
 		"sailpoint_identitynow": true,
-		"slack":                 true,
 		"snyk":                  true,
 		"tailscale":             true,
 		"writer":                true,

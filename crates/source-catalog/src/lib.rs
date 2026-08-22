@@ -233,6 +233,7 @@ impl ProjectionClass {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompiledFamily {
     id: String,
+    base_url: Option<String>,
     method: HttpMethod,
     path: String,
     record_selector: String,
@@ -257,6 +258,12 @@ pub struct CompiledFamily {
 impl CompiledFamily {
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// Public family-specific provider base URL, when it differs from the
+    /// source transport origin.
+    pub fn base_url(&self) -> Option<&str> {
+        self.base_url.as_deref()
     }
 
     pub fn method(&self) -> HttpMethod {
@@ -943,6 +950,8 @@ struct FamilyWire {
 #[derive(Default, Deserialize)]
 struct FamilyConfigWire {
     #[serde(default)]
+    base_url: String,
+    #[serde(default)]
     config_query: BTreeMap<String, String>,
     #[serde(default)]
     config_headers: BTreeMap<String, String>,
@@ -1603,6 +1612,10 @@ fn compile_family(
         .config
         .as_ref()
         .and_then(|config| optional(config.id_template.clone()));
+    let base_url = family
+        .config
+        .as_ref()
+        .and_then(|config| optional(config.base_url.trim().to_owned()));
     if id_template
         .as_deref()
         .is_some_and(|template| !valid_id_template(template))
@@ -1687,16 +1700,17 @@ fn compile_family(
             );
         }
     }
-    let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
-        verified.contains(&(
-            family.id.clone(),
-            match method {
-                HttpMethod::Get => "GET".to_owned(),
-                HttpMethod::Post => "POST".to_owned(),
-            },
-            path,
-        ))
-    });
+    let provider_contract_verified = canonical_family_locator(base_url.as_deref(), &family.path)
+        .is_some_and(|path| {
+            verified.contains(&(
+                family.id.clone(),
+                match method {
+                    HttpMethod::Get => "GET".to_owned(),
+                    HttpMethod::Post => "POST".to_owned(),
+                },
+                path,
+            ))
+        });
     let authoritative = generic_runtime_supported
         && provider_contract_verified
         && path_parameters_configured
@@ -1743,6 +1757,7 @@ fn compile_family(
         authoritative,
         projection_authoritative,
         id: family_id,
+        base_url,
         method,
         path: family.path,
         record_selector,
@@ -1978,7 +1993,7 @@ fn verified_families(proof: Option<&ProofManifestWire>) -> BTreeSet<(String, Str
                 && (family.method.is_empty() || family.method == "GET" || family.method == "POST")
         })
         .filter_map(|family| {
-            canonical_path_template(&family.path).map(|path| {
+            canonical_contract_locator(&family.path).map(|path| {
                 (
                     family.id.clone(),
                     if family.method.is_empty() {
@@ -1997,6 +2012,7 @@ fn family_plan_digest(source: &CompiledSource, family: &CompiledFamily) -> Strin
     let payload = serde_json::json!({
         "source_id": source.id(),
         "family_id": family.id(),
+        "base_url": family.base_url(),
         "method": match family.method() {
             HttpMethod::Get => "GET",
             HttpMethod::Post => "POST",
@@ -2046,6 +2062,31 @@ fn canonical_path_template(path: &str) -> Option<String> {
         canonical.push_str(query);
     }
     Some(canonical)
+}
+
+fn canonical_family_locator(base_url: Option<&str>, path: &str) -> Option<String> {
+    let base_url = base_url.unwrap_or_default().trim().trim_end_matches('/');
+    if base_url.starts_with("https://") && !base_url.contains("${") {
+        return canonical_contract_locator(&format!("{base_url}{path}"));
+    }
+    canonical_path_template(path)
+}
+
+fn canonical_contract_locator(locator: &str) -> Option<String> {
+    if locator.starts_with('/') {
+        return canonical_path_template(locator);
+    }
+    let remainder = locator.strip_prefix("https://")?;
+    let (host, path) = remainder.split_once('/')?;
+    if host.is_empty()
+        || host.contains('@')
+        || host
+            .chars()
+            .any(|character| matches!(character, '?' | '#' | '\\'))
+    {
+        return None;
+    }
+    canonical_path_template(&format!("/{path}")).map(|path| format!("https://{host}{path}"))
 }
 
 fn path_parameter(segment: &str) -> Option<&str> {
@@ -3454,7 +3495,7 @@ mod tests {
     }
 
     #[test]
-    fn undeclared_query_scope_cannot_become_collection_authority() {
+    fn slack_membership_scope_compiles_to_collection_authority() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
             root.join("internal/connectorcatalog/catalog"),
@@ -3468,8 +3509,13 @@ mod tests {
             .iter()
             .find(|family| family.id() == "channel_member")
             .unwrap();
-        assert!(!family.is_authoritative());
-        assert!(family.config_query().is_empty());
+        assert!(family.is_authoritative());
+        assert_eq!(
+            family.config_query().get("channel"),
+            Some(&PathParameterBinding::OptionalScalarConfig {
+                field: "channel_id".to_owned()
+            })
+        );
     }
 
     #[test]
@@ -3534,6 +3580,14 @@ mod tests {
         );
         assert_eq!(canonical_path_template("/accounts/prefix-{id}/users"), None);
         assert_eq!(canonical_path_template("/accounts/${config.id/users"), None);
+        assert_eq!(
+            canonical_family_locator(Some("https://api.slack.com/audit/v1"), "/logs"),
+            canonical_contract_locator("https://api.slack.com/audit/v1/logs")
+        );
+        assert_eq!(
+            canonical_contract_locator("https://user@example.test/logs"),
+            None
+        );
     }
 
     #[test]

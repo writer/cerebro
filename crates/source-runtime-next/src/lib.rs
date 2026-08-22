@@ -37,6 +37,7 @@ mod runtime_config;
 mod sdk;
 mod security_tooling_map;
 mod sentinelone;
+mod slack;
 pub mod source_execution;
 mod trivy;
 mod twilio;
@@ -166,6 +167,10 @@ pub use security_tooling_map::{
 pub use sentinelone::{
     SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
     SentinelOnePage, SentinelOneRecord, SentinelOneRequest,
+};
+pub use slack::{
+    SlackCheckpoint, SlackError, SlackFamily, SlackFilters, SlackKernel, SlackPage, SlackRecord,
+    SlackRequest,
 };
 pub use trivy::{TrivyError, TrivyFamily, TrivyKernel, TrivyPage, TrivyRecord};
 pub use twilio::{

@@ -61,7 +61,6 @@ import (
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
 	sentinelonesource "github.com/writer/cerebro/sources/sentinelone"
-	slacksource "github.com/writer/cerebro/sources/slack"
 	snyksource "github.com/writer/cerebro/sources/snyk"
 	tailscalesource "github.com/writer/cerebro/sources/tailscale"
 	trivysource "github.com/writer/cerebro/sources/trivy"
@@ -395,12 +394,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "sentinelone",
 		load: func() (sourcecdk.Source, error) {
 			return sentinelonesource.New()
-		},
-	},
-	{
-		name: "slack",
-		load: func() (sourcecdk.Source, error) {
-			return slacksource.New()
 		},
 	},
 	{
