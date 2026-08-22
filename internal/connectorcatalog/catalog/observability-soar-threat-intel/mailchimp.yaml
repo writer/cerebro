@@ -3,15 +3,31 @@ entries:
     definition:
       auth:
         credential_fields:
-          - key: api_key
+          - key: username
+            label: Basic-auth username
             reference_only: true
+            required: true
+          - key: password
+            label: Mailchimp API key
+            reference_only: true
+            required: true
             secret: true
-        model: api_key
+        model: basic
+        requires_references: true
         token_header: Authorization
         token_scheme: Basic
       categories:
         - identity
         - communications
+      config_fields:
+        - help: Data-center suffix from the API key, such as us19.
+          key: dc
+          label: Mailchimp data center
+          required: true
+        - help: Audience list identifier used when collecting the members family.
+          key: list_id
+          label: Audience list ID
+          required: false
       description: Collects lists, members, and audit events from Mailchimp and projects them into the Cerebro graph as groups, users, and audit events for alert, incident, service health, and response context.
       display_name: Mailchimp
       id: builtin-mailchimp
@@ -38,20 +54,22 @@ entries:
           id_field: id
           label: Lists
           method: GET
+          name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            inject_first_page: true
+            limit_param: count
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
+            type: offset
           path: /lists
           projection:
             fields:
-              description: description|summary
-              group_email: group_email|email
+              description: permission_reminder
+              group_email: campaign_defaults.from_email
               group_id: id
+              group_name: name
             template: identity_group
-          record_selector: $.data[*]
+          record_selector: $.lists[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -67,27 +85,29 @@ entries:
           event:
             kind: mailchimp.members
             required_payload_fields:
-              - id
+              - email_address
             schema_ref: mailchimp/members/v1
             urn_kind: mailchimp_members
           id: members
-          id_field: id
+          id_field: id|email_address
           label: Members
           method: GET
+          name_field: full_name|email_address
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            inject_first_page: true
+            limit_param: count
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
+            type: offset
           path: /lists/${config.list_id}/members
           projection:
             fields:
-              email: email|primary_email|profile.email
-              status: status|state|lifecycle_state
-              user_id: id
+              display_name: full_name|email_address
+              email: email_address
+              status: status
+              user_id: id|email_address
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.members[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -103,28 +123,33 @@ entries:
           event:
             kind: mailchimp.audit_events
             required_payload_fields:
-              - id
+              - type
+              - update_time
             schema_ref: mailchimp/audit_events/v1
             urn_kind: mailchimp_audit_events
           id: audit_events
-          id_field: id
+          id_field: update_time|url|title|message
           label: Audit events
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            inject_first_page: true
+            limit_param: count
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /activity-feed
+            type: offset
+          path: /activity-feed/chimp-chatter
+          config:
+            id_template: "${update_time}:${type}:${title}"
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
-              id: id
+              event_type: type
+              id: _record_id
+              title: title
+            static_fields:
+              actor_id: mailchimp_activity_feed
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.chimp_chatter[*]
+          updated_at_field: update_time
       schema_version: cerebro.integration/v1
       source_id: mailchimp
       tenant_id: builtin_catalog
