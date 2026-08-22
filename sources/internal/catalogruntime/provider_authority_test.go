@@ -291,6 +291,198 @@ func TestLangSmithCatalogRuntimeThirteenFamilyFixtureCorpus(t *testing.T) {
 	}
 }
 
+func TestDopplerCatalogRuntimeAuthority(t *testing.T) {
+	definition := supportedCatalogEntry(t, "doppler").Definition
+	if definition.Auth.Model != "bearer_token" || definition.Auth.TokenHeader != "Authorization" || definition.Auth.TokenScheme != "Bearer" {
+		t.Fatalf("auth = %#v, want Bearer Authorization contract", definition.Auth)
+	}
+	if definition.Transport == nil || definition.Transport.Verification == nil {
+		t.Fatal("transport verification is required")
+	}
+	verification := definition.Transport.Verification
+	if verification.Path != "/v3/workplace" || verification.ConfigPath != "health_path" {
+		t.Fatalf("verification = %#v, want /v3/workplace with health_path override", verification)
+	}
+	wantPaths := map[string]string{
+		"secrets": "/v3/workplace/secrets", "projects": "/v3/workplace/projects", "audit_events": "/v3/workplace/logs",
+	}
+	families := definitionFamilyMap(definition.ResourceFamilies)
+	if len(families) != len(wantPaths) {
+		t.Fatalf("family count = %d, want %d", len(families), len(wantPaths))
+	}
+	for id, path := range wantPaths {
+		family := families[id]
+		if family.Path != path {
+			t.Fatalf("%s path = %q, want %q", id, family.Path, path)
+		}
+		pagination := family.Pagination
+		if pagination == nil || pagination.Type != "cursor" || pagination.CursorParam != "cursor" || pagination.PageSizeParam != "limit" || pagination.PageSize != 100 || pagination.CursorJSONPath != "$.next_cursor" {
+			t.Fatalf("%s pagination = %#v", id, pagination)
+		}
+		if !family.Event.ExactAttributes || family.Config == nil || family.Config.ConfigAttributes["tenant_id"] != "tenant_id" {
+			t.Fatalf("%s event/config contract = %#v / %#v", id, family.Event, family.Config)
+		}
+	}
+	if got := families["secrets"].Event.Attributes["project_id"]; got != "project.id|project_id|project" {
+		t.Fatalf("secret project mapping = %q", got)
+	}
+	audit := families["audit_events"].Event.Attributes
+	for key, want := range map[string]string{
+		"actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name",
+		"resource_id": "resource_id|target_id|target.id|resource.id|object_id", "event_type": "event_type|event_name|action|type",
+	} {
+		if audit[key] != want {
+			t.Fatalf("audit %s mapping = %q, want %q", key, audit[key], want)
+		}
+	}
+}
+
+func TestDopplerCatalogRuntimeBearerHealthCursorAndMappings(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.RequestURI())
+		if got := r.Header.Get("Authorization"); got != "Bearer fixture-token" {
+			t.Errorf("Authorization = %q, want Bearer fixture-token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/ready" {
+			_, _ = w.Write([]byte(`{"ready":true}`))
+			return
+		}
+		if r.URL.Path != "/v3/workplace/logs" || r.URL.Query().Get("cursor") != "cursor-1" || r.URL.Query().Get("limit") != "100" {
+			t.Errorf("read request = %q", r.URL.RequestURI())
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"event-1","created_at":"2026-08-20T10:11:12Z","action":"secret.read","actor":{"id":"actor-1","name":"Alice"},"target":{"id":"secret-1","name":"API_KEY","type":"secret"}}],"next_cursor":"cursor-2"}`))
+	}))
+	defer server.Close()
+	source, err := NewDefinitionWithValidationOptions(supportedCatalogEntry(t, "doppler").Definition, ValidationOptions{AllowLoopbackBaseURL: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL, "family": "audit_events", "health_path": "/ready", "tenant_id": "tenant-1", "token": "fixture-token",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "cursor-1"})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !reflect.DeepEqual(requests, []string{"/ready", "/v3/workplace/logs?cursor=cursor-1&limit=100"}) {
+		t.Fatalf("requests = %#v", requests)
+	}
+	if len(pull.Events) != 1 || pull.NextCursor.GetOpaque() != "cursor-2" {
+		t.Fatalf("pull = %#v", pull)
+	}
+	event := pull.Events[0]
+	if event.Kind != "doppler.audit_events" || event.SchemaRef != "doppler/audit_events/v1" || event.OccurredAt.AsTime().UTC().Format("2006-01-02T15:04:05Z") != "2026-08-20T10:11:12Z" {
+		t.Fatalf("event contract = %#v", event)
+	}
+	for key, want := range map[string]string{
+		"actor_id": "actor-1", "actor_name": "Alice", "event_type": "secret.read", "resource_id": "secret-1", "resource_name": "API_KEY", "resource_type": "secret",
+		"record_class": "audit_event", "schema": "audit_events", "source_system": "doppler", "tenant_id": "tenant-1",
+	} {
+		if event.Attributes[key] != want {
+			t.Fatalf("attribute %s = %q, want %q", key, event.Attributes[key], want)
+		}
+	}
+}
+
+func TestVaultCatalogRuntimeAuthority(t *testing.T) {
+	definition := supportedCatalogEntry(t, "hashicorp_vault").Definition
+	if definition.Auth.Model != "api_key" || definition.Auth.TokenHeader != "X-Vault-Token" || definition.Auth.TokenScheme != "" {
+		t.Fatalf("auth = %#v, want unschemed X-Vault-Token", definition.Auth)
+	}
+	if definition.Transport == nil || definition.Transport.BaseURL != "https://${config.vault_addr}" || definition.Transport.Verification == nil {
+		t.Fatalf("transport = %#v", definition.Transport)
+	}
+	if definition.Transport.Verification.Path != "/v1/sys/health" || definition.Transport.Verification.ConfigPath != "health_path" {
+		t.Fatalf("verification = %#v", definition.Transport.Verification)
+	}
+	families := definitionFamilyMap(definition.ResourceFamilies)
+	wantPaths := map[string]string{"users": "/v1/identity/entity/id", "secrets": "/v1/sys/mounts", "audit_events": "/v1/sys/audit"}
+	for id, path := range wantPaths {
+		family := families[id]
+		if family.Path != path || family.Read == nil || !family.Read.DisablePageSize || !family.Event.ExactAttributes {
+			t.Fatalf("%s family = %#v", id, family)
+		}
+	}
+	users := families["users"]
+	if users.Config.StaticQuery["list"] != "true" || users.Read.MapRecords["data.key_info"] != "entity" || users.UpdatedAtField != "entity.last_update_time|entity.creation_time" || users.Event.Attributes["login"] != "entity.metadata.login|entity.name" {
+		t.Fatalf("users contract = %#v", users)
+	}
+	secrets := families["secrets"]
+	if secrets.Read.MapRecords["data"] != "mount" || secrets.Event.Attributes["vault_id"] != "mount.accessor|id" || secrets.Event.StaticAttributes["secret_status"] != "enabled" {
+		t.Fatalf("secrets contract = %#v", secrets)
+	}
+	audit := families["audit_events"]
+	if audit.Read.MapRecords["data"] != "audit_device" || audit.Event.StaticAttributes["actor_id"] != "vault" || audit.Event.StaticAttributes["event_type"] != "vault.audit_device.enabled" {
+		t.Fatalf("audit contract = %#v", audit)
+	}
+}
+
+func TestVaultCatalogRuntimeTokenOriginNestedMapAndFinalStatic(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Vault-Token"); got != "fixture-token" {
+			t.Errorf("X-Vault-Token = %q, want fixture-token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/ready":
+			_, _ = w.Write([]byte(`{"ready":true}`))
+		case "/v1/identity/entity/id":
+			if r.URL.Query().Get("list") != "true" || r.URL.Query().Has("limit") {
+				t.Errorf("users query = %q", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"data":{"key_info":{"user-b":{"name":"Bob","creation_time":"2026-08-19T00:00:00Z","last_update_time":"2026-08-20T00:00:00Z","metadata":{"login":"bob","email":"bob@example.com","status":"active"},"resource_type":"provider-user"},"user-a":{"name":"Alice","creation_time":"2026-08-18T00:00:00Z","metadata":{"login":"alice","email":"alice@example.com","status":"active"},"resource_type":"provider-user"}}}}`))
+		case "/v1/sys/mounts":
+			_, _ = w.Write([]byte(`{"data":{"secret/":{"accessor":"kv_123","type":"kv","resource_type":"provider-secret","secret_status":"disabled"}}}`))
+		case "/v1/sys/audit":
+			_, _ = w.Write([]byte(`{"data":{"file/":{"type":"file","actor_id":"provider-actor","event_type":"provider.event","resource_type":"provider-audit"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, err := NewDefinitionWithValidationOptions(supportedCatalogEntry(t, "hashicorp_vault").Definition, ValidationOptions{AllowLoopbackBaseURL: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := func(family string) sourcecdk.Config {
+		return sourcecdk.NewConfig(map[string]string{
+			"base_url": server.URL, "family": family, "health_path": "/ready", "tenant_id": "tenant-1", "token": "fixture-token",
+		})
+	}
+	if err := source.Check(context.Background(), config("users")); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	users, err := source.Read(context.Background(), config("users"), nil)
+	if err != nil {
+		t.Fatalf("Read(users) error = %v", err)
+	}
+	if len(users.Events) != 2 || users.NextCursor != nil || users.Events[0].Attributes["user_id"] != "user-a" || users.Events[1].Attributes["user_id"] != "user-b" {
+		t.Fatalf("users deterministic map records = %#v", users)
+	}
+	if users.Events[0].Attributes["login"] != "alice" || users.Events[0].Attributes["resource_type"] != "vault_identity_entity" || users.Events[1].OccurredAt.AsTime().UTC().Format("2006-01-02T15:04:05Z") != "2026-08-20T00:00:00Z" {
+		t.Fatalf("users mappings = %#v", users.Events)
+	}
+	secrets, err := source.Read(context.Background(), config("secrets"), nil)
+	if err != nil {
+		t.Fatalf("Read(secrets) error = %v", err)
+	}
+	if len(secrets.Events) != 1 || secrets.Events[0].Attributes["vault_id"] != "kv_123" || secrets.Events[0].Attributes["resource_type"] != "vault_secret_engine" || secrets.Events[0].Attributes["secret_status"] != "enabled" {
+		t.Fatalf("secrets mappings = %#v", secrets)
+	}
+	audit, err := source.Read(context.Background(), config("audit_events"), nil)
+	if err != nil {
+		t.Fatalf("Read(audit_events) error = %v", err)
+	}
+	if len(audit.Events) != 1 || audit.Events[0].Attributes["actor_id"] != "vault" || audit.Events[0].Attributes["event_type"] != "vault.audit_device.enabled" || audit.Events[0].Attributes["resource_type"] != "vault_audit_device" {
+		t.Fatalf("audit mappings = %#v", audit)
+	}
+}
+
 func supportedCatalogEntry(t *testing.T, sourceID string) connectorcatalog.Entry {
 	t.Helper()
 	entry, found, err := connectorcatalog.BuiltinEntry(sourceID)

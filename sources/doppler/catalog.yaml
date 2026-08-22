@@ -9,6 +9,29 @@ runtime_families:
   - audit_events
   - projects
   - secrets
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-08-22T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header
+  base_url: https://api.doppler.com
+  references:
+    - https://docs.doppler.com/reference
+  families:
+    - id: secrets
+      method: GET
+      path: /v3/workplace/secrets
+      operation: workplace_secrets_list
+    - id: projects
+      method: GET
+      path: /v3/workplace/projects
+      operation: workplace_projects_list
+    - id: audit_events
+      method: GET
+      path: /v3/workplace/logs
+      operation: workplace_logs_list
 coverage_contract:
   owner_domain: source_runtime
   authority_domain: doppler
