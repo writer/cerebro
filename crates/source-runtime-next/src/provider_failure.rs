@@ -13,6 +13,10 @@ use crate::HttpConnectorError;
 /// Stable provider failure kind.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderFailureKind {
+    /// Provider rejected the resolved credential.
+    AuthenticationRejected,
+    /// Provider authenticated the caller but denied the required scope.
+    PermissionDenied,
     /// Provider request timed out.
     Timeout,
     /// Provider DNS resolution failed.
@@ -81,6 +85,16 @@ pub fn classify_provider_failure(
     retry_after: Option<Duration>,
 ) -> ProviderFailureClassification {
     let (category, retryable, diagnostic_code) = match kind {
+        ProviderFailureKind::AuthenticationRejected => (
+            ProviderFailureCategory::Error,
+            false,
+            "provider_authentication_rejected",
+        ),
+        ProviderFailureKind::PermissionDenied => (
+            ProviderFailureCategory::Error,
+            false,
+            "provider_permission_denied",
+        ),
         ProviderFailureKind::Timeout => (ProviderFailureCategory::Retry, true, "provider_timeout"),
         ProviderFailureKind::Dns => (ProviderFailureCategory::Retry, true, "provider_dns_failure"),
         ProviderFailureKind::Tls => (ProviderFailureCategory::Retry, true, "provider_tls_failure"),
@@ -156,6 +170,12 @@ pub fn classify_http_connector_failure(
         HttpConnectorError::ProviderStatus(StatusCode::TOO_MANY_REQUESTS) => Some(
             classify_provider_failure(ProviderFailureKind::RetryAfter, None),
         ),
+        HttpConnectorError::ProviderStatus(StatusCode::UNAUTHORIZED) => Some(
+            classify_provider_failure(ProviderFailureKind::AuthenticationRejected, None),
+        ),
+        HttpConnectorError::ProviderStatus(StatusCode::FORBIDDEN) => Some(
+            classify_provider_failure(ProviderFailureKind::PermissionDenied, None),
+        ),
         HttpConnectorError::ProviderStatus(_) => None,
         HttpConnectorError::InvalidResponse(message) if message.contains("exceeds") => Some(
             classify_provider_failure(ProviderFailureKind::ResponseSizeLimit, None),
@@ -189,6 +209,8 @@ mod tests {
     #[test]
     fn provider_failure_classification_never_advances_progress() {
         for kind in [
+            ProviderFailureKind::AuthenticationRejected,
+            ProviderFailureKind::PermissionDenied,
             ProviderFailureKind::Timeout,
             ProviderFailureKind::Dns,
             ProviderFailureKind::Tls,
@@ -239,5 +261,21 @@ mod tests {
         assert_eq!(classification.kind, ProviderFailureKind::ResponseSizeLimit);
         assert_eq!(classification.category, ProviderFailureCategory::Quarantine);
         assert!(!classification.advances_progress);
+
+        for (status, want) in [
+            (
+                StatusCode::UNAUTHORIZED,
+                ProviderFailureKind::AuthenticationRejected,
+            ),
+            (StatusCode::FORBIDDEN, ProviderFailureKind::PermissionDenied),
+        ] {
+            let classification =
+                classify_http_connector_failure(&HttpConnectorError::ProviderStatus(status))
+                    .unwrap();
+            assert_eq!(classification.kind, want);
+            assert_eq!(classification.category, ProviderFailureCategory::Error);
+            assert!(!classification.retryable);
+            assert!(!classification.advances_progress);
+        }
     }
 }

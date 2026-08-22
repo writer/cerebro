@@ -1,0 +1,14 @@
+{
+  "runs": [
+    {
+      "id": "run_123",
+      "name": "answer-question",
+      "run_type": "llm",
+      "session_id": "project_123",
+      "start_time": "2026-06-24T12:00:00Z"
+    }
+  ],
+  "cursors": {
+    "next": "run-cursor-2"
+  }
+}

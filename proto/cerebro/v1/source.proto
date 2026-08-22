@@ -108,6 +108,50 @@ message SourceWorkerSafeReceiptV1 {
   int64 observed_at_unix_millis = 12;
 }
 
+// SourceWorkerRuntimeMetadataV2 carries validated public resume inputs that
+// are additive to the stable v1 adapter messages. It contains no credentials.
+message SourceWorkerRuntimeMetadataV2 {
+  map<string, string> public_config = 1;
+  int64 prior_terminal_watermark_unix_millis = 2;
+  string prior_checkpoint = 3;
+}
+
+// SourceWorkerPlanEnvelopeV2 adds public runtime metadata without changing
+// existing provider adapter request structs.
+message SourceWorkerPlanEnvelopeV2 {
+  SourceWorkerPlanRequestV1 request = 1;
+  SourceWorkerRuntimeMetadataV2 metadata = 2;
+}
+
+// SourceWorkerHTTPExecutionV2 adds a non-secret body and declared public
+// headers to the stable v1 request plan.
+message SourceWorkerHTTPExecutionV2 {
+  SourceWorkerHTTPRequestV1 request = 1;
+  bytes body = 2;
+  map<string, string> declared_headers = 3;
+  string execution_intent_digest_sha256 = 4;
+  string credential_operation = 5;
+  // Exact public origin authorized by the credential-free Rust adapter.
+  string allowed_origin = 6;
+}
+
+// SourceWorkerDecodeEnvelopeV2 carries bounded response metadata and the
+// same durable resume inputs used during planning.
+message SourceWorkerDecodeEnvelopeV2 {
+  SourceWorkerDecodeRequestV1 request = 1;
+  SourceWorkerRuntimeMetadataV2 metadata = 2;
+  map<string, string> response_headers = 3;
+  string response_headers_sha256 = 4;
+  string execution_intent_digest_sha256 = 5;
+}
+
+// SourceWorkerDecodeOutputV2 returns the Rust-constructed safe receipt and
+// normalized result together so the host never authors receipt digests.
+message SourceWorkerDecodeOutputV2 {
+  SourceWorkerSafeReceiptV1 receipt = 1;
+  SourceWorkerDecodeResultV1 result = 2;
+}
+
 // SourceWorkerRecordV1 is one normalized, credential-free provider record.
 message SourceWorkerRecordV1 {
   string provider_id = 1;
