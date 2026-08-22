@@ -147,7 +147,7 @@ func ensureNotAlreadyWired(root, awsDir string, n names) error {
 		{filepath.Join(awsDir, "source.go"), containsStringMatcher("= " + strconv.Quote(n.Family))},
 		{filepath.Join(awsDir, "source.go"), containsGoIdentifierMatcher(n.FamilyConst)},
 		{filepath.Join(awsDir, "fixture.go"), containsGoIdentifierMatcher(n.FamilyConst)},
-		{filepath.Join(root, "internal", "sourceprojection", "registry.go"), containsStringMatcher(strconv.Quote(n.Kind) + ":")},
+		{filepath.Join(root, "internal", "sourceprojection", "registry_builtins.go"), containsStringMatcher(strconv.Quote(n.Kind) + ":")},
 		{filepath.Join(awsDir, "catalog.yaml"), containsYAMLListEntryMatcher(n.Kind)},
 		{filepath.Join(awsDir, "catalog.yaml"), containsYAMLListEntryMatcher(n.Family)},
 		{filepath.Join(awsDir, "deploy.yaml"), containsYAMLMappingValueMatcher("family", n.Family)},
@@ -259,7 +259,7 @@ func prepareUpdates(root, awsDir string, n names) ([]fileUpdate, error) {
 			},
 		},
 		{
-			path:  filepath.Join(root, "internal", "sourceprojection", "registry.go"),
+			path:  filepath.Join(root, "internal", "sourceprojection", "registry_builtins.go"),
 			gofmt: true,
 			apply: []func(string) (string, error){
 				func(content string) (string, error) {
