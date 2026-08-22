@@ -8,6 +8,7 @@ mod abuseipdb;
 mod activecampaign;
 mod activtrak;
 mod acunetix;
+mod akeneo;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -84,6 +85,11 @@ pub use acunetix::{
     AcunetixCheckpointCandidate, AcunetixEntityFact, AcunetixError, AcunetixEventContract,
     AcunetixFamily, AcunetixKernel, AcunetixPage, AcunetixProjectionFacts, AcunetixRecord,
     AcunetixRequest, AcunetixRuntimeDefinition, project_acunetix_records,
+};
+pub use akeneo::{
+    AkeneoCheckpointCandidate, AkeneoEntityFact, AkeneoError, AkeneoEventContract, AkeneoFamily,
+    AkeneoKernel, AkeneoPage, AkeneoProjectionFacts, AkeneoRecord, AkeneoRequest,
+    AkeneoRuntimeDefinition, AkeneoScope, project_akeneo_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
