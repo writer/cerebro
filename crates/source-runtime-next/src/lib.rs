@@ -9,6 +9,7 @@ mod activecampaign;
 mod activtrak;
 mod acunetix;
 mod ada_support;
+mod addigy;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -90,6 +91,11 @@ pub use ada_support::{
     AdaSupportCheckpointCandidate, AdaSupportEntityFact, AdaSupportError, AdaSupportEventContract,
     AdaSupportFamily, AdaSupportKernel, AdaSupportPage, AdaSupportProjectionFacts,
     AdaSupportRecord, AdaSupportRequest, AdaSupportRuntimeDefinition, project_ada_support_records,
+};
+pub use addigy::{
+    AddigyCheckpointCandidate, AddigyEntityFact, AddigyError, AddigyEventContract, AddigyFamily,
+    AddigyKernel, AddigyPage, AddigyProjectionFacts, AddigyRecord, AddigyRequest,
+    AddigyRuntimeDefinition, project_addigy_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
