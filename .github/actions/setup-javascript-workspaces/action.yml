@@ -1,0 +1,21 @@
+name: Set up JavaScript workspaces
+description: Install the repository Node.js toolchain and optionally restore workspace dependencies.
+
+inputs:
+  install:
+    description: Run the repository workspace install target.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 22
+        cache: npm
+
+    - name: Install JavaScript workspaces
+      if: inputs.install == 'true'
+      shell: bash
+      run: make workspace-install

@@ -361,6 +361,78 @@ fn link_cursor_is_origin_locked_and_assignment_phase_round_trips() {
 }
 
 #[test]
+fn terminal_page_without_a_cursor_is_valid() {
+    let kernel = OktaKernel::new(
+        ORIGIN,
+        TENANT,
+        OktaFamily::User,
+        OktaFilters::default(),
+        None,
+    )
+    .unwrap();
+    let page = kernel
+        .decode(
+            &kernel.plan(None).unwrap(),
+            OktaResponse {
+                status: 200,
+                body: br#"[{"id":"u1","lastUpdated":"2026-08-21T12:00:00Z"}]"#,
+                link_header: None,
+            },
+            observed_at(),
+        )
+        .unwrap();
+    assert_eq!(page.records.len(), 1);
+    assert_eq!(page.next_cursor, None);
+}
+
+#[test]
+fn repeated_non_empty_cursors_are_rejected() {
+    let user = OktaKernel::new(
+        ORIGIN,
+        TENANT,
+        OktaFamily::User,
+        OktaFilters::default(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        user.decode(
+            &user.plan(Some("same")).unwrap(),
+            OktaResponse {
+                status: 200,
+                body: b"[]",
+                link_header: Some("</api/v1/users?after=same&limit=10>; rel=\"next\"")
+            },
+            observed_at()
+        ),
+        Err(OktaError::InvalidCursor)
+    );
+
+    let assignment = OktaKernel::new(
+        ORIGIN,
+        TENANT,
+        OktaFamily::AppAssignment,
+        filters(OktaFamily::AppAssignment),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        assignment.decode(
+            &assignment.plan(Some("groups:same")).unwrap(),
+            OktaResponse {
+                status: 200,
+                body: b"[]",
+                link_header: Some(
+                    "</api/v1/apps/example-f0a6c6d9df5c0037/groups?after=same&limit=10>; rel=\"next\""
+                )
+            },
+            observed_at()
+        ),
+        Err(OktaError::InvalidCursor)
+    );
+}
+
+#[test]
 fn typed_provider_failures_remain_distinct() {
     let kernel = OktaKernel::new(
         ORIGIN,

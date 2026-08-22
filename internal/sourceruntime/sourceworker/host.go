@@ -21,137 +21,186 @@ import (
 
 // Host performs credential redemption and an origin-bounded provider request.
 type Host struct {
-	worker   Worker
-	redeemer CredentialRedeemer
-	client   *http.Client
-	now      func() time.Time
+	worker              Worker
+	credentialReference string
+	credential          []byte
+	credentialExpiresAt time.Time
+	client              *http.Client
+	now                 func() time.Time
 }
+
+func (*Host) Format(state fmt.State, _ rune) { _, _ = io.WriteString(state, "sourceworker.Host") }
 
 // NewHost constructs a production host with public-DNS-only dialing, no
 // redirects, a 30-second deadline, and no environment proxy routing.
-func NewHost(worker Worker, redeemer CredentialRedeemer) *Host {
-	return &Host{worker: worker, redeemer: redeemer, client: safeHTTPClient(net.DefaultResolver), now: time.Now}
+func NewHost(worker Worker, reference string, credential []byte, expiresAt time.Time) *Host {
+	return &Host{worker: worker, credentialReference: strings.TrimSpace(reference), credential: append([]byte(nil), credential...), credentialExpiresAt: expiresAt.UTC(), client: safeHTTPClient(net.DefaultResolver), now: time.Now}
 }
 
 // Execute plans, authorizes, performs, and decodes one provider request.
 func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOutput, error) {
-	if h == nil || h.worker == nil || h.redeemer == nil || h.client == nil || input.Plan == nil {
-		return nil, fmt.Errorf("%w: host dependencies and plan are required", ErrInvalidExecution)
+	if h == nil || h.worker == nil || h.client == nil {
+		return nil, fmt.Errorf("%w: host dependencies are required", ErrInvalidExecution)
 	}
 	ctx, cancel := context.WithTimeout(ctx, executionTimeout)
 	defer cancel()
-	if err := validateCanonicalPlan(input.Plan); err != nil {
+	if input.Plan == nil {
+		plan, err := h.worker.Compile(ctx, SelectionRequest{
+			SourceID: strings.TrimSpace(input.SourceID), FamilyID: strings.TrimSpace(input.FamilyID),
+		})
+		if err != nil {
+			return nil, err
+		}
+		input.Plan = plan
+		input.Scope.SourceID, input.Scope.FamilyID = plan.GetSourceId(), plan.GetFamilyId()
+		input.Scope.PlanDigestSHA256 = plan.GetPlanDigestSha256()
+	}
+	if err := validatePublicConfig(input.Scope.PublicConfig); err != nil {
 		return nil, err
 	}
-	if err := validateScope(input.Plan, input.CredentialReference, input.Scope, h.now().UTC()); err != nil {
+	observedAt := h.now().UTC()
+	executionContext, err := h.worker.Context(ctx, ContextRequest{
+		TenantID: input.Scope.TenantID, RuntimeID: input.Scope.RuntimeID,
+		PriorCursor: input.Scope.PriorCursor, PageNumber: input.PageNumber,
+		RuntimeGeneration: input.Scope.RuntimeGeneration, LeaseGeneration: input.Scope.LeaseGeneration,
+		ObservedAtUnixMillis:             observedAt.UnixMilli(),
+		PublicConfig:                     input.Scope.PublicConfig,
+		PriorTerminalWatermarkUnixMillis: input.Scope.PriorTerminalWatermarkUnixMillis,
+		PriorCheckpoint:                  input.Scope.PriorCheckpoint,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: Rust execution context failed: %w", ErrWorkerContract, err)
+	}
+	input.Scope.LogicalPageID = executionContext.GetLogicalPageId()
+	if err := validateScope(input.Plan, input.CredentialReference, input.Scope, observedAt); err != nil {
 		return nil, err
 	}
-	requestPlan, err := h.worker.Plan(ctx, proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1))
+	metadata := runtimeMetadata(input.Scope)
+	execution, err := h.worker.PlanV2(ctx, &cerebrov1.SourceWorkerPlanEnvelopeV2{
+		Request: &cerebrov1.SourceWorkerPlanRequestV1{
+			Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), Context: executionContext,
+		},
+		Metadata: metadata,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: credential-free request planning failed: %w", ErrWorkerContract, err)
 	}
-	providerURL, err := validateWorkerRequest(input.Plan, requestPlan)
+	providerURL, err := validateHTTPExecution(input.Plan, execution)
 	if err != nil {
 		return nil, err
 	}
-	intentDigest, err := CanonicalRequestIntentDigest(input.Plan, input.Scope, requestPlan)
-	if err != nil || subtle.ConstantTimeCompare([]byte(intentDigest), []byte(input.Scope.RequestIntentDigest)) != 1 {
-		return nil, fmt.Errorf("%w: request intent digest does not match the exact plan, scope, and request", ErrWorkerContract)
-	}
-	lease, err := h.redeemer.Redeem(ctx, input.CredentialReference, input.Scope)
-	if err != nil || lease == nil {
+	requestPlan := execution.GetRequest()
+	requestIntentDigest := requestPlan.GetRequestIntentDigest()
+	executionIntentDigest := execution.GetExecutionIntentDigestSha256()
+	if h.credentialExpiresAt.Before(h.now().UTC()) || subtle.ConstantTimeCompare([]byte(h.credentialReference), []byte(strings.TrimSpace(input.CredentialReference))) != 1 {
 		return nil, ErrCredentialUnavailable
 	}
-	defer func() { _ = lease.Close() }()
-	if lease.ExpiresAt().UTC().Before(h.now().UTC()) {
+	bearer := h.credential
+	h.credential = nil
+	if len(bearer) == 0 {
 		return nil, ErrCredentialUnavailable
 	}
-	credentialOperation := strings.TrimSpace(lease.OperationID())
-	if !safeIdentifier(credentialOperation) {
-		return nil, fmt.Errorf("%w: credential operation identifier is not provider-safe", ErrCredentialUnavailable)
-	}
-	responseBody, statusCode, err := h.get(ctx, providerURL, requestPlan.GetAccept(), requestPlan.GetMaxResponseBytes(), lease.BearerToken())
+	responseBody, responseHeaders, statusCode, err := h.get(ctx, providerURL, requestPlan.GetMethod(), requestPlan.GetAccept(), execution.GetDeclaredHeaders(), execution.GetBody(), requestPlan.GetMaxResponseBytes(), execution.GetCredentialOperation(), bearer)
 	if err != nil {
-		return nil, err
-	}
-	receipt := SafeReceipt{
-		PlanDigestSHA256: input.Plan.GetPlanDigestSha256(), LogicalPageID: input.Scope.LogicalPageID,
-		RequestIntentDigest: input.Scope.RequestIntentDigest, RuntimeGeneration: input.Scope.RuntimeGeneration,
-		LeaseGeneration: input.Scope.LeaseGeneration, CredentialOperation: credentialOperation,
-		StatusCode: statusCode, ResponseBytes: len(responseBody), ResponseSHA256: responseSHA256(responseBody),
-	}
-	if err := validateSafeReceipt(receipt, input.Plan, input.Scope, responseBody, statusCode); err != nil {
 		return nil, err
 	}
 	statusCodeWire, err := safeUint32(statusCode)
 	if err != nil {
 		return nil, err
 	}
-	receiptWire, err := receipt.protobuf()
-	if err != nil {
-		return nil, err
-	}
-	decodeResult, err := h.worker.Decode(ctx, &cerebrov1.SourceWorkerDecodeRequestV1{
-		Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), StatusCode: statusCodeWire, ResponseBody: responseBody,
-		LogicalPageId: input.Scope.LogicalPageID, RequestIntentDigest: input.Scope.RequestIntentDigest, Receipt: receiptWire,
+	decoded, err := h.worker.DecodeV2(ctx, &cerebrov1.SourceWorkerDecodeEnvelopeV2{
+		Request: &cerebrov1.SourceWorkerDecodeRequestV1{
+			Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), StatusCode: statusCodeWire, ResponseBody: responseBody,
+			LogicalPageId: executionContext.GetLogicalPageId(), RequestIntentDigest: requestIntentDigest, Context: executionContext,
+		},
+		Metadata: metadata, ResponseHeaders: responseHeaders, ExecutionIntentDigestSha256: executionIntentDigest,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("credential-free response decoding failed: %w", err)
 	}
-	if err := validateWorkerResult(input.Plan, input.Scope, receipt, decodeResult); err != nil {
-		return nil, err
+	if decoded.GetReceipt() == nil || decoded.GetResult() == nil {
+		return nil, fmt.Errorf("%w: Rust decode evidence is incomplete", ErrWorkerContract)
 	}
-	return &ExecutionOutput{Result: decodeResult, Receipt: receipt}, nil
+	output := &ExecutionOutput{Plan: input.Plan, Context: executionContext, Receipt: decoded.GetReceipt(), Result: decoded.GetResult()}
+	program, err := h.worker.SealPage(ctx, PageProgramRequest{
+		Plan: output.Plan, Context: output.Context, Receipt: output.Receipt, Result: output.Result,
+		CurrentLeaseGeneration: input.Scope.LeaseGeneration, Metadata: metadata,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: Rust page program failed: %w", ErrWorkerContract, err)
+	}
+	output.Program = program
+	return output, nil
 }
 
-func (h *Host) get(ctx context.Context, endpoint *url.URL, accept string, limit uint64, bearer []byte) ([]byte, int, error) {
-	defer clear(bearer)
-	if len(bearer) == 0 || bytes.ContainsAny(bearer, "\r\n") {
-		return nil, 0, ErrCredentialUnavailable
+func (h *Host) get(ctx context.Context, endpoint *url.URL, method, accept string, declaredHeaders map[string]string, requestBody []byte, limit uint64, credentialOperation string, credential []byte) ([]byte, map[string]string, int, error) {
+	defer clear(credential)
+	if len(credential) == 0 || bytes.ContainsAny(credential, "\r\n") {
+		return nil, nil, 0, ErrCredentialUnavailable
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err := validateDeclaredHeaders(declaredHeaders); err != nil {
+		return nil, nil, 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), bytes.NewReader(requestBody))
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: provider request is invalid", ErrInvalidExecution)
+		return nil, nil, 0, fmt.Errorf("%w: provider request is invalid", ErrInvalidExecution)
 	}
 	req.Header.Set("Accept", accept)
-	authorization := append([]byte("Bearer "), bearer...)
-	req.Header.Set("Authorization", string(authorization))
+	for name, value := range declaredHeaders {
+		req.Header.Set(name, value)
+	}
+	authHeader, authValue, err := credentialHeader(credentialOperation, credential)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	req.Header.Set(authHeader, string(authValue))
 	response, err := h.client.Do(req)
-	req.Header.Del("Authorization")
-	clear(authorization)
+	req.Header.Del(authHeader)
+	clear(authValue)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, 0, ErrProviderTimeout
+			return nil, nil, 0, ErrProviderTimeout
 		}
 		var networkError net.Error
 		if errors.As(err, &networkError) && networkError.Timeout() {
-			return nil, 0, ErrProviderTimeout
+			return nil, nil, 0, ErrProviderTimeout
 		}
-		return nil, 0, fmt.Errorf("%w: provider request failed", ErrProviderEgress)
+		return nil, nil, 0, fmt.Errorf("%w: provider request failed", ErrProviderEgress)
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		switch response.StatusCode {
-		case http.StatusUnauthorized:
-			return nil, response.StatusCode, ErrProviderAuthentication
-		case http.StatusForbidden:
-			return nil, response.StatusCode, ErrProviderPermission
-		case http.StatusTooManyRequests:
-			return nil, response.StatusCode, ErrProviderRateLimited
-		default:
-			return nil, response.StatusCode, fmt.Errorf("%w: provider status %d is not allowed", ErrProviderMalformedResponse, response.StatusCode)
-		}
+	responseHeaders, err := safeResponseHeaders(response.Header)
+	if err != nil {
+		return nil, nil, response.StatusCode, err
 	}
 	readLimit, err := strconv.ParseInt(strconv.FormatUint(limit, 10), 10, 64)
 	if err != nil || readLimit < 0 || limit > maxResponseBytes {
-		return nil, response.StatusCode, fmt.Errorf("%w: provider response limit is invalid", ErrInvalidExecution)
+		return nil, nil, response.StatusCode, fmt.Errorf("%w: provider response limit is invalid", ErrInvalidExecution)
 	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, readLimit+1))
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, readLimit+1))
 	if err != nil {
-		return nil, response.StatusCode, fmt.Errorf("%w: provider response read failed", ErrInvalidExecution)
+		return nil, nil, response.StatusCode, fmt.Errorf("%w: provider response read failed", ErrInvalidExecution)
 	}
-	if uint64(len(body)) > limit {
-		return nil, response.StatusCode, fmt.Errorf("%w: limit %d", ErrProviderResponseTooLarge, limit)
+	if uint64(len(responseBody)) > limit {
+		return nil, nil, response.StatusCode, fmt.Errorf("%w: limit %d", ErrProviderResponseTooLarge, limit)
 	}
-	return body, response.StatusCode, nil
+	return responseBody, responseHeaders, response.StatusCode, nil
+}
+
+func credentialHeader(operation string, credential []byte) (string, []byte, error) {
+	switch operation {
+	case "source.bearer":
+		return "Authorization", append([]byte("Bearer "), credential...), nil
+	case "jumpcloud.x_api_key":
+		return "X-Api-Key", append([]byte(nil), credential...), nil
+	default:
+		return "", nil, fmt.Errorf("%w: credential operation is not registered", ErrWorkerContract)
+	}
+}
+
+func runtimeMetadata(scope CredentialScope) *cerebrov1.SourceWorkerRuntimeMetadataV2 {
+	return &cerebrov1.SourceWorkerRuntimeMetadataV2{
+		PublicConfig:                     scope.PublicConfig,
+		PriorTerminalWatermarkUnixMillis: scope.PriorTerminalWatermarkUnixMillis,
+		PriorCheckpoint:                  scope.PriorCheckpoint,
+	}
 }

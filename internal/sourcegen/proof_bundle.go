@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	ProofBundleSchemaVersion = "cerebro.sourcegen.proof/v1"
+	ProofBundleSchemaVersion = "cerebro.sourcegen.proof/v2"
 
 	ProofStatusPassed        = "passed"
 	ProofStatusPending       = "pending"
@@ -22,6 +22,7 @@ type ProofBundle struct {
 	SchemaVersion    string                    `json:"schema_version"`
 	GeneratorVersion string                    `json:"generator_version"`
 	SourceID         string                    `json:"source_id"`
+	RuntimeMode      string                    `json:"runtime_mode"`
 	InputDigest      string                    `json:"input_digest"`
 	GrammarFeatures  []string                  `json:"grammar_features"`
 	ProviderContract *ProviderContractEvidence `json:"provider_contract,omitempty"`
@@ -72,10 +73,15 @@ func buildProofBundle(request normalizedRequest, manifest generationManifest) Pr
 		}
 	}
 
+	runtimeMode := "catalog_runtime"
+	if request.EmitGoDifferentialOracle {
+		runtimeMode = "go_differential_oracle"
+	}
 	return ProofBundle{
 		SchemaVersion:    ProofBundleSchemaVersion,
 		GeneratorVersion: manifest.GeneratorVersion,
 		SourceID:         manifest.SourceID,
+		RuntimeMode:      runtimeMode,
 		InputDigest:      manifest.InputDigest,
 		GrammarFeatures:  grammarFeatures(request),
 		ProviderContract: cloneProviderContractEvidence(request.ProviderContract),

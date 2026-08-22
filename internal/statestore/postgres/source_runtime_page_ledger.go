@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -156,6 +157,17 @@ func (s *Store) MarkSourceRuntimePageProjected(ctx context.Context, attemptID st
 }
 
 func (s *Store) CommitSourceRuntimePage(ctx context.Context, attemptID string, runtime *cerebrov1.SourceRuntime) error {
+	return s.commitSourceRuntimePage(ctx, attemptID, runtime, nil)
+}
+
+// CommitSourceRuntimePageFenced commits checkpoint progress only while the
+// exact source-runtime lease generation remains current. The lease row stays
+// locked through the runtime and page-ledger updates.
+func (s *Store) CommitSourceRuntimePageFenced(ctx context.Context, attemptID string, runtime *cerebrov1.SourceRuntime, fence ports.SourceRuntimeLeaseFence) error {
+	return s.commitSourceRuntimePage(ctx, attemptID, runtime, &fence)
+}
+
+func (s *Store) commitSourceRuntimePage(ctx context.Context, attemptID string, runtime *cerebrov1.SourceRuntime, fence *ports.SourceRuntimeLeaseFence) error {
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
 	}
@@ -171,6 +183,25 @@ func (s *Store) CommitSourceRuntimePage(ctx context.Context, attemptID string, r
 		return fmt.Errorf("begin source runtime page commit: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if fence != nil {
+		if strings.TrimSpace(fence.Owner) == "" || fence.Generation == 0 || fence.Generation > math.MaxInt64 {
+			return ports.ErrSourceRuntimeLeaseLost
+		}
+		var currentGeneration int64
+		if err := tx.QueryRowContext(ctx, `
+SELECT lease_generation
+FROM source_runtimes
+WHERE id = $1
+  AND lease_owner = $2
+  AND lease_generation = $3
+  AND lease_expires_at > NOW()
+FOR UPDATE`, runtime.GetId(), strings.TrimSpace(fence.Owner), int64(fence.Generation)).Scan(&currentGeneration); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ports.ErrSourceRuntimeLeaseLost
+			}
+			return fmt.Errorf("validate source runtime page lease fence %q: %w", runtime.GetId(), err)
+		}
+	}
 	if err := putSourceRuntime(ctx, tx, runtime); err != nil {
 		return err
 	}
@@ -255,4 +286,5 @@ func (s *Store) ensureSourceRuntimePageLedgerTables(ctx context.Context) error {
 }
 
 var _ ports.SourceRuntimePageLedgerStore = (*Store)(nil)
+var _ ports.SourceRuntimeFencedPageCommitter = (*Store)(nil)
 var _ sourceRuntimeExecutor = (*sql.Tx)(nil)

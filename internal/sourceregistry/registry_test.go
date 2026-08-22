@@ -5,12 +5,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	sourcecatalogs "github.com/writer/cerebro/sources"
 )
 
 func TestBuiltinWithCatalogOverridesUsesVerifiedDeepSeekCatalog(t *testing.T) {
@@ -209,6 +212,172 @@ func TestBuiltinLoadsDockerHubFromConnectorCatalog(t *testing.T) {
 	}
 	if source.Spec().Name != "Docker Hub" {
 		t.Fatalf("docker_hub Spec().Name = %q, want %q", source.Spec().Name, "Docker Hub")
+	}
+}
+
+func TestBuiltinCatalogSourcesPreservePortableSourceContracts(t *testing.T) {
+	registry, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+	analysis, err := connectorcatalog.BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("connectorcatalog.BuiltinRuntime() error = %v", err)
+	}
+	static := make(map[string]struct{}, len(builtinSourceLoaders))
+	for _, loader := range builtinSourceLoaders {
+		static[loader.name] = struct{}{}
+	}
+	var dynamicIDs []string
+	for _, entry := range analysis.Entries {
+		if entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
+			continue
+		}
+		sourceID := entry.Definition.SourceID
+		if _, ok := static[sourceID]; ok {
+			continue
+		}
+		dynamicIDs = append(dynamicIDs, sourceID)
+		source, ok := registry.Get(sourceID)
+		if !ok {
+			t.Errorf("Get(%s) = false", sourceID)
+			continue
+		}
+		payload, err := sourcecatalogs.BuiltinCatalog(sourceID)
+		if err != nil {
+			t.Errorf("BuiltinCatalog(%s) error = %v", sourceID, err)
+			continue
+		}
+		catalog, err := sourcecdk.LoadSourceCatalog(payload)
+		if err != nil {
+			t.Errorf("LoadSourceCatalog(%s) error = %v", sourceID, err)
+			continue
+		}
+		if !reflect.DeepEqual(source.Spec(), catalog.Spec) {
+			t.Errorf("%s source spec differs from portable catalog", sourceID)
+		}
+		if !slices.Equal(entry.ResourceFamilyIDs, catalog.RuntimeFamilies) {
+			t.Errorf("%s runtime families = %#v, want %#v", sourceID, entry.ResourceFamilyIDs, catalog.RuntimeFamilies)
+		}
+		coverageProvider, ok := source.(sourcecdk.CoverageContractProvider)
+		if !ok || catalog.CoverageContract == nil || !reflect.DeepEqual(coverageProvider.CoverageContract(), *catalog.CoverageContract) {
+			t.Errorf("%s coverage contract was not preserved", sourceID)
+		}
+		eventProvider, ok := source.(sourcecdk.EventContractProvider)
+		if !ok || !reflect.DeepEqual(eventProvider.EventContracts(), catalog.EventContracts) {
+			t.Errorf("%s event contracts were not preserved", sourceID)
+		}
+		lifecycleProvider, ok := source.(sourcecdk.LifecycleContractProvider)
+		if !ok || catalog.LifecycleContract == nil || !reflect.DeepEqual(lifecycleProvider.LifecycleContract(), *catalog.LifecycleContract) {
+			t.Errorf("%s lifecycle contract was not preserved", sourceID)
+		}
+	}
+	if len(dynamicIDs) == 0 || !slices.IsSorted(dynamicIDs) {
+		t.Fatalf("dynamic catalog source ids are empty or nondeterministic: %#v", dynamicIDs)
+	}
+	registrySpecs := registry.List()
+	for index := 1; index < len(registrySpecs); index++ {
+		if registrySpecs[index-1].Id >= registrySpecs[index].Id {
+			t.Fatalf("registry source ids are not unique and deterministic at %q, %q", registrySpecs[index-1].Id, registrySpecs[index].Id)
+		}
+	}
+}
+
+func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testing.T) {
+	compatibilityExceptions := map[string]bool{
+		"anthropic":             true,
+		"asana":                 true,
+		"azure":                 true,
+		"cloudflare":            true,
+		"digitalocean":          true,
+		"github":                true,
+		"google_drive":          true,
+		"jumpcloud":             true,
+		"kandji":                true,
+		"kolide":                true,
+		"kubernetes":            true,
+		"langfuse":              true,
+		"okta":                  true,
+		"onelogin":              true,
+		"pagerduty":             true,
+		"sailpoint_identitynow": true,
+		"snyk":                  true,
+		"tailscale":             true,
+		"writer":                true,
+	}
+	catalog, err := connectorcatalog.BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("connectorcatalog.BuiltinRuntime() error = %v", err)
+	}
+	entries := make(map[string]connectorcatalog.Entry, len(catalog.Entries))
+	for _, entry := range catalog.Entries {
+		entries[entry.Definition.SourceID] = entry
+	}
+	seenExceptions := make(map[string]bool, len(compatibilityExceptions))
+	for _, loader := range builtinSourceLoaders {
+		entry, ok := entries[loader.name]
+		if !ok {
+			continue
+		}
+		if compatibilityExceptions[loader.name] {
+			seenExceptions[loader.name] = true
+			continue
+		}
+		if entry.Report.Verdict == connectordefinitions.SupportVerdictSupported {
+			t.Errorf("catalog-supported source %q has a redundant compile-time loader", loader.name)
+		}
+	}
+	for sourceID := range compatibilityExceptions {
+		if !seenExceptions[sourceID] {
+			t.Errorf("catalog compatibility exception %q has no static loader", sourceID)
+		}
+	}
+}
+
+func TestBuiltinKeepsCloudflareConcreteLoaderUntilSeparateRetirementGate(t *testing.T) {
+	for _, loader := range builtinSourceLoaders {
+		if loader.name == "cloudflare" {
+			return
+		}
+	}
+	t.Fatal("cloudflare concrete source loader retired before the separate authority gate")
+}
+
+func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
+	retired := []string{
+		"acunetix",
+		"adobe_workfront",
+		"aircall",
+		"airfocus",
+		"akeyless",
+		"backstage",
+		"beezup",
+		"bitwarden",
+		"box",
+		"conjur",
+		"deepseek",
+		"duo",
+		"fivetran",
+		"increase",
+		"jira",
+		"langchain",
+		"openai",
+	}
+	static := make(map[string]struct{}, len(builtinSourceLoaders))
+	for _, loader := range builtinSourceLoaders {
+		static[loader.name] = struct{}{}
+	}
+	registry, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+	for _, sourceID := range retired {
+		if _, ok := static[sourceID]; ok {
+			t.Errorf("retired provider %q still has a static Go loader", sourceID)
+		}
+		if _, ok := registry.Get(sourceID); !ok {
+			t.Errorf("retired provider %q is not runnable through the catalog runtime", sourceID)
+		}
 	}
 }
 

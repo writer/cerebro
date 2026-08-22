@@ -12,7 +12,7 @@ export const operatorNavLinks: NavigationEntry[] = [
   {
     label: "Home",
     href: "/",
-    description: "Risks, controls, evidence, and source health.",
+    description: "Open work, evidence gaps, and audit readiness.",
     section: "Operator",
     keywords: ["dashboard", "overview", "metrics", "home"],
   },
@@ -136,14 +136,14 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["audit packet", "export", "report", "evidence"],
   },
   {
-    label: "Packet review",
+    label: "Audit packets",
     href: "/reports/audit-packages",
     description: "Review packet blockers, evidence gaps, source freshness, and shared snapshots.",
     section: "Operator",
     keywords: ["audit package", "packet review", "evidence review", "control owners", "snapshot", "scope", "exceptions"],
   },
   {
-    label: "Sources",
+    label: "Integrations",
     href: "/connectors",
     description: "Source setup, freshness, scope, and ingestion health.",
     section: "Operator",

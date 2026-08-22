@@ -44,6 +44,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_CONTENT_PACK_TENANT_ID` | unset | Tenant grant selected from the content-pack allowlist. Required when a content-pack root is set; never emitted as a metric label. |
 | `CEREBRO_CONTENT_PACK_KERNEL_VERSION` | `1.0.0` | Kernel compatibility version used for signed pack range checks. |
 | `CEREBRO_SOURCE_MIN_CERTIFICATION_TIER` | `cataloged` | Minimum connector certification tier for availability decisions. Supported values: `cataloged`, `spec_verified`, `contract_tested`, `production_observed`, and `outcome_validated`. Catalog-only and configured connectors remain discoverable with an explicit below-minimum state. |
+| `CEREBRO_SOURCE_WORKER` | sibling `source_worker` binary | Absolute path to the credential-free Rust source worker used by the closed production dispatcher. |
 | `CEREBRO_POSTGRES_MAX_OPEN_CONNS` | Go default | Optional `database/sql` maximum open connections. |
 | `CEREBRO_POSTGRES_MAX_IDLE_CONNS` | Go default | Optional `database/sql` maximum idle connections. |
 | `CEREBRO_POSTGRES_CONN_MAX_LIFETIME` | Go default | Optional maximum lifetime for pooled Postgres connections. |

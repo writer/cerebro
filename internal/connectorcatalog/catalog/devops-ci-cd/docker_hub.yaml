@@ -10,6 +10,15 @@ entries:
       categories:
         - dev
         - artifacts
+      config_fields:
+        - help: Docker Hub namespace containing the repository.
+          key: namespace
+          label: Namespace
+          required: true
+        - help: Repository name within the Docker Hub namespace.
+          key: repository
+          label: Repository
+          required: true
       description: Collects repositories, users, and audit events from Docker Hub and projects them into the Cerebro graph as repositories, users, and audit events for repository, build, deployment, and release context.
       display_name: Docker Hub
       id: builtin-docker_hub

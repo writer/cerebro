@@ -1,15 +1,15 @@
 # Cerebro
 
-**Security evidence that people and coding agents can query.**
+**Compliance work, evidence, and source health in one workspace.**
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 Cerebro reads cloud, identity, SaaS, engineering, policy, and compliance data. It connects that evidence into tenant-scoped entities, relationships, findings, and controls, then exposes the same context through the web, CLI, HTTP, Connect, and MCP.
 
-[Run the product demo](#run-the-product-demo) · [Read a live source](#read-a-live-source) · [Connect an agent](#connect-an-agent) · [Browse the docs](#documentation)
+[Run the compliance workspace](#run-the-compliance-workspace) · [Install a release](#install-a-release) · [Read a live source](#read-a-live-source) · [Browse the docs](#documentation)
 
-![Cerebro graph explorer showing an organizational entity and its evidence-backed relationships](docs/assets/cerebro-graph-explorer.png)
+![Cerebro compliance overview showing framework readiness, open work, evidence gaps, and integration health](docs/assets/cerebro-compliance-overview.png)
 
 ## What You Can Do
 
@@ -20,28 +20,40 @@ Cerebro reads cloud, identity, SaaS, engineering, policy, and compliance data. I
 
 Cerebro includes more than 800 built-in source definitions and more than 1,500 policy definitions across cloud, identity, endpoint, vulnerability, engineering, AI, and compliance systems. Source definitions describe cataloged capabilities; required configuration and supported records are listed in the [source catalog](docs/reference/sources.md).
 
-## Run The Product Demo
+## Run The Compliance Workspace
 
-The shortest path starts the Rust product demo, an in-memory organizational graph and the browser explorer. It uses synthetic product data and requires no Docker services or provider credentials.
+The shortest path starts the web workspace with a complete synthetic compliance program. Review framework readiness, controls, evidence, policies, vendors, questionnaires, audit packets, and integration health without Docker or provider credentials.
 
-Prerequisites: Node.js 22 or newer and the Rust toolchain declared in `rust-toolchain.toml`.
+Prerequisite: Node.js 22 or newer.
 
 ```bash
 git clone https://github.com/writer/cerebro.git
 cd cerebro
-make rust-product-demo
+make compliance-demo
 ```
 
-Open the graph explorer URL printed in the terminal. Press `Ctrl-C` to stop both processes.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Press `Ctrl-C` to stop the workspace. The demo binds only to loopback and strips provider credentials from its environment.
 
-To verify the browser-to-Rust path and write a redacted receipt:
+To verify the full fixture-backed browser route contract in Chromium:
 
 ```bash
-make rust-product-demo-check
-cat tmp/rust-product-demo/receipt.json
+make compliance-demo-check
 ```
 
-The receipt records the source revision, graph contract, graph counts, and browser proof. It does not record the ephemeral local authentication secret.
+Use [Compliance workspace](docs/start/compliance-workspace.md) for the first workflow and [Integration readiness](docs/start/integration-readiness.md) to distinguish catalog coverage from configured collection.
+
+The credential-free Rust graph demo remains available as `make rust-product-demo` when you need to inspect the organizational graph contract.
+
+## Install A Release
+
+Release archives and container images are published from tagged builds. Verify a CLI image before adding provider configuration:
+
+```bash
+docker pull ghcr.io/writer/cerebro:<tag>
+docker run --rm ghcr.io/writer/cerebro:<tag> version
+```
+
+The web image is `ghcr.io/writer/cerebro-web:<tag>`. It requires a Cerebro API endpoint; it is not a standalone data service. Use the [release contract](docs/operations/release-contract.md) for image digests and signatures, then follow [Hosting](docs/operations/hosting.md) for the API, web, and durable-store topology.
 
 ## Read A Live Source
 
@@ -58,7 +70,8 @@ The same source service is available through the CLI, HTTP API, and MCP tools. P
 
 | Goal | Start with | Data and dependencies |
 | --- | --- | --- |
-| Inspect the product locally | `make rust-product-demo` | Rust product demo; synthetic in-memory graph; Node.js and Rust; no credentials or Docker |
+| Review a compliance program locally | `make compliance-demo` | Synthetic controls, evidence, vendors, policies, questionnaires, and source health; Node.js; no credentials or Docker |
+| Inspect the graph contract locally | `make rust-product-demo` | Rust product demo; synthetic in-memory graph; Node.js and Rust; no credentials or Docker |
 | Read current provider data | `make serve-dev` | Go compatibility runtime; live source preview; provider configuration when the source requires it |
 | Persist evidence and findings | `docker compose up -d` | NATS JetStream, Postgres, and Neo4j plus the Go compatibility runtime |
 
@@ -109,6 +122,7 @@ Current authority map:
 | --- | --- | --- |
 | Rust organizational platform | Rust-authoritative tenant-scoped graph routes and invariant-heavy authority paths, including the Rust product demo | Typed graph tests, readiness/fail-closed receipts, product-shape compatibility, rollback evidence |
 | Go compatibility runtime | Go compatibility runtime for source reads, CLI, HTTP, Connect, MCP, append-log, findings, reports, and compatibility workflows | Source/runtime parity, durable fencing, rollback receipts, OpenAPI/proto/SDK/MCP compatibility gates |
+| Credential-free source worker | Rust plans and decodes `azure.authorization_policy`; its closed dispatcher also compile-registers `sentinelone.agent`, while the trusted Go host owns credential redemption, bounded provider I/O, append, projection, and fenced checkpoint commit | Exact Go/Rust event parity, lease-generation rejection, restart deduplication, hosted checks, deployment correlation, and an authenticated product read |
 | Durable evidence stores | NATS JetStream, Postgres, and Neo4j are required for persisted evidence, append-log replay, receipts, findings, reports, graph projection, and graph queries | Preflight, health/readiness, projection and replay receipts; unconfigured routes must fail closed |
 | Web app | Browser workflows over public runtime contracts; the local product demo talks to Rust graph demo APIs | Browser demo receipt, console-clean shape compatibility, API compatibility checks |
 | Slack companion | Durable intake, execution, delivery, and lifecycle status through explicit Slack authority paths | Fixture-only Slack validation unless live writes are explicitly approved |
@@ -125,6 +139,8 @@ The Go compatibility runtime uses the `go1.26.6` toolchain. Run `make doctor` to
 | Task | Guide |
 | --- | --- |
 | Run the shortest local path | [Quick reference](docs/start/quick-reference.md) |
+| Review the compliance workspace | [Compliance workspace](docs/start/compliance-workspace.md) |
+| Check what an integration can do | [Integration readiness](docs/start/integration-readiness.md) and [Source catalog](docs/reference/sources.md) |
 | Read a source and start the durable stack | [Getting started](docs/start/getting-started.md) |
 | Configure auth, tenancy, stores, MCP, or device auth | [Configuration variables](docs/reference/config-env-vars.md) and [.env.example](.env.example) |
 | Explore APIs | [API reference](docs/reference/api-reference.md), [OpenAPI](api/openapi.yaml), and [Connect proto](proto/cerebro/v1/bootstrap.proto) |

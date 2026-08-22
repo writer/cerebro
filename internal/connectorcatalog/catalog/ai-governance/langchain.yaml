@@ -4,15 +4,18 @@ entries:
       auth:
         credential_fields:
           - key: api_key
-            label: LangSmith API key
+            label: LangSmith API key or access token
             reference_only: true
             required: true
             secret: true
         model: api_key
+        configurable_models: [api_key, bearer_token]
+        model_config_key: auth_model
         token_header: X-API-Key
       categories: [ai, governance]
       config_fields:
         - {key: base_url, label: LangSmith API base URL, required: true}
+        - {key: auth_model, label: Authentication model}
         - {key: organization_id, label: LangSmith organization ID}
         - {key: workspace_id, label: LangSmith workspace ID}
         - {key: include_deleted, label: Include deleted workspaces}
@@ -21,7 +24,11 @@ entries:
         - {key: name_contains, label: Name contains}
         - {key: include_stats, label: Include statistics}
         - {key: filter, label: Provider filter}
+        - {key: key, label: Feedback key}
+        - {key: project, label: Run project filter}
+        - {key: session, label: Run session filter}
         - {key: run_id, label: Run ID}
+        - {key: run_type, label: Run type}
         - {key: feedback_source, label: Feedback source}
         - {key: start_time, label: Start time}
         - {key: end_time, label: End time}
@@ -34,6 +41,7 @@ entries:
           label: Current organization
           method: GET
           path: /api/v1/orgs/current
+          singleton: true
           record_selector: $
           id_field: id|organization_id
           name_field: display_name|name
@@ -165,7 +173,7 @@ entries:
           id_field: id|session_id
           name_field: name
           event: {kind: langchain.project, schema_ref: langchain/project/v1, urn_kind: langchain_project, required_payload_fields: [id]}
-          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
+          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100, inject_first_page: true, start_page: 0}
           config:
             config_query: {name: name, name_contains: name_contains, include_stats: include_stats, filter: filter}
             config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
@@ -188,6 +196,13 @@ entries:
             static_json_body:
               limit: 100
               select: [id, name, run_type, start_time, end_time, status, error, session_id, total_tokens, prompt_tokens, completion_tokens, trace_id]
+            config_json_body:
+              project: project
+              session: session
+              start_time: start_time
+              end_time: end_time
+              run_type: run_type
+              filter: filter
           pagination: {type: cursor, cursor_param: cursor, cursor_json_path: $.cursors.next, cursor_in_json_body: true, page_size: 100}
           config:
             config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
@@ -206,9 +221,9 @@ entries:
           id_field: id|feedback_id
           name_field: key
           event: {kind: langchain.feedback, schema_ref: langchain/feedback/v1, urn_kind: langchain_feedback, required_payload_fields: [id|feedback_id]}
-          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
+          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100, inject_first_page: true, start_page: 0}
           config:
-            config_query: {run: run_id, key: name, feedback_source: feedback_source}
+            config_query: {run: run_id, key: key, feedback_source: feedback_source}
             config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}
             config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
           projection:
@@ -225,7 +240,7 @@ entries:
           id_field: id|dataset_id|name
           name_field: name
           event: {kind: langchain.dataset, schema_ref: langchain/dataset/v1, urn_kind: langchain_dataset, required_payload_fields: [id|dataset_id|name]}
-          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100}
+          pagination: {type: offset, offset_param: offset, limit_param: limit, page_size: 100, inject_first_page: true, start_page: 0}
           config:
             config_query: {name: name, name_contains: name_contains}
             config_headers: {X-Organization-Id: organization_id, X-Tenant-Id: workspace_id}

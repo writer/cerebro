@@ -1,11 +1,10 @@
 //! Capability-free source worker process.
 
-#[path = "../source_execution.rs"]
-mod source_execution;
-
 use std::io::{self, Read, Write};
 
-const MAX_WORKER_INPUT_BYTES: u64 = (8 << 20) + (64 << 10);
+use cerebro_source_runtime_next::source_execution;
+
+const MAX_WORKER_INPUT_BYTES: u64 = (12 << 20) + (64 << 10);
 
 fn main() {
     if let Err(error) = run() {
@@ -26,8 +25,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("source worker input exceeds the process bound".into());
     }
     let output = match command.as_str() {
+        "compile" => source_execution::compile_control(&input)?,
         "plan" => source_execution::plan(&input)?,
+        "plan-v2" => source_execution::plan_v2(&input)?,
         "decode" => source_execution::decode(&input)?,
+        "decode-v2" => source_execution::decode_v2(&input)?,
+        "context" => source_execution::context_control(&input)?,
+        "transition" => source_execution::transition_control(&input)?,
         _ => return Err("source worker command is invalid".into()),
     };
     io::stdout().write_all(&output)?;

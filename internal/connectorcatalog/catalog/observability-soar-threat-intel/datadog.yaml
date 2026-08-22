@@ -4,133 +4,525 @@ entries:
       auth:
         credential_fields:
           - key: api_key
+            label: API key
             reference_only: true
+            required: true
             secret: true
+          - key: application_key
+            label: Application key
+            reference_only: true
+            required: true
+            secret: true
+        header_parameters:
+          DD-API-KEY: api_key
+          DD-APPLICATION-KEY: application_key
         model: api_key
+        requires_references: true
       categories:
         - observability
         - security
-      description: Collects monitored assets, alerts, and audit events from Datadog and projects them into the Cerebro graph as assets, findings, and audit events for alert, incident, service health, and response context.
+      description: Collects Datadog users, roles, teams, monitors, service level objectives, dashboards, incidents, and audit events for identity, access, reliability, and response context.
       display_name: Datadog
       id: builtin-datadog
       resource_families:
         - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - assets
+            - control_domains: [identity_access, asset_inventory]
+              evidence_types: [source_snapshot]
+              families: [users]
               high_value: true
-              id: assets
-              support: partial
-              title: Monitored assets
+              id: identity_users
+              support: supported
+              title: Users
               type: entity_family
           event:
-            kind: datadog.assets
-            required_payload_fields:
-              - id
-            schema_ref: datadog/assets/v1
-            urn_kind: datadog_assets
-          id: assets
+            attributes:
+              created_at: attributes.created_at
+              disabled: attributes.disabled
+              email: attributes.email
+              handle: attributes.handle
+              modified_at: attributes.modified_at
+              name: attributes.name|attributes.handle
+              status: attributes.status
+              user_id: id
+              verified: attributes.verified
+            exact_attributes: true
+            kind: datadog.users
+            required_attributes: [external_id, family, source_provider, source_product, user_id, email]
+            required_payload_fields: [id, attributes]
+            schema_ref: datadog/users/v1
+            static_attributes: {source_product: datadog, source_system: datadog}
+            urn_kind: datadog_users
+          id: users
           id_field: id
-          label: Monitored assets
+          label: Users
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page[cursor]
+            next_cursor_keys: [meta.page.after, meta.page.cursor]
             page_size: 100
-            page_size_param: limit
+            page_size_param: page[size]
             type: cursor
-          path: /v1/entities
+          path: /api/v2/users
           projection:
             fields:
+              created_at: attributes.created_at
+              disabled: attributes.disabled
+              email: attributes.email
+              handle: attributes.handle
+              modified_at: attributes.modified_at
+              name: attributes.name|attributes.handle
+              status: attributes.status
+              user_id: id
+              verified: attributes.verified
+            static_fields:
+              source_product: datadog
+              source_system: datadog
+            template: identity_user
+          record_selector: $.data[*]
+          updated_at_field: attributes.modified_at|attributes.created_at
+        - coverage:
+            - control_domains: [identity_access]
+              evidence_types: [source_snapshot]
+              families: [roles]
+              high_value: true
+              id: identity_roles
+              support: supported
+              title: Roles
+              type: entity_family
+          event:
+            attributes:
+              created_at: attributes.created_at
+              description: attributes.description
+              modified_at: attributes.modified_at
+              name: attributes.name
+              role_id: id
+            exact_attributes: true
+            kind: datadog.roles
+            required_attributes: [external_id, family, source_provider, source_product, role_id, name]
+            required_payload_fields: [id, attributes]
+            schema_ref: datadog/roles/v1
+            static_attributes: {source_product: datadog, source_system: datadog}
+            urn_kind: datadog_roles
+          id: roles
+          id_field: id
+          label: Roles
+          method: GET
+          pagination:
+            cursor_param: page[cursor]
+            next_cursor_keys: [meta.page.after, meta.page.cursor]
+            page_size: 100
+            page_size_param: page[size]
+            type: cursor
+          path: /api/v2/roles
+          projection:
+            fields:
+              created_at: attributes.created_at
+              description: attributes.description
+              modified_at: attributes.modified_at
+              name: attributes.name
+              policy_id: id
+              policy_name: attributes.name
+              role_id: id
+            static_fields:
+              source_product: datadog
+              source_system: datadog
+            template: policy
+          record_selector: $.data[*]
+          updated_at_field: attributes.modified_at|attributes.created_at
+        - coverage:
+            - control_domains: [asset_inventory]
+              evidence_types: [source_snapshot]
+              families: [teams]
+              high_value: true
+              id: teams
+              support: supported
+              title: Teams
+              type: entity_family
+          event:
+            attributes:
+              avatar: attributes.avatar
+              banner: attributes.banner
+              created_at: attributes.created_at
+              description: attributes.description
+              handle: attributes.handle
+              hidden: attributes.hidden
+              modified_at: attributes.modified_at
+              name: attributes.name
+              team_id: id
+            exact_attributes: true
+            kind: datadog.teams
+            required_attributes: [external_id, family, source_provider, source_product, team_id, name]
+            required_payload_fields: [id, attributes]
+            schema_ref: datadog/teams/v1
+            static_attributes: {source_product: datadog, source_system: datadog}
+            urn_kind: datadog_teams
+          id: teams
+          id_field: id
+          label: Teams
+          method: GET
+          pagination:
+            cursor_param: page[cursor]
+            next_cursor_keys: [meta.page.after, meta.page.cursor]
+            page_size: 100
+            page_size_param: page[size]
+            type: cursor
+          path: /api/v2/team
+          projection:
+            fields:
+              avatar: attributes.avatar
+              banner: attributes.banner
+              created_at: attributes.created_at
+              description: attributes.description
+              handle: attributes.handle
+              hidden: attributes.hidden
+              modified_at: attributes.modified_at
+              name: attributes.name
               resource_id: id
-              resource_type: resource_type|type|kind
-              resource_urn: resource_urn|urn|metadata.resource_urn
+              resource_name: attributes.name
+              resource_type: type
+              team_id: id
+            static_fields:
+              source_product: datadog
+              source_system: datadog
             template: asset
           record_selector: $.data[*]
+          updated_at_field: attributes.modified_at|attributes.created_at
         - coverage:
-            - control_domains:
-                - remediation
-              evidence_types:
-                - remediation_state
-              families:
-                - findings
+            - control_domains: [logging_monitoring, availability_resilience]
+              evidence_types: [source_snapshot]
+              families: [monitors]
               high_value: true
-              id: findings
-              support: partial
-              title: Alerts
-              type: remediation_state
+              id: monitors
+              support: supported
+              title: Monitors
+              type: alert_state
           event:
-            kind: datadog.findings
-            required_payload_fields:
-              - id
-            schema_ref: datadog/findings/v1
-            urn_kind: datadog_findings
-          id: findings
+            attributes:
+              created_at: created
+              creator_email: creator.email|creator.handle|created_by.email
+              creator_id: creator.id|creator.handle|created_by.id
+              modified_at: modified
+              monitor_id: id
+              name: name
+              overall_state: overall_state
+              priority: priority
+              query: query
+              state: overall_state
+              tags: tags
+              type: type
+            exact_attributes: true
+            kind: datadog.monitors
+            required_attributes: [external_id, family, source_provider, source_product, monitor_id, name, type]
+            required_payload_fields: [id, name]
+            schema_ref: datadog/monitors/v1
+            static_attributes: {source_product: datadog, source_system: datadog}
+            urn_kind: datadog_monitors
+          id: monitors
           id_field: id
-          label: Alerts
+          label: Monitors
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            page_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/alerts
+            page_size_param: page_size
+            start_page: 0
+            type: page
+          path: /api/v1/monitor
           projection:
             fields:
-              description: description|summary
-              finding_id: id
-              severity: severity|risk|priority
-              status: status|state
-            template: finding
-          record_selector: $.data[*]
+              alert_id: id
+              alert_name: name
+              alert_severity: priority
+              alert_status: overall_state
+              alert_type: type
+              created_at: created
+              creator_email: creator.email|creator.handle|created_by.email
+              creator_id: creator.id|creator.handle|created_by.id
+              modified_at: modified
+              monitor_id: id
+              name: name
+              overall_state: overall_state
+              priority: priority
+              query: query
+              state: overall_state
+              tags: tags
+              type: type
+            static_fields:
+              source_product: datadog
+              source_system: datadog
+            template: alert
+          record_selector: $[*]
+          updated_at_field: modified|created
         - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
+            - control_domains: [availability_resilience, asset_inventory]
+              evidence_types: [source_snapshot]
+              families: [slos]
+              high_value: true
+              id: service_level_objectives
+              support: supported
+              title: Service level objectives
+              type: lifecycle_state
+          event:
+            attributes:
+              created_at: created_at
+              creator_id: creator.id
+              creator_name: creator.name|creator.handle
+              modified_at: modified_at
+              monitor_ids: monitor_ids
+              name: name
+              slo_id: id
+              tags: tags
+              target: target_threshold
+              type: type
+              warning: warning_threshold
+            exact_attributes: true
+            kind: datadog.slos
+            required_attributes: [external_id, family, source_provider, source_product, slo_id, name, type]
+            required_payload_fields: [id, name]
+            schema_ref: datadog/slos/v1
+            static_attributes: {source_product: datadog, source_system: datadog}
+            urn_kind: datadog_slos
+          id: slos
+          id_field: id
+          label: Service level objectives
+          method: GET
+          pagination:
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /api/v1/slo
+          projection:
+            fields:
+              created_at: created_at
+              creator_id: creator.id
+              creator_name: creator.name|creator.handle
+              modified_at: modified_at
+              monitor_ids: monitor_ids
+              name: name
+              resource_id: id
+              resource_name: name
+              resource_type: type
+              slo_id: id
+              tags: tags
+              target: target_threshold
+              type: type
+              warning: warning_threshold
+            static_fields:
+              source_product: datadog
+              source_system: datadog
+            template: asset
+          record_selector: $.data[*]
+          updated_at_field: modified_at|created_at
+        - coverage:
+            - control_domains: [logging_monitoring, compliance_operations]
+              evidence_types: [source_snapshot]
+              families: [dashboards]
+              high_value: true
+              id: dashboards
+              support: supported
+              title: Dashboards
+              type: entity_family
+          event:
+            attributes:
+              author_handle: author_handle
+              author_name: author_name
+              created_at: created_at
+              dashboard_id: id
+              description: description
+              is_read_only: is_read_only
+              layout_type: layout_type
+              modified_at: modified_at
+              tags: tags
+              title: title
+            exact_attributes: true
+            kind: datadog.dashboards
+            required_attributes: [external_id, family, source_provider, source_product, dashboard_id, title]
+            required_payload_fields: [id, title]
+            schema_ref: datadog/dashboards/v1
+            static_attributes: {source_product: datadog, source_system: datadog}
+            urn_kind: datadog_dashboards
+          id: dashboards
+          id_field: id
+          label: Dashboards
+          method: GET
+          pagination:
+            inject_first_page: true
+            limit_param: count
+            offset_param: start
+            page_size: 100
+            type: offset
+          path: /api/v1/dashboard
+          projection:
+            fields:
+              author_handle: author_handle
+              author_name: author_name
+              created_at: created_at
+              dashboard_id: id
+              description: description
+              is_read_only: is_read_only
+              layout_type: layout_type
+              modified_at: modified_at
+              resource_id: id
+              resource_name: title
+              resource_type: layout_type
+              tags: tags
+              title: title
+            static_fields:
+              source_product: datadog
+              source_system: datadog
+            template: asset
+          record_selector: $.dashboards[*]
+          updated_at_field: modified_at|created_at
+        - coverage:
+            - control_domains: [security_operations, availability_resilience]
+              evidence_types: [incident_record]
+              families: [incidents]
+              high_value: true
+              id: incidents
+              support: supported
+              title: Incidents
+              type: lifecycle_state
+          event:
+            attributes:
+              commander_email: attributes.commander_user.email
+              commander_user_id: relationships.commander_user.data.id|attributes.commander_user.id|attributes.commander_user_id
+              created_at: attributes.created|attributes.created_at
+              created_by_email: attributes.created_by_user.email
+              created_by_user_id: relationships.created_by_user.data.id|attributes.created_by_user.id|attributes.created_by_user_id
+              customer_impact: attributes.customer_impacted
+              incident_id: id
+              modified_at: attributes.modified|attributes.modified_at
+              resolved_at: attributes.resolved
+              service: attributes.service|attributes.services
+              severity: attributes.severity
+              state: attributes.state
+              tags: attributes.tags
+              team_id: relationships.teams.data.id|attributes.team_id
+              title: attributes.title
+            exact_attributes: true
+            kind: datadog.incidents
+            required_attributes: [external_id, family, source_provider, source_product, incident_id, title, state]
+            required_payload_fields: [id, attributes]
+            schema_ref: datadog/incidents/v1
+            static_attributes: {source_product: datadog, source_system: datadog}
+            urn_kind: datadog_incidents
+          id: incidents
+          id_field: id
+          label: Incidents
+          method: GET
+          pagination:
+            cursor_param: page[offset]
+            next_cursor_keys: [meta.pagination.next_offset]
+            page_size: 100
+            page_size_param: page[size]
+            type: cursor
+          path: /api/v2/incidents
+          projection:
+            fields:
+              alert_id: id
+              alert_name: attributes.title
+              alert_resolved_at: attributes.resolved
+              alert_severity: attributes.severity
+              alert_status: attributes.state
+              alert_type: type
+              commander_email: attributes.commander_user.email
+              commander_user_id: relationships.commander_user.data.id|attributes.commander_user.id|attributes.commander_user_id
+              created_at: attributes.created|attributes.created_at
+              created_by_email: attributes.created_by_user.email
+              created_by_user_id: relationships.created_by_user.data.id|attributes.created_by_user.id|attributes.created_by_user_id
+              customer_impact: attributes.customer_impacted
+              incident_id: id
+              modified_at: attributes.modified|attributes.modified_at
+              resolved_at: attributes.resolved
+              service: attributes.service|attributes.services
+              severity: attributes.severity
+              state: attributes.state
+              tags: attributes.tags
+              team_id: relationships.teams.data.id|attributes.team_id
+              title: attributes.title
+            static_fields:
+              source_product: datadog
+              source_system: datadog
+            template: alert
+          record_selector: $.data[*]
+          updated_at_field: attributes.modified|attributes.created|attributes.created_at
+        - coverage:
+            - control_domains: [logging_monitoring, identity_access]
+              evidence_types: [logging_configuration]
+              families: [audit_events]
               high_value: true
               id: audit_events
-              support: partial
+              support: supported
               title: Audit events
               type: audit_event
           event:
+            attributes:
+              action: attributes.attributes.evt.name|attributes.attributes.action|attributes.evt.name|attributes.action
+              actor_email: attributes.attributes.usr.email|attributes.attributes.actor.email|attributes.attributes.user.email|attributes.usr.email|attributes.actor.email|attributes.user.email
+              actor_id: attributes.attributes.usr.id|attributes.attributes.actor.id|attributes.attributes.user.id|attributes.usr.id|attributes.actor.id|attributes.user.id
+              actor_name: attributes.attributes.usr.name|attributes.attributes.actor.name|attributes.attributes.user.name|attributes.usr.name|attributes.actor.name|attributes.user.name
+              audit_id: id
+              date_happened: attributes.date_happened|attributes.timestamp
+              event_type: attributes.attributes.evt.name|attributes.attributes.event_type|attributes.attributes.action|attributes.evt.name|attributes.event_type|attributes.action
+              resource_id: attributes.attributes.resource.id|attributes.attributes.target.id|attributes.attributes.resource_id|attributes.resource.id|attributes.target.id|attributes.resource_id
+              resource_name: attributes.attributes.resource.name|attributes.attributes.target.name|attributes.attributes.resource_name|attributes.resource.name|attributes.target.name|attributes.resource_name
+              resource_type: attributes.attributes.resource.type|attributes.attributes.target.type|attributes.attributes.resource_type|attributes.resource.type|attributes.target.type|attributes.resource_type
+              service: attributes.attributes.service|attributes.service
+              source_message: attributes.message
+              tags: attributes.tags
+              timestamp: attributes.timestamp|attributes.date_happened
+            exact_attributes: true
             kind: datadog.audit_events
-            required_payload_fields:
-              - id
+            required_attributes: [external_id, family, source_provider, source_product, audit_id, event_type, timestamp]
+            required_payload_fields: [id, attributes]
             schema_ref: datadog/audit_events/v1
+            static_attributes: {source_product: datadog, source_system: datadog}
             urn_kind: datadog_audit_events
           id: audit_events
           id_field: id
           label: Audit events
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            cursor_param: page[cursor]
+            next_cursor_keys: [meta.page.after, meta.page.cursor, links.next]
             page_size: 100
-            page_size_param: limit
+            page_size_param: page[limit]
             type: cursor
-          path: /v1/audit/events
+          path: /api/v2/audit/events
           projection:
             fields:
-              actor_email: actor_email|actor.email|email|user.email
-              actor_id: actor_id|actor.id|actorId|user_id|user.id
-              event_type: event_type|event_name|action|type
-              id: id
+              action: attributes.attributes.evt.name|attributes.attributes.action|attributes.evt.name|attributes.action
+              actor_email: attributes.attributes.usr.email|attributes.attributes.actor.email|attributes.attributes.user.email|attributes.usr.email|attributes.actor.email|attributes.user.email
+              actor_id: attributes.attributes.usr.id|attributes.attributes.actor.id|attributes.attributes.user.id|attributes.usr.id|attributes.actor.id|attributes.user.id
+              actor_name: attributes.attributes.usr.name|attributes.attributes.actor.name|attributes.attributes.user.name|attributes.usr.name|attributes.actor.name|attributes.user.name
+              audit_id: id
+              date_happened: attributes.date_happened|attributes.timestamp
+              event_type: attributes.attributes.evt.name|attributes.attributes.event_type|attributes.attributes.action|attributes.evt.name|attributes.event_type|attributes.action
+              resource_id: attributes.attributes.resource.id|attributes.attributes.target.id|attributes.attributes.resource_id|attributes.resource.id|attributes.target.id|attributes.resource_id
+              resource_name: attributes.attributes.resource.name|attributes.attributes.target.name|attributes.attributes.resource_name|attributes.resource.name|attributes.target.name|attributes.resource_name
+              resource_type: attributes.attributes.resource.type|attributes.attributes.target.type|attributes.attributes.resource_type|attributes.resource.type|attributes.target.type|attributes.resource_type
+              service: attributes.attributes.service|attributes.service
+              source_message: attributes.message
+              tags: attributes.tags
+              timestamp: attributes.timestamp|attributes.date_happened
+            static_fields:
+              source_product: datadog
+              source_system: datadog
             template: audit_event
           record_selector: $.data[*]
+          updated_at_field: attributes.timestamp|attributes.date_happened
       schema_version: cerebro.integration/v1
       source_id: datadog
       tenant_id: builtin_catalog
       transport:
         base_url: https://api.datadoghq.com
+        retry:
+          backoff: exponential
+          max_attempts: 3
+          retry_after_header: Retry-After
+          statuses: [429, 500, 502, 503, 504]
         verification:
-          expect_status:
-            - 200
+          expect_status: [200]
           method: GET
           path: /api/v1/validate

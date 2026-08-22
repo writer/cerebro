@@ -58,13 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install JavaScript workspaces
-        run: npm ci
+      - uses: ./.github/actions/setup-javascript-workspaces
 
       - name: Check web workspace
         run: npm run check --workspace @writer/cerebro-web
@@ -109,13 +103,7 @@ jobs:
       - name: Set up Rust
         run: rustup toolchain install 1.93.1 --profile minimal
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install JavaScript workspaces
-        run: npm ci
+      - uses: ./.github/actions/setup-javascript-workspaces
 
       - name: Install Chromium for real-service validation
         run: npm exec --workspace @writer/cerebro-web -- playwright install --with-deps chromium
@@ -157,13 +145,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-rust-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-
             ${{ runner.os }}-${{ runner.arch }}-rust-v1-
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install JavaScript workspaces
-        run: npm ci
+      - uses: ./.github/actions/setup-javascript-workspaces
 
       - name: Install Chromium for Rust authority validation
         run: npm exec --workspace @writer/cerebro-web -- playwright install --with-deps chromium
@@ -199,13 +181,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install JavaScript workspaces
-        run: npm ci
+      - uses: ./.github/actions/setup-javascript-workspaces
 
       - name: Check Slack companion workspace
         run: |
@@ -236,13 +212,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install JavaScript workspaces
-        run: npm ci
+      - uses: ./.github/actions/setup-javascript-workspaces
 
       - name: Check TypeScript SDK workspace
         run: npm run check --workspace @writer/cerebro-sdk
@@ -254,10 +224,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: ./.github/actions/setup-javascript-workspaces
         with:
-          node-version: 22
-          cache: npm
+          install: "false"
 
       - name: Audit JavaScript workspace dependencies
         run: npm audit --omit=dev --audit-level=moderate

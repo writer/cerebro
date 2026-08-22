@@ -459,5 +459,4 @@ event_contracts:
       - source_event_id
       - event_type
       - actor_id
-    required_payload_fields:
-      - id
+    required_payload_fields: []

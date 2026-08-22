@@ -1,17 +1,26 @@
+use std::collections::HashMap;
+
 use prost::Message;
 
 use super::{
+    canonical_plan_digest, canonical_response_headers_digest,
     contract::{
         AUTHORIZATION_POLICY_FALLBACK_ID, AUTHORIZATION_POLICY_FAMILY, AUTHORIZATION_POLICY_KERNEL,
         AUTHORIZATION_POLICY_KIND, AUTHORIZATION_POLICY_PATH, AUTHORIZATION_POLICY_SCHEMA,
-        AZURE_SOURCE_ID, MAX_RESPONSE_BYTES, plan_digest, response_digest,
+        AZURE_SOURCE_ID, MAX_CURSOR_BYTES, MAX_RESPONSE_BYTES, MAX_SAFE_HEADER_BYTES,
+        MAX_SAFE_HEADER_ENTRIES,
     },
-    decode,
-    error::WorkerError,
-    plan,
+    decode, decode_v2,
+    error::SourceExecutionError,
+    plan, plan_v2, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
+    validate_cursor, validate_declared_headers, validate_http_request, validate_response_headers,
+    validate_runtime_metadata,
     wire::{
-        SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
-        SourceWorkerHttpRequestV1, SourceWorkerSafeReceiptV1,
+        SourceExecutionPlanV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeOutputV2,
+        SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
+        SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
+        SourceWorkerPlanRequestV1, SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2,
+        SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -55,8 +64,141 @@ fn exact_plan() -> SourceExecutionPlanV1 {
         required_payload_fields: vec!["id".to_owned()],
         plan_digest_sha256: String::new(),
     };
-    plan.plan_digest_sha256 = plan_digest(&plan);
+    plan.plan_digest_sha256 = canonical_plan_digest(&plan);
     plan
+}
+
+fn sentinelone_plan() -> SourceExecutionPlanV1 {
+    let mut plan = SourceExecutionPlanV1 {
+        plan_id: "source-plan-v1:sentinelone:agent".to_owned(),
+        source_id: "sentinelone".to_owned(),
+        family_id: "agent".to_owned(),
+        provider_kernel: "sentinelone.agent".to_owned(),
+        method: "GET".to_owned(),
+        origin: "https://sentinelone.example.test".to_owned(),
+        path: "/web/api/v2.1/agents".to_owned(),
+        record_selector: "$.data[*]".to_owned(),
+        id_field: "id".to_owned(),
+        singleton_fallback_id: String::new(),
+        max_response_bytes: 8 << 20,
+        event_kind: "sentinelone.agent".to_owned(),
+        schema_ref: "sentinelone/agent/v1".to_owned(),
+        required_attributes: vec!["family".to_owned()],
+        required_payload_fields: vec!["id".to_owned()],
+        plan_digest_sha256: String::new(),
+    };
+    plan.plan_digest_sha256 = canonical_plan_digest(&plan);
+    plan
+}
+
+fn sentinelone_context(cursor: &str) -> SourceWorkerExecutionContextV1 {
+    SourceWorkerExecutionContextV1 {
+        tenant_id: "sentinelone.example.test".to_owned(),
+        runtime_id: "sentinelone-agent-runtime".to_owned(),
+        logical_page_id: "agent-page-1".to_owned(),
+        prior_cursor: cursor.to_owned(),
+        runtime_generation: 7,
+        lease_generation: 11,
+        observed_at_unix_millis: 1_776_906_123_456,
+    }
+}
+
+fn twilio_plan() -> SourceExecutionPlanV1 {
+    let mut plan = SourceExecutionPlanV1 {
+        plan_id: "source-plan-v1:twilio:accounts".to_owned(),
+        source_id: "twilio".to_owned(),
+        family_id: "accounts".to_owned(),
+        provider_kernel: "twilio.accounts".to_owned(),
+        method: "GET".to_owned(),
+        origin: "https://api.twilio.com".to_owned(),
+        path: "/2010-04-01/Accounts.json".to_owned(),
+        record_selector: "data".to_owned(),
+        id_field: "id".to_owned(),
+        singleton_fallback_id: String::new(),
+        max_response_bytes: 8 << 20,
+        event_kind: "twilio.accounts".to_owned(),
+        schema_ref: "twilio/accounts/v1".to_owned(),
+        required_attributes: vec![
+            "tenant_id".to_owned(),
+            "source_event_id".to_owned(),
+            "user_id".to_owned(),
+        ],
+        required_payload_fields: vec!["id".to_owned()],
+        plan_digest_sha256: String::new(),
+    };
+    plan.plan_digest_sha256 = canonical_plan_digest(&plan);
+    plan
+}
+
+fn twilio_context(cursor: &str) -> SourceWorkerExecutionContextV1 {
+    SourceWorkerExecutionContextV1 {
+        tenant_id: "trusted-tenant".to_owned(),
+        runtime_id: "twilio-accounts-runtime".to_owned(),
+        logical_page_id: "accounts-page-1".to_owned(),
+        prior_cursor: cursor.to_owned(),
+        runtime_generation: 7,
+        lease_generation: 11,
+        observed_at_unix_millis: 1_780_372_800_000,
+    }
+}
+
+fn exact_context(tenant_id: &str) -> SourceWorkerExecutionContextV1 {
+    SourceWorkerExecutionContextV1 {
+        tenant_id: tenant_id.to_owned(),
+        runtime_id: "runtime-1".to_owned(),
+        logical_page_id: "page-sha256".to_owned(),
+        prior_cursor: String::new(),
+        runtime_generation: 7,
+        lease_generation: 11,
+        observed_at_unix_millis: 1_782_000_123_456,
+    }
+}
+
+fn planned_request(context: &SourceWorkerExecutionContextV1) -> SourceWorkerHttpRequestV1 {
+    let output = plan(
+        &SourceWorkerPlanRequestV1 {
+            plan: Some(exact_plan()),
+            context: Some(context.clone()),
+        }
+        .encode_to_vec(),
+    )
+    .unwrap();
+    SourceWorkerHttpRequestV1::decode(output.as_slice()).unwrap()
+}
+
+fn exact_receipt(
+    body: &[u8],
+    status_code: u32,
+    context: &SourceWorkerExecutionContextV1,
+    intent: &str,
+) -> SourceWorkerSafeReceiptV1 {
+    SourceWorkerSafeReceiptV1 {
+        plan_digest_sha256: exact_plan().plan_digest_sha256,
+        logical_page_id: context.logical_page_id.clone(),
+        request_intent_digest: intent.to_owned(),
+        runtime_generation: context.runtime_generation,
+        lease_generation: context.lease_generation,
+        credential_operation: "lease-operation-1".to_owned(),
+        status_code,
+        response_bytes: body.len() as u64,
+        response_sha256: response_digest(body),
+        tenant_id: context.tenant_id.clone(),
+        runtime_id: context.runtime_id.clone(),
+        observed_at_unix_millis: context.observed_at_unix_millis,
+    }
+}
+
+fn exact_decode_request(context: &SourceWorkerExecutionContextV1) -> SourceWorkerDecodeRequestV1 {
+    let intent = planned_request(context).request_intent_digest;
+    SourceWorkerDecodeRequestV1 {
+        plan: Some(exact_plan()),
+        status_code: 200,
+        response_body: GO_LIVE_TEST_RESPONSE.to_vec(),
+        logical_page_id: context.logical_page_id.clone(),
+        request_intent_digest: intent.clone(),
+        receipt: Some(exact_receipt(GO_LIVE_TEST_RESPONSE, 200, context, &intent)),
+        context: Some(context.clone()),
+    }
 }
 
 #[test]
@@ -83,29 +225,10 @@ fn decodes_the_go_generated_canonical_plan_wire() {
     );
 }
 
-fn exact_receipt(
-    body: &[u8],
-    status_code: u32,
-    logical_page_id: &str,
-    intent: &str,
-) -> SourceWorkerSafeReceiptV1 {
-    SourceWorkerSafeReceiptV1 {
-        plan_digest_sha256: exact_plan().plan_digest_sha256,
-        logical_page_id: logical_page_id.to_owned(),
-        request_intent_digest: intent.to_owned(),
-        runtime_generation: 7,
-        lease_generation: 11,
-        credential_operation: "lease-operation-1".to_owned(),
-        status_code,
-        response_bytes: body.len() as u64,
-        response_sha256: response_digest(body),
-    }
-}
-
 #[test]
-fn plans_exact_credential_free_request() {
-    let output = plan(&exact_plan().encode_to_vec()).unwrap();
-    let request = SourceWorkerHttpRequestV1::decode(output.as_slice()).unwrap();
+fn plans_exact_credential_free_request_bound_to_context() {
+    let context = exact_context("tenant-a");
+    let request = planned_request(&context);
     assert_eq!(request.method, "GET");
     assert_eq!(
         request.url,
@@ -113,38 +236,194 @@ fn plans_exact_credential_free_request() {
     );
     assert_eq!(request.accept, "application/json");
     assert_eq!(request.max_response_bytes, MAX_RESPONSE_BYTES);
-    assert!(!output.windows(6).any(|window| window == b"Bearer"));
+    assert_eq!(request.request_intent_digest.len(), 64);
+    assert!(
+        !request
+            .encode_to_vec()
+            .windows(6)
+            .any(|window| window == b"Bearer")
+    );
+
+    let other_tenant = planned_request(&exact_context("tenant-b"));
+    assert_ne!(
+        request.request_intent_digest,
+        other_tenant.request_intent_digest
+    );
 }
 
 #[test]
-fn decodes_exact_go_response_and_binds_execution_identity() {
-    let plan = exact_plan();
-    let intent = "a".repeat(64);
-    let output = decode(
-        &SourceWorkerDecodeRequestV1 {
-            plan: Some(plan.clone()),
-            status_code: 200,
-            response_body: GO_LIVE_TEST_RESPONSE.to_vec(),
-            logical_page_id: "page-sha256".to_owned(),
-            request_intent_digest: intent.clone(),
-            receipt: Some(exact_receipt(
-                GO_LIVE_TEST_RESPONSE,
-                200,
-                "page-sha256",
-                &intent,
-            )),
+fn v2_wire_round_trips_validated_public_metadata_without_credentials() {
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: HashMap::from([(
+            "insights_origin".to_owned(),
+            "https://api.jumpcloud.com/insights/directory/v1".to_owned(),
+        )]),
+        prior_terminal_watermark_unix_millis: 1_782_000_000_000,
+        prior_checkpoint: "audit-terminal-1".to_owned(),
+    };
+    validate_runtime_metadata(&metadata).unwrap();
+    let wire = metadata.encode_to_vec();
+    assert_eq!(
+        SourceWorkerRuntimeMetadataV2::decode(wire.as_slice()).unwrap(),
+        metadata
+    );
+    assert!(!wire.windows(10).any(|value| value == b"credential"));
+
+    let mut unsafe_metadata = metadata;
+    unsafe_metadata
+        .public_config
+        .insert("api_token".to_owned(), "redacted".to_owned());
+    assert_eq!(
+        validate_runtime_metadata(&unsafe_metadata),
+        Err(SourceExecutionError::InvalidExecutionContext)
+    );
+}
+
+#[test]
+fn v2_header_contract_rejects_credentials_and_bounds_metadata() {
+    assert!(
+        validate_declared_headers(&HashMap::from([(
+            "content-type".to_owned(),
+            "application/json".to_owned(),
+        )]))
+        .is_ok()
+    );
+    for name in ["authorization", "x-api-key"] {
+        assert_eq!(
+            validate_declared_headers(&HashMap::from([(name.to_owned(), "secret".to_owned())])),
+            Err(SourceExecutionError::InvalidExecutionContext)
+        );
+    }
+
+    let too_many = (0..=MAX_SAFE_HEADER_ENTRIES)
+        .map(|index| (format!("x-next-{index}"), "value".to_owned()))
+        .collect();
+    assert_eq!(
+        validate_response_headers(&too_many),
+        Err(SourceExecutionError::ResultTooLarge)
+    );
+    let oversized = HashMap::from([(
+        "x-search_after".to_owned(),
+        "x".repeat(MAX_SAFE_HEADER_BYTES + 1),
+    )]);
+    assert_eq!(
+        validate_response_headers(&oversized),
+        Err(SourceExecutionError::InvalidExecutionContext)
+    );
+    let aggregate = (0..5)
+        .map(|index| (format!("x-next-{index}"), "x".repeat(4090)))
+        .collect();
+    assert_eq!(
+        validate_response_headers(&aggregate),
+        Err(SourceExecutionError::ResultTooLarge)
+    );
+
+    let first = HashMap::from([
+        ("x-result-count".to_owned(), "2".to_owned()),
+        ("x-limit".to_owned(), "2".to_owned()),
+        ("x-search_after".to_owned(), "cursor".to_owned()),
+        ("retry-after".to_owned(), "30".to_owned()),
+    ]);
+    let second = HashMap::from([
+        ("retry-after".to_owned(), "30".to_owned()),
+        ("x-search_after".to_owned(), "cursor".to_owned()),
+        ("x-limit".to_owned(), "2".to_owned()),
+        ("x-result-count".to_owned(), "2".to_owned()),
+    ]);
+    assert_eq!(
+        canonical_response_headers_digest(&first).unwrap(),
+        canonical_response_headers_digest(&second).unwrap()
+    );
+}
+
+#[test]
+fn rust_constructs_and_validates_v2_receipt_evidence() {
+    let context = exact_context("tenant-a");
+    let metadata = SourceWorkerRuntimeMetadataV2::default();
+    let planned = plan_v2(
+        &SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(exact_plan()),
+                context: Some(context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
         }
         .encode_to_vec(),
     )
     .unwrap();
+    let planned = SourceWorkerHttpExecutionV2::decode(planned.as_slice()).unwrap();
+    let request = planned.request.as_ref().unwrap();
+    let output = decode_v2(
+        &SourceWorkerDecodeEnvelopeV2 {
+            request: Some(SourceWorkerDecodeRequestV1 {
+                plan: Some(exact_plan()),
+                status_code: 200,
+                response_body: GO_LIVE_TEST_RESPONSE.to_vec(),
+                logical_page_id: context.logical_page_id.clone(),
+                request_intent_digest: request.request_intent_digest.clone(),
+                receipt: None,
+                context: Some(context.clone()),
+            }),
+            metadata: Some(metadata),
+            response_headers: HashMap::from([("x-result-count".to_owned(), "1".to_owned())]),
+            response_headers_sha256: String::new(),
+            execution_intent_digest_sha256: planned.execution_intent_digest_sha256,
+        }
+        .encode_to_vec(),
+    )
+    .unwrap();
+    let output = SourceWorkerDecodeOutputV2::decode(output.as_slice()).unwrap();
+    let receipt = output.receipt.unwrap();
+    assert_eq!(receipt.credential_operation, "source.bearer");
+    assert_eq!(receipt.response_bytes, GO_LIVE_TEST_RESPONSE.len() as u64);
+    assert_eq!(
+        receipt.response_sha256,
+        response_digest(GO_LIVE_TEST_RESPONSE)
+    );
+    assert_eq!(output.result.unwrap().tenant_id, context.tenant_id);
+}
+
+#[test]
+fn shared_boundary_rejects_origin_escape_even_with_a_recomputed_intent() {
+    let context = exact_context("tenant-a");
+    let plan = exact_plan();
+    let mut request = planned_request(&context);
+    request.url = "https://example.com/v1.0/policies/authorizationPolicy".to_owned();
+    request.request_intent_digest =
+        super::canonical_request_intent_digest(&plan, &context, &request);
+    assert_eq!(
+        validate_http_request(&plan, &context, &request),
+        Err(SourceExecutionError::EgressDenied)
+    );
+}
+
+#[test]
+fn decodes_go_response_with_tenant_identity_fence_and_host_time() {
+    let context = exact_context("tenant-a");
+    let output = decode(&exact_decode_request(&context).encode_to_vec()).unwrap();
     let result = SourceWorkerDecodeResultV1::decode(output.as_slice()).unwrap();
-    assert_eq!(result.plan_digest_sha256, plan.plan_digest_sha256);
-    assert_eq!(result.logical_page_id, "page-sha256");
-    assert_eq!(result.request_intent_digest, intent);
+    assert_eq!(result.plan_digest_sha256, exact_plan().plan_digest_sha256);
+    assert_eq!(result.logical_page_id, context.logical_page_id);
     assert_eq!(result.next_cursor, "");
+    assert_eq!(result.tenant_id, "tenant-a");
+    assert_eq!(result.runtime_id, context.runtime_id);
+    assert_eq!(result.runtime_generation, 7);
+    assert_eq!(result.lease_generation, 11);
+    assert_eq!(
+        result.observed_at_unix_millis,
+        context.observed_at_unix_millis
+    );
     assert_eq!(result.records.len(), 1);
     let record = &result.records[0];
     assert_eq!(record.provider_id, "authorizationPolicy");
+    assert_eq!(
+        record.occurred_at_unix_millis,
+        context.observed_at_unix_millis
+    );
+    assert_eq!(
+        record.event_id,
+        "azure-authorization-policy-authorizationPolicy"
+    );
     assert_eq!(
         record.attributes.get("resource_id").map(String::as_str),
         Some("authorizationPolicy")
@@ -160,60 +439,287 @@ fn decodes_exact_go_response_and_binds_execution_identity() {
 }
 
 #[test]
-fn rejects_tampered_plan_status_oversize_and_missing_identity() {
+fn tenant_scope_is_bound_even_when_the_go_event_id_is_stable() {
+    let first = decode(&exact_decode_request(&exact_context("tenant-a")).encode_to_vec()).unwrap();
+    let second = decode(&exact_decode_request(&exact_context("tenant-b")).encode_to_vec()).unwrap();
+    let first = SourceWorkerDecodeResultV1::decode(first.as_slice()).unwrap();
+    let second = SourceWorkerDecodeResultV1::decode(second.as_slice()).unwrap();
+    assert_eq!(first.records[0].event_id, second.records[0].event_id);
+    assert_ne!(first.tenant_id, second.tenant_id);
+    assert_ne!(first.request_intent_digest, second.request_intent_digest);
+    assert_ne!(first.result_digest_sha256, second.result_digest_sha256);
+}
+
+#[test]
+fn collapses_exact_duplicates_and_rejects_conflicting_duplicates() {
+    let record = SourceWorkerRecordV1 {
+        provider_id: "provider-1".to_owned(),
+        attributes: [("kind".to_owned(), "account".to_owned())]
+            .into_iter()
+            .collect(),
+        payload_json: br#"{"id":"provider-1"}"#.to_vec(),
+        event_id: tenant_scoped_event_id("twilio", "accounts", "tenant-a", "provider-1").unwrap(),
+        occurred_at_unix_millis: 1_782_000_123_456,
+    };
+    assert_eq!(
+        validate_and_deduplicate_records(vec![record.clone(), record.clone()])
+            .unwrap()
+            .len(),
+        1
+    );
+    let mut conflict = record.clone();
+    conflict.payload_json = br#"{"id":"provider-1","status":"closed"}"#.to_vec();
+    assert_eq!(
+        validate_and_deduplicate_records(vec![record, conflict]),
+        Err(SourceExecutionError::DuplicateConflict)
+    );
+}
+
+#[test]
+fn rejects_invalid_cursor_tampered_plan_and_unsafe_response() {
+    assert_eq!(
+        validate_cursor(&"a".repeat(MAX_CURSOR_BYTES + 1)),
+        Err(SourceExecutionError::InvalidCursor)
+    );
+    assert_eq!(
+        validate_cursor("cursor\nother-origin"),
+        Err(SourceExecutionError::InvalidCursor)
+    );
+
+    let context = exact_context("tenant-a");
     let mut tampered = exact_plan();
     tampered.path = "/v1.0/users".to_owned();
     assert_eq!(
-        plan(&tampered.encode_to_vec()),
-        Err(WorkerError::InvalidPlan)
+        plan(
+            &SourceWorkerPlanRequestV1 {
+                plan: Some(tampered),
+                context: Some(context.clone()),
+            }
+            .encode_to_vec()
+        ),
+        Err(SourceExecutionError::InvalidPlan)
     );
 
-    let mutations: [fn(&mut SourceExecutionPlanV1); 2] = [
-        |plan| {
-            plan.required_attributes.remove(0);
-        },
-        |plan| plan.required_payload_fields.clear(),
-    ];
-    for mutate in mutations {
-        let mut incomplete = exact_plan();
-        mutate(&mut incomplete);
-        incomplete.plan_digest_sha256 = plan_digest(&incomplete);
-        assert_eq!(
-            plan(&incomplete.encode_to_vec()),
-            Err(WorkerError::InvalidPlan)
-        );
-    }
-
-    let base = SourceWorkerDecodeRequestV1 {
-        plan: Some(exact_plan()),
-        status_code: 500,
-        response_body: b"{}".to_vec(),
-        logical_page_id: "page".to_owned(),
-        request_intent_digest: "a".repeat(64),
-        receipt: Some(exact_receipt(b"{}", 500, "page", &"a".repeat(64))),
-    };
+    let mut unsupported = exact_decode_request(&context);
+    unsupported.status_code = 500;
+    unsupported.receipt.as_mut().unwrap().status_code = 500;
     assert_eq!(
-        decode(&base.encode_to_vec()),
-        Err(WorkerError::UnsupportedStatus)
+        decode(&unsupported.encode_to_vec()),
+        Err(SourceExecutionError::UnexpectedProviderStatus)
     );
-    let mut oversize = base.clone();
-    oversize.status_code = 200;
+    let mut oversize = exact_decode_request(&context);
     oversize.response_body = vec![b' '; (MAX_RESPONSE_BYTES + 1) as usize];
-    oversize.receipt = Some(exact_receipt(
-        &oversize.response_body,
-        200,
-        "page",
-        &"a".repeat(64),
-    ));
     assert_eq!(
         decode(&oversize.encode_to_vec()),
-        Err(WorkerError::ResponseTooLarge)
+        Err(SourceExecutionError::ResponseTooLarge)
     );
-    let mut missing_identity = base;
-    missing_identity.status_code = 200;
-    missing_identity.logical_page_id.clear();
+}
+
+#[test]
+fn closed_dispatcher_rejects_unknown_adapter_tuples() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    let mut unknown = exact_plan();
+    unknown.provider_kernel = "azure.users".to_owned();
+    unknown.plan_digest_sha256 = canonical_plan_digest(&unknown);
+    assert!(matches!(
+        dispatcher.adapter_for(&unknown),
+        Err(SourceExecutionError::UnknownAdapter)
+    ));
+}
+
+#[test]
+fn closed_dispatcher_registers_and_executes_the_exact_sentinelone_agent_plan() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    let plan = sentinelone_plan();
+    let adapter = dispatcher.adapter_for(&plan).unwrap();
+    assert_eq!(adapter.source_id(), "sentinelone");
+    assert_eq!(adapter.family_id(), "agent");
+    assert_eq!(adapter.provider_kernel(), "sentinelone.agent");
+
+    let paged_context = sentinelone_context("cursor-A-1");
+    let planned = dispatcher
+        .dispatch_plan(&SourceWorkerPlanRequestV1 {
+            plan: Some(plan.clone()),
+            context: Some(paged_context),
+        })
+        .unwrap();
     assert_eq!(
-        decode(&missing_identity.encode_to_vec()),
-        Err(WorkerError::MissingExecutionIdentity)
+        planned.url,
+        "https://sentinelone.example.test/web/api/v2.1/agents?limit=200&cursor=cursor-A-1"
     );
+
+    let context = sentinelone_context("");
+    let planned = dispatcher
+        .dispatch_plan(&SourceWorkerPlanRequestV1 {
+            plan: Some(plan.clone()),
+            context: Some(context.clone()),
+        })
+        .unwrap();
+    let body = include_bytes!("../sentinelone/fixtures/agent_page.json");
+    let receipt = SourceWorkerSafeReceiptV1 {
+        plan_digest_sha256: plan.plan_digest_sha256.clone(),
+        logical_page_id: context.logical_page_id.clone(),
+        request_intent_digest: planned.request_intent_digest.clone(),
+        runtime_generation: context.runtime_generation,
+        lease_generation: context.lease_generation,
+        credential_operation: "sentinelone-api-token-read".to_owned(),
+        status_code: 200,
+        response_bytes: body.len() as u64,
+        response_sha256: response_digest(body),
+        tenant_id: context.tenant_id.clone(),
+        runtime_id: context.runtime_id.clone(),
+        observed_at_unix_millis: context.observed_at_unix_millis,
+    };
+    let decoded = dispatcher
+        .dispatch_decode(&SourceWorkerDecodeRequestV1 {
+            plan: Some(plan),
+            status_code: 200,
+            response_body: body.to_vec(),
+            logical_page_id: context.logical_page_id.clone(),
+            request_intent_digest: planned.request_intent_digest,
+            receipt: Some(receipt),
+            context: Some(context),
+        })
+        .unwrap();
+    assert_eq!(decoded.next_cursor, "cursor-A-2");
+    assert_eq!(decoded.records.len(), 1);
+    assert_eq!(
+        decoded.records[0].event_id,
+        "sentinelone-agent-sentinelone.example.test-A-1"
+    );
+}
+
+#[test]
+fn closed_dispatcher_registers_and_executes_the_exact_twilio_accounts_plan() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    let plan = twilio_plan();
+    let adapter = dispatcher.adapter_for(&plan).unwrap();
+    assert_eq!(adapter.source_id(), "twilio");
+    assert_eq!(adapter.family_id(), "accounts");
+    assert_eq!(adapter.provider_kernel(), "twilio.accounts");
+
+    let context = twilio_context("accounts-page-1");
+    let planned = dispatcher
+        .dispatch_plan(&SourceWorkerPlanRequestV1 {
+            plan: Some(plan.clone()),
+            context: Some(context.clone()),
+        })
+        .unwrap();
+    assert_eq!(
+        planned.url,
+        "https://api.twilio.com/2010-04-01/Accounts.json?limit=100&cursor=accounts-page-1"
+    );
+
+    let body = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../sources/twilio/testdata/source_worker_accounts_page.json"
+    ));
+    let receipt = SourceWorkerSafeReceiptV1 {
+        plan_digest_sha256: plan.plan_digest_sha256.clone(),
+        logical_page_id: context.logical_page_id.clone(),
+        request_intent_digest: planned.request_intent_digest.clone(),
+        runtime_generation: context.runtime_generation,
+        lease_generation: context.lease_generation,
+        credential_operation: "twilio.basic".to_owned(),
+        status_code: 200,
+        response_bytes: body.len() as u64,
+        response_sha256: response_digest(body),
+        tenant_id: context.tenant_id.clone(),
+        runtime_id: context.runtime_id.clone(),
+        observed_at_unix_millis: context.observed_at_unix_millis,
+    };
+    let decoded = dispatcher
+        .dispatch_decode(&SourceWorkerDecodeRequestV1 {
+            plan: Some(plan),
+            status_code: 200,
+            response_body: body.to_vec(),
+            logical_page_id: context.logical_page_id.clone(),
+            request_intent_digest: planned.request_intent_digest,
+            receipt: Some(receipt),
+            context: Some(context),
+        })
+        .unwrap();
+    assert_eq!(decoded.next_cursor, "accounts-page-2");
+    assert_eq!(decoded.records.len(), 1);
+    assert_eq!(
+        decoded.records[0].event_id,
+        "twilio-trusted-tenant-a92380b4993d-accounts-record-1"
+    );
+}
+
+#[test]
+fn rejects_tenant_generation_timestamp_and_intent_mismatches() {
+    let context = exact_context("tenant-a");
+    let mut tenant = exact_decode_request(&context);
+    tenant.receipt.as_mut().unwrap().tenant_id = "tenant-b".to_owned();
+    assert_eq!(
+        decode(&tenant.encode_to_vec()),
+        Err(SourceExecutionError::TenantMismatch)
+    );
+
+    let mut generation = exact_decode_request(&context);
+    generation.receipt.as_mut().unwrap().lease_generation += 1;
+    assert_eq!(
+        decode(&generation.encode_to_vec()),
+        Err(SourceExecutionError::StaleGeneration)
+    );
+
+    let mut timestamp = exact_decode_request(&context);
+    timestamp.receipt.as_mut().unwrap().observed_at_unix_millis += 1;
+    assert_eq!(
+        decode(&timestamp.encode_to_vec()),
+        Err(SourceExecutionError::MissingExecutionIdentity)
+    );
+
+    let mut intent = exact_decode_request(&context);
+    intent.request_intent_digest = "b".repeat(64);
+    intent.receipt.as_mut().unwrap().request_intent_digest = "b".repeat(64);
+    assert_eq!(
+        decode(&intent.encode_to_vec()),
+        Err(SourceExecutionError::InvalidDigest)
+    );
+}
+
+#[test]
+fn failure_taxonomy_is_stable_bounded_and_actionable() {
+    let errors = [
+        SourceExecutionError::Protobuf,
+        SourceExecutionError::UnknownAdapter,
+        SourceExecutionError::MissingConfiguration,
+        SourceExecutionError::MissingCredentialReference,
+        SourceExecutionError::CredentialUnavailable,
+        SourceExecutionError::AuthenticationRejected,
+        SourceExecutionError::RequiredProviderScopeMissing,
+        SourceExecutionError::EgressDenied,
+        SourceExecutionError::ConnectionFailure,
+        SourceExecutionError::ProviderTimeout,
+        SourceExecutionError::ProviderRateLimit,
+        SourceExecutionError::UnexpectedProviderStatus,
+        SourceExecutionError::InvalidPlan,
+        SourceExecutionError::InvalidExecutionContext,
+        SourceExecutionError::InvalidCursor,
+        SourceExecutionError::ResponseTooLarge,
+        SourceExecutionError::ResultTooLarge,
+        SourceExecutionError::MissingExecutionIdentity,
+        SourceExecutionError::TenantMismatch,
+        SourceExecutionError::StaleGeneration,
+        SourceExecutionError::InvalidDigest,
+        SourceExecutionError::MalformedResponse,
+        SourceExecutionError::InvalidProviderRecord,
+        SourceExecutionError::MissingStableIdentity,
+        SourceExecutionError::DuplicateConflict,
+        SourceExecutionError::EventContractRejected,
+        SourceExecutionError::AppendFailed,
+        SourceExecutionError::ProjectionFailed,
+        SourceExecutionError::LeaseLost,
+        SourceExecutionError::StaleAuthority,
+        SourceExecutionError::InternalRuntime,
+    ];
+    for error in errors {
+        let message = error.to_string();
+        assert!(error.code().starts_with("source_worker."));
+        assert!(!error.operator_action().is_empty());
+        assert!(message.len() <= 160);
+        assert!(!message.contains('\n'));
+    }
 }

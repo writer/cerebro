@@ -41,7 +41,6 @@ type OnboardResult struct {
 	ProofBundle        string                          `json:"proof_bundle,omitempty"`
 	ChangePlan         *sourcegen.ChangePlan           `json:"change_plan,omitempty"`
 	ProviderContract   ProviderContractResult          `json:"provider_contract"`
-	WiredFiles         []string                        `json:"wired_files,omitempty"`
 	Definition         connectordefinitions.Definition `json:"definition"`
 	NextSteps          []string                        `json:"next_steps"`
 	CatalogPath        string                          `json:"catalog_path,omitempty"`
@@ -74,7 +73,6 @@ func main() {
 	var contractLock string
 	var contractLockOut string
 	var dryRun bool
-	var wire bool
 	var acceptContractChange bool
 	flag.StringVar(&specPath, "spec", "", "OpenAPI document path (required)")
 	flag.StringVar(&sourceID, "source-id", "", "connector source id; inferred from spec title when empty")
@@ -92,7 +90,6 @@ func main() {
 	flag.StringVar(&contractLock, "contract-lock", "", "reviewed provider contract lock to compare")
 	flag.StringVar(&contractLockOut, "contract-lock-out", "", "provider contract lock output path; defaults to the generated source directory")
 	flag.BoolVar(&dryRun, "dry-run", true, "dry-run mode (default true); set -dry-run=false to write files")
-	flag.BoolVar(&wire, "wire", true, "wire generated source, projection, and documentation entries when writing")
 	flag.BoolVar(&acceptContractChange, "accept-contract-change", false, "record reviewed selected-operation or auth changes in the provider contract lock")
 	flag.Parse()
 
@@ -208,15 +205,7 @@ func main() {
 			if dryRun {
 				fmt.Fprintf(os.Stderr, "onboard: sourcegen dry-run passed (%d files)\n", len(genResult.Files))
 			} else {
-				fmt.Fprintf(os.Stderr, "onboard: sourcegen wrote %d files\n", len(genResult.Files))
-				if wire {
-					wireResult, err := sourcegen.Wire(sourcegen.WireRequest{SourceID: definition.SourceID, OutputDir: outputDir})
-					if err != nil {
-						fail(fmt.Errorf("wire generated source: %w", err))
-					}
-					result.WiredFiles = wireResult.FilesModified
-					fmt.Fprintf(os.Stderr, "onboard: wired %d registry and documentation files\n", len(wireResult.FilesModified))
-				}
+				fmt.Fprintf(os.Stderr, "onboard: sourcegen wrote %d files; runtime registration and projection dispatch remain catalog-driven\n", len(genResult.Files))
 			}
 		}
 	}

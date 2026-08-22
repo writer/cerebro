@@ -3,10 +3,19 @@
 
 //! Rust-native source collection and graph admission boundary.
 
+mod abnormal_security;
+mod abuseipdb;
+mod activecampaign;
+mod activtrak;
+mod acunetix;
+mod ada_support;
+mod addigy;
 mod amplitude;
 mod anthropic;
 mod append_log;
 mod archetype;
+// Provider-local work-management runtime kernel.
+mod asana;
 mod aurelius;
 mod aws_account;
 mod aws_codebuild;
@@ -14,10 +23,13 @@ mod aws_network_manager;
 mod aws_secret_store;
 mod azure;
 mod cerebro_source;
+mod cloudflare;
 mod cosmo;
 mod credential_lease;
+mod deepseek;
 mod deposit;
 mod discord;
+mod docker_hub;
 mod egress;
 mod email_domain_health;
 mod evidence_cas;
@@ -27,8 +39,12 @@ mod github;
 mod google_workspace;
 mod grc;
 mod http;
+mod jumpcloud;
+mod kubernetes;
+mod linode;
 mod mapper;
 mod okta;
+mod openai;
 mod panopticon;
 mod protocol;
 mod provider_failure;
@@ -36,10 +52,51 @@ mod runtime_config;
 mod sdk;
 mod security_tooling_map;
 mod sentinelone;
+mod slack;
+pub mod source_execution;
+mod tailscale;
 mod trivy;
 mod twilio;
 mod vulnview;
 
+pub use abnormal_security::{
+    AbnormalSecurityCheckpointCandidate, AbnormalSecurityEntityFact, AbnormalSecurityError,
+    AbnormalSecurityEventContract, AbnormalSecurityFamily, AbnormalSecurityKernel,
+    AbnormalSecurityPage, AbnormalSecurityProjectionFacts, AbnormalSecurityRecord,
+    AbnormalSecurityRequest, AbnormalSecurityRuntimeDefinition, project_abnormal_security_records,
+};
+pub use abuseipdb::{
+    AbuseIpDbCheckpointCandidate, AbuseIpDbEntityFact, AbuseIpDbError, AbuseIpDbEventContract,
+    AbuseIpDbFamily, AbuseIpDbFilters, AbuseIpDbKernel, AbuseIpDbPage, AbuseIpDbProjectionFacts,
+    AbuseIpDbRecord, AbuseIpDbRelationFact, AbuseIpDbRequest, AbuseIpDbRuntimeDefinition,
+    project_abuseipdb_records,
+};
+pub use activecampaign::{
+    ActiveCampaignCheckpointCandidate, ActiveCampaignEntityFact, ActiveCampaignError,
+    ActiveCampaignEventContract, ActiveCampaignFamily, ActiveCampaignKernel, ActiveCampaignPage,
+    ActiveCampaignProjectionFacts, ActiveCampaignRecord, ActiveCampaignRequest,
+    ActiveCampaignRuntimeDefinition, project_activecampaign_records,
+};
+pub use activtrak::{
+    ActivTrakCheckpointCandidate, ActivTrakEntityFact, ActivTrakError, ActivTrakEventContract,
+    ActivTrakFamily, ActivTrakKernel, ActivTrakPage, ActivTrakProjectionFacts, ActivTrakRecord,
+    ActivTrakRequest, ActivTrakRuntimeDefinition, project_activtrak_records,
+};
+pub use acunetix::{
+    AcunetixCheckpointCandidate, AcunetixEntityFact, AcunetixError, AcunetixEventContract,
+    AcunetixFamily, AcunetixKernel, AcunetixPage, AcunetixProjectionFacts, AcunetixRecord,
+    AcunetixRequest, AcunetixRuntimeDefinition, project_acunetix_records,
+};
+pub use ada_support::{
+    AdaSupportCheckpointCandidate, AdaSupportEntityFact, AdaSupportError, AdaSupportEventContract,
+    AdaSupportFamily, AdaSupportKernel, AdaSupportPage, AdaSupportProjectionFacts,
+    AdaSupportRecord, AdaSupportRequest, AdaSupportRuntimeDefinition, project_ada_support_records,
+};
+pub use addigy::{
+    AddigyCheckpointCandidate, AddigyEntityFact, AddigyError, AddigyEventContract, AddigyFamily,
+    AddigyKernel, AddigyPage, AddigyProjectionFacts, AddigyRecord, AddigyRequest,
+    AddigyRuntimeDefinition, project_addigy_records,
+};
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
     AmplitudeRequest,
@@ -53,6 +110,11 @@ pub use archetype::{
     ArchetypeError, ArchetypeFamily, ArchetypeKernel, ArchetypePage, ArchetypeRecord,
     ArchetypeRepository, ArchetypeRequest, ArchetypeRequestKind, ArchetypeScan,
     VulnerabilityCollectionState,
+};
+pub use asana::{
+    AsanaCheckpointCandidate, AsanaEntityFact, AsanaError, AsanaEventContract, AsanaFamily,
+    AsanaKernel, AsanaPage, AsanaProjectionFacts, AsanaRecord, AsanaRelationFact, AsanaRequest,
+    AsanaRuntimeDefinition, project_asana_records,
 };
 pub use aurelius::{
     AureliusCursor, AureliusError, AureliusFamily, AureliusKernel, AureliusPage, AureliusRecord,
@@ -85,16 +147,30 @@ pub use cerebro_source::{
     CerebroSourceError, CerebroSourceFamily, CerebroSourceKernel, CerebroSourcePage,
     CerebroSourceRecord,
 };
+pub use cloudflare::{
+    CloudflareError, CloudflareFamily, CloudflareKernel, CloudflarePage, CloudflareRecord,
+    CloudflareRequest, CloudflareRequestKind, CloudflareScope,
+};
 pub use cosmo::{CosmoError, CosmoFamily, CosmoKernel, CosmoPage, CosmoRecord};
 pub use credential_lease::{
     CredentialLeaseError, CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus,
     LeaseClock, OperationScopedCredentialLease,
+};
+pub use deepseek::{
+    DeepSeekCheckpointCandidate, DeepSeekEntityFact, DeepSeekError, DeepSeekEventContract,
+    DeepSeekFamily, DeepSeekKernel, DeepSeekPage, DeepSeekProjectionFacts, DeepSeekRecord,
+    DeepSeekRelationFact, DeepSeekRequest, DeepSeekRuntimeDefinition, project_deepseek_records,
 };
 pub use deposit::{
     DepositIngestError, DepositIngestReceipt, DepositIngestRequest, build_deposit_receipt,
 };
 pub use discord::{
     DiscordError, DiscordFamily, DiscordKernel, DiscordPage, DiscordRecord, DiscordRequest,
+};
+pub use docker_hub::{
+    DockerHubCheckpointCandidate, DockerHubEntityFact, DockerHubError, DockerHubEventContract,
+    DockerHubFamily, DockerHubKernel, DockerHubPage, DockerHubProjectionFacts, DockerHubRecord,
+    DockerHubRequest, DockerHubRuntimeDefinition, project_docker_hub_records,
 };
 pub use egress::{
     EgressDecision, EgressDecisionKind, EgressMode, EgressPolicy, EgressPolicyError,
@@ -130,9 +206,25 @@ pub use google_workspace::{
 };
 pub use grc::{GrcError, GrcFamily, GrcKernel, GrcPage, GrcRecord, GrcRequest};
 pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
+pub use jumpcloud::{
+    JumpCloudCheckpointCandidate, JumpCloudEntityFact, JumpCloudError, JumpCloudEventContract,
+    JumpCloudFamily, JumpCloudFilters, JumpCloudKernel, JumpCloudPage, JumpCloudProjectionFacts,
+    JumpCloudRecord, JumpCloudRelationFact, JumpCloudRequest, JumpCloudResponseMetadata,
+    JumpCloudRuntimeDefinition, project_jumpcloud_records,
+};
+pub use kubernetes::{
+    KubernetesConfig, KubernetesError, KubernetesFamily, KubernetesKernel, KubernetesPage,
+    KubernetesProjection, KubernetesProjectionEntity, KubernetesProjectionLink, KubernetesRecord,
+    KubernetesRequest, KubernetesRuntimeDefinition,
+};
+pub use linode::{LinodeError, LinodeKernel, LinodePage, LinodeRecord, LinodeRequest};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 pub use okta::{
     OktaError, OktaFamily, OktaFilters, OktaKernel, OktaPage, OktaRecord, OktaRequest, OktaResponse,
+};
+pub use openai::{
+    OpenAiAuthRequirement, OpenAiCheckpoint, OpenAiError, OpenAiFamily, OpenAiKernel, OpenAiPage,
+    OpenAiRecord, OpenAiRequest, OpenAiRequestInput,
 };
 pub use panopticon::{
     PanopticonError, PanopticonFamily, PanopticonKernel, PanopticonOutcome, PanopticonPage,
@@ -163,6 +255,16 @@ pub use security_tooling_map::{
 pub use sentinelone::{
     SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
     SentinelOnePage, SentinelOneRecord, SentinelOneRequest,
+};
+pub use slack::{
+    SlackCheckpoint, SlackError, SlackFamily, SlackFilters, SlackKernel, SlackPage, SlackRecord,
+    SlackRequest,
+};
+pub use tailscale::{
+    TailscaleCheckpointCandidate, TailscaleEntityFact, TailscaleError, TailscaleEventContract,
+    TailscaleFamily, TailscaleKernel, TailscalePage, TailscaleProjectionFacts, TailscaleRecord,
+    TailscaleRelationFact, TailscaleRequest, TailscaleResponseMetadata, TailscaleRuntimeDefinition,
+    project_tailscale_records,
 };
 pub use trivy::{TrivyError, TrivyFamily, TrivyKernel, TrivyPage, TrivyRecord};
 pub use twilio::{

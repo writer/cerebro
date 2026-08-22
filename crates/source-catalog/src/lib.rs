@@ -233,6 +233,7 @@ impl ProjectionClass {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompiledFamily {
     id: String,
+    base_url: Option<String>,
     method: HttpMethod,
     path: String,
     record_selector: String,
@@ -245,6 +246,11 @@ pub struct CompiledFamily {
     config_headers: BTreeMap<String, PathParameterBinding>,
     config_attributes: BTreeMap<String, PathParameterBinding>,
     static_json_body: BTreeMap<String, serde_json::Value>,
+    config_json_body: BTreeMap<String, PathParameterBinding>,
+    map_records: BTreeMap<String, String>,
+    event_attributes: BTreeMap<String, String>,
+    event_static_attributes: BTreeMap<String, String>,
+    exact_event_attributes: bool,
     pagination: Pagination,
     cursor_in_json_body: bool,
     path_parameters: BTreeMap<String, PathParameterBinding>,
@@ -257,6 +263,12 @@ pub struct CompiledFamily {
 impl CompiledFamily {
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// Public family-specific provider base URL, when it differs from the
+    /// source transport origin.
+    pub fn base_url(&self) -> Option<&str> {
+        self.base_url.as_deref()
     }
 
     pub fn method(&self) -> HttpMethod {
@@ -307,6 +319,26 @@ impl CompiledFamily {
         &self.static_json_body
     }
 
+    pub fn config_json_body(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_json_body
+    }
+
+    pub fn map_records(&self) -> &BTreeMap<String, String> {
+        &self.map_records
+    }
+
+    pub fn event_attributes(&self) -> &BTreeMap<String, String> {
+        &self.event_attributes
+    }
+
+    pub fn event_static_attributes(&self) -> &BTreeMap<String, String> {
+        &self.event_static_attributes
+    }
+
+    pub fn exact_event_attributes(&self) -> bool {
+        self.exact_event_attributes
+    }
+
     pub fn pagination(&self) -> &Pagination {
         &self.pagination
     }
@@ -347,6 +379,7 @@ pub struct CompiledSource {
     id: String,
     display_name: String,
     auth: AuthModel,
+    configurable_auth_models: Vec<AuthModel>,
     token_header: String,
     token_scheme: String,
     auth_header_parameters: BTreeMap<String, String>,
@@ -433,6 +466,10 @@ impl CompiledSource {
         &self.auth
     }
 
+    pub fn configurable_auth_models(&self) -> &[AuthModel] {
+        &self.configurable_auth_models
+    }
+
     pub fn token_header(&self) -> &str {
         &self.token_header
     }
@@ -499,6 +536,7 @@ pub enum UnsupportedReasonCode {
     UnboundPathConfigParameter,
     UnboundConfigQueryParameter,
     UnboundConfigHeader,
+    UnboundConfigJsonBody,
     UnboundConfigAttribute,
     UnsupportedProjectionTemplate,
     UnsupportedPaginationGrammar,
@@ -885,6 +923,10 @@ struct ConfigFieldWire {
 struct AuthWire {
     model: String,
     #[serde(default)]
+    configurable_models: Vec<String>,
+    #[serde(default)]
+    model_config_key: String,
+    #[serde(default)]
     credential_fields: Vec<CredentialFieldWire>,
     #[serde(default)]
     token_header: String,
@@ -919,6 +961,8 @@ struct CredentialFieldWire {
 struct FamilyWire {
     id: String,
     #[serde(default)]
+    singleton: bool,
+    #[serde(default)]
     method: String,
     path: String,
     #[serde(default)]
@@ -936,12 +980,26 @@ struct FamilyWire {
     config: Option<FamilyConfigWire>,
     #[serde(default)]
     read: Option<FamilyReadWire>,
+    #[serde(default)]
+    event: EventWire,
     pagination: Option<PaginationWire>,
     projection: Option<ProjectionWire>,
 }
 
 #[derive(Default, Deserialize)]
+struct EventWire {
+    #[serde(default)]
+    attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    static_attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    exact_attributes: bool,
+}
+
+#[derive(Default, Deserialize)]
 struct FamilyConfigWire {
+    #[serde(default)]
+    base_url: String,
     #[serde(default)]
     config_query: BTreeMap<String, String>,
     #[serde(default)]
@@ -960,6 +1018,10 @@ struct FamilyReadWire {
     scalar_record_field: String,
     #[serde(default)]
     static_json_body: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    config_json_body: BTreeMap<String, String>,
+    #[serde(default)]
+    map_records: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -985,7 +1047,7 @@ struct PaginationWire {
     #[serde(default)]
     next_url_json_path: String,
     #[serde(default)]
-    start_page: usize,
+    start_page: Option<usize>,
     #[serde(default)]
     page_size: usize,
     #[serde(default)]
@@ -1064,6 +1126,27 @@ fn compile_source(
             message: format!("unsupported auth model {}", entry.definition.auth.model),
         }
     })?;
+    let configurable_auth_models = if entry.definition.auth.configurable_models.is_empty() {
+        vec![auth.clone()]
+    } else {
+        let mut models = Vec::new();
+        for model in &entry.definition.auth.configurable_models {
+            let model = AuthModel::parse(model.trim()).ok_or_else(|| CatalogError::Invalid {
+                path: path.to_path_buf(),
+                message: format!("unsupported configurable auth model {model}"),
+            })?;
+            if !models.contains(&model) {
+                models.push(model);
+            }
+        }
+        if !models.contains(&auth) {
+            return invalid(
+                path,
+                "configurable auth models must include the default auth model",
+            );
+        }
+        models
+    };
     let token_header = entry.definition.auth.token_header.trim().to_owned();
     if token_header.len() > 128
         || token_header
@@ -1211,13 +1294,29 @@ fn compile_source(
         .iter()
         .map(|field| (field.key.as_str(), field.required))
         .collect::<BTreeMap<_, _>>();
-    let generic_runtime_supported = classifier_supported
-        && auth.supports_generic_runtime()
+    let model_config_key = entry.definition.auth.model_config_key.trim();
+    if configurable_auth_models.len() > 1 {
+        if model_config_key.is_empty() || !config_fields.contains_key(model_config_key) {
+            return invalid(
+                path,
+                "selectable authentication requires a declared model_config_key config field",
+            );
+        }
+    } else if !model_config_key.is_empty() {
+        return invalid(
+            path,
+            "model_config_key requires more than one configurable auth model",
+        );
+    }
+    let auth_runtime_supported = configurable_auth_models
+        .iter()
+        .all(AuthModel::supports_generic_runtime)
         && (auth != AuthModel::ApiKey
             || !token_header.is_empty()
             || !auth_header_parameters.is_empty()
             || !auth_query_parameters.is_empty()
             || !auth_json_body_parameters.is_empty());
+    let generic_runtime_supported = classifier_supported && auth_runtime_supported;
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
     let mut families = Vec::with_capacity(entry.definition.resource_families.len());
@@ -1230,6 +1329,8 @@ fn compile_source(
             family,
             &verified_families,
             generic_runtime_supported,
+            classifier_supported,
+            auth_runtime_supported,
             &config_fields,
         )?);
     }
@@ -1266,6 +1367,7 @@ fn compile_source(
         id,
         display_name: nonempty(path, "display_name", entry.definition.display_name)?,
         auth,
+        configurable_auth_models,
         token_header,
         token_scheme,
         auth_header_parameters,
@@ -1430,6 +1532,8 @@ fn compile_family(
     family: FamilyWire,
     verified: &BTreeSet<(String, String, String)>,
     generic_runtime_supported: bool,
+    classifier_supported: bool,
+    auth_runtime_supported: bool,
     config_fields: &BTreeMap<&str, bool>,
 ) -> Result<CompiledFamily, CatalogError> {
     let method = match family.method.trim() {
@@ -1603,10 +1707,13 @@ fn compile_family(
         .config
         .as_ref()
         .and_then(|config| optional(config.id_template.clone()));
-    if id_template
-        .as_deref()
-        .is_some_and(|template| !valid_id_template(template))
-    {
+    let base_url = family
+        .config
+        .as_ref()
+        .and_then(|config| optional(config.base_url.trim().to_owned()));
+    if id_template.as_deref().is_some_and(|template| {
+        !(valid_id_template(template) || family.singleton && valid_singleton_id_literal(template))
+    }) {
         return invalid(
             path,
             &format!("family {} id_template is invalid", family.id),
@@ -1687,27 +1794,78 @@ fn compile_family(
             );
         }
     }
-    let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
-        verified.contains(&(
-            family.id.clone(),
-            match method {
-                HttpMethod::Get => "GET".to_owned(),
-                HttpMethod::Post => "POST".to_owned(),
-            },
+    let config_json_body_wire = family
+        .read
+        .as_ref()
+        .map(|read| read.config_json_body.clone())
+        .unwrap_or_default();
+    if !config_json_body_wire.is_empty() && method != HttpMethod::Post {
+        return invalid(
             path,
-        ))
-    });
+            &format!("family {} configured JSON body requires POST", family.id),
+        );
+    }
+    if config_json_body_wire.keys().any(|key| {
+        key.is_empty()
+            || key.len() > 128
+            || !key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    }) {
+        return invalid(
+            path,
+            &format!("family {} configured JSON body key is invalid", family.id),
+        );
+    }
+    let config_json_body = config_json_body_wire
+        .iter()
+        .filter_map(|(parameter, config_field)| {
+            config_query_binding(config_field, config_fields)
+                .map(|binding| (parameter.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_json_body_configured = config_json_body.len() == config_json_body_wire.len();
+    let map_records = family
+        .read
+        .as_ref()
+        .map(|read| read.map_records.clone())
+        .unwrap_or_default();
+    if map_records.len() > 1
+        || map_records
+            .iter()
+            .any(|(path, value)| path.trim().is_empty() || value.trim().is_empty())
+    {
+        return invalid(
+            path,
+            &format!("family {} map records are invalid", family.id),
+        );
+    }
+    let provider_contract_verified = canonical_family_locator(base_url.as_deref(), &family.path)
+        .is_some_and(|path| {
+            verified.contains(&(
+                family.id.clone(),
+                match method {
+                    HttpMethod::Get => "GET".to_owned(),
+                    HttpMethod::Post => "POST".to_owned(),
+                },
+                path,
+            ))
+        });
     let authoritative = generic_runtime_supported
         && provider_contract_verified
         && path_parameters_configured
         && config_query_configured
         && config_headers_configured
+        && config_json_body_configured
         && config_attributes_configured;
     let projection_authoritative =
         provider_contract_verified && projection_class.can_be_authoritative();
     let mut unsupported_reasons = Vec::new();
-    if !generic_runtime_supported {
+    if !auth_runtime_supported {
         unsupported_reasons.push(UnsupportedReasonCode::UnsupportedAuthModel);
+    }
+    if !classifier_supported {
+        unsupported_reasons.push(UnsupportedReasonCode::BespokeRuntime);
     }
     if !provider_contract_verified {
         unsupported_reasons.push(UnsupportedReasonCode::MissingProviderProof);
@@ -1721,6 +1879,9 @@ fn compile_family(
     }
     if !config_headers_configured {
         unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigHeader);
+    }
+    if !config_json_body_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigJsonBody);
     }
     if !config_attributes_configured {
         unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigAttribute);
@@ -1743,6 +1904,7 @@ fn compile_family(
         authoritative,
         projection_authoritative,
         id: family_id,
+        base_url,
         method,
         path: family.path,
         record_selector,
@@ -1755,6 +1917,11 @@ fn compile_family(
         config_headers,
         config_attributes,
         static_json_body,
+        config_json_body,
+        map_records,
+        event_attributes: family.event.attributes,
+        event_static_attributes: family.event.static_attributes,
+        exact_event_attributes: family.event.exact_attributes,
         pagination: compile_pagination(path, family.pagination)?,
         cursor_in_json_body,
         path_parameters,
@@ -1841,6 +2008,15 @@ fn valid_id_template(template: &str) -> bool {
     placeholders > 0 && !rest.contains('{') && !rest.contains('}')
 }
 
+fn valid_singleton_id_literal(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 1_024
+        && value.trim() == value
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
+        })
+}
+
 fn validate_id_field(
     path: &Path,
     family_id: &str,
@@ -1907,8 +2083,18 @@ fn compile_pagination(
             },
             response_path: if !wire.cursor_json_path.is_empty() {
                 wire.cursor_json_path
-            } else if let Some(key) = wire.next_cursor_keys.first() {
-                format!("$.{key}")
+            } else if !wire.next_cursor_keys.is_empty() {
+                wire.next_cursor_keys
+                    .iter()
+                    .map(|key| {
+                        if key.starts_with('$') {
+                            key.clone()
+                        } else {
+                            format!("$.{key}")
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("|")
             } else {
                 "$.next_cursor".to_owned()
             },
@@ -1921,7 +2107,7 @@ fn compile_pagination(
             } else {
                 wire.page_param
             },
-            start: wire.start_page.max(1),
+            start: wire.start_page.unwrap_or(1),
             page_size_parameter: optional(wire.page_size_param),
             page_size,
         },
@@ -1978,7 +2164,7 @@ fn verified_families(proof: Option<&ProofManifestWire>) -> BTreeSet<(String, Str
                 && (family.method.is_empty() || family.method == "GET" || family.method == "POST")
         })
         .filter_map(|family| {
-            canonical_path_template(&family.path).map(|path| {
+            canonical_contract_locator(&family.path).map(|path| {
                 (
                     family.id.clone(),
                     if family.method.is_empty() {
@@ -1997,6 +2183,7 @@ fn family_plan_digest(source: &CompiledSource, family: &CompiledFamily) -> Strin
     let payload = serde_json::json!({
         "source_id": source.id(),
         "family_id": family.id(),
+        "base_url": family.base_url(),
         "method": match family.method() {
             HttpMethod::Get => "GET",
             HttpMethod::Post => "POST",
@@ -2046,6 +2233,31 @@ fn canonical_path_template(path: &str) -> Option<String> {
         canonical.push_str(query);
     }
     Some(canonical)
+}
+
+fn canonical_family_locator(base_url: Option<&str>, path: &str) -> Option<String> {
+    let base_url = base_url.unwrap_or_default().trim().trim_end_matches('/');
+    if base_url.starts_with("https://") && !base_url.contains("${") {
+        return canonical_contract_locator(&format!("{base_url}{path}"));
+    }
+    canonical_path_template(path)
+}
+
+fn canonical_contract_locator(locator: &str) -> Option<String> {
+    if locator.starts_with('/') {
+        return canonical_path_template(locator);
+    }
+    let remainder = locator.strip_prefix("https://")?;
+    let (host, path) = remainder.split_once('/')?;
+    if host.is_empty()
+        || host.contains('@')
+        || host
+            .chars()
+            .any(|character| matches!(character, '?' | '#' | '\\'))
+    {
+        return None;
+    }
+    canonical_path_template(&format!("/{path}")).map(|path| format!("https://{host}{path}"))
 }
 
 fn path_parameter(segment: &str) -> Option<&str> {
@@ -2657,6 +2869,99 @@ mod tests {
     }
 
     #[test]
+    fn datadog_compiles_exact_provider_runtime_contract() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let datadog = catalog.get("datadog").unwrap();
+        assert_eq!(
+            datadog.auth_header_parameters(),
+            &BTreeMap::from([
+                ("DD-API-KEY".to_owned(), "api_key".to_owned()),
+                (
+                    "DD-APPLICATION-KEY".to_owned(),
+                    "application_key".to_owned(),
+                ),
+            ])
+        );
+        assert_eq!(datadog.families().len(), 8);
+        assert!(
+            datadog
+                .families()
+                .iter()
+                .all(|family| family.is_authoritative() && family.is_projection_authoritative())
+        );
+        let family = |id: &str| {
+            datadog
+                .families()
+                .iter()
+                .find(|family| family.id() == id)
+                .unwrap()
+        };
+        assert!(matches!(
+            family("users").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[cursor]"
+                && response_path == "$.meta.page.after|$.meta.page.cursor"
+                && page_size_parameter == "page[size]"
+        ));
+        assert!(matches!(
+            family("monitors").pagination(),
+            Pagination::Page {
+                parameter,
+                start: 0,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page" && page_size_parameter == "page_size"
+        ));
+        assert!(matches!(
+            family("slos").pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100,
+            } if parameter == "offset" && limit_parameter == "limit"
+        ));
+        assert!(matches!(
+            family("dashboards").pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100,
+            } if parameter == "start" && limit_parameter == "count"
+        ));
+        assert!(matches!(
+            family("incidents").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[offset]"
+                && response_path == "$.meta.pagination.next_offset"
+                && page_size_parameter == "page[size]"
+        ));
+        assert!(matches!(
+            family("audit_events").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[cursor]"
+                && response_path == "$.meta.page.after|$.meta.page.cursor|$.links.next"
+                && page_size_parameter == "page[limit]"
+        ));
+    }
+
+    #[test]
     fn compiles_the_complete_checked_in_catalog() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -2666,7 +2971,7 @@ mod tests {
         .unwrap();
         let summary = catalog.summary();
         assert_eq!(summary.sources, 799);
-        assert_eq!(summary.families, 3_926);
+        assert_eq!(summary.families, 3_986);
         assert_eq!(summary.push_sources, 1);
         assert_eq!(summary.push_families, 10);
         assert_eq!(
@@ -3249,6 +3554,47 @@ mod tests {
     }
 
     #[test]
+    fn retired_static_loader_sources_are_fully_rust_authoritative() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        for source_id in [
+            "acunetix",
+            "adobe_workfront",
+            "aircall",
+            "airfocus",
+            "beezup",
+            "bitwarden",
+            "deepseek",
+            "openai",
+        ] {
+            let source = catalog.get(source_id).unwrap();
+            assert_eq!(
+                source.authority(),
+                CollectionAuthority::Authoritative,
+                "{source_id} must keep complete Rust collection authority"
+            );
+            assert!(
+                source
+                    .families()
+                    .iter()
+                    .all(CompiledFamily::is_authoritative),
+                "{source_id} contains a non-authoritative collection family"
+            );
+            assert!(
+                source
+                    .families()
+                    .iter()
+                    .all(CompiledFamily::is_projection_authoritative),
+                "{source_id} contains a non-authoritative projection family"
+            );
+        }
+    }
+
+    #[test]
     fn oauth_client_credentials_contract_is_compiled_without_credential_material() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -3361,6 +3707,33 @@ mod tests {
     }
 
     #[test]
+    fn bespoke_classifier_is_not_reported_as_an_auth_failure() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        for source_id in ["auth0", "kubernetes"] {
+            let source = catalog.get(source_id).unwrap();
+            assert!(source.auth().supports_generic_runtime());
+            for family in source.families() {
+                assert!(
+                    !family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::UnsupportedAuthModel)
+                );
+                assert!(
+                    family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::BespokeRuntime)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn composite_id_templates_are_closed_and_bounded() {
         for valid in [
             "${reportedAt}:${reporterId}",
@@ -3385,6 +3758,16 @@ mod tests {
             "${{field}}{}",
             "x".repeat(1_024)
         )));
+        assert!(valid_singleton_id_literal("organization:data_retention"));
+        for invalid in [
+            "",
+            " leading",
+            "trailing ",
+            "contains${field}",
+            "line\nbreak",
+        ] {
+            assert!(!valid_singleton_id_literal(invalid), "{invalid:?}");
+        }
     }
 
     #[test]
@@ -3454,7 +3837,7 @@ mod tests {
     }
 
     #[test]
-    fn undeclared_query_scope_cannot_become_collection_authority() {
+    fn slack_membership_scope_compiles_to_collection_authority() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
             root.join("internal/connectorcatalog/catalog"),
@@ -3468,8 +3851,13 @@ mod tests {
             .iter()
             .find(|family| family.id() == "channel_member")
             .unwrap();
-        assert!(!family.is_authoritative());
-        assert!(family.config_query().is_empty());
+        assert!(family.is_authoritative());
+        assert_eq!(
+            family.config_query().get("channel"),
+            Some(&PathParameterBinding::OptionalScalarConfig {
+                field: "channel_id".to_owned()
+            })
+        );
     }
 
     #[test]
@@ -3534,6 +3922,14 @@ mod tests {
         );
         assert_eq!(canonical_path_template("/accounts/prefix-{id}/users"), None);
         assert_eq!(canonical_path_template("/accounts/${config.id/users"), None);
+        assert_eq!(
+            canonical_family_locator(Some("https://api.slack.com/audit/v1"), "/logs"),
+            canonical_contract_locator("https://api.slack.com/audit/v1/logs")
+        );
+        assert_eq!(
+            canonical_contract_locator("https://user@example.test/logs"),
+            None
+        );
     }
 
     #[test]
@@ -3546,7 +3942,7 @@ mod tests {
         .unwrap();
         let report = catalog.unsupported_feature_report();
         assert_eq!(report.total_sources, 799);
-        assert_eq!(report.total_families, 3_926);
+        assert_eq!(report.total_families, 3_986);
         assert_eq!(report.families.len(), report.total_families);
         assert!(report.missing_family_reports.is_empty());
         assert_eq!(
@@ -3595,7 +3991,7 @@ mod tests {
         )
         .unwrap();
         let report = catalog.authority_readiness_report();
-        assert_eq!(report.total_families, 3_926);
+        assert_eq!(report.total_families, 3_986);
         assert_eq!(report.rust_authoritative_families, 0);
         assert_eq!(report.shadow_or_go_families, report.total_families);
         let aws_bedrock = report
@@ -3624,6 +4020,105 @@ mod tests {
             report.shadow_or_go_families,
             aws_bedrock.plan_digest
         );
+    }
+
+    #[test]
+    fn conjur_and_langsmith_compile_exact_request_contracts() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        let conjur = catalog.get("conjur").unwrap();
+        assert_eq!(conjur.auth(), &AuthModel::Basic);
+        assert_eq!(conjur.configurable_auth_models(), &[AuthModel::Basic]);
+        assert_eq!(conjur.families().len(), 4);
+        let resource = conjur
+            .families()
+            .iter()
+            .find(|family| family.id() == "resource_3")
+            .unwrap();
+        assert_eq!(
+            resource.path(),
+            "/resources/${config.account}/${config.kind}"
+        );
+        assert_eq!(
+            resource.map_records().get("data.key_info"),
+            Some(&"resource".to_owned())
+        );
+        assert!(matches!(
+            resource.pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100
+            } if parameter == "offset" && limit_parameter == "limit"
+        ));
+
+        let langsmith = catalog.get("langchain").unwrap();
+        assert_eq!(
+            langsmith.configurable_auth_models(),
+            &[AuthModel::ApiKey, AuthModel::BearerToken]
+        );
+        assert_eq!(langsmith.families().len(), 13);
+        let run = langsmith
+            .families()
+            .iter()
+            .find(|family| family.id() == "run")
+            .unwrap();
+        assert_eq!(run.method(), HttpMethod::Post);
+        assert_eq!(run.path(), "/api/v1/runs/query");
+        assert_eq!(run.config_json_body().len(), 6);
+        assert_eq!(
+            run.static_json_body().get("limit"),
+            Some(&serde_json::json!(100))
+        );
+        assert!(matches!(
+            run.pagination(),
+            Pagination::Cursor { parameter, response_path, .. }
+                if parameter == "cursor" && response_path == "$.cursors.next"
+        ));
+        let audit = langsmith
+            .families()
+            .iter()
+            .find(|family| family.id() == "audit_log")
+            .unwrap();
+        assert!(matches!(
+            audit.pagination(),
+            Pagination::Cursor { parameter, response_path, .. }
+                if parameter == "cursor" && response_path == "$.cursor"
+        ));
+        for family_id in [
+            "workspace_member",
+            "project",
+            "run",
+            "feedback",
+            "dataset",
+            "usage_limit",
+            "audit_log",
+        ] {
+            let family = langsmith
+                .families()
+                .iter()
+                .find(|family| family.id() == family_id)
+                .unwrap();
+            assert_eq!(
+                family
+                    .config_headers()
+                    .get("X-Organization-Id")
+                    .map(PathParameterBinding::field),
+                Some("organization_id")
+            );
+            assert_eq!(
+                family
+                    .config_headers()
+                    .get("X-Tenant-Id")
+                    .map(PathParameterBinding::field),
+                Some("workspace_id")
+            );
+        }
     }
 
     #[test]

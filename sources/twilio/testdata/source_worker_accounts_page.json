@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "event_id": "provider-event-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "record-1"
+    },
+    {
+      "event_id": "provider-event-1",
+      "id": "record-1",
+      "name": "Record One",
+      "resource_id": "record-1",
+      "tenant_id": "tenant",
+      "updated_at": "2026-06-01T00:00:00Z",
+      "user_id": "record-1"
+    }
+  ],
+  "pagination": {
+    "next_cursor": "accounts-page-2"
+  }
+}

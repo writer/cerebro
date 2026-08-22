@@ -505,7 +505,16 @@ func VerifyRepository(root string) (RepositoryReport, error) {
 
 func PackagesWithBundles(root string) ([]string, error) {
 	sources := map[string]struct{}{}
+	needsCatalogRuntimeHarness := false
 	if err := WalkBundles(root, func(bundle Bundle) error {
+		goFiles, err := filepath.Glob(filepath.Join(root, "sources", bundle.Manifest.SourceID, "*.go"))
+		if err != nil {
+			return err
+		}
+		if len(goFiles) == 0 {
+			needsCatalogRuntimeHarness = true
+			return nil
+		}
 		sources[bundle.Manifest.SourceID] = struct{}{}
 		return nil
 	}); err != nil {
@@ -514,6 +523,9 @@ func PackagesWithBundles(root string) ([]string, error) {
 	packages := make([]string, 0, len(sources))
 	for sourceID := range sources {
 		packages = append(packages, "./sources/"+sourceID)
+	}
+	if needsCatalogRuntimeHarness {
+		packages = append(packages, "./sources/internal/catalogruntime")
 	}
 	sort.Strings(packages)
 	return packages, nil
@@ -599,6 +611,12 @@ func verifyReplayTest(root string, bundle Bundle) error {
 	}
 	testPath := filepath.Join(root, "sources", bundle.Manifest.SourceID, fileName)
 	payload, err := os.ReadFile(testPath) // #nosec G304 -- path uses validated fixture source and test-file segments under the repository root.
+	if os.IsNotExist(err) {
+		sourcePath := filepath.Join(root, "sources", bundle.Manifest.SourceID, "source.go")
+		if _, sourceErr := os.Stat(sourcePath); os.IsNotExist(sourceErr) {
+			return verifyCatalogRuntimeReplayHarness(root, bundle)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("read replay test for %s: %w", bundle.ManifestPath, err)
 	}
@@ -618,6 +636,25 @@ func verifyReplayTest(root string, bundle Bundle) error {
 	}
 	if !requiresBoundReplay && (!strings.Contains(string(payload), "sourcefixture.FindBundle") || !strings.Contains(string(payload), `"`+bundle.Manifest.Case+`"`)) {
 		return fmt.Errorf("%s replay_test %s must load fixture case %q with sourcefixture.FindBundle", bundle.ManifestPath, bundle.Manifest.ReplayTest, bundle.Manifest.Case)
+	}
+	return nil
+}
+
+func verifyCatalogRuntimeReplayHarness(root string, bundle Bundle) error {
+	harnessPath := filepath.Join(root, "sources", "internal", "catalogruntime", "fixture_corpus_test.go")
+	payload, err := os.ReadFile(harnessPath) // #nosec G304 -- path is fixed beneath the operator-selected repository root.
+	if err != nil {
+		return fmt.Errorf("read catalog-runtime replay harness for %s: %w", bundle.ManifestPath, err)
+	}
+	text := string(payload)
+	for _, marker := range []string{
+		"TestCatalogRuntimeRetainsRetiredProviderFixtureCorpus",
+		"sourcefixture.WalkBundles",
+		"connectorcatalog.BuiltinEntry",
+	} {
+		if !strings.Contains(text, marker) {
+			return fmt.Errorf("%s catalog-runtime replay harness is missing %q", bundle.ManifestPath, marker)
+		}
 	}
 	return nil
 }

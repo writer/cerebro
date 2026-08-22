@@ -67,6 +67,9 @@ func TestSourceCheckAndReadDefinition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDefinition() error = %v", err)
 	}
+	if got := source.Spec().EmittedKinds; !slices.Equal(got, []string{"example.users"}) {
+		t.Fatalf("Spec().EmittedKinds = %#v, want example.users", got)
+	}
 	source.inner.AllowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "tenant",

@@ -90,7 +90,9 @@ The current repository snapshot, measured with `tools/codegenstatus` and
 - 743 sources that still need realistic fixtures;
 - 736 sources that still need every-family tests;
 - 752 sources that still need deploy-family coverage;
-- a 5,827-line compile-time source registry;
+- a 521-line compile-time source registry with 61 explicit deep, push, bespoke,
+  and catalog-compatibility loaders; 756 standard catalog sources load through
+  the shared definition-driven runtime instead of provider-specific imports;
 - a 6,407-line compile-time projector registry;
 - generated adapters that repeat large maps of paths, selectors, identity keys, and static attributes already present in connector definitions.
 
@@ -159,6 +161,30 @@ planned for provider execution. The child inherits no listening socket and can
 only exchange framed admission requests with its parent. Moving provider HTTP,
 credentials, or runtime capabilities into Rust still requires the later
 versioned protobuf and authenticated Unix-socket boundary below.
+
+### Credential-free provider execution slice
+
+The first production-dispatched family is `azure.authorization_policy`. Rust
+owns its closed plan, request intent, response decoding, cursor validation,
+record identity validation, duplicate handling, and result digest. The trusted
+Go host resolves one opaque credential reference, redeems it for one operation,
+applies authentication, restricts the request to the declared origin, disables
+origin-changing pagination, and enforces the response bound before Rust sees
+provider bytes. The worker protocol carries tenant, runtime, logical page,
+runtime generation, lease generation, and one host-captured observation time;
+it never carries credential bytes.
+
+The existing Go source-runtime service remains the durable writer. It admits
+the Rust-produced event through the compiled event contract, appends it,
+projects it, and commits the checkpoint only while the exact durable lease
+owner and generation remain current. The logical page identity is stable across
+process restarts, while tenant-scoped event identity makes a refetched singleton
+idempotent. A stale generation is rejected before append and by the final
+Postgres checkpoint transaction. The closed Rust dispatcher also
+compile-registers `sentinelone.agent`; that does not activate trusted-host,
+catalog, append, or authority ownership for SentinelOne. Other families remain
+on compatibility execution until they register the same adapter contract and
+earn their own parity and operating receipts.
 
 ## Why Rust, and where Rust is not the reason
 
@@ -775,7 +801,14 @@ provider evidence
   -> signed promotion receipt
 ```
 
-Registration becomes data-driven. The runtime loads the compiled first-party plan index instead of importing every standard source package. The plan index is deterministic, checked into release provenance, and validated before serving traffic.
+Registration is data-driven for standard Go compatibility sources: the runtime
+loads normalized catalog definitions instead of importing 756 provider-specific
+packages. The remaining explicit loaders cover deep, push, bespoke, and
+metadata-incompatible sources. A single embedded portable source-catalog index
+preserves the same event, coverage, and lifecycle contracts for those standard
+sources without restoring their provider-package imports. The Rust runtime
+target remains a compiled first-party plan index that is deterministic,
+included in release provenance, and validated before serving traffic.
 
 ## Migration plan
 

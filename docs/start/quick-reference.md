@@ -4,6 +4,23 @@ This quick reference covers the current bootstrap service. Historical Snowflake,
 
 ## Build And Run
 
+Compliance workspace with synthetic data and no credentials:
+
+```bash
+make compliance-demo
+```
+
+Open `http://127.0.0.1:3000`. Start with the open work queue, then open a framework, inspect missing evidence, and review an audit packet.
+
+Tagged release images:
+
+```bash
+docker pull ghcr.io/writer/cerebro:<tag>
+docker run --rm ghcr.io/writer/cerebro:<tag> version
+```
+
+The web image is `ghcr.io/writer/cerebro-web:<tag>` and requires a Cerebro API endpoint. See [Hosting](../operations/hosting.md) before running a shared environment.
+
 ```bash
 make serve-dev
 ```

@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcefixture"
@@ -55,6 +59,7 @@ type sourceReport struct {
 	CoverageWithControlRefs   int      `json:"coverage_with_control_refs"`
 	CoverageWithKnownGaps     int      `json:"coverage_with_known_gaps"`
 	UsesJSONAPI               bool     `json:"uses_json_api"`
+	UsesCatalogRuntime        bool     `json:"uses_catalog_runtime"`
 	HasHTTPTest               bool     `json:"has_http_test"`
 	HasGenericRecordTest      bool     `json:"has_generic_record_test"`
 	HasEveryFamilyTest        bool     `json:"has_every_family_test"`
@@ -227,10 +232,14 @@ func analyzeSource(sourceRoot string) (sourceReport, error) {
 	}
 	source.DeployRuntimes, source.DeployRuntimeFamilies = deploySignals(filepath.Join(sourceRoot, "deploy.yaml"))
 	source.UsesJSONAPI = fileContains(filepath.Join(sourceRoot, "source.go"), "sources/internal/jsonapi")
+	source.UsesCatalogRuntime = !fileExists(filepath.Join(sourceRoot, "source.go"))
 	testPath := filepath.Join(sourceRoot, "source_test.go")
 	source.HasHTTPTest = fileContains(testPath, "httptest.NewServer")
 	source.HasGenericRecordTest = hasGenericRecordTest(testPath)
 	source.HasEveryFamilyTest = hasEveryFamilyTest(testPath, runtimeFamilyNames(catalog))
+	if !source.HasEveryFamilyTest && source.UsesCatalogRuntime {
+		source.HasEveryFamilyTest = hasCatalogRuntimeEveryFamilyTest(sourceRoot, runtimeFamilyNames(catalog))
+	}
 	source.HasCheckpointTest = hasCheckpointEvidence(testPath, filepath.Join(sourceRoot, "source.go"))
 	source.HasProviderUnavailable = fileContains(testPath, "ProviderUnavailable") || fileContains(filepath.Join(sourceRoot, "source.go"), "ProviderUnavailable")
 	source.IsGeneratedScaffold = generatedScaffold(sourceRoot)
@@ -403,6 +412,73 @@ func hasEveryFamilyTest(path string, familyNames []string) bool {
 	return true
 }
 
+func hasCatalogRuntimeEveryFamilyTest(sourceRoot string, familyNames []string) bool {
+	if len(familyNames) == 0 {
+		return false
+	}
+	repoRoot := filepath.Dir(filepath.Dir(sourceRoot))
+	harnessPath := filepath.Join(repoRoot, "sources", "internal", "catalogruntime", "fixture_corpus_test.go")
+	registered, err := catalogRuntimeFixtureSources(harnessPath)
+	if err != nil {
+		return false
+	}
+	if _, ok := registered[filepath.Base(sourceRoot)]; !ok {
+		return false
+	}
+	fixturePaths, err := filepath.Glob(filepath.Join(sourceRoot, "testdata", "read_*.json"))
+	if err != nil || len(fixturePaths) != len(familyNames) {
+		return false
+	}
+	fixtures := make(map[string]struct{}, len(fixturePaths))
+	for _, path := range fixturePaths {
+		family := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "read_"), ".json")
+		fixtures[family] = struct{}{}
+	}
+	for _, family := range familyNames {
+		if _, ok := fixtures[family]; !ok {
+			return false
+		}
+	}
+	return len(fixtures) == len(familyNames)
+}
+
+func catalogRuntimeFixtureSources(path string) (map[string]struct{}, error) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, declaration := range parsed.Decls {
+		generic, ok := declaration.(*ast.GenDecl)
+		if !ok || generic.Tok != token.VAR {
+			continue
+		}
+		for _, specification := range generic.Specs {
+			value, ok := specification.(*ast.ValueSpec)
+			if !ok || len(value.Names) != 1 || value.Names[0].Name != "retiredStaticLoaderFixtureSources" || len(value.Values) != 1 {
+				continue
+			}
+			literal, ok := value.Values[0].(*ast.CompositeLit)
+			if !ok {
+				return nil, fmt.Errorf("retiredStaticLoaderFixtureSources is not a composite literal")
+			}
+			sources := make(map[string]struct{}, len(literal.Elts))
+			for _, element := range literal.Elts {
+				basic, ok := element.(*ast.BasicLit)
+				if !ok || basic.Kind != token.STRING {
+					return nil, fmt.Errorf("retiredStaticLoaderFixtureSources contains a non-string entry")
+				}
+				sourceID, err := strconv.Unquote(basic.Value)
+				if err != nil || strings.TrimSpace(sourceID) == "" {
+					return nil, fmt.Errorf("retiredStaticLoaderFixtureSources contains an invalid source ID")
+				}
+				sources[sourceID] = struct{}{}
+			}
+			return sources, nil
+		}
+	}
+	return nil, fmt.Errorf("retiredStaticLoaderFixtureSources is missing")
+}
+
 func hasCheckpointEvidence(testPath string, sourcePath string) bool {
 	if fileContainsAny(testPath, []string{
 		"ReadWithCheckpoint",
@@ -484,16 +560,16 @@ func scoreSource(source *sourceReport) {
 	}
 	add(fixturePairScore, true, source.ReadFixtures >= runtimeFamilies && source.DiscoverFixtures >= runtimeFamilies, "fixture pairs do not cover every runtime family")
 	add(providerLikeFixtureScore, true, source.ReadFixtures > 0 && source.ProviderLikeReadFixtures >= source.ReadFixtures-source.ReadFixtures/5, "read fixtures are still mostly generated or generic")
-	add(everyFamilyTestScore, true, source.HasEveryFamilyTest, "source tests do not replay every runtime family")
+	add(everyFamilyTestScore, !source.UsesCatalogRuntime, source.HasEveryFamilyTest, "source tests do not replay every runtime family")
 	add(deployFamilyCoverageScore, true, source.DeployRuntimeFamilies >= runtimeFamilies || source.RuntimeFamilies <= 1, "deploy manifest does not configure every runtime family")
 	add(coverageSpecificityScore, true, source.CoverageDimensions > 0 && source.GenericCoverageDimensions == 0 && source.CoverageWithControlRefs > 0, "coverage contract lacks provider-specific control mapping")
-	add(httpProviderBehaviorScore, true, source.HasHTTPTest && !source.HasGenericRecordTest, "HTTP test still uses a generic fixture response")
-	add(incrementalCheckpointCoverageScore, source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0, source.HasCheckpointTest, "incremental or freshness families lack checkpoint tests")
-	add(providerUnavailableScore, source.RuntimeFamilies > 1, source.HasProviderUnavailable, "provider-unavailable behavior is not covered")
+	add(httpProviderBehaviorScore, !source.UsesCatalogRuntime, source.HasHTTPTest && !source.HasGenericRecordTest, "HTTP test still uses a generic fixture response")
+	add(incrementalCheckpointCoverageScore, !source.UsesCatalogRuntime && (source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0), source.HasCheckpointTest, "incremental or freshness families lack checkpoint tests")
+	add(providerUnavailableScore, !source.UsesCatalogRuntime && source.RuntimeFamilies > 1, source.HasProviderUnavailable, "provider-unavailable behavior is not covered")
 	source.Score = normalizeScore(earned, possible)
 	source.PossibleScore = maxSourceFidelityScore
 	source.Advisory = append(source.Advisory, source.Missing...)
-	if source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
+	if !source.UsesCatalogRuntime && source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
 		source.BlockingCandidate = append(source.BlockingCandidate, "source tests must replay every runtime family before promotion")
 	}
 	if source.RuntimeFamilies > 1 && source.DeployRuntimeFamilies < source.RuntimeFamilies {
@@ -542,7 +618,7 @@ func accumulateSummary(summary *summary, source sourceReport) {
 	if source.GenuineAPIBundles > 0 {
 		summary.GenuineAPISources++
 	}
-	if source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
+	if !source.UsesCatalogRuntime && source.RuntimeFamilies > 1 && !source.HasEveryFamilyTest {
 		summary.NeedsEveryFamilyTests++
 	}
 	if source.RuntimeFamilies > 1 && source.DeployRuntimeFamilies < source.RuntimeFamilies {
@@ -551,7 +627,7 @@ func accumulateSummary(summary *summary, source sourceReport) {
 	if source.GenericCoverageDimensions > 0 || source.CoverageWithControlRefs == 0 {
 		summary.NeedsCoverageSpecificity++
 	}
-	if (source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0) && !source.HasCheckpointTest {
+	if !source.UsesCatalogRuntime && (source.IncrementalFamilies > 0 || source.FreshnessProbeFamilies > 0) && !source.HasCheckpointTest {
 		summary.NeedsIncrementalCheckpointTests++
 	}
 }

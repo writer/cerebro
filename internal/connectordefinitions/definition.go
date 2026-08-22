@@ -148,9 +148,12 @@ type Field struct {
 // AuthSpec describes the supported credential shape for a connector definition.
 type AuthSpec struct {
 	Model                         string            `json:"model"`
+	ConfigurableModels            []string          `json:"configurable_models,omitempty"`
+	ModelConfigKey                string            `json:"model_config_key,omitempty"`
 	CredentialFields              []Field           `json:"credential_fields,omitempty"`
 	TokenHeader                   string            `json:"token_header,omitempty"`
 	TokenScheme                   string            `json:"token_scheme,omitempty"`
+	HeaderParameters              map[string]string `json:"header_parameters,omitempty"`
 	SupportedStoreIDs             []string          `json:"supported_store_ids,omitempty"`
 	RequiresReferences            bool              `json:"requires_references,omitempty"`
 	AuthorizationURL              string            `json:"authorization_url,omitempty"`
@@ -209,6 +212,7 @@ type ProviderAPIFamilySpec struct {
 type VerificationSpec struct {
 	Method       string            `json:"method,omitempty"`
 	Path         string            `json:"path"`
+	ConfigPath   string            `json:"config_path,omitempty"`
 	Headers      map[string]string `json:"headers,omitempty"`
 	ExpectStatus []int             `json:"expect_status,omitempty"`
 }
@@ -252,11 +256,14 @@ type IncrementalSpec struct {
 
 // EventMappingSpec describes the event contract emitted for a resource family.
 type EventMappingSpec struct {
-	Kind                  string   `json:"kind,omitempty"`
-	SchemaRef             string   `json:"schema_ref,omitempty"`
-	URNKind               string   `json:"urn_kind,omitempty"`
-	RequiredAttributes    []string `json:"required_attributes,omitempty"`
-	RequiredPayloadFields []string `json:"required_payload_fields,omitempty"`
+	Kind                  string            `json:"kind,omitempty"`
+	SchemaRef             string            `json:"schema_ref,omitempty"`
+	URNKind               string            `json:"urn_kind,omitempty"`
+	RequiredAttributes    []string          `json:"required_attributes,omitempty"`
+	RequiredPayloadFields []string          `json:"required_payload_fields,omitempty"`
+	Attributes            map[string]string `json:"attributes,omitempty"`
+	StaticAttributes      map[string]string `json:"static_attributes,omitempty"`
+	ExactAttributes       bool              `json:"exact_attributes,omitempty"`
 }
 
 // ProjectionSpec describes a generic projector template for emitted events.
@@ -351,6 +358,7 @@ type ResourceReadSpec struct {
 	MapRecords            map[string]string `json:"map_records,omitempty"`
 	ScalarRecordField     string            `json:"scalar_record_field,omitempty"`
 	StaticJSONBody        map[string]any    `json:"static_json_body,omitempty"`
+	ConfigJSONBody        map[string]string `json:"config_json_body,omitempty"`
 	Singleton             bool              `json:"singleton,omitempty"`
 	DisablePageSize       bool              `json:"disable_page_size,omitempty"`
 }
@@ -468,11 +476,14 @@ func Normalize(definition Definition) (Definition, error) {
 	definition.Auth.PKCE = strings.TrimSpace(definition.Auth.PKCE)
 	definition.Auth.TokenHeader = strings.TrimSpace(definition.Auth.TokenHeader)
 	definition.Auth.TokenScheme = strings.TrimSpace(definition.Auth.TokenScheme)
+	definition.Auth.ConfigurableModels = normalizeStringList(definition.Auth.ConfigurableModels)
+	definition.Auth.ModelConfigKey = normalizeIdentifier(definition.Auth.ModelConfigKey)
 	definition.Auth.AlternateAccessTokenJSONPath = strings.TrimSpace(definition.Auth.AlternateAccessTokenJSONPath)
 	definition.Auth.AlternateRefreshTokenJSONPath = strings.TrimSpace(definition.Auth.AlternateRefreshTokenJSONPath)
 	definition.Auth.Scopes = normalizeStringList(definition.Auth.Scopes)
 	definition.Auth.TokenParams = normalizeStringMap(definition.Auth.TokenParams)
 	definition.Auth.RefreshParams = normalizeStringMap(definition.Auth.RefreshParams)
+	definition.Auth.HeaderParameters = normalizeStringMap(definition.Auth.HeaderParameters)
 	definition.Transport = normalizeTransportSpec(definition.Transport)
 	definition.ProviderAPI = normalizeProviderAPISpec(definition.ProviderAPI)
 	definition.Ingest = normalizeIngestSpec(definition.Ingest)
@@ -547,6 +558,7 @@ func Validate(definition Definition) ValidationResult {
 	for _, field := range definition.ConfigFields {
 		runtimeConfigFields[strings.TrimSpace(field.Key)] = struct{}{}
 	}
+	validateRuntimeConfigBindings(definition, runtimeConfigFields, add)
 	for _, family := range definition.ResourceFamilies {
 		if !idPattern.MatchString(family.ID) {
 			add(blocking("family_"+family.ID, "Resource family ID", "Family ids must be lowercase identifiers."))
@@ -763,6 +775,23 @@ func blocking(id string, label string, nextAction string) ValidationCheck {
 }
 
 func validateAuthModelDetails(auth AuthSpec, add func(ValidationCheck)) {
+	if len(auth.ConfigurableModels) > 0 {
+		seen := map[string]struct{}{}
+		for _, model := range auth.ConfigurableModels {
+			if _, ok := authModels[model]; !ok {
+				add(blocking("auth_configurable_model", "Configurable auth models", fmt.Sprintf("Auth model %q is not supported.", model)))
+			}
+			seen[model] = struct{}{}
+		}
+		if _, ok := seen[auth.Model]; !ok {
+			add(blocking("auth_configurable_default", "Configurable auth models", "Configurable auth models must include the default auth model."))
+		}
+		if strings.TrimSpace(auth.ModelConfigKey) == "" {
+			add(blocking("auth_model_config_key", "Auth model config key", "Selectable authentication requires a model_config_key."))
+		}
+	} else if strings.TrimSpace(auth.ModelConfigKey) != "" {
+		add(blocking("auth_model_configurable_models", "Configurable auth models", "model_config_key requires configurable_models."))
+	}
 	switch auth.Model {
 	case "oauth_authorization_code":
 		if auth.AuthorizationURL == "" {
@@ -797,6 +826,59 @@ func validateAuthModelDetails(auth AuthSpec, add func(ValidationCheck)) {
 	if scheme := strings.TrimSpace(auth.TokenScheme); scheme != "" && strings.ContainsAny(scheme, "\r\n\t") {
 		add(blocking("auth_token_scheme", "Token scheme", "Token scheme must not contain whitespace or control characters."))
 	}
+	if len(auth.HeaderParameters) > 16 {
+		add(blocking("auth_header_parameters_limit", "Auth header parameters", "Auth header parameters are capped at sixteen headers."))
+	}
+	if len(auth.HeaderParameters) > 0 && auth.Model != "api_key" {
+		add(blocking("auth_header_parameters_model", "Auth header parameters", "Multiple auth header parameters require the api_key auth model."))
+	}
+	if len(auth.HeaderParameters) > 0 && strings.TrimSpace(auth.TokenHeader) != "" {
+		add(blocking("auth_header_parameters_placement", "Auth header parameters", "API key authentication must use one credential placement."))
+	}
+	credentialFields := map[string]struct{}{}
+	for _, field := range auth.CredentialFields {
+		credentialFields[strings.TrimSpace(field.Key)] = struct{}{}
+	}
+	for header, credentialField := range auth.HeaderParameters {
+		if !validHTTPHeaderName(header) {
+			add(blocking("auth_header_parameter_name", "Auth header parameters", "Auth header parameter names must be valid HTTP header names."))
+		}
+		if _, ok := credentialFields[strings.TrimSpace(credentialField)]; !ok {
+			add(blocking("auth_header_parameter_field", "Auth header parameters", "Auth header parameters must reference declared credential fields."))
+		}
+	}
+}
+
+func validateRuntimeConfigBindings(definition Definition, configFields map[string]struct{}, add func(ValidationCheck)) {
+	if key := strings.TrimSpace(definition.Auth.ModelConfigKey); key != "" {
+		if _, ok := configFields[key]; !ok {
+			add(blocking("auth_model_config_field", "Auth model config field", "model_config_key must reference a declared definition.config_fields entry."))
+		}
+	}
+	if definition.Transport == nil || definition.Transport.Verification == nil {
+		return
+	}
+	if key := strings.TrimSpace(definition.Transport.Verification.ConfigPath); key != "" {
+		if _, ok := configFields[key]; !ok {
+			add(blocking("verification_config_path", "Verification config path", "Verification config_path must reference a declared definition.config_fields entry."))
+		}
+	}
+}
+
+func validHTTPHeaderName(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') &&
+			(character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') &&
+			!strings.ContainsRune("!#$%&'*+-.^_`|~", character) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateTransport(transport *TransportSpec, add func(ValidationCheck)) {
@@ -920,6 +1002,20 @@ func validateFamilyIntegrationFields(family ResourceFamily, configFields map[str
 			payload, err := json.Marshal(family.Read.StaticJSONBody)
 			if err != nil || len(payload) > 16*1024 {
 				add(blocking("static_json_body_size_"+family.ID, "Static JSON body", "Static JSON request bodies must be valid and no larger than 16384 bytes."))
+			}
+		}
+		if len(family.Read.ConfigJSONBody) > 0 {
+			if !strings.EqualFold(strings.TrimSpace(family.Method), "POST") {
+				add(blocking("config_json_body_method_"+family.ID, "Config JSON body", "Configured JSON request bodies require POST resource families."))
+			}
+			for parameter, configField := range family.Read.ConfigJSONBody {
+				parameter = strings.TrimSpace(parameter)
+				configField = strings.TrimSpace(configField)
+				if parameter == "" || configField == "" {
+					add(blocking("config_json_body_"+family.ID, "Config JSON body", "Configured JSON body bindings require non-empty parameter and config field names."))
+				} else if _, ok := configFields[configField]; !ok {
+					add(blocking("config_json_body_field_"+family.ID+"_"+normalizeDefinitionID(parameter), "Config JSON body", "Configured JSON body bindings must reference declared definition.config_fields."))
+				}
 			}
 		}
 	}
@@ -1252,6 +1348,7 @@ func normalizeTransportSpec(transport *TransportSpec) *TransportSpec {
 			verification.Method = "GET"
 		}
 		verification.Path = strings.TrimSpace(verification.Path)
+		verification.ConfigPath = normalizeIdentifier(verification.ConfigPath)
 		verification.Headers = normalizeStringMap(verification.Headers)
 		next.Verification = &verification
 	}
@@ -1376,8 +1473,9 @@ func normalizeResourceReadSpec(read *ResourceReadSpec) *ResourceReadSpec {
 	next.PathParamFanout = normalizeStringMap(next.PathParamFanout)
 	next.MapRecords = normalizeStringMap(next.MapRecords)
 	next.StaticJSONBody = normalizeJSONMap(next.StaticJSONBody)
+	next.ConfigJSONBody = normalizeStringMap(next.ConfigJSONBody)
 	next.ScalarRecordField = strings.TrimSpace(next.ScalarRecordField)
-	if next.ProviderKernel == "" && next.SingletonFallbackID == "" && next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && len(next.StaticJSONBody) == 0 && next.ScalarRecordField == "" && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
+	if next.ProviderKernel == "" && next.SingletonFallbackID == "" && next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && len(next.StaticJSONBody) == 0 && len(next.ConfigJSONBody) == 0 && next.ScalarRecordField == "" && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
 		return nil
 	}
 	return &next
