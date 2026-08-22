@@ -467,6 +467,24 @@ fn provider_local_source_execution_contract_covers_all_seven_families() {
             contract.response_cursor_header,
             audit.then_some("X-Search_after")
         );
+        let fanout = adapter.family() == JumpCloudFamily::GroupMembers;
+        assert_eq!(
+            contract.check_scope,
+            if fanout {
+                "first_configured_group"
+            } else {
+                "family_endpoint"
+            }
+        );
+        assert_eq!(
+            contract.discover_scope,
+            if fanout {
+                "all_configured_groups"
+            } else {
+                "family_endpoint"
+            }
+        );
+        assert_eq!(contract.max_fanout_scopes, fanout.then_some(1_000));
         assert_eq!(
             contract.origin,
             if audit {

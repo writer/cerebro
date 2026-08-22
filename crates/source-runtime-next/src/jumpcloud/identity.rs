@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-use super::{JumpCloudError, JumpCloudFamily, JumpCloudKernel};
+use super::{JumpCloudError, JumpCloudFamily, JumpCloudKernel, JumpCloudRequest};
 
 pub(super) struct Identity {
     pub(super) external_id: String,
@@ -11,6 +11,7 @@ pub(super) struct Identity {
 
 pub(super) fn material(
     kernel: &JumpCloudKernel,
+    request: &JumpCloudRequest,
     values: &Map<String, Value>,
     raw_bytes: Option<&[u8]>,
 ) -> Result<Identity, JumpCloudError> {
@@ -18,7 +19,7 @@ pub(super) fn material(
     let provider_id = if kernel.family == JumpCloudFamily::AuditEvents {
         external_id.clone()
     } else {
-        record_identity(kernel, values, &external_id)
+        record_identity(kernel, request, values, &external_id)
     };
     let event_id = if kernel.family == JumpCloudFamily::AuditEvents {
         sourcecdk_event_id(&[
@@ -29,7 +30,7 @@ pub(super) fn material(
             &provider_id,
         ])
     } else {
-        let path = resolved_path(kernel)?;
+        let path = resolved_path(kernel, request)?;
         jsonapi_event_id(
             &kernel.tenant_id,
             kernel.directory_origin.as_str().trim_end_matches('/'),
@@ -72,6 +73,7 @@ fn external_id(
 
 fn record_identity(
     kernel: &JumpCloudKernel,
+    request: &JumpCloudRequest,
     values: &Map<String, Value>,
     external_id: &str,
 ) -> String {
@@ -92,7 +94,7 @@ fn record_identity(
         "version",
     ]) {
         let value = if key == "group_id" {
-            kernel.filters.group_id.clone()
+            request.group_id.clone()
         } else {
             string_first(values, &[key])
         };
@@ -107,16 +109,21 @@ fn record_identity(
     format!("{}-{}", parts[0], hex_prefix(&digest, 12))
 }
 
-fn resolved_path(kernel: &JumpCloudKernel) -> Result<String, JumpCloudError> {
+fn resolved_path(
+    kernel: &JumpCloudKernel,
+    request: &JumpCloudRequest,
+) -> Result<String, JumpCloudError> {
     if kernel.family != JumpCloudFamily::GroupMembers {
         return Ok(kernel.family.path().to_owned());
     }
-    let group_id = kernel
-        .filters
-        .group_id
-        .as_deref()
-        .ok_or(JumpCloudError::MissingConfiguration("group_id"))?;
-    Ok(kernel.family.path().replace("{group_id}", group_id))
+    let base_path = kernel.directory_origin.path().trim_end_matches('/');
+    request
+        .url
+        .path()
+        .strip_prefix(base_path)
+        .map(str::to_owned)
+        .filter(|path| path.starts_with('/'))
+        .ok_or(JumpCloudError::RequestScopeMismatch)
 }
 
 fn jsonapi_event_id(
