@@ -361,6 +361,31 @@ fn link_cursor_is_origin_locked_and_assignment_phase_round_trips() {
 }
 
 #[test]
+fn terminal_page_without_a_cursor_is_valid() {
+    let kernel = OktaKernel::new(
+        ORIGIN,
+        TENANT,
+        OktaFamily::User,
+        OktaFilters::default(),
+        None,
+    )
+    .unwrap();
+    let page = kernel
+        .decode(
+            &kernel.plan(None).unwrap(),
+            OktaResponse {
+                status: 200,
+                body: br#"[{"id":"u1","lastUpdated":"2026-08-21T12:00:00Z"}]"#,
+                link_header: None,
+            },
+            observed_at(),
+        )
+        .unwrap();
+    assert_eq!(page.records.len(), 1);
+    assert_eq!(page.next_cursor, None);
+}
+
+#[test]
 fn typed_provider_failures_remain_distinct() {
     let kernel = OktaKernel::new(
         ORIGIN,
