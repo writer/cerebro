@@ -4,13 +4,26 @@ entries:
       auth:
         credential_fields:
           - key: token
+            label: Vault token
             reference_only: true
+            required: true
             secret: true
         model: api_key
+        requires_references: true
         token_header: X-Vault-Token
       categories:
         - identity
         - secrets
+      config_fields:
+        - help: Vault address without a URL scheme, for example vault.example.com.
+          key: vault_addr
+          label: Vault address
+        - help: Optional Vault API origin override. Production endpoints must use HTTPS.
+          key: base_url
+          label: Vault base URL
+        - help: Optional connection-check path. Defaults to /v1/sys/health.
+          key: health_path
+          label: Vault health path
       description: Collects identity entities, mounted secret engines, and enabled audit devices from HashiCorp Vault and projects them into the Cerebro graph for identity, secret-management, and logging-configuration context.
       display_name: HashiCorp Vault
       id: builtin-hashicorp_vault
@@ -30,10 +43,25 @@ entries:
               title: Identity entities
               type: entity_family
           event:
+            attributes:
+              created_at: entity.creation_time
+              display_name: entity.name|name
+              email: entity.metadata.email
+              login: entity.metadata.login|entity.name
+              observed_at: entity.last_update_time|entity.creation_time
+              primary_email: entity.metadata.email
+              resource_id: id
+              resource_name: entity.name|name
+              resource_type: resource_type
+              source_event_id: id
+              status: entity.metadata.status
+              user_id: id
+            exact_attributes: true
             kind: hashicorp_vault.users
             required_payload_fields:
               - id
             schema_ref: hashicorp_vault/users/v1
+            static_attributes: {record_class: identity_user, resource_type: vault_identity_entity, schema: users, source_system: hashicorp_vault}
             urn_kind: hashicorp_vault_users
           id: users
           id_field: id
@@ -61,6 +89,7 @@ entries:
             disable_page_size: true
             map_records:
               data.key_info: entity
+          updated_at_field: entity.last_update_time|entity.creation_time
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -76,10 +105,21 @@ entries:
               title: Secret engines
               type: entity_family
           event:
+            attributes:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type
+              secret_id: id
+              secret_name: name
+              secret_type: mount.type
+              source_event_id: id
+              vault_id: mount.accessor|id
+            exact_attributes: true
             kind: hashicorp_vault.secrets
             required_payload_fields:
               - id
             schema_ref: hashicorp_vault/secrets/v1
+            static_attributes: {record_class: secret, resource_type: vault_secret_engine, schema: secrets, secret_status: enabled, source_system: hashicorp_vault}
             urn_kind: hashicorp_vault_secrets
           id: secrets
           id_field: id
@@ -134,10 +174,17 @@ entries:
               title: Audit devices
               type: audit_event
           event:
+            attributes:
+              resource_id: id
+              resource_name: name
+              resource_type: resource_type
+              source_event_id: id
+            exact_attributes: true
             kind: hashicorp_vault.audit_events
             required_payload_fields:
               - id
             schema_ref: hashicorp_vault/audit_events/v1
+            static_attributes: {actor_id: vault, event_type: vault.audit_device.enabled, record_class: audit_event, resource_type: vault_audit_device, schema: audit_events, source_system: hashicorp_vault}
             urn_kind: hashicorp_vault_audit_events
           id: audit_events
           id_field: id
@@ -164,9 +211,45 @@ entries:
       schema_version: cerebro.integration/v1
       source_id: hashicorp_vault
       tenant_id: builtin_catalog
+      provider_api:
+        auth: api_key
+        auth_evidence:
+          - https://developer.hashicorp.com/vault/api-docs
+        auth_mechanics: x_vault_token_header
+        base_url: ${config.base_url}
+        basis: declared
+        families:
+          - id: users
+            method: GET
+            operation: identity_entity_list_by_id
+            path: /v1/identity/entity/id
+          - id: secrets
+            method: GET
+            operation: sys_mounts_list
+            path: /v1/sys/mounts
+          - id: audit_events
+            method: GET
+            operation: sys_audit_list_enabled_devices
+            path: /v1/sys/audit
+        references:
+          - https://developer.hashicorp.com/vault/api-docs
+          - https://developer.hashicorp.com/vault/api-docs/system/internal-specs-openapi
+          - https://developer.hashicorp.com/vault/api-docs/secret/identity/entity
+          - https://developer.hashicorp.com/vault/api-docs/system/mounts
+          - https://developer.hashicorp.com/vault/api-docs/system/audit
+        scope_evidence:
+          - https://developer.hashicorp.com/vault/api-docs/secret/identity/entity
+          - https://developer.hashicorp.com/vault/api-docs/system/mounts
+          - https://developer.hashicorp.com/vault/api-docs/system/audit
+        spec_kind: openapi
+        spec_url: ${config.base_url}/v1/sys/internal/specs/openapi
+        status: verified
+        transport: rest
+        verified_at: 2026-07-04T00:00:00Z
       transport:
         base_url: https://${config.vault_addr}
         verification:
+          config_path: health_path
           expect_status:
             - 200
           method: GET

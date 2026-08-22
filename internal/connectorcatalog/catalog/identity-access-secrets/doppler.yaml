@@ -4,12 +4,24 @@ entries:
       auth:
         credential_fields:
           - key: token
+            label: API token
             reference_only: true
+            required: true
             secret: true
         model: bearer_token
+        requires_references: true
+        token_header: Authorization
+        token_scheme: Bearer
       categories:
         - secrets
         - identity
+      config_fields:
+        - help: Optional Doppler API origin override. Production endpoints must use HTTPS.
+          key: base_url
+          label: Doppler base URL
+        - help: Optional connection-check path. Defaults to /v3/workplace.
+          key: health_path
+          label: Doppler health path
       description: Collects secrets, projects, and audit events from Doppler and projects them into the Cerebro graph as secrets, assets, and audit events for identity, access, device, and secret context.
       display_name: Doppler
       id: builtin-doppler
@@ -27,10 +39,32 @@ entries:
               title: Secrets
               type: entity_family
           event:
+            attributes:
+              evidence_cas_commit_id: evidence_cas.commit_id|evidence_cas_commit_id|commit_id
+              evidence_cas_digest: evidence_cas.digest|evidence_cas_digest|digest
+              evidence_cas_merkle_root: evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root
+              evidence_cas_ref_type: evidence_cas.ref_type|evidence_cas_ref_type|ref_type
+              evidence_cas_uri: evidence_cas.uri|evidence_cas_uri|uri
+              observed_at: observed_at|updated_at|last_seen_at
+              project_id: project.id|project_id|project
+              resource_id: resource_id|id|metadata.resource_id
+              resource_name: name|display_name|hostname|metadata.resource_name
+              resource_type: resource_type|type|metadata.resource_type
+              resource_urn: resource_urn|urn|metadata.resource_urn
+              secret_created_at: created_at|created|date_created
+              secret_id: secret_id|id|key|sid|name
+              secret_last_rotated_at: secret_last_rotated_at|last_rotated_at|last_rotated|rotated_at
+              secret_name: secret_name|name|display_name|label|title
+              secret_rotation_enabled: secret_rotation_enabled|rotation_enabled|auto_rotate
+              secret_status: secret_status|status|state
+              secret_type: secret_type|type|kind
+              source_event_id: event_id|id|metadata.event_id
+            exact_attributes: true
             kind: doppler.secrets
             required_payload_fields:
               - id
             schema_ref: doppler/secrets/v1
+            static_attributes: {record_class: secret, schema: secrets, source_system: doppler}
             urn_kind: doppler_secrets
           id: secrets
           id_field: id
@@ -43,6 +77,9 @@ entries:
             page_size_param: limit
             type: cursor
           path: /v3/workplace/secrets
+          config:
+            config_attributes:
+              tenant_id: tenant_id
           projection:
             entity:
               entity_type: secret
@@ -64,6 +101,7 @@ entries:
                   urn_kind: doppler_project
             template: secret
           record_selector: $.data[*]
+          updated_at_field: observed_at|updated_at|last_seen_at|created_at
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -77,10 +115,24 @@ entries:
               title: Projects
               type: entity_family
           event:
+            attributes:
+              evidence_cas_commit_id: evidence_cas.commit_id|evidence_cas_commit_id|commit_id
+              evidence_cas_digest: evidence_cas.digest|evidence_cas_digest|digest
+              evidence_cas_merkle_root: evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root
+              evidence_cas_ref_type: evidence_cas.ref_type|evidence_cas_ref_type|ref_type
+              evidence_cas_uri: evidence_cas.uri|evidence_cas_uri|uri
+              observed_at: observed_at|updated_at|last_seen_at
+              resource_id: resource_id|id|metadata.resource_id
+              resource_name: name|display_name|hostname|metadata.resource_name
+              resource_type: resource_type|type|metadata.resource_type
+              resource_urn: resource_urn|urn|metadata.resource_urn
+              source_event_id: event_id|id|metadata.event_id
+            exact_attributes: true
             kind: doppler.projects
             required_payload_fields:
               - id
             schema_ref: doppler/projects/v1
+            static_attributes: {record_class: asset, schema: projects, source_system: doppler}
             urn_kind: doppler_projects
           id: projects
           id_field: id
@@ -93,6 +145,9 @@ entries:
             page_size_param: limit
             type: cursor
           path: /v3/workplace/projects
+          config:
+            config_attributes:
+              tenant_id: tenant_id
           projection:
             entity:
               entity_type: doppler.project
@@ -102,6 +157,7 @@ entries:
               urn_kind: doppler_project
             template: asset
           record_selector: $.data[*]
+          updated_at_field: observed_at|updated_at|last_seen_at|created_at
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -115,10 +171,29 @@ entries:
               title: Audit events
               type: audit_event
           event:
+            attributes:
+              actor_email: actor_email|actor.email|email|user.email
+              actor_id: actor_id|actor.id|actorId|user_id|user.id
+              actor_name: actor_name|actor.name|user.name
+              event_type: event_type|event_name|action|type
+              evidence_cas_commit_id: evidence_cas.commit_id|evidence_cas_commit_id|commit_id
+              evidence_cas_digest: evidence_cas.digest|evidence_cas_digest|digest
+              evidence_cas_merkle_root: evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root
+              evidence_cas_ref_type: evidence_cas.ref_type|evidence_cas_ref_type|ref_type
+              evidence_cas_uri: evidence_cas.uri|evidence_cas_uri|uri
+              observed_at: observed_at|updated_at|last_seen_at
+              resource_email: resource_email|target_email|target.email
+              resource_id: resource_id|target_id|target.id|resource.id|object_id
+              resource_name: resource_name|target_name|target.name|resource.name|object_name
+              resource_type: resource_type|target_type|target.type|object_type
+              resource_urn: resource_urn|urn|metadata.resource_urn
+              source_event_id: event_id|id|metadata.event_id
+            exact_attributes: true
             kind: doppler.audit_events
             required_payload_fields:
               - id
             schema_ref: doppler/audit_events/v1
+            static_attributes: {record_class: audit_event, schema: audit_events, source_system: doppler}
             urn_kind: doppler_audit_events
           id: audit_events
           id_field: id
@@ -131,20 +206,53 @@ entries:
             page_size_param: limit
             type: cursor
           path: /v3/workplace/logs
+          config:
+            config_attributes:
+              tenant_id: tenant_id
           projection:
             fields:
               actor_email: actor_email|actor.email|email|user.email
               actor_id: actor_id|actor.id|actorId|user_id|user.id
+              actor_name: actor_name|actor.name|user.name
               event_type: event_type|event_name|action|type
               id: id
+              resource_email: resource_email|target_email|target.email
+              resource_id: resource_id|target_id|target.id|resource.id|object_id
+              resource_name: resource_name|target_name|target.name|resource.name|object_name
+              resource_type: resource_type|target_type|target.type|object_type
             template: audit_event
           record_selector: $.data[*]
+          updated_at_field: observed_at|updated_at|last_seen_at|created_at
       schema_version: cerebro.integration/v1
       source_id: doppler
       tenant_id: builtin_catalog
+      provider_api:
+        auth: bearer_token
+        auth_mechanics: authorization_bearer_header
+        base_url: https://api.doppler.com
+        basis: declared
+        families:
+          - id: secrets
+            method: GET
+            operation: workplace_secrets_list
+            path: /v3/workplace/secrets
+          - id: projects
+            method: GET
+            operation: workplace_projects_list
+            path: /v3/workplace/projects
+          - id: audit_events
+            method: GET
+            operation: workplace_logs_list
+            path: /v3/workplace/logs
+        references:
+          - https://docs.doppler.com/reference
+        status: verified
+        transport: rest
+        verified_at: 2026-08-22T00:00:00Z
       transport:
         base_url: https://api.doppler.com
         verification:
+          config_path: health_path
           expect_status:
             - 200
           method: GET
