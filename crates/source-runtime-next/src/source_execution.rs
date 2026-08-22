@@ -19,6 +19,8 @@ mod error;
 mod jumpcloud;
 #[path = "source_execution/runtime.rs"]
 mod runtime;
+#[path = "source_execution/tailscale.rs"]
+mod tailscale;
 #[path = "source_execution/wire.rs"]
 mod wire;
 

@@ -86,7 +86,7 @@ func publicSourceExecutionConfig(cfg sourcecdk.Config) map[string]string {
 	for _, key := range []string{
 		"audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
 		"family", "group_id", "group_ids", "insights_base_url", "org_id", "per_page",
-		"user_group_id", "user_group_ids",
+		"tailnet", "user_group_id", "user_group_ids",
 	} {
 		if value, ok := cfg.Lookup(key); ok {
 			public[key] = strings.TrimSpace(value)

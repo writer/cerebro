@@ -12,6 +12,7 @@ use super::{
     },
     error::SourceExecutionError,
     jumpcloud::JUMPCLOUD_ADAPTERS,
+    tailscale::TAILSCALE_ADAPTERS,
     wire::{
         SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
         SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
@@ -118,6 +119,11 @@ impl SourceExecutionDispatcher {
         }) {
             return adapter.compiled_plan();
         }
+        if let Some(adapter) = TAILSCALE_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return adapter.compiled_plan();
+        }
         Err(SourceExecutionError::UnknownAdapter)
     }
 
@@ -145,6 +151,13 @@ impl SourceExecutionDispatcher {
             return Ok(&TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER);
         }
         if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
+        }
+        if let Some(adapter) = TAILSCALE_ADAPTERS.iter().find(|adapter| {
             plan.source_id == adapter.source_id()
                 && plan.family_id == adapter.family_id()
                 && plan.provider_kernel == adapter.provider_kernel()
