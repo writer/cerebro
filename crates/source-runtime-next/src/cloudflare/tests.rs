@@ -215,6 +215,18 @@ fn every_go_oracle_family_normalizes_with_semantic_parity() {
                 .attributes
                 .get(key)
                 .unwrap_or_else(|| panic!("{} missing attribute {key}", family.as_str()));
+            if let (Ok(actual_json), Ok(expected_json)) = (
+                serde_json::from_str::<Value>(actual),
+                serde_json::from_str::<Value>(expected),
+            ) {
+                assert_eq!(
+                    actual_json,
+                    expected_json,
+                    "{} JSON attribute {key}",
+                    family.as_str()
+                );
+                continue;
+            }
             assert_eq!(actual, expected, "{} attribute {key}", family.as_str());
         }
     }
