@@ -228,6 +228,9 @@ pub struct SourceWorkerHttpExecutionV2 {
     /// Closed non-secret authentication operation applied only by the host.
     #[prost(string, tag = "5")]
     pub credential_operation: String,
+    /// Exact public origin authorized by the credential-free adapter.
+    #[prost(string, tag = "6")]
+    pub allowed_origin: String,
 }
 
 /// Additive decoding envelope with bounded, redacted response metadata.

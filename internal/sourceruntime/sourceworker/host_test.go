@@ -125,7 +125,7 @@ func (w *fakeWorker) PlanV2(_ context.Context, envelope *cerebrov1.SourceWorkerP
 	request := envelope.GetRequest()
 	plan := request.GetPlan()
 	planned := &cerebrov1.SourceWorkerHTTPRequestV1{PlanId: plan.GetPlanId(), Method: w.method, Url: w.endpoint, Accept: "application/json", MaxResponseBytes: plan.GetMaxResponseBytes(), PlanDigestSha256: plan.GetPlanDigestSha256(), RequestIntentDigest: strings.Repeat("1", 64)}
-	execution := &cerebrov1.SourceWorkerHTTPExecutionV2{Request: planned, Body: w.body, DeclaredHeaders: w.declaredHeaders, CredentialOperation: w.credentialOperation}
+	execution := &cerebrov1.SourceWorkerHTTPExecutionV2{Request: planned, Body: w.body, DeclaredHeaders: w.declaredHeaders, CredentialOperation: w.credentialOperation, AllowedOrigin: plan.GetOrigin()}
 	execution.ExecutionIntentDigestSha256 = strings.Repeat("4", 64)
 	return execution, nil
 }

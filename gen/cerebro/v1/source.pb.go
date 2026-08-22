@@ -952,8 +952,10 @@ type SourceWorkerHTTPExecutionV2 struct {
 	DeclaredHeaders             map[string]string          `protobuf:"bytes,3,rep,name=declared_headers,json=declaredHeaders,proto3" json:"declared_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	ExecutionIntentDigestSha256 string                     `protobuf:"bytes,4,opt,name=execution_intent_digest_sha256,json=executionIntentDigestSha256,proto3" json:"execution_intent_digest_sha256,omitempty"`
 	CredentialOperation         string                     `protobuf:"bytes,5,opt,name=credential_operation,json=credentialOperation,proto3" json:"credential_operation,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	// Exact public origin authorized by the credential-free Rust adapter.
+	AllowedOrigin string `protobuf:"bytes,6,opt,name=allowed_origin,json=allowedOrigin,proto3" json:"allowed_origin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SourceWorkerHTTPExecutionV2) Reset() {
@@ -1017,6 +1019,13 @@ func (x *SourceWorkerHTTPExecutionV2) GetExecutionIntentDigestSha256() string {
 func (x *SourceWorkerHTTPExecutionV2) GetCredentialOperation() string {
 	if x != nil {
 		return x.CredentialOperation
+	}
+	return ""
+}
+
+func (x *SourceWorkerHTTPExecutionV2) GetAllowedOrigin() string {
+	if x != nil {
+		return x.AllowedOrigin
 	}
 	return ""
 }
@@ -1455,13 +1464,14 @@ const file_cerebro_v1_source_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa4\x01\n" +
 	"\x1aSourceWorkerPlanEnvelopeV2\x12?\n" +
 	"\arequest\x18\x01 \x01(\v2%.cerebro.v1.SourceWorkerPlanRequestV1R\arequest\x12E\n" +
-	"\bmetadata\x18\x02 \x01(\v2).cerebro.v1.SourceWorkerRuntimeMetadataV2R\bmetadata\"\x97\x03\n" +
+	"\bmetadata\x18\x02 \x01(\v2).cerebro.v1.SourceWorkerRuntimeMetadataV2R\bmetadata\"\xbe\x03\n" +
 	"\x1bSourceWorkerHTTPExecutionV2\x12?\n" +
 	"\arequest\x18\x01 \x01(\v2%.cerebro.v1.SourceWorkerHTTPRequestV1R\arequest\x12\x12\n" +
 	"\x04body\x18\x02 \x01(\fR\x04body\x12g\n" +
 	"\x10declared_headers\x18\x03 \x03(\v2<.cerebro.v1.SourceWorkerHTTPExecutionV2.DeclaredHeadersEntryR\x0fdeclaredHeaders\x12C\n" +
 	"\x1eexecution_intent_digest_sha256\x18\x04 \x01(\tR\x1bexecutionIntentDigestSha256\x121\n" +
-	"\x14credential_operation\x18\x05 \x01(\tR\x13credentialOperation\x1aB\n" +
+	"\x14credential_operation\x18\x05 \x01(\tR\x13credentialOperation\x12%\n" +
+	"\x0eallowed_origin\x18\x06 \x01(\tR\rallowedOrigin\x1aB\n" +
 	"\x14DeclaredHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd3\x03\n" +

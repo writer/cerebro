@@ -11,6 +11,7 @@ use super::{
         validate_http_request, validate_runtime_metadata, validate_safe_receipt,
     },
     error::SourceExecutionError,
+    jumpcloud::JUMPCLOUD_ADAPTERS,
     wire::{
         SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
         SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
@@ -68,6 +69,7 @@ pub trait SourceExecutionAdapter: Send + Sync {
             declared_headers: Default::default(),
             execution_intent_digest_sha256: String::new(),
             credential_operation: "source.bearer".to_owned(),
+            allowed_origin: plan.origin.clone(),
         };
         execution.execution_intent_digest_sha256 =
             canonical_http_execution_digest(plan, context, metadata, &execution);
@@ -111,6 +113,11 @@ impl SourceExecutionDispatcher {
         {
             return Ok(AZURE_AUTHORIZATION_POLICY.compiled_plan());
         }
+        if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return adapter.compiled_plan();
+        }
         Err(SourceExecutionError::UnknownAdapter)
     }
 
@@ -136,6 +143,13 @@ impl SourceExecutionDispatcher {
             && plan.provider_kernel == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
         {
             return Ok(&TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER);
+        }
+        if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
         }
         Err(SourceExecutionError::UnknownAdapter)
     }

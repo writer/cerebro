@@ -15,6 +15,8 @@ mod contract;
 mod dispatcher;
 #[path = "source_execution/error.rs"]
 mod error;
+#[path = "source_execution/jumpcloud.rs"]
+mod jumpcloud;
 #[path = "source_execution/runtime.rs"]
 mod runtime;
 #[path = "source_execution/wire.rs"]

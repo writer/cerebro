@@ -146,7 +146,7 @@ pub fn validate_http_execution(
         .as_ref()
         .ok_or(SourceExecutionError::InvalidPlan)?;
     validate_runtime_metadata(metadata)?;
-    validate_http_request(plan, context, request)?;
+    validate_http_request_for_origin(plan, context, request, &execution.allowed_origin)?;
     validate_declared_headers(&execution.declared_headers)?;
     if execution.body.len() > MAX_REQUEST_BODY_BYTES
         || (request.method == "GET" && !execution.body.is_empty())
@@ -190,6 +190,7 @@ pub fn canonical_http_execution_digest(
     update_length_prefixed(&mut hasher, &execution.body);
     update_canonical_map(&mut hasher, &execution.declared_headers);
     update_length_prefixed(&mut hasher, execution.credential_operation.as_bytes());
+    update_length_prefixed(&mut hasher, execution.allowed_origin.as_bytes());
     hex_bytes(&hasher.finalize())
 }
 
@@ -249,6 +250,15 @@ pub fn validate_http_request(
     context: &SourceWorkerExecutionContextV1,
     request: &SourceWorkerHttpRequestV1,
 ) -> Result<(), SourceExecutionError> {
+    validate_http_request_for_origin(plan, context, request, &plan.origin)
+}
+
+fn validate_http_request_for_origin(
+    plan: &SourceExecutionPlanV1,
+    context: &SourceWorkerExecutionContextV1,
+    request: &SourceWorkerHttpRequestV1,
+    allowed_origin: &str,
+) -> Result<(), SourceExecutionError> {
     validate_execution_context(context)?;
     if request.plan_id != plan.plan_id
         || request.method != plan.method
@@ -259,7 +269,7 @@ pub fn validate_http_request(
         return Err(SourceExecutionError::InvalidPlan);
     }
     let allowed_origin =
-        reqwest::Url::parse(&plan.origin).map_err(|_| SourceExecutionError::InvalidPlan)?;
+        reqwest::Url::parse(allowed_origin).map_err(|_| SourceExecutionError::InvalidPlan)?;
     let request_url =
         reqwest::Url::parse(&request.url).map_err(|_| SourceExecutionError::EgressDenied)?;
     if allowed_origin.scheme() != "https"
@@ -267,12 +277,12 @@ pub fn validate_http_request(
         || allowed_origin.password().is_some()
         || allowed_origin.query().is_some()
         || allowed_origin.fragment().is_some()
-        || allowed_origin.path() != "/"
         || request_url.scheme() != allowed_origin.scheme()
         || request_url.host_str() != allowed_origin.host_str()
         || request_url.port_or_known_default() != allowed_origin.port_or_known_default()
         || request_url.username() != ""
         || request_url.password().is_some()
+        || !origin_path_contains(&allowed_origin, &request_url)
     {
         return Err(SourceExecutionError::EgressDenied);
     }
@@ -282,6 +292,16 @@ pub fn validate_http_request(
         return Err(SourceExecutionError::InvalidDigest);
     }
     Ok(())
+}
+
+fn origin_path_contains(origin: &reqwest::Url, request: &reqwest::Url) -> bool {
+    let prefix = origin.path().trim_end_matches('/');
+    prefix.is_empty()
+        || request.path() == prefix
+        || request
+            .path()
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
 /// Validates an opaque continuation cursor without interpreting provider data.

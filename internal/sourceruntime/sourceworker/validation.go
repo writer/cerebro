@@ -37,16 +37,17 @@ func validateScope(plan *cerebrov1.SourceExecutionPlanV1, reference string, scop
 	return nil
 }
 
-func validateWorkerRequest(plan *cerebrov1.SourceExecutionPlanV1, request *cerebrov1.SourceWorkerHTTPRequestV1) (*url.URL, error) {
+func validateWorkerRequest(plan *cerebrov1.SourceExecutionPlanV1, request *cerebrov1.SourceWorkerHTTPRequestV1, allowedOrigin string) (*url.URL, error) {
 	if request == nil || request.GetPlanId() != plan.GetPlanId() || request.GetPlanDigestSha256() != plan.GetPlanDigestSha256() || request.GetMethod() != plan.GetMethod() || (request.GetMethod() != http.MethodGet && request.GetMethod() != http.MethodPost) || request.GetAccept() != "application/json" || request.GetMaxResponseBytes() != plan.GetMaxResponseBytes() || request.GetMaxResponseBytes() == 0 || request.GetMaxResponseBytes() > maxResponseBytes {
 		return nil, fmt.Errorf("%w: worker request does not match the compiled plan", ErrInvalidExecution)
 	}
-	origin, err := url.Parse(plan.GetOrigin())
+	origin, err := url.Parse(allowedOrigin)
 	if err != nil || origin.Scheme != "https" || origin.Hostname() == "" || origin.Port() != "" || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" {
 		return nil, fmt.Errorf("%w: provider origin is invalid", ErrInvalidExecution)
 	}
 	actual, err := url.Parse(request.GetUrl())
-	if err != nil || actual.Scheme != origin.Scheme || actual.Hostname() != origin.Hostname() || actual.Port() != origin.Port() || actual.User != nil || actual.Fragment != "" || (actual.Path != plan.GetPath() && actual.Path != origin.ResolveReference(&url.URL{Path: plan.GetPath()}).Path) {
+	prefix := strings.TrimSuffix(origin.Path, "/")
+	if err != nil || actual.Scheme != origin.Scheme || actual.Hostname() != origin.Hostname() || actual.Port() != origin.Port() || actual.User != nil || actual.Fragment != "" || (prefix != "" && actual.Path != prefix && !strings.HasPrefix(actual.Path, prefix+"/")) {
 		return nil, fmt.Errorf("%w: worker request escaped the compiled origin", ErrInvalidExecution)
 	}
 	return actual, nil
@@ -56,7 +57,7 @@ func validateHTTPExecution(plan *cerebrov1.SourceExecutionPlanV1, execution *cer
 	if execution == nil {
 		return nil, fmt.Errorf("%w: metadata-aware worker request is incomplete", ErrInvalidExecution)
 	}
-	requestURL, err := validateWorkerRequest(plan, execution.GetRequest())
+	requestURL, err := validateWorkerRequest(plan, execution.GetRequest(), execution.GetAllowedOrigin())
 	if err != nil {
 		return nil, err
 	}

@@ -131,6 +131,8 @@ message SourceWorkerHTTPExecutionV2 {
   map<string, string> declared_headers = 3;
   string execution_intent_digest_sha256 = 4;
   string credential_operation = 5;
+  // Exact public origin authorized by the credential-free Rust adapter.
+  string allowed_origin = 6;
 }
 
 // SourceWorkerDecodeEnvelopeV2 carries bounded response metadata and the
