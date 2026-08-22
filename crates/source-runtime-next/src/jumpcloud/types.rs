@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
+};
 
 use reqwest::Url;
 use serde_json::Value;
@@ -25,6 +28,20 @@ pub struct JumpCloudFilters {
 }
 
 impl JumpCloudFilters {
+    /// Apply the public runtime metadata keys accepted by the trusted bridge.
+    ///
+    /// This keeps alias precedence provider-owned while allowing a shared host
+    /// to pass its credential-free public configuration through unchanged.
+    #[must_use]
+    pub fn with_group_member_public_config(self, public_config: &HashMap<String, String>) -> Self {
+        self.with_group_member_config(
+            public_config.get("group_ids").map(String::as_str),
+            public_config.get("user_group_ids").map(String::as_str),
+            public_config.get("group_id").map(String::as_str),
+            public_config.get("user_group_id").map(String::as_str),
+        )
+    }
+
     /// Apply Go-compatible group-member aliases in their production precedence.
     ///
     /// Values are normalized, deduplicated, and bounded when the kernel is

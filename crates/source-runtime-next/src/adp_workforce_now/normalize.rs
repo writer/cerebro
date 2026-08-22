@@ -227,12 +227,24 @@ fn event_id(kernel: &AdpKernel, provider_id: &str) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
+    let identity = identity_digest(&kernel.tenant_id, kernel.family, provider_id);
     format!(
-        "adp-workforce-now-{}-{scope}-{}-{}",
+        "adp-workforce-now-{}-{scope}-{}-{identity}",
         normalize_id(&kernel.tenant_id),
-        normalize_id(kernel.family.as_str()),
-        normalize_id(provider_id)
+        kernel.family.as_str(),
     )
+}
+
+fn identity_digest(tenant_id: &str, family: AdpFamily, provider_id: &str) -> String {
+    let mut digest = Sha256::new();
+    for value in [tenant_id, family.as_str(), provider_id] {
+        digest.update((value.len() as u64).to_be_bytes());
+        digest.update(value.as_bytes());
+    }
+    digest.finalize()[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn urn(tenant: &str, family: AdpFamily, id: &str) -> String {

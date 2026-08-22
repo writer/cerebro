@@ -18,6 +18,10 @@ entries:
           key: base_url
           label: API base URL
           required: true
+        - help: Okta group identifier used when collecting the group_membership family.
+          key: group_id
+          label: Group ID
+          required: false
       description: Collects users, groups, roles, applications, and audit events from Okta and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context.
       display_name: Okta
       id: builtin-okta

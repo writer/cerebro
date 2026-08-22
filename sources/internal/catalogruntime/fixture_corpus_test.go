@@ -26,8 +26,10 @@ var retiredStaticLoaderFixtureSources = []string{
 	"conjur",
 	"datadog",
 	"deepseek",
+	"doppler",
 	"duo",
 	"fivetran",
+	"hashicorp_vault",
 	"langchain",
 	"openai",
 }

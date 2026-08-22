@@ -275,3 +275,27 @@ fn identity_is_deterministic_and_tenant_scoped() {
         .unwrap();
     assert_ne!(first.records[0].event_id, other.records[0].event_id);
 }
+
+#[test]
+fn identity_encoding_does_not_collapse_distinct_provider_ids() {
+    let family = AdpFamily::Users;
+    let kernel = kernel("tenant", family);
+    let request = kernel.plan(None).unwrap();
+    let mut event_ids = Vec::new();
+
+    for provider_id in ["worker-a", "worker a", "worker/a", "worker:a"] {
+        let mut raw = provider_raw(family);
+        raw["associateOID"] = Value::String(provider_id.to_owned());
+        let page = kernel
+            .decode(&request, 200, None, &response(family, vec![raw]))
+            .unwrap();
+        let record = &page.records[0];
+        assert_eq!(record.provider_id, provider_id);
+        assert_eq!(record.attributes["source_event_id"], provider_id);
+        event_ids.push(record.event_id.clone());
+    }
+
+    event_ids.sort_unstable();
+    event_ids.dedup();
+    assert_eq!(event_ids.len(), 4);
+}

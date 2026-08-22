@@ -41,13 +41,16 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"box":             {},
 	"conjur":          {},
 	"datadog":         {},
+	"doppler":         {},
 	"duo":             {},
 	"fivetran":        {},
+	"hashicorp_vault": {},
 	"increase":        {},
 	"jira":            {},
 	"langchain":       {},
 	"deepseek":        {},
 	"openai":          {},
+	"slack":           {},
 }
 
 //go:embed testdata/catalog_runtime_go_retirement_v1.txt
@@ -107,6 +110,9 @@ func TestCatalogRuntimeGoRetirementInventoryIsDeterministic(t *testing.T) {
 	}
 	if _, retired := catalogRuntimeOnlySourcePackages["github"]; retired {
 		t.Fatal("GitHub remains Go-authoritative and must not enter the catalog-runtime retirement inventory")
+	}
+	if _, retired := catalogRuntimeOnlySourcePackages["slack"]; !retired {
+		t.Fatal("Slack provider-local Go must remain retired")
 	}
 }
 
