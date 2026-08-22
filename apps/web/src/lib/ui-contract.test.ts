@@ -171,6 +171,22 @@ describe("product UI contract", () => {
     expect(reportsSource).not.toContain("applyScope");
   });
 
+  it("keeps integration setup and source health ahead of operator diagnostics", () => {
+    const source = readProjectFile("src/app/connectors/page.tsx");
+    const page = source.slice(source.indexOf("export default function ConnectorsPage"));
+    const advancedTools = page.indexOf("Advanced integration tools");
+
+    expect(page).toContain("Add integration");
+    expect(page).toContain("Connected sources");
+    expect(page).toContain("Available to connect");
+    expect(page).toContain("Search integrations");
+    expect(page).toContain("Filter by tenant or source ID");
+    expect(advancedTools).toBeGreaterThan(0);
+    expect(page.indexOf("ProviderAPIProofPanel")).toBeGreaterThan(advancedTools);
+    expect(page.indexOf("CustomConnectorPanel")).toBeGreaterThan(advancedTools);
+    expect(page.indexOf("ReadinessMix")).toBeGreaterThan(advancedTools);
+  });
+
   it("keeps lifecycle details modal and lifecycle records usable at mobile width", () => {
     const lifecycleSource = readProjectFile("src/app/security/lifecycle/page.tsx");
 
