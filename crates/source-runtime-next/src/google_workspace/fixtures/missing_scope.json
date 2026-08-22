@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": 403,
+    "status": "PERMISSION_DENIED",
+    "errors": [
+      {
+        "domain": "global",
+        "reason": "insufficientPermissions"
+      }
+    ]
+  }
+}
