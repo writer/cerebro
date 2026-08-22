@@ -1,4 +1,52 @@
 use super::*;
+use std::collections::HashMap;
+
+#[test]
+fn public_runtime_metadata_consumes_all_group_aliases_without_credentials() {
+    let public_config = HashMap::from([
+        (
+            "group_ids".to_owned(),
+            "group-1, group-2, group-1".to_owned(),
+        ),
+        ("user_group_ids".to_owned(), "group-3".to_owned()),
+        ("group_id".to_owned(), "group-4".to_owned()),
+        ("user_group_id".to_owned(), "group-5".to_owned()),
+    ]);
+    let kernel = JumpCloudKernel::new(
+        "https://console.jumpcloud.com/api",
+        "https://api.jumpcloud.com/insights/directory/v1",
+        "tenant",
+        JumpCloudFamily::GroupMembers,
+        JumpCloudFilters::default().with_group_member_public_config(&public_config),
+        Some(2),
+        "2026-06-01T00:00:00Z",
+    )
+    .unwrap();
+    assert_eq!(
+        kernel.filters.group_ids,
+        ["group-1", "group-2", "group-3", "group-4", "group-5"]
+    );
+
+    let adapter = adapter::JUMPCLOUD_SOURCE_EXECUTION_ADAPTERS[5];
+    let check = adapter.plan_check(&kernel).unwrap();
+    assert_eq!(check.group_id(), Some("group-1"));
+    assert!(!check.contains_credentials());
+
+    let terminal_first_group = adapter
+        .decode(
+            &kernel,
+            &check,
+            200,
+            &JumpCloudResponseMetadata::default(),
+            br#"[]"#,
+        )
+        .unwrap();
+    let second_group = adapter
+        .plan_discover(&kernel, terminal_first_group.next_cursor.as_deref())
+        .unwrap();
+    assert_eq!(second_group.group_id(), Some("group-2"));
+    assert!(!second_group.contains_credentials());
+}
 
 #[test]
 fn aliases_are_ordered_deduplicated_bounded_and_path_safe() {
