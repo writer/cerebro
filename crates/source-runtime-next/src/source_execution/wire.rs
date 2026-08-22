@@ -283,25 +283,7 @@ pub struct SourceExecutionSelectionRequestV1 {
     pub family_id: String,
 }
 
-/// Closed durable page lifecycle owned by the Rust runtime.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]
-#[repr(i32)]
-pub enum SourceExecutionPhaseV1 {
-    /// No valid lifecycle phase was supplied.
-    Unspecified = 0,
-    /// Provider bytes have been decoded and validated.
-    Decoded = 1,
-    /// Canonical records have been durably appended.
-    Appended = 2,
-    /// Appended records have been projected.
-    Projected = 3,
-    /// The validated continuation has been durably checkpointed.
-    Checkpointed = 4,
-    /// The logical page lifecycle is complete.
-    Complete = 5,
-}
-
-/// One completed durable action reported back to Rust.
+/// Inputs Rust binds into one immutable durable page program.
 #[derive(Clone, PartialEq, Message)]
 pub struct SourceExecutionLifecycleRequestV1 {
     /// Exact catalog-compiled plan.
@@ -316,33 +298,24 @@ pub struct SourceExecutionLifecycleRequestV1 {
     /// Validated normalized page result.
     #[prost(message, optional, tag = "4")]
     pub result: Option<SourceWorkerDecodeResultV1>,
-    /// Durable phase the bridge reports as completed.
-    #[prost(enumeration = "SourceExecutionPhaseV1", tag = "5")]
-    pub completed_phase: i32,
-    /// Rust-issued digest authorizing the completed phase.
-    #[prost(string, tag = "6")]
-    pub prior_transition_digest_sha256: String,
-    /// Lease generation observed immediately before this transition.
-    #[prost(uint64, tag = "7")]
+    /// Lease generation captured by the durable lease adapter.
+    #[prost(uint64, tag = "5")]
     pub current_lease_generation: u64,
 }
 
-/// Rust-authoritative next action and checkpoint candidate.
+/// Rust-authoritative append, projection, and checkpoint program for one page.
 #[derive(Clone, PartialEq, Message)]
 pub struct SourceExecutionLifecycleDecisionV1 {
-    /// Exact next phase the bridge may perform.
-    #[prost(enumeration = "SourceExecutionPhaseV1", tag = "1")]
-    pub required_phase: i32,
-    /// Digest authorizing and binding the next phase.
-    #[prost(string, tag = "2")]
+    /// Digest binding the complete ordered page program.
+    #[prost(string, tag = "1")]
     pub transition_digest_sha256: String,
-    /// Validated records supplied only for append admission.
-    #[prost(message, repeated, tag = "3")]
+    /// Validated records that must be appended and projected in order.
+    #[prost(message, repeated, tag = "2")]
     pub admitted_records: Vec<SourceWorkerRecordV1>,
-    /// Cursor supplied only after projection succeeds.
-    #[prost(string, tag = "4")]
+    /// Cursor that the atomic commit may persist after projection succeeds.
+    #[prost(string, tag = "3")]
     pub checkpoint_cursor: String,
-    /// Page watermark supplied only after projection succeeds.
-    #[prost(int64, tag = "5")]
+    /// Watermark that the atomic commit may persist after projection succeeds.
+    #[prost(int64, tag = "4")]
     pub checkpoint_watermark_unix_millis: i64,
 }

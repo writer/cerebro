@@ -54,30 +54,13 @@ type SyncWithLeaseOptions struct {
 type sourceRuntimeLeaseFenceContextKey struct{}
 
 type sourceRuntimeLeaseAuthority struct {
-	runtimeID string
-	fence     ports.SourceRuntimeLeaseFence
-	reader    ports.SourceRuntimeLeaseFenceReader
+	fence ports.SourceRuntimeLeaseFence
 }
 
 func sourceRuntimeLeaseFenceFromContext(ctx context.Context) (ports.SourceRuntimeLeaseFence, bool) {
 	authority, ok := ctx.Value(sourceRuntimeLeaseFenceContextKey{}).(sourceRuntimeLeaseAuthority)
 	fence := authority.fence
 	return fence, ok && strings.TrimSpace(fence.Owner) != "" && fence.Generation > 0 && !fence.ExpiresAt.IsZero()
-}
-
-func currentSourceRuntimeLeaseGeneration(ctx context.Context) (uint64, error) {
-	authority, ok := ctx.Value(sourceRuntimeLeaseFenceContextKey{}).(sourceRuntimeLeaseAuthority)
-	if !ok || authority.reader == nil {
-		return 0, fmt.Errorf("%w: durable lease reader is unavailable", ports.ErrSourceRuntimeLeaseLost)
-	}
-	current, err := authority.reader.ReadSourceRuntimeLeaseFence(ctx, authority.runtimeID, authority.fence.Owner)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %w", ports.ErrSourceRuntimeLeaseLost, err)
-	}
-	if current.Owner != authority.fence.Owner || !current.ExpiresAt.After(time.Now().UTC()) {
-		return 0, fmt.Errorf("%w: expected owner %q", ports.ErrSourceRuntimeLeaseLost, authority.fence.Owner)
-	}
-	return current.Generation, nil
 }
 
 // SyncWithLease wraps Sync with a durable, renewable runtime lease so the
@@ -156,11 +139,7 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 			_ = releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
 			return nil, fmt.Errorf("read source runtime lease fence %q: %w", runtimeID, fenceErr)
 		}
-		syncCtx = context.WithValue(syncCtx, sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{
-			runtimeID: runtimeID,
-			fence:     fence,
-			reader:    reader,
-		})
+		syncCtx = context.WithValue(syncCtx, sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: fence})
 	}
 	stopRenewal := startLeaseRenewal(syncCtx, opts.LeaseStore, runtimeID, owner, ttl, cancelSync)
 	response, syncErr := s.Sync(syncCtx, req)

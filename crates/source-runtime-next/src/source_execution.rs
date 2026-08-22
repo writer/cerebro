@@ -34,14 +34,14 @@ pub use dispatcher::{
     dispatch_plan_bytes,
 };
 pub use error::SourceExecutionError;
-pub use runtime::{build_execution_context, transition_lifecycle};
+pub use runtime::{build_execution_context, seal_page_program};
 #[allow(unused_imports)]
 pub use wire::{
     SourceExecutionContextRequestV1, SourceExecutionLifecycleDecisionV1,
-    SourceExecutionLifecycleRequestV1, SourceExecutionPhaseV1, SourceExecutionPlanV1,
-    SourceExecutionSelectionRequestV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
-    SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1,
-    SourceWorkerRecordV1, SourceWorkerSafeReceiptV1,
+    SourceExecutionLifecycleRequestV1, SourceExecutionPlanV1, SourceExecutionSelectionRequestV1,
+    SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
+    SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+    SourceWorkerSafeReceiptV1,
 };
 
 /// Compiles an exact plan through the closed Rust source-family registry.
@@ -72,14 +72,11 @@ struct LifecycleControl {
     context: String,
     receipt: String,
     result: String,
-    completed_phase: i32,
-    prior_transition_digest: String,
     current_lease_generation: u64,
 }
 
 #[derive(Serialize)]
 struct LifecycleDecisionControl {
-    required_phase: i32,
     transition_digest: String,
     admitted_records: Vec<String>,
     checkpoint_cursor: String,
@@ -114,7 +111,7 @@ pub fn context_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     .encode_to_vec())
 }
 
-/// Decodes one completed side effect and returns Rust's only valid next phase.
+/// Seals one complete ordered page program for the private bridge.
 pub fn transition_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     let control = serde_json::from_slice::<LifecycleControl>(input)
         .map_err(|_| SourceExecutionError::Protobuf)?;
@@ -123,7 +120,7 @@ pub fn transition_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError>
             .decode(value)
             .map_err(|_| SourceExecutionError::Protobuf)
     };
-    let decision = transition_lifecycle(&SourceExecutionLifecycleRequestV1 {
+    let decision = seal_page_program(&SourceExecutionLifecycleRequestV1 {
         plan: Some(
             SourceExecutionPlanV1::decode(decode(&control.plan)?.as_slice())
                 .map_err(|_| SourceExecutionError::Protobuf)?,
@@ -140,12 +137,9 @@ pub fn transition_control(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError>
             SourceWorkerDecodeResultV1::decode(decode(&control.result)?.as_slice())
                 .map_err(|_| SourceExecutionError::Protobuf)?,
         ),
-        completed_phase: control.completed_phase,
-        prior_transition_digest_sha256: control.prior_transition_digest,
         current_lease_generation: control.current_lease_generation,
     })?;
     serde_json::to_vec(&LifecycleDecisionControl {
-        required_phase: decision.required_phase,
         transition_digest: decision.transition_digest_sha256,
         admitted_records: decision
             .admitted_records
@@ -173,7 +167,7 @@ pub fn context(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     runtime::context_bytes(input)
 }
 
-/// Advances the digest-chained durable page lifecycle by exactly one phase.
+/// Seals the digest-bound durable page program.
 pub fn transition(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     runtime::transition_bytes(input)
 }

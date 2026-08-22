@@ -26,7 +26,6 @@ import (
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
-	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -475,7 +474,7 @@ func newOrchestratorRuntimeService(
 		newOrchestratorSyncProjector(stateStore, projectors...),
 	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
 	if sourceWorkerPath != "" {
-		service.WithSourceExecutionWorker(sourceworker.NewProcessWorker(sourceWorkerPath))
+		service.WithSourceExecutionWorkerPath(sourceWorkerPath)
 	}
 	return service
 }

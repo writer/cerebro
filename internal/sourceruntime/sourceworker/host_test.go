@@ -21,19 +21,19 @@ import (
 func TestHostKeepsCredentialInsideBoundedEgressBridge(t *testing.T) {
 	plan, now, secret := AzureAuthorizationPolicyPlan(), time.Now().UTC(), "host-only-secret"
 	worker := newFakeWorker()
-	lease := &fakeCredentialLease{token: []byte(secret), expiresAt: now.Add(time.Minute)}
-	host := &Host{worker: worker, redeemer: &fakeCredentialRedeemer{lease: lease}, now: func() time.Time { return now }, client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	host := NewHost(worker, "opaque-reference", []byte(secret), now.Add(time.Minute))
+	host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Header.Get("Authorization") != "Bearer "+secret {
 			t.Fatal("host did not apply the redeemed credential")
 		}
 		return response(http.StatusOK, `{}`), nil
-	})}}
+	})}
 	output, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque-reference", PageNumber: 1, Scope: exactScope(plan, now)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if worker.sawSecret || lease.closeCalls != 1 || output.Decision.RequiredPhase != PhaseAppended {
-		t.Fatalf("secret crossed boundary or Rust did not authorize append: %#v", output.Decision)
+	if worker.sawSecret || host.credential != nil || output.Program == nil {
+		t.Fatalf("secret crossed boundary or Rust did not seal the page: %#v", output.Program)
 	}
 	if encoded := fmt.Sprintf("%+v", output.Receipt); strings.Contains(encoded, secret) || strings.Contains(encoded, "opaque-reference") {
 		t.Fatal("safe receipt leaked credential material")
@@ -49,10 +49,10 @@ func TestHostRejectsOriginEscapeAndIntentTamperBeforeRedemption(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			worker, scope := newFakeWorker(), exactScope(plan, now)
 			mutate(worker, &scope)
-			redeemer := &fakeCredentialRedeemer{lease: &fakeCredentialLease{token: []byte("secret"), expiresAt: now.Add(time.Minute)}}
-			host := &Host{worker: worker, redeemer: redeemer, client: &http.Client{}, now: func() time.Time { return now }}
-			if _, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: scope}); err == nil || redeemer.calls != 0 {
-				t.Fatalf("Execute() error = %v, redemptions = %d", err, redeemer.calls)
+			host := NewHost(worker, "opaque", []byte("secret"), now.Add(time.Minute))
+			host.client, host.now = &http.Client{}, func() time.Time { return now }
+			if _, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: scope}); err == nil || host.credential == nil {
+				t.Fatalf("Execute() error = %v, credential consumed before validation", err)
 			}
 		})
 	}
@@ -62,7 +62,8 @@ func TestHostClassifiesProviderAndNetworkBounds(t *testing.T) {
 	for status, want := range map[int]error{401: ErrProviderAuthentication, 403: ErrProviderPermission, 429: ErrProviderRateLimited} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			plan, now := AzureAuthorizationPolicyPlan(), time.Now().UTC()
-			host := &Host{worker: newFakeWorker(), redeemer: &fakeCredentialRedeemer{lease: &fakeCredentialLease{token: []byte("secret"), expiresAt: now.Add(time.Minute)}}, now: func() time.Time { return now }, client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return response(status, `{}`), nil })}}
+			host := NewHost(newFakeWorker(), "opaque", []byte("secret"), now.Add(time.Minute))
+			host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return response(status, `{}`), nil })}
 			_, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: exactScope(plan, now)})
 			if !errors.Is(err, want) {
 				t.Fatalf("Execute() error = %v, want %v", err, want)
@@ -111,29 +112,8 @@ func (w *fakeWorker) Decode(_ context.Context, request *cerebrov1.SourceWorkerDe
 	w.sawSecret = bytes.Contains(wire, []byte("host-only-secret"))
 	return &cerebrov1.SourceWorkerDecodeResultV1{PlanId: request.GetPlan().GetPlanId(), PlanDigestSha256: request.GetPlan().GetPlanDigestSha256(), LogicalPageId: request.GetContext().GetLogicalPageId(), RequestIntentDigest: request.GetRequestIntentDigest(), ResultDigestSha256: strings.Repeat("2", 64), TenantId: request.GetContext().GetTenantId(), RuntimeId: request.GetContext().GetRuntimeId(), RuntimeGeneration: request.GetContext().GetRuntimeGeneration(), LeaseGeneration: request.GetContext().GetLeaseGeneration(), ObservedAtUnixMillis: request.GetContext().GetObservedAtUnixMillis(), Records: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy", EventId: "azure-authorization-policy-authorizationPolicy", OccurredAtUnixMillis: request.GetContext().GetObservedAtUnixMillis(), Attributes: map[string]string{"family": "authorization_policy"}, PayloadJson: []byte(`{"id":"authorizationPolicy"}`)}}}, nil
 }
-func (w *fakeWorker) Transition(context.Context, LifecycleRequest) (*LifecycleDecision, error) {
-	return &LifecycleDecision{RequiredPhase: PhaseAppended, TransitionDigest: strings.Repeat("3", 64), AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy"}}}, nil
-}
-
-type fakeCredentialLease struct {
-	token      []byte
-	expiresAt  time.Time
-	closeCalls int
-}
-
-func (l *fakeCredentialLease) BearerToken() []byte  { return append([]byte(nil), l.token...) }
-func (*fakeCredentialLease) OperationID() string    { return "operation-1" }
-func (l *fakeCredentialLease) ExpiresAt() time.Time { return l.expiresAt }
-func (l *fakeCredentialLease) Close() error         { l.closeCalls++; return nil }
-
-type fakeCredentialRedeemer struct {
-	lease CredentialLease
-	calls int
-}
-
-func (r *fakeCredentialRedeemer) Redeem(context.Context, string, CredentialScope) (CredentialLease, error) {
-	r.calls++
-	return r.lease, nil
+func (w *fakeWorker) SealPage(context.Context, PageProgramRequest) (*PageProgram, error) {
+	return &PageProgram{TransitionDigest: strings.Repeat("3", 64), AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy"}}}, nil
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

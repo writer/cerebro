@@ -15,8 +15,6 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-const controlOutputBound = int64((12 << 20) + (64 << 10))
-
 // ProcessWorker invokes the standalone Rust worker with bounded protocol I/O.
 type ProcessWorker struct{ path string }
 
@@ -63,13 +61,11 @@ func (w *ProcessWorker) Decode(ctx context.Context, request *cerebrov1.SourceWor
 	return result, w.runProto(ctx, "decode", request, result, int64(maxResponseBytes)+workerOverhead)
 }
 
-func (w *ProcessWorker) Transition(ctx context.Context, request LifecycleRequest) (*LifecycleDecision, error) {
+func (w *ProcessWorker) SealPage(ctx context.Context, request PageProgramRequest) (*PageProgram, error) {
 	control := struct {
 		Plan, Context, Receipt, Result []byte
-		CompletedPhase                 Phase  `json:"completed_phase"`
-		PriorTransitionDigest          string `json:"prior_transition_digest"`
 		CurrentLeaseGeneration         uint64 `json:"current_lease_generation"`
-	}{CompletedPhase: request.CompletedPhase, PriorTransitionDigest: request.PriorTransitionDigest, CurrentLeaseGeneration: request.CurrentLeaseGeneration}
+	}{CurrentLeaseGeneration: request.CurrentLeaseGeneration}
 	var err error
 	for target, message := range map[*[]byte]proto.Message{&control.Plan: request.Plan, &control.Context: request.Context, &control.Receipt: request.Receipt, &control.Result: request.Result} {
 		if message == nil {
@@ -80,12 +76,11 @@ func (w *ProcessWorker) Transition(ctx context.Context, request LifecycleRequest
 			return nil, fmt.Errorf("%w: lifecycle input is invalid", ErrInvalidExecution)
 		}
 	}
-	output, err := w.runJSON(ctx, "transition", control, controlOutputBound)
+	output, err := w.runJSON(ctx, "transition", control, int64(maxResponseBytes)+workerOverhead)
 	if err != nil {
 		return nil, err
 	}
 	encoded := struct {
-		RequiredPhase                 Phase    `json:"required_phase"`
 		TransitionDigest              string   `json:"transition_digest"`
 		AdmittedRecords               [][]byte `json:"admitted_records"`
 		CheckpointCursor              string   `json:"checkpoint_cursor"`
@@ -94,15 +89,15 @@ func (w *ProcessWorker) Transition(ctx context.Context, request LifecycleRequest
 	if err := json.Unmarshal(output, &encoded); err != nil {
 		return nil, fmt.Errorf("%w: worker transition output is invalid", ErrInvalidExecution)
 	}
-	decision := &LifecycleDecision{RequiredPhase: encoded.RequiredPhase, TransitionDigest: encoded.TransitionDigest, CheckpointCursor: encoded.CheckpointCursor, CheckpointWatermarkUnixMillis: encoded.CheckpointWatermarkUnixMillis}
+	program := &PageProgram{TransitionDigest: encoded.TransitionDigest, CheckpointCursor: encoded.CheckpointCursor, CheckpointWatermarkUnixMillis: encoded.CheckpointWatermarkUnixMillis}
 	for _, value := range encoded.AdmittedRecords {
 		record := new(cerebrov1.SourceWorkerRecordV1)
 		if err := proto.Unmarshal(value, record); err != nil {
 			return nil, fmt.Errorf("%w: worker admitted record is invalid", ErrInvalidExecution)
 		}
-		decision.AdmittedRecords = append(decision.AdmittedRecords, record)
+		program.AdmittedRecords = append(program.AdmittedRecords, record)
 	}
-	return decision, nil
+	return program, nil
 }
 
 func (w *ProcessWorker) runProto(ctx context.Context, command string, input proto.Message, output proto.Message, bound int64) error {

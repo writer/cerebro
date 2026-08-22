@@ -21,21 +21,25 @@ import (
 
 // Host performs credential redemption and an origin-bounded provider request.
 type Host struct {
-	worker   Worker
-	redeemer CredentialRedeemer
-	client   *http.Client
-	now      func() time.Time
+	worker              Worker
+	credentialReference string
+	credential          []byte
+	credentialExpiresAt time.Time
+	client              *http.Client
+	now                 func() time.Time
 }
+
+func (*Host) Format(state fmt.State, _ rune) { _, _ = io.WriteString(state, "sourceworker.Host") }
 
 // NewHost constructs a production host with public-DNS-only dialing, no
 // redirects, a 30-second deadline, and no environment proxy routing.
-func NewHost(worker Worker, redeemer CredentialRedeemer) *Host {
-	return &Host{worker: worker, redeemer: redeemer, client: safeHTTPClient(net.DefaultResolver), now: time.Now}
+func NewHost(worker Worker, reference string, credential []byte, expiresAt time.Time) *Host {
+	return &Host{worker: worker, credentialReference: strings.TrimSpace(reference), credential: append([]byte(nil), credential...), credentialExpiresAt: expiresAt.UTC(), client: safeHTTPClient(net.DefaultResolver), now: time.Now}
 }
 
 // Execute plans, authorizes, performs, and decodes one provider request.
 func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOutput, error) {
-	if h == nil || h.worker == nil || h.redeemer == nil || h.client == nil {
+	if h == nil || h.worker == nil || h.client == nil {
 		return nil, fmt.Errorf("%w: host dependencies are required", ErrInvalidExecution)
 	}
 	ctx, cancel := context.WithTimeout(ctx, executionTimeout)
@@ -48,6 +52,8 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 			return nil, err
 		}
 		input.Plan = plan
+		input.Scope.SourceID, input.Scope.FamilyID = plan.GetSourceId(), plan.GetFamilyId()
+		input.Scope.PlanDigestSHA256 = plan.GetPlanDigestSha256()
 	}
 	observedAt := h.now().UTC()
 	executionContext, err := h.worker.Context(ctx, ContextRequest{
@@ -75,25 +81,18 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 		return nil, err
 	}
 	intentDigest := requestPlan.GetRequestIntentDigest()
-	operationScope := input.Scope
-	operationScope.ObservedAtUnixMillis = observedAt.UnixMilli()
-	if operationScope.RequestIntentDigest != "" && subtle.ConstantTimeCompare([]byte(operationScope.RequestIntentDigest), []byte(intentDigest)) != 1 {
+	if input.Scope.RequestIntentDigest != "" && subtle.ConstantTimeCompare([]byte(input.Scope.RequestIntentDigest), []byte(intentDigest)) != 1 {
 		return nil, fmt.Errorf("%w: caller request intent fence does not match the planned operation", ErrWorkerContract)
 	}
-	operationScope.RequestIntentDigest = intentDigest
-	lease, err := h.redeemer.Redeem(ctx, input.CredentialReference, operationScope)
-	if err != nil || lease == nil {
+	if h.credentialExpiresAt.Before(h.now().UTC()) || subtle.ConstantTimeCompare([]byte(h.credentialReference), []byte(strings.TrimSpace(input.CredentialReference))) != 1 {
 		return nil, ErrCredentialUnavailable
 	}
-	defer func() { _ = lease.Close() }()
-	if lease.ExpiresAt().UTC().Before(h.now().UTC()) {
+	bearer := h.credential
+	h.credential = nil
+	if len(bearer) == 0 {
 		return nil, ErrCredentialUnavailable
 	}
-	credentialOperation := strings.TrimSpace(lease.OperationID())
-	if !safeIdentifier(credentialOperation) {
-		return nil, fmt.Errorf("%w: credential operation identifier is not provider-safe", ErrCredentialUnavailable)
-	}
-	responseBody, statusCode, err := h.get(ctx, providerURL, requestPlan.GetAccept(), requestPlan.GetMaxResponseBytes(), lease.BearerToken())
+	responseBody, statusCode, err := h.get(ctx, providerURL, requestPlan.GetAccept(), requestPlan.GetMaxResponseBytes(), bearer)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +107,7 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	receipt := &cerebrov1.SourceWorkerSafeReceiptV1{
 		PlanDigestSha256: input.Plan.GetPlanDigestSha256(), LogicalPageId: executionContext.GetLogicalPageId(),
 		RequestIntentDigest: intentDigest, RuntimeGeneration: executionContext.GetRuntimeGeneration(),
-		LeaseGeneration: executionContext.GetLeaseGeneration(), CredentialOperation: credentialOperation,
+		LeaseGeneration: executionContext.GetLeaseGeneration(), CredentialOperation: "source-page-redemption",
 		StatusCode: statusCodeWire, ResponseBytes: responseBytes, ResponseSha256: responseSHA256(responseBody),
 		TenantId: executionContext.GetTenantId(), RuntimeId: executionContext.GetRuntimeId(), ObservedAtUnixMillis: executionContext.GetObservedAtUnixMillis(),
 	}
@@ -120,30 +119,15 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 		return nil, fmt.Errorf("credential-free response decoding failed: %w", err)
 	}
 	output := &ExecutionOutput{Plan: input.Plan, Context: executionContext, Receipt: receipt, Result: decodeResult}
-	decision, err := h.Advance(ctx, output, PhaseDecoded, "", input.Scope.LeaseGeneration)
-	if err != nil {
-		return nil, err
-	}
-	output.Decision = decision
-	return output, nil
-}
-
-// Advance is the temporary side-effect bridge into the Rust-owned lifecycle.
-// Delete this bridge when append, projection, and checkpoint ports are callable
-// directly by the Rust runtime; Go must not decide or reorder lifecycle phases.
-func (h *Host) Advance(ctx context.Context, output *ExecutionOutput, completed Phase, priorDigest string, currentLeaseGeneration uint64) (*LifecycleDecision, error) {
-	if h == nil || h.worker == nil || output == nil || output.Plan == nil || output.Context == nil || output.Receipt == nil || output.Result == nil {
-		return nil, fmt.Errorf("%w: lifecycle bridge inputs are incomplete", ErrInvalidExecution)
-	}
-	decision, err := h.worker.Transition(ctx, LifecycleRequest{
+	program, err := h.worker.SealPage(ctx, PageProgramRequest{
 		Plan: output.Plan, Context: output.Context, Receipt: output.Receipt, Result: output.Result,
-		CompletedPhase: completed, PriorTransitionDigest: priorDigest,
-		CurrentLeaseGeneration: currentLeaseGeneration,
+		CurrentLeaseGeneration: input.Scope.LeaseGeneration,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: Rust lifecycle transition failed: %w", ErrWorkerContract, err)
+		return nil, fmt.Errorf("%w: Rust page program failed: %w", ErrWorkerContract, err)
 	}
-	return decision, nil
+	output.Program = program
+	return output, nil
 }
 
 func (h *Host) get(ctx context.Context, endpoint *url.URL, accept string, limit uint64, bearer []byte) ([]byte, int, error) {

@@ -9,9 +9,8 @@ use super::{
     error::SourceExecutionError,
     wire::{
         SourceExecutionContextRequestV1, SourceExecutionLifecycleDecisionV1,
-        SourceExecutionLifecycleRequestV1, SourceExecutionPhaseV1, SourceExecutionPlanV1,
-        SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1, SourceWorkerRecordV1,
-        SourceWorkerSafeReceiptV1,
+        SourceExecutionLifecycleRequestV1, SourceExecutionPlanV1, SourceWorkerDecodeResultV1,
+        SourceWorkerExecutionContextV1, SourceWorkerRecordV1, SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -34,8 +33,8 @@ pub fn build_execution_context(
     Ok(context)
 }
 
-/// Advances a fenced page through exactly one durable lifecycle phase.
-pub fn transition_lifecycle(
+/// Seals the only append, projection, and checkpoint program valid for a page.
+pub fn seal_page_program(
     request: &SourceExecutionLifecycleRequestV1,
 ) -> Result<SourceExecutionLifecycleDecisionV1, SourceExecutionError> {
     let plan = request
@@ -60,55 +59,17 @@ pub fn transition_lifecycle(
         return Err(SourceExecutionError::LeaseLost);
     }
 
-    let completed_phase = SourceExecutionPhaseV1::try_from(request.completed_phase)
-        .map_err(|_| SourceExecutionError::InternalRuntime)?;
-    let required_phase = match completed_phase {
-        SourceExecutionPhaseV1::Decoded => SourceExecutionPhaseV1::Appended,
-        SourceExecutionPhaseV1::Appended => SourceExecutionPhaseV1::Projected,
-        SourceExecutionPhaseV1::Projected => SourceExecutionPhaseV1::Checkpointed,
-        SourceExecutionPhaseV1::Checkpointed => SourceExecutionPhaseV1::Complete,
-        SourceExecutionPhaseV1::Unspecified | SourceExecutionPhaseV1::Complete => {
-            return Err(SourceExecutionError::InternalRuntime);
-        }
-    };
-
-    if completed_phase == SourceExecutionPhaseV1::Decoded {
-        if !request.prior_transition_digest_sha256.is_empty() {
-            return Err(SourceExecutionError::InvalidDigest);
-        }
-    } else {
-        let expected = transition_digest(plan, context, result, completed_phase);
-        if request.prior_transition_digest_sha256 != expected {
-            return Err(SourceExecutionError::InvalidDigest);
-        }
-    }
-
     let records = admit_records(plan, context, &result.records)?;
-    let (checkpoint_cursor, checkpoint_watermark_unix_millis) = if required_phase
-        == SourceExecutionPhaseV1::Checkpointed
-        || required_phase == SourceExecutionPhaseV1::Complete
-    {
-        (
-            result.next_cursor.clone(),
-            records
-                .iter()
-                .map(|record| record.occurred_at_unix_millis)
-                .max()
-                .unwrap_or(context.observed_at_unix_millis),
-        )
-    } else {
-        (String::new(), 0)
-    };
+    let checkpoint_watermark_unix_millis = records
+        .iter()
+        .map(|record| record.occurred_at_unix_millis)
+        .max()
+        .unwrap_or(context.observed_at_unix_millis);
 
     Ok(SourceExecutionLifecycleDecisionV1 {
-        required_phase: required_phase as i32,
-        transition_digest_sha256: transition_digest(plan, context, result, required_phase),
-        admitted_records: if required_phase == SourceExecutionPhaseV1::Appended {
-            records
-        } else {
-            Vec::new()
-        },
-        checkpoint_cursor,
+        transition_digest_sha256: page_program_digest(plan, context, result),
+        admitted_records: records,
+        checkpoint_cursor: result.next_cursor.clone(),
         checkpoint_watermark_unix_millis,
     })
 }
@@ -122,7 +83,7 @@ pub(super) fn context_bytes(input: &[u8]) -> Result<Vec<u8>, SourceExecutionErro
 pub(super) fn transition_bytes(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
     let request = SourceExecutionLifecycleRequestV1::decode(input)
         .map_err(|_| SourceExecutionError::Protobuf)?;
-    Ok(transition_lifecycle(&request)?.encode_to_vec())
+    Ok(seal_page_program(&request)?.encode_to_vec())
 }
 
 fn validate_context_request(
@@ -250,11 +211,10 @@ fn logical_page_id(request: &SourceExecutionContextRequestV1) -> String {
     format!("source-page-v1:{}", hex_bytes(&hasher.finalize()))
 }
 
-fn transition_digest(
+fn page_program_digest(
     plan: &SourceExecutionPlanV1,
     context: &SourceWorkerExecutionContextV1,
     result: &SourceWorkerDecodeResultV1,
-    phase: SourceExecutionPhaseV1,
 ) -> String {
     let mut hasher = Sha256::new();
     for value in [
@@ -264,7 +224,7 @@ fn transition_digest(
         context.runtime_id.as_bytes(),
         context.logical_page_id.as_bytes(),
         result.result_digest_sha256.as_bytes(),
-        &(phase as i32).to_be_bytes(),
+        b"append-project-checkpoint-complete-v1",
     ] {
         update_length_prefixed(&mut hasher, value);
     }
@@ -385,8 +345,6 @@ mod tests {
             context: Some(context),
             receipt: Some(receipt),
             result: Some(result),
-            completed_phase: SourceExecutionPhaseV1::Decoded as i32,
-            prior_transition_digest_sha256: String::new(),
             current_lease_generation: 9,
         }
     }
@@ -408,41 +366,12 @@ mod tests {
     }
 
     #[test]
-    fn rust_owns_the_append_projection_checkpoint_sequence() {
-        let mut request = lifecycle_request();
-        let append = transition_lifecycle(&request).expect("append decision");
-        assert_eq!(
-            append.required_phase,
-            SourceExecutionPhaseV1::Appended as i32
-        );
-        assert_eq!(append.admitted_records.len(), 1);
-        assert!(append.checkpoint_cursor.is_empty());
-
-        request.completed_phase = SourceExecutionPhaseV1::Appended as i32;
-        request.prior_transition_digest_sha256 = append.transition_digest_sha256;
-        let project = transition_lifecycle(&request).expect("projection decision");
-        assert_eq!(
-            project.required_phase,
-            SourceExecutionPhaseV1::Projected as i32
-        );
-        assert!(project.checkpoint_cursor.is_empty());
-
-        request.completed_phase = SourceExecutionPhaseV1::Projected as i32;
-        request.prior_transition_digest_sha256 = project.transition_digest_sha256;
-        let checkpoint = transition_lifecycle(&request).expect("checkpoint decision");
-        assert_eq!(
-            checkpoint.required_phase,
-            SourceExecutionPhaseV1::Checkpointed as i32
-        );
-        assert_eq!(checkpoint.checkpoint_cursor, "cursor-2");
-
-        request.completed_phase = SourceExecutionPhaseV1::Checkpointed as i32;
-        request.prior_transition_digest_sha256 = checkpoint.transition_digest_sha256;
-        let complete = transition_lifecycle(&request).expect("completion decision");
-        assert_eq!(
-            complete.required_phase,
-            SourceExecutionPhaseV1::Complete as i32
-        );
+    fn rust_seals_the_append_projection_checkpoint_program() {
+        let program = seal_page_program(&lifecycle_request()).expect("page program");
+        assert_eq!(program.admitted_records.len(), 1);
+        assert_eq!(program.checkpoint_cursor, "cursor-2");
+        assert_eq!(program.checkpoint_watermark_unix_millis, 1_725_000_000_000);
+        assert_eq!(program.transition_digest_sha256.len(), 64);
     }
 
     #[test]
@@ -450,16 +379,8 @@ mod tests {
         let mut request = lifecycle_request();
         request.current_lease_generation = 10;
         assert_eq!(
-            transition_lifecycle(&request),
+            seal_page_program(&request),
             Err(SourceExecutionError::LeaseLost)
-        );
-
-        request.current_lease_generation = 9;
-        request.completed_phase = SourceExecutionPhaseV1::Appended as i32;
-        request.prior_transition_digest_sha256 = "3".repeat(64);
-        assert_eq!(
-            transition_lifecycle(&request),
-            Err(SourceExecutionError::InvalidDigest)
         );
     }
 
@@ -486,18 +407,12 @@ mod tests {
             "context": encode_message(request.context.as_ref().expect("context")),
             "receipt": encode_message(request.receipt.as_ref().expect("receipt")),
             "result": encode_message(request.result.as_ref().expect("result")),
-            "completed_phase": request.completed_phase,
-            "prior_transition_digest": "",
             "current_lease_generation": request.current_lease_generation,
         });
         let output =
             super::super::transition_control(&serde_json::to_vec(&control).expect("control JSON"))
                 .expect("append transition");
         let decision: serde_json::Value = serde_json::from_slice(&output).expect("decision JSON");
-        assert_eq!(
-            decision["required_phase"],
-            SourceExecutionPhaseV1::Appended as i32
-        );
         assert_eq!(
             decision["admitted_records"]
                 .as_array()

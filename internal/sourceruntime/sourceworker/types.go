@@ -42,7 +42,7 @@ type Worker interface {
 	Context(context.Context, ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error)
 	Plan(context.Context, *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error)
 	Decode(context.Context, *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error)
-	Transition(context.Context, LifecycleRequest) (*LifecycleDecision, error)
+	SealPage(context.Context, PageProgramRequest) (*PageProgram, error)
 }
 
 // SelectionRequest is the private bridge input to Rust's closed registry.
@@ -62,31 +62,15 @@ type ContextRequest struct {
 	ObservedAtUnixMillis int64  `json:"observed_at_unix_millis"`
 }
 
-// Phase is the closed Rust-owned durable page lifecycle.
-type Phase uint32
-
-const (
-	PhaseDecoded Phase = iota + 1
-	PhaseAppended
-	PhaseProjected
-	PhaseCheckpointed
-	PhaseComplete
-)
-
-// LifecycleRequest reports one completed side effect to Rust.
-type LifecycleRequest struct {
+type PageProgramRequest struct {
 	Plan                   *cerebrov1.SourceExecutionPlanV1
 	Context                *cerebrov1.SourceWorkerExecutionContextV1
 	Receipt                *cerebrov1.SourceWorkerSafeReceiptV1
 	Result                 *cerebrov1.SourceWorkerDecodeResultV1
-	CompletedPhase         Phase
-	PriorTransitionDigest  string
 	CurrentLeaseGeneration uint64
 }
 
-// LifecycleDecision is the only authority for the next Go side effect.
-type LifecycleDecision struct {
-	RequiredPhase                 Phase
+type PageProgram struct {
 	TransitionDigest              string
 	AdmittedRecords               []*cerebrov1.SourceWorkerRecordV1
 	CheckpointCursor              string
@@ -110,20 +94,6 @@ type CredentialScope struct {
 	ObservedAtUnixMillis int64
 }
 
-// CredentialLease exposes one bearer token to the trusted Go host only.
-// BearerToken must return a caller-owned byte slice so the host can clear it.
-type CredentialLease interface {
-	BearerToken() []byte
-	OperationID() string
-	ExpiresAt() time.Time
-	Close() error
-}
-
-// CredentialRedeemer resolves an opaque reference inside the trusted host.
-type CredentialRedeemer interface {
-	Redeem(context.Context, string, CredentialScope) (CredentialLease, error)
-}
-
 // ExecutionInput binds a compiled plan and credential reference to one fenced
 // logical page.
 type ExecutionInput struct {
@@ -137,9 +107,9 @@ type ExecutionInput struct {
 
 // ExecutionOutput contains the bounded worker result and safe host receipt.
 type ExecutionOutput struct {
-	Plan     *cerebrov1.SourceExecutionPlanV1
-	Context  *cerebrov1.SourceWorkerExecutionContextV1
-	Receipt  *cerebrov1.SourceWorkerSafeReceiptV1
-	Result   *cerebrov1.SourceWorkerDecodeResultV1
-	Decision *LifecycleDecision
+	Plan    *cerebrov1.SourceExecutionPlanV1
+	Context *cerebrov1.SourceWorkerExecutionContextV1
+	Receipt *cerebrov1.SourceWorkerSafeReceiptV1
+	Result  *cerebrov1.SourceWorkerDecodeResultV1
+	Program *PageProgram
 }
