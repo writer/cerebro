@@ -7,6 +7,8 @@ mod amplitude;
 mod anthropic;
 mod append_log;
 mod archetype;
+// Provider-local work-management runtime kernel.
+mod asana;
 mod aurelius;
 mod aws_account;
 mod aws_codebuild;
@@ -58,6 +60,11 @@ pub use archetype::{
     ArchetypeError, ArchetypeFamily, ArchetypeKernel, ArchetypePage, ArchetypeRecord,
     ArchetypeRepository, ArchetypeRequest, ArchetypeRequestKind, ArchetypeScan,
     VulnerabilityCollectionState,
+};
+pub use asana::{
+    AsanaCheckpointCandidate, AsanaEntityFact, AsanaError, AsanaEventContract, AsanaFamily,
+    AsanaKernel, AsanaPage, AsanaProjectionFacts, AsanaRecord, AsanaRelationFact, AsanaRequest,
+    AsanaRuntimeDefinition, project_asana_records,
 };
 pub use aurelius::{
     AureliusCursor, AureliusError, AureliusFamily, AureliusKernel, AureliusPage, AureliusRecord,
