@@ -155,6 +155,24 @@ impl JumpCloudExecutionBridge {
         };
         Ok((kernel, allowed_origin.to_owned()))
     }
+
+    fn provider_request(
+        &self,
+        kernel: &JumpCloudKernel,
+        prior_cursor: Option<&str>,
+        prior_watermark: Option<&str>,
+    ) -> Result<crate::jumpcloud::JumpCloudRequest, SourceExecutionError> {
+        if self.provider.family() == JumpCloudFamily::GroupMembers {
+            return match prior_cursor {
+                Some(cursor) => self.provider.plan_discover(kernel, Some(cursor)),
+                None => self.provider.plan_check(kernel),
+            }
+            .map_err(map_error);
+        }
+        self.provider
+            .plan(kernel, prior_cursor, prior_watermark)
+            .map_err(map_error)
+    }
 }
 
 impl SourceExecutionAdapter for JumpCloudExecutionBridge {
@@ -222,14 +240,11 @@ impl SourceExecutionAdapter for JumpCloudExecutionBridge {
         self.validate_plan(plan)?;
         let (kernel, allowed_origin) = self.kernel(context, metadata)?;
         let prior_watermark = optional_watermark(metadata)?;
-        let provider_request = self
-            .provider
-            .plan(
-                &kernel,
-                optional(&context.prior_cursor),
-                prior_watermark.as_deref(),
-            )
-            .map_err(map_error)?;
+        let provider_request = self.provider_request(
+            &kernel,
+            optional(&context.prior_cursor),
+            prior_watermark.as_deref(),
+        )?;
         let mut planned = SourceWorkerHttpRequestV1 {
             plan_id: plan.plan_id.clone(),
             method: provider_request.method().to_owned(),
@@ -300,14 +315,11 @@ impl SourceExecutionAdapter for JumpCloudExecutionBridge {
         self.validate_plan(plan)?;
         let (kernel, _) = self.kernel(context, metadata)?;
         let prior_watermark = optional_watermark(metadata)?;
-        let provider_request = self
-            .provider
-            .plan(
-                &kernel,
-                optional(&context.prior_cursor),
-                prior_watermark.as_deref(),
-            )
-            .map_err(map_error)?;
+        let provider_request = self.provider_request(
+            &kernel,
+            optional(&context.prior_cursor),
+            prior_watermark.as_deref(),
+        )?;
         let headers = envelope
             .response_headers
             .iter()
@@ -474,54 +486,92 @@ mod tests {
 
     use super::super::{
         dispatcher::SourceExecutionDispatcher,
+        error::SourceExecutionError,
         wire::{
-            SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
-            SourceWorkerDecodeRequestV1, SourceWorkerExecutionContextV1,
+            SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
+            SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1,
+            SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2,
             SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRuntimeMetadataV2,
         },
     };
 
-    #[test]
-    fn shared_dispatcher_forwards_jumpcloud_group_aliases_to_fanout() {
-        let dispatcher = SourceExecutionDispatcher;
-        let plan = dispatcher
+    fn group_member_plan(dispatcher: SourceExecutionDispatcher) -> SourceExecutionPlanV1 {
+        dispatcher
             .compile_plan(&SourceExecutionSelectionRequestV1 {
                 source_id: "jumpcloud".to_owned(),
                 family_id: "group_members".to_owned(),
             })
-            .unwrap();
-        let execution = dispatcher
+            .unwrap()
+    }
+
+    fn group_member_context(prior_cursor: String, page: u32) -> SourceWorkerExecutionContextV1 {
+        SourceWorkerExecutionContextV1 {
+            tenant_id: "tenant".to_owned(),
+            runtime_id: "runtime-1".to_owned(),
+            logical_page_id: format!("source-page-v2:{page}"),
+            prior_cursor,
+            runtime_generation: 7,
+            lease_generation: 11,
+            observed_at_unix_millis: 1_780_444_800_000,
+        }
+    }
+
+    fn group_member_metadata(group_ids: &str) -> SourceWorkerRuntimeMetadataV2 {
+        SourceWorkerRuntimeMetadataV2 {
+            public_config: HashMap::from([
+                ("group_ids".to_owned(), group_ids.to_owned()),
+                ("user_group_ids".to_owned(), "group-2, group-3".to_owned()),
+                ("group_id".to_owned(), "group-4".to_owned()),
+                ("user_group_id".to_owned(), "group-5".to_owned()),
+                ("per_page".to_owned(), "2".to_owned()),
+            ]),
+            ..SourceWorkerRuntimeMetadataV2::default()
+        }
+    }
+
+    fn plan_group_member_page(
+        dispatcher: SourceExecutionDispatcher,
+        plan: &SourceExecutionPlanV1,
+        context: &SourceWorkerExecutionContextV1,
+        metadata: &SourceWorkerRuntimeMetadataV2,
+    ) -> SourceWorkerHttpExecutionV2 {
+        dispatcher
             .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
                 request: Some(SourceWorkerPlanRequestV1 {
-                    plan: Some(plan),
-                    context: Some(SourceWorkerExecutionContextV1 {
-                        tenant_id: "tenant".to_owned(),
-                        runtime_id: "runtime-1".to_owned(),
-                        logical_page_id: "source-page-v2:test".to_owned(),
-                        prior_cursor: String::new(),
-                        runtime_generation: 7,
-                        lease_generation: 11,
-                        observed_at_unix_millis: 1_780_444_800_000,
-                    }),
+                    plan: Some(plan.clone()),
+                    context: Some(context.clone()),
                 }),
-                metadata: Some(SourceWorkerRuntimeMetadataV2 {
-                    public_config: HashMap::from([
-                        ("group_ids".to_owned(), "group-1, group-2".to_owned()),
-                        ("user_group_id".to_owned(), "group-3".to_owned()),
-                    ]),
-                    prior_terminal_watermark_unix_millis: 0,
-                    prior_checkpoint: String::new(),
-                }),
+                metadata: Some(metadata.clone()),
             })
-            .unwrap();
+            .unwrap()
+    }
 
-        assert!(
-            execution
-                .request
-                .unwrap()
-                .url
-                .contains("/api/v2/usergroups/group-1/members")
-        );
+    fn decode_group_member_page(
+        dispatcher: SourceExecutionDispatcher,
+        plan: &SourceExecutionPlanV1,
+        context: &SourceWorkerExecutionContextV1,
+        metadata: &SourceWorkerRuntimeMetadataV2,
+        execution: &SourceWorkerHttpExecutionV2,
+        body: &[u8],
+    ) -> SourceWorkerDecodeOutputV2 {
+        let request = execution.request.as_ref().unwrap();
+        dispatcher
+            .dispatch_decode_v2(&SourceWorkerDecodeEnvelopeV2 {
+                request: Some(SourceWorkerDecodeRequestV1 {
+                    plan: Some(plan.clone()),
+                    status_code: 200,
+                    response_body: body.to_vec(),
+                    logical_page_id: context.logical_page_id.clone(),
+                    request_intent_digest: request.request_intent_digest.clone(),
+                    receipt: None,
+                    context: Some(context.clone()),
+                }),
+                metadata: Some(metadata.clone()),
+                response_headers: HashMap::new(),
+                response_headers_sha256: String::new(),
+                execution_intent_digest_sha256: execution.execution_intent_digest_sha256.clone(),
+            })
+            .unwrap()
     }
 
     #[test]
@@ -603,5 +653,105 @@ mod tests {
         assert_eq!(result.records.len(), 1);
         assert_eq!(result.records[0].attributes["tenant_id"], "tenant");
         assert_eq!(result.next_cursor, r#"[1719849600000,"event-2"]"#);
+    }
+
+    #[test]
+    fn shared_v2_check_and_discover_preserve_ordered_group_fanout_restart() {
+        let dispatcher = SourceExecutionDispatcher;
+        let plan = group_member_plan(dispatcher);
+        let metadata = group_member_metadata(" group-1, group-2, group-1 ");
+
+        let first_context = group_member_context(String::new(), 1);
+        let first_execution = plan_group_member_page(dispatcher, &plan, &first_context, &metadata);
+        let first_request = first_execution.request.as_ref().unwrap();
+        assert_eq!(
+            first_request.url,
+            "https://console.jumpcloud.com/api/v2/usergroups/group-1/members?limit=2&skip=0"
+        );
+        let first = decode_group_member_page(
+            dispatcher,
+            &plan,
+            &first_context,
+            &metadata,
+            &first_execution,
+            br#"[{"to":{"id":"user-1","type":"user"}},{"to":{"id":"user-2","type":"user"}}]"#,
+        );
+        let first_result = first.result.unwrap();
+        assert_eq!(first_result.records.len(), 2);
+        assert_eq!(first_result.records[0].attributes["group_id"], "group-1");
+        assert_eq!(
+            first_result.next_cursor,
+            r#"{"version":1,"source":"jumpcloud","mode":"fanout_path_param","token":"{\"index\":0,\"cursor\":\"2\"}"}"#
+        );
+
+        let second_context = group_member_context(first_result.next_cursor, 2);
+        let second_execution =
+            plan_group_member_page(dispatcher, &plan, &second_context, &metadata);
+        assert_eq!(
+            second_execution.request.as_ref().unwrap().url,
+            "https://console.jumpcloud.com/api/v2/usergroups/group-1/members?limit=2&skip=2"
+        );
+        let second = decode_group_member_page(
+            dispatcher,
+            &plan,
+            &second_context,
+            &metadata,
+            &second_execution,
+            br#"[{"to":{"id":"user-3","type":"user"}}]"#,
+        );
+        let second_result = second.result.unwrap();
+        assert_eq!(
+            second_result.next_cursor,
+            r#"{"version":1,"source":"jumpcloud","mode":"fanout_path_param","token":"{\"index\":1}"}"#
+        );
+
+        let third_context = group_member_context(second_result.next_cursor, 3);
+        let third_execution = plan_group_member_page(dispatcher, &plan, &third_context, &metadata);
+        assert_eq!(
+            third_execution.request.as_ref().unwrap().url,
+            "https://console.jumpcloud.com/api/v2/usergroups/group-2/members?limit=2&skip=0"
+        );
+    }
+
+    #[test]
+    fn shared_v2_group_fanout_fails_closed_on_scope_and_cursor_bounds() {
+        let dispatcher = SourceExecutionDispatcher;
+        let plan = group_member_plan(dispatcher);
+        let too_many = (0..=1_000)
+            .map(|index| format!("g{index}"))
+            .collect::<Vec<_>>();
+        let bounded_scope_metadata = SourceWorkerRuntimeMetadataV2 {
+            public_config: HashMap::from([
+                ("group_ids".to_owned(), too_many[..500].join(",")),
+                ("user_group_ids".to_owned(), too_many[500..].join(",")),
+            ]),
+            ..SourceWorkerRuntimeMetadataV2::default()
+        };
+        let scope_error = dispatcher
+            .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+                request: Some(SourceWorkerPlanRequestV1 {
+                    plan: Some(plan.clone()),
+                    context: Some(group_member_context(String::new(), 1)),
+                }),
+                metadata: Some(bounded_scope_metadata),
+            })
+            .unwrap_err();
+        assert_eq!(scope_error, SourceExecutionError::MissingConfiguration);
+
+        let malformed_context = group_member_context(
+            r#"{"version":1,"source":"other","mode":"fanout_path_param","token":"{\"index\":0}"}"#
+                .to_owned(),
+            2,
+        );
+        let cursor_error = dispatcher
+            .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+                request: Some(SourceWorkerPlanRequestV1 {
+                    plan: Some(plan),
+                    context: Some(malformed_context),
+                }),
+                metadata: Some(group_member_metadata("group-1,group-2")),
+            })
+            .unwrap_err();
+        assert_eq!(cursor_error, SourceExecutionError::InvalidCursor);
     }
 }
