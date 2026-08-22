@@ -285,15 +285,9 @@ func TestBuiltinCatalogSourcesPreservePortableSourceContracts(t *testing.T) {
 
 func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testing.T) {
 	compatibilityExceptions := map[string]bool{
-		"acunetix":              true,
-		"adobe_workfront":       true,
-		"aircall":               true,
-		"airfocus":              true,
 		"anthropic":             true,
 		"asana":                 true,
 		"azure":                 true,
-		"beezup":                true,
-		"bitwarden":             true,
 		"cloudflare":            true,
 		"conjur":                true,
 		"datadog":               true,
@@ -355,7 +349,21 @@ func TestBuiltinKeepsCloudflareConcreteLoaderUntilSeparateRetirementGate(t *test
 }
 
 func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
-	retired := []string{"akeyless", "backstage", "box", "duo", "fivetran", "increase", "jira"}
+	retired := []string{
+		"acunetix",
+		"adobe_workfront",
+		"aircall",
+		"airfocus",
+		"akeyless",
+		"backstage",
+		"beezup",
+		"bitwarden",
+		"box",
+		"duo",
+		"fivetran",
+		"increase",
+		"jira",
+	}
 	static := make(map[string]struct{}, len(builtinSourceLoaders))
 	for _, loader := range builtinSourceLoaders {
 		static[loader.name] = struct{}{}

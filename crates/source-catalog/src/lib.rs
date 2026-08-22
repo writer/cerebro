@@ -3290,6 +3290,41 @@ mod tests {
     }
 
     #[test]
+    fn retired_static_loader_sources_are_fully_rust_authoritative() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        for source_id in [
+            "acunetix",
+            "adobe_workfront",
+            "aircall",
+            "airfocus",
+            "beezup",
+            "bitwarden",
+        ] {
+            let source = catalog.get(source_id).unwrap();
+            assert_eq!(
+                source.authority(),
+                CollectionAuthority::Authoritative,
+                "{source_id} must keep complete Rust collection authority"
+            );
+            assert!(
+                source.families().all(CompiledFamily::is_authoritative),
+                "{source_id} contains a non-authoritative collection family"
+            );
+            assert!(
+                source
+                    .families()
+                    .all(CompiledFamily::is_projection_authoritative),
+                "{source_id} contains a non-authoritative projection family"
+            );
+        }
+    }
+
+    #[test]
     fn oauth_client_credentials_contract_is_compiled_without_credential_material() {
         let root = repository_root();
         let catalog = SourceCatalog::load(

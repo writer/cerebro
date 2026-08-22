@@ -7,10 +7,6 @@ import (
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
-	acunetixsource "github.com/writer/cerebro/sources/acunetix"
-	adobeworkfrontsource "github.com/writer/cerebro/sources/adobe_workfront"
-	aircallsource "github.com/writer/cerebro/sources/aircall"
-	airfocussource "github.com/writer/cerebro/sources/airfocus"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
 	asanasource "github.com/writer/cerebro/sources/asana"
@@ -18,8 +14,6 @@ import (
 	auth0source "github.com/writer/cerebro/sources/auth0"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
-	beezupsource "github.com/writer/cerebro/sources/beezup"
-	bitwardensource "github.com/writer/cerebro/sources/bitwarden"
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
@@ -72,30 +66,6 @@ type builtinSourceLoader struct {
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
-		name: "acunetix",
-		load: func() (sourcecdk.Source, error) {
-			return acunetixsource.New()
-		},
-	},
-	{
-		name: "adobe_workfront",
-		load: func() (sourcecdk.Source, error) {
-			return adobeworkfrontsource.New()
-		},
-	},
-	{
-		name: "aircall",
-		load: func() (sourcecdk.Source, error) {
-			return aircallsource.New()
-		},
-	},
-	{
-		name: "airfocus",
-		load: func() (sourcecdk.Source, error) {
-			return airfocussource.New()
-		},
-	},
-	{
 		name: "anthropic",
 		load: func() (sourcecdk.Source, error) {
 			return anthropicsource.New()
@@ -135,18 +105,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "azure",
 		load: func() (sourcecdk.Source, error) {
 			return azuresource.New()
-		},
-	},
-	{
-		name: "beezup",
-		load: func() (sourcecdk.Source, error) {
-			return beezupsource.New()
-		},
-	},
-	{
-		name: "bitwarden",
-		load: func() (sourcecdk.Source, error) {
-			return bitwardensource.New()
 		},
 	},
 	{

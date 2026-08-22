@@ -30,13 +30,19 @@ var deepTierSourcePackages = map[string]struct{}{
 // production and parity contracts, so source.go and Go-only runtime tests must
 // not be restored.
 var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
-	"akeyless":  {},
-	"backstage": {},
-	"box":       {},
-	"duo":       {},
-	"fivetran":  {},
-	"increase":  {},
-	"jira":      {},
+	"acunetix":        {},
+	"adobe_workfront": {},
+	"aircall":         {},
+	"airfocus":        {},
+	"akeyless":        {},
+	"backstage":       {},
+	"beezup":          {},
+	"bitwarden":       {},
+	"box":             {},
+	"duo":             {},
+	"fivetran":        {},
+	"increase":        {},
+	"jira":            {},
 }
 
 //go:embed testdata/catalog_runtime_go_retirement_v1.txt
