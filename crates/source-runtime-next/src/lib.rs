@@ -5,6 +5,7 @@
 
 mod abuseipdb;
 mod activecampaign;
+mod activtrak;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -65,6 +66,11 @@ pub use activecampaign::{
     ActiveCampaignEventContract, ActiveCampaignFamily, ActiveCampaignKernel, ActiveCampaignPage,
     ActiveCampaignProjectionFacts, ActiveCampaignRecord, ActiveCampaignRequest,
     ActiveCampaignRuntimeDefinition, project_activecampaign_records,
+};
+pub use activtrak::{
+    ActivTrakCheckpointCandidate, ActivTrakEntityFact, ActivTrakError, ActivTrakEventContract,
+    ActivTrakFamily, ActivTrakKernel, ActivTrakPage, ActivTrakProjectionFacts, ActivTrakRecord,
+    ActivTrakRequest, ActivTrakRuntimeDefinition, project_activtrak_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
