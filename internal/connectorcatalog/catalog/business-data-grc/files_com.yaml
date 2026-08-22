@@ -10,6 +10,7 @@ entries:
         secret: true
       model: api_key
       requires_references: true
+      token_header: X-FilesAPI-Key
     categories:
     - saas
     description: Collects external event, api key, group, group user, action notification export result, and permission from Files.com and projects them into the Cerebro graph as alerts, assets, audit events, groups, secrets, and users for inventory, access review, audit, risk, and operational context.
