@@ -22,6 +22,7 @@ mod email_domain_health;
 mod evidence_cas;
 mod fixture_parity;
 mod gcp;
+mod github;
 mod google_workspace;
 mod grc;
 mod http;
@@ -111,6 +112,11 @@ pub use fixture_parity::{
 pub use gcp::{
     GcpContentInspection, GcpDataClassification, GcpIamError, GcpIamFamily, GcpIamFilters,
     GcpIamKernel, GcpIamPage, GcpIamRecord, GcpIamRequest, GcpObjectContentKernel,
+};
+pub use github::{
+    GitHubActorResolution, GitHubCheckpointCandidate, GitHubContinuation, GitHubError,
+    GitHubEventContract, GitHubFamily, GitHubFilters, GitHubKernel, GitHubPage, GitHubRecord,
+    GitHubRequest, GitHubRequestKind, GitHubRuntimeDefinition,
 };
 pub use google_workspace::{
     GoogleWorkspaceError, GoogleWorkspaceFamily, GoogleWorkspaceFilters, GoogleWorkspaceKernel,
