@@ -550,11 +550,9 @@ pub fn validate_decode_result(
         }
         let payload = serde_json::from_slice::<serde_json::Value>(&record.payload_json)
             .map_err(|_| SourceExecutionError::MalformedResponse)?;
-        if plan
-            .required_payload_fields
-            .iter()
-            .any(|required| payload.get(required).is_none_or(serde_json::Value::is_null))
-        {
+        if plan.required_payload_fields.iter().any(|required| {
+            required_payload_value(&payload, required).is_none_or(serde_json::Value::is_null)
+        }) {
             return Err(SourceExecutionError::EventContractRejected);
         }
     }
@@ -565,6 +563,15 @@ pub fn validate_decode_result(
         return Err(SourceExecutionError::InvalidDigest);
     }
     Ok(())
+}
+
+fn required_payload_value<'a>(
+    payload: &'a serde_json::Value,
+    required: &str,
+) -> Option<&'a serde_json::Value> {
+    required
+        .split('.')
+        .try_fold(payload, |value, segment| value.get(segment))
 }
 
 fn validate_record(record: &SourceWorkerRecordV1) -> Result<(), SourceExecutionError> {
@@ -737,4 +744,23 @@ fn hex_bytes(value: &[u8]) -> String {
             output
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::required_payload_value;
+
+    #[test]
+    fn required_payload_paths_traverse_nested_objects_and_fail_closed() {
+        let payload = serde_json::json!({"to": {"id": "member-1", "missing": null}});
+        assert_eq!(
+            required_payload_value(&payload, "to.id").and_then(serde_json::Value::as_str),
+            Some("member-1")
+        );
+        assert!(required_payload_value(&payload, "to.absent").is_none());
+        assert!(
+            required_payload_value(&payload, "to.missing").is_some_and(serde_json::Value::is_null)
+        );
+        assert!(required_payload_value(&payload, "to.id.value").is_none());
+    }
 }
