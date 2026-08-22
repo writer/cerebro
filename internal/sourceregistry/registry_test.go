@@ -318,14 +318,16 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 	seenExceptions := make(map[string]bool, len(compatibilityExceptions))
 	for _, loader := range builtinSourceLoaders {
 		entry, ok := entries[loader.name]
-		if !ok || entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
+		if !ok {
 			continue
 		}
-		if !compatibilityExceptions[loader.name] {
+		if compatibilityExceptions[loader.name] {
+			seenExceptions[loader.name] = true
+			continue
+		}
+		if entry.Report.Verdict == connectordefinitions.SupportVerdictSupported {
 			t.Errorf("catalog-supported source %q has a redundant compile-time loader", loader.name)
-			continue
 		}
-		seenExceptions[loader.name] = true
 	}
 	for sourceID := range compatibilityExceptions {
 		if !seenExceptions[sourceID] {

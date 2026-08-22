@@ -8,6 +8,7 @@ mod abuseipdb;
 mod activecampaign;
 mod activtrak;
 mod acunetix;
+mod ada_support;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -84,6 +85,11 @@ pub use acunetix::{
     AcunetixCheckpointCandidate, AcunetixEntityFact, AcunetixError, AcunetixEventContract,
     AcunetixFamily, AcunetixKernel, AcunetixPage, AcunetixProjectionFacts, AcunetixRecord,
     AcunetixRequest, AcunetixRuntimeDefinition, project_acunetix_records,
+};
+pub use ada_support::{
+    AdaSupportCheckpointCandidate, AdaSupportEntityFact, AdaSupportError, AdaSupportEventContract,
+    AdaSupportFamily, AdaSupportKernel, AdaSupportPage, AdaSupportProjectionFacts,
+    AdaSupportRecord, AdaSupportRequest, AdaSupportRuntimeDefinition, project_ada_support_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,

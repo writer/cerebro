@@ -108,8 +108,8 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
         "cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- seed",
         "cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- verify",
         r#"test "$(jq -r .sources <<<"${summary}")" -eq 799"#,
-        r#"test "$(jq -r .families <<<"${summary}")" -eq 3978"#,
-        r#"evidence:"799 sources and 3978 families loaded""#,
+        r#"test "$(jq -r .families <<<"${summary}")" -eq 3986"#,
+        r#"evidence:"799 sources and 3986 families loaded""#,
         "cerebro.rust-only-e2e/v1",
         "cerebro.rust-only-candidate/v1",
     ] {
