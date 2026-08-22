@@ -143,6 +143,13 @@ func TestCatalogDeclaresSelectableAuthAndRunJSONBodyMappings(t *testing.T) {
 
 func TestLangSmithThirteenFamilyFixtureCorpus(t *testing.T) {
 	entry := langChainEntry(t)
+	fixtureRoot, err := os.OpenRoot("testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = fixtureRoot.Close()
+	})
 	paths, err := filepath.Glob("testdata/read_*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +165,7 @@ func TestLangSmithThirteenFamilyFixtureCorpus(t *testing.T) {
 	gotFamilies := make([]string, 0, len(paths))
 	for _, path := range paths {
 		familyID := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "read_"), ".json")
-		body, err := os.ReadFile(path)
+		body, err := fixtureRoot.ReadFile(filepath.Base(path))
 		if err != nil {
 			t.Fatal(err)
 		}
