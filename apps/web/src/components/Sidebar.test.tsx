@@ -33,27 +33,37 @@ describe("isSidebarLinkActive", () => {
     expect(missingIcons).toEqual([]);
   });
 
-  it("groups core compliance routes under Compliance", () => {
-    const grcGroup = sidebarNavGroups.find((group) => group.id === "grc");
-    const hrefs = grcGroup?.links.map((link) => link.href);
+  it("keeps platform machinery behind Advanced", () => {
+    const advancedGroup = sidebarNavGroups.find((group) => group.id === "advanced");
+    const hrefs = advancedGroup?.links.map((link) => link.href);
 
-    expect(grcGroup?.label).toBe("Compliance");
-    expect(grcGroup?.href).toBe("/grc");
+    expect(advancedGroup?.label).toBe("Advanced");
+    expect(advancedGroup?.href).toBeUndefined();
     expect(hrefs).toEqual([
-      "/controls",
-      "/evidence",
-      "/frameworks",
-      "/reports",
+      "/risk-inbox",
+      "/actions",
+      "/inventory",
+      "/impact",
+      "/explore",
+      "/ask",
+      "/security/lifecycle",
+      "/credential-stores",
     ]);
   });
 
-  it("keeps issues, Actions, Compliance, and Ask in the visible sidebar", () => {
-    const sidebarHrefs = sidebarNavLinks.map((link) => link.href);
-
-    expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual(["/", "/risk-inbox", "/actions"]);
-    expect(sidebarHrefs).toContain("/grc");
-    expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/ask"]);
-    expect(hasSidebarIcon("/grc")).toBe(true);
+  it("leads with the compliance jobs customers use every week", () => {
+    expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual([
+      "/",
+      "/frameworks",
+      "/evidence",
+      "/controls",
+      "/policies",
+      "/vendors",
+      "/questionnaires",
+      "/reports/audit-packages",
+      "/connectors",
+    ]);
+    expect(sidebarSupportLinks).toEqual([]);
   });
 
   it("keeps trend pages outside the visible sidebar", () => {

@@ -50,28 +50,25 @@ const linksFor = (hrefs: string[]) =>
     return link ? [link] : [];
   });
 
-export const sidebarPrimaryLinks = linksFor(["/", "/risk-inbox", "/actions"]);
-export const sidebarSupportLinks = linksFor(["/ask"]);
+export const sidebarPrimaryLinks = linksFor([
+  "/",
+  "/frameworks",
+  "/evidence",
+  "/controls",
+  "/policies",
+  "/vendors",
+  "/questionnaires",
+  "/reports/audit-packages",
+  "/connectors",
+]);
+export const sidebarSupportLinks: NavigationEntry[] = [];
 
 export const sidebarNavGroups: SidebarNavGroup[] = [
   {
-    id: "grc",
-    label: "Compliance",
-    href: "/grc",
-    iconHref: "/grc",
-    links: linksFor(["/controls", "/evidence", "/frameworks", "/reports"]),
-  },
-  {
-    id: "assets",
-    label: "Assets",
-    iconHref: "/inventory",
-    links: linksFor(["/inventory", "/vendors", "/impact", "/security/lifecycle", "/credential-stores"]),
-  },
-  {
-    id: "sources",
-    label: "Sources",
-    iconHref: "/connectors",
-    links: linksFor(["/connectors", "/explore"]),
+    id: "advanced",
+    label: "Advanced",
+    iconHref: "/explore",
+    links: linksFor(["/risk-inbox", "/actions", "/inventory", "/impact", "/explore", "/ask", "/security/lifecycle", "/credential-stores"]),
   },
 ];
 
@@ -216,9 +213,9 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className={`flex h-screen flex-col border-r border-[color:var(--border)] bg-[var(--sidebar-bg)] transition-all duration-200 ${collapsed ? "w-[60px]" : "w-[240px] max-md:w-[60px]"}`}>
+    <aside className={`flex h-screen flex-col border-r border-[color:var(--border)] bg-[var(--sidebar-bg)] transition-all duration-200 ${collapsed ? "w-[60px]" : "w-[224px] max-md:w-[60px]"}`}>
       <div className={`flex items-center pt-5 pb-4 ${collapsed ? "justify-center px-2" : "px-5"}`}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--text-primary)] text-[11px] font-bold text-[var(--surface)]">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--primary)] text-[11px] font-bold text-white">
           C
         </div>
         {!collapsed && (

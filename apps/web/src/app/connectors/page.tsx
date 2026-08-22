@@ -826,8 +826,8 @@ export default function ConnectorsPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="connectors"
-        title="Sources"
-        description="Connect sources, check runtime health, and control what gets collected."
+        title="Integrations"
+        description="Connect a source, confirm what it collects, and review current health."
         action={
           <div className="flex flex-wrap gap-2">
             <button
@@ -839,7 +839,7 @@ export default function ConnectorsPage() {
               className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]"
             >
               <Plus className="h-4 w-4" />
-              Add source
+              Connect source
             </button>
             <Link href={`/connectors/builder${debouncedTenantID ? `?tenant_id=${encodeURIComponent(debouncedTenantID)}` : ""}`} className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">
               <FileJson2 className="h-4 w-4" />
