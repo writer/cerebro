@@ -4,6 +4,29 @@ description: "Collects model catalog and account balances from DeepSeek and proj
 emitted_kinds:
   - deepseek.model_catalog
   - deepseek.account_balances
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-08-22T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: bearer_authorization_header
+  base_url: https://api.deepseek.com
+  spec_url: https://api-docs.deepseek.com/api/deepseek-api
+  spec_kind: api_reference_html
+  references:
+    - https://api-docs.deepseek.com/api/deepseek-api
+    - https://api-docs.deepseek.com/api/list-models
+    - https://api-docs.deepseek.com/api/get-user-balance/
+  auth_evidence:
+    - https://api-docs.deepseek.com/api/deepseek-api
+  families:
+    - id: model_catalog
+      method: GET
+      path: /models
+    - id: account_balances
+      method: GET
+      path: /user/balance
 runtime_families:
   - account_balances
   - model_catalog

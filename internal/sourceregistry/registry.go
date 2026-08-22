@@ -19,7 +19,6 @@ import (
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	conjursource "github.com/writer/cerebro/sources/conjur"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
-	deepseeksource "github.com/writer/cerebro/sources/deepseek"
 	digitaloceansource "github.com/writer/cerebro/sources/digitalocean"
 	discordsource "github.com/writer/cerebro/sources/discord"
 	dopplersource "github.com/writer/cerebro/sources/doppler"
@@ -127,12 +126,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "cosmo",
 		load: func() (sourcecdk.Source, error) {
 			return cosmosource.New()
-		},
-	},
-	{
-		name: "deepseek",
-		load: func() (sourcecdk.Source, error) {
-			return deepseeksource.New()
 		},
 	},
 	{
@@ -360,7 +353,7 @@ func Builtin() (*sourcecdk.Registry, error) {
 	return BuiltinWithCatalogOverrides(nil)
 }
 
-// BuiltinWithCatalogOverrides applies verified declarative catalog bytes to fixed kernel runtimes.
+// BuiltinWithCatalogOverrides applies verified declarative catalog bytes to supported runtimes.
 func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Registry, error) {
 	for sourceID := range overrides {
 		if sourceID != "deepseek" {
@@ -372,11 +365,7 @@ func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Regist
 	for _, loader := range builtinSourceLoaders {
 		var source sourcecdk.Source
 		var err error
-		if loader.name == "deepseek" && len(overrides["deepseek"]) != 0 {
-			source, err = deepseeksource.NewWithCatalog(overrides["deepseek"])
-		} else {
-			source, err = loader.load()
-		}
+		source, err = loader.load()
 		if err != nil {
 			return nil, fmt.Errorf("load %s source: %w", loader.name, err)
 		}
@@ -394,7 +383,12 @@ func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Regist
 		if _, ok := registered[sourceID]; ok || entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
 			continue
 		}
-		source, err := catalogruntimesource.New(entry)
+		var source sourcecdk.Source
+		if catalogBytes := overrides[sourceID]; len(catalogBytes) != 0 {
+			source, err = catalogruntimesource.NewWithCatalog(entry, catalogBytes)
+		} else {
+			source, err = catalogruntimesource.New(entry)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("load catalog source %s: %w", sourceID, err)
 		}

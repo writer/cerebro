@@ -24,6 +24,7 @@ var retiredStaticLoaderFixtureSources = []string{
 	"bitwarden",
 	"box",
 	"datadog",
+	"deepseek",
 	"duo",
 	"fivetran",
 	"openai",

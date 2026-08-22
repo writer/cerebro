@@ -78,6 +78,21 @@ jobs:
             echo "pushed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Package policy compliance mapping workbook
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "${RUNNER_TEMP}/policy-compliance-mapping.tar.gz" \
+            -C tmp/policy-compliance-mapping .
+
+      - name: Publish policy compliance mapping workbook
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: policy-compliance-mapping-${{ github.run_id }}
+          path: ${{ runner.temp }}/policy-compliance-mapping.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Report result
         shell: bash
         env:

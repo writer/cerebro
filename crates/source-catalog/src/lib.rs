@@ -3447,6 +3447,7 @@ mod tests {
             "airfocus",
             "beezup",
             "bitwarden",
+            "deepseek",
             "openai",
         ] {
             let source = catalog.get(source_id).unwrap();

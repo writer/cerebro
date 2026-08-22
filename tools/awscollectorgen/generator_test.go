@@ -131,7 +131,7 @@ const familyEC2Instance = "ec2_instance"
 	write(filepath.Join(awsDir, "fixture.go"), "package aws\n")
 	write(filepath.Join(awsDir, "catalog.yaml"), "")
 	write(filepath.Join(awsDir, "deploy.yaml"), "")
-	write(filepath.Join(root, "internal", "sourceprojection", "registry.go"), "package sourceprojection\n")
+	write(filepath.Join(root, "internal", "sourceprojection", "registry_builtins.go"), "package sourceprojection\n")
 	n, err := deriveNames("ec2_instance", "", "familyEc2Instance", "awsEC2Instance", "listEC2Instances", "ec2InstanceEvent", "", "", "record.ID", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +162,7 @@ const familyEC2Instance = "ec2_instance"
 	write(filepath.Join(awsDir, "fixture.go"), "package aws\n")
 	write(filepath.Join(awsDir, "catalog.yaml"), "")
 	write(filepath.Join(awsDir, "deploy.yaml"), "")
-	write(filepath.Join(root, "internal", "sourceprojection", "registry.go"), "package sourceprojection\n")
+	write(filepath.Join(root, "internal", "sourceprojection", "registry_builtins.go"), "package sourceprojection\n")
 	n, err := deriveNames("ec2_gateway", "", "familyEC2", "awsEC2Gateway", "listEC2Gateways", "ec2GatewayEvent", "", "", "record.ID", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -201,7 +201,7 @@ runtime:
     config:
       family: s3_bucket
 `)
-	write(filepath.Join(root, "internal", "sourceprojection", "registry.go"), `package sourceprojection
+	write(filepath.Join(root, "internal", "sourceprojection", "registry_builtins.go"), `package sourceprojection
 var registry = map[string]any{
 	"aws.s3_bucket": projector,
 }`)

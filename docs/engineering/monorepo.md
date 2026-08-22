@@ -6,7 +6,7 @@ This document defines the public repository layout used to consolidate Cerebro r
 
 ## Rationale
 
-Cerebro is one product with multiple operator surfaces. The Go runtime owns the system of record for evidence, graph, policy, source, MCP, HTTP, RPC, and CLI behavior. The web app and Slack companion are public clients of those contracts, not separate products with independent semantics.
+Cerebro is one product with multiple operator surfaces. JetStream remains the evidence log of record, Postgres owns current state and receipts, and Neo4j/Aura is a rebuildable projection. Rust owns the organizational graph and the authority paths named in the current product authority map; Go owns credential redemption, durable source execution coordination, compatibility APIs, and the remaining compatibility paths. The web app and Slack companion are public clients of those contracts, not separate products with independent semantics.
 
 Keeping the clients in this repository lets contract changes land with their generated SDKs, UI behavior, Slack lifecycle behavior, and conformance tests. Keeping deployment topology out of this repository prevents public source from accumulating environment values, secret locations, account wiring, hostnames, rollout thresholds, and recovery policy.
 
@@ -14,11 +14,13 @@ Keeping the clients in this repository lets contract changes land with their gen
 
 | Path | Owns | Must not own |
 | --- | --- | --- |
-| `cmd/`, `internal/`, `sources/` | Go runtime, ports, persistence semantics, source integrations | Browser or chat presentation; environment deployment adapters |
+| `cmd/`, `internal/`, `sources/` | Go runtime, ports, credential host, persistence semantics, and compatibility source integrations | Browser or chat presentation; environment deployment adapters |
+| `crates/` | Rust organizational platform, source kernels, portable authority contracts, and typed graph operations | Environment credentials, private routes, or deployment topology |
 | `schemas/` | Portable, versioned interchange contracts | Environment values or topology-specific policy |
 | `sdk/typescript/` | Public TypeScript client and generated contract bindings | Application state or deployment configuration |
 | `apps/web/` | Browser application, server-side web boundary, UI tests | Core persistence; environment deployment overlays |
-| `apps/slack-companion/` | Slack transport, durable admission, runs, checkpoints, outbox, status, assistance, refinement, and portable conformance tests | Environment deployment overlays; concrete rollout or recovery policy |
+| `apps/slack-companion/` | Portable Slack lifecycle, admission, execution, delivery, assistance, refinement, and conformance contracts | Concrete Slack transport, environment deployment overlays, or rollout policy |
+| `apps/slack-companion-host/` | Executable Slack runtime and topology-neutral host adapters over the portable companion and public SDK | Environment credentials, private routes, or rollout policy |
 | repositories outside this repository | Environment deployment adapters and operational configuration | Portable application behavior or public contract definitions |
 
 ## Dependency Direction
@@ -26,19 +28,25 @@ Keeping the clients in this repository lets contract changes land with their gen
 ```mermaid
 flowchart TB
   Schemas["public schemas"]
-  Runtime["Go runtime<br/>cmd/, internal/, sources/"]
+  Runtime["Go compatibility and durable host<br/>cmd/, internal/, sources/"]
+  Rust["Rust authority and portable kernels<br/>crates/"]
   HTTP["public HTTP/OpenAPI contracts"]
   SDK["sdk/typescript"]
   Web["apps/web"]
   Slack["apps/slack-companion"]
+  SlackHost["apps/slack-companion-host"]
 
   Schemas --> Runtime
+  Schemas --> Rust
+  Runtime --> Rust
   Runtime --> HTTP
   Schemas --> SDK
   HTTP --> Web
   HTTP --> Slack
   SDK --> Slack
   Schemas --> Slack
+  Slack --> SlackHost
+  SDK --> SlackHost
 ```
 
 Dependencies do not point from the Go runtime into `apps/`. Applications are built and released independently even when a contract and its consumers change in one pull-request stack.

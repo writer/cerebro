@@ -3,6 +3,7 @@
 
 //! Rust-native source collection and graph admission boundary.
 
+mod abuseipdb;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -19,6 +20,7 @@ mod cerebro_source;
 mod cloudflare;
 mod cosmo;
 mod credential_lease;
+mod deepseek;
 mod deposit;
 mod discord;
 mod docker_hub;
@@ -51,6 +53,12 @@ mod trivy;
 mod twilio;
 mod vulnview;
 
+pub use abuseipdb::{
+    AbuseIpDbCheckpointCandidate, AbuseIpDbEntityFact, AbuseIpDbError, AbuseIpDbEventContract,
+    AbuseIpDbFamily, AbuseIpDbFilters, AbuseIpDbKernel, AbuseIpDbPage, AbuseIpDbProjectionFacts,
+    AbuseIpDbRecord, AbuseIpDbRelationFact, AbuseIpDbRequest, AbuseIpDbRuntimeDefinition,
+    project_abuseipdb_records,
+};
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
     AmplitudeRequest,
@@ -109,6 +117,11 @@ pub use cosmo::{CosmoError, CosmoFamily, CosmoKernel, CosmoPage, CosmoRecord};
 pub use credential_lease::{
     CredentialLeaseError, CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus,
     LeaseClock, OperationScopedCredentialLease,
+};
+pub use deepseek::{
+    DeepSeekCheckpointCandidate, DeepSeekEntityFact, DeepSeekError, DeepSeekEventContract,
+    DeepSeekFamily, DeepSeekKernel, DeepSeekPage, DeepSeekProjectionFacts, DeepSeekRecord,
+    DeepSeekRelationFact, DeepSeekRequest, DeepSeekRuntimeDefinition, project_deepseek_records,
 };
 pub use deposit::{
     DepositIngestError, DepositIngestReceipt, DepositIngestRequest, build_deposit_receipt,

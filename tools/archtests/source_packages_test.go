@@ -44,6 +44,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"fivetran":        {},
 	"increase":        {},
 	"jira":            {},
+	"deepseek":        {},
 	"openai":          {},
 }
 
