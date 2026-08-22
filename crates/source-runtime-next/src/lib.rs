@@ -14,6 +14,7 @@ mod aws_network_manager;
 mod aws_secret_store;
 mod azure;
 mod cerebro_source;
+mod cloudflare;
 mod cosmo;
 mod credential_lease;
 mod deposit;
@@ -86,6 +87,10 @@ pub use azure::{
 pub use cerebro_source::{
     CerebroSourceError, CerebroSourceFamily, CerebroSourceKernel, CerebroSourcePage,
     CerebroSourceRecord,
+};
+pub use cloudflare::{
+    CloudflareError, CloudflareFamily, CloudflareKernel, CloudflarePage, CloudflareRecord,
+    CloudflareRequest, CloudflareRequestKind, CloudflareScope,
 };
 pub use cosmo::{CosmoError, CosmoFamily, CosmoKernel, CosmoPage, CosmoRecord};
 pub use credential_lease::{
