@@ -99,6 +99,29 @@ fn scope_for(family: CloudflareFamily, event: &OracleEvent) -> Option<String> {
     }
 }
 
+fn attributes_semantically_equal(actual: &str, expected: &str) -> bool {
+    match (
+        serde_json::from_str::<Value>(actual),
+        serde_json::from_str::<Value>(expected),
+    ) {
+        (Ok(actual), Ok(expected)) => actual == expected,
+        _ => actual == expected,
+    }
+}
+
+#[test]
+fn json_attribute_parity_ignores_object_key_order_only() {
+    assert!(attributes_semantically_equal(
+        r#"{"name":"SESSION_STORE","type":"kv_namespace","namespace_id":"kv-session"}"#,
+        r#"{"name":"SESSION_STORE","namespace_id":"kv-session","type":"kv_namespace"}"#,
+    ));
+    assert!(!attributes_semantically_equal(
+        r#"{"type":"kv_namespace"}"#,
+        r#"{"type":"secret_text"}"#,
+    ));
+    assert!(!attributes_semantically_equal("worker-a", "worker-b"));
+}
+
 #[test]
 fn family_vocabulary_is_closed_and_contract_bound() {
     assert_eq!(CloudflareFamily::ALL.len(), 16);
@@ -215,19 +238,11 @@ fn every_go_oracle_family_normalizes_with_semantic_parity() {
                 .attributes
                 .get(key)
                 .unwrap_or_else(|| panic!("{} missing attribute {key}", family.as_str()));
-            if let (Ok(actual_json), Ok(expected_json)) = (
-                serde_json::from_str::<Value>(actual),
-                serde_json::from_str::<Value>(expected),
-            ) {
-                assert_eq!(
-                    actual_json,
-                    expected_json,
-                    "{} JSON attribute {key}",
-                    family.as_str()
-                );
-                continue;
-            }
-            assert_eq!(actual, expected, "{} attribute {key}", family.as_str());
+            assert!(
+                attributes_semantically_equal(actual, expected),
+                "{} attribute {key}",
+                family.as_str()
+            );
         }
     }
 }
