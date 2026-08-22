@@ -34,6 +34,11 @@ func New(entry connectorcatalog.Entry) (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
+	return NewWithCatalog(entry, catalogBytes)
+}
+
+// NewWithCatalog creates a runnable source with validated portable source metadata.
+func NewWithCatalog(entry connectorcatalog.Entry, catalogBytes []byte) (*Source, error) {
 	catalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)
 	if err != nil {
 		return nil, fmt.Errorf("load %s source catalog: %w", entry.Definition.SourceID, err)
