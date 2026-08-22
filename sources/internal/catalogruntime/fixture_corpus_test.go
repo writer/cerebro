@@ -23,10 +23,12 @@ var retiredStaticLoaderFixtureSources = []string{
 	"beezup",
 	"bitwarden",
 	"box",
+	"conjur",
 	"datadog",
 	"deepseek",
 	"duo",
 	"fivetran",
+	"langchain",
 	"openai",
 }
 

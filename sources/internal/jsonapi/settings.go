@@ -145,7 +145,8 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return resolved, err
 		}
 	}
-	resolved.request.headers = mergeStaticHeaders(family.Config.StaticHeaders, headersFromConfig(cfg, s.options.ConfigHeaders))
+	configHeaders := mergeConfigBindings(s.options.ConfigHeaders, family.Config.ConfigHeaders)
+	resolved.request.headers = mergeStaticHeaders(family.Config.StaticHeaders, headersFromConfig(cfg, configHeaders))
 	if key := strings.TrimSpace(s.options.PrivateEndpointAllowlistConfigKey); key != "" {
 		allowlist, err := sourcehttp.ParsePrivateEndpointAllowlist(s.options.SourceID, sourcecdk.ConfigValue(cfg, key))
 		if err != nil {
@@ -240,6 +241,20 @@ func headersFromConfig(cfg sourcecdk.Config, configHeaders map[string]string) ma
 		return nil
 	}
 	return headers
+}
+
+func mergeConfigBindings(base map[string]string, overlay map[string]string) map[string]string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(base)+len(overlay))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range overlay {
+		merged[key] = value
+	}
+	return merged
 }
 
 func attributesFromConfig(cfg sourcecdk.Config, configAttributes map[string]string) map[string]string {

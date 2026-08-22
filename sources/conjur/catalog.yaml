@@ -6,6 +6,33 @@ emitted_kinds:
   - conjur.authenticator
   - conjur.resource_2
   - conjur.resource_3
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-08-22T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: basic_authorization_header
+  spec_url: https://raw.githubusercontent.com/cyberark/conjur-openapi-spec/main/spec/openapi.yml
+  spec_kind: openapi
+  references:
+    - https://github.com/cyberark/conjur-openapi-spec
+    - https://raw.githubusercontent.com/cyberark/conjur-openapi-spec/main/spec/openapi.yml
+  auth_evidence:
+    - https://github.com/cyberark/conjur-openapi-spec
+  families:
+    - id: resource
+      method: GET
+      path: /resources
+    - id: authenticator
+      method: GET
+      path: /authenticators
+    - id: resource_2
+      method: GET
+      path: /resources/${config.account}
+    - id: resource_3
+      method: GET
+      path: /resources/${config.account}/${config.kind}
 runtime_families:
   - authenticator
   - resource

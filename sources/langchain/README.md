@@ -6,4 +6,4 @@ The LangSmith source supports two selectable authentication models. `api_key` se
 
 The catalog contains 13 families. Current organization is a singleton. Projects, feedback, and datasets use bounded `offset` and `limit` query pagination. Runs use `POST /api/v1/runs/query`: filters, the page limit, selected fields, and the next cursor are JSON-body values; the response continuation is `$.cursors.next`. Audit logs use a query cursor and read the response continuation from `$.cursor`.
 
-This provider-local contract does not change runtime authority. The Go loader remains registered until shared selectable-auth, JSON-body request, durable checkpoint, compiler, registry, and architecture changes land together.
+The compiled connector catalog is the runtime authority for all 13 families. The shared host applies the selected authentication and scope headers, keeps run continuations in the JSON body, keeps audit continuations in the query, and advances the durable checkpoint only after accepted events are committed. The provider-local Go loader is retired and must not be restored.

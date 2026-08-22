@@ -11,4 +11,4 @@ The source reads four operations:
 
 Connection verification uses `GET /resources`. Resource operations use bounded `offset` and `limit` pagination. Responses that return resource metadata under `data.key_info` are converted from an object map into records in sorted key order. Each map key is the stable provider resource ID, and the nested value is available as `resource` for attribute mapping. The authenticator response reads `configured` as a list and does not send page-size parameters.
 
-This provider-local contract does not change runtime authority. The Go loader remains registered until the shared catalog compiler, checkpoint path, and registry retirement land together.
+The compiled connector catalog is the runtime authority for all four families. The shared host applies either Basic credential form, bounds responses, normalizes the sorted resource-map records, and advances the durable checkpoint only after accepted events are committed. The provider-local Go loader is retired and must not be restored.

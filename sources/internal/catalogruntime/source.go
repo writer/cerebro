@@ -17,10 +17,11 @@ import (
 
 // Source adapts a normalized connector catalog definition into a runnable JSON API source.
 type Source struct {
-	inner              *jsonapi.Source
-	spec               *cerebrov1.SourceSpec
-	verificationPath   string
-	verificationStatus []int
+	inner                  *jsonapi.Source
+	spec                   *cerebrov1.SourceSpec
+	verificationPath       string
+	verificationConfigPath string
+	verificationStatus     []int
 }
 
 // ValidationOptions narrows test-only source behavior for contract validation.
@@ -96,6 +97,7 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		DefaultFamily:               families[0].Name,
 		RequireTenantID:             true,
 		AuthModel:                   definition.Auth.Model,
+		ConfigurableAuthModels:      append([]string(nil), definition.Auth.ConfigurableModels...),
 		TokenHeader:                 definition.Auth.TokenHeader,
 		TokenScheme:                 definition.Auth.TokenScheme,
 		OAuthTokenURL:               definition.Auth.TokenURL,
@@ -114,6 +116,7 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 	source := &Source{inner: inner, spec: spec}
 	if definition.Transport.Verification != nil {
 		source.verificationPath = strings.TrimSpace(definition.Transport.Verification.Path)
+		source.verificationConfigPath = strings.TrimSpace(definition.Transport.Verification.ConfigPath)
 		source.verificationStatus = append([]int(nil), definition.Transport.Verification.ExpectStatus...)
 	}
 	return source, nil
@@ -136,8 +139,12 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if s == nil || s.inner == nil {
 		return fmt.Errorf("catalogruntime source is required")
 	}
-	if strings.TrimSpace(s.verificationPath) != "" {
-		return s.inner.CheckPath(ctx, cfg, s.verificationPath, s.verificationStatus)
+	verificationPath := strings.TrimSpace(s.verificationPath)
+	if key := strings.TrimSpace(s.verificationConfigPath); key != "" {
+		verificationPath = firstNonEmpty(sourcecdk.ConfigValue(cfg, key), verificationPath)
+	}
+	if verificationPath != "" {
+		return s.inner.CheckPath(ctx, cfg, verificationPath, s.verificationStatus)
 	}
 	return s.inner.Check(ctx, cfg)
 }
@@ -204,7 +211,7 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		StaticAttributes:      static,
 		Config:                config,
 		PageSizeParams:        pageSizeParams(resource.Pagination),
-		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
+		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination) || cursorInJSONBody(resource.Pagination),
 		ListKeys:              listKeys(resource),
 		MapRecords:            cloneStringMap(read.MapRecords),
 		Singleton:             read.Singleton || resource.Singleton,
@@ -293,11 +300,31 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		out.AuthModel = strings.TrimSpace(resource.Config.AuthModel)
 		out.StaticQuery = mergeStringMaps(out.StaticQuery, resource.Config.StaticQuery)
 		out.ConfigQuery = mergeStringMaps(out.ConfigQuery, resource.Config.ConfigQuery)
+		out.ConfigHeaders = cloneStringMap(resource.Config.ConfigHeaders)
 		out.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
 		out.IDTemplate = strings.TrimSpace(resource.Config.IDTemplate)
 		out.EncodeURNID = resource.Config.EncodeURNID
 		out.ResourceURNKind = strings.TrimSpace(resource.Config.ResourceURNKind)
 		out.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
+	}
+	if resource.Read != nil {
+		out.JSONBody.Static = cloneJSONMap(resource.Read.StaticJSONBody)
+		out.JSONBody.Config = cloneStringMap(resource.Read.ConfigJSONBody)
+	}
+	if resource.Pagination != nil && resource.Pagination.CursorInJSONBody {
+		out.JSONBody.CursorParam = strings.TrimSpace(resource.Pagination.CursorParam)
+		out.JSONBody.SizeParam = strings.TrimSpace(resource.Pagination.PageSizeParam)
+	}
+	return out
+}
+
+func cloneJSONMap(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(values))
+	for key, value := range values {
+		out[key] = value
 	}
 	return out
 }
@@ -351,6 +378,10 @@ func pageSizeParams(pagination *connectordefinitions.PaginationSpec) []string {
 
 func disablePageSize(pagination *connectordefinitions.PaginationSpec) bool {
 	return pagination != nil && pagination.DisablePageSize
+}
+
+func cursorInJSONBody(pagination *connectordefinitions.PaginationSpec) bool {
+	return pagination != nil && pagination.CursorInJSONBody
 }
 
 func listKeys(resource connectordefinitions.ResourceFamily) []string {

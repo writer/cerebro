@@ -56,6 +56,7 @@ type FamilyConfig struct {
 	ConfigAttributes      map[string]string
 	FinalStaticAttributes map[string]string
 	StaticHeaders         map[string]string
+	ConfigHeaders         map[string]string
 	RedactPayloadKeys     []string
 	IDTemplate            string
 	EncodeURNID           bool
@@ -76,7 +77,7 @@ type FamilyConfig struct {
 }
 
 type JSONBodyConfig struct {
-	Static      map[string]string
+	Static      map[string]any
 	Config      map[string]string
 	CursorParam string
 	SizeParam   string

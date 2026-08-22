@@ -297,14 +297,20 @@ func queryFromConfig(cfg sourcecdk.Config, configQuery map[string]string) url.Va
 	return query
 }
 
-func jsonBody(static map[string]string, configured map[string]any) map[string]any {
+func jsonBody(static map[string]any, configured map[string]any) map[string]any {
 	body := map[string]any{}
 	for key, value := range static {
 		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		if key != "" && value != "" {
-			body[key] = value
+		if key == "" || value == nil {
+			continue
 		}
+		if text, ok := value.(string); ok {
+			value = strings.TrimSpace(text)
+			if value == "" {
+				continue
+			}
+		}
+		body[key] = value
 	}
 	for key, value := range configured {
 		if strings.TrimSpace(key) != "" {

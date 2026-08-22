@@ -893,7 +893,7 @@ func TestReadUsesJSONBodyPagination(t *testing.T) {
 			Method:           http.MethodPost,
 			CursorContainers: []string{"metadata"},
 			JSONBody: JSONBodyConfig{
-				Static:      map[string]string{"sort_direction": "asc"},
+				Static:      map[string]any{"sort_direction": "asc"},
 				CursorParam: "page",
 				SizeParam:   "per_page",
 			},
