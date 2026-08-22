@@ -3,6 +3,7 @@
 
 //! Rust-native source collection and graph admission boundary.
 
+mod abnormal_security;
 mod abuseipdb;
 mod activecampaign;
 mod activtrak;
@@ -55,6 +56,12 @@ mod trivy;
 mod twilio;
 mod vulnview;
 
+pub use abnormal_security::{
+    AbnormalSecurityCheckpointCandidate, AbnormalSecurityEntityFact, AbnormalSecurityError,
+    AbnormalSecurityEventContract, AbnormalSecurityFamily, AbnormalSecurityKernel,
+    AbnormalSecurityPage, AbnormalSecurityProjectionFacts, AbnormalSecurityRecord,
+    AbnormalSecurityRequest, AbnormalSecurityRuntimeDefinition, project_abnormal_security_records,
+};
 pub use abuseipdb::{
     AbuseIpDbCheckpointCandidate, AbuseIpDbEntityFact, AbuseIpDbError, AbuseIpDbEventContract,
     AbuseIpDbFamily, AbuseIpDbFilters, AbuseIpDbKernel, AbuseIpDbPage, AbuseIpDbProjectionFacts,
