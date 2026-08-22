@@ -11,6 +11,7 @@ mod acunetix;
 mod ada_support;
 mod addigy;
 mod adp_workforce_now;
+mod aha;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -101,6 +102,10 @@ pub use addigy::{
 pub use adp_workforce_now::{
     AdpCheckpointCandidate, AdpEntityFact, AdpError, AdpEventContract, AdpFamily, AdpKernel,
     AdpPage, AdpProjectionFacts, AdpRecord, AdpRequest, AdpRuntimeDefinition, project_adp_records,
+};
+pub use aha::{
+    AhaCheckpointCandidate, AhaEntityFact, AhaError, AhaEventContract, AhaFamily, AhaKernel,
+    AhaPage, AhaProjectionFacts, AhaRecord, AhaRequest, AhaRuntimeDefinition, project_aha_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
