@@ -21,7 +21,7 @@ func TestAuthorizationPolicyEventSatisfiesAdmissionContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := (&fakeWorker{responseBody: []byte(exactGoAuthorizationPolicyResponse)}).Decode(context.Background(), &cerebrov1.SourceWorkerDecodeRequestV1{
-		Plan: plan, StatusCode: 200, ResponseBody: []byte(exactGoAuthorizationPolicyResponse), LogicalPageId: scope.LogicalPageID, RequestIntentDigest: scope.RequestIntentDigest, Receipt: receiptWire,
+		Plan: plan, StatusCode: 200, ResponseBody: []byte(exactGoAuthorizationPolicyResponse), LogicalPageId: scope.LogicalPageID, RequestIntentDigest: scope.RequestIntentDigest, Receipt: receiptWire, Context: executionContextFor(scope, now),
 	})
 	if err != nil {
 		t.Fatal(err)

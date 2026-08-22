@@ -26,6 +26,7 @@ func (receipt SafeReceipt) protobuf() (*cerebrov1.SourceWorkerSafeReceiptV1, err
 		RequestIntentDigest: receipt.RequestIntentDigest, RuntimeGeneration: receipt.RuntimeGeneration,
 		LeaseGeneration: receipt.LeaseGeneration, CredentialOperation: receipt.CredentialOperation,
 		StatusCode: statusCode, ResponseBytes: responseBytes, ResponseSha256: receipt.ResponseSHA256,
+		TenantId: receipt.TenantID, RuntimeId: receipt.RuntimeID, ObservedAtUnixMillis: receipt.ObservedAtUnixMillis,
 	}, nil
 }
 
@@ -62,6 +63,7 @@ func safeReceiptFromProto(receipt *cerebrov1.SourceWorkerSafeReceiptV1) (SafeRec
 		RequestIntentDigest: receipt.GetRequestIntentDigest(), RuntimeGeneration: receipt.GetRuntimeGeneration(),
 		LeaseGeneration: receipt.GetLeaseGeneration(), CredentialOperation: receipt.GetCredentialOperation(),
 		StatusCode: statusCode, ResponseBytes: responseBytes, ResponseSHA256: receipt.GetResponseSha256(),
+		TenantID: receipt.GetTenantId(), RuntimeID: receipt.GetRuntimeId(), ObservedAtUnixMillis: receipt.GetObservedAtUnixMillis(),
 	}, nil
 }
 
@@ -73,9 +75,12 @@ func safeProtocolInt(value, field string) (int, error) {
 	return converted, nil
 }
 
-func validateSafeReceipt(receipt SafeReceipt, plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, response []byte, statusCode int) error {
+func validateSafeReceipt(receipt SafeReceipt, plan *cerebrov1.SourceExecutionPlanV1, executionContext *cerebrov1.SourceWorkerExecutionContextV1, response []byte, statusCode int, requestIntentDigest string) error {
+	if executionContext == nil {
+		return fmt.Errorf("%w: execution context is missing", ErrInvalidExecution)
+	}
 	sum := sha256.Sum256(response)
-	if receipt.PlanDigestSHA256 != plan.GetPlanDigestSha256() || receipt.LogicalPageID != scope.LogicalPageID || receipt.RequestIntentDigest != scope.RequestIntentDigest || receipt.RuntimeGeneration != scope.RuntimeGeneration || receipt.LeaseGeneration != scope.LeaseGeneration || receipt.StatusCode != statusCode || receipt.ResponseBytes != len(response) || receipt.ResponseSHA256 != hex.EncodeToString(sum[:]) {
+	if receipt.PlanDigestSHA256 != plan.GetPlanDigestSha256() || receipt.TenantID != executionContext.GetTenantId() || receipt.RuntimeID != executionContext.GetRuntimeId() || receipt.LogicalPageID != executionContext.GetLogicalPageId() || receipt.RequestIntentDigest != requestIntentDigest || receipt.RuntimeGeneration != executionContext.GetRuntimeGeneration() || receipt.LeaseGeneration != executionContext.GetLeaseGeneration() || receipt.ObservedAtUnixMillis != executionContext.GetObservedAtUnixMillis() || receipt.StatusCode != statusCode || receipt.ResponseBytes != len(response) || receipt.ResponseSHA256 != hex.EncodeToString(sum[:]) {
 		return fmt.Errorf("%w: safe receipt does not match the execution", ErrInvalidExecution)
 	}
 	if !safeIdentifier(receipt.CredentialOperation) || !lowerSHA256(receipt.PlanDigestSHA256) || !lowerSHA256(receipt.RequestIntentDigest) || !lowerSHA256(receipt.ResponseSHA256) {

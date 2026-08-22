@@ -433,7 +433,7 @@ func TestNewOrchestratorRuntimeServiceProjectsSourceSyncToStateOnly(t *testing.T
 	eventLog := &orchestratorEventLog{}
 	stateStore := newGraphTestStore()
 
-	service := newOrchestratorRuntimeService(registry, store, eventLog, stateStore)
+	service := newOrchestratorRuntimeService(registry, store, eventLog, stateStore, "")
 	result, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-1", PageLimit: 1})
 	if err != nil {
 		t.Fatalf("Sync() error = %v", err)

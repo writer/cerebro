@@ -7,40 +7,45 @@ import (
 	"fmt"
 	"hash"
 	"sort"
-	"strconv"
 
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-// CanonicalRequestIntentDigest binds the exact compiled plan, fenced scope,
+// CanonicalRequestIntentDigest binds the exact compiled plan, execution context,
 // and credential-free HTTP request before credential redemption.
 func CanonicalRequestIntentDigest(plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, request *cerebrov1.SourceWorkerHTTPRequestV1) (string, error) {
-	if plan == nil || request == nil {
+	executionContext := &cerebrov1.SourceWorkerExecutionContextV1{
+		TenantId: scope.TenantID, RuntimeId: scope.RuntimeID, LogicalPageId: scope.LogicalPageID,
+		PriorCursor: scope.PriorCursor, RuntimeGeneration: scope.RuntimeGeneration,
+		LeaseGeneration: scope.LeaseGeneration, ObservedAtUnixMillis: scope.ObservedAtUnixMillis,
+	}
+	return canonicalRequestIntentDigestForContext(plan, executionContext, request)
+}
+
+func canonicalRequestIntentDigestForContext(plan *cerebrov1.SourceExecutionPlanV1, executionContext *cerebrov1.SourceWorkerExecutionContextV1, request *cerebrov1.SourceWorkerHTTPRequestV1) (string, error) {
+	if plan == nil || executionContext == nil || request == nil {
 		return "", fmt.Errorf("%w: request intent inputs are incomplete", ErrInvalidExecution)
 	}
 	planWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(plan)
 	if err != nil {
 		return "", fmt.Errorf("%w: compiled plan cannot be encoded", ErrInvalidExecution)
 	}
-	requestWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(request)
+	contextWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(executionContext)
+	if err != nil {
+		return "", fmt.Errorf("%w: execution context cannot be encoded", ErrInvalidExecution)
+	}
+	canonicalRequest := proto.Clone(request).(*cerebrov1.SourceWorkerHTTPRequestV1)
+	canonicalRequest.RequestIntentDigest = ""
+	requestWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(canonicalRequest)
 	if err != nil {
 		return "", fmt.Errorf("%w: worker request cannot be encoded", ErrInvalidExecution)
 	}
 	hasher := sha256.New()
 	for _, value := range [][]byte{
 		planWire,
-		[]byte(scope.TenantID),
-		[]byte(scope.RuntimeID),
-		[]byte(scope.SourceID),
-		[]byte(scope.FamilyID),
-		[]byte(scope.PlanDigestSHA256),
-		[]byte(scope.LogicalPageID),
-		[]byte(scope.LeaseOwner),
-		u64Bytes(scope.RuntimeGeneration),
-		u64Bytes(scope.LeaseGeneration),
-		[]byte(strconv.FormatInt(scope.LeaseExpiresAt.UTC().UnixNano(), 10)),
+		contextWire,
 		requestWire,
 	} {
 		writeDigestField(hasher, value)
@@ -69,6 +74,8 @@ func CanonicalResultDigest(result *cerebrov1.SourceWorkerDecodeResultV1, receipt
 	hasher := sha256.New()
 	for _, value := range [][]byte{
 		[]byte(receipt.PlanDigestSHA256),
+		[]byte(receipt.TenantID),
+		[]byte(receipt.RuntimeID),
 		[]byte(receipt.LogicalPageID),
 		[]byte(receipt.RequestIntentDigest),
 		u64Bytes(receipt.RuntimeGeneration),
@@ -77,6 +84,7 @@ func CanonicalResultDigest(result *cerebrov1.SourceWorkerDecodeResultV1, receipt
 		u64Bytes(statusCode),
 		u64Bytes(responseBytes),
 		[]byte(receipt.ResponseSHA256),
+		u64Bytes(uint64(receipt.ObservedAtUnixMillis)),
 		[]byte(result.GetNextCursor()),
 		u64Bytes(recordCount),
 	} {
@@ -87,6 +95,8 @@ func CanonicalResultDigest(result *cerebrov1.SourceWorkerDecodeResultV1, receipt
 			return "", fmt.Errorf("%w: worker result contains a nil record", ErrInvalidExecution)
 		}
 		writeDigestField(hasher, []byte(record.GetProviderId()))
+		writeDigestField(hasher, []byte(record.GetEventId()))
+		writeDigestField(hasher, u64Bytes(uint64(record.GetOccurredAtUnixMillis())))
 		keys := make([]string, 0, len(record.GetAttributes()))
 		for key := range record.GetAttributes() {
 			keys = append(keys, key)

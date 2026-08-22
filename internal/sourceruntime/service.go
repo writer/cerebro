@@ -27,6 +27,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
+	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -72,13 +73,35 @@ var (
 
 // Service persists and executes source runtimes against the append log.
 type Service struct {
-	registry        *sourcecdk.Registry
-	store           ports.SourceRuntimeStore
-	definitionStore ports.ConnectorDefinitionStore
-	appendLog       ports.AppendLog
-	projector       ports.SourceProjector
-	resolver        sourceconfig.Resolver
-	eventAdmitter   eventadmission.Admitter
+	registry          *sourcecdk.Registry
+	store             ports.SourceRuntimeStore
+	definitionStore   ports.ConnectorDefinitionStore
+	appendLog         ports.AppendLog
+	projector         ports.SourceProjector
+	resolver          sourceconfig.Resolver
+	eventAdmitter     eventadmission.Admitter
+	sourceHostFactory func(sourceworker.CredentialRedeemer) sourceExecutionHost
+}
+
+// WithSourceExecutionWorker enables the closed credential-free worker path for
+// registered source families. Unregistered families remain on compatibility execution.
+func (s *Service) WithSourceExecutionWorker(worker sourceworker.Worker) *Service {
+	if s == nil {
+		return nil
+	}
+	s.sourceHostFactory = func(redeemer sourceworker.CredentialRedeemer) sourceExecutionHost {
+		return sourceworker.NewHost(worker, redeemer)
+	}
+	return s
+}
+
+// WithSourceExecutionWorkerPath enables the standalone credential-free worker
+// when a process path is configured.
+func (s *Service) WithSourceExecutionWorkerPath(path string) *Service {
+	if strings.TrimSpace(path) == "" {
+		return s
+	}
+	return s.WithSourceExecutionWorker(sourceworker.NewProcessWorker(path))
 }
 
 type connectorDefinitionProjectorRegistrar interface {
@@ -315,6 +338,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		lastQuarantineCategory string
 		checkpointAdvanced     bool
 		eventLimitReached      bool
+		sourceExecutionFamily  bool
 		shortCircuitReason     string
 		reconciliationReason   string
 		observedFamilies       = map[string]struct{}{}
@@ -325,7 +349,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
 			telemetry.IncrementMain(ctx, "source_runtime.sync.error.count", 1)
 			if runtimeLoadedForRun && !runtimeSyncCompleted {
-				_ = s.recordRuntimeSyncFailure(context.WithoutCancel(ctx), runtime, err, contractConfigured)
+				failureContext := context.WithoutCancel(ctx)
+				if !sourceExecutionFamily || validateSourceRuntimeLeaseFence(failureContext) == nil {
+					_ = s.recordRuntimeSyncFailure(failureContext, runtime, err, contractConfigured)
+				}
 			}
 		}
 		telemetry.IncrementMain(ctx, "source_runtime.sync.count", 1)
@@ -413,12 +440,13 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	contractConfigured = len(eventContracts) > 0
 	sourceConfig := sourcecdk.NewConfig(runtimeConfig)
+	sourceExecutionFamily = s.sourceHostFactory != nil && isSourceExecutionFamily(runtime, sourceConfig)
 	originalCheckpoint := cloneCheckpoint(runtime.GetCheckpoint())
 	collectionID := sourceRuntimeCollectionID(runtime.GetId(), started)
 	for i := uint32(0); i < pageLimit; i++ {
 		pageStarted := time.Now()
 		phaseStarted := pageStarted
-		pull, err := readSourcePull(ctx, source, sourceConfig, cursor, originalCheckpoint)
+		pull, err := s.readSourcePull(ctx, runtime, source, sourceConfig, cursor, originalCheckpoint, i+1)
 		if err != nil {
 			return nil, err
 		}
@@ -453,6 +481,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		admissionDuration := time.Since(phaseStarted)
 		acceptedEvents := admission.Events
+		if sourceExecutionFamily {
+			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
+				return nil, err
+			}
+		}
 		eventLimit := req.GetEventLimit()
 		if eventLimit > 0 && uint64(eventsAppended)+uint64(len(acceptedEvents)) > uint64(eventLimit) {
 			eventLimitReached = true
@@ -573,6 +606,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		ledgerDuration += time.Since(phaseStarted)
 		pageEntitiesProjected := uint32(0)
 		pageLinksProjected := uint32(0)
+		if sourceExecutionFamily {
+			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
+				return nil, err
+			}
+		}
 		phaseStarted = time.Now()
 		if batcher, ok := s.appendLog.(ports.AppendLogBatcher); ok {
 			if err := batcher.AppendBatch(ctx, acceptedEvents); err != nil {
@@ -588,6 +626,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		appendDuration := time.Since(phaseStarted)
+		if sourceExecutionFamily {
+			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
+				return nil, err
+			}
+		}
 		for _, syncedEvent := range acceptedEvents {
 			if familyID := sourceEventFamilyID(syncedEvent); familyID != "" {
 				observedFamilies[familyID] = struct{}{}
@@ -600,6 +643,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		ledgerDuration += time.Since(phaseStarted)
+		if sourceExecutionFamily {
+			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
+				return nil, err
+			}
+		}
 		phaseStarted = time.Now()
 		if s.projector != nil {
 			for _, syncedEvent := range acceptedEvents {
@@ -614,6 +662,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			}
 		}
 		projectionDuration := time.Since(phaseStarted)
+		if sourceExecutionFamily {
+			if err := validateSourceRuntimeLeaseFence(ctx); err != nil {
+				return nil, err
+			}
+		}
 		phaseStarted = time.Now()
 		if ledgerEnabled {
 			if err := ledger.MarkSourceRuntimePageProjected(ctx, attemptID, ports.SourceRuntimePageProjection{
@@ -639,10 +692,22 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		})
 		phaseStarted = time.Now()
 		if ledgerEnabled {
-			if err := ledger.CommitSourceRuntimePage(ctx, attemptID, candidateRuntime); err != nil {
+			if sourceExecutionFamily {
+				fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
+				committer, fenced := s.store.(ports.SourceRuntimeFencedPageCommitter)
+				if !ok || !fenced {
+					return nil, fmt.Errorf("%w: fenced source-runtime page committer is unavailable", ErrRuntimeUnavailable)
+				}
+				if err := committer.CommitSourceRuntimePageFenced(ctx, attemptID, candidateRuntime, fence); err != nil {
+					return nil, err
+				}
+			} else if err := ledger.CommitSourceRuntimePage(ctx, attemptID, candidateRuntime); err != nil {
 				return nil, err
 			}
 		} else {
+			if sourceExecutionFamily {
+				return nil, fmt.Errorf("%w: durable page ledger is unavailable", ErrRuntimeUnavailable)
+			}
 			if err := s.store.PutSourceRuntime(ctx, candidateRuntime); err != nil {
 				return nil, err
 			}
@@ -1203,7 +1268,7 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 	return pageLimit, nil
 }
 
-func readSourcePull(ctx context.Context, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+func readCompatibilitySourcePull(ctx context.Context, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	if reader, ok := source.(sourcecdk.CheckpointAwareSource); ok {
 		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 	}

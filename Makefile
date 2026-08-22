@@ -20,6 +20,7 @@ ifndef CARGO_TARGET_DIRECTORY
 CARGO_TARGET_DIRECTORY := $(shell $(CARGO) metadata --locked --no-deps --format-version 1 | $(PYTHON) -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
 endif
 EVENT_ADMISSION_WORKER = $(CARGO_TARGET_DIRECTORY)/release/cerebro-event-admission-worker
+SOURCE_WORKER = $(CARGO_TARGET_DIRECTORY)/release/source_worker
 RUST_FUZZ_TOOLCHAIN ?= nightly-2026-06-09
 RUST_FUZZ_RUNS ?= 10000
 RUST_FUZZ_MAX_LEN ?= 65544
@@ -174,10 +175,13 @@ help: ## Show this help message.
 
 # ==== Build ====
 ##@ Build
-build: build-go ## Build the Cerebro CLI and native source event admission worker.
-	$(CARGO) build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+build: build-go ## Build the Cerebro CLI and native source workers.
+	$(CARGO) build --locked --release \
+		-p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker \
+		-p cerebro-source-runtime-next --bin source_worker
 	mkdir -p bin
 	cp $(EVENT_ADMISSION_WORKER) bin/cerebro-event-admission-worker
+	cp $(SOURCE_WORKER) bin/source_worker
 
 build-go: ## Build only the Go compatibility CLI.
 	mkdir -p bin

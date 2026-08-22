@@ -43,22 +43,33 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	if err := validateCanonicalPlan(input.Plan); err != nil {
 		return nil, err
 	}
-	if err := validateScope(input.Plan, input.CredentialReference, input.Scope, h.now().UTC()); err != nil {
+	observedAt := h.now().UTC()
+	if err := validateScope(input.Plan, input.CredentialReference, input.Scope, observedAt); err != nil {
 		return nil, err
 	}
-	requestPlan, err := h.worker.Plan(ctx, proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1))
+	executionContext := executionContextFor(input.Scope, observedAt)
+	requestPlan, err := h.worker.Plan(ctx, &cerebrov1.SourceWorkerPlanRequestV1{
+		Plan:    proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1),
+		Context: executionContext,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: credential-free request planning failed: %w", ErrWorkerContract, err)
 	}
-	providerURL, err := validateWorkerRequest(input.Plan, requestPlan)
+	providerURL, err := validateWorkerRequest(input.Plan, executionContext, requestPlan)
 	if err != nil {
 		return nil, err
 	}
-	intentDigest, err := CanonicalRequestIntentDigest(input.Plan, input.Scope, requestPlan)
-	if err != nil || subtle.ConstantTimeCompare([]byte(intentDigest), []byte(input.Scope.RequestIntentDigest)) != 1 {
+	intentDigest, err := canonicalRequestIntentDigestForContext(input.Plan, executionContext, requestPlan)
+	if err != nil || subtle.ConstantTimeCompare([]byte(intentDigest), []byte(requestPlan.GetRequestIntentDigest())) != 1 {
 		return nil, fmt.Errorf("%w: request intent digest does not match the exact plan, scope, and request", ErrWorkerContract)
 	}
-	lease, err := h.redeemer.Redeem(ctx, input.CredentialReference, input.Scope)
+	operationScope := input.Scope
+	operationScope.ObservedAtUnixMillis = observedAt.UnixMilli()
+	if operationScope.RequestIntentDigest != "" && subtle.ConstantTimeCompare([]byte(operationScope.RequestIntentDigest), []byte(intentDigest)) != 1 {
+		return nil, fmt.Errorf("%w: caller request intent fence does not match the planned operation", ErrWorkerContract)
+	}
+	operationScope.RequestIntentDigest = intentDigest
+	lease, err := h.redeemer.Redeem(ctx, input.CredentialReference, operationScope)
 	if err != nil || lease == nil {
 		return nil, ErrCredentialUnavailable
 	}
@@ -76,11 +87,12 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	}
 	receipt := SafeReceipt{
 		PlanDigestSHA256: input.Plan.GetPlanDigestSha256(), LogicalPageID: input.Scope.LogicalPageID,
-		RequestIntentDigest: input.Scope.RequestIntentDigest, RuntimeGeneration: input.Scope.RuntimeGeneration,
+		RequestIntentDigest: intentDigest, RuntimeGeneration: input.Scope.RuntimeGeneration,
 		LeaseGeneration: input.Scope.LeaseGeneration, CredentialOperation: credentialOperation,
 		StatusCode: statusCode, ResponseBytes: len(responseBody), ResponseSHA256: responseSHA256(responseBody),
+		TenantID: input.Scope.TenantID, RuntimeID: input.Scope.RuntimeID, ObservedAtUnixMillis: observedAt.UnixMilli(),
 	}
-	if err := validateSafeReceipt(receipt, input.Plan, input.Scope, responseBody, statusCode); err != nil {
+	if err := validateSafeReceipt(receipt, input.Plan, executionContext, responseBody, statusCode, intentDigest); err != nil {
 		return nil, err
 	}
 	statusCodeWire, err := safeUint32(statusCode)
@@ -93,12 +105,12 @@ func (h *Host) Execute(ctx context.Context, input ExecutionInput) (*ExecutionOut
 	}
 	decodeResult, err := h.worker.Decode(ctx, &cerebrov1.SourceWorkerDecodeRequestV1{
 		Plan: proto.Clone(input.Plan).(*cerebrov1.SourceExecutionPlanV1), StatusCode: statusCodeWire, ResponseBody: responseBody,
-		LogicalPageId: input.Scope.LogicalPageID, RequestIntentDigest: input.Scope.RequestIntentDigest, Receipt: receiptWire,
+		LogicalPageId: input.Scope.LogicalPageID, RequestIntentDigest: intentDigest, Receipt: receiptWire, Context: executionContext,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("credential-free response decoding failed: %w", err)
 	}
-	if err := validateWorkerResult(input.Plan, input.Scope, receipt, decodeResult); err != nil {
+	if err := validateWorkerResult(input.Plan, executionContext, receipt, decodeResult); err != nil {
 		return nil, err
 	}
 	return &ExecutionOutput{Result: decodeResult, Receipt: receipt}, nil

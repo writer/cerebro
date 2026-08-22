@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
+	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -368,6 +369,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		lister,
 		deps.AppendLog,
 		deps.StateStore,
+		cfg.SourceRuntime.SourceWorkerPath,
 		deps.OrganizationalProjector,
 	)
 	admitter, err := eventadmission.NewNativeAdmitter(
@@ -463,14 +465,19 @@ func newOrchestratorRuntimeService(
 	store ports.SourceRuntimeStore,
 	appendLog ports.AppendLog,
 	stateStore ports.StateStore,
+	sourceWorkerPath string,
 	projectors ...*organizationalgraph.ProjectionClient,
 ) *sourceruntime.Service {
-	return sourceruntime.New(
+	service := sourceruntime.New(
 		registry,
 		store,
 		appendLog,
 		newOrchestratorSyncProjector(stateStore, projectors...),
 	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
+	if sourceWorkerPath != "" {
+		service.WithSourceExecutionWorker(sourceworker.NewProcessWorker(sourceWorkerPath))
+	}
+	return service
 }
 
 func newOrchestratorSyncProjector(

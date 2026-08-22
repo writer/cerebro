@@ -1,6 +1,7 @@
 package sourceworker
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -15,7 +16,20 @@ import (
 // AuthorizationPolicyEvent converts one validated worker result into the exact
 // tenant-scoped Azure event contract consumed by native admission and projection.
 func AuthorizationPolicyEvent(plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, receipt SafeReceipt, result *cerebrov1.SourceWorkerDecodeResultV1, occurredAt time.Time) (*cerebrov1.EventEnvelope, error) {
-	if err := validateWorkerResult(plan, scope, receipt, result); err != nil {
+	executionContext := &cerebrov1.SourceWorkerExecutionContextV1{
+		TenantId: scope.TenantID, RuntimeId: scope.RuntimeID, LogicalPageId: scope.LogicalPageID,
+		PriorCursor: scope.PriorCursor, RuntimeGeneration: scope.RuntimeGeneration,
+		LeaseGeneration: scope.LeaseGeneration, ObservedAtUnixMillis: receipt.ObservedAtUnixMillis,
+	}
+	if result.GetTenantId() == "" && len(result.GetRecords()) == 1 && result.GetRecords()[0].GetEventId() == "" {
+		if strings.TrimSpace(scope.TenantID) == "" || receipt.PlanDigestSHA256 != plan.GetPlanDigestSha256() || receipt.LogicalPageID != scope.LogicalPageID || receipt.RequestIntentDigest != scope.RequestIntentDigest || receipt.RuntimeGeneration != scope.RuntimeGeneration || receipt.LeaseGeneration != scope.LeaseGeneration {
+			return nil, fmt.Errorf("%w: legacy parity result does not match the trusted execution scope", ErrInvalidExecution)
+		}
+		expected, err := CanonicalResultDigest(result, receipt)
+		if err != nil || subtle.ConstantTimeCompare([]byte(expected), []byte(result.GetResultDigestSha256())) != 1 {
+			return nil, fmt.Errorf("%w: legacy worker result digest does not match the safe receipt", ErrWorkerContract)
+		}
+	} else if err := validateWorkerResult(plan, executionContext, receipt, result); err != nil {
 		return nil, err
 	}
 	record := result.GetRecords()[0]
@@ -47,9 +61,17 @@ func AuthorizationPolicyEvent(plan *cerebrov1.SourceExecutionPlanV1, scope Crede
 	if err != nil {
 		return nil, fmt.Errorf("%w: worker record payload is invalid", ErrInvalidExecution)
 	}
+	eventID := strings.TrimSpace(record.GetEventId())
+	if eventID == "" {
+		eventID = sanitizeEventID("azure-authorization-policy-" + providerID)
+	}
+	eventTime := occurredAt.UTC()
+	if record.GetOccurredAtUnixMillis() > 0 {
+		eventTime = time.UnixMilli(record.GetOccurredAtUnixMillis()).UTC()
+	}
 	event := &cerebrov1.EventEnvelope{
-		Id: sanitizeEventID("azure-authorization-policy-" + providerID), TenantId: strings.TrimSpace(scope.TenantID),
-		SourceId: "azure", Kind: plan.GetEventKind(), OccurredAt: timestamppb.New(occurredAt.UTC()),
+		Id: eventID, TenantId: strings.TrimSpace(scope.TenantID),
+		SourceId: "azure", Kind: plan.GetEventKind(), OccurredAt: timestamppb.New(eventTime),
 		SchemaRef: plan.GetSchemaRef(), Payload: payloadJSON, Attributes: attributes,
 	}
 	contract := sourcecdk.EventContract{Kind: plan.GetEventKind(), SchemaRef: plan.GetSchemaRef(), RequiredAttributes: plan.GetRequiredAttributes(), RequiredPayloadFields: plan.GetRequiredPayloadFields()}

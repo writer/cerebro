@@ -35,6 +35,7 @@ func exactScope(plan *cerebrov1.SourceExecutionPlanV1, now time.Time) Credential
 		TenantID: "tenant-1", RuntimeID: "runtime-1", SourceID: "azure", FamilyID: "authorization_policy",
 		PlanDigestSHA256: plan.GetPlanDigestSha256(), LogicalPageID: "logical-page-1",
 		LeaseOwner: "owner-1", RuntimeGeneration: 7, LeaseGeneration: 11, LeaseExpiresAt: now.Add(time.Minute),
+		ObservedAtUnixMillis: now.UTC().UnixMilli(),
 	}
 	digest, err := CanonicalRequestIntentDigest(plan, scope, canonicalRequestForPlan(plan))
 	if err != nil {
@@ -50,6 +51,7 @@ func exactReceipt(plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, 
 		RequestIntentDigest: scope.RequestIntentDigest, RuntimeGeneration: scope.RuntimeGeneration,
 		LeaseGeneration: scope.LeaseGeneration, CredentialOperation: "lease-operation-1",
 		StatusCode: http.StatusOK, ResponseBytes: len(body), ResponseSHA256: responseSHA256(body),
+		TenantID: scope.TenantID, RuntimeID: scope.RuntimeID, ObservedAtUnixMillis: scope.ObservedAtUnixMillis,
 	}
 }
 
@@ -61,14 +63,17 @@ type fakeWorker struct {
 	decodeSawSecret bool
 }
 
-func (w *fakeWorker) Plan(_ context.Context, plan *cerebrov1.SourceExecutionPlanV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
-	payload, _ := proto.Marshal(plan)
+func (w *fakeWorker) Plan(_ context.Context, request *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
+	payload, _ := proto.Marshal(request)
 	w.planSawSecret = bytes.Contains(payload, []byte("not-in-worker-or-receipt"))
+	plan := request.GetPlan()
 	endpoint := "https://graph.microsoft.com/v1.0/policies/authorizationPolicy"
 	if w.escapedURL != "" {
 		endpoint = w.escapedURL
 	}
-	return &cerebrov1.SourceWorkerHTTPRequestV1{PlanId: plan.GetPlanId(), Method: "GET", Url: endpoint, Accept: "application/json", MaxResponseBytes: plan.GetMaxResponseBytes(), PlanDigestSha256: plan.GetPlanDigestSha256()}, nil
+	result := &cerebrov1.SourceWorkerHTTPRequestV1{PlanId: plan.GetPlanId(), Method: "GET", Url: endpoint, Accept: "application/json", MaxResponseBytes: plan.GetMaxResponseBytes(), PlanDigestSha256: plan.GetPlanDigestSha256()}
+	result.RequestIntentDigest, _ = canonicalRequestIntentDigestForContext(plan, request.GetContext(), result)
+	return result, nil
 }
 
 func (w *fakeWorker) Decode(_ context.Context, request *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
@@ -80,9 +85,12 @@ func (w *fakeWorker) Decode(_ context.Context, request *cerebrov1.SourceWorkerDe
 	}
 	result := &cerebrov1.SourceWorkerDecodeResultV1{
 		PlanId: request.GetPlan().GetPlanId(), PlanDigestSha256: request.GetPlan().GetPlanDigestSha256(), LogicalPageId: request.GetLogicalPageId(), RequestIntentDigest: request.GetRequestIntentDigest(),
+		TenantId: request.GetContext().GetTenantId(), RuntimeId: request.GetContext().GetRuntimeId(),
+		RuntimeGeneration: request.GetContext().GetRuntimeGeneration(), LeaseGeneration: request.GetContext().GetLeaseGeneration(),
+		ObservedAtUnixMillis: request.GetContext().GetObservedAtUnixMillis(),
 		Records: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy", Attributes: map[string]string{
 			"allow_email_verified_users_to_join": "false", "allow_invites_from": "adminsAndGuestInviters", "allowed_to_sign_up_email": "false", "allowed_to_use_sspr": "true", "block_msol_powershell": "true", "default_user_can_create_apps": "false", "default_user_can_create_groups": "false", "default_user_can_read_bitlocker": "true", "family": "authorization_policy", "resource_id": "authorizationPolicy", "resource_name": "authorizationPolicy", "resource_provider": "azure", "resource_type": "authorization_policy",
-		}, PayloadJson: payloadJSON}},
+		}, PayloadJson: payloadJSON, EventId: "azure-authorization-policy-authorizationPolicy", OccurredAtUnixMillis: request.GetContext().GetObservedAtUnixMillis()}},
 	}
 	receipt, err := safeReceiptFromProto(request.GetReceipt())
 	if err != nil {

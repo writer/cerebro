@@ -37,23 +37,25 @@ var (
 // Worker plans and decodes one bounded request without receiving credentials
 // or owning network access.
 type Worker interface {
-	Plan(context.Context, *cerebrov1.SourceExecutionPlanV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error)
+	Plan(context.Context, *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error)
 	Decode(context.Context, *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error)
 }
 
 // CredentialScope binds one redemption to a runtime lease and logical page.
 type CredentialScope struct {
-	TenantID            string
-	RuntimeID           string
-	SourceID            string
-	FamilyID            string
-	PlanDigestSHA256    string
-	LogicalPageID       string
-	RequestIntentDigest string
-	LeaseOwner          string
-	RuntimeGeneration   uint64
-	LeaseGeneration     uint64
-	LeaseExpiresAt      time.Time
+	TenantID             string
+	RuntimeID            string
+	SourceID             string
+	FamilyID             string
+	PlanDigestSHA256     string
+	LogicalPageID        string
+	PriorCursor          string
+	RequestIntentDigest  string
+	LeaseOwner           string
+	RuntimeGeneration    uint64
+	LeaseGeneration      uint64
+	LeaseExpiresAt       time.Time
+	ObservedAtUnixMillis int64
 }
 
 // CredentialLease exposes one bearer token to the trusted Go host only.
@@ -81,15 +83,18 @@ type ExecutionInput struct {
 // SafeReceipt contains provider-safe execution evidence and no response body,
 // credential, authorization header, or private route.
 type SafeReceipt struct {
-	PlanDigestSHA256    string
-	LogicalPageID       string
-	RequestIntentDigest string
-	RuntimeGeneration   uint64
-	LeaseGeneration     uint64
-	CredentialOperation string
-	StatusCode          int
-	ResponseBytes       int
-	ResponseSHA256      string
+	PlanDigestSHA256     string
+	LogicalPageID        string
+	RequestIntentDigest  string
+	RuntimeGeneration    uint64
+	LeaseGeneration      uint64
+	CredentialOperation  string
+	StatusCode           int
+	ResponseBytes        int
+	ResponseSHA256       string
+	TenantID             string
+	RuntimeID            string
+	ObservedAtUnixMillis int64
 }
 
 // ExecutionOutput contains the bounded worker result and safe host receipt.

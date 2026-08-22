@@ -27,8 +27,8 @@ func NewProcessWorker(path string) *ProcessWorker {
 }
 
 // Plan invokes the credential-free worker planning command.
-func (w *ProcessWorker) Plan(ctx context.Context, plan *cerebrov1.SourceExecutionPlanV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
-	output, err := w.run(ctx, "plan", plan, workerOverhead)
+func (w *ProcessWorker) Plan(ctx context.Context, request *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
+	output, err := w.run(ctx, "plan", request, workerOverhead)
 	if err != nil {
 		return nil, err
 	}
@@ -79,13 +79,21 @@ func classifyWorkerFailure(stderr string) error {
 	switch {
 	case strings.HasPrefix(class, "source_worker.response_too_large:"):
 		return ErrProviderResponseTooLarge
-	case strings.HasPrefix(class, "source_worker.invalid_provider_response:"):
+	case strings.HasPrefix(class, "source_worker.malformed_response:"),
+		strings.HasPrefix(class, "source_worker.invalid_provider_record:"):
 		return ErrProviderMalformedResponse
-	case strings.HasPrefix(class, "source_worker.unsupported_status:"):
+	case strings.HasPrefix(class, "source_worker.unexpected_provider_status:"):
 		return ErrProviderMalformedResponse
 	case strings.HasPrefix(class, "source_worker.protobuf:"),
 		strings.HasPrefix(class, "source_worker.invalid_plan:"),
-		strings.HasPrefix(class, "source_worker.missing_execution_identity:"):
+		strings.HasPrefix(class, "source_worker.invalid_execution_context:"),
+		strings.HasPrefix(class, "source_worker.missing_execution_identity:"),
+		strings.HasPrefix(class, "source_worker.tenant_mismatch:"),
+		strings.HasPrefix(class, "source_worker.stale_generation:"),
+		strings.HasPrefix(class, "source_worker.invalid_digest:"),
+		strings.HasPrefix(class, "source_worker.invalid_cursor:"),
+		strings.HasPrefix(class, "source_worker.duplicate_conflict:"),
+		strings.HasPrefix(class, "source_worker.event_contract_rejected:"):
 		return ErrWorkerContract
 	default:
 		return ErrWorkerInternal

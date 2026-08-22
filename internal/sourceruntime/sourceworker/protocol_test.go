@@ -55,7 +55,8 @@ func TestProcessWorkerProtocol(t *testing.T) {
 	plan := AzureAuthorizationPolicyPlan()
 	now := time.Now().UTC()
 	scope := exactScope(plan, now)
-	request, err := worker.Plan(context.Background(), plan)
+	executionContext := executionContextFor(scope, now)
+	request, err := worker.Plan(context.Background(), &cerebrov1.SourceWorkerPlanRequestV1{Plan: plan, Context: executionContext})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestProcessWorkerProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := worker.Decode(context.Background(), &cerebrov1.SourceWorkerDecodeRequestV1{
-		Plan: plan, StatusCode: 200, ResponseBody: []byte(exactGoAuthorizationPolicyResponse), LogicalPageId: scope.LogicalPageID, RequestIntentDigest: scope.RequestIntentDigest, Receipt: receiptWire,
+		Plan: plan, StatusCode: 200, ResponseBody: []byte(exactGoAuthorizationPolicyResponse), LogicalPageId: scope.LogicalPageID, RequestIntentDigest: scope.RequestIntentDigest, Receipt: receiptWire, Context: executionContext,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -76,17 +77,17 @@ func TestProcessWorkerProtocol(t *testing.T) {
 	if len(result.GetRecords()) != 1 || result.GetRecords()[0].GetProviderId() != "authorizationPolicy" {
 		t.Fatalf("worker result = %#v", result)
 	}
-	if err := validateWorkerResult(plan, scope, receipt, result); err != nil {
+	if err := validateWorkerResult(plan, executionContext, receipt, result); err != nil {
 		t.Fatalf("worker result contract: %v", err)
 	}
 }
 
 func TestWorkerStderrClassesRemainTypedAndBounded(t *testing.T) {
 	for stderr, want := range map[string]error{
-		"source_worker.invalid_provider_response: bad JSON": ErrProviderMalformedResponse,
-		"source_worker.response_too_large: over bound":      ErrProviderResponseTooLarge,
-		"source_worker.invalid_plan: mismatch":              ErrWorkerContract,
-		"arbitrary process failure with private detail":     ErrWorkerInternal,
+		"source_worker.malformed_response: bad JSON":    ErrProviderMalformedResponse,
+		"source_worker.response_too_large: over bound":  ErrProviderResponseTooLarge,
+		"source_worker.invalid_plan: mismatch":          ErrWorkerContract,
+		"arbitrary process failure with private detail": ErrWorkerInternal,
 	} {
 		if err := classifyWorkerFailure(stderr); !errors.Is(err, want) {
 			t.Fatalf("classifyWorkerFailure(%q) = %v, want %v", stderr, err, want)

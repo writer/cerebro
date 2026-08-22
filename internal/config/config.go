@@ -80,6 +80,7 @@ type Config struct {
 type SourceRuntimeConfig struct {
 	EventAdmissionWorkerPath string
 	EventAdmissionWorkers    int
+	SourceWorkerPath         string
 }
 
 // ContentPackConfig selects signed declarative content without changing the kernel binary.
@@ -565,6 +566,7 @@ func Load() (Config, error) {
 		},
 		SourceRuntime: SourceRuntimeConfig{
 			EventAdmissionWorkerPath: strings.TrimSpace(os.Getenv("CEREBRO_EVENT_ADMISSION_WORKER")),
+			SourceWorkerPath:         strings.TrimSpace(os.Getenv("CEREBRO_SOURCE_WORKER")),
 		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),
@@ -587,6 +589,9 @@ func Load() (Config, error) {
 	}
 	if cfg.SourceRuntime.EventAdmissionWorkerPath == "" {
 		cfg.SourceRuntime.EventAdmissionWorkerPath = defaultSourceEventAdmissionWorkerPath()
+	}
+	if cfg.SourceRuntime.SourceWorkerPath == "" {
+		cfg.SourceRuntime.SourceWorkerPath = defaultSourceWorkerPath()
 	}
 	if cfg.SourceRuntime.EventAdmissionWorkers, err = parseIntEnv("CEREBRO_EVENT_ADMISSION_WORKERS", defaultSourceEventAdmissionWorkers); err != nil {
 		return Config{}, err
@@ -1004,6 +1009,14 @@ func defaultSourceEventAdmissionWorkerPath() string {
 		return "cerebro-event-admission-worker"
 	}
 	return filepath.Join(filepath.Dir(executable), "cerebro-event-admission-worker")
+}
+
+func defaultSourceWorkerPath() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return "source_worker"
+	}
+	return filepath.Join(filepath.Dir(executable), "source_worker")
 }
 
 func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
