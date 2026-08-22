@@ -6,6 +6,7 @@
 mod abuseipdb;
 mod activecampaign;
 mod activtrak;
+mod acunetix;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -71,6 +72,11 @@ pub use activtrak::{
     ActivTrakCheckpointCandidate, ActivTrakEntityFact, ActivTrakError, ActivTrakEventContract,
     ActivTrakFamily, ActivTrakKernel, ActivTrakPage, ActivTrakProjectionFacts, ActivTrakRecord,
     ActivTrakRequest, ActivTrakRuntimeDefinition, project_activtrak_records,
+};
+pub use acunetix::{
+    AcunetixCheckpointCandidate, AcunetixEntityFact, AcunetixError, AcunetixEventContract,
+    AcunetixFamily, AcunetixKernel, AcunetixPage, AcunetixProjectionFacts, AcunetixRecord,
+    AcunetixRequest, AcunetixRuntimeDefinition, project_acunetix_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
