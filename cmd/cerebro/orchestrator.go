@@ -368,6 +368,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		lister,
 		deps.AppendLog,
 		deps.StateStore,
+		cfg.SourceRuntime.SourceWorkerPath,
 		deps.OrganizationalProjector,
 	)
 	admitter, err := eventadmission.NewNativeAdmitter(
@@ -463,14 +464,19 @@ func newOrchestratorRuntimeService(
 	store ports.SourceRuntimeStore,
 	appendLog ports.AppendLog,
 	stateStore ports.StateStore,
+	sourceWorkerPath string,
 	projectors ...*organizationalgraph.ProjectionClient,
 ) *sourceruntime.Service {
-	return sourceruntime.New(
+	service := sourceruntime.New(
 		registry,
 		store,
 		appendLog,
 		newOrchestratorSyncProjector(stateStore, projectors...),
 	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
+	if sourceWorkerPath != "" {
+		service.WithSourceExecutionWorkerPath(sourceWorkerPath)
+	}
+	return service
 }
 
 func newOrchestratorSyncProjector(

@@ -2,7 +2,6 @@ package sourceworker
 
 import (
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,13 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
 func validateScope(plan *cerebrov1.SourceExecutionPlanV1, reference string, scope CredentialScope, now time.Time) error {
-	if strings.TrimSpace(reference) == "" || strings.TrimSpace(scope.TenantID) == "" || !safeIdentifier(scope.RuntimeID) || !safeIdentifier(scope.LeaseOwner) || !safeIdentifier(scope.LogicalPageID) || !lowerSHA256(scope.RequestIntentDigest) {
+	if strings.TrimSpace(reference) == "" || strings.TrimSpace(scope.TenantID) == "" || !safeIdentifier(scope.RuntimeID) || !safeIdentifier(scope.LeaseOwner) || !safeIdentifier(scope.LogicalPageID) || (scope.RequestIntentDigest != "" && !lowerSHA256(scope.RequestIntentDigest)) {
 		return fmt.Errorf("%w: execution scope is incomplete", ErrInvalidExecution)
 	}
 	if scope.SourceID != plan.GetSourceId() || scope.FamilyID != plan.GetFamilyId() || scope.PlanDigestSHA256 != plan.GetPlanDigestSha256() {
@@ -24,13 +21,6 @@ func validateScope(plan *cerebrov1.SourceExecutionPlanV1, reference string, scop
 	}
 	if scope.RuntimeGeneration == 0 || scope.LeaseGeneration == 0 || !scope.LeaseExpiresAt.UTC().After(now) {
 		return fmt.Errorf("%w: execution lease fence is invalid", ErrInvalidExecution)
-	}
-	return nil
-}
-
-func validateCanonicalPlan(plan *cerebrov1.SourceExecutionPlanV1) error {
-	if plan == nil || !proto.Equal(plan, AzureAuthorizationPolicyPlan()) {
-		return fmt.Errorf("%w: plan is not the registered Azure authorization policy plan", ErrWorkerContract)
 	}
 	return nil
 }
@@ -51,18 +41,10 @@ func validateWorkerRequest(plan *cerebrov1.SourceExecutionPlanV1, request *cereb
 	if err != nil || actual.String() != expected.String() || actual.User != nil || actual.RawQuery != "" || actual.Fragment != "" {
 		return nil, fmt.Errorf("%w: worker request escaped the compiled origin", ErrInvalidExecution)
 	}
+	if !lowerSHA256(request.GetRequestIntentDigest()) {
+		return nil, fmt.Errorf("%w: worker request intent digest is invalid", ErrWorkerContract)
+	}
 	return actual, nil
-}
-
-func validateWorkerResult(plan *cerebrov1.SourceExecutionPlanV1, scope CredentialScope, receipt SafeReceipt, result *cerebrov1.SourceWorkerDecodeResultV1) error {
-	if result == nil || result.GetPlanId() != plan.GetPlanId() || result.GetPlanDigestSha256() != plan.GetPlanDigestSha256() || result.GetLogicalPageId() != scope.LogicalPageID || result.GetRequestIntentDigest() != scope.RequestIntentDigest || result.GetNextCursor() != "" || len(result.GetRecords()) != 1 || !lowerSHA256(result.GetResultDigestSha256()) {
-		return fmt.Errorf("%w: worker result is not bound to the execution", ErrInvalidExecution)
-	}
-	expected, err := CanonicalResultDigest(result, receipt)
-	if err != nil || subtle.ConstantTimeCompare([]byte(expected), []byte(result.GetResultDigestSha256())) != 1 {
-		return fmt.Errorf("%w: worker result digest does not match the safe receipt", ErrWorkerContract)
-	}
-	return nil
 }
 
 func safeHTTPClient(resolver *net.Resolver) *http.Client {

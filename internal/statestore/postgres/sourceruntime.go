@@ -275,6 +275,36 @@ WHERE id = $1 AND lease_owner = $2`, id, leaseOwner); err != nil {
 	return nil
 }
 
+// ReadSourceRuntimeLeaseFence returns the current unexpired lease fence for an owner.
+func (s *Store) ReadSourceRuntimeLeaseFence(ctx context.Context, runtimeID string, owner string) (ports.SourceRuntimeLeaseFence, error) {
+	id := strings.TrimSpace(runtimeID)
+	leaseOwner := strings.TrimSpace(owner)
+	if id == "" || leaseOwner == "" {
+		return ports.SourceRuntimeLeaseFence{}, errors.New("source runtime lease id and owner are required")
+	}
+	if s == nil || s.db == nil {
+		return ports.SourceRuntimeLeaseFence{}, errors.New("postgres is not configured")
+	}
+	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+		return ports.SourceRuntimeLeaseFence{}, err
+	}
+	var generation int64
+	var expiresAt time.Time
+	if err := s.db.QueryRowContext(ctx, `
+SELECT lease_generation, lease_expires_at
+FROM source_runtimes
+WHERE id = $1
+  AND lease_owner = $2
+  AND lease_generation > 0
+  AND lease_expires_at > NOW()`, id, leaseOwner).Scan(&generation, &expiresAt); err != nil {
+		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("read source runtime lease fence %q: %w", id, err)
+	}
+	if generation <= 0 {
+		return ports.SourceRuntimeLeaseFence{}, fmt.Errorf("read source runtime lease fence %q: invalid generation", id)
+	}
+	return ports.SourceRuntimeLeaseFence{Owner: leaseOwner, Generation: uint64(generation), ExpiresAt: expiresAt.UTC()}, nil
+}
+
 func validateSourceRuntimeLeaseRequest(owner string, ttl time.Duration) (string, error) {
 	leaseOwner := strings.TrimSpace(owner)
 	if leaseOwner == "" {

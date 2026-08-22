@@ -80,7 +80,7 @@ func newRuntimeFeatureService(cfg config.Config, deps runtimeFeatureDeps) *sourc
 		deps.Projector,
 	).WithConnectorDefinitionStore(deps.Definitions).WithConfigResolver(func(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
 		return resolveRuntimeSourceConfigWithStore(ctx, cfg.ConnectorCredentials, cfg.ConnectorSecretStores, deps.RuntimeConfigStore, sourceID, values)
-	})
+	}).WithSourceExecutionWorkerPath(cfg.SourceRuntime.SourceWorkerPath)
 }
 
 type claimFeatureDeps struct {

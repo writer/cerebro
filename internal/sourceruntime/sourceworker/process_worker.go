@@ -3,6 +3,7 @@ package sourceworker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-// ProcessWorker invokes the standalone Rust worker with bounded protobuf I/O.
+// ProcessWorker invokes the standalone Rust worker with bounded protocol I/O.
 type ProcessWorker struct{ path string }
 
 // NewProcessWorker binds the host to one configured worker executable path.
@@ -26,48 +27,112 @@ func NewProcessWorker(path string) *ProcessWorker {
 	return &ProcessWorker{path: path}
 }
 
-// Plan invokes the credential-free worker planning command.
-func (w *ProcessWorker) Plan(ctx context.Context, plan *cerebrov1.SourceExecutionPlanV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
-	output, err := w.run(ctx, "plan", plan, workerOverhead)
+func (w *ProcessWorker) Compile(ctx context.Context, request SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error) {
+	output, err := w.runJSON(ctx, "compile", request, workerOverhead)
 	if err != nil {
 		return nil, err
 	}
+	result := new(cerebrov1.SourceExecutionPlanV1)
+	if err := proto.Unmarshal(output, result); err != nil {
+		return nil, fmt.Errorf("%w: worker compiled plan is invalid", ErrInvalidExecution)
+	}
+	return result, nil
+}
+
+func (w *ProcessWorker) Context(ctx context.Context, request ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error) {
+	output, err := w.runJSON(ctx, "context", request, workerOverhead)
+	if err != nil {
+		return nil, err
+	}
+	result := new(cerebrov1.SourceWorkerExecutionContextV1)
+	if err := proto.Unmarshal(output, result); err != nil {
+		return nil, fmt.Errorf("%w: worker context output is invalid", ErrInvalidExecution)
+	}
+	return result, nil
+}
+
+func (w *ProcessWorker) Plan(ctx context.Context, request *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error) {
 	result := new(cerebrov1.SourceWorkerHTTPRequestV1)
-	if err := proto.Unmarshal(output, result); err != nil {
-		return nil, fmt.Errorf("%w: worker plan output is invalid", ErrInvalidExecution)
-	}
-	return result, nil
+	return result, w.runProto(ctx, "plan", request, result, workerOverhead)
 }
 
-// Decode invokes the credential-free worker decode command.
 func (w *ProcessWorker) Decode(ctx context.Context, request *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
-	output, err := w.run(ctx, "decode", request, int64(maxResponseBytes)+workerOverhead)
+	result := new(cerebrov1.SourceWorkerDecodeResultV1)
+	return result, w.runProto(ctx, "decode", request, result, int64(maxResponseBytes)+workerOverhead)
+}
+
+func (w *ProcessWorker) SealPage(ctx context.Context, request PageProgramRequest) (*PageProgram, error) {
+	control := struct {
+		Plan, Context, Receipt, Result []byte
+		CurrentLeaseGeneration         uint64 `json:"current_lease_generation"`
+	}{CurrentLeaseGeneration: request.CurrentLeaseGeneration}
+	var err error
+	for target, message := range map[*[]byte]proto.Message{&control.Plan: request.Plan, &control.Context: request.Context, &control.Receipt: request.Receipt, &control.Result: request.Result} {
+		if message == nil {
+			return nil, fmt.Errorf("%w: lifecycle input is incomplete", ErrInvalidExecution)
+		}
+		*target, err = proto.MarshalOptions{Deterministic: true}.Marshal(message)
+		if err != nil {
+			return nil, fmt.Errorf("%w: lifecycle input is invalid", ErrInvalidExecution)
+		}
+	}
+	output, err := w.runJSON(ctx, "transition", control, int64(maxResponseBytes)+workerOverhead)
 	if err != nil {
 		return nil, err
 	}
-	result := new(cerebrov1.SourceWorkerDecodeResultV1)
-	if err := proto.Unmarshal(output, result); err != nil {
-		return nil, fmt.Errorf("%w: worker decode output is invalid", ErrInvalidExecution)
+	encoded := struct {
+		TransitionDigest              string   `json:"transition_digest"`
+		AdmittedRecords               [][]byte `json:"admitted_records"`
+		CheckpointCursor              string   `json:"checkpoint_cursor"`
+		CheckpointWatermarkUnixMillis int64    `json:"checkpoint_watermark_unix_millis"`
+	}{}
+	if err := json.Unmarshal(output, &encoded); err != nil {
+		return nil, fmt.Errorf("%w: worker transition output is invalid", ErrInvalidExecution)
 	}
-	return result, nil
+	program := &PageProgram{TransitionDigest: encoded.TransitionDigest, CheckpointCursor: encoded.CheckpointCursor, CheckpointWatermarkUnixMillis: encoded.CheckpointWatermarkUnixMillis}
+	for _, value := range encoded.AdmittedRecords {
+		record := new(cerebrov1.SourceWorkerRecordV1)
+		if err := proto.Unmarshal(value, record); err != nil {
+			return nil, fmt.Errorf("%w: worker admitted record is invalid", ErrInvalidExecution)
+		}
+		program.AdmittedRecords = append(program.AdmittedRecords, record)
+	}
+	return program, nil
 }
 
-func (w *ProcessWorker) run(ctx context.Context, command string, message proto.Message, maxOutput int64) ([]byte, error) {
+func (w *ProcessWorker) runProto(ctx context.Context, command string, input proto.Message, output proto.Message, bound int64) error {
+	encoded, err := proto.MarshalOptions{Deterministic: true}.Marshal(input)
+	if err != nil {
+		return fmt.Errorf("%w: worker input is invalid", ErrInvalidExecution)
+	}
+	encoded, err = w.run(ctx, command, encoded, bound)
+	if err != nil {
+		return err
+	}
+	if err := proto.Unmarshal(encoded, output); err != nil {
+		return fmt.Errorf("%w: worker output is invalid", ErrInvalidExecution)
+	}
+	return nil
+}
+
+func (w *ProcessWorker) runJSON(ctx context.Context, command string, input any, bound int64) ([]byte, error) {
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("%w: worker control input is invalid", ErrInvalidExecution)
+	}
+	return w.run(ctx, command, encoded, bound)
+}
+
+func (w *ProcessWorker) run(ctx context.Context, command string, input []byte, bound int64) ([]byte, error) {
 	if w == nil || w.path == "" {
 		return nil, fmt.Errorf("%w: worker executable is not configured", ErrInvalidExecution)
 	}
-	input, err := proto.MarshalOptions{Deterministic: true}.Marshal(message)
-	if err != nil {
-		return nil, fmt.Errorf("%w: worker input is invalid", ErrInvalidExecution)
-	}
-	// #nosec G204,G702 -- NewProcessWorker accepts only an absolute executable named source_worker; command is private and closed to plan/decode.
+	// #nosec G204,G702 -- path and command are closed by the constructor and Worker methods.
 	process := exec.CommandContext(ctx, w.path, command)
 	process.Env = []string{"LANG=C", "LC_ALL=C"}
 	process.Stdin = bytes.NewReader(input)
-	stdout := &boundedBuffer{remaining: maxOutput}
-	stderr := &boundedBuffer{remaining: workerOverhead}
-	process.Stdout = stdout
-	process.Stderr = stderr
+	stdout, stderr := &boundedBuffer{remaining: bound}, &boundedBuffer{remaining: workerOverhead}
+	process.Stdout, process.Stderr = stdout, stderr
 	if err := process.Run(); err != nil {
 		return nil, classifyWorkerFailure(stderr.String())
 	}
@@ -77,15 +142,13 @@ func (w *ProcessWorker) run(ctx context.Context, command string, message proto.M
 func classifyWorkerFailure(stderr string) error {
 	class := strings.TrimSpace(stderr)
 	switch {
+	case strings.HasPrefix(class, "source_worker.unknown_adapter:"):
+		return ErrWorkerUnsupported
 	case strings.HasPrefix(class, "source_worker.response_too_large:"):
 		return ErrProviderResponseTooLarge
-	case strings.HasPrefix(class, "source_worker.invalid_provider_response:"):
+	case strings.HasPrefix(class, "source_worker.malformed_response:"), strings.HasPrefix(class, "source_worker.invalid_provider_record:"), strings.HasPrefix(class, "source_worker.unexpected_provider_status:"):
 		return ErrProviderMalformedResponse
-	case strings.HasPrefix(class, "source_worker.unsupported_status:"):
-		return ErrProviderMalformedResponse
-	case strings.HasPrefix(class, "source_worker.protobuf:"),
-		strings.HasPrefix(class, "source_worker.invalid_plan:"),
-		strings.HasPrefix(class, "source_worker.missing_execution_identity:"):
+	case strings.HasPrefix(class, "source_worker.protobuf:"), strings.HasPrefix(class, "source_worker.invalid_plan:"), strings.HasPrefix(class, "source_worker.invalid_execution_context:"), strings.HasPrefix(class, "source_worker.missing_execution_identity:"), strings.HasPrefix(class, "source_worker.tenant_mismatch:"), strings.HasPrefix(class, "source_worker.stale_generation:"), strings.HasPrefix(class, "source_worker.invalid_digest:"), strings.HasPrefix(class, "source_worker.invalid_cursor:"), strings.HasPrefix(class, "source_worker.duplicate_conflict:"), strings.HasPrefix(class, "source_worker.event_contract_rejected:"), strings.HasPrefix(class, "source_worker.lease_lost:"):
 		return ErrWorkerContract
 	default:
 		return ErrWorkerInternal

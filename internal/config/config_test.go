@@ -107,6 +107,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_REDUCTO_TIMEOUT", "")
 	t.Setenv("CEREBRO_EVENT_ADMISSION_WORKER", "")
 	t.Setenv("CEREBRO_EVENT_ADMISSION_WORKERS", "")
+	t.Setenv("CEREBRO_SOURCE_WORKER", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -125,6 +126,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.SourceRuntime.EventAdmissionWorkers != defaultSourceEventAdmissionWorkers {
 		t.Fatalf("SourceRuntime.EventAdmissionWorkers = %d, want %d", cfg.SourceRuntime.EventAdmissionWorkers, defaultSourceEventAdmissionWorkers)
+	}
+	if cfg.SourceRuntime.SourceWorkerPath != defaultSourceWorkerPath() {
+		t.Fatalf("SourceRuntime.SourceWorkerPath = %q, want %q", cfg.SourceRuntime.SourceWorkerPath, defaultSourceWorkerPath())
 	}
 	if cfg.AppendLog.Driver != "" {
 		t.Fatalf("AppendLog.Driver = %q, want empty", cfg.AppendLog.Driver)

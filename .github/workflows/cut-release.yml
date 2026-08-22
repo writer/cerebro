@@ -172,9 +172,10 @@ jobs:
           name="cerebro_candidate-${SHORT_SHA}_${TARGET_OS}_${TARGET_ARCH}"
           mkdir -p ".dist/bin/${name}"
           CGO_ENABLED=0 GOOS="${TARGET_OS}" GOARCH="${TARGET_ARCH}" go build -trimpath -ldflags "${ldflags}" -o ".dist/bin/${name}/cerebro" ./cmd/cerebro
-          cargo +1.93.1 build --locked --release --target "${RUST_TARGET}" -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+          cargo +1.93.1 build --locked --release --target "${RUST_TARGET}" -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker -p cerebro-source-runtime-next --bin source_worker
           cp "target/${RUST_TARGET}/release/cerebro-event-admission-worker" ".dist/bin/${name}/cerebro-event-admission-worker"
-          tar -C .dist/bin -czf ".dist/release/${name}.tar.gz" "${name}/cerebro" "${name}/cerebro-event-admission-worker"
+          cp "target/${RUST_TARGET}/release/source_worker" ".dist/bin/${name}/source_worker"
+          tar -C .dist/bin -czf ".dist/release/${name}.tar.gz" "${name}/cerebro" "${name}/cerebro-event-admission-worker" "${name}/source_worker"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: candidate-binary-${{ needs.resolve.outputs.sha }}-${{ matrix.os }}-${{ matrix.arch }}

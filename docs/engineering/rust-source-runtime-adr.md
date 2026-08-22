@@ -162,6 +162,30 @@ only exchange framed admission requests with its parent. Moving provider HTTP,
 credentials, or runtime capabilities into Rust still requires the later
 versioned protobuf and authenticated Unix-socket boundary below.
 
+### Credential-free provider execution slice
+
+The first production-dispatched family is `azure.authorization_policy`. Rust
+owns its closed plan, request intent, response decoding, cursor validation,
+record identity validation, duplicate handling, and result digest. The trusted
+Go host resolves one opaque credential reference, redeems it for one operation,
+applies authentication, restricts the request to the declared origin, disables
+origin-changing pagination, and enforces the response bound before Rust sees
+provider bytes. The worker protocol carries tenant, runtime, logical page,
+runtime generation, lease generation, and one host-captured observation time;
+it never carries credential bytes.
+
+The existing Go source-runtime service remains the durable writer. It admits
+the Rust-produced event through the compiled event contract, appends it,
+projects it, and commits the checkpoint only while the exact durable lease
+owner and generation remain current. The logical page identity is stable across
+process restarts, while tenant-scoped event identity makes a refetched singleton
+idempotent. A stale generation is rejected before append and by the final
+Postgres checkpoint transaction. The closed Rust dispatcher also
+compile-registers `sentinelone.agent`; that does not activate trusted-host,
+catalog, append, or authority ownership for SentinelOne. Other families remain
+on compatibility execution until they register the same adapter contract and
+earn their own parity and operating receipts.
+
 ## Why Rust, and where Rust is not the reason
 
 The decision is narrower than “Rust is safer”:

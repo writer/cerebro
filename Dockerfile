@@ -48,9 +48,11 @@ RUN --mount=type=cache,id=cerebro-cargo-registry,target=/usr/local/cargo/registr
     --mount=type=cache,id=cerebro-cargo-target-${TARGETARCH},target=/app/target,sharing=locked \
     cargo build --locked --release \
       -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker \
+      -p cerebro-source-runtime-next --bin source_worker \
       -p cerebro-platform --bin cerebro-platform && \
     mkdir -p /out && \
     cp /app/target/release/cerebro-event-admission-worker /out/cerebro-event-admission-worker && \
+    cp /app/target/release/source_worker /out/source_worker && \
     cp /app/target/release/cerebro-platform /out/cerebro-platform
 
 FROM alpine:3.24 AS organizational-catalog
@@ -68,6 +70,7 @@ RUN apk upgrade --no-cache && \
 
 COPY --from=builder --chmod=0755 /cerebro /usr/local/bin/cerebro
 COPY --from=rust-builder --chmod=0755 /out/cerebro-event-admission-worker /usr/local/bin/cerebro-event-admission-worker
+COPY --from=rust-builder --chmod=0755 /out/source_worker /usr/local/bin/source_worker
 COPY --from=rust-builder --chmod=0755 /out/cerebro-platform /usr/local/bin/cerebro-platform
 COPY --from=organizational-catalog --chown=10001:101 /app/internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
 COPY --from=organizational-catalog --chown=10001:101 /app/sources /app/sources

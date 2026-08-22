@@ -4,7 +4,7 @@ use std::io::{self, Read, Write};
 
 use cerebro_source_runtime_next::source_execution;
 
-const MAX_WORKER_INPUT_BYTES: u64 = (8 << 20) + (64 << 10);
+const MAX_WORKER_INPUT_BYTES: u64 = (12 << 20) + (64 << 10);
 
 fn main() {
     if let Err(error) = run() {
@@ -25,8 +25,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("source worker input exceeds the process bound".into());
     }
     let output = match command.as_str() {
+        "compile" => source_execution::compile_control(&input)?,
         "plan" => source_execution::plan(&input)?,
         "decode" => source_execution::decode(&input)?,
+        "context" => source_execution::context_control(&input)?,
+        "transition" => source_execution::transition_control(&input)?,
         _ => return Err("source worker command is invalid".into()),
     };
     io::stdout().write_all(&output)?;

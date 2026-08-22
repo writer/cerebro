@@ -2,19 +2,53 @@ use crate::AzureAuthenticationMethodsPolicyKernel;
 
 use super::{
     contract::{
-        AUTHORIZATION_POLICY_FAMILY, AUTHORIZATION_POLICY_KERNEL, AZURE_SOURCE_ID,
+        AUTHORIZATION_POLICY_FALLBACK_ID, AUTHORIZATION_POLICY_FAMILY, AUTHORIZATION_POLICY_KERNEL,
+        AUTHORIZATION_POLICY_KIND, AUTHORIZATION_POLICY_PATH, AUTHORIZATION_POLICY_SCHEMA,
+        AZURE_SOURCE_ID, GRAPH_ORIGIN, MAX_RESPONSE_BYTES, canonical_plan_digest,
         canonical_request_intent_digest, canonical_result_digest, validate_and_deduplicate_records,
         validate_execution_context, validate_plan, validate_safe_receipt,
     },
     dispatcher::SourceExecutionAdapter,
     error::SourceExecutionError,
     wire::{
-        SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
-        SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+        SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
+        SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1,
+        SourceWorkerRecordV1,
     },
 };
 
 pub(super) struct AzureAuthorizationPolicyAdapter;
+
+impl AzureAuthorizationPolicyAdapter {
+    pub(super) fn compiled_plan(&self) -> SourceExecutionPlanV1 {
+        let mut plan = SourceExecutionPlanV1 {
+            plan_id: "source-plan-v1:azure:authorization_policy".to_owned(),
+            source_id: AZURE_SOURCE_ID.to_owned(),
+            family_id: AUTHORIZATION_POLICY_FAMILY.to_owned(),
+            provider_kernel: AUTHORIZATION_POLICY_KERNEL.to_owned(),
+            method: "GET".to_owned(),
+            origin: GRAPH_ORIGIN.to_owned(),
+            path: AUTHORIZATION_POLICY_PATH.to_owned(),
+            record_selector: "$".to_owned(),
+            id_field: "id".to_owned(),
+            singleton_fallback_id: AUTHORIZATION_POLICY_FALLBACK_ID.to_owned(),
+            max_response_bytes: MAX_RESPONSE_BYTES,
+            event_kind: AUTHORIZATION_POLICY_KIND.to_owned(),
+            schema_ref: AUTHORIZATION_POLICY_SCHEMA.to_owned(),
+            required_attributes: vec![
+                "family".to_owned(),
+                "resource_id".to_owned(),
+                "resource_name".to_owned(),
+                "resource_provider".to_owned(),
+                "resource_type".to_owned(),
+            ],
+            required_payload_fields: vec!["id".to_owned()],
+            plan_digest_sha256: String::new(),
+        };
+        plan.plan_digest_sha256 = canonical_plan_digest(&plan);
+        plan
+    }
+}
 
 impl SourceExecutionAdapter for AzureAuthorizationPolicyAdapter {
     fn source_id(&self) -> &'static str {

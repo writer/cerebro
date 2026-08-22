@@ -245,3 +245,77 @@ pub struct SourceWorkerDecodeResultV1 {
     #[prost(int64, tag = "12")]
     pub observed_at_unix_millis: i64,
 }
+
+/// Trusted inputs used by Rust to construct a stable execution context.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionContextRequestV1 {
+    /// Authenticated tenant identifier.
+    #[prost(string, tag = "1")]
+    pub tenant_id: String,
+    /// Durable source-runtime identifier.
+    #[prost(string, tag = "2")]
+    pub runtime_id: String,
+    /// Last durably committed provider cursor.
+    #[prost(string, tag = "3")]
+    pub prior_cursor: String,
+    /// One-based page number within the current execution.
+    #[prost(uint32, tag = "4")]
+    pub page_number: u32,
+    /// Current source authority generation.
+    #[prost(uint64, tag = "5")]
+    pub runtime_generation: u64,
+    /// Current exclusive lease generation.
+    #[prost(uint64, tag = "6")]
+    pub lease_generation: u64,
+    /// Host-captured observation time.
+    #[prost(int64, tag = "7")]
+    pub observed_at_unix_millis: i64,
+}
+
+/// Public source and family selected through the closed Rust registry.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionSelectionRequestV1 {
+    /// Catalog source identifier.
+    #[prost(string, tag = "1")]
+    pub source_id: String,
+    /// Catalog family identifier.
+    #[prost(string, tag = "2")]
+    pub family_id: String,
+}
+
+/// Inputs Rust binds into one immutable durable page program.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionLifecycleRequestV1 {
+    /// Exact catalog-compiled plan.
+    #[prost(message, optional, tag = "1")]
+    pub plan: Option<SourceExecutionPlanV1>,
+    /// Trusted execution context minted by Rust.
+    #[prost(message, optional, tag = "2")]
+    pub context: Option<SourceWorkerExecutionContextV1>,
+    /// Provider-safe host receipt.
+    #[prost(message, optional, tag = "3")]
+    pub receipt: Option<SourceWorkerSafeReceiptV1>,
+    /// Validated normalized page result.
+    #[prost(message, optional, tag = "4")]
+    pub result: Option<SourceWorkerDecodeResultV1>,
+    /// Lease generation captured by the durable lease adapter.
+    #[prost(uint64, tag = "5")]
+    pub current_lease_generation: u64,
+}
+
+/// Rust-authoritative append, projection, and checkpoint program for one page.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionLifecycleDecisionV1 {
+    /// Digest binding the complete ordered page program.
+    #[prost(string, tag = "1")]
+    pub transition_digest_sha256: String,
+    /// Validated records that must be appended and projected in order.
+    #[prost(message, repeated, tag = "2")]
+    pub admitted_records: Vec<SourceWorkerRecordV1>,
+    /// Cursor that the atomic commit may persist after projection succeeds.
+    #[prost(string, tag = "3")]
+    pub checkpoint_cursor: String,
+    /// Watermark that the atomic commit may persist after projection succeeds.
+    #[prost(int64, tag = "4")]
+    pub checkpoint_watermark_unix_millis: i64,
+}

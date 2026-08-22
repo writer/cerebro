@@ -8,9 +8,9 @@ use super::{
     contract::{validate_decode_result, validate_http_request, validate_safe_receipt},
     error::SourceExecutionError,
     wire::{
-        SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
-        SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1,
-        SourceWorkerRecordV1,
+        SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeRequestV1,
+        SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1,
+        SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
     },
 };
 
@@ -50,6 +50,19 @@ static SENTINELONE_AGENT: SentinelOneAgentSourceExecutionAdapter =
     SentinelOneAgentSourceExecutionAdapter;
 
 impl SourceExecutionDispatcher {
+    /// Compiles a plan only for a Rust-authoritative source-family selection.
+    pub fn compile_plan(
+        &self,
+        request: &SourceExecutionSelectionRequestV1,
+    ) -> Result<SourceExecutionPlanV1, SourceExecutionError> {
+        if request.source_id == AZURE_AUTHORIZATION_POLICY.source_id()
+            && request.family_id == AZURE_AUTHORIZATION_POLICY.family_id()
+        {
+            return Ok(AZURE_AUTHORIZATION_POLICY.compiled_plan());
+        }
+        Err(SourceExecutionError::UnknownAdapter)
+    }
+
     /// Returns the registered adapter that exactly matches a compiled plan.
     pub fn adapter_for(
         &self,
@@ -141,6 +154,15 @@ impl SourceExecutionDispatcher {
         }
         Ok(result)
     }
+}
+
+/// Decodes a selection and returns its exact registry-compiled plan.
+pub fn compile_plan_bytes(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    let request = SourceExecutionSelectionRequestV1::decode(input)
+        .map_err(|_| SourceExecutionError::Protobuf)?;
+    Ok(SourceExecutionDispatcher
+        .compile_plan(&request)?
+        .encode_to_vec())
 }
 
 /// Decodes, dispatches, and encodes one bounded planning request.
