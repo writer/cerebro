@@ -148,16 +148,46 @@ func (w *ProcessWorker) run(ctx context.Context, command string, input []byte, b
 }
 
 func classifyWorkerFailure(stderr string) error {
-	class := strings.TrimSpace(stderr)
-	switch {
-	case strings.HasPrefix(class, "source_worker.unknown_adapter:"):
+	class, _, _ := strings.Cut(strings.TrimSpace(stderr), ":")
+	switch class {
+	case "source_worker.unknown_adapter":
 		return ErrWorkerUnsupported
-	case strings.HasPrefix(class, "source_worker.response_too_large:"):
+	case "source_worker.missing_configuration":
+		return ErrSourceConfiguration
+	case "source_worker.missing_credential_reference":
+		return ErrCredentialReferenceMissing
+	case "source_worker.credential_unavailable":
+		return ErrCredentialUnavailable
+	case "source_worker.authentication_rejected":
+		return ErrProviderAuthentication
+	case "source_worker.required_provider_scope_missing":
+		return ErrProviderPermission
+	case "source_worker.egress_denied", "source_worker.connection_failure":
+		return ErrProviderEgress
+	case "source_worker.provider_timeout":
+		return ErrProviderTimeout
+	case "source_worker.provider_rate_limit":
+		return ErrProviderRateLimited
+	case "source_worker.unexpected_provider_status":
+		return ErrProviderUnexpectedStatus
+	case "source_worker.response_too_large":
 		return ErrProviderResponseTooLarge
-	case strings.HasPrefix(class, "source_worker.malformed_response:"), strings.HasPrefix(class, "source_worker.invalid_provider_record:"), strings.HasPrefix(class, "source_worker.unexpected_provider_status:"):
+	case "source_worker.result_too_large":
+		return ErrWorkerResultTooLarge
+	case "source_worker.malformed_response", "source_worker.invalid_provider_record", "source_worker.missing_stable_identity":
 		return ErrProviderMalformedResponse
-	case strings.HasPrefix(class, "source_worker.protobuf:"), strings.HasPrefix(class, "source_worker.invalid_plan:"), strings.HasPrefix(class, "source_worker.invalid_execution_context:"), strings.HasPrefix(class, "source_worker.missing_execution_identity:"), strings.HasPrefix(class, "source_worker.tenant_mismatch:"), strings.HasPrefix(class, "source_worker.stale_generation:"), strings.HasPrefix(class, "source_worker.invalid_digest:"), strings.HasPrefix(class, "source_worker.invalid_cursor:"), strings.HasPrefix(class, "source_worker.duplicate_conflict:"), strings.HasPrefix(class, "source_worker.event_contract_rejected:"), strings.HasPrefix(class, "source_worker.lease_lost:"):
+	case "source_worker.append_failed":
+		return ErrWorkerAppend
+	case "source_worker.projection_failed":
+		return ErrWorkerProjection
+	case "source_worker.lease_lost":
+		return ErrWorkerLeaseLost
+	case "source_worker.stale_authority":
+		return ErrWorkerStaleAuthority
+	case "source_worker.protobuf", "source_worker.invalid_plan", "source_worker.invalid_execution_context", "source_worker.invalid_cursor", "source_worker.missing_execution_identity", "source_worker.tenant_mismatch", "source_worker.stale_generation", "source_worker.invalid_digest", "source_worker.duplicate_conflict", "source_worker.event_contract_rejected":
 		return ErrWorkerContract
+	case "source_worker.internal_runtime":
+		return ErrWorkerInternal
 	default:
 		return ErrWorkerInternal
 	}

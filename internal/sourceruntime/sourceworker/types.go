@@ -20,16 +20,26 @@ var (
 	// ErrInvalidExecution means the plan, scope, worker output, or provider
 	// response crossed a fail-closed execution boundary.
 	ErrInvalidExecution = errors.New("invalid source worker execution")
+
+	ErrSourceConfiguration        = errors.New("source configuration is incomplete; repair the public source configuration")
+	ErrCredentialReferenceMissing = errors.New("source credential reference is missing; repair the credential binding")
+
 	// ErrCredentialUnavailable means the trusted host could not redeem the
 	// opaque credential reference for this operation.
-	ErrCredentialUnavailable     = errors.New("source worker credential unavailable")
-	ErrProviderAuthentication    = errors.New("provider authentication failed; refresh the Azure credential reference")
-	ErrProviderPermission        = errors.New("provider permission denied; grant the Azure Graph authorization policy permission")
+	ErrCredentialUnavailable     = errors.New("source credential is unavailable; repair the credential binding or provider access")
+	ErrProviderAuthentication    = errors.New("provider authentication failed; repair the provider credential binding")
+	ErrProviderPermission        = errors.New("provider permission denied; grant the required provider scope")
 	ErrProviderRateLimited       = errors.New("provider rate limited the request; retry after the provider backoff window")
 	ErrProviderTimeout           = errors.New("provider request timed out; retry the bounded operation")
 	ErrProviderEgress            = errors.New("provider egress failed; verify public DNS and outbound HTTPS access")
 	ErrProviderResponseTooLarge  = errors.New("provider response exceeded the compiled bound; reduce the provider response")
-	ErrProviderMalformedResponse = errors.New("provider response was malformed; verify the Azure Graph response contract")
+	ErrProviderUnexpectedStatus  = errors.New("provider returned an unexpected status; inspect the bounded provider response")
+	ErrProviderMalformedResponse = errors.New("provider response was malformed; verify the provider response contract")
+	ErrWorkerResultTooLarge      = errors.New("source worker result exceeded the shared bound; reduce the normalized result")
+	ErrWorkerAppend              = errors.New("source append failed; retry after restoring durable append availability")
+	ErrWorkerProjection          = errors.New("source projection failed; retry after restoring projection availability")
+	ErrWorkerLeaseLost           = errors.New("source worker lease was lost; restart collection under the current lease")
+	ErrWorkerStaleAuthority      = errors.New("source writer authority changed; restart collection under the current authority")
 	ErrWorkerContract            = errors.New("source worker contract validation failed; regenerate the compiled plan and worker protocol")
 	ErrWorkerUnsupported         = errors.New("source family is not Rust-authoritative")
 	ErrWorkerInternal            = errors.New("source worker failed internally; inspect the bounded worker error class")
