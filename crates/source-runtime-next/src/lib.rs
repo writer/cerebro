@@ -5,6 +5,7 @@
 
 mod abuseipdb;
 mod activecampaign;
+mod adp_workforce_now;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -65,6 +66,10 @@ pub use activecampaign::{
     ActiveCampaignEventContract, ActiveCampaignFamily, ActiveCampaignKernel, ActiveCampaignPage,
     ActiveCampaignProjectionFacts, ActiveCampaignRecord, ActiveCampaignRequest,
     ActiveCampaignRuntimeDefinition, project_activecampaign_records,
+};
+pub use adp_workforce_now::{
+    AdpCheckpointCandidate, AdpEntityFact, AdpError, AdpEventContract, AdpFamily, AdpKernel,
+    AdpPage, AdpProjectionFacts, AdpRecord, AdpRequest, AdpRuntimeDefinition, project_adp_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
