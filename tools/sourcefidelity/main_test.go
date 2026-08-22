@@ -87,6 +87,42 @@ func TestBackstageGenuineFixturesCoverEveryRuntimeFamily(t *testing.T) {
 	}
 }
 
+func TestCatalogRuntimeEveryFamilyEvidenceRequiresRegistrationAndCompleteFixtures(t *testing.T) {
+	root := t.TempDir()
+	sourceRoot := filepath.Join(root, "sources", "provider")
+	harnessPath := filepath.Join(root, "sources", "internal", "catalogruntime", "fixture_corpus_test.go")
+	if err := os.MkdirAll(filepath.Dir(harnessPath), 0o750); err != nil {
+		t.Fatalf("MkdirAll(harness) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceRoot, "testdata"), 0o750); err != nil {
+		t.Fatalf("MkdirAll(source) error = %v", err)
+	}
+	writeFileForTest(t, harnessPath, `package catalogruntime
+
+var retiredStaticLoaderFixtureSources = []string{"provider"}
+`)
+	writeFileForTest(t, filepath.Join(sourceRoot, "testdata", "read_users.json"), `[]`)
+	writeFileForTest(t, filepath.Join(sourceRoot, "testdata", "read_groups.json"), `[]`)
+
+	if !hasCatalogRuntimeEveryFamilyTest(sourceRoot, []string{"users", "groups"}) {
+		t.Fatal("complete registered catalog-runtime fixture corpus was not accepted")
+	}
+	if err := os.Remove(filepath.Join(sourceRoot, "testdata", "read_groups.json")); err != nil {
+		t.Fatalf("remove groups fixture: %v", err)
+	}
+	if hasCatalogRuntimeEveryFamilyTest(sourceRoot, []string{"users", "groups"}) {
+		t.Fatal("incomplete catalog-runtime fixture corpus was accepted")
+	}
+	writeFileForTest(t, filepath.Join(sourceRoot, "testdata", "read_groups.json"), `[]`)
+	writeFileForTest(t, harnessPath, `package catalogruntime
+
+var retiredStaticLoaderFixtureSources = []string{"another_provider"}
+`)
+	if hasCatalogRuntimeEveryFamilyTest(sourceRoot, []string{"users", "groups"}) {
+		t.Fatal("unregistered catalog-runtime fixture corpus was accepted")
+	}
+}
+
 func providerPilotDefinition(sourceID string, authModel string, method string, pagination *connectordefinitions.PaginationSpec) connectordefinitions.Definition {
 	credentialFields := []connectordefinitions.Field{{Key: "token", Secret: true, ReferenceOnly: true}}
 	auth := connectordefinitions.AuthSpec{Model: authModel, CredentialFields: credentialFields}

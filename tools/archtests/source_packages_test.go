@@ -142,10 +142,12 @@ func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {
 			t.Fatalf("%s missing catalog.yaml: %v", entry.Name(), err)
 		}
 		if catalogRuntimeOnly {
-			if _, err := os.Stat(filepath.Join(sourceDir, "source.go")); err == nil {
-				t.Fatalf("%s restored retired provider-local Go runtime", entry.Name())
-			} else if !os.IsNotExist(err) {
-				t.Fatalf("stat %s source.go: %v", entry.Name(), err)
+			goFiles, err := filepath.Glob(filepath.Join(sourceDir, "*.go"))
+			if err != nil {
+				t.Fatalf("find Go files for catalog-runtime source %s: %v", entry.Name(), err)
+			}
+			if len(goFiles) != 0 {
+				t.Fatalf("%s restored retired provider-local Go files: %v", entry.Name(), goFiles)
 			}
 		}
 		files, err := os.ReadDir(sourceDir)

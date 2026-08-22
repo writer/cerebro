@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/writer/cerebro/internal/sourcefixture"
@@ -233,6 +237,9 @@ func analyzeSource(sourceRoot string) (sourceReport, error) {
 	source.HasHTTPTest = fileContains(testPath, "httptest.NewServer")
 	source.HasGenericRecordTest = hasGenericRecordTest(testPath)
 	source.HasEveryFamilyTest = hasEveryFamilyTest(testPath, runtimeFamilyNames(catalog))
+	if !source.HasEveryFamilyTest && source.UsesCatalogRuntime {
+		source.HasEveryFamilyTest = hasCatalogRuntimeEveryFamilyTest(sourceRoot, runtimeFamilyNames(catalog))
+	}
 	source.HasCheckpointTest = hasCheckpointEvidence(testPath, filepath.Join(sourceRoot, "source.go"))
 	source.HasProviderUnavailable = fileContains(testPath, "ProviderUnavailable") || fileContains(filepath.Join(sourceRoot, "source.go"), "ProviderUnavailable")
 	source.IsGeneratedScaffold = generatedScaffold(sourceRoot)
@@ -403,6 +410,73 @@ func hasEveryFamilyTest(path string, familyNames []string) bool {
 		}
 	}
 	return true
+}
+
+func hasCatalogRuntimeEveryFamilyTest(sourceRoot string, familyNames []string) bool {
+	if len(familyNames) == 0 {
+		return false
+	}
+	repoRoot := filepath.Dir(filepath.Dir(sourceRoot))
+	harnessPath := filepath.Join(repoRoot, "sources", "internal", "catalogruntime", "fixture_corpus_test.go")
+	registered, err := catalogRuntimeFixtureSources(harnessPath)
+	if err != nil {
+		return false
+	}
+	if _, ok := registered[filepath.Base(sourceRoot)]; !ok {
+		return false
+	}
+	fixturePaths, err := filepath.Glob(filepath.Join(sourceRoot, "testdata", "read_*.json"))
+	if err != nil || len(fixturePaths) != len(familyNames) {
+		return false
+	}
+	fixtures := make(map[string]struct{}, len(fixturePaths))
+	for _, path := range fixturePaths {
+		family := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "read_"), ".json")
+		fixtures[family] = struct{}{}
+	}
+	for _, family := range familyNames {
+		if _, ok := fixtures[family]; !ok {
+			return false
+		}
+	}
+	return len(fixtures) == len(familyNames)
+}
+
+func catalogRuntimeFixtureSources(path string) (map[string]struct{}, error) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, declaration := range parsed.Decls {
+		generic, ok := declaration.(*ast.GenDecl)
+		if !ok || generic.Tok != token.VAR {
+			continue
+		}
+		for _, specification := range generic.Specs {
+			value, ok := specification.(*ast.ValueSpec)
+			if !ok || len(value.Names) != 1 || value.Names[0].Name != "retiredStaticLoaderFixtureSources" || len(value.Values) != 1 {
+				continue
+			}
+			literal, ok := value.Values[0].(*ast.CompositeLit)
+			if !ok {
+				return nil, fmt.Errorf("retiredStaticLoaderFixtureSources is not a composite literal")
+			}
+			sources := make(map[string]struct{}, len(literal.Elts))
+			for _, element := range literal.Elts {
+				basic, ok := element.(*ast.BasicLit)
+				if !ok || basic.Kind != token.STRING {
+					return nil, fmt.Errorf("retiredStaticLoaderFixtureSources contains a non-string entry")
+				}
+				sourceID, err := strconv.Unquote(basic.Value)
+				if err != nil || strings.TrimSpace(sourceID) == "" {
+					return nil, fmt.Errorf("retiredStaticLoaderFixtureSources contains an invalid source ID")
+				}
+				sources[sourceID] = struct{}{}
+			}
+			return sources, nil
+		}
+	}
+	return nil, fmt.Errorf("retiredStaticLoaderFixtureSources is missing")
 }
 
 func hasCheckpointEvidence(testPath string, sourcePath string) bool {
