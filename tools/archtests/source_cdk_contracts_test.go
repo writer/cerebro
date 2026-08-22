@@ -23,6 +23,9 @@ func TestNewSourcesDoNotDuplicateSourceCDKHelpers(t *testing.T) {
 		if _, ok := helperDuplicationGrandfatheredSources[entry.Name()]; ok {
 			continue
 		}
+		if _, ok := catalogRuntimeOnlySourcePackages[entry.Name()]; ok {
+			continue
+		}
 		sourcePath := filepath.Join(sourceRoot, entry.Name(), "source.go")
 		body, err := os.ReadFile(sourcePath)
 		if err != nil {
