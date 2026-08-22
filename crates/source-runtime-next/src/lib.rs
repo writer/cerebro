@@ -21,6 +21,7 @@ mod cosmo;
 mod credential_lease;
 mod deposit;
 mod discord;
+mod docker_hub;
 mod egress;
 mod email_domain_health;
 mod evidence_cas;
@@ -113,6 +114,11 @@ pub use deposit::{
 };
 pub use discord::{
     DiscordError, DiscordFamily, DiscordKernel, DiscordPage, DiscordRecord, DiscordRequest,
+};
+pub use docker_hub::{
+    DockerHubCheckpointCandidate, DockerHubEntityFact, DockerHubError, DockerHubEventContract,
+    DockerHubFamily, DockerHubKernel, DockerHubPage, DockerHubProjectionFacts, DockerHubRecord,
+    DockerHubRequest, DockerHubRuntimeDefinition, project_docker_hub_records,
 };
 pub use egress::{
     EgressDecision, EgressDecisionKind, EgressMode, EgressPolicy, EgressPolicyError,
