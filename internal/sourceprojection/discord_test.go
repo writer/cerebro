@@ -52,3 +52,20 @@ func TestDiscordAuditProjection(t *testing.T) {
 		t.Fatalf("entities/links = %d/%d, want audit projection", len(entities), len(links))
 	}
 }
+
+func TestDiscordActorlessAuditProjectionDoesNotFabricateUser(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-actorless", TenantId: "tenant", SourceId: "discord", Kind: "discord.audit_log", Attributes: map[string]string{"event_type": "20", "resource_id": "role-1"}}
+	entities, links, err := discordAuditLogProjections(event)
+	if err != nil {
+		t.Fatalf("projection error = %v", err)
+	}
+	if len(entities) != 1 {
+		t.Fatalf("entities = %d, want only the target resource", len(entities))
+	}
+	if entities[0].EntityType != "discord.resource" {
+		t.Fatalf("entity type = %q, want discord.resource", entities[0].EntityType)
+	}
+	if len(links) != 0 {
+		t.Fatalf("links = %d, want no fabricated actor relationship", len(links))
+	}
+}

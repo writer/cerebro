@@ -16,6 +16,7 @@ mod cerebro_source;
 mod cosmo;
 mod credential_lease;
 mod deposit;
+mod discord;
 mod egress;
 mod email_domain_health;
 mod evidence_cas;
@@ -84,6 +85,9 @@ pub use credential_lease::{
 };
 pub use deposit::{
     DepositIngestError, DepositIngestReceipt, DepositIngestRequest, build_deposit_receipt,
+};
+pub use discord::{
+    DiscordError, DiscordFamily, DiscordKernel, DiscordPage, DiscordRecord, DiscordRequest,
 };
 pub use egress::{
     EgressDecision, EgressDecisionKind, EgressMode, EgressPolicy, EgressPolicyError,

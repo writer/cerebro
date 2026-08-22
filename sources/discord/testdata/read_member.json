@@ -1,0 +1,38 @@
+[
+  {
+    "avatar": null,
+    "communication_disabled_until": null,
+    "deaf": false,
+    "flags": 0,
+    "joined_at": "2026-06-01T00:00:00Z",
+    "mute": false,
+    "nick": "Member One",
+    "pending": false,
+    "roles": [
+      "500000000000000001"
+    ],
+    "user": {
+      "avatar": "normalized-avatar-one",
+      "global_name": "Member One",
+      "id": "100000000000000001",
+      "username": "member-one"
+    }
+  },
+  {
+    "avatar": null,
+    "communication_disabled_until": "2026-06-02T01:00:00Z",
+    "deaf": false,
+    "flags": 1,
+    "joined_at": "2026-06-02T00:00:00Z",
+    "mute": true,
+    "nick": null,
+    "pending": false,
+    "roles": [],
+    "user": {
+      "avatar": "normalized-avatar-two",
+      "global_name": "Member Two",
+      "id": "100000000000000002",
+      "username": "member-two"
+    }
+  }
+]
