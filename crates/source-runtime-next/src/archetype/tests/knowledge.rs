@@ -16,6 +16,7 @@ fn knowledge_uses_repository_fallbacks_and_go_query_escape_identity() {
                 br#"{"entries":[{"slug":"security:sql/injection","title":"SQL injection","summary":"context","topics":[" security ","sql"],"source_files":["state.json"],"metadata":{"context_pack":"repository_context_pack_v2","health_score":72,"context_stale":true}}]}"#,
                 &scan,
                 Some(&repository),
+                OBSERVED_AT,
             )
             .unwrap();
     assert_eq!(
@@ -66,7 +67,8 @@ fn knowledge_rejects_repository_and_entry_scope_mismatches() {
                 &request,
                 br#"{"entries":[]}"#,
                 &scan,
-                Some(&wrong_repository)
+                Some(&wrong_repository),
+                OBSERVED_AT,
             )
             .unwrap_err(),
         ArchetypeError::ResponseScopeMismatch
@@ -79,6 +81,7 @@ fn knowledge_rejects_repository_and_entry_scope_mismatches() {
                 br#"{"entries":[{"slug":"scope-mismatch","repository_id":999,"owner":"Other","repository_name":"Repository"}]}"#,
                 &scan,
                 None,
+                OBSERVED_AT,
             )
             .unwrap_err(),
         ArchetypeError::ResponseScopeMismatch

@@ -43,12 +43,19 @@ pub(super) struct KnowledgeEntryResponse {
     pub(super) slug: String,
     pub(super) title: String,
     pub(super) summary: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(super) topics: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub(super) generated_at: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(super) source_files: Vec<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(super) metadata: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(super) severity_tags: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub(super) dominant_severity: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(super) severity_breakdown: Vec<Value>,
     pub(super) repository_id: u64,
     pub(super) repository_name: String,

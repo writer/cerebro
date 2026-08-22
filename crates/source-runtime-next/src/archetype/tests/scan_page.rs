@@ -26,15 +26,17 @@ fn scan_page_is_ascending_and_emits_go_compatible_record() {
     };
     let record = kernel
         .scan_record(
+            &request,
             &page.scans[1],
             Some(&repository),
             VulnerabilityCollectionState::Complete,
+            OBSERVED_AT,
         )
         .unwrap();
     assert_eq!(record.family, "vulnerability");
     assert_eq!(record.provider_kind, "archetype.scan");
     assert_eq!(record.provider_id, "archetype-scan-9");
-    assert_eq!(record.occurred_at.as_deref(), Some("2026-08-20T01:02:03Z"));
+    assert_eq!(record.occurred_at, "2026-08-20T01:02:03Z");
     assert_eq!(
         record.fields.get("owner").map(String::as_str),
         Some("WriterInternal")
@@ -70,6 +72,8 @@ fn full_scan_page_exposes_the_oldest_id_without_owning_the_checkpoint() {
     assert_eq!(page.scans.first().map(|scan| scan.id), Some(1));
     assert_eq!(page.scans.last().map(|scan| scan.id), Some(100));
     assert_eq!(page.next_before_id, Some(1));
+    let continuation = kernel.plan_scans(page.next_before_id).unwrap();
+    assert_eq!(continuation.url().query(), Some("limit=100&before_id=1"));
 }
 
 #[test]
@@ -92,9 +96,11 @@ fn scan_status_and_repository_scope_fail_closed() {
     assert_eq!(
         kernel
             .scan_record(
+                &request,
                 &scan,
                 Some(&wrong_repository),
                 VulnerabilityCollectionState::Complete,
+                OBSERVED_AT,
             )
             .unwrap_err(),
         ArchetypeError::ResponseScopeMismatch
@@ -104,13 +110,20 @@ fn scan_status_and_repository_scope_fail_closed() {
 #[test]
 fn scan_record_revalidates_mutable_fields_against_the_decoded_payload() {
     let kernel = kernel(ArchetypeFamily::Vulnerability);
+    let request = kernel.plan_scans(None).unwrap();
     let valid = scan(&kernel);
 
     let mut missing_id = valid.clone();
     missing_id.id = 0;
     assert_eq!(
         kernel
-            .scan_record(&missing_id, None, VulnerabilityCollectionState::Complete,)
+            .scan_record(
+                &request,
+                &missing_id,
+                None,
+                VulnerabilityCollectionState::Complete,
+                OBSERVED_AT,
+            )
             .unwrap_err(),
         ArchetypeError::MissingRecordIdentity
     );
@@ -120,9 +133,11 @@ fn scan_record_revalidates_mutable_fields_against_the_decoded_payload() {
     assert_eq!(
         kernel
             .scan_record(
+                &request,
                 &missing_repository_id,
                 None,
                 VulnerabilityCollectionState::Complete,
+                OBSERVED_AT,
             )
             .unwrap_err(),
         ArchetypeError::MissingRecordIdentity
@@ -147,7 +162,13 @@ fn scan_record_revalidates_mutable_fields_against_the_decoded_payload() {
     ] {
         assert_eq!(
             kernel
-                .scan_record(&inconsistent, None, VulnerabilityCollectionState::Complete,)
+                .scan_record(
+                    &request,
+                    &inconsistent,
+                    None,
+                    VulnerabilityCollectionState::Complete,
+                    OBSERVED_AT,
+                )
                 .unwrap_err(),
             ArchetypeError::InvalidResponse
         );
@@ -157,12 +178,17 @@ fn scan_record_revalidates_mutable_fields_against_the_decoded_payload() {
     blank_status.status = " ".to_owned();
     assert_eq!(
         kernel
-            .scan_record(&blank_status, None, VulnerabilityCollectionState::Complete,)
+            .scan_record(
+                &request,
+                &blank_status,
+                None,
+                VulnerabilityCollectionState::Complete,
+                OBSERVED_AT,
+            )
             .unwrap_err(),
         ArchetypeError::InvalidResponse
     );
 
-    let request = kernel.plan_scans(None).unwrap();
     let mut no_provider_timestamp = kernel
         .decode_scans(
             &request,
@@ -176,9 +202,11 @@ fn scan_record_revalidates_mutable_fields_against_the_decoded_payload() {
     assert_eq!(
         kernel
             .scan_record(
+                &request,
                 &no_provider_timestamp,
                 None,
                 VulnerabilityCollectionState::Complete,
+                OBSERVED_AT,
             )
             .unwrap_err(),
         ArchetypeError::InvalidResponse
