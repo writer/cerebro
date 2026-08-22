@@ -56,16 +56,34 @@ func (w *ProcessWorker) Plan(ctx context.Context, request *cerebrov1.SourceWorke
 	return result, w.runProto(ctx, "plan", request, result, workerOverhead)
 }
 
+func (w *ProcessWorker) PlanV2(ctx context.Context, request *cerebrov1.SourceWorkerPlanEnvelopeV2) (*cerebrov1.SourceWorkerHTTPExecutionV2, error) {
+	result := new(cerebrov1.SourceWorkerHTTPExecutionV2)
+	return result, w.runProto(ctx, "plan-v2", request, result, int64(maxRequestBodyBytes)+workerOverhead)
+}
+
 func (w *ProcessWorker) Decode(ctx context.Context, request *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
 	result := new(cerebrov1.SourceWorkerDecodeResultV1)
 	return result, w.runProto(ctx, "decode", request, result, int64(maxResponseBytes)+workerOverhead)
 }
 
+func (w *ProcessWorker) DecodeV2(ctx context.Context, request *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeResultV1, error) {
+	result := new(cerebrov1.SourceWorkerDecodeResultV1)
+	return result, w.runProto(ctx, "decode-v2", request, result, int64(maxResponseBytes)+workerOverhead)
+}
+
 func (w *ProcessWorker) SealPage(ctx context.Context, request PageProgramRequest) (*PageProgram, error) {
 	control := struct {
-		Plan, Context, Receipt, Result []byte
-		CurrentLeaseGeneration         uint64 `json:"current_lease_generation"`
+		Plan, Context, Receipt, Result   []byte
+		CurrentLeaseGeneration           uint64            `json:"current_lease_generation"`
+		PublicConfig                     map[string]string `json:"public_config,omitempty"`
+		PriorTerminalWatermarkUnixMillis int64             `json:"prior_terminal_watermark_unix_millis,omitempty"`
+		PriorCheckpoint                  string            `json:"prior_checkpoint,omitempty"`
 	}{CurrentLeaseGeneration: request.CurrentLeaseGeneration}
+	if request.Metadata != nil {
+		control.PublicConfig = request.Metadata.GetPublicConfig()
+		control.PriorTerminalWatermarkUnixMillis = request.Metadata.GetPriorTerminalWatermarkUnixMillis()
+		control.PriorCheckpoint = request.Metadata.GetPriorCheckpoint()
+	}
 	var err error
 	for target, message := range map[*[]byte]proto.Message{&control.Plan: request.Plan, &control.Context: request.Context, &control.Receipt: request.Receipt, &control.Result: request.Result} {
 		if message == nil {

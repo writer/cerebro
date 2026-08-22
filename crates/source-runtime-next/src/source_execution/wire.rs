@@ -185,6 +185,71 @@ pub struct SourceWorkerSafeReceiptV1 {
     pub observed_at_unix_millis: i64,
 }
 
+/// Validated public resume inputs additive to the stable v1 adapter messages.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceWorkerRuntimeMetadataV2 {
+    /// Public, non-secret runtime configuration.
+    #[prost(map = "string, string", tag = "1")]
+    pub public_config: HashMap<String, String>,
+    /// Last durably committed terminal watermark; zero means absent.
+    #[prost(int64, tag = "2")]
+    pub prior_terminal_watermark_unix_millis: i64,
+    /// Last durable, provider-safe checkpoint token.
+    #[prost(string, tag = "3")]
+    pub prior_checkpoint: String,
+}
+
+/// Additive planning envelope used by metadata-aware adapters.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceWorkerPlanEnvelopeV2 {
+    /// Stable planning input.
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<SourceWorkerPlanRequestV1>,
+    /// Validated public configuration and durable resume metadata.
+    #[prost(message, optional, tag = "2")]
+    pub metadata: Option<SourceWorkerRuntimeMetadataV2>,
+}
+
+/// Credential-free HTTP operation with an optional body and safe headers.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceWorkerHttpExecutionV2 {
+    /// Stable origin-restricted request plan.
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<SourceWorkerHttpRequestV1>,
+    /// Non-secret bounded request body.
+    #[prost(bytes = "vec", tag = "2")]
+    pub body: Vec<u8>,
+    /// Declared public headers applied before authentication.
+    #[prost(map = "string, string", tag = "3")]
+    pub declared_headers: HashMap<String, String>,
+    /// Digest binding the v1 request, metadata, body, headers, and auth operation.
+    #[prost(string, tag = "4")]
+    pub execution_intent_digest_sha256: String,
+    /// Closed non-secret authentication operation applied only by the host.
+    #[prost(string, tag = "5")]
+    pub credential_operation: String,
+}
+
+/// Additive decoding envelope with bounded, redacted response metadata.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceWorkerDecodeEnvelopeV2 {
+    /// Stable bounded response and safe receipt.
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<SourceWorkerDecodeRequestV1>,
+    /// Exact public metadata used during planning.
+    #[prost(message, optional, tag = "2")]
+    pub metadata: Option<SourceWorkerRuntimeMetadataV2>,
+    /// Bounded provider-safe response headers.
+    #[prost(map = "string, string", tag = "3")]
+    pub response_headers: HashMap<String, String>,
+    /// Canonical digest of the response-header map.
+    #[prost(string, tag = "4")]
+    pub response_headers_sha256: String,
+    /// Exact metadata-aware planning digest.
+    #[prost(string, tag = "5")]
+    pub execution_intent_digest_sha256: String,
+}
+
 /// One normalized provider record ready for host append admission.
 #[derive(Clone, PartialEq, Message)]
 pub struct SourceWorkerRecordV1 {
@@ -270,6 +335,15 @@ pub struct SourceExecutionContextRequestV1 {
     /// Host-captured observation time.
     #[prost(int64, tag = "7")]
     pub observed_at_unix_millis: i64,
+    /// Validated public runtime configuration copied into the execution context.
+    #[prost(map = "string, string", tag = "8")]
+    pub public_config: HashMap<String, String>,
+    /// Last durably committed terminal watermark; zero means absent.
+    #[prost(int64, tag = "9")]
+    pub prior_terminal_watermark_unix_millis: i64,
+    /// Last durable, provider-safe checkpoint token.
+    #[prost(string, tag = "10")]
+    pub prior_checkpoint: String,
 }
 
 /// Public source and family selected through the closed Rust registry.
@@ -301,6 +375,17 @@ pub struct SourceExecutionLifecycleRequestV1 {
     /// Lease generation captured by the durable lease adapter.
     #[prost(uint64, tag = "5")]
     pub current_lease_generation: u64,
+}
+
+/// Additive lifecycle envelope that binds durable resume metadata.
+#[derive(Clone, PartialEq, Message)]
+pub struct SourceExecutionLifecycleEnvelopeV2 {
+    /// Stable lifecycle input.
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<SourceExecutionLifecycleRequestV1>,
+    /// Metadata whose prior watermark constrains the checkpoint decision.
+    #[prost(message, optional, tag = "2")]
+    pub metadata: Option<SourceWorkerRuntimeMetadataV2>,
 }
 
 /// Rust-authoritative append, projection, and checkpoint program for one page.

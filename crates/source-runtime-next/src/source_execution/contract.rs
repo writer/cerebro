@@ -6,8 +6,9 @@ use sha2::{Digest, Sha256};
 use super::{
     error::SourceExecutionError,
     wire::{
-        SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
-        SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1, SourceWorkerRecordV1,
+        SourceExecutionPlanV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeRequestV1,
+        SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2,
+        SourceWorkerHttpRequestV1, SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2,
         SourceWorkerSafeReceiptV1,
     },
 };
@@ -30,6 +31,16 @@ pub const MAX_CURSOR_BYTES: usize = 4096;
 pub const MAX_RECORDS_PER_RESULT: usize = 1000;
 /// Maximum canonical JSON bytes accepted across one normalized page.
 pub const MAX_RECORD_PAYLOAD_BYTES: usize = 8 << 20;
+/// Maximum public configuration entries carried into one execution context.
+pub const MAX_PUBLIC_CONFIG_ENTRIES: usize = 32;
+/// Maximum bytes across public configuration keys and values.
+pub const MAX_PUBLIC_CONFIG_BYTES: usize = 16 << 10;
+/// Maximum credential-free request body emitted by an adapter.
+pub const MAX_REQUEST_BODY_BYTES: usize = 1 << 20;
+/// Maximum safe request or response header entries.
+pub const MAX_SAFE_HEADER_ENTRIES: usize = 32;
+/// Maximum bytes across safe header names and values.
+pub const MAX_SAFE_HEADER_BYTES: usize = 16 << 10;
 
 pub(super) fn validate_plan(plan: &SourceExecutionPlanV1) -> Result<(), SourceExecutionError> {
     let expected_attributes = [
@@ -82,6 +93,134 @@ pub fn validate_execution_context(
         return Err(SourceExecutionError::InvalidExecutionContext);
     }
     validate_cursor(&context.prior_cursor)
+}
+
+/// Validates public configuration before it crosses the credential-free wire.
+pub fn validate_public_config(
+    config: &HashMap<String, String>,
+) -> Result<(), SourceExecutionError> {
+    if config.len() > MAX_PUBLIC_CONFIG_ENTRIES {
+        return Err(SourceExecutionError::InvalidExecutionContext);
+    }
+    let mut total = 0_usize;
+    for (key, value) in config {
+        let lower = key.to_ascii_lowercase();
+        if key != &lower
+            || !safe_identifier(key, 64)
+            || sensitive_config_key(&lower)
+            || value.len() > MAX_CURSOR_BYTES
+            || value.chars().any(char::is_control)
+        {
+            return Err(SourceExecutionError::InvalidExecutionContext);
+        }
+        total = total
+            .checked_add(key.len() + value.len())
+            .ok_or(SourceExecutionError::InvalidExecutionContext)?;
+    }
+    if total > MAX_PUBLIC_CONFIG_BYTES {
+        return Err(SourceExecutionError::InvalidExecutionContext);
+    }
+    Ok(())
+}
+
+/// Validates additive durable-resume metadata without interpreting a provider checkpoint.
+pub fn validate_runtime_metadata(
+    metadata: &SourceWorkerRuntimeMetadataV2,
+) -> Result<(), SourceExecutionError> {
+    if metadata.prior_terminal_watermark_unix_millis < 0 {
+        return Err(SourceExecutionError::InvalidExecutionContext);
+    }
+    validate_cursor(&metadata.prior_checkpoint)?;
+    validate_public_config(&metadata.public_config)
+}
+
+/// Validates a metadata-aware HTTP operation while preserving the stable v1 request contract.
+pub fn validate_http_execution(
+    plan: &SourceExecutionPlanV1,
+    context: &SourceWorkerExecutionContextV1,
+    execution: &SourceWorkerHttpExecutionV2,
+    metadata: &SourceWorkerRuntimeMetadataV2,
+) -> Result<(), SourceExecutionError> {
+    let request = execution
+        .request
+        .as_ref()
+        .ok_or(SourceExecutionError::InvalidPlan)?;
+    validate_runtime_metadata(metadata)?;
+    validate_http_request(plan, context, request)?;
+    validate_declared_headers(&execution.declared_headers)?;
+    if execution.body.len() > MAX_REQUEST_BODY_BYTES
+        || (request.method == "GET" && !execution.body.is_empty())
+        || !matches!(request.method.as_str(), "GET" | "POST")
+        || !matches!(
+            execution.credential_operation.as_str(),
+            "source.bearer" | "jumpcloud.x_api_key"
+        )
+    {
+        return Err(SourceExecutionError::InvalidPlan);
+    }
+    if !lower_sha256(&execution.execution_intent_digest_sha256)
+        || execution.execution_intent_digest_sha256
+            != canonical_http_execution_digest(plan, context, metadata, execution)
+    {
+        return Err(SourceExecutionError::InvalidDigest);
+    }
+    Ok(())
+}
+
+/// Binds public runtime metadata, request body, and declared headers to one operation.
+pub fn canonical_http_execution_digest(
+    _plan: &SourceExecutionPlanV1,
+    _context: &SourceWorkerExecutionContextV1,
+    metadata: &SourceWorkerRuntimeMetadataV2,
+    execution: &SourceWorkerHttpExecutionV2,
+) -> String {
+    let mut hasher = Sha256::new();
+    update_length_prefixed(&mut hasher, b"source-worker-http-execution-v2");
+    if let Some(request) = &execution.request {
+        update_length_prefixed(&mut hasher, request.request_intent_digest.as_bytes());
+    } else {
+        update_length_prefixed(&mut hasher, b"");
+    }
+    update_length_prefixed(
+        &mut hasher,
+        &metadata.prior_terminal_watermark_unix_millis.to_be_bytes(),
+    );
+    update_length_prefixed(&mut hasher, metadata.prior_checkpoint.as_bytes());
+    update_canonical_map(&mut hasher, &metadata.public_config);
+    update_length_prefixed(&mut hasher, &execution.body);
+    update_canonical_map(&mut hasher, &execution.declared_headers);
+    update_length_prefixed(&mut hasher, execution.credential_operation.as_bytes());
+    hex_bytes(&hasher.finalize())
+}
+
+/// Validates the host-only response metadata before a provider adapter sees it.
+pub fn validate_decode_envelope(
+    envelope: &SourceWorkerDecodeEnvelopeV2,
+) -> Result<(), SourceExecutionError> {
+    let request = envelope
+        .request
+        .as_ref()
+        .ok_or(SourceExecutionError::InvalidPlan)?;
+    let metadata = envelope
+        .metadata
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    validate_runtime_metadata(metadata)?;
+    validate_response_headers(&envelope.response_headers)?;
+    if !lower_sha256(&envelope.response_headers_sha256)
+        || envelope.response_headers_sha256
+            != canonical_response_headers_digest(&envelope.response_headers)?
+    {
+        return Err(SourceExecutionError::InvalidDigest);
+    }
+    if !lower_sha256(&envelope.execution_intent_digest_sha256) {
+        return Err(SourceExecutionError::InvalidDigest);
+    }
+    let context = request
+        .context
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    validate_execution_context(context)
 }
 
 /// Returns the request-intent digest over the exact plan, context, and request.
@@ -192,6 +331,35 @@ pub fn validate_safe_receipt(
         return Err(SourceExecutionError::InvalidDigest);
     }
     Ok(())
+}
+
+/// Returns the digest of a canonical, bounded response-header map.
+pub fn canonical_response_headers_digest(
+    headers: &HashMap<String, String>,
+) -> Result<String, SourceExecutionError> {
+    validate_response_headers(headers)?;
+    let mut hasher = Sha256::new();
+    let ordered = headers.iter().collect::<BTreeMap<_, _>>();
+    update_length_prefixed(&mut hasher, &(ordered.len() as u64).to_be_bytes());
+    for (key, value) in ordered {
+        update_length_prefixed(&mut hasher, key.as_bytes());
+        update_length_prefixed(&mut hasher, value.as_bytes());
+    }
+    Ok(hex_bytes(&hasher.finalize()))
+}
+
+/// Validates public request headers without allowing credential-bearing names.
+pub fn validate_declared_headers(
+    headers: &HashMap<String, String>,
+) -> Result<(), SourceExecutionError> {
+    validate_header_map(headers, false)
+}
+
+/// Validates the closed provider-safe response metadata surface.
+pub fn validate_response_headers(
+    headers: &HashMap<String, String>,
+) -> Result<(), SourceExecutionError> {
+    validate_header_map(headers, true)
 }
 
 /// Returns the lowercase SHA-256 of provider response bytes.
@@ -426,9 +594,112 @@ fn bounded_text(value: &str, max_bytes: usize) -> bool {
     !value.trim().is_empty() && value.len() <= max_bytes && !value.chars().any(char::is_control)
 }
 
+fn validate_header_map(
+    headers: &HashMap<String, String>,
+    response: bool,
+) -> Result<(), SourceExecutionError> {
+    if headers.len() > MAX_SAFE_HEADER_ENTRIES {
+        return Err(SourceExecutionError::ResultTooLarge);
+    }
+    let mut total = 0_usize;
+    for (name, value) in headers {
+        let lower = name.to_ascii_lowercase();
+        if name != &lower
+            || reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_err()
+            || value.len() > MAX_CURSOR_BYTES
+            || value
+                .chars()
+                .any(|character| character == '\r' || character == '\n')
+            || sensitive_header_name(&lower)
+            || (!response && !safe_declared_header_name(&lower))
+            || (response && !safe_response_header_name(&lower))
+        {
+            return Err(SourceExecutionError::InvalidExecutionContext);
+        }
+        total = total
+            .checked_add(name.len() + value.len())
+            .ok_or(SourceExecutionError::ResultTooLarge)?;
+    }
+    if total > MAX_SAFE_HEADER_BYTES {
+        return Err(SourceExecutionError::ResultTooLarge);
+    }
+    Ok(())
+}
+
+fn safe_declared_header_name(name: &str) -> bool {
+    matches!(name, "content-type" | "x-org-id")
+}
+
+fn sensitive_config_key(key: &str) -> bool {
+    [
+        "api_key",
+        "apikey",
+        "authorization",
+        "client_secret",
+        "cookie",
+        "credential",
+        "password",
+        "private_key",
+        "secret",
+        "token",
+    ]
+    .iter()
+    .any(|fragment| key.contains(fragment))
+}
+
+fn sensitive_header_name(name: &str) -> bool {
+    matches!(
+        name,
+        "authorization"
+            | "proxy-authorization"
+            | "cookie"
+            | "set-cookie"
+            | "www-authenticate"
+            | "proxy-authenticate"
+            | "x-api-key"
+            | "api-key"
+            | "x-auth-token"
+            | "x-access-token"
+            | "host"
+            | "content-length"
+            | "transfer-encoding"
+            | "connection"
+    )
+}
+
+fn safe_response_header_name(name: &str) -> bool {
+    matches!(
+        name,
+        "content-type"
+            | "date"
+            | "etag"
+            | "last-modified"
+            | "link"
+            | "retry-after"
+            | "x-limit"
+            | "x-result-count"
+            | "x-search-after"
+            | "x-search_after"
+    ) || name.starts_with("ratelimit-")
+        || name.starts_with("x-ratelimit-")
+        || name.starts_with("x-next-")
+        || name.starts_with("x-page-")
+        || name.starts_with("x-pagination-")
+        || name.starts_with("x-total-")
+}
+
 fn update_length_prefixed(hasher: &mut Sha256, value: &[u8]) {
     hasher.update((value.len() as u64).to_be_bytes());
     hasher.update(value);
+}
+
+fn update_canonical_map(hasher: &mut Sha256, values: &HashMap<String, String>) {
+    let ordered = values.iter().collect::<BTreeMap<_, _>>();
+    update_length_prefixed(hasher, &(ordered.len() as u64).to_be_bytes());
+    for (key, value) in ordered {
+        update_length_prefixed(hasher, key.as_bytes());
+        update_length_prefixed(hasher, value.as_bytes());
+    }
 }
 
 fn sha256_hex(value: &[u8]) -> String {

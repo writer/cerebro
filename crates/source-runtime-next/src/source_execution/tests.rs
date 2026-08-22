@@ -1,20 +1,24 @@
+use std::collections::HashMap;
+
 use prost::Message;
 
 use super::{
-    canonical_plan_digest,
+    canonical_plan_digest, canonical_response_headers_digest,
     contract::{
         AUTHORIZATION_POLICY_FALLBACK_ID, AUTHORIZATION_POLICY_FAMILY, AUTHORIZATION_POLICY_KERNEL,
         AUTHORIZATION_POLICY_KIND, AUTHORIZATION_POLICY_PATH, AUTHORIZATION_POLICY_SCHEMA,
-        AZURE_SOURCE_ID, MAX_CURSOR_BYTES, MAX_RESPONSE_BYTES,
+        AZURE_SOURCE_ID, MAX_CURSOR_BYTES, MAX_RESPONSE_BYTES, MAX_SAFE_HEADER_BYTES,
+        MAX_SAFE_HEADER_ENTRIES,
     },
     decode,
     error::SourceExecutionError,
     plan, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
-    validate_cursor, validate_http_request,
+    validate_cursor, validate_declared_headers, validate_http_request, validate_response_headers,
+    validate_runtime_metadata,
     wire::{
         SourceExecutionPlanV1, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
         SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1,
-        SourceWorkerRecordV1, SourceWorkerSafeReceiptV1,
+        SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -242,6 +246,91 @@ fn plans_exact_credential_free_request_bound_to_context() {
     assert_ne!(
         request.request_intent_digest,
         other_tenant.request_intent_digest
+    );
+}
+
+#[test]
+fn v2_wire_round_trips_validated_public_metadata_without_credentials() {
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: HashMap::from([(
+            "insights_origin".to_owned(),
+            "https://api.jumpcloud.com/insights/directory/v1".to_owned(),
+        )]),
+        prior_terminal_watermark_unix_millis: 1_782_000_000_000,
+        prior_checkpoint: "audit-terminal-1".to_owned(),
+    };
+    validate_runtime_metadata(&metadata).unwrap();
+    let wire = metadata.encode_to_vec();
+    assert_eq!(
+        SourceWorkerRuntimeMetadataV2::decode(wire.as_slice()).unwrap(),
+        metadata
+    );
+    assert!(!wire.windows(10).any(|value| value == b"credential"));
+
+    let mut unsafe_metadata = metadata;
+    unsafe_metadata
+        .public_config
+        .insert("api_token".to_owned(), "redacted".to_owned());
+    assert_eq!(
+        validate_runtime_metadata(&unsafe_metadata),
+        Err(SourceExecutionError::InvalidExecutionContext)
+    );
+}
+
+#[test]
+fn v2_header_contract_rejects_credentials_and_bounds_metadata() {
+    assert!(
+        validate_declared_headers(&HashMap::from([(
+            "content-type".to_owned(),
+            "application/json".to_owned(),
+        )]))
+        .is_ok()
+    );
+    for name in ["authorization", "x-api-key"] {
+        assert_eq!(
+            validate_declared_headers(&HashMap::from([(name.to_owned(), "secret".to_owned())])),
+            Err(SourceExecutionError::InvalidExecutionContext)
+        );
+    }
+
+    let too_many = (0..=MAX_SAFE_HEADER_ENTRIES)
+        .map(|index| (format!("x-next-{index}"), "value".to_owned()))
+        .collect();
+    assert_eq!(
+        validate_response_headers(&too_many),
+        Err(SourceExecutionError::ResultTooLarge)
+    );
+    let oversized = HashMap::from([(
+        "x-search_after".to_owned(),
+        "x".repeat(MAX_SAFE_HEADER_BYTES + 1),
+    )]);
+    assert_eq!(
+        validate_response_headers(&oversized),
+        Err(SourceExecutionError::InvalidExecutionContext)
+    );
+    let aggregate = (0..5)
+        .map(|index| (format!("x-next-{index}"), "x".repeat(4090)))
+        .collect();
+    assert_eq!(
+        validate_response_headers(&aggregate),
+        Err(SourceExecutionError::ResultTooLarge)
+    );
+
+    let first = HashMap::from([
+        ("x-result-count".to_owned(), "2".to_owned()),
+        ("x-limit".to_owned(), "2".to_owned()),
+        ("x-search_after".to_owned(), "cursor".to_owned()),
+        ("retry-after".to_owned(), "30".to_owned()),
+    ]);
+    let second = HashMap::from([
+        ("retry-after".to_owned(), "30".to_owned()),
+        ("x-search_after".to_owned(), "cursor".to_owned()),
+        ("x-limit".to_owned(), "2".to_owned()),
+        ("x-result-count".to_owned(), "2".to_owned()),
+    ]);
+    assert_eq!(
+        canonical_response_headers_digest(&first).unwrap(),
+        canonical_response_headers_digest(&second).unwrap()
     );
 }
 

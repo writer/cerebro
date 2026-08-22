@@ -38,12 +38,27 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	credential := []byte(resolved)
 	host := sourceworker.NewHost(s.sourceWorker, reference, credential, fence.ExpiresAt)
 	clear(credential)
+	plan, err := s.sourceWorker.Compile(ctx, sourceworker.SelectionRequest{SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID)})
+	if errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		pull, compatibilityErr := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
+		return pull, false, compatibilityErr
+	}
+	if err != nil {
+		return sourcecdk.Pull{}, false, err
+	}
+	publicConfig := publicSourceExecutionConfig(cfg)
+	priorWatermark := int64(0)
+	if watermark := checkpoint.GetWatermark(); watermark != nil && watermark.CheckValid() == nil {
+		priorWatermark = watermark.AsTime().UTC().UnixMilli()
+	}
 	output, err := host.Execute(ctx, sourceworker.ExecutionInput{
-		SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID), CredentialReference: reference, PageNumber: pageNumber,
+		Plan: plan, SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID), CredentialReference: reference, PageNumber: pageNumber,
 		Scope: sourceworker.CredentialScope{
 			TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()),
 			PriorCursor: strings.TrimSpace(cursor.GetOpaque()), LeaseOwner: fence.Owner,
 			RuntimeGeneration: fence.Generation, LeaseGeneration: fence.Generation, LeaseExpiresAt: fence.ExpiresAt,
+			PublicConfig: publicConfig, PriorTerminalWatermarkUnixMillis: priorWatermark,
+			PriorCheckpoint: strings.TrimSpace(checkpoint.GetCursorOpaque()),
 		},
 	})
 	if errors.Is(err, sourceworker.ErrWorkerUnsupported) {
@@ -72,4 +87,18 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: output.Program.CheckpointCursor}
 	}
 	return pull, true, nil
+}
+
+func publicSourceExecutionConfig(cfg sourcecdk.Config) map[string]string {
+	public := make(map[string]string)
+	for _, key := range []string{
+		"audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
+		"family", "group_id", "group_ids", "insights_base_url", "org_id", "per_page",
+		"user_group_id", "user_group_ids",
+	} {
+		if value, ok := cfg.Lookup(key); ok {
+			public[key] = strings.TrimSpace(value)
+		}
+	}
+	return public
 }

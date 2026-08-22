@@ -5,11 +5,16 @@ use crate::twilio::adapter::TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER;
 
 use super::{
     azure_authorization_policy::AzureAuthorizationPolicyAdapter,
-    contract::{validate_decode_result, validate_http_request, validate_safe_receipt},
+    contract::{
+        canonical_http_execution_digest, validate_decode_envelope, validate_decode_result,
+        validate_http_execution, validate_http_request, validate_runtime_metadata,
+        validate_safe_receipt,
+    },
     error::SourceExecutionError,
     wire::{
-        SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeRequestV1,
-        SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1, SourceWorkerHttpRequestV1,
+        SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
+        SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
+        SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
         SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
     },
 };
@@ -33,11 +38,56 @@ pub trait SourceExecutionAdapter: Send + Sync {
         &self,
         request: &SourceWorkerPlanRequestV1,
     ) -> Result<SourceWorkerHttpRequestV1, SourceExecutionError>;
+    /// Builds an additive metadata-aware operation without changing v1 providers.
+    fn plan_v2(
+        &self,
+        envelope: &SourceWorkerPlanEnvelopeV2,
+    ) -> Result<SourceWorkerHttpExecutionV2, SourceExecutionError> {
+        let request = envelope
+            .request
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let metadata = envelope
+            .metadata
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        validate_runtime_metadata(metadata)?;
+        let planned = self.plan(request)?;
+        let plan = request
+            .plan
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let context = request
+            .context
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        let mut execution = SourceWorkerHttpExecutionV2 {
+            request: Some(planned),
+            body: Vec::new(),
+            declared_headers: Default::default(),
+            execution_intent_digest_sha256: String::new(),
+            credential_operation: "source.bearer".to_owned(),
+        };
+        execution.execution_intent_digest_sha256 =
+            canonical_http_execution_digest(plan, context, metadata, &execution);
+        Ok(execution)
+    }
     /// Decodes a bounded provider response into canonical records.
     fn decode(
         &self,
         request: &SourceWorkerDecodeRequestV1,
     ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError>;
+    /// Decodes a metadata-aware response; v1 providers ignore the additive metadata.
+    fn decode_v2(
+        &self,
+        envelope: &SourceWorkerDecodeEnvelopeV2,
+    ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
+        let request = envelope
+            .request
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        self.decode(request)
+    }
 }
 
 /// Closed shared registry for credential-free provider adapters.
@@ -107,6 +157,32 @@ impl SourceExecutionDispatcher {
         Ok(result)
     }
 
+    /// Dispatches one additive metadata-aware planning envelope.
+    pub fn dispatch_plan_v2(
+        &self,
+        envelope: &SourceWorkerPlanEnvelopeV2,
+    ) -> Result<SourceWorkerHttpExecutionV2, SourceExecutionError> {
+        let request = envelope
+            .request
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let plan = request
+            .plan
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let context = request
+            .context
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        let metadata = envelope
+            .metadata
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        let result = self.adapter_for(plan)?.plan_v2(envelope)?;
+        validate_http_execution(plan, context, &result, metadata)?;
+        Ok(result)
+    }
+
     /// Dispatches a typed decode request through the closed registry.
     pub fn dispatch_decode(
         &self,
@@ -154,6 +230,71 @@ impl SourceExecutionDispatcher {
         }
         Ok(result)
     }
+
+    /// Dispatches one metadata-aware response with bounded safe headers.
+    pub fn dispatch_decode_v2(
+        &self,
+        envelope: &SourceWorkerDecodeEnvelopeV2,
+    ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
+        validate_decode_envelope(envelope)?;
+        let request = envelope
+            .request
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let plan = request
+            .plan
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        if request.response_body.len() as u64 > plan.max_response_bytes {
+            return Err(SourceExecutionError::ResponseTooLarge);
+        }
+        let context = request
+            .context
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        if request.logical_page_id != context.logical_page_id {
+            return Err(SourceExecutionError::MissingExecutionIdentity);
+        }
+        let receipt = request
+            .receipt
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        validate_safe_receipt(
+            receipt,
+            plan,
+            context,
+            &request.response_body,
+            request.status_code,
+            &request.request_intent_digest,
+        )?;
+        let adapter = self.adapter_for(plan)?;
+        let planned = adapter.plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(context.clone()),
+            }),
+            metadata: envelope.metadata.clone(),
+        })?;
+        let metadata = envelope
+            .metadata
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        validate_http_execution(plan, context, &planned, metadata)?;
+        if planned.execution_intent_digest_sha256 != envelope.execution_intent_digest_sha256
+            || planned
+                .request
+                .as_ref()
+                .is_none_or(|value| value.request_intent_digest != request.request_intent_digest)
+        {
+            return Err(SourceExecutionError::InvalidDigest);
+        }
+        let result = adapter.decode_v2(envelope)?;
+        validate_decode_result(request, &result)?;
+        for record in &result.records {
+            adapter.validate_record_identity(context, record)?;
+        }
+        Ok(result)
+    }
 }
 
 /// Decodes a selection and returns its exact registry-compiled plan.
@@ -180,5 +321,23 @@ pub fn dispatch_decode_bytes(input: &[u8]) -> Result<Vec<u8>, SourceExecutionErr
         SourceWorkerDecodeRequestV1::decode(input).map_err(|_| SourceExecutionError::Protobuf)?;
     Ok(SourceExecutionDispatcher
         .dispatch_decode(&request)?
+        .encode_to_vec())
+}
+
+/// Decodes, dispatches, and encodes one metadata-aware planning envelope.
+pub fn dispatch_plan_v2_bytes(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    let envelope =
+        SourceWorkerPlanEnvelopeV2::decode(input).map_err(|_| SourceExecutionError::Protobuf)?;
+    Ok(SourceExecutionDispatcher
+        .dispatch_plan_v2(&envelope)?
+        .encode_to_vec())
+}
+
+/// Decodes one metadata-aware bounded response and returns the stable v1 result.
+pub fn dispatch_decode_v2_bytes(input: &[u8]) -> Result<Vec<u8>, SourceExecutionError> {
+    let envelope =
+        SourceWorkerDecodeEnvelopeV2::decode(input).map_err(|_| SourceExecutionError::Protobuf)?;
+    Ok(SourceExecutionDispatcher
+        .dispatch_decode_v2(&envelope)?
         .encode_to_vec())
 }

@@ -41,7 +41,9 @@ type Worker interface {
 	Compile(context.Context, SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error)
 	Context(context.Context, ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error)
 	Plan(context.Context, *cerebrov1.SourceWorkerPlanRequestV1) (*cerebrov1.SourceWorkerHTTPRequestV1, error)
+	PlanV2(context.Context, *cerebrov1.SourceWorkerPlanEnvelopeV2) (*cerebrov1.SourceWorkerHTTPExecutionV2, error)
 	Decode(context.Context, *cerebrov1.SourceWorkerDecodeRequestV1) (*cerebrov1.SourceWorkerDecodeResultV1, error)
+	DecodeV2(context.Context, *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeResultV1, error)
 	SealPage(context.Context, PageProgramRequest) (*PageProgram, error)
 }
 
@@ -53,13 +55,16 @@ type SelectionRequest struct {
 
 // ContextRequest contains trusted identity and generation inputs only.
 type ContextRequest struct {
-	TenantID             string `json:"tenant_id"`
-	RuntimeID            string `json:"runtime_id"`
-	PriorCursor          string `json:"prior_cursor"`
-	PageNumber           uint32 `json:"page_number"`
-	RuntimeGeneration    uint64 `json:"runtime_generation"`
-	LeaseGeneration      uint64 `json:"lease_generation"`
-	ObservedAtUnixMillis int64  `json:"observed_at_unix_millis"`
+	TenantID                         string            `json:"tenant_id"`
+	RuntimeID                        string            `json:"runtime_id"`
+	PriorCursor                      string            `json:"prior_cursor"`
+	PageNumber                       uint32            `json:"page_number"`
+	RuntimeGeneration                uint64            `json:"runtime_generation"`
+	LeaseGeneration                  uint64            `json:"lease_generation"`
+	ObservedAtUnixMillis             int64             `json:"observed_at_unix_millis"`
+	PublicConfig                     map[string]string `json:"public_config,omitempty"`
+	PriorTerminalWatermarkUnixMillis int64             `json:"prior_terminal_watermark_unix_millis,omitempty"`
+	PriorCheckpoint                  string            `json:"prior_checkpoint,omitempty"`
 }
 
 type PageProgramRequest struct {
@@ -68,6 +73,7 @@ type PageProgramRequest struct {
 	Receipt                *cerebrov1.SourceWorkerSafeReceiptV1
 	Result                 *cerebrov1.SourceWorkerDecodeResultV1
 	CurrentLeaseGeneration uint64
+	Metadata               *cerebrov1.SourceWorkerRuntimeMetadataV2
 }
 
 type PageProgram struct {
@@ -79,19 +85,22 @@ type PageProgram struct {
 
 // CredentialScope binds one redemption to a runtime lease and logical page.
 type CredentialScope struct {
-	TenantID             string
-	RuntimeID            string
-	SourceID             string
-	FamilyID             string
-	PlanDigestSHA256     string
-	LogicalPageID        string
-	PriorCursor          string
-	RequestIntentDigest  string
-	LeaseOwner           string
-	RuntimeGeneration    uint64
-	LeaseGeneration      uint64
-	LeaseExpiresAt       time.Time
-	ObservedAtUnixMillis int64
+	TenantID                         string
+	RuntimeID                        string
+	SourceID                         string
+	FamilyID                         string
+	PlanDigestSHA256                 string
+	LogicalPageID                    string
+	PriorCursor                      string
+	PublicConfig                     map[string]string
+	PriorTerminalWatermarkUnixMillis int64
+	PriorCheckpoint                  string
+	RequestIntentDigest              string
+	LeaseOwner                       string
+	RuntimeGeneration                uint64
+	LeaseGeneration                  uint64
+	LeaseExpiresAt                   time.Time
+	ObservedAtUnixMillis             int64
 }
 
 // ExecutionInput binds a compiled plan and credential reference to one fenced
