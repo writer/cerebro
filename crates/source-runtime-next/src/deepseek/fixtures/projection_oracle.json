@@ -1,0 +1,15 @@
+{
+  "entities": [
+    {
+      "urn": "urn:cerebro:tenant:deepseek_account_balances:source-deepseek-account_balances-1",
+      "entity_type": "runtime.account.balances",
+      "label": "Deepseek Account Balances Fixture"
+    },
+    {
+      "urn": "urn:cerebro:tenant:deepseek_model_catalog:source-deepseek-model_catalog-1",
+      "entity_type": "runtime.model.catalog",
+      "label": "Deepseek Model Catalog Fixture"
+    }
+  ],
+  "relations": []
+}

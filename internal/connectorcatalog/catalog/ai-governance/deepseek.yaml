@@ -44,10 +44,18 @@ entries:
           path: /models
           projection:
             fields:
+              evidence_cas_commit_id: evidence_cas.commit_id|evidence_cas_commit_id|commit_id
+              evidence_cas_digest: evidence_cas.digest|evidence_cas_digest|digest
+              evidence_cas_merkle_root: evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root
+              evidence_cas_ref_type: evidence_cas.ref_type|evidence_cas_ref_type|ref_type
+              evidence_cas_uri: evidence_cas.uri|evidence_cas_uri|uri
+              observed_at: observed_at|updated_at|last_seen_at
               resource_id: id
               resource_name: id
               resource_type: resource_type|type|kind
               resource_urn: resource_urn|urn|metadata.resource_urn
+            static_fields:
+              schema: model_catalog
             template: asset
           record_selector: $.data[*]
         - coverage:
@@ -79,10 +87,18 @@ entries:
           path: /user/balance
           projection:
             fields:
+              evidence_cas_commit_id: evidence_cas.commit_id|evidence_cas_commit_id|commit_id
+              evidence_cas_digest: evidence_cas.digest|evidence_cas_digest|digest
+              evidence_cas_merkle_root: evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root
+              evidence_cas_ref_type: evidence_cas.ref_type|evidence_cas_ref_type|ref_type
+              evidence_cas_uri: evidence_cas.uri|evidence_cas_uri|uri
+              observed_at: observed_at|updated_at|last_seen_at
               resource_id: currency
               resource_name: currency
               resource_type: resource_type|type|kind
               resource_urn: resource_urn|urn|metadata.resource_urn
+            static_fields:
+              schema: account_balances
             template: asset
           record_selector: $.balance_infos[*]
       schema_version: cerebro.integration/v1

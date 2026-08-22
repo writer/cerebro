@@ -19,6 +19,7 @@ mod cerebro_source;
 mod cloudflare;
 mod cosmo;
 mod credential_lease;
+mod deepseek;
 mod deposit;
 mod discord;
 mod docker_hub;
@@ -109,6 +110,11 @@ pub use cosmo::{CosmoError, CosmoFamily, CosmoKernel, CosmoPage, CosmoRecord};
 pub use credential_lease::{
     CredentialLeaseError, CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus,
     LeaseClock, OperationScopedCredentialLease,
+};
+pub use deepseek::{
+    DeepSeekCheckpointCandidate, DeepSeekEntityFact, DeepSeekError, DeepSeekEventContract,
+    DeepSeekFamily, DeepSeekKernel, DeepSeekPage, DeepSeekProjectionFacts, DeepSeekRecord,
+    DeepSeekRelationFact, DeepSeekRequest, DeepSeekRuntimeDefinition, project_deepseek_records,
 };
 pub use deposit::{
     DepositIngestError, DepositIngestReceipt, DepositIngestRequest, build_deposit_receipt,
