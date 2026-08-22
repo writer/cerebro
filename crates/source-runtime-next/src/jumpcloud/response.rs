@@ -26,13 +26,25 @@ pub(super) fn decode(
     let root: Value =
         serde_json::from_slice(body).map_err(|_| JumpCloudError::MalformedResponse)?;
     let items = records(kernel.family, &root)?;
+    let audit_rows = (kernel.family == JumpCloudFamily::AuditEvents)
+        .then(|| raw_array_elements(body))
+        .transpose()?;
+    if audit_rows
+        .as_ref()
+        .is_some_and(|rows| rows.len() != items.len())
+    {
+        return Err(JumpCloudError::MalformedResponse);
+    }
     if items.len() > request.page_size {
         return Err(JumpCloudError::TooManyRecords);
     }
     let mut seen = BTreeMap::<String, Vec<u8>>::new();
     let mut normalized = Vec::with_capacity(items.len());
-    for raw in items {
-        let record = normalize::normalize(kernel, raw.clone())?;
+    for (index, raw) in items.iter().enumerate() {
+        let raw_bytes = audit_rows
+            .as_ref()
+            .and_then(|rows| rows.get(index).copied());
+        let record = normalize::normalize(kernel, raw.clone(), raw_bytes)?;
         let canonical = serde_json::to_vec(&record.payload)
             .map_err(|_| JumpCloudError::InvalidProviderRecord)?;
         match seen.get(&record.event_id) {
@@ -49,6 +61,80 @@ pub(super) fn decode(
         records: normalized,
         next_cursor,
     })
+}
+
+/// Preserve exact provider bytes for idless audit-row identity parity with Go.
+fn raw_array_elements(body: &[u8]) -> Result<Vec<&[u8]>, JumpCloudError> {
+    let mut index = skip_space(body, 0);
+    if body.get(index) != Some(&b'[') {
+        return Err(JumpCloudError::MalformedResponse);
+    }
+    index += 1;
+    let mut elements = Vec::new();
+    loop {
+        index = skip_space(body, index);
+        if body.get(index) == Some(&b']') {
+            index = skip_space(body, index + 1);
+            return (index == body.len())
+                .then_some(elements)
+                .ok_or(JumpCloudError::MalformedResponse);
+        }
+        if body.get(index) != Some(&b'{') {
+            return Err(JumpCloudError::MalformedResponse);
+        }
+        let start = index;
+        let mut depth = 0_usize;
+        let mut in_string = false;
+        let mut escaped = false;
+        while index < body.len() {
+            let byte = body[index];
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                } else if byte == b'"' {
+                    in_string = false;
+                }
+            } else {
+                match byte {
+                    b'"' => in_string = true,
+                    b'{' | b'[' => depth = depth.saturating_add(1),
+                    b'}' | b']' => {
+                        depth = depth
+                            .checked_sub(1)
+                            .ok_or(JumpCloudError::MalformedResponse)?;
+                        if depth == 0 {
+                            index += 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            index += 1;
+        }
+        if depth != 0 || in_string {
+            return Err(JumpCloudError::MalformedResponse);
+        }
+        elements.push(&body[start..index]);
+        index = skip_space(body, index);
+        match body.get(index) {
+            Some(b',') => index += 1,
+            Some(b']') => {}
+            _ => return Err(JumpCloudError::MalformedResponse),
+        }
+    }
+}
+
+fn skip_space(body: &[u8], mut index: usize) -> usize {
+    while body
+        .get(index)
+        .is_some_and(|byte| matches!(byte, b' ' | b'\n' | b'\r' | b'\t'))
+    {
+        index += 1;
+    }
+    index
 }
 
 pub(super) fn checkpoint_candidate(

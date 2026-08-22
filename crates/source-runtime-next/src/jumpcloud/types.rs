@@ -32,6 +32,7 @@ pub struct JumpCloudRequest {
     pub(super) cursor: Option<String>,
     pub(super) body: Option<Vec<u8>>,
     pub(super) org_id: Option<String>,
+    pub(super) checkpoint_watermark: Option<String>,
 }
 
 impl fmt::Debug for JumpCloudRequest {
@@ -45,6 +46,10 @@ impl fmt::Debug for JumpCloudRequest {
             .field("has_cursor", &self.cursor.is_some())
             .field("has_body", &self.body.is_some())
             .field("has_org_id", &self.org_id.is_some())
+            .field(
+                "has_checkpoint_watermark",
+                &self.checkpoint_watermark.is_some(),
+            )
             .finish()
     }
 }
@@ -77,6 +82,18 @@ impl JumpCloudRequest {
     /// Canonical credential-free request body for Directory Insights.
     pub fn body(&self) -> Option<&[u8]> {
         self.body.as_deref()
+    }
+    /// Prior terminal audit watermark bound into this request, when present.
+    pub fn checkpoint_watermark(&self) -> Option<&str> {
+        self.checkpoint_watermark.as_deref()
+    }
+    /// Request media type required by the trusted host.
+    pub const fn content_type(&self) -> Option<&'static str> {
+        if matches!(self.family, JumpCloudFamily::AuditEvents) {
+            Some("application/json")
+        } else {
+            None
+        }
     }
     /// Expected response media type.
     pub const fn accept(&self) -> &'static str {
@@ -111,6 +128,63 @@ pub struct JumpCloudResponseMetadata {
     pub search_after: Option<String>,
     /// Bounded retry delay.
     pub retry_after_seconds: Option<u64>,
+}
+
+impl JumpCloudResponseMetadata {
+    /// Parse only the bounded, public response headers required by JumpCloud.
+    pub fn from_headers(headers: &BTreeMap<String, String>) -> Result<Self, JumpCloudError> {
+        let result_count = bounded_usize(header(headers, "x-result-count")?, 1_000_000)?;
+        let limit = bounded_usize(header(headers, "x-limit")?, 1_000)?;
+        let search_after = header(headers, "x-search_after")?
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(request::validate_audit_cursor)
+            .transpose()?;
+        let retry_after_seconds = header(headers, "retry-after")?
+            .map(str::trim)
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|seconds| *seconds <= 3_600)
+                    .ok_or(JumpCloudError::InvalidRetryAfter)
+            })
+            .transpose()?;
+        Ok(Self {
+            result_count,
+            limit,
+            search_after,
+            retry_after_seconds,
+        })
+    }
+}
+
+fn header<'a>(
+    headers: &'a BTreeMap<String, String>,
+    expected: &str,
+) -> Result<Option<&'a str>, JumpCloudError> {
+    let mut matches = headers
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case(expected))
+        .map(|(_, value)| value.as_str());
+    let first = matches.next();
+    if matches.next().is_some() {
+        return Err(JumpCloudError::MalformedResponse);
+    }
+    Ok(first)
+}
+
+fn bounded_usize(value: Option<&str>, maximum: usize) -> Result<Option<usize>, JumpCloudError> {
+    value
+        .map(str::trim)
+        .map(|value| {
+            value
+                .parse::<usize>()
+                .ok()
+                .filter(|value| *value <= maximum)
+                .ok_or(JumpCloudError::MalformedResponse)
+        })
+        .transpose()
 }
 
 /// One normalized tenant-scoped JumpCloud event candidate.
@@ -200,6 +274,18 @@ impl JumpCloudKernel {
     /// Plan one bounded origin-restricted provider request.
     pub fn plan(&self, cursor: Option<&str>) -> Result<JumpCloudRequest, JumpCloudError> {
         request::plan(self, cursor)
+    }
+
+    /// Plan a request with the last terminal durable watermark.
+    ///
+    /// For Directory Insights this matches Go `ReadWithCheckpoint`: explicit
+    /// configuration wins, otherwise the prior watermark becomes `start_time`.
+    pub fn plan_with_checkpoint(
+        &self,
+        cursor: Option<&str>,
+        prior_watermark: Option<&str>,
+    ) -> Result<JumpCloudRequest, JumpCloudError> {
+        request::plan_with_checkpoint(self, cursor, prior_watermark)
     }
 
     /// Decode one provider response under the exact planned request.

@@ -4,9 +4,14 @@
 //! deadlines, and bounded network I/O. This module accepts public source
 //! configuration and already-bounded provider response bytes only.
 
+// Shared dispatcher registration lands separately; keep its provider contract
+// callable without requiring this provider branch to edit shared paths.
+#[allow(dead_code)]
+pub(crate) mod adapter;
 mod catalog;
 mod error;
 mod family;
+mod identity;
 mod normalize;
 mod origin;
 mod projection;
