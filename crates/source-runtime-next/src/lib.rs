@@ -27,6 +27,7 @@ mod github;
 mod google_workspace;
 mod grc;
 mod http;
+mod kubernetes;
 mod linode;
 mod mapper;
 mod okta;
@@ -132,6 +133,11 @@ pub use google_workspace::{
 };
 pub use grc::{GrcError, GrcFamily, GrcKernel, GrcPage, GrcRecord, GrcRequest};
 pub use http::{HttpConnectorError, HttpProviderAccess, HttpSourceConnector, ResolvedAuth};
+pub use kubernetes::{
+    KubernetesConfig, KubernetesError, KubernetesFamily, KubernetesKernel, KubernetesPage,
+    KubernetesProjection, KubernetesProjectionEntity, KubernetesProjectionLink, KubernetesRecord,
+    KubernetesRequest, KubernetesRuntimeDefinition,
+};
 pub use linode::{LinodeError, LinodeKernel, LinodePage, LinodeRecord, LinodeRequest};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 pub use okta::{
