@@ -246,6 +246,8 @@ pub struct CompiledFamily {
     config_headers: BTreeMap<String, PathParameterBinding>,
     config_attributes: BTreeMap<String, PathParameterBinding>,
     static_json_body: BTreeMap<String, serde_json::Value>,
+    config_json_body: BTreeMap<String, PathParameterBinding>,
+    map_records: BTreeMap<String, String>,
     event_attributes: BTreeMap<String, String>,
     event_static_attributes: BTreeMap<String, String>,
     exact_event_attributes: bool,
@@ -317,6 +319,14 @@ impl CompiledFamily {
         &self.static_json_body
     }
 
+    pub fn config_json_body(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_json_body
+    }
+
+    pub fn map_records(&self) -> &BTreeMap<String, String> {
+        &self.map_records
+    }
+
     pub fn event_attributes(&self) -> &BTreeMap<String, String> {
         &self.event_attributes
     }
@@ -369,6 +379,7 @@ pub struct CompiledSource {
     id: String,
     display_name: String,
     auth: AuthModel,
+    configurable_auth_models: Vec<AuthModel>,
     token_header: String,
     token_scheme: String,
     auth_header_parameters: BTreeMap<String, String>,
@@ -455,6 +466,10 @@ impl CompiledSource {
         &self.auth
     }
 
+    pub fn configurable_auth_models(&self) -> &[AuthModel] {
+        &self.configurable_auth_models
+    }
+
     pub fn token_header(&self) -> &str {
         &self.token_header
     }
@@ -521,6 +536,7 @@ pub enum UnsupportedReasonCode {
     UnboundPathConfigParameter,
     UnboundConfigQueryParameter,
     UnboundConfigHeader,
+    UnboundConfigJsonBody,
     UnboundConfigAttribute,
     UnsupportedProjectionTemplate,
     UnsupportedPaginationGrammar,
@@ -907,6 +923,10 @@ struct ConfigFieldWire {
 struct AuthWire {
     model: String,
     #[serde(default)]
+    configurable_models: Vec<String>,
+    #[serde(default)]
+    model_config_key: String,
+    #[serde(default)]
     credential_fields: Vec<CredentialFieldWire>,
     #[serde(default)]
     token_header: String,
@@ -998,6 +1018,10 @@ struct FamilyReadWire {
     scalar_record_field: String,
     #[serde(default)]
     static_json_body: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    config_json_body: BTreeMap<String, String>,
+    #[serde(default)]
+    map_records: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -1102,6 +1126,27 @@ fn compile_source(
             message: format!("unsupported auth model {}", entry.definition.auth.model),
         }
     })?;
+    let configurable_auth_models = if entry.definition.auth.configurable_models.is_empty() {
+        vec![auth.clone()]
+    } else {
+        let mut models = Vec::new();
+        for model in &entry.definition.auth.configurable_models {
+            let model = AuthModel::parse(model.trim()).ok_or_else(|| CatalogError::Invalid {
+                path: path.to_path_buf(),
+                message: format!("unsupported configurable auth model {model}"),
+            })?;
+            if !models.contains(&model) {
+                models.push(model);
+            }
+        }
+        if !models.contains(&auth) {
+            return invalid(
+                path,
+                "configurable auth models must include the default auth model",
+            );
+        }
+        models
+    };
     let token_header = entry.definition.auth.token_header.trim().to_owned();
     if token_header.len() > 128
         || token_header
@@ -1249,8 +1294,24 @@ fn compile_source(
         .iter()
         .map(|field| (field.key.as_str(), field.required))
         .collect::<BTreeMap<_, _>>();
+    let model_config_key = entry.definition.auth.model_config_key.trim();
+    if configurable_auth_models.len() > 1 {
+        if model_config_key.is_empty() || !config_fields.contains_key(model_config_key) {
+            return invalid(
+                path,
+                "selectable authentication requires a declared model_config_key config field",
+            );
+        }
+    } else if !model_config_key.is_empty() {
+        return invalid(
+            path,
+            "model_config_key requires more than one configurable auth model",
+        );
+    }
     let generic_runtime_supported = classifier_supported
-        && auth.supports_generic_runtime()
+        && configurable_auth_models
+            .iter()
+            .all(AuthModel::supports_generic_runtime)
         && (auth != AuthModel::ApiKey
             || !token_header.is_empty()
             || !auth_header_parameters.is_empty()
@@ -1304,6 +1365,7 @@ fn compile_source(
         id,
         display_name: nonempty(path, "display_name", entry.definition.display_name)?,
         auth,
+        configurable_auth_models,
         token_header,
         token_scheme,
         auth_header_parameters,
@@ -1728,6 +1790,52 @@ fn compile_family(
             );
         }
     }
+    let config_json_body_wire = family
+        .read
+        .as_ref()
+        .map(|read| read.config_json_body.clone())
+        .unwrap_or_default();
+    if !config_json_body_wire.is_empty() && method != HttpMethod::Post {
+        return invalid(
+            path,
+            &format!("family {} configured JSON body requires POST", family.id),
+        );
+    }
+    if config_json_body_wire.keys().any(|key| {
+        key.is_empty()
+            || key.len() > 128
+            || !key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    }) {
+        return invalid(
+            path,
+            &format!("family {} configured JSON body key is invalid", family.id),
+        );
+    }
+    let config_json_body = config_json_body_wire
+        .iter()
+        .filter_map(|(parameter, config_field)| {
+            config_query_binding(config_field, config_fields)
+                .map(|binding| (parameter.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_json_body_configured = config_json_body.len() == config_json_body_wire.len();
+    let map_records = family
+        .read
+        .as_ref()
+        .map(|read| read.map_records.clone())
+        .unwrap_or_default();
+    if map_records.len() > 1
+        || map_records
+            .iter()
+            .any(|(path, value)| path.trim().is_empty() || value.trim().is_empty())
+    {
+        return invalid(
+            path,
+            &format!("family {} map records are invalid", family.id),
+        );
+    }
     let provider_contract_verified = canonical_family_locator(base_url.as_deref(), &family.path)
         .is_some_and(|path| {
             verified.contains(&(
@@ -1744,6 +1852,7 @@ fn compile_family(
         && path_parameters_configured
         && config_query_configured
         && config_headers_configured
+        && config_json_body_configured
         && config_attributes_configured;
     let projection_authoritative =
         provider_contract_verified && projection_class.can_be_authoritative();
@@ -1763,6 +1872,9 @@ fn compile_family(
     }
     if !config_headers_configured {
         unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigHeader);
+    }
+    if !config_json_body_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigJsonBody);
     }
     if !config_attributes_configured {
         unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigAttribute);
@@ -1798,6 +1910,8 @@ fn compile_family(
         config_headers,
         config_attributes,
         static_json_body,
+        config_json_body,
+        map_records,
         event_attributes: family.event.attributes,
         event_static_attributes: family.event.static_attributes,
         exact_event_attributes: family.event.exact_attributes,
@@ -3872,6 +3986,105 @@ mod tests {
             report.shadow_or_go_families,
             aws_bedrock.plan_digest
         );
+    }
+
+    #[test]
+    fn conjur_and_langsmith_compile_exact_request_contracts() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        let conjur = catalog.get("conjur").unwrap();
+        assert_eq!(conjur.auth(), &AuthModel::Basic);
+        assert_eq!(conjur.configurable_auth_models(), &[AuthModel::Basic]);
+        assert_eq!(conjur.families().len(), 4);
+        let resource = conjur
+            .families()
+            .iter()
+            .find(|family| family.id() == "resource_3")
+            .unwrap();
+        assert_eq!(
+            resource.path(),
+            "/resources/${config.account}/${config.kind}"
+        );
+        assert_eq!(
+            resource.map_records().get("data.key_info"),
+            Some(&"resource".to_owned())
+        );
+        assert!(matches!(
+            resource.pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100
+            } if parameter == "offset" && limit_parameter == "limit"
+        ));
+
+        let langsmith = catalog.get("langchain").unwrap();
+        assert_eq!(
+            langsmith.configurable_auth_models(),
+            &[AuthModel::ApiKey, AuthModel::BearerToken]
+        );
+        assert_eq!(langsmith.families().len(), 13);
+        let run = langsmith
+            .families()
+            .iter()
+            .find(|family| family.id() == "run")
+            .unwrap();
+        assert_eq!(run.method(), HttpMethod::Post);
+        assert_eq!(run.path(), "/api/v1/runs/query");
+        assert_eq!(run.config_json_body().len(), 6);
+        assert_eq!(
+            run.static_json_body().get("limit"),
+            Some(&serde_json::json!(100))
+        );
+        assert!(matches!(
+            run.pagination(),
+            Pagination::Cursor { parameter, response_path, .. }
+                if parameter == "cursor" && response_path == "$.cursors.next"
+        ));
+        let audit = langsmith
+            .families()
+            .iter()
+            .find(|family| family.id() == "audit_log")
+            .unwrap();
+        assert!(matches!(
+            audit.pagination(),
+            Pagination::Cursor { parameter, response_path, .. }
+                if parameter == "cursor" && response_path == "$.cursor"
+        ));
+        for family_id in [
+            "workspace_member",
+            "project",
+            "run",
+            "feedback",
+            "dataset",
+            "usage_limit",
+            "audit_log",
+        ] {
+            let family = langsmith
+                .families()
+                .iter()
+                .find(|family| family.id() == family_id)
+                .unwrap();
+            assert_eq!(
+                family
+                    .config_headers()
+                    .get("X-Organization-Id")
+                    .map(PathParameterBinding::field),
+                Some("organization_id")
+            );
+            assert_eq!(
+                family
+                    .config_headers()
+                    .get("X-Tenant-Id")
+                    .map(PathParameterBinding::field),
+                Some("workspace_id")
+            );
+        }
     }
 
     #[test]

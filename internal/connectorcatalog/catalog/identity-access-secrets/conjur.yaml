@@ -6,25 +6,34 @@ entries:
       - key: username
         label: Username
         reference_only: true
-        required: true
       - key: password
-        label: Password
+        label: Password or API key
         reference_only: true
-        required: true
+        secret: true
+      - key: token
+        label: Precomputed Basic credential
+        reference_only: true
         secret: true
       model: basic
       requires_references: true
+      token_header: Authorization
+      token_scheme: Basic
     categories:
     - saas
     config_fields:
+    - help: Base URL for the Conjur appliance. Production endpoints must use HTTPS.
+      key: base_url
+      label: Conjur base URL
+      required: true
+    - help: Optional connection-check path. Defaults to /resources.
+      key: health_path
+      label: Conjur health path
     - help: Path parameter inferred from the OpenAPI operation.
       key: account
       label: Account
-      required: true
     - help: Path parameter inferred from the OpenAPI operation.
       key: kind
       label: Kind
-      required: true
     description: "Collects authenticator, resource 2, and resource 3 from CyberArk Conjur and projects them into the Cerebro graph as assets for identity, access, device, and secret context."
     display_name: CyberArk Conjur
     id: builtin_catalog-conjur
@@ -53,11 +62,13 @@ entries:
       id_field: id
       label: Resource
       method: GET
-      name_field: annotations
+      name_field: resource.annotations
       pagination:
+        inject_first_page: true
         limit_param: limit
         offset_param: offset
         page_size: 100
+        start_page: 0
         type: offset
       path: "/resources"
       permissions_needed:
@@ -65,12 +76,16 @@ entries:
       projection:
         fields:
           id: id
-          name: annotations
+          name: resource.annotations
           resource_id: id
-          resource_name: annotations
+          resource_name: resource.annotations
+        static_fields:
           resource_type: resource
         template: asset
       record_selector: "$[*]"
+      read:
+        map_records:
+          data.key_info: resource
       sensitive_payload_paths:
       - secrets
     - coverage:
@@ -113,6 +128,8 @@ entries:
           resource_type: authenticator
         template: asset
       record_selector: "$.configured[*]"
+      read:
+        disable_page_size: true
     - coverage:
       - control_domains:
         - asset_inventory
@@ -135,11 +152,13 @@ entries:
       id_field: id
       label: Resource 2
       method: GET
-      name_field: annotations
+      name_field: resource.annotations
       pagination:
+        inject_first_page: true
         limit_param: limit
         offset_param: offset
         page_size: 100
+        start_page: 0
         type: offset
       path: "/resources/${config.account}"
       permissions_needed:
@@ -147,12 +166,16 @@ entries:
       projection:
         fields:
           id: id
-          name: annotations
+          name: resource.annotations
           resource_id: id
-          resource_name: annotations
+          resource_name: resource.annotations
+        static_fields:
           resource_type: resource
         template: asset
       record_selector: "$[*]"
+      read:
+        map_records:
+          data.key_info: resource
       sensitive_payload_paths:
       - secrets
     - coverage:
@@ -177,11 +200,13 @@ entries:
       id_field: id
       label: Resource 3
       method: GET
-      name_field: annotations
+      name_field: resource.annotations
       pagination:
+        inject_first_page: true
         limit_param: limit
         offset_param: offset
         page_size: 100
+        start_page: 0
         type: offset
       path: "/resources/${config.account}/${config.kind}"
       permissions_needed:
@@ -189,12 +214,16 @@ entries:
       projection:
         fields:
           id: id
-          name: annotations
+          name: resource.annotations
           resource_id: id
-          resource_name: annotations
+          resource_name: resource.annotations
+        static_fields:
           resource_type: resource
         template: asset
       record_selector: "$[*]"
+      read:
+        map_records:
+          data.key_info: resource
       sensitive_payload_paths:
       - secrets
     schema_version: cerebro.integration/v1
@@ -219,7 +248,7 @@ entries:
     source_id: conjur
     tenant_id: builtin_catalog
     transport:
-      base_url: http://conjur.local
+      base_url: ${config.base_url}
       retry:
         backoff: exponential
         max_attempts: 3
@@ -231,6 +260,7 @@ entries:
         - 503
         - 504
       verification:
+        config_path: health_path
         expect_status:
         - 200
         method: GET

@@ -9,6 +9,7 @@
 #[allow(dead_code)]
 pub(crate) mod adapter;
 mod catalog;
+mod cursor;
 mod error;
 mod family;
 mod identity;
@@ -30,5 +31,7 @@ pub use types::{
     JumpCloudRecord, JumpCloudRequest, JumpCloudResponseMetadata,
 };
 
+#[cfg(test)]
+mod fanout_tests;
 #[cfg(test)]
 mod tests;

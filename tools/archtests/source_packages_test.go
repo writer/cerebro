@@ -39,11 +39,13 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"beezup":          {},
 	"bitwarden":       {},
 	"box":             {},
+	"conjur":          {},
 	"datadog":         {},
 	"duo":             {},
 	"fivetran":        {},
 	"increase":        {},
 	"jira":            {},
+	"langchain":       {},
 	"deepseek":        {},
 	"openai":          {},
 }

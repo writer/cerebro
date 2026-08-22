@@ -15,6 +15,51 @@ emitted_kinds:
   - langchain.dataset
   - langchain.usage_limit
   - langchain.audit_log
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-08-22T00:00:00Z
+  transport: rest
+  auth: api_key_or_bearer_token
+  auth_mechanics: x_api_key_or_bearer_authorization_header
+  base_url: https://api.smith.langchain.com
+  spec_url: https://raw.githubusercontent.com/langchain-ai/langsmith-sdk/main/openapi/openapi.yaml
+  spec_kind: openapi
+  references:
+    - https://github.com/langchain-ai/langsmith-sdk
+    - https://raw.githubusercontent.com/langchain-ai/langsmith-sdk/main/openapi/openapi.yaml
+  auth_evidence:
+    - https://docs.smith.langchain.com/administration/how_to_guides/organization_management/create_account_api_key
+  scope_evidence:
+    - https://docs.smith.langchain.com/administration/how_to_guides/organization_management/set_up_hierarchy
+  families:
+    - {id: organization, method: GET, path: /api/v1/orgs/current}
+    - {id: workspace, method: GET, path: /api/v1/workspaces}
+    - {id: organization_member, method: GET, path: /api/v1/orgs/current/members}
+    - {id: workspace_member, method: GET, path: /api/v1/workspaces/current/members}
+    - {id: role, method: GET, path: /api/v1/orgs/current/roles}
+    - {id: api_key, method: GET, path: /api/v1/orgs/current/service-keys}
+    - {id: service_account, method: GET, path: /api/v1/service-accounts}
+    - {id: project, method: GET, path: /api/v1/sessions}
+    - {id: run, method: POST, path: /api/v1/runs/query}
+    - {id: feedback, method: GET, path: /api/v1/feedback}
+    - {id: dataset, method: GET, path: /api/v1/datasets}
+    - {id: usage_limit, method: GET, path: /api/v1/usage-limits}
+    - {id: audit_log, method: GET, path: /api/v1/audit-logs}
+runtime_families:
+  - organization
+  - workspace
+  - organization_member
+  - workspace_member
+  - role
+  - api_key
+  - service_account
+  - project
+  - run
+  - feedback
+  - dataset
+  - usage_limit
+  - audit_log
 coverage_contract:
   owner_domain: ai
   authority_domain: langchain

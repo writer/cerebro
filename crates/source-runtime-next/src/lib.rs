@@ -3,8 +3,11 @@
 
 //! Rust-native source collection and graph admission boundary.
 
+mod abnormal_security;
 mod abuseipdb;
 mod activecampaign;
+mod activtrak;
+mod acunetix;
 mod adp_workforce_now;
 mod amplitude;
 mod anthropic;
@@ -55,6 +58,12 @@ mod trivy;
 mod twilio;
 mod vulnview;
 
+pub use abnormal_security::{
+    AbnormalSecurityCheckpointCandidate, AbnormalSecurityEntityFact, AbnormalSecurityError,
+    AbnormalSecurityEventContract, AbnormalSecurityFamily, AbnormalSecurityKernel,
+    AbnormalSecurityPage, AbnormalSecurityProjectionFacts, AbnormalSecurityRecord,
+    AbnormalSecurityRequest, AbnormalSecurityRuntimeDefinition, project_abnormal_security_records,
+};
 pub use abuseipdb::{
     AbuseIpDbCheckpointCandidate, AbuseIpDbEntityFact, AbuseIpDbError, AbuseIpDbEventContract,
     AbuseIpDbFamily, AbuseIpDbFilters, AbuseIpDbKernel, AbuseIpDbPage, AbuseIpDbProjectionFacts,
@@ -66,6 +75,16 @@ pub use activecampaign::{
     ActiveCampaignEventContract, ActiveCampaignFamily, ActiveCampaignKernel, ActiveCampaignPage,
     ActiveCampaignProjectionFacts, ActiveCampaignRecord, ActiveCampaignRequest,
     ActiveCampaignRuntimeDefinition, project_activecampaign_records,
+};
+pub use activtrak::{
+    ActivTrakCheckpointCandidate, ActivTrakEntityFact, ActivTrakError, ActivTrakEventContract,
+    ActivTrakFamily, ActivTrakKernel, ActivTrakPage, ActivTrakProjectionFacts, ActivTrakRecord,
+    ActivTrakRequest, ActivTrakRuntimeDefinition, project_activtrak_records,
+};
+pub use acunetix::{
+    AcunetixCheckpointCandidate, AcunetixEntityFact, AcunetixError, AcunetixEventContract,
+    AcunetixFamily, AcunetixKernel, AcunetixPage, AcunetixProjectionFacts, AcunetixRecord,
+    AcunetixRequest, AcunetixRuntimeDefinition, project_acunetix_records,
 };
 pub use adp_workforce_now::{
     AdpCheckpointCandidate, AdpEntityFact, AdpError, AdpEventContract, AdpFamily, AdpKernel,

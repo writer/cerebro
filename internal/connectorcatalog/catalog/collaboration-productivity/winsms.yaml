@@ -10,6 +10,8 @@ entries:
         secret: true
       model: api_key
       requires_references: true
+      token_header: Authorization
+      token_scheme: Token
     categories:
     - saas
     description: "Collects subaccount, incoming, sms incoming, and optout from WinSMS and projects them into the Cerebro graph as users and assets for workspace, document, message, and collaboration context."

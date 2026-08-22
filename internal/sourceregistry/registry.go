@@ -17,7 +17,6 @@ import (
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
-	conjursource "github.com/writer/cerebro/sources/conjur"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	digitaloceansource "github.com/writer/cerebro/sources/digitalocean"
 	discordsource "github.com/writer/cerebro/sources/discord"
@@ -34,7 +33,6 @@ import (
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	kubernetessource "github.com/writer/cerebro/sources/kubernetes"
-	langchainsource "github.com/writer/cerebro/sources/langchain"
 	langfusesource "github.com/writer/cerebro/sources/langfuse"
 	linodesource "github.com/writer/cerebro/sources/linode"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -114,12 +112,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "cloudflare",
 		load: func() (sourcecdk.Source, error) {
 			return cloudflaresource.New()
-		},
-	},
-	{
-		name: "conjur",
-		load: func() (sourcecdk.Source, error) {
-			return conjursource.New()
 		},
 	},
 	{
@@ -216,12 +208,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "kubernetes",
 		load: func() (sourcecdk.Source, error) {
 			return kubernetessource.New()
-		},
-	},
-	{
-		name: "langchain",
-		load: func() (sourcecdk.Source, error) {
-			return langchainsource.New()
 		},
 	},
 	{
