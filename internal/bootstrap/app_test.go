@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -48,14 +49,13 @@ import (
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
+	sourcecatalogs "github.com/writer/cerebro/sources"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
 	auth0source "github.com/writer/cerebro/sources/auth0"
-	datadogsource "github.com/writer/cerebro/sources/datadog"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
 	sdksource "github.com/writer/cerebro/sources/sdk"
-	slacksource "github.com/writer/cerebro/sources/slack"
 )
 
 func TestGraphIngestLeaseConflictMappings(t *testing.T) {
@@ -596,8 +596,11 @@ func TestWriteGraphErrorsDoNotExposeInternalMessages(t *testing.T) {
 
 func TestStoreBoundaryHelpersTreatTypedNilAsUnavailable(t *testing.T) {
 	var graph *stubGraphStore
-	if got := graphQueryStore(graph); got != nil {
-		t.Fatalf("graphQueryStore(typed nil) = %#v, want nil", got)
+	if got := (Dependencies{GraphReads: NewGraphReadCapabilities(graph)}).GraphReads.Neighborhoods; got != nil {
+		t.Fatalf("GraphReads.Neighborhoods typed nil = %#v, want nil", got)
+	}
+	if got := (Dependencies{GraphStore: &stubGraphStore{}}).GraphReads.Neighborhoods; got != nil {
+		t.Fatalf("GraphReads.Neighborhoods GraphStore only = %#v, want nil", got)
 	}
 	if got := sourceProjectionGraphStore(graph); got != nil {
 		t.Fatalf("sourceProjectionGraphStore(typed nil) = %#v, want nil", got)
@@ -1654,22 +1657,26 @@ func (s *stubRuntimeStore) GetReportRun(_ context.Context, id string) (*cerebrov
 }
 
 type stubGraphStore struct {
-	mu                  sync.Mutex
-	err                 error
-	entities            map[string]*ports.ProjectedEntity
-	links               map[string]*ports.ProjectedLink
-	checkpoints         map[string]graphstore.IngestCheckpoint
-	ingestRuns          map[string]graphstore.IngestRun
-	neighborhood        *ports.EntityNeighborhood
-	neighborhoodRootURN string
-	neighborhoodLimit   int
-	ingestRunListFilter graphstore.IngestRunFilter
-	cypherPlan          *ports.CypherPlan
-	cypherRows          [][]ports.CypherRow
-	cypherRequests      []ports.CypherQueryRequest
-	exposureResult      *ports.ExposureCoverageResult
-	exposureRequests    []ports.ExposureCoverageRequest
-	entityRequests      []ports.EntityCatalogPageRequest
+	mu                   sync.Mutex
+	err                  error
+	entities             map[string]*ports.ProjectedEntity
+	links                map[string]*ports.ProjectedLink
+	checkpoints          map[string]graphstore.IngestCheckpoint
+	ingestRuns           map[string]graphstore.IngestRun
+	neighborhood         *ports.EntityNeighborhood
+	neighborhoodRootURN  string
+	neighborhoodLimit    int
+	ingestRunListFilter  graphstore.IngestRunFilter
+	cypherPlan           *ports.CypherPlan
+	cypherRows           [][]ports.CypherRow
+	cypherRequests       []ports.CypherQueryRequest
+	exposureResult       *ports.ExposureCoverageResult
+	exposureRequests     []ports.ExposureCoverageRequest
+	personAccessResult   *ports.PersonAccessPathResult
+	personAccessRequests []ports.PersonAccessPathRequest
+	entityRequests       []ports.EntityCatalogPageRequest
+	entityKindRequests   []ports.EntityKindCountRequest
+	relationRequests     []ports.RelationCountRequest
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -1751,12 +1758,32 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 	return nil, nil
 }
 
+func (s *stubGraphStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
+	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(rootURNs))
+	for _, rootURN := range rootURNs {
+		neighborhood, err := s.GetEntityNeighborhood(ctx, rootURN, limit)
+		if err != nil {
+			return nil, err
+		}
+		neighborhoods[rootURN] = neighborhood
+	}
+	return neighborhoods, nil
+}
+
 func (s *stubGraphStore) CompareExposureCoverage(_ context.Context, request ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 	s.exposureRequests = append(s.exposureRequests, request)
 	return s.exposureResult, nil
+}
+
+func (s *stubGraphStore) ListPersonAccessPaths(_ context.Context, request ports.PersonAccessPathRequest) (*ports.PersonAccessPathResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.personAccessRequests = append(s.personAccessRequests, request)
+	return s.personAccessResult, nil
 }
 
 func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
@@ -1784,8 +1811,23 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 	}
 	return page, nil
 }
-func (s *stubGraphStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
-	return &ports.EntityKindCountPage{TenantID: "writer"}, nil
+func (s *stubGraphStore) CountEntityKinds(_ context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	s.entityKindRequests = append(s.entityKindRequests, request)
+	return &ports.EntityKindCountPage{
+		TenantID: request.Filter.TenantID,
+		Counts: []ports.EntityKindCount{
+			{EntityKind: "asset", Count: 1},
+		},
+	}, nil
+}
+func (s *stubGraphStore) CountRelations(_ context.Context, request ports.RelationCountRequest) (*ports.RelationCountPage, error) {
+	s.relationRequests = append(s.relationRequests, request)
+	return &ports.RelationCountPage{
+		TenantID: request.TenantID,
+		Counts: []ports.RelationCount{
+			{Relation: "has_finding", Count: 1},
+		},
+	}, nil
 }
 func (s *stubGraphStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
 	return &ports.EntityRelationPage{TenantID: "writer"}, nil
@@ -2917,7 +2959,7 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
-	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, registry)
+	app := New(cfg, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph), StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -3068,7 +3110,7 @@ func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
-	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, registry)
+	app := New(cfg, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph), StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -3188,7 +3230,7 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 			},
 		},
 	}
-	app := New(cfg, Dependencies{GraphStore: graph}, nil)
+	app := New(cfg, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4066,7 +4108,7 @@ func TestGraphPackageImpactEndpointReturnsCanonicalPackageRoot(t *testing.T) {
 			},
 		},
 	}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4119,7 +4161,7 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 			Corroborating: ports.ExposureCoverageEntity{URN: "urn:cerebro:writer:external_asset:app.example.com", EntityType: "external.asset", Label: "app.example.com"},
 		}},
 	}}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4158,24 +4200,33 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 }
 
 func TestGraphPersonAccessPathsEndpoint(t *testing.T) {
-	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
-		{{Values: map[string]any{
-			"person_urn":            "urn:cerebro:writer:person:vanta:person-1",
-			"person_entity_type":    "person",
-			"person_label":          "designer@example.com",
-			"identity_urn":          "urn:cerebro:writer:identity:email:designer@example.com",
-			"identity_entity_type":  "identity.email",
-			"identity_label":        "designer@example.com",
-			"principal_urn":         "urn:cerebro:writer:okta_user:00u1",
-			"principal_entity_type": "okta.user",
-			"principal_label":       "designer@example.com",
-			"target_urn":            "urn:cerebro:writer:aws_role:DesignerAnalytics",
-			"target_entity_type":    "aws.role",
-			"target_label":          "DesignerAnalytics",
-			"relation_chain":        []any{"assigned_to"},
-		}}},
+	graph := &stubGraphStore{personAccessResult: &ports.PersonAccessPathResult{
+		TenantID: "writer",
+		Paths: []ports.PersonAccessPath{{
+			Person: ports.CatalogEntity{
+				URN:        "urn:cerebro:writer:person:vanta:person-1",
+				EntityType: "person",
+				Label:      "designer@example.com",
+			},
+			Identity: ports.CatalogEntity{
+				URN:        "urn:cerebro:writer:identity:email:designer@example.com",
+				EntityType: "identity.email",
+				Label:      "designer@example.com",
+			},
+			Principal: ports.CatalogEntity{
+				URN:        "urn:cerebro:writer:okta_user:00u1",
+				EntityType: "okta.user",
+				Label:      "designer@example.com",
+			},
+			AccessTarget: ports.CatalogEntity{
+				URN:        "urn:cerebro:writer:aws_role:DesignerAnalytics",
+				EntityType: "aws.role",
+				Label:      "DesignerAnalytics",
+			},
+			RelationChain: []string{"assigned_to"},
+		}},
 	}}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4211,8 +4262,11 @@ func TestGraphPersonAccessPathsEndpoint(t *testing.T) {
 	if body.Paths[0].Principal.URN != "urn:cerebro:writer:okta_user:00u1" || body.Paths[0].AccessTarget.URN != "urn:cerebro:writer:aws_role:DesignerAnalytics" {
 		t.Fatalf("paths = %#v", body.Paths)
 	}
-	if len(graph.cypherRequests) != 1 || graph.cypherRequests[0].Params["person_query"] != "product designer" {
-		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
+	if len(graph.personAccessRequests) != 1 || graph.personAccessRequests[0].PersonQuery != "product designer" || graph.personAccessRequests[0].Limit != 5 || graph.personAccessRequests[0].Depth != 2 {
+		t.Fatalf("person access requests = %#v", graph.personAccessRequests)
+	}
+	if len(graph.cypherRequests) != 0 {
+		t.Fatalf("cypher requests = %#v, want none", graph.cypherRequests)
 	}
 }
 
@@ -4291,7 +4345,7 @@ func TestGraphEffectiveAccessPathsEndpoint(t *testing.T) {
 			},
 		}}},
 	}}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4360,7 +4414,7 @@ func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
 			"to_label":         "prod-secrets",
 		}}},
 	}}
-	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -4651,8 +4705,8 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 func TestBootstrapHealthDegradesWhenRustGraphReadAuthorityIsUnavailable(t *testing.T) {
 	const rawDependencyError = "rust graph unavailable at http://internal-graph:8081"
 	response := publicHealthResponse(context.Background(), Dependencies{
-		GraphStore:   &stubGraphStore{},
-		GraphQueries: &stubGraphStore{err: errors.New(rawDependencyError)},
+		GraphStore: &stubGraphStore{},
+		GraphReads: NewGraphReadCapabilities(&stubGraphStore{err: errors.New(rawDependencyError)}),
 	})
 	if response.GetStatus() != "degraded" {
 		t.Fatalf("health status = %q, want degraded", response.GetStatus())
@@ -5397,6 +5451,7 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		StateStore: runtimeStore,
 		GraphStore: graphStore,
+		GraphReads: NewGraphReadCapabilities(graphStore),
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -5609,6 +5664,7 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		StateStore: runtimeStore,
 		GraphStore: graphStore,
+		GraphReads: NewGraphReadCapabilities(graphStore),
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -5972,6 +6028,7 @@ func TestFindingEndpoints(t *testing.T) {
 		AppendLog:  appendLog,
 		StateStore: runtimeStore,
 		GraphStore: graphStore,
+		GraphReads: NewGraphReadCapabilities(graphStore),
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -7445,7 +7502,7 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 func TestPlatformKnowledgeDecisionRequiresDurableAppendLog(t *testing.T) {
 	targetURN := "urn:cerebro:writer:resource:service-1"
 	graphStore := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -7467,7 +7524,7 @@ func TestPlatformKnowledgeDecisionReturnsDurableProjectionFailure(t *testing.T) 
 	targetURN := "urn:cerebro:writer:resource:service-1"
 	graphStore := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}, err: errors.New("graph unavailable")}
 	appendLog := &recordingAppendLog{}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, AppendLog: appendLog}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore), AppendLog: appendLog}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -7902,6 +7959,7 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 		AppendLog:  &recordingAppendLog{},
 		StateStore: &stubRuntimeStore{},
 		GraphStore: graphStore,
+		GraphReads: NewGraphReadCapabilities(graphStore),
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -8046,6 +8104,7 @@ func TestReportEndpoints(t *testing.T) {
 		AppendLog:  &recordingAppendLog{},
 		StateStore: runtimeStore,
 		GraphStore: graphStore,
+		GraphReads: NewGraphReadCapabilities(graphStore),
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -8205,7 +8264,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	datadog, err := datadogsource.NewFixture()
+	datadog, err := newCatalogFixtureSource("datadog")
 	if err != nil {
 		return nil, err
 	}
@@ -8213,11 +8272,44 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	slack, err := slacksource.NewFixture()
+	slack, err := newCatalogFixtureSource("slack")
 	if err != nil {
 		return nil, err
 	}
 	return sourcecdk.NewRegistry(source, auth0, datadog, okta, pagerDuty, sdk, slack)
+}
+
+func newCatalogFixtureSource(sourceID string) (sourcecdk.Source, error) {
+	payload, err := sourcecatalogs.BuiltinCatalog(sourceID)
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(payload)
+	if err != nil {
+		return nil, err
+	}
+	if catalog.Spec == nil || len(catalog.RuntimeFamilies) == 0 {
+		return nil, fmt.Errorf("%s fixture catalog has no runtime families", sourceID)
+	}
+	fixtureFS := os.DirFS(filepath.Join("..", "..", "sources", sourceID))
+	families := make([]sourcecdk.FixtureFamily, 0, len(catalog.RuntimeFamilies))
+	for _, family := range catalog.RuntimeFamilies {
+		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
+		if err != nil {
+			return nil, err
+		}
+		events, err := sourcecdk.LoadFixtureEventsWithContracts(fixtureFS, "testdata/read_"+family+".json", catalog.EventContracts)
+		if err != nil {
+			return nil, err
+		}
+		families = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})
+	}
+	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
+		Spec:          catalog.Spec,
+		Contracts:     catalog.EventContracts,
+		DefaultFamily: catalog.RuntimeFamilies[0],
+		Families:      families,
+	})
 }
 
 func assertBootstrapProjectedLink(t *testing.T, graph *stubGraphStore, fromURN string, relation string, toURN string) {

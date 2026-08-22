@@ -110,10 +110,10 @@ func (p *GraphProjector) ProjectFact(ctx context.Context, fact complianceintegra
 // Cypher. It is intentionally independent from the Neo4j driver so tests and
 // alternate graph stores can implement the same port.
 type ProjectedGraph struct {
-	queries ports.GraphQueryStore
+	queries ports.RawCypherQueryStore
 }
 
-func NewProjectedGraph(queries ports.GraphQueryStore) (*ProjectedGraph, error) {
+func NewProjectedGraph(queries ports.RawCypherQueryStore) (*ProjectedGraph, error) {
 	if queries == nil {
 		return nil, ErrInvalidGraph
 	}

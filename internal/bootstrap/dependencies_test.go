@@ -33,6 +33,20 @@ func TestOpenDependenciesAllowsUnconfiguredStores(t *testing.T) {
 	}
 }
 
+func TestOpenDependenciesRejectsGraphReadModeWithoutEndpoint(t *testing.T) {
+	_, closeAll, err := OpenDependencies(context.Background(), config.Config{
+		OrganizationalGraph: config.OrganizationalGraphConfig{ReadMode: "authority"},
+	})
+	if closeAll != nil {
+		if closeErr := closeAll(); closeErr != nil {
+			t.Fatalf("closeAll() error = %v", closeErr)
+		}
+	}
+	if !errors.Is(err, errOrganizationalGraphReadEndpointRequired) {
+		t.Fatalf("OpenDependencies() error = %v, want missing authority endpoint", err)
+	}
+}
+
 func TestOpenDependenciesAllowsRustGraphWithoutGoGraphStore(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/readyz" {
@@ -61,10 +75,10 @@ func TestOpenDependenciesAllowsRustGraphWithoutGoGraphStore(t *testing.T) {
 	if deps.GraphStore != nil {
 		t.Fatal("GraphStore != nil, want no Go graph store")
 	}
-	if deps.GraphQueries == nil {
-		t.Fatal("GraphQueries = nil, want Rust graph client")
+	if deps.GraphReads.RawCypher == nil {
+		t.Fatal("GraphReads.RawCypher = nil, want Rust graph client")
 	}
-	if _, err := deps.GraphQueries.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
+	if _, err := deps.GraphReads.RawCypher.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
 		t.Fatalf("ExecuteReadCypher() error = %v", err)
 	}
 }

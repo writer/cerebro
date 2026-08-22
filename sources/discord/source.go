@@ -3,34 +3,55 @@ package discord
 import (
 	"context"
 	"embed"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
 const (
-	sourceID               = "discord"
-	defaultFamily          = familyAuditLog
-	defaultHealthPath      = "/guilds/${config.guild_id}/audit-logs"
-	defaultBaseURLTemplate = "https://discord.com/api/v10"
-	tokenScheme            = "Token"
-	familyAuditLog         = "audit_log"
-	familyMember           = "member"
-	familyRole             = "role"
-	familyPermission       = "permission"
+	sourceID                                  = "discord"
+	defaultFamily                             = familyAuditLog
+	defaultBaseURLTemplate                    = "https://discord.com/api/v10"
+	tokenScheme                               = "Bot"
+	familyAuditLog                            = "audit_log"
+	familyMember                              = "member"
+	familyRole                                = "role"
+	familyPermission                          = "permission"
+	discordEpochMillis, maxAuditResponseBytes = int64(1_420_070_400_000), 4 * 1024 * 1024
 )
 
-var templateKeys = []string{"application_id", "guild_id", "api_key"}
+var errInvalidCursor, errInvalidConfigID, errMissingProviderID, errPermissionScopeMismatch, errInvalidEnvelope, errInvalidAuditRecord, errConflictingDuplicate, errAuditResponseTooLarge = errors.New("discord cursor is invalid"), errors.New("discord config provider ID is invalid"), errors.New("discord provider ID is missing"), errors.New("discord permission scope mismatch"), errors.New("discord response envelope is invalid"), errors.New("discord audit_log record is invalid"), errors.New("discord provider identity has conflicting content"), errors.New("discord audit_log response exceeds the provider-local byte bound")
 
 type Source struct {
-	inner         *jsonapi.Source
-	allowLoopback bool
+	spec   *cerebrov1.SourceSpec
+	inners map[string]*jsonapi.Source
+}
+
+func auditFamily() jsonapi.Family {
+	return jsonapi.Family{Name: familyAuditLog, Path: "/guilds/${config.guild_id}/audit-logs", URNKind: "discord_audit_log", IDKeys: []string{"id"}, RequireID: true, PageFirstCursor: "0", CursorParam: "after", PageSizeParams: []string{"limit"}, ListKeys: []string{"audit_log_entries"}, Config: jsonapi.FamilyConfig{LastItemCursorKeys: []string{"id"}, DefaultPageSize: 50}, TimestampKeys: []string{"observed_at", "updated_at", "last_seen_at", "created_at"}, Attributes: map[string]string{"actor_id": "user_id", "event_type": "action_type", "id": "id", "provider_id": "id", "resource_id": "target_id", "source_event_id": "id"}, StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_log", "source_system": "discord"}}
+}
+
+func memberFamily() jsonapi.Family {
+	return jsonapi.Family{Name: familyMember, Path: "/guilds/${config.guild_id}/members", URNKind: "discord_member", IDKeys: []string{"user.id"}, RequireID: true, PageFirstCursor: "0", CursorParam: "after", PageSizeParams: []string{"limit"}, Config: jsonapi.FamilyConfig{LastItemCursorKeys: []string{"user.id"}}, TimestampKeys: []string{"observed_at", "updated_at", "last_seen_at", "created_at"}, Attributes: map[string]string{"avatar": "avatar|user.avatar", "communication_disabled_until": "communication_disabled_until", "deaf": "deaf", "display_name": "nick|user.global_name|user.username", "flags": "flags", "global_name": "user.global_name", "id": "user.id", "joined_at": "joined_at", "login": "user.username", "mute": "mute", "name": "nick|user.global_name|user.username", "pending": "pending", "provider_id": "user.id", "resource_id": "user.id", "resource_name": "nick|user.global_name|user.username", "roles": "roles", "source_event_id": "user.id", "user_id": "user.id", "username": "user.username"}, StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "member", "source_system": "discord"}}
+}
+
+func roleFamily() jsonapi.Family {
+	return jsonapi.Family{Name: familyRole, Path: "/guilds/${config.guild_id}/roles", DisablePageSize: true, URNKind: "discord_role", IDKeys: []string{"id"}, RequireID: true, TimestampKeys: []string{"observed_at", "updated_at", "last_seen_at", "created_at"}, Attributes: map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"}, StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "role", "source_system": "discord"}}
+}
+
+func permissionFamily() jsonapi.Family {
+	return jsonapi.Family{Name: familyPermission, Path: "/applications/${config.application_id}/guilds/${config.guild_id}/commands/permissions", DisablePageSize: true, URNKind: "discord_permission", IDKeys: []string{"id"}, RequireID: true, TimestampKeys: []string{"observed_at", "updated_at", "last_seen_at", "created_at"}, Attributes: map[string]string{"application_id": "application_id", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "guild_id": "guild_id", "id": "id", "name": "application_id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "application_id", "resource_type": "permission", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"}, StaticAttributes: map[string]string{"record_class": "asset", "schema": "permission", "source_system": "discord"}}
 }
 
 func New() (*Source, error) {
@@ -38,67 +59,35 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	inner, err := jsonapi.New(spec, jsonapi.Options{
-		SourceID:        sourceID,
-		DefaultFamily:   defaultFamily,
-		RequireTenantID: true,
-		AuthModel:       "api_key",
-		TokenScheme:     tokenScheme,
-		Families: []jsonapi.Family{
-			{
-				Name:             familyAuditLog,
-				Path:             "/guilds/${config.guild_id}/audit-logs",
-				URNKind:          "discord_audit_log",
-				IDKeys:           []string{"id", "name", "event_id", "uuid", "request_id"},
-				CursorParam:      "after",
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"audit_log_entries"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"actor_email": "actor_email|actor.email|email|user.email", "actor_id": "actor_id|actor.id|actorId|user_id|user.id", "actor_name": "actor_name|actor.name|user.name", "event_type": "event_type|event_name|action|type", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_email": "resource_email|target_email|target.email", "resource_id": "resource_id|target_id|target.id|resource.id|object_id", "resource_name": "resource_name|target_name|target.name|resource.name|object_name", "resource_type": "resource_type|target_type|target.type|object_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "audit_event", "schema": "audit_log", "source_system": "discord"},
+	families := []jsonapi.Family{auditFamily(), memberFamily(), roleFamily(), permissionFamily()}
+	inners := make(map[string]*jsonapi.Source, len(families))
+	for _, family := range families {
+		family := family
+		inner, err := jsonapi.New(spec, jsonapi.Options{
+			SourceID:        sourceID,
+			DefaultFamily:   family.Name,
+			RequireTenantID: true,
+			AuthModel:       "api_key",
+			TokenScheme:     tokenScheme,
+			ResponseError: func(body []byte) error {
+				return validateResponseEnvelope(family.Name, body)
 			},
-			{
-				Name:             familyMember,
-				Path:             "/guilds/${config.guild_id}/members",
-				URNKind:          "discord_member",
-				IDKeys:           []string{"user_id", "id", "email", "primary_email", "login"},
-				CursorParam:      "after",
-				PageSizeParams:   []string{"limit"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "display_name|name|profile.display_name|profile.name", "domain": "domain|tenant_domain|organization_domain", "email": "email|primary_email|profile.email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "user_id|id", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "name": "nick|user.username|user_id", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "provider_id": "user_id|id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state|lifecycle_state", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "user_id|id|uid"},
-				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "member", "source_system": "discord"},
-			},
-			{
-				Name:             familyRole,
-				Path:             "/guilds/${config.guild_id}/roles",
-				URNKind:          "discord_role",
-				IDKeys:           []string{"id", "name", "group_id", "group_email", "email"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "domain": "domain|tenant_domain|organization_domain", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "group_email": "group_email|email", "group_id": "group_id|id", "group_name": "group_name|name|display_name", "id": "id", "name": "name", "observed_at": "observed_at|updated_at|last_seen_at", "provider_id": "id", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "identity_group", "schema": "role", "source_system": "discord"},
-			},
-			{
-				Name:             familyPermission,
-				Path:             "/applications/${config.application_id}/guilds/${config.guild_id}/commands/permissions",
-				URNKind:          "discord_permission",
-				IDKeys:           []string{"id", "application_id", "urn", "resource_urn", "name"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "application_id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "application_id", "resource_type": "permission", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				StaticAttributes: map[string]string{"record_class": "asset", "schema": "permission", "source_system": "discord"},
-			},
-		},
-	})
-	if err != nil {
-		return nil, err
+			DoNotRetryStatuses: map[bool][]int{true: {401, 403, 429}}[family.Name == familyAuditLog],
+			Families:           []jsonapi.Family{family},
+		})
+		if err != nil {
+			return nil, err
+		}
+		inners[family.Name] = inner
 	}
-	return &Source{inner: inner}, nil
+	return &Source{spec: spec, inners: inners}, nil
 }
 
 func (s *Source) Spec() *cerebrov1.SourceSpec {
-	if s == nil || s.inner == nil {
+	if s == nil {
 		return nil
 	}
-	return s.inner.Spec()
+	return s.spec
 }
 
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
@@ -106,10 +95,11 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
+	inner, err := s.innerFor(runtimeCfg)
+	if err != nil {
 		return err
 	}
-	return s.inner.Check(ctx, runtimeCfg)
+	return inner.Check(ctx, runtimeCfg)
 }
 
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
@@ -117,7 +107,11 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	if err != nil {
 		return nil, err
 	}
-	return s.inner.Discover(ctx, runtimeCfg)
+	inner, err := s.innerFor(runtimeCfg)
+	if err != nil {
+		return nil, err
+	}
+	return inner.Discover(ctx, runtimeCfg)
 }
 
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
@@ -125,16 +119,195 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	return s.inner.Read(ctx, runtimeCfg, cursor)
+	inner, err := s.innerFor(runtimeCfg)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	family := strings.TrimSpace(sourcecdk.ConfigValue(runtimeCfg, "family"))
+	if family == "" {
+		family = defaultFamily
+	}
+	if family == familyAuditLog || family == familyMember {
+		if token := strings.TrimSpace(sourcecdk.CursorToken(cursor)); token != "" {
+			if _, err := positiveSnowflake(token); err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("%w: discord %s after cursor: %w", errInvalidCursor, family, err)
+			}
+		}
+	}
+	if family == familyPermission {
+		for _, field := range []string{"application_id", "guild_id"} {
+			if _, err := positiveSnowflake(sourcecdk.ConfigValue(runtimeCfg, field)); err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("%w: discord permission config %s: %w", errInvalidConfigID, field, err)
+			}
+		}
+	}
+	pull, err := inner.Read(ctx, runtimeCfg, cursor)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	if err := adjustProviderCursor(family, runtimeCfg, &pull); err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	if err := validatePermissionScope(family, runtimeCfg, &pull); err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	return pull, nil
+}
+
+func adjustProviderCursor(family string, cfg sourcecdk.Config, pull *sourcecdk.Pull) error {
+	if pull == nil {
+		return nil
+	}
+	switch family {
+	case familyAuditLog:
+		var previous uint64
+		for index, event := range pull.Events {
+			id, err := positiveSnowflake(event.Attributes["provider_id"])
+			if err != nil {
+				return fmt.Errorf("discord audit_log provider_id: %w", err)
+			}
+			if index > 0 && id <= previous {
+				return fmt.Errorf("discord audit_log after page must be strictly ascending")
+			}
+			previous = id
+			event.OccurredAt = timestamppb.New(time.UnixMilli(discordEpochMillis + int64(id>>22)).UTC())
+			event.Attributes["guild_id"] = strings.TrimSpace(sourcecdk.ConfigValue(cfg, "guild_id"))
+		}
+		if len(pull.Events) > 0 && pull.Checkpoint != nil {
+			pull.Checkpoint.Watermark = pull.Events[len(pull.Events)-1].OccurredAt
+		}
+	case familyMember:
+		if pull.NextCursor == nil {
+			return nil
+		}
+		var highest uint64
+		for _, event := range pull.Events {
+			id, err := positiveSnowflake(event.Attributes["provider_id"])
+			if err != nil {
+				return fmt.Errorf("discord member user.id: %w", err)
+			}
+			if id > highest {
+				highest = id
+			}
+		}
+		if highest == 0 {
+			return fmt.Errorf("discord member full page has no resumable user.id")
+		}
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.FormatUint(highest, 10)}
+	}
+	return nil
+}
+
+func positiveSnowflake(value string) (uint64, error) {
+	id, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+	if err != nil || id == 0 {
+		return 0, fmt.Errorf("must be a positive string snowflake")
+	}
+	return id, nil
+}
+
+func validatePermissionScope(family string, cfg sourcecdk.Config, pull *sourcecdk.Pull) error {
+	if family != familyPermission || pull == nil {
+		return nil
+	}
+	expectedApplication := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "application_id"))
+	expectedGuild := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "guild_id"))
+	for index, event := range pull.Events {
+		if event.Attributes["application_id"] != expectedApplication {
+			return fmt.Errorf("%w: record %d application_id", errPermissionScopeMismatch, index)
+		}
+		if event.Attributes["guild_id"] != expectedGuild {
+			return fmt.Errorf("%w: record %d guild_id", errPermissionScopeMismatch, index)
+		}
+	}
+	return nil
+}
+
+func (s *Source) innerFor(cfg sourcecdk.Config) (*jsonapi.Source, error) {
+	family := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "family"))
+	if family == "" {
+		family = defaultFamily
+	}
+	inner := s.inners[family]
+	if inner == nil {
+		return nil, fmt.Errorf("discord family %q is unsupported", family)
+	}
+	return inner, nil
+}
+
+func validateResponseEnvelope(family string, body []byte) error {
+	if family == familyAuditLog && len(body) > maxAuditResponseBytes {
+		return errAuditResponseTooLarge
+	}
+	var root any
+	if err := json.Unmarshal(body, &root); err != nil {
+		return fmt.Errorf("%w: decode %s: %w", errInvalidEnvelope, family, err)
+	}
+	var records []any
+	switch family {
+	case familyAuditLog:
+		object, ok := root.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%w: audit_log must be an object", errInvalidEnvelope)
+		}
+		records, ok = object["audit_log_entries"].([]any)
+		if !ok {
+			return fmt.Errorf("%w: audit_log_entries is required", errInvalidEnvelope)
+		}
+		if err := validateAuditRecords(records); err != nil {
+			return err
+		}
+	case familyMember, familyRole, familyPermission:
+		var ok bool
+		records, ok = root.([]any)
+		if !ok {
+			return fmt.Errorf("%w: %s must be a bare array", errInvalidEnvelope, family)
+		}
+	default:
+		return fmt.Errorf("discord family %q is unsupported", family)
+	}
+	if family == familyMember {
+		for _, record := range records {
+			object, objectOK := record.(map[string]any)
+			user, userOK := object["user"].(map[string]any)
+			id, idOK := user["id"].(string)
+			if !objectOK || !userOK || !idOK || strings.TrimSpace(id) == "" {
+				return errMissingProviderID
+			}
+		}
+	}
+	return nil
+}
+
+func validateAuditRecords(records []any) error {
+	if len(records) > 100 {
+		return fmt.Errorf("%w: record count exceeds 100", errInvalidAuditRecord)
+	}
+	seen := map[string]string{}
+	var previous uint64
+	for index, record := range records {
+		object, ok := record.(map[string]any)
+		if _, tenantSupplied := object["tenant_id"]; !ok || tenantSupplied {
+			return fmt.Errorf("%w: record %d shape", errInvalidAuditRecord, index)
+		}
+		idText, ok := object["id"].(string)
+		id, err := positiveSnowflake(idText)
+		if !ok || err != nil || index > 0 && id < previous {
+			return fmt.Errorf("%w: record %d id", errInvalidAuditRecord, index)
+		}
+		previous = id
+		canonical, _ := json.Marshal(object)
+		encoded := string(canonical)
+		if first, exists := seen[idText]; exists && first != encoded {
+			return fmt.Errorf("%w: record %d id %s", errConflictingDuplicate, index, idText)
+		}
+		seen[idText] = encoded
+	}
+	return nil
 }
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
-	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
-}
-
-func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	return s.inner.CheckPath(ctx, cfg, path, nil)
+	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, []string{"application_id", "guild_id", "api_key"})
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
@@ -147,20 +320,4 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	return spec, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
-func (s *Source) allowLoopbackForTest() {
-	if s != nil && s.inner != nil {
-		s.inner.AllowLoopbackBaseURL = true
-		s.allowLoopback = true
-	}
 }

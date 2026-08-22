@@ -14,6 +14,8 @@ type awsExposureStubStore struct {
 	exposureRequests []ports.ExposureCoverageRequest
 	result           *ports.ExposureCoverageResult
 	err              error
+	personRequests   []ports.PersonAccessPathRequest
+	personResult     *ports.PersonAccessPathResult
 	rawReads         int
 }
 
@@ -40,6 +42,11 @@ func (s *awsExposureStubStore) ExecuteReadCypher(_ context.Context, request port
 func (s *awsExposureStubStore) CompareExposureCoverage(_ context.Context, request ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
 	s.exposureRequests = append(s.exposureRequests, request)
 	return s.result, s.err
+}
+
+func (s *awsExposureStubStore) ListPersonAccessPaths(_ context.Context, request ports.PersonAccessPathRequest) (*ports.PersonAccessPathResult, error) {
+	s.personRequests = append(s.personRequests, request)
+	return s.personResult, s.err
 }
 
 func TestGetAWSPublicEndpointInsightsRequiresTenant(t *testing.T) {
@@ -98,7 +105,7 @@ func TestGetAWSPublicEndpointInsightsUsesOneTypedBoundedRead(t *testing.T) {
 }
 
 func TestGetAWSPublicEndpointInsightsFailsClosedWithoutTypedStore(t *testing.T) {
-	store := struct{ ports.GraphQueryStore }{}
+	store := struct{ ports.GraphNeighborhoodStore }{}
 	_, err := New(store).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{TenantID: "writer"})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("GetAWSPublicEndpointInsights() error = %v, want %v", err, ErrRuntimeUnavailable)

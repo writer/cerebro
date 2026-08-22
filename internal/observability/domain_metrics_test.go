@@ -68,82 +68,6 @@ func TestRecordContentPackSelectionMetricsAreLowCardinality(t *testing.T) {
 	assertMetricHasAttribute(t, metric, "status", "embedded_fallback")
 }
 
-func TestRecordOrganizationalGraphShadowMetricsAreLowCardinality(t *testing.T) {
-	reader, shutdown := installManualMetricReader(t)
-	RecordOrganizationalGraphShadow(context.Background(), OrganizationalGraphShadowMetrics{
-		Operation: "Expand Batch",
-		Status:    "Mismatch",
-		Duration:  20 * time.Millisecond,
-	})
-	t.Cleanup(shutdown)
-
-	metrics := collectMetrics(t, reader)
-	for _, name := range []string{
-		"cerebro.organizational_graph.shadow.comparisons",
-		"cerebro.organizational_graph.shadow.duration",
-	} {
-		metric, ok := metrics[name]
-		if !ok {
-			t.Fatalf("metric %q missing from %#v", name, metricNames(metrics))
-		}
-		assertNoForbiddenMetricAttributes(t, metric)
-		assertMetricHasAttribute(t, metric, "operation", "expand_batch")
-		assertMetricHasAttribute(t, metric, "status", "mismatch")
-	}
-}
-
-func TestRecordOrganizationalGraphCanaryRouteMetricsAreLowCardinality(t *testing.T) {
-	reader, shutdown := installManualMetricReader(t)
-	RecordOrganizationalGraphCanaryRoute(context.Background(), OrganizationalGraphCanaryRouteMetrics{
-		Operation:         "Expand Batch",
-		Authority:         "Rust",
-		Status:            "Success",
-		ConfiguredPercent: 10,
-		Duration:          20 * time.Millisecond,
-	})
-	t.Cleanup(shutdown)
-
-	metrics := collectMetrics(t, reader)
-	for _, name := range []string{
-		"cerebro.organizational_graph.canary.routes",
-		"cerebro.organizational_graph.canary.duration",
-	} {
-		metric, ok := metrics[name]
-		if !ok {
-			t.Fatalf("canary route metric %q missing from %#v", name, metricNames(metrics))
-		}
-		assertNoForbiddenMetricAttributes(t, metric)
-		assertMetricHasAttribute(t, metric, "operation", "expand_batch")
-		assertMetricHasAttribute(t, metric, "authority", "rust")
-		assertMetricHasAttribute(t, metric, "status", "success")
-		assertMetricHasIntAttribute(t, metric, "configured_percent", 10)
-	}
-}
-
-func TestRecordOrganizationalGraphCanaryVerificationMetricsAreLowCardinality(t *testing.T) {
-	reader, shutdown := installManualMetricReader(t)
-	RecordOrganizationalGraphCanaryVerification(context.Background(), OrganizationalGraphCanaryVerificationMetrics{
-		Operation: "Expand Batch",
-		Status:    "Mismatch",
-		Duration:  20 * time.Millisecond,
-	})
-	t.Cleanup(shutdown)
-
-	metrics := collectMetrics(t, reader)
-	for _, name := range []string{
-		"cerebro.organizational_graph.canary.verifications",
-		"cerebro.organizational_graph.canary.verification.duration",
-	} {
-		metric, ok := metrics[name]
-		if !ok {
-			t.Fatalf("canary verification metric %q missing from %#v", name, metricNames(metrics))
-		}
-		assertNoForbiddenMetricAttributes(t, metric)
-		assertMetricHasAttribute(t, metric, "operation", "expand_batch")
-		assertMetricHasAttribute(t, metric, "status", "mismatch")
-	}
-}
-
 func TestRecordSourceProjectionMetricsAreLowCardinality(t *testing.T) {
 	reader, shutdown := installManualMetricReader(t)
 	RecordSourceProjection(context.Background(), SourceProjectionMetrics{
@@ -350,18 +274,6 @@ func assertMetricHasBoolAttribute(t *testing.T, metric metricdata.Metrics, key a
 		}
 	}
 	t.Fatalf("metric %q missing attribute %s=%t", metric.Name, key, value)
-}
-
-func assertMetricHasIntAttribute(t *testing.T, metric metricdata.Metrics, key attribute.Key, value int64) {
-	t.Helper()
-	for _, attrs := range metricAttributeSets(metric) {
-		for _, kv := range attrs.ToSlice() {
-			if kv.Key == key && kv.Value.AsInt64() == value {
-				return
-			}
-		}
-	}
-	t.Fatalf("metric %q missing attribute %s=%d", metric.Name, key, value)
 }
 
 func metricAttributeSets(metric metricdata.Metrics) []attribute.Set {

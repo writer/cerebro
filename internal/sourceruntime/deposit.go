@@ -40,18 +40,41 @@ type DepositResponse struct {
 	RuntimeID         string
 	TenantID          string
 	FamilyID          string
+	Receipt           DepositReceipt
 	RecordsAccepted   uint32
 	RecordsRejected   uint32
 	EventsAppended    uint32
 	EntitiesProjected uint32
 	LinksProjected    uint32
 	Errors            []DepositRecordError
+	authorityEvidence ports.SourceRuntimeAuthorityEvidenceRef
+}
+
+type DepositReceipt struct {
+	ReceiptID            string   `json:"receipt_id"`
+	AppendReceiptID      string   `json:"append_receipt_id"`
+	ProjectionReceiptID  string   `json:"projection_receipt_id"`
+	RecordsScanned       uint32   `json:"records_scanned"`
+	RecordsAccepted      uint32   `json:"records_accepted"`
+	RecordsRejected      uint32   `json:"records_rejected"`
+	EventsAppended       uint32   `json:"events_appended"`
+	EntitiesProjected    uint32   `json:"entities_projected"`
+	LinksProjected       uint32   `json:"links_projected"`
+	IdempotencyKeyDigest string   `json:"idempotency_key_digest,omitempty"`
+	AuthorityDecisionID  string   `json:"authority_decision_id,omitempty"`
+	AuthorityEvidenceRef string   `json:"authority_evidence_ref,omitempty"`
+	ReceiptDigestSHA256  string   `json:"receipt_digest_sha256"`
+	QuarantineSummary    []string `json:"quarantine_summary,omitempty"`
 }
 
 type DepositRecordError struct {
 	Index         int
 	SourceEventID string
 	Detail        string
+}
+
+type depositAuthorityEvidenceReader interface {
+	LatestSourceRuntimeAuthorityEvidence(ctx context.Context, tenantID, sourceID, familyID string) (sourcehealth.AuthorityEvidenceRecord, error)
 }
 
 func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResponse, error) {
@@ -137,19 +160,43 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 		}
 		events = append(events, event)
 	}
+	if len(events) > 0 {
+		authority, err := s.depositAuthorityEvidence(ctx, runtime, family)
+		if err != nil {
+			return nil, err
+		}
+		response.Receipt.AuthorityDecisionID = authority.DecisionID
+		response.Receipt.AuthorityEvidenceRef = sourcehealth.AuthorityEvidenceReceiptRef(authority)
+		response.authorityEvidence = ports.SourceRuntimeAuthorityEvidenceRef{
+			DecisionID: authority.DecisionID,
+			Epoch:      authority.AuthorityEpoch,
+		}
+	}
 	if batcher, ok := s.appendLog.(ports.AppendLogBatcher); ok {
+		if err := s.beginDepositPageAttempt(ctx, runtime, family, events, response, req); err != nil {
+			return nil, err
+		}
 		if err := batcher.AppendBatch(ctx, events); err != nil {
 			_ = s.recordDepositRuntimeFailure(context.WithoutCancel(ctx), runtime, response, boundedUint32(len(events))+response.RecordsRejected, req.FullStateMarker, err)
 			return nil, fmt.Errorf("append deposit source event batch: %w", err)
 		}
 		response.EventsAppended += boundedUint32(len(events))
+		if err := s.markDepositPageAppended(ctx, response); err != nil {
+			return nil, err
+		}
 	} else {
+		if err := s.beginDepositPageAttempt(ctx, runtime, family, events, response, req); err != nil {
+			return nil, err
+		}
 		for _, event := range events {
 			if err := s.appendLog.Append(ctx, event); err != nil {
 				_ = s.recordDepositRuntimeFailure(context.WithoutCancel(ctx), runtime, response, boundedUint32(len(events))+response.RecordsRejected, req.FullStateMarker, err)
 				return nil, fmt.Errorf("append deposit source event %q: %w", event.GetId(), err)
 			}
 			response.EventsAppended++
+		}
+		if err := s.markDepositPageAppended(ctx, response); err != nil {
+			return nil, err
 		}
 	}
 	if s.projector != nil {
@@ -163,7 +210,15 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 			response.LinksProjected += result.LinksProjected
 		}
 	}
+	if err := s.markDepositPageProjected(ctx, response); err != nil {
+		return nil, err
+	}
 	response.RecordsAccepted = response.EventsAppended
+	receipt, err := buildDepositReceipt(runtime, family, req, response)
+	if err != nil {
+		return nil, err
+	}
+	response.Receipt = receipt
 	runtime.LastSyncedAt = timestamppb.Now()
 	if runtime.Config == nil {
 		runtime.Config = map[string]string{}
@@ -180,11 +235,203 @@ func (s *Service) Deposit(ctx context.Context, req DepositRequest) (*DepositResp
 		ShortCircuitReason:   "deposit_ingest",
 		ReconciliationReason: depositReconciliationReason(req.FullStateMarker),
 	})
-	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
+	if ledger, ok := s.store.(ports.SourceRuntimePageLedgerStore); ok && response.Receipt.ReceiptID != "" {
+		if err := ledger.CommitSourceRuntimePage(ctx, response.Receipt.ReceiptID, runtime); err != nil {
+			return nil, err
+		}
+	} else if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 		return nil, err
 	}
 	response.Runtime = redactRuntime(runtime)
 	return response, nil
+}
+
+func (s *Service) beginDepositPageAttempt(ctx context.Context, runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily, events []*cerebrov1.EventEnvelope, response *DepositResponse, req DepositRequest) error {
+	ledger, ok := s.store.(ports.SourceRuntimePageLedgerStore)
+	if !ok || len(events) == 0 || response == nil {
+		return nil
+	}
+	receiptID := depositReceiptID(runtime, family, req, events)
+	response.Receipt.ReceiptID = receiptID
+	response.Receipt.AppendReceiptID = "append:" + receiptID
+	response.Receipt.ProjectionReceiptID = "projection:" + receiptID
+	admission := depositPageAdmission(events, response.RecordsRejected)
+	if err := ledger.BeginSourceRuntimePage(ctx, ports.SourceRuntimePageAttempt{
+		AttemptID:      receiptID,
+		RuntimeID:      runtime.GetId(),
+		SourceID:       runtime.GetSourceId(),
+		TenantID:       runtime.GetTenantId(),
+		PageNumber:     1,
+		RecordsScanned: boundedUint32(len(events)) + response.RecordsRejected,
+		Events:         events,
+		Admission:      admission,
+		Authority:      response.authorityEvidence,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) depositAuthorityEvidence(ctx context.Context, runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily) (sourcehealth.AuthorityEvidenceRecord, error) {
+	reader, ok := s.store.(depositAuthorityEvidenceReader)
+	if !ok {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence store is required for deposit ingest", ErrRuntimeUnavailable)
+	}
+	record, err := reader.LatestSourceRuntimeAuthorityEvidence(ctx, runtime.GetTenantId(), runtime.GetSourceId(), family.ID)
+	if err != nil {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence is required for deposit ingest: %w", ErrRuntimeUnavailable, err)
+	}
+	if err := sourcehealth.VerifyAuthorityEvidenceRecord(record); err != nil {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence is invalid for deposit ingest: %w", ErrRuntimeUnavailable, err)
+	}
+	if sourcehealth.AuthorityEvidenceReceiptRef(record) == "" {
+		return sourcehealth.AuthorityEvidenceRecord{}, fmt.Errorf("%w: durable authority evidence reference is required for deposit ingest", ErrRuntimeUnavailable)
+	}
+	return record, nil
+}
+
+func (s *Service) markDepositPageAppended(ctx context.Context, response *DepositResponse) error {
+	ledger, ok := s.store.(ports.SourceRuntimePageLedgerStore)
+	if !ok || response == nil || response.Receipt.ReceiptID == "" {
+		return nil
+	}
+	return ledger.MarkSourceRuntimePageAppended(ctx, response.Receipt.ReceiptID)
+}
+
+func (s *Service) markDepositPageProjected(ctx context.Context, response *DepositResponse) error {
+	ledger, ok := s.store.(ports.SourceRuntimePageLedgerStore)
+	if !ok || response == nil || response.Receipt.ReceiptID == "" {
+		return nil
+	}
+	return ledger.MarkSourceRuntimePageProjected(ctx, response.Receipt.ReceiptID, ports.SourceRuntimePageProjection{
+		EntitiesProjected: response.EntitiesProjected,
+		LinksProjected:    response.LinksProjected,
+	})
+}
+
+func buildDepositReceipt(runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily, req DepositRequest, response *DepositResponse) (DepositReceipt, error) {
+	if response == nil {
+		return DepositReceipt{}, nil
+	}
+	receipt := response.Receipt
+	if receipt.ReceiptID == "" {
+		receipt.ReceiptID = depositReceiptID(runtime, family, req, nil)
+		receipt.AppendReceiptID = "append:" + receipt.ReceiptID
+		receipt.ProjectionReceiptID = "projection:" + receipt.ReceiptID
+	}
+	if response.EventsAppended > 0 && (strings.TrimSpace(receipt.AuthorityDecisionID) == "" || strings.TrimSpace(receipt.AuthorityEvidenceRef) == "") {
+		return DepositReceipt{}, fmt.Errorf("%w: deposit receipt is missing durable authority evidence", ErrRuntimeUnavailable)
+	}
+	receipt.RecordsScanned = response.RecordsAccepted + response.RecordsRejected
+	receipt.RecordsAccepted = response.RecordsAccepted
+	receipt.RecordsRejected = response.RecordsRejected
+	receipt.EventsAppended = response.EventsAppended
+	receipt.EntitiesProjected = response.EntitiesProjected
+	receipt.LinksProjected = response.LinksProjected
+	receipt.QuarantineSummary = depositQuarantineSummary(response.Errors)
+	receipt.IdempotencyKeyDigest = depositRawDigest(req.IdempotencyKey)
+	receipt.ReceiptDigestSHA256 = ""
+	digest, err := CanonicalSourceRuntimeDigest(receipt)
+	if err == nil {
+		receipt.ReceiptDigestSHA256 = digest
+	}
+	return receipt, nil
+}
+
+func depositReceiptID(runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily, req DepositRequest, events []*cerebrov1.EventEnvelope) string {
+	eventIDs := make([]string, 0, len(events))
+	for _, event := range events {
+		if event != nil {
+			eventIDs = append(eventIDs, event.GetId())
+		}
+	}
+	sort.Strings(eventIDs)
+	payload := map[string]any{
+		"tenant_id":              runtime.GetTenantId(),
+		"source_id":              runtime.GetSourceId(),
+		"runtime_id":             runtime.GetId(),
+		"family_id":              family.ID,
+		"batch_id_digest":        depositRawDigest(req.BatchID),
+		"idempotency_key_digest": depositRawDigest(req.IdempotencyKey),
+		"full_state":             req.FullStateMarker,
+		"event_ids":              eventIDs,
+	}
+	digest, err := CanonicalSourceRuntimeDigest(payload)
+	if err != nil {
+		sum := sha256.Sum256([]byte(strings.Join(eventIDs, ",")))
+		digest = hex.EncodeToString(sum[:])
+	}
+	return "deposit:" + digest
+}
+
+func depositPageAdmission(events []*cerebrov1.EventEnvelope, rejected uint32) ports.SourceRuntimePageAdmission {
+	eventIDs := make([]string, 0, len(events))
+	for _, event := range events {
+		if event != nil {
+			eventIDs = append(eventIDs, event.GetId())
+		}
+	}
+	sort.Strings(eventIDs)
+	scanned := boundedUint32(len(events)) + rejected
+	return ports.SourceRuntimePageAdmission{
+		Kernel:          "deposit_ingest",
+		ABIVersion:      1,
+		Scanned:         scanned,
+		Accepted:        boundedUint32(len(events)),
+		Quarantined:     rejected,
+		Duplicates:      0,
+		ContractsSHA256: depositDigest(map[string]any{"kernel": "deposit_ingest", "version": 1}),
+		ScannedSHA256:   depositDigest(map[string]any{"events": eventIDs, "rejected": rejected}),
+		AcceptedSHA256:  depositDigest(eventIDs),
+		ResultSHA256:    depositDigest(map[string]any{"accepted": len(events), "rejected": rejected}),
+	}
+}
+
+func depositDigest(value any) string {
+	digest, err := CanonicalSourceRuntimeDigest(value)
+	if err != nil {
+		return ""
+	}
+	return "sha256:" + digest
+}
+
+func depositRawDigest(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func depositQuarantineSummary(errors []DepositRecordError) []string {
+	if len(errors) == 0 {
+		return nil
+	}
+	counts := map[string]int{}
+	for _, record := range errors {
+		reason := "invalid_record"
+		detail := strings.ToLower(record.Detail)
+		switch {
+		case strings.Contains(detail, "duplicate"):
+			reason = "duplicate"
+		case strings.Contains(detail, "required"):
+			reason = "missing_required_field"
+		case strings.Contains(detail, "json"):
+			reason = "invalid_json"
+		}
+		counts[reason]++
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, fmt.Sprintf("%s:%d", key, counts[key]))
+	}
+	return out
 }
 
 func (s *Service) recordDepositRuntimeFailure(ctx context.Context, runtime *cerebrov1.SourceRuntime, response *DepositResponse, recordsScanned uint32, fullStateMarker bool, cause error) error {
@@ -437,11 +684,13 @@ func depositProjectionClass(family connectordefinitions.ResourceFamily) string {
 
 func depositEventID(runtime *cerebrov1.SourceRuntime, family connectordefinitions.ResourceFamily, decoded any, payload json.RawMessage, options depositEventOptions) string {
 	hash := sha256.Sum256(payload)
-	stable := firstNonEmptyString(
-		options.IdempotencyKey,
-		options.BatchID,
-		depositPayloadFirstString(decoded, "source_event_id", "event_id"),
-	)
+	stable := depositSafeCallerToken("idempotency", options.IdempotencyKey)
+	if stable == "" {
+		stable = depositSafeCallerToken("batch", options.BatchID)
+	}
+	if stable == "" {
+		stable = depositPayloadFirstString(decoded, "source_event_id", "event_id")
+	}
 	if stable == "" {
 		stable = hex.EncodeToString(hash[:12])
 	}
@@ -454,6 +703,14 @@ func depositEventID(runtime *cerebrov1.SourceRuntime, family connectordefinition
 		strings.TrimSpace(family.ID),
 		sanitizeDepositEventIDSegment(stable),
 	}, ":")
+}
+
+func depositSafeCallerToken(label string, value string) string {
+	digest := depositRawDigest(value)
+	if digest == "" {
+		return ""
+	}
+	return strings.TrimSpace(label) + "-sha256-" + digest
 }
 
 func sanitizeDepositEventIDSegment(value string) string {

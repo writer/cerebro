@@ -52,7 +52,7 @@ type FamilyConfig struct {
 	BaseURL               string
 	StaticQuery           map[string]string
 	ConfigQuery           map[string]string
-	JSONBody              JSONBodyConfig
+	Request               FamilyRequestConfig
 	ConfigAttributes      map[string]string
 	FinalStaticAttributes map[string]string
 	StaticHeaders         map[string]string
@@ -75,8 +75,14 @@ type FamilyConfig struct {
 	DefaultPageSize       int
 }
 
+// FamilyRequestConfig groups request values that are bound per family.
+type FamilyRequestConfig struct {
+	JSONBody      JSONBodyConfig
+	ConfigHeaders map[string]string
+}
+
 type JSONBodyConfig struct {
-	Static      map[string]string
+	Static      map[string]any
 	Config      map[string]string
 	CursorParam string
 	SizeParam   string
@@ -120,6 +126,7 @@ type Options struct {
 	ResponseError                     func([]byte) error
 	RecordFilters                     map[string]RecordFilter
 	Families                          []Family
+	DoNotRetryStatuses                []int
 }
 
 // Source is a small, safe JSON API source implementation used by endpoint

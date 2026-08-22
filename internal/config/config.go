@@ -80,6 +80,7 @@ type Config struct {
 type SourceRuntimeConfig struct {
 	EventAdmissionWorkerPath string
 	EventAdmissionWorkers    int
+	SourceWorkerPath         string
 }
 
 // ContentPackConfig selects signed declarative content without changing the kernel binary.
@@ -151,15 +152,12 @@ type GraphStoreConfig struct {
 type OrganizationalGraphConfig struct {
 	// BaseURL is the legacy combined endpoint. Prefer separate read and
 	// projection endpoints so pre-cutover reads cannot activate a writer.
-	BaseURL             string
-	ReadBaseURL         string
-	ProjectionBaseURL   string
-	ReadMode            string
-	ShadowPercent       int
-	AuthorityPercent    int
-	CanaryVerifyPercent int
-	SharedSecret        string
-	Timeout             time.Duration
+	BaseURL           string
+	ReadBaseURL       string
+	ProjectionBaseURL string
+	ReadMode          string
+	SharedSecret      string
+	Timeout           time.Duration
 }
 
 // CacheConfig controls optional shared query/response caching.
@@ -568,6 +566,7 @@ func Load() (Config, error) {
 		},
 		SourceRuntime: SourceRuntimeConfig{
 			EventAdmissionWorkerPath: strings.TrimSpace(os.Getenv("CEREBRO_EVENT_ADMISSION_WORKER")),
+			SourceWorkerPath:         strings.TrimSpace(os.Getenv("CEREBRO_SOURCE_WORKER")),
 		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),
@@ -590,6 +589,9 @@ func Load() (Config, error) {
 	}
 	if cfg.SourceRuntime.EventAdmissionWorkerPath == "" {
 		cfg.SourceRuntime.EventAdmissionWorkerPath = defaultSourceEventAdmissionWorkerPath()
+	}
+	if cfg.SourceRuntime.SourceWorkerPath == "" {
+		cfg.SourceRuntime.SourceWorkerPath = defaultSourceWorkerPath()
 	}
 	if cfg.SourceRuntime.EventAdmissionWorkers, err = parseIntEnv("CEREBRO_EVENT_ADMISSION_WORKERS", defaultSourceEventAdmissionWorkers); err != nil {
 		return Config{}, err
@@ -694,60 +696,36 @@ func Load() (Config, error) {
 	if cfg.OrganizationalGraph.ProjectionBaseURL == "" {
 		cfg.OrganizationalGraph.ProjectionBaseURL = cfg.OrganizationalGraph.BaseURL
 	}
-	if cfg.OrganizationalGraph.ReadMode == "" {
+	if cfg.OrganizationalGraph.ReadMode == "" && cfg.OrganizationalGraph.ReadBaseURL != "" {
 		cfg.OrganizationalGraph.ReadMode = "authority"
 	}
-	explicitOrganizationalGraphReadMode := strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE")) != ""
-	if cfg.OrganizationalGraph.ReadMode != "legacy" &&
-		cfg.OrganizationalGraph.ReadMode != "authority" &&
-		cfg.OrganizationalGraph.ReadMode != "shadow" &&
-		cfg.OrganizationalGraph.ReadMode != "canary" {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be legacy, shadow, canary, or authority")
+	if cfg.OrganizationalGraph.ReadMode != "authority" && cfg.OrganizationalGraph.ReadMode != "" {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be authority")
 	}
-	if cfg.OrganizationalGraph.ShadowPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", 0); err != nil {
-		return Config{}, err
-	}
-	if cfg.OrganizationalGraph.ShadowPercent < 0 || cfg.OrganizationalGraph.ShadowPercent > 100 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be between 0 and 100")
-	}
-	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ReadBaseURL == "" {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in shadow mode")
-	}
-	if cfg.OrganizationalGraph.ReadMode == "canary" && cfg.OrganizationalGraph.ReadBaseURL == "" {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in canary mode")
-	}
-	if explicitOrganizationalGraphReadMode &&
-		cfg.OrganizationalGraph.ReadMode == "authority" &&
+	if cfg.OrganizationalGraph.ReadMode == "authority" &&
 		cfg.OrganizationalGraph.ReadBaseURL == "" {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in authority mode")
 	}
-	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ShadowPercent == 0 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be greater than zero in shadow mode")
-	}
-	if cfg.OrganizationalGraph.ReadMode != "shadow" && cfg.OrganizationalGraph.ShadowPercent != 0 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be zero unless read mode is shadow")
-	}
-	if cfg.OrganizationalGraph.AuthorityPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", 0); err != nil {
+	shadowPercent, err := parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", 0)
+	if err != nil {
 		return Config{}, err
 	}
-	if cfg.OrganizationalGraph.AuthorityPercent < 0 || cfg.OrganizationalGraph.AuthorityPercent > 100 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be between 0 and 100")
+	if shadowPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT is no longer supported")
 	}
-	if cfg.OrganizationalGraph.ReadMode == "canary" &&
-		(cfg.OrganizationalGraph.AuthorityPercent == 0 || cfg.OrganizationalGraph.AuthorityPercent == 100) {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be between 1 and 99 in canary mode")
-	}
-	if cfg.OrganizationalGraph.ReadMode != "canary" && cfg.OrganizationalGraph.AuthorityPercent != 0 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be zero unless read mode is canary")
-	}
-	if cfg.OrganizationalGraph.CanaryVerifyPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT", 0); err != nil {
+	authorityPercent, err := parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", 0)
+	if err != nil {
 		return Config{}, err
 	}
-	if cfg.OrganizationalGraph.CanaryVerifyPercent < 0 || cfg.OrganizationalGraph.CanaryVerifyPercent > 100 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT must be between 0 and 100")
+	if authorityPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT is no longer supported")
 	}
-	if cfg.OrganizationalGraph.ReadMode != "canary" && cfg.OrganizationalGraph.CanaryVerifyPercent != 0 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT must be zero unless read mode is canary")
+	canaryVerifyPercent, err := parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	if canaryVerifyPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT is no longer supported")
 	}
 	for _, configured := range []struct {
 		name     string
@@ -1031,6 +1009,14 @@ func defaultSourceEventAdmissionWorkerPath() string {
 		return "cerebro-event-admission-worker"
 	}
 	return filepath.Join(filepath.Dir(executable), "cerebro-event-admission-worker")
+}
+
+func defaultSourceWorkerPath() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return "source_worker"
+	}
+	return filepath.Join(filepath.Dir(executable), "source_worker")
 }
 
 func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {

@@ -4,7 +4,7 @@ import { isDenseAgentRouteLabel } from "./dense-routes";
 
 describe("dense agent route labels", () => {
   it("keeps the launcher compact on dense audit and GRC pages", () => {
-    expect(isDenseAgentRouteLabel("Packet review")).toBe(true);
+    expect(isDenseAgentRouteLabel("Audit packets")).toBe(true);
     expect(isDenseAgentRouteLabel("Audit packages")).toBe(true);
     expect(isDenseAgentRouteLabel("Shared snapshot")).toBe(true);
     expect(isDenseAgentRouteLabel("Reports")).toBe(true);

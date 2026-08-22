@@ -22,7 +22,8 @@ Every entry must include a committed `classifier_output` and a normalized
 
 - auth model and reference-only credential fields
 - verification endpoint
-- at least 2 resource families and at most 12 high-value resource families
+- at least 2 resource families and at most 12 high-value resource families; a
+  first-party provider-kernel definition may contain one bounded family
 - projection templates
 - coverage dimensions with evidence types and control domains for supported or partial high-value dimensions
 
@@ -67,9 +68,10 @@ Generateable entries can be promoted one integration at a time from the catalog:
 go run ./cmd/cerebro source-runtime sdk new <source_id> catalog=true dry_run=true
 ```
 
-Drop `dry_run=true` when the generated files are ready to review, then wire the
-new source loader and projection registry entries called out in the generator
-receipt.
+Drop `dry_run=true` when the generated files are ready to review. Standard
+runtime registration and projection dispatch are derived from the connector
+definition; keep explicit Go wiring only for documented deep, push, bespoke, or
+semantic-compatibility implementations.
 
 Do not import source-available connector manifests into this catalog. Keep any
 new broad catalog wave limited to source-level enterprise SaaS products, and

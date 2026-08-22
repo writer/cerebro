@@ -29,7 +29,7 @@ type ValidateIssue struct {
 }
 
 // Validate cross-checks a generated source's catalog.yaml, deploy.yaml,
-// and source.go for consistency. It catches the class of bugs that the
+// and differential-oracle source.go for consistency. It catches the class of bugs that the
 // prior review found (missing templateKeys, dangling evidence links,
 // undeclared secretKeys) at generation time rather than at CI time.
 func Validate(request ValidateRequest) (*ValidateResult, error) {
@@ -47,7 +47,7 @@ func Validate(request ValidateRequest) (*ValidateResult, error) {
 
 	// 1. Check catalog.yaml exists and has emitted_kinds.
 	catalogPath := filepath.Join(sourceDir, "catalog.yaml")
-	catalogBytes, err := os.ReadFile(catalogPath) // #nosec G304 -- known path.
+	_, err := os.ReadFile(catalogPath) // #nosec G304 -- known path.
 	if err != nil {
 		result.Valid = false
 		result.Issues = append(result.Issues, ValidateIssue{
@@ -129,38 +129,7 @@ func Validate(request ValidateRequest) (*ValidateResult, error) {
 		}
 	}
 
-	// 5. Verify the source is wired into the source registry.
-	registryPath := filepath.Join(outputDir, "internal/sourceregistry/registry.go")
-	registryBytes, err := os.ReadFile(registryPath) // #nosec G304 -- known path.
-	if err == nil {
-		registryText := string(registryBytes)
-		if !strings.Contains(registryText, fmt.Sprintf(`name: %q`, sourceID)) {
-			result.Issues = append(result.Issues, ValidateIssue{
-				Severity: "warning",
-				File:     registryPath,
-				Message:  fmt.Sprintf("source %q is not wired into the source registry", sourceID),
-			})
-		}
-	}
-
-	// 6. Verify the source is wired into the projection registry.
-	projRegistryPath := filepath.Join(outputDir, "internal/sourceprojection/registry.go")
-	projRegistryBytes, err := os.ReadFile(projRegistryPath) // #nosec G304 -- known path.
-	if err == nil {
-		projRegistryText := string(projRegistryBytes)
-		kinds := parseEmittedKindsFromCatalog(catalogBytes)
-		for _, kind := range kinds {
-			if !strings.Contains(projRegistryText, fmt.Sprintf("%q:", kind)) {
-				result.Issues = append(result.Issues, ValidateIssue{
-					Severity: "warning",
-					File:     projRegistryPath,
-					Message:  fmt.Sprintf("kind %q is not wired into the projection registry", kind),
-				})
-			}
-		}
-	}
-
-	// 7. Verify docs reference includes the source.
+	// 5. Verify docs reference includes the source.
 	docsPath := filepath.Join(outputDir, "docs/reference/sources.md")
 	docsBytes, err := os.ReadFile(docsPath) // #nosec G304 -- known path.
 	if err == nil {

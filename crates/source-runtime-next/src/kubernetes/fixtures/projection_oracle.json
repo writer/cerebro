@@ -1,0 +1,63 @@
+{
+  "tenant_id": "writer",
+  "cases": [
+    {
+      "family": "pod",
+      "attributes": {
+        "cluster_id": "prod-cluster",
+        "namespace": "payments",
+        "resource_id": "pod-uid-1",
+        "resource_name": "payments-api",
+        "workload_uid": "pod-uid-1",
+        "service_account_name": "api",
+        "node_name": "node-a"
+      },
+      "payload": {"name":"payments-api","namespace":"payments","uid":"pod-uid-1"},
+      "expected_links": [
+        ["urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:pod-uid-1","runs_as","urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"],
+        ["urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api","belongs_to","urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"],
+        ["urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments","belongs_to","urn:cerebro:writer:kubernetes_cluster:prod-cluster"],
+        ["urn:cerebro:writer:kubernetes_node:prod-cluster:node-a","belongs_to","urn:cerebro:writer:kubernetes_cluster:prod-cluster"],
+        ["urn:cerebro:writer:kubernetes_pod:prod-cluster:payments:pod-uid-1","associated_with","urn:cerebro:writer:kubernetes_node:prod-cluster:node-a"]
+      ]
+    },
+    {
+      "family": "workload_identity_binding",
+      "attributes": {
+        "cloud_provider": "gcp",
+        "cluster_id": "prod-cluster",
+        "namespace": "payments",
+        "relationship": "can_impersonate",
+        "service_account_name": "api",
+        "target_email": "payments-sa@writer-prod.iam.gserviceaccount.com",
+        "target_id": "payments-sa@writer-prod.iam.gserviceaccount.com",
+        "target_type": "service_account"
+      },
+      "payload": {"cloud_provider":"gcp","service_account_name":"api","target_id":"payments-sa@writer-prod.iam.gserviceaccount.com"},
+      "expected_links": [
+        ["urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api","can_impersonate","urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com"],
+        ["urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api","belongs_to","urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"],
+        ["urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments","belongs_to","urn:cerebro:writer:kubernetes_cluster:prod-cluster"]
+      ]
+    },
+    {
+      "family": "rbac_binding",
+      "attributes": {
+        "binding_kind": "RoleBinding",
+        "binding_name": "reader",
+        "cluster_id": "prod-cluster",
+        "namespace": "payments",
+        "role_kind": "Role",
+        "role_name": "secret-reader",
+        "subject_refs": "[{\"kind\":\"ServiceAccount\",\"name\":\"deployer\",\"namespace\":\"platform\"}]"
+      },
+      "payload": {"binding_kind":"RoleBinding","name":"reader","role_ref":{"kind":"Role","name":"secret-reader"}},
+      "expected_links": [
+        ["urn:cerebro:writer:kubernetes_rbac_binding:prod-cluster:RoleBinding:payments:reader","attached_to","urn:cerebro:writer:kubernetes_rbac_role:prod-cluster:Role:payments:secret-reader"],
+        ["urn:cerebro:writer:kubernetes_service_account:prod-cluster:platform:deployer","assigned_to","urn:cerebro:writer:kubernetes_rbac_role:prod-cluster:Role:payments:secret-reader"],
+        ["urn:cerebro:writer:kubernetes_service_account:prod-cluster:platform:deployer","belongs_to","urn:cerebro:writer:kubernetes_namespace:prod-cluster:platform"],
+        ["urn:cerebro:writer:kubernetes_namespace:prod-cluster:platform","belongs_to","urn:cerebro:writer:kubernetes_cluster:prod-cluster"]
+      ]
+    }
+  ]
+}

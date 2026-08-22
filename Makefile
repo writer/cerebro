@@ -2,9 +2,9 @@
 
 .PHONY: release-train-test
 .PHONY: app-workspace-check web-docker-smoke
-.PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
+.PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check fixture-oracle-generate fixture-oracle-check
 .PHONY: rust-event-admission-benchmark rust-organizational-platform-benchmark rust-organizational-store-benchmark sourceruntime-event-admission-generate sourceruntime-event-admission-check
-.PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check rust-product-demo rust-product-demo-check secure-business-demo security-operator-benchmark github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review post-merge-health land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
+.PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-manifest-update policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check compliance-demo compliance-demo-check rust-product-demo rust-product-demo-check secure-business-demo security-operator-benchmark github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review post-merge-health land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke rust-security-path-properties rust-security-path-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence security-path-evaluator-generate security-path-evaluator-check
 
@@ -20,6 +20,7 @@ ifndef CARGO_TARGET_DIRECTORY
 CARGO_TARGET_DIRECTORY := $(shell $(CARGO) metadata --locked --no-deps --format-version 1 | $(PYTHON) -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
 endif
 EVENT_ADMISSION_WORKER = $(CARGO_TARGET_DIRECTORY)/release/cerebro-event-admission-worker
+SOURCE_WORKER = $(CARGO_TARGET_DIRECTORY)/release/source_worker
 RUST_FUZZ_TOOLCHAIN ?= nightly-2026-06-09
 RUST_FUZZ_RUNS ?= 10000
 RUST_FUZZ_MAX_LEN ?= 65544
@@ -174,10 +175,13 @@ help: ## Show this help message.
 
 # ==== Build ====
 ##@ Build
-build: build-go ## Build the Cerebro CLI and native source event admission worker.
-	$(CARGO) build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+build: build-go ## Build the Cerebro CLI and native source workers.
+	$(CARGO) build --locked --release \
+		-p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker \
+		-p cerebro-source-runtime-next --bin source_worker
 	mkdir -p bin
 	cp $(EVENT_ADMISSION_WORKER) bin/cerebro-event-admission-worker
+	cp $(SOURCE_WORKER) bin/source_worker
 
 build-go: ## Build only the Go compatibility CLI.
 	mkdir -p bin
@@ -292,6 +296,12 @@ source-fixture-check: ## Verify genuine provider response fixtures and provenanc
 	go test ./internal/sourcefixture -count=1
 	go run ./tools/sourcefixture verify -root .
 	go test $$(go run ./tools/sourcefixture packages -root .) -count=1
+
+fixture-oracle-generate: ## Regenerate the checked Go fixture oracle consumed by Rust parity tests.
+	go run ./tools/fixtureoracle -root . -write
+
+fixture-oracle-check: ## Verify the checked Go fixture oracle matches the owning generator.
+	go run ./tools/fixtureoracle -root .
 
 sourcegen-grammar-check: ## Prove every declared connector grammar feature is executable by sourcegen.
 	go run ./tools/sourcegrammarcheck
@@ -462,7 +472,7 @@ catalog-check: ## Verify source, connector, and compliance catalogs are current.
 	go run ./tools/controlindex --check
 
 content-pack-check: ## Verify signed pilot content packs independently from the kernel build.
-	go test ./internal/contentpacks ./internal/config ./internal/findingdsl ./internal/findings ./internal/observability ./internal/sourceregistry ./sources/deepseek ./tools/contentpackcheck ./tools/contentpackbuild ./tools/contentpackkeygen -count=1
+	go test ./internal/contentpacks ./internal/config ./internal/findingdsl ./internal/findings ./internal/observability ./internal/sourceregistry ./tools/contentpackcheck ./tools/contentpackbuild ./tools/contentpackkeygen -count=1
 	go run ./tools/contentpackcheck -root contentpacks/pilot -allowlist contentpacks/pilot/allowlist.json -tenant content-pack-pilot -kernel-version 1.0.0
 
 control-index-generate: ## Regenerate compliance control coverage index.
@@ -676,10 +686,13 @@ policy-rule-generate: policy-catalog-generate ## Regenerate generated policy rul
 policy-rule-check: finding-dsl-check policy-catalog-check ## Verify generated policy rule catalogs are current.
 	go run ./tools/policyrulegen --check
 
-policy-mapping-export: policy-rule-generate detection-catalog-generate ## Regenerate policy compliance mapping CSVs.
+policy-mapping-export: policy-rule-generate detection-catalog-generate ## Generate the policy compliance mapping workbook under tmp/.
 	go run ./tools/policymappingexport --write
 
-policy-mapping-check: policy-rule-check detection-catalog-check ## Verify policy compliance mapping CSVs are current.
+policy-mapping-manifest-update: policy-rule-generate detection-catalog-generate ## Refresh the checked-in policy mapping artifact manifest.
+	go run ./tools/policymappingexport --write-manifest
+
+policy-mapping-check: policy-rule-check detection-catalog-check ## Verify the policy compliance mapping artifact manifest.
 	go run ./tools/policymappingexport --check
 
 detection-catalog-generate: ## Regenerate public detection catalog.
@@ -705,7 +718,7 @@ agent-service-lifecycle-check: ## Verify lifecycle schemas and generated binding
 
 connector-onboard: ## Onboard a connector from an OpenAPI spec (SPEC=path/to/spec.yaml SOURCE_ID=name).
 	@test -n "$(SPEC)" || (echo "SPEC is required, e.g. make connector-onboard SPEC=spec.yaml SOURCE_ID=example" && exit 1)
-	go run ./tools/connectoronboard -spec="$(SPEC)" -source-id="$(SOURCE_ID)" -tenant-id="$(TENANT_ID)" -display-name="$(DISPLAY_NAME)" -category="$(CATEGORY)" -output-dir="$(if $(OUTPUT_DIR),$(OUTPUT_DIR),.)" -catalog-out="$(CATALOG_OUT)" -dry-run="$(if $(DRY_RUN),$(DRY_RUN),true)" -wire="$(if $(WIRE),$(WIRE),true)"
+	go run ./tools/connectoronboard -spec="$(SPEC)" -source-id="$(SOURCE_ID)" -tenant-id="$(TENANT_ID)" -display-name="$(DISPLAY_NAME)" -category="$(CATEGORY)" -output-dir="$(if $(OUTPUT_DIR),$(OUTPUT_DIR),.)" -catalog-out="$(CATALOG_OUT)" -dry-run="$(if $(DRY_RUN),$(DRY_RUN),true)"
 
 codegen-status: ## Show unified codegen status across all generators.
 	@go run ./tools/codegenstatus
@@ -722,9 +735,6 @@ codegen-catalog-check: ## Verify codegen registry documentation is current.
 projection-template-check: ## Verify projection template specs are consistent.
 	go run ./tools/projectiontemplates -check
 
-definition-migrate: ## Run connector definition grammar migrations.
-	go run ./tools/definitionmigrate
-
 new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_TYPE=awsFooBar LIST_FUNC=listFooBars EVENT_FUNC=fooBarEvent URN_EXPR=record.ID).
 	@test -n "$(FAMILY)" || (echo "FAMILY is required, e.g. make new-aws-collector FAMILY=ec2_transit_gateway" && exit 1)
 	@test -n "$(RECORD_TYPE)" || (echo "RECORD_TYPE is required" && exit 1)
@@ -733,7 +743,7 @@ new-aws-collector: ## Wire an implemented AWS collector (FAMILY=foo_bar RECORD_T
 	@test -n "$(URN_EXPR)" || (echo "URN_EXPR is required" && exit 1)
 	go run ./tools/awscollectorgen --family="$(FAMILY)" --title="$(TITLE)" --label="$(LABEL)" --const-name="$(CONST_NAME)" --record-type="$(RECORD_TYPE)" --list-func="$(LIST_FUNC)" --event-func="$(EVENT_FUNC)" --urn-type="$(URN_TYPE)" --urn-expr="$(URN_EXPR)" --cursor-expr="$(CURSOR_EXPR)" --projector="$(PROJECTOR)" $(if $(DRY_RUN),--dry-run,)
 
-docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate detection-catalog-generate policy-mapping-export control-index-generate openapi-ts-generate agent-service-lifecycle-generate codegen-catalog-generate ## Regenerate checked-in generated docs and catalogs.
+docs-autogen: openapi-sync proto-generate graph-action-generate policy-rule-generate detection-catalog-generate policy-mapping-export policy-mapping-manifest-update control-index-generate openapi-ts-generate agent-service-lifecycle-generate codegen-catalog-generate ## Regenerate checked-in generated docs and catalogs.
 
 docs-drift-check: ## Check documentation drift rules.
 	go run ./tools/codegencatalog -check
@@ -760,6 +770,12 @@ contracts-check: ## Run contract and compatibility checks with a final summary.
 
 changed-check: ## Run validation selected from changed paths.
 	python3 scripts/changed_checks.py --base "$(REVIEW_BASE)" --head "$(REVIEW_HEAD)" --run
+
+compliance-demo: workspace-install ## Start the compliance workspace with synthetic data and no provider credentials.
+	npm run demo:compliance --workspace @writer/cerebro-web
+
+compliance-demo-check: workspace-install ## Validate the compliance workspace routes in Chromium.
+	npm run demo:compliance:check --workspace @writer/cerebro-web
 
 rust-product-demo: workspace-install ## Start the Rust product graph and browser explorer without provider credentials.
 	npm run demo:rust --workspace @writer/cerebro-web
@@ -965,10 +981,10 @@ check-structural: check-structural-build ## Run custom structural lints.
 	@$(LINTER_BIN) $(APP_PACKAGES)
 
 check-structural-build: ## Build the custom structural linter.
-	@cd $(LINTER_MODULE) && GOFLAGS= go build -o $(LINTER_BIN) ./cerebrolint
+	@cd $(LINTER_MODULE) && GOFLAGS= GOTOOLCHAIN=go1.26.6 go build -o $(LINTER_BIN) ./cerebrolint
 
 check-structural-test: ## Test the custom structural linter.
-	@cd $(LINTER_MODULE) && GOFLAGS= go test ./...
+	@cd $(LINTER_MODULE) && GOFLAGS= GOTOOLCHAIN=go1.26.6 go test ./...
 
 check-arch: ## Run architectural guardrail tests.
 	go test ./tools/archtests/...

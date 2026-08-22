@@ -1,0 +1,56 @@
+{
+  "items": [
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "System",
+      "metadata": {
+        "annotations": {
+          "backstage.io/edit-url": "https://github.com/backstage/backstage/edit/master/packages/catalog-model/examples/systems/artist-engagement-portal-system.yaml",
+          "backstage.io/managed-by-location": "url:https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/systems/artist-engagement-portal-system.yaml",
+          "backstage.io/managed-by-origin-location": "url:https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/all-systems.yaml",
+          "backstage.io/source-location": "url:https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/systems/",
+          "backstage.io/view-url": "https://github.com/backstage/backstage/tree/master/packages/catalog-model/examples/systems/artist-engagement-portal-system.yaml"
+        },
+        "description": "Everything related to artists",
+        "etag": "590edf0fe97c745c2c496d7bc2a052a051cbebbe",
+        "name": "artist-engagement-portal",
+        "namespace": "default",
+        "tags": [
+          "portal"
+        ],
+        "uid": "a3f33ec1-e3c8-44aa-a392-1c37e6da8d70"
+      },
+      "relations": [
+        {
+          "targetRef": "component:default/artist-lookup",
+          "type": "hasPart"
+        },
+        {
+          "targetRef": "component:default/www-artist",
+          "type": "hasPart"
+        },
+        {
+          "targetRef": "resource:default/artists-db",
+          "type": "hasPart"
+        },
+        {
+          "targetRef": "group:default/team-a",
+          "type": "ownedBy"
+        },
+        {
+          "targetRef": "domain:default/artists",
+          "type": "partOf"
+        }
+      ],
+      "spec": {
+        "domain": "artists",
+        "owner": "team-a",
+        "type": "service"
+      }
+    }
+  ],
+  "pageInfo": {
+    "nextCursor": "eyJvcmRlckZpZWxkcyI6W10sImlzUHJldmlvdXMiOmZhbHNlLCJxdWVyeSI6eyJraW5kIjoic3lzdGVtIn0sImZ1bGxUZXh0RmlsdGVyIjp7InRlcm0iOiIifSwib3JkZXJGaWVsZFZhbHVlcyI6WyJhM2YzM2VjMS1lM2M4LTQ0YWEtYTM5Mi0xYzM3ZTZkYThkNzAiXSwiZmlyc3RTb3J0RmllbGRWYWx1ZXMiOlsiYTNmMzNlYzEtZTNjOC00NGFhLWEzOTItMWMzN2U2ZGE4ZDcwIl0sInRvdGFsSXRlbXMiOjN9"
+  },
+  "totalItems": 3
+}

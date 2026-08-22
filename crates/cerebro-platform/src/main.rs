@@ -13,6 +13,7 @@ mod slack_agent_session;
 mod slack_authority;
 mod slack_mrkdwn;
 mod threat_insight_projection;
+mod trusted_endpoint_projection;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -74,12 +75,17 @@ use cerebro_security_lifecycle::{
     decode_protobuf_observation, finalize_indexed_query, prepare_indexed_query,
     project_observation, query_records_with_source,
 };
-use cerebro_source_catalog::{AuthModel, CatalogSummary, ProjectionClass, SourceCatalog};
+use cerebro_source_catalog::{
+    AuthModel, CatalogSummary, CompiledOauthAuthorizationCode, CompiledOauthClientCredentials,
+    CompiledSource, ProjectionClass, SourceCatalog,
+};
 use cerebro_source_runtime_next::{
     AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CollectionRequest,
-    CommittedSourceEvent, GraphMapper, GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
-    SourceRuntimeLeaseFence, contains_aws_secret_references, contains_credential_references,
-    resolve_aws_secret_references, resolve_environment_references,
+    CommittedSourceEvent, CredentialLeaseReference, EgressPolicy, EgressRequestContext,
+    GraphMapper, GraphSink, HttpProviderAccess, HttpSourceConnector,
+    OperationScopedCredentialLease, ResolvedAuth, SourceRuntime, SourceRuntimeLeaseFence,
+    SourceRuntimeOperation, canonical_digest, contains_aws_secret_references,
+    contains_credential_references, resolve_aws_secret_references, resolve_environment_references,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -831,6 +837,35 @@ impl ProjectionRuntime {
         if threat_insight_projection::matches(&event) {
             let (batch, delta) =
                 threat_insight_projection::project(event).map_err(ProjectionFailure::Invalid)?;
+            let receipt = self
+                .store
+                .lock()
+                .await
+                .apply(&batch, delta)
+                .await
+                .map_err(ProjectionFailure::Store)?;
+            return Ok(ProjectEventResponse {
+                authority: authority.authority,
+                projected: true,
+                graph_revision: Some(receipt.graph_revision),
+                entities_upserted: receipt.entities_upserted,
+                assertions_upserted: receipt.assertions_upserted,
+            });
+        }
+        if trusted_endpoint_projection::matches(&event) {
+            let contract = self
+                .catalog
+                .push_source(event.source_id())
+                .and_then(|source| source.family(event.family_id()))
+                .ok_or_else(|| {
+                    ProjectionFailure::Invalid(format!(
+                        "push family {}.{} is not in the compiled catalog",
+                        event.source_id(),
+                        event.family_id()
+                    ))
+                })?;
+            let (batch, delta) = trusted_endpoint_projection::project(event, contract)
+                .map_err(ProjectionFailure::Invalid)?;
             let receipt = self
                 .store
                 .lock()
@@ -1633,16 +1668,66 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         .clone();
     let auth = resolved_auth(
         source.auth(),
-        source.token_header(),
-        source.token_scheme(),
-        source.auth_header_parameters(),
-        source.auth_query_parameters(),
-        source.auth_json_body_parameters(),
+        CatalogAuthSettings::from_source(&source),
         &mut config,
     )?;
-    let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?;
     let lease_ttl_millis = source_runtime_lease_ttl_millis()?;
     let lease_owner = source_runtime_lease_owner();
+    let fence = lease_ledger
+        .acquire_source_runtime_lease(&tenant_id, &runtime_id, &lease_owner, lease_ttl_millis)
+        .await?
+        .ok_or("source runtime is missing, belongs to another tenant, or is already leased")?;
+    let request_intent_digest = canonical_digest(&serde_json::json!({
+        "operation": "ReadPage",
+        "tenant_id": tenant_id.as_str(),
+        "runtime_id": runtime_id.as_str(),
+        "source_id": source_id,
+        "family_id": family_id,
+        "cursor": cursor,
+        "lease_generation": fence.generation(),
+    }));
+    let access_context = EgressRequestContext {
+        tenant_id: tenant_id.as_str().to_owned(),
+        runtime_id: runtime_id.as_str().to_owned(),
+        source_id: source_id.clone(),
+        family_id: family_id.clone(),
+        operation: SourceRuntimeOperation::ReadPage,
+        request_intent_digest: request_intent_digest.clone(),
+        logical_page_id: format!(
+            "page:{}:{}:{}",
+            runtime_id.as_str(),
+            family_id,
+            fence.generation()
+        ),
+        source_generation: fence.generation(),
+        authority_epoch: 1,
+    };
+    let lease_scope = access_context.lease_scope()?;
+    let issued_at_millis =
+        i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)?;
+    let credential_lease_ttl_millis = i64::try_from(lease_ttl_millis)?;
+    let credential_lease = OperationScopedCredentialLease::new(CredentialLeaseReference::new(
+        format!("lease:{}", &request_intent_digest[..16]),
+        lease_scope,
+        issued_at_millis,
+        credential_lease_ttl_millis,
+    )?);
+    let mut allowed_origins = vec![base_url.clone()];
+    if let Some(token_url) = auth.oauth_token_url() {
+        allowed_origins.push(token_url.to_owned());
+    }
+    let egress_policy = EgressPolicy::live(
+        tenant_id.as_str(),
+        &family_id,
+        &request_intent_digest,
+        allowed_origins,
+    )?;
+    let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?
+        .with_provider_access(HttpProviderAccess::new(
+            access_context,
+            egress_policy,
+            credential_lease,
+        ));
 
     let ledger = PostgresLedger::connect_tls(&postgres_dsn).await?;
     ledger.migrate().await?;
@@ -1653,10 +1738,6 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
     projector.migrate().await?;
     let store = DurableGraphStore::new(ledger, projector);
     let mut runtime = SourceRuntime::new(connector, mapper, store);
-    let fence = lease_ledger
-        .acquire_source_runtime_lease(&tenant_id, &runtime_id, &lease_owner, lease_ttl_millis)
-        .await?
-        .ok_or("source runtime is missing, belongs to another tenant, or is already leased")?;
     let request = CollectionRequest {
         tenant_id,
         source_runtime_id: runtime_id,
@@ -1789,15 +1870,45 @@ async fn connect_neo4j() -> Result<Neo4jProjector, Box<dyn Error>> {
     .await?)
 }
 
+#[derive(Default)]
+struct CatalogAuthSettings {
+    token_header: String,
+    token_scheme: String,
+    header_parameters: BTreeMap<String, String>,
+    query_parameters: BTreeMap<String, String>,
+    json_body_parameters: BTreeMap<String, String>,
+    oauth_authorization_code: Option<CompiledOauthAuthorizationCode>,
+    oauth_client_credentials: Option<CompiledOauthClientCredentials>,
+}
+
+impl CatalogAuthSettings {
+    fn from_source(source: &CompiledSource) -> Self {
+        Self {
+            token_header: source.token_header().to_owned(),
+            token_scheme: source.token_scheme().to_owned(),
+            header_parameters: source.auth_header_parameters().clone(),
+            query_parameters: source.auth_query_parameters().clone(),
+            json_body_parameters: source.auth_json_body_parameters().clone(),
+            oauth_authorization_code: source.oauth_authorization_code().cloned(),
+            oauth_client_credentials: source.oauth_client_credentials().cloned(),
+        }
+    }
+}
+
 fn resolved_auth(
     model: &AuthModel,
-    token_header: &str,
-    token_scheme: &str,
-    header_parameters: &BTreeMap<String, String>,
-    query_parameters: &BTreeMap<String, String>,
-    json_body_parameters: &BTreeMap<String, String>,
+    settings: CatalogAuthSettings,
     config: &mut BTreeMap<String, String>,
 ) -> Result<ResolvedAuth, Box<dyn Error>> {
+    let CatalogAuthSettings {
+        token_header,
+        token_scheme,
+        header_parameters,
+        query_parameters,
+        json_body_parameters,
+        oauth_authorization_code,
+        oauth_client_credentials,
+    } = settings;
     Ok(match model {
         AuthModel::None => ResolvedAuth::None,
         AuthModel::Basic => ResolvedAuth::Basic {
@@ -1807,37 +1918,28 @@ fn resolved_auth(
         AuthModel::ApiKey if !header_parameters.is_empty() => {
             let mut parameters = BTreeMap::new();
             for (header, credential_field) in header_parameters {
-                parameters.insert(
-                    header.clone(),
-                    take_required_config(config, credential_field)?,
-                );
+                parameters.insert(header, take_required_config(config, &credential_field)?);
             }
             ResolvedAuth::HeaderParameters { parameters }
         }
         AuthModel::ApiKey if !json_body_parameters.is_empty() => {
             let mut parameters = BTreeMap::new();
             for (parameter, credential_field) in json_body_parameters {
-                parameters.insert(
-                    parameter.clone(),
-                    take_required_config(config, credential_field)?,
-                );
+                parameters.insert(parameter, take_required_config(config, &credential_field)?);
             }
             ResolvedAuth::JsonBodyParameters { parameters }
         }
         AuthModel::ApiKey if !query_parameters.is_empty() => {
             let mut parameters = BTreeMap::new();
             for (parameter, credential_field) in query_parameters {
-                parameters.insert(
-                    parameter.clone(),
-                    take_required_config(config, credential_field)?,
-                );
+                parameters.insert(parameter, take_required_config(config, &credential_field)?);
             }
             ResolvedAuth::QueryParameters { parameters }
         }
         AuthModel::ApiKey => ResolvedAuth::Header {
-            name: nonempty_catalog_auth_value(token_header, "token_header")?,
+            name: nonempty_catalog_auth_value(&token_header, "token_header")?,
             value: apply_auth_scheme(
-                token_scheme,
+                &token_scheme,
                 take_first_required_config(config, &["token", "api_key", "auth_value"])?,
             ),
         },
@@ -1852,7 +1954,95 @@ fn resolved_auth(
             integration_key: take_required_config(config, "client_id")?,
             secret_key: take_required_config(config, "client_secret")?,
         },
-        AuthModel::DuoHmac | AuthModel::Signature => {
+        AuthModel::OauthClientCredentials => {
+            let oauth = oauth_client_credentials
+                .as_ref()
+                .ok_or("source catalog OAuth client-credentials settings are missing")?;
+            let token_url = resolve_oauth_token_url(oauth.token_url(), config)?;
+            let mut token_params = BTreeMap::new();
+            for (key, value) in oauth.token_params() {
+                token_params.insert(key.clone(), render_source_config_template(value, config)?);
+            }
+            ResolvedAuth::OauthClientCredentials {
+                client_id: take_required_config(config, "client_id")?,
+                client_secret: take_required_config(config, "client_secret")?,
+                token_url,
+                scopes: oauth.scopes().to_vec(),
+                scope_separator: oauth.scope_separator().to_owned(),
+                token_request_auth_method: oauth.token_request_auth_method().to_owned(),
+                token_params,
+            }
+        }
+        AuthModel::OauthAuthorizationCode => {
+            if let Some(token) = take_first_config(
+                config,
+                &["token", "access_token", "api_token", "bearer_token"],
+            ) {
+                for key in [
+                    "token",
+                    "access_token",
+                    "api_token",
+                    "bearer_token",
+                    "client_id",
+                    "client_secret",
+                    "refresh_token",
+                    "oauth_client_reference",
+                ] {
+                    discard_config_secret(config, key);
+                }
+                ResolvedAuth::Bearer { token }
+            } else {
+                let oauth = oauth_authorization_code
+                    .as_ref()
+                    .ok_or("source catalog OAuth authorization-code settings are missing")?;
+                let token_url = resolve_oauth_token_url(oauth.token_url(), config)?;
+                let mut token_params = BTreeMap::new();
+                for (key, value) in oauth.token_params() {
+                    token_params.insert(key.clone(), render_source_config_template(value, config)?);
+                }
+                discard_config_secret(config, "oauth_client_reference");
+                ResolvedAuth::OauthAuthorizationCode {
+                    client_id: take_required_config(config, "client_id")?,
+                    client_secret: take_required_config(config, "client_secret")?,
+                    refresh_token: take_required_config(config, "refresh_token")?,
+                    token_url,
+                    scopes: oauth.scopes().to_vec(),
+                    scope_separator: oauth.scope_separator().to_owned(),
+                    token_request_auth_method: oauth.token_request_auth_method().to_owned(),
+                    token_params,
+                }
+            }
+        }
+        AuthModel::Signature => {
+            let aliases = [
+                "token",
+                "signature",
+                "auth_value",
+                "access_token",
+                "api_token",
+                "api_key",
+            ];
+            let value = take_first_required_config(config, &aliases)?;
+            for alias in aliases {
+                discard_config_secret(config, alias);
+            }
+            ResolvedAuth::Header {
+                name: if token_header.trim().is_empty() {
+                    "Authorization".to_owned()
+                } else {
+                    nonempty_catalog_auth_value(&token_header, "token_header")?
+                },
+                value: apply_auth_scheme(
+                    if token_scheme.trim().is_empty() {
+                        "Signature"
+                    } else {
+                        &token_scheme
+                    },
+                    value,
+                ),
+            }
+        }
+        AuthModel::DuoHmac => {
             return Err("source auth requires a bespoke Rust connector".into());
         }
         _ => ResolvedAuth::Bearer {
@@ -1862,6 +2052,70 @@ fn resolved_auth(
             )?,
         },
     })
+}
+
+fn resolve_source_url(
+    value: &str,
+    config: &BTreeMap<String, String>,
+) -> Result<String, Box<dyn Error>> {
+    if let Ok(url) = reqwest::Url::parse(value) {
+        return Ok(url.to_string());
+    }
+    if !value.starts_with('/') {
+        return Err("source catalog URL is invalid".into());
+    }
+    let base_url = reqwest::Url::parse(&required_config(config, "base_url")?)?;
+    Ok(base_url.join(value)?.to_string())
+}
+
+fn resolve_oauth_token_url(
+    template: &str,
+    config: &BTreeMap<String, String>,
+) -> Result<String, Box<dyn Error>> {
+    let rendered = render_source_config_template(template, config)?;
+    let resolved = resolve_source_url(&rendered, config)?;
+    let authority = template
+        .split_once("://")
+        .and_then(|(_, remainder)| remainder.split('/').next())
+        .unwrap_or_default();
+    if authority.contains("${config.") {
+        let token_url = reqwest::Url::parse(&resolved)?;
+        let base_url = reqwest::Url::parse(&required_config(config, "base_url")?)?;
+        if token_url.origin() != base_url.origin() {
+            return Err("dynamic OAuth token URL must use the provider base origin".into());
+        }
+    }
+    Ok(resolved)
+}
+
+fn render_source_config_template(
+    template: &str,
+    config: &BTreeMap<String, String>,
+) -> Result<String, Box<dyn Error>> {
+    let mut rendered = String::with_capacity(template.len());
+    let mut remaining = template;
+    while let Some(start) = remaining.find("${config.") {
+        rendered.push_str(&remaining[..start]);
+        let placeholder = &remaining[start + "${config.".len()..];
+        let end = placeholder
+            .find('}')
+            .ok_or("source catalog config template is not closed")?;
+        let key = &placeholder[..end];
+        if key.is_empty()
+            || !key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        {
+            return Err("source catalog config template key is invalid".into());
+        }
+        rendered.push_str(&required_config(config, key)?);
+        remaining = &placeholder[end + 1..];
+    }
+    rendered.push_str(remaining);
+    if rendered.contains("${") || rendered.chars().any(char::is_control) || rendered.len() > 4_096 {
+        return Err("source catalog config template is invalid".into());
+    }
+    Ok(rendered)
 }
 
 fn nonempty_catalog_auth_value(value: &str, field: &str) -> Result<String, Box<dyn Error>> {
@@ -1914,6 +2168,21 @@ fn take_first_required_config(
             .join(", ")
     )
     .into())
+}
+
+fn take_first_config(config: &mut BTreeMap<String, String>, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = remove_nonempty(config, key) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn discard_config_secret(config: &mut BTreeMap<String, String>, key: &str) {
+    if let Some(mut value) = config.remove(key) {
+        value.zeroize();
+    }
 }
 
 fn remove_nonempty(config: &mut BTreeMap<String, String>, key: &str) -> Option<String> {
@@ -4266,11 +4535,7 @@ mod tests {
         ]);
         let auth = resolved_auth(
             &AuthModel::AwsSigV4,
-            "",
-            "",
-            &BTreeMap::new(),
-            &BTreeMap::new(),
-            &BTreeMap::new(),
+            CatalogAuthSettings::default(),
             &mut config,
         )
         .unwrap();
@@ -4305,11 +4570,7 @@ mod tests {
         ]);
         let auth = resolved_auth(
             &AuthModel::DuoHmacV5,
-            "",
-            "",
-            &BTreeMap::new(),
-            &BTreeMap::new(),
-            &BTreeMap::new(),
+            CatalogAuthSettings::default(),
             &mut config,
         )
         .unwrap();
@@ -4329,6 +4590,162 @@ mod tests {
     }
 
     #[test]
+    fn oauth_client_credentials_resolution_renders_provider_contract_and_scrubs_secrets() {
+        let catalog = load_catalog().unwrap();
+        let source = catalog.get("auth0").unwrap();
+        let mut config = BTreeMap::from([
+            ("client_id".to_owned(), "client-example".to_owned()),
+            ("client_secret".to_owned(), "credential-example".to_owned()),
+            ("domain".to_owned(), "tenant.example.test".to_owned()),
+            (
+                "base_url".to_owned(),
+                "https://tenant.example.test/api/v2".to_owned(),
+            ),
+            ("family".to_owned(), "users".to_owned()),
+        ]);
+        let auth = resolved_auth(
+            source.auth(),
+            CatalogAuthSettings::from_source(source),
+            &mut config,
+        )
+        .unwrap();
+        assert!(matches!(
+            auth,
+            ResolvedAuth::OauthClientCredentials {
+                ref client_id,
+                ref client_secret,
+                ref token_url,
+                ref token_params,
+                ..
+            } if client_id == "client-example"
+                && client_secret == "credential-example"
+                && token_url == "https://tenant.example.test/oauth/token"
+                && token_params.get("audience").map(String::as_str)
+                    == Some("https://tenant.example.test/api/v2/")
+        ));
+        assert!(!config.contains_key("client_id"));
+        assert!(!config.contains_key("client_secret"));
+        assert_eq!(
+            config.get("domain").map(String::as_str),
+            Some("tenant.example.test")
+        );
+        assert!(
+            resolve_oauth_token_url(
+                "https://${config.domain}/oauth/token",
+                &BTreeMap::from([
+                    ("domain".to_owned(), "attacker.example.test".to_owned()),
+                    (
+                        "base_url".to_owned(),
+                        "https://tenant.example.test/api/v2".to_owned(),
+                    ),
+                ]),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn oauth_authorization_code_resolution_refreshes_or_uses_a_resolved_bearer() {
+        let catalog = load_catalog().unwrap();
+        let source = catalog.get("hubspot").unwrap();
+        let mut refresh = BTreeMap::from([
+            ("client_id".to_owned(), "client-example".to_owned()),
+            ("client_secret".to_owned(), "credential-example".to_owned()),
+            ("refresh_token".to_owned(), "refresh-example".to_owned()),
+            ("base_url".to_owned(), "https://api.hubapi.com".to_owned()),
+            ("family".to_owned(), "users".to_owned()),
+        ]);
+        let auth = resolved_auth(
+            source.auth(),
+            CatalogAuthSettings::from_source(source),
+            &mut refresh,
+        )
+        .unwrap();
+        assert!(matches!(
+            auth,
+            ResolvedAuth::OauthAuthorizationCode {
+                ref client_id,
+                ref client_secret,
+                ref refresh_token,
+                ref token_url,
+                ..
+            } if client_id == "client-example"
+                && client_secret == "credential-example"
+                && refresh_token == "refresh-example"
+                && token_url == "https://api.hubapi.com/oauth/token"
+        ));
+        for secret_key in ["client_id", "client_secret", "refresh_token"] {
+            assert!(!refresh.contains_key(secret_key));
+        }
+        assert_eq!(refresh.get("family").map(String::as_str), Some("users"));
+
+        let referenced = catalog.get("drchrono").unwrap();
+        let mut bearer = BTreeMap::from([
+            ("access_token".to_owned(), "access-example".to_owned()),
+            (
+                "oauth_client_reference".to_owned(),
+                "managed-client-example".to_owned(),
+            ),
+            ("base_url".to_owned(), "https://drchrono.com".to_owned()),
+            ("family".to_owned(), "patients".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                referenced.auth(),
+                CatalogAuthSettings::from_source(referenced),
+                &mut bearer,
+            )
+            .unwrap(),
+            ResolvedAuth::Bearer { ref token } if token == "access-example"
+        ));
+        assert!(!bearer.contains_key("access_token"));
+        assert!(!bearer.contains_key("oauth_client_reference"));
+    }
+
+    #[test]
+    fn stored_signature_auth_matches_go_aliases_and_scrubs_every_secret() {
+        let catalog = load_catalog().unwrap();
+        for (source_id, selected_alias) in [("netsuite", "token"), ("veracode", "signature")] {
+            let source = catalog.get(source_id).unwrap();
+            let mut config = BTreeMap::from([
+                (
+                    selected_alias.to_owned(),
+                    format!("{source_id}-precomputed-proof"),
+                ),
+                ("access_token".to_owned(), "unused-access-proof".to_owned()),
+                ("api_key".to_owned(), "unused-api-proof".to_owned()),
+                ("family".to_owned(), source.families()[0].id().to_owned()),
+            ]);
+            let auth = resolved_auth(
+                source.auth(),
+                CatalogAuthSettings::from_source(source),
+                &mut config,
+            )
+            .unwrap();
+            assert!(matches!(
+                auth,
+                ResolvedAuth::Header {
+                    ref name,
+                    ref value,
+                } if name == "Authorization"
+                    && value == &format!("Signature {source_id}-precomputed-proof")
+            ));
+            assert!(!format!("{auth:?}").contains("precomputed-proof"));
+            for alias in [
+                "token",
+                "signature",
+                "auth_value",
+                "access_token",
+                "api_token",
+                "api_key",
+            ] {
+                assert!(!config.contains_key(alias));
+            }
+            assert!(config.contains_key("family"));
+        }
+    }
+
+    #[test]
     fn stored_basic_and_api_key_auth_scrub_credentials_from_connector_config() {
         let mut basic = BTreeMap::from([
             ("username".to_owned(), "service-account".to_owned()),
@@ -4338,11 +4755,7 @@ mod tests {
         assert!(matches!(
             resolved_auth(
                 &AuthModel::Basic,
-                "",
-                "",
-                &BTreeMap::new(),
-                &BTreeMap::new(),
-                &BTreeMap::new(),
+                CatalogAuthSettings::default(),
                 &mut basic
             )
             .unwrap(),
@@ -4361,11 +4774,11 @@ mod tests {
         assert!(matches!(
             resolved_auth(
                 &AuthModel::ApiKey,
-                "X-API-Key",
-                "Token",
-                &BTreeMap::new(),
-                &BTreeMap::new(),
-                &BTreeMap::new(),
+                CatalogAuthSettings {
+                    token_header: "X-API-Key".to_owned(),
+                    token_scheme: "Token".to_owned(),
+                    ..CatalogAuthSettings::default()
+                },
                 &mut api_key
             )
             .unwrap(),
@@ -4384,14 +4797,13 @@ mod tests {
         assert!(matches!(
             resolved_auth(
                 &AuthModel::ApiKey,
-                "",
-                "",
-                &BTreeMap::from([
-                    ("x-api-key".to_owned(), "api_key".to_owned()),
-                    ("x-store-key".to_owned(), "store_key".to_owned()),
-                ]),
-                &BTreeMap::new(),
-                &BTreeMap::new(),
+                CatalogAuthSettings {
+                    header_parameters: BTreeMap::from([
+                        ("x-api-key".to_owned(), "api_key".to_owned()),
+                        ("x-store-key".to_owned(), "store_key".to_owned()),
+                    ]),
+                    ..CatalogAuthSettings::default()
+                },
                 &mut header_api_keys
             )
             .unwrap(),
@@ -4415,17 +4827,16 @@ mod tests {
         assert!(matches!(
             resolved_auth(
                 &AuthModel::ApiKey,
-                "",
-                "",
-                &BTreeMap::new(),
-                &BTreeMap::from([
-                    ("api_token".to_owned(), "api_token".to_owned()),
-                    (
-                        "api_token_secret".to_owned(),
-                        "api_token_secret".to_owned()
-                    ),
-                ]),
-                &BTreeMap::new(),
+                CatalogAuthSettings {
+                    query_parameters: BTreeMap::from([
+                        ("api_token".to_owned(), "api_token".to_owned()),
+                        (
+                            "api_token_secret".to_owned(),
+                            "api_token_secret".to_owned(),
+                        ),
+                    ]),
+                    ..CatalogAuthSettings::default()
+                },
                 &mut query_api_key
             )
             .unwrap(),
@@ -4448,11 +4859,13 @@ mod tests {
         assert!(matches!(
             resolved_auth(
                 &AuthModel::ApiKey,
-                "",
-                "",
-                &BTreeMap::new(),
-                &BTreeMap::new(),
-                &BTreeMap::from([("token".to_owned(), "api_token".to_owned())]),
+                CatalogAuthSettings {
+                    json_body_parameters: BTreeMap::from([(
+                        "token".to_owned(),
+                        "api_token".to_owned(),
+                    )]),
+                    ..CatalogAuthSettings::default()
+                },
                 &mut body_api_key
             )
             .unwrap(),
@@ -4475,11 +4888,7 @@ mod tests {
         assert!(matches!(
             resolved_auth(
                 &AuthModel::BearerToken,
-                "",
-                "",
-                &BTreeMap::new(),
-                &BTreeMap::new(),
-                &BTreeMap::new(),
+                CatalogAuthSettings::default(),
                 &mut config
             )
             .unwrap(),

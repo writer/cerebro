@@ -32,12 +32,13 @@ import (
 )
 
 const (
-	grcDefaultLimit           = uint32(100)
-	grcMaxLimit               = uint32(500)
-	grcMaxRuntimeScope        = uint32(500)
-	grcRuntimeScopeFetchLimit = grcMaxRuntimeScope + 1
-	grcDashboardPreviewLimit  = uint32(25)
-	grcAuditPacketSchema      = grcauditpacket.SchemaVersion
+	grcDefaultLimit                  = uint32(100)
+	grcMaxLimit                      = uint32(500)
+	grcMaxRuntimeScope               = uint32(500)
+	grcRuntimeScopeFetchLimit        = grcMaxRuntimeScope + 1
+	grcDashboardPreviewLimit         = uint32(25)
+	grcDashboardRuntimeHealthTimeout = 5 * time.Second
+	grcAuditPacketSchema             = grcauditpacket.SchemaVersion
 )
 
 type grcScope struct {
@@ -156,12 +157,13 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	findingIDs := grcFindingIDs(findings)
 	generatedAt := time.Now().UTC()
 	var (
-		evidence        []*cerebrov1.FindingEvidence
-		findingSummary  *ports.FindingSummary
-		evidenceCount   *int
-		aggregate       *ports.GRCDashboardAggregate
-		sourceSummaries []sourceRuntimeHealthSummary
-		coverage        []sourcecoverage.Record
+		evidence         []*cerebrov1.FindingEvidence
+		findingSummary   *ports.FindingSummary
+		evidenceCount    *int
+		aggregate        *ports.GRCDashboardAggregate
+		sourceSummaries  []sourceRuntimeHealthSummary
+		coverage         []sourcecoverage.Record
+		runtimeHealthErr error
 	)
 	group, groupCtx := errgroup.WithContext(r.Context())
 	group.Go(func() error {
@@ -191,11 +193,17 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		})
 	})
 	group.Go(func() error {
-		var err error
-		return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.runtime_health", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
+		runtimeHealthCtx, cancel := context.WithTimeout(groupCtx, grcDashboardRuntimeHealthTimeout)
+		defer cancel()
+		runtimeHealthErr = operationtelemetry.RunMainPhase(runtimeHealthCtx, "grc.dashboard.runtime_health", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
+			var err error
 			sourceSummaries, err = a.grcSourceRuntimeHealthSummaries(ctx, runtimes, generatedAt)
 			return telemetry.Attrs(telemetry.Field{Key: "source_summary_count", Value: len(sourceSummaries)}), err
 		})
+		if runtimeHealthErr != nil {
+			sourceSummaries = nil
+		}
+		return nil
 	})
 	group.Go(func() error {
 		var err error
@@ -213,6 +221,12 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
+	endAttrs = endAttrs.With(
+		telemetry.Attrs(
+			telemetry.Field{Key: "source_summaries_status", Value: grcTelemetryStatus(runtimeHealthErr)},
+			telemetry.Field{Key: "source_summary_count", Value: len(sourceSummaries)},
+		),
+	)
 	if aggregate != nil {
 		findingSummary = &aggregate.FindingSummary
 		evidenceCount = &aggregate.EvidenceCount
@@ -565,7 +579,7 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	graphStore := dependencyGraphQueryStore(a.deps)
+	graphStore := a.deps.GraphReads.Neighborhoods
 	if graphStore == nil {
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
 		return
@@ -668,7 +682,7 @@ func (a *App) buildGRCAuditPreview(r *http.Request, findingID string) (grcAuditP
 	}
 	var graph *ports.EntityNeighborhood
 	if len(finding.ResourceURNs) > 0 {
-		if graphStore := dependencyGraphQueryStore(a.deps); graphStore != nil {
+		if graphStore := a.deps.GraphReads.Neighborhoods; graphStore != nil {
 			var graphErr error
 			graph, graphErr = graphStore.GetEntityNeighborhood(r.Context(), finding.ResourceURNs[0], int(limit))
 			if graphErr != nil {

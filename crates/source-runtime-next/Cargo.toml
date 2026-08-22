@@ -20,15 +20,19 @@ cerebro-organizational-model.workspace = true
 cerebro-source-catalog.workspace = true
 futures-util.workspace = true
 hmac.workspace = true
+packageurl.workspace = true
 prost.workspace = true
 prost-types.workspace = true
-reqwest = { workspace = true, features = ["stream"] }
+reqwest = { workspace = true, features = ["form", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 time.workspace = true
 tokio = { workspace = true, features = ["time"] }
 zeroize.workspace = true
+
+[dev-dependencies]
+serde-saphyr.workspace = true
 
 [lints]
 workspace = true

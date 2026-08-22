@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "createdAt": "2026-08-20T19:35:51.742Z",
+      "environment": "default",
+      "id": "example-a27d91ef",
+      "projectId": "example-36bcc519"
+    }
+  ],
+  "meta": {
+    "limit": 1,
+    "page": 1,
+    "totalItems": 291169,
+    "totalPages": 291169
+  }
+}

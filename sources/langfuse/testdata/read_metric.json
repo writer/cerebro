@@ -1,0 +1,24 @@
+[
+  {
+    "id": "langfuse-writer-metric-254fe3ab75efb870",
+    "tenant_id": "writer",
+    "source_id": "langfuse",
+    "kind": "langfuse.metric",
+    "occurred_at": "2026-08-20T20:23:29Z",
+    "schema_ref": "langfuse/metric/v1",
+    "payload": {
+      "count_count": "5829",
+      "name": "example-ff1256f0"
+    },
+    "attributes": {
+      "external_id": "example-ff1256f0",
+      "family": "metric",
+      "metric_id": "example-ff1256f0",
+      "name": "example-ff1256f0",
+      "provider": "langfuse",
+      "request_count": "5829",
+      "source_product": "langfuse",
+      "source_provider": "langfuse"
+    }
+  }
+]

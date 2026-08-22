@@ -92,6 +92,50 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
     if packages:
         add_command(commands, seen, "go-test-changed-packages", ["go", "test", *packages, "-count=1"], "Go package files changed.")
 
+    source_runtime_crates = (
+        "crates/cerebro-platform/",
+        "crates/source-catalog/",
+        "crates/source-runtime-next/",
+    )
+    if any(path.startswith(source_runtime_crates) for path in files):
+        rust_packages = (
+            "cerebro-platform",
+            "cerebro-source-catalog",
+            "cerebro-source-runtime-next",
+        )
+        package_args = [argument for package in rust_packages for argument in ("-p", package)]
+        add_command(
+            commands,
+            seen,
+            "rust-source-runtime-fmt",
+            ["cargo", "fmt", "--all", "--", "--check"],
+            "Rust source catalog, runtime, or platform code changed.",
+        )
+        add_command(
+            commands,
+            seen,
+            "rust-source-runtime-test",
+            ["cargo", "test", "--locked", *package_args],
+            "Rust source catalog, runtime, or platform code changed.",
+        )
+        add_command(
+            commands,
+            seen,
+            "rust-source-runtime-clippy",
+            [
+                "cargo",
+                "clippy",
+                "--locked",
+                *package_args,
+                "--all-targets",
+                "--all-features",
+                "--",
+                "-D",
+                "warnings",
+            ],
+            "Rust source catalog, runtime, or platform code changed.",
+        )
+
     if any(path_matches(path, prefixes=("internal/connectorcatalog/catalog/", "internal/connectordefinitions/", "internal/sourcegen/"), exact=("cmd/cerebro/source_runtime_sdk.go",)) for path in files):
         add_command(commands, seen, "sourcegen-check", ["make", "sourcegen-check"], "Connector definition or sourcegen contract changed.")
 

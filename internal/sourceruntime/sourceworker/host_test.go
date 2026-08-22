@@ -1,0 +1,223 @@
+package sourceworker
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"google.golang.org/protobuf/proto"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+)
+
+func TestHostKeepsCredentialInsideBoundedEgressBridge(t *testing.T) {
+	plan, now, secret := AzureAuthorizationPolicyPlan(), time.Now().UTC(), "host-only-secret"
+	worker, scope := newFakeWorker(), exactScope(plan, now)
+	scope.PublicConfig = map[string]string{"insights_base_url": "https://api.jumpcloud.com/insights/directory/v1"}
+	scope.PriorTerminalWatermarkUnixMillis, scope.PriorCheckpoint = 1_782_000_000_000, "audit-terminal-1"
+	host := NewHost(worker, "opaque-reference", []byte(secret), now.Add(time.Minute))
+	host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Header.Get("Authorization") != "Bearer "+secret {
+			t.Fatal("host did not apply the redeemed credential")
+		}
+		result := response(http.StatusOK)
+		for name, value := range map[string]string{"X-Result-Count": "2", "X-Limit": "2", "X-Search_after": `{"id":"event-2"}`, "Retry-After": "30", "Set-Cookie": "secret-cookie", "Www-Authenticate": "secret-challenge", "X-Api-Key": "secret"} {
+			result.Header.Set(name, value)
+		}
+		return result, nil
+	})}
+	output, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque-reference", PageNumber: 1, Scope: scope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if worker.sawSecret || host.credential != nil || output.Program == nil {
+		t.Fatalf("secret crossed boundary or Rust did not seal the page: %#v", output.Program)
+	}
+	if encoded := fmt.Sprintf("%+v", output.Receipt); strings.Contains(encoded, secret) || strings.Contains(encoded, "opaque-reference") {
+		t.Fatal("safe receipt leaked credential material")
+	}
+	if got := worker.planEnvelope.GetMetadata(); got.GetPriorCheckpoint() != scope.PriorCheckpoint || got.GetPriorTerminalWatermarkUnixMillis() != scope.PriorTerminalWatermarkUnixMillis || got.GetPublicConfig()["insights_base_url"] == "" {
+		t.Fatalf("planning metadata was dropped: %#v", got)
+	}
+	for _, name := range []string{"x-result-count", "x-limit", "x-search_after", "retry-after"} {
+		if worker.decodeEnvelope.GetResponseHeaders()[name] == "" {
+			t.Fatalf("safe response header %q was dropped", name)
+		}
+	}
+	for _, name := range []string{"set-cookie", "www-authenticate", "x-api-key"} {
+		if _, ok := worker.decodeEnvelope.GetResponseHeaders()[name]; ok {
+			t.Fatalf("sensitive response header %q crossed the wire", name)
+		}
+	}
+}
+
+func TestHostRejectsOriginEscapeBeforeRedemption(t *testing.T) {
+	plan, now, worker := AzureAuthorizationPolicyPlan(), time.Now().UTC(), newFakeWorker()
+	worker.endpoint = "https://example.com/escape"
+	host := NewHost(worker, "opaque", []byte("secret"), now.Add(time.Minute))
+	host.client, host.now = &http.Client{}, func() time.Time { return now }
+	if _, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: exactScope(plan, now)}); err == nil || host.credential == nil {
+		t.Fatalf("Execute() error = %v, credential consumed before validation", err)
+	}
+}
+
+func TestHostClassifiesProviderAndNetworkBounds(t *testing.T) {
+	for status, want := range map[int]error{401: ErrProviderAuthentication, 403: ErrProviderPermission, 429: ErrProviderRateLimited} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			plan, now := AzureAuthorizationPolicyPlan(), time.Now().UTC()
+			host := NewHost(newFakeWorker(), "opaque", []byte("secret"), now.Add(time.Minute))
+			host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return response(status), nil })}
+			_, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: exactScope(plan, now)})
+			if !errors.Is(err, want) {
+				t.Fatalf("Execute() error = %v, want %v", err, want)
+			}
+		})
+	}
+	for name, test := range map[string]struct{ err, want error }{"timeout": {context.DeadlineExceeded, ErrProviderTimeout}, "egress": {errors.New("dial failed"), ErrProviderEgress}} {
+		t.Run(name, func(t *testing.T) {
+			host := &Host{client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, test.err })}}
+			_, _, _, err := host.get(context.Background(), mustURL(t), "GET", "application/json", nil, nil, 16, "source.bearer", []byte("secret"))
+			if !errors.Is(err, test.want) {
+				t.Fatalf("get() error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestPublicDNSValidationRejectsPrivateAndMixedAnswers(t *testing.T) {
+	for _, addresses := range [][]net.IPAddr{{{IP: net.ParseIP("127.0.0.1")}}, {{IP: net.ParseIP("10.1.2.3")}}, {{IP: net.ParseIP("20.190.128.1")}, {IP: net.ParseIP("10.1.2.3")}}} {
+		if err := validatePublicAddresses(addresses); !errors.Is(err, ErrProviderEgress) {
+			t.Fatalf("private address accepted: %v", err)
+		}
+	}
+}
+
+type fakeWorker struct {
+	endpoint            string
+	method              string
+	body                []byte
+	declaredHeaders     map[string]string
+	credentialOperation string
+	sawSecret           bool
+	planEnvelope        *cerebrov1.SourceWorkerPlanEnvelopeV2
+	decodeEnvelope      *cerebrov1.SourceWorkerDecodeEnvelopeV2
+}
+
+func newFakeWorker() *fakeWorker {
+	return &fakeWorker{endpoint: "https://graph.microsoft.com/v1.0/policies/authorizationPolicy", method: http.MethodGet, credentialOperation: "source.bearer"}
+}
+func (w *fakeWorker) Compile(context.Context, SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error) {
+	return AzureAuthorizationPolicyPlan(), nil
+}
+func (w *fakeWorker) Context(_ context.Context, request ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error) {
+	return &cerebrov1.SourceWorkerExecutionContextV1{TenantId: request.TenantID, RuntimeId: request.RuntimeID, LogicalPageId: "logical-page-1", RuntimeGeneration: request.RuntimeGeneration, LeaseGeneration: request.LeaseGeneration, ObservedAtUnixMillis: request.ObservedAtUnixMillis}, nil
+}
+func (w *fakeWorker) PlanV2(_ context.Context, envelope *cerebrov1.SourceWorkerPlanEnvelopeV2) (*cerebrov1.SourceWorkerHTTPExecutionV2, error) {
+	w.planEnvelope = proto.Clone(envelope).(*cerebrov1.SourceWorkerPlanEnvelopeV2)
+	request := envelope.GetRequest()
+	plan := request.GetPlan()
+	planned := &cerebrov1.SourceWorkerHTTPRequestV1{PlanId: plan.GetPlanId(), Method: w.method, Url: w.endpoint, Accept: "application/json", MaxResponseBytes: plan.GetMaxResponseBytes(), PlanDigestSha256: plan.GetPlanDigestSha256(), RequestIntentDigest: strings.Repeat("1", 64)}
+	execution := &cerebrov1.SourceWorkerHTTPExecutionV2{Request: planned, Body: w.body, DeclaredHeaders: w.declaredHeaders, CredentialOperation: w.credentialOperation, AllowedOrigin: plan.GetOrigin()}
+	execution.ExecutionIntentDigestSha256 = strings.Repeat("4", 64)
+	return execution, nil
+}
+func (w *fakeWorker) DecodeV2(_ context.Context, envelope *cerebrov1.SourceWorkerDecodeEnvelopeV2) (*cerebrov1.SourceWorkerDecodeOutputV2, error) {
+	w.decodeEnvelope = proto.Clone(envelope).(*cerebrov1.SourceWorkerDecodeEnvelopeV2)
+	switch envelope.GetRequest().GetStatusCode() {
+	case http.StatusUnauthorized:
+		return nil, ErrProviderAuthentication
+	case http.StatusForbidden:
+		return nil, ErrProviderPermission
+	case http.StatusTooManyRequests:
+		return nil, ErrProviderRateLimited
+	}
+	request := envelope.GetRequest()
+	wire, _ := proto.Marshal(request)
+	w.sawSecret = bytes.Contains(wire, []byte("host-only-secret"))
+	context := request.GetContext()
+	result := &cerebrov1.SourceWorkerDecodeResultV1{PlanId: request.GetPlan().GetPlanId(), PlanDigestSha256: request.GetPlan().GetPlanDigestSha256(), LogicalPageId: context.GetLogicalPageId(), RequestIntentDigest: request.GetRequestIntentDigest(), ResultDigestSha256: strings.Repeat("2", 64), TenantId: context.GetTenantId(), RuntimeId: context.GetRuntimeId(), RuntimeGeneration: context.GetRuntimeGeneration(), LeaseGeneration: context.GetLeaseGeneration(), ObservedAtUnixMillis: context.GetObservedAtUnixMillis(), Records: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy", EventId: "azure-authorization-policy-authorizationPolicy", OccurredAtUnixMillis: context.GetObservedAtUnixMillis(), Attributes: map[string]string{"family": "authorization_policy"}, PayloadJson: []byte(`{"id":"authorizationPolicy"}`)}}}
+	return &cerebrov1.SourceWorkerDecodeOutputV2{
+		Receipt: &cerebrov1.SourceWorkerSafeReceiptV1{
+			PlanDigestSha256: envelope.GetRequest().GetPlan().GetPlanDigestSha256(),
+			LogicalPageId:    context.GetLogicalPageId(), RequestIntentDigest: envelope.GetRequest().GetRequestIntentDigest(),
+			RuntimeGeneration: context.GetRuntimeGeneration(), LeaseGeneration: context.GetLeaseGeneration(),
+			CredentialOperation: w.credentialOperation, StatusCode: envelope.GetRequest().GetStatusCode(),
+			TenantId: context.GetTenantId(), RuntimeId: context.GetRuntimeId(), ObservedAtUnixMillis: context.GetObservedAtUnixMillis(),
+		},
+		Result: result,
+	}, nil
+}
+func (w *fakeWorker) SealPage(context.Context, PageProgramRequest) (*PageProgram, error) {
+	return &PageProgram{TransitionDigest: strings.Repeat("3", 64), AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{{ProviderId: "authorizationPolicy"}}}, nil
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }
+func response(status int) *http.Response {
+	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}
+}
+func mustURL(t *testing.T) *url.URL {
+	t.Helper()
+	parsed, err := url.Parse("https://graph.microsoft.com/v1.0/policies/authorizationPolicy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed
+}
+func exactScope(plan *cerebrov1.SourceExecutionPlanV1, now time.Time) CredentialScope {
+	return CredentialScope{TenantID: "tenant-1", RuntimeID: "runtime-1", SourceID: plan.GetSourceId(), FamilyID: plan.GetFamilyId(), PlanDigestSHA256: plan.GetPlanDigestSha256(), LogicalPageID: "logical-page-1", LeaseOwner: "owner-1", RuntimeGeneration: 7, LeaseGeneration: 11, LeaseExpiresAt: now.Add(time.Minute)}
+}
+
+func TestHostCarriesCredentialFreeBodyAndHeadersBeforeApplyingJumpCloudAuth(t *testing.T) {
+	plan, now := AzureAuthorizationPolicyPlan(), time.Now().UTC()
+	plan.Method = http.MethodPost
+	worker := newFakeWorker()
+	worker.method = http.MethodPost
+	worker.body = []byte(`{"service":["all"],"start_time":"2026-06-01T00:00:00Z"}`)
+	worker.declaredHeaders = map[string]string{"content-type": "application/json", "x-org-id": "org-1"}
+	worker.credentialOperation = "jumpcloud.x_api_key"
+	host := NewHost(worker, "opaque", []byte("jumpcloud-secret"), now.Add(time.Minute))
+	host.now, host.client = func() time.Time { return now }, &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Header.Get("X-Api-Key") != "jumpcloud-secret" || request.Header.Get("Authorization") != "" {
+			t.Fatal("host did not apply only the closed JumpCloud credential operation")
+		}
+		if request.Header.Get("Content-Type") != "application/json" || request.Header.Get("X-Org-Id") != "org-1" {
+			t.Fatalf("declared headers were not preserved: %#v", request.Header)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil || !bytes.Equal(body, worker.body) {
+			t.Fatalf("request body = %q, error = %v", body, err)
+		}
+		return response(http.StatusOK), nil
+	})}
+	if _, err := host.Execute(context.Background(), ExecutionInput{Plan: plan, CredentialReference: "opaque", PageNumber: 1, Scope: exactScope(plan, now)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSafeResponseHeadersRedactsAndBounds(t *testing.T) {
+	headers := http.Header{
+		"X-Result-Count": {"2"}, "X-Limit": {"2"}, "X-Search_after": {`{"id":"event-2"}`}, "Retry-After": {"30"},
+		"Authorization": {"secret"}, "Set-Cookie": {"secret"}, "Www-Authenticate": {"secret"}, "X-Api-Key": {"secret"},
+	}
+	safe, err := safeResponseHeaders(headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(safe) != 4 {
+		t.Fatalf("safe headers = %#v, want four JumpCloud headers", safe)
+	}
+	headers.Set("X-Result-Count", strings.Repeat("x", maxSafeHeaderValueBytes+1))
+	if _, err := safeResponseHeaders(headers); !errors.Is(err, ErrInvalidExecution) {
+		t.Fatalf("safeResponseHeaders() error = %v, want header value bound", err)
+	}
+}

@@ -33,6 +33,7 @@ type connectorDepositResponse struct {
 	EventsAppended    uint32                        `json:"events_appended"`
 	EntitiesProjected uint32                        `json:"entities_projected"`
 	LinksProjected    uint32                        `json:"links_projected"`
+	Receipt           sourceruntime.DepositReceipt  `json:"receipt"`
 	Errors            []connectorDepositRecordError `json:"errors,omitempty"`
 }
 
@@ -137,6 +138,7 @@ func connectorDepositResponseFromRuntime(response *sourceruntime.DepositResponse
 		EventsAppended:    response.EventsAppended,
 		EntitiesProjected: response.EntitiesProjected,
 		LinksProjected:    response.LinksProjected,
+		Receipt:           response.Receipt,
 		Errors:            errors,
 	}
 }

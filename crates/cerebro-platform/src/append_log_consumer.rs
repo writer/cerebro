@@ -540,7 +540,9 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
             subject_source,
             &subject,
             &config.subject_prefix,
-            runtime.catalog.get(subject_source).is_some(),
+            runtime
+                .catalog
+                .admits_event_family(subject_source, subject_family),
         ) {
             Ok(Some(event)) => event,
             Ok(None) => {
@@ -1477,6 +1479,7 @@ fn consumer_io(error: impl std::fmt::Display) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cerebro_source_catalog::SourceCatalog;
     use prost::Message;
     use prost_types::Timestamp;
     use std::collections::HashMap;
@@ -1502,8 +1505,18 @@ mod tests {
     }
 
     fn encoded_event(source_id: &str, kind: &str, schema_ref: &str, payload: Vec<u8>) -> Vec<u8> {
+        encoded_event_with_id("event-1", source_id, kind, schema_ref, payload)
+    }
+
+    fn encoded_event_with_id(
+        id: &str,
+        source_id: &str,
+        kind: &str,
+        schema_ref: &str,
+        payload: Vec<u8>,
+    ) -> Vec<u8> {
         EventWire {
-            id: "event-1".to_owned(),
+            id: id.to_owned(),
             tenant_id: "tenant-a".to_owned(),
             source_id: source_id.to_owned(),
             kind: kind.to_owned(),
@@ -1656,6 +1669,161 @@ mod tests {
     }
 
     #[test]
+    fn gcp_legacy_principals_decode_then_skip_outside_the_compiled_catalog() {
+        let cases = [
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user@example.test-roles-owner",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-allUsers-roles-viewer",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-allAuthenticatedUsers-roles-viewer",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-writer.com-roles-viewer",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-principal[workload-identity]-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-user@example.test-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-allUsers-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-allAuthenticatedUsers-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-writer.com-roles-viewer",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[workload-identity]-roles-viewer",
+            ),
+        ];
+
+        for (kind, schema_ref, id) in cases {
+            let family = kind
+                .strip_prefix("gcp.")
+                .expect("GCP event kind has a source prefix");
+            let payload = encoded_event_with_id(
+                id,
+                "gcp",
+                kind,
+                schema_ref,
+                br#"{"project_id":"writer-prod"}"#.to_vec(),
+            );
+            assert!(
+                decode_event(
+                    &payload,
+                    "gcp",
+                    &format!("events.gcp.{family}"),
+                    "events",
+                    true,
+                )
+                .unwrap()
+                .is_some()
+            );
+            assert_eq!(
+                decode_event(
+                    &payload,
+                    "gcp",
+                    &format!("events.gcp.{family}"),
+                    "events",
+                    false,
+                )
+                .unwrap(),
+                None,
+                "decoded compatibility event should be a catalog skip: {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_gcp_legacy_principals_are_rejected_before_catalog_skip() {
+        let cases = [
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user@example.test?",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-user\\alias@example.test-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-user@example.test-roles-owner?",
+            ),
+            (
+                "gcp.iam_role_assignment",
+                "gcp/iam_role_assignment/v1",
+                "gcp-iam-role-assignment-principal[workload-identity-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[]-roles-owner",
+            ),
+            (
+                "gcp.effective_permission",
+                "gcp/effective_permission/v1",
+                "gcp-effective-permission-principal[[workload]]-roles-owner",
+            ),
+        ];
+        for (kind, schema_ref, id) in cases {
+            let family = kind
+                .strip_prefix("gcp.")
+                .expect("GCP event kind has a source prefix");
+            let payload = encoded_event_with_id(
+                id,
+                "gcp",
+                kind,
+                schema_ref,
+                br#"{"project_id":"writer-prod"}"#.to_vec(),
+            );
+            assert!(
+                matches!(
+                    decode_event(
+                        &payload,
+                        "gcp",
+                        &format!("events.gcp.{family}"),
+                        "events",
+                        false,
+                    ),
+                    Err(EventDecodeError::Boundary(
+                        AppendLogDecodeError::InvalidModel(message)
+                    )) if message == "observation id is invalid"
+                ),
+                "malformed compatibility event must reject: {id}"
+            );
+        }
+    }
+
+    #[test]
     fn invalid_observation_ids_are_not_replay_only_skips() {
         let error = EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
             "observation id is invalid".to_owned(),
@@ -1768,6 +1936,42 @@ mod tests {
             .unwrap()
             .is_none()
         );
+    }
+
+    #[test]
+    fn trusted_endpoint_push_contract_prevents_catalog_absence_skip() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        assert!(catalog.get("trusted_endpoint").is_none());
+
+        let payload = encoded_event(
+            "trusted_endpoint",
+            "trusted_endpoint.host_posture",
+            "trusted_endpoint/host_posture/v1",
+            br#"{"agent_id":"device-1","observation_table":"host_posture"}"#.to_vec(),
+        );
+        let admitted = catalog.admits_event_family("trusted_endpoint", "host_posture");
+        assert!(admitted);
+        assert!(
+            decode_event(
+                &payload,
+                "trusted_endpoint",
+                "events.trusted_endpoint.host_posture",
+                "events",
+                admitted,
+            )
+            .unwrap()
+            .is_some()
+        );
+
+        assert!(!catalog.admits_event_family("trusted_endpoint", "unknown"));
     }
 
     #[test]

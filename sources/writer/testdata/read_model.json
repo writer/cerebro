@@ -1,0 +1,2081 @@
+[
+  {
+    "id": "writer-writer-model-e635cf6e76ca30cc",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-6c78e072",
+      "name": "example-87d2149c"
+    },
+    "attributes": {
+      "external_id": "example-6c78e072",
+      "family": "model",
+      "model_id": "example-6c78e072",
+      "name": "example-87d2149c",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-39f7bd73d85aa54e",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-b016adb9",
+      "name": "example-743b2e09"
+    },
+    "attributes": {
+      "external_id": "example-b016adb9",
+      "family": "model",
+      "model_id": "example-b016adb9",
+      "name": "example-743b2e09",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-914f505585ccc17a",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-2e59e91b",
+      "name": "example-c6700efd"
+    },
+    "attributes": {
+      "external_id": "example-2e59e91b",
+      "family": "model",
+      "model_id": "example-2e59e91b",
+      "name": "example-c6700efd",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-2319fcdc090b5862",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-47463e31",
+      "name": "example-0d9ff071"
+    },
+    "attributes": {
+      "external_id": "example-47463e31",
+      "family": "model",
+      "model_id": "example-47463e31",
+      "name": "example-0d9ff071",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-d310d9eb5119981b",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-f1e74daf",
+      "name": "example-a0011d26"
+    },
+    "attributes": {
+      "external_id": "example-f1e74daf",
+      "family": "model",
+      "model_id": "example-f1e74daf",
+      "name": "example-a0011d26",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-bca4076e5f96920d",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-46878cbd",
+      "name": "example-3feabc14"
+    },
+    "attributes": {
+      "external_id": "example-46878cbd",
+      "family": "model",
+      "model_id": "example-46878cbd",
+      "name": "example-3feabc14",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-d96fc213fc1d11b6",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-5d79ab31",
+      "name": "example-fc3cd8e2"
+    },
+    "attributes": {
+      "external_id": "example-5d79ab31",
+      "family": "model",
+      "model_id": "example-5d79ab31",
+      "name": "example-fc3cd8e2",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-d725901afd7df56d",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-283df740",
+      "name": "example-830521d6"
+    },
+    "attributes": {
+      "external_id": "example-283df740",
+      "family": "model",
+      "model_id": "example-283df740",
+      "name": "example-830521d6",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-266654c158f7786e",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-18a473eb",
+      "name": "example-a4302bea"
+    },
+    "attributes": {
+      "external_id": "example-18a473eb",
+      "family": "model",
+      "model_id": "example-18a473eb",
+      "name": "example-a4302bea",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-6337db9ecc587108",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-c4c23f56",
+      "name": "example-baf56c54"
+    },
+    "attributes": {
+      "external_id": "example-c4c23f56",
+      "family": "model",
+      "model_id": "example-c4c23f56",
+      "name": "example-baf56c54",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-aec644553d5fd4a5",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-c6bafb6f",
+      "name": "example-bf441e63"
+    },
+    "attributes": {
+      "external_id": "example-c6bafb6f",
+      "family": "model",
+      "model_id": "example-c6bafb6f",
+      "name": "example-bf441e63",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-ee0c8377e7036204",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-78746a56",
+      "name": "example-96ae4d6a"
+    },
+    "attributes": {
+      "external_id": "example-78746a56",
+      "family": "model",
+      "model_id": "example-78746a56",
+      "name": "example-96ae4d6a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-a34317cc59ecdca4",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-2e9167f5",
+      "name": "example-4e863764"
+    },
+    "attributes": {
+      "external_id": "example-2e9167f5",
+      "family": "model",
+      "model_id": "example-2e9167f5",
+      "name": "example-4e863764",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-4d6214f21bc019ed",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-e76fc72c",
+      "name": "example-51f0f8ed"
+    },
+    "attributes": {
+      "external_id": "example-e76fc72c",
+      "family": "model",
+      "model_id": "example-e76fc72c",
+      "name": "example-51f0f8ed",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-8686569a7c93faa7",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-556d218a",
+      "name": "example-d59a2149"
+    },
+    "attributes": {
+      "external_id": "example-556d218a",
+      "family": "model",
+      "model_id": "example-556d218a",
+      "name": "example-d59a2149",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-c91fd31380dcabdb",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-13ddbd65",
+      "name": "example-2e300e92"
+    },
+    "attributes": {
+      "external_id": "example-13ddbd65",
+      "family": "model",
+      "model_id": "example-13ddbd65",
+      "name": "example-2e300e92",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-c34b8f0be6cfce09",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-0bb2fb65",
+      "name": "example-0bb2fb65"
+    },
+    "attributes": {
+      "external_id": "example-0bb2fb65",
+      "family": "model",
+      "model_id": "example-0bb2fb65",
+      "name": "example-0bb2fb65",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-a95620cff5d1eb1d",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-8f9cf6b8",
+      "name": "example-42b3f528"
+    },
+    "attributes": {
+      "external_id": "example-8f9cf6b8",
+      "family": "model",
+      "model_id": "example-8f9cf6b8",
+      "name": "example-42b3f528",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-c4d9bf762d59a915",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-10cce38b",
+      "name": "example-4010b7c1"
+    },
+    "attributes": {
+      "external_id": "example-10cce38b",
+      "family": "model",
+      "model_id": "example-10cce38b",
+      "name": "example-4010b7c1",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-408e5891ce4fb0d9",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-125e6f66",
+      "name": "example-fc427166"
+    },
+    "attributes": {
+      "external_id": "example-125e6f66",
+      "family": "model",
+      "model_id": "example-125e6f66",
+      "name": "example-fc427166",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-367b7ebfeaee30ca",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-9ac58ddc",
+      "name": "example-288e6b31"
+    },
+    "attributes": {
+      "external_id": "example-9ac58ddc",
+      "family": "model",
+      "model_id": "example-9ac58ddc",
+      "name": "example-288e6b31",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-638538a4772ffe35",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-dee49bcd",
+      "name": "example-0829e169"
+    },
+    "attributes": {
+      "external_id": "example-dee49bcd",
+      "family": "model",
+      "model_id": "example-dee49bcd",
+      "name": "example-0829e169",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-27ba25c919257b25",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-56777882",
+      "name": "example-7287e110"
+    },
+    "attributes": {
+      "external_id": "example-56777882",
+      "family": "model",
+      "model_id": "example-56777882",
+      "name": "example-7287e110",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-771bb47a9570a976",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-17c03c7d",
+      "name": "example-6beb3080"
+    },
+    "attributes": {
+      "external_id": "example-17c03c7d",
+      "family": "model",
+      "model_id": "example-17c03c7d",
+      "name": "example-6beb3080",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-7a7b5ddda60f50d2",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-0b759938",
+      "name": "example-3cb28dae"
+    },
+    "attributes": {
+      "external_id": "example-0b759938",
+      "family": "model",
+      "model_id": "example-0b759938",
+      "name": "example-3cb28dae",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-24f21089a11a91e7",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-232f8338",
+      "name": "example-b67a44ba"
+    },
+    "attributes": {
+      "external_id": "example-232f8338",
+      "family": "model",
+      "model_id": "example-232f8338",
+      "name": "example-b67a44ba",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-8e81893e15399541",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-6d6fdcd1",
+      "name": "example-e7ec518e"
+    },
+    "attributes": {
+      "external_id": "example-6d6fdcd1",
+      "family": "model",
+      "model_id": "example-6d6fdcd1",
+      "name": "example-e7ec518e",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-1198ad0376088596",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-9bf9e8d6",
+      "name": "example-c907187a"
+    },
+    "attributes": {
+      "external_id": "example-9bf9e8d6",
+      "family": "model",
+      "model_id": "example-9bf9e8d6",
+      "name": "example-c907187a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-d11dc24640c3a147",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-5e07e2dd",
+      "name": "example-e1c10395"
+    },
+    "attributes": {
+      "external_id": "example-5e07e2dd",
+      "family": "model",
+      "model_id": "example-5e07e2dd",
+      "name": "example-e1c10395",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-50cfcb9438adf6ed",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-84d7b7ff",
+      "name": "example-0c4208fd"
+    },
+    "attributes": {
+      "external_id": "example-84d7b7ff",
+      "family": "model",
+      "model_id": "example-84d7b7ff",
+      "name": "example-0c4208fd",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-181f93f5ea766091",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-543b2f6f",
+      "name": "example-dd5e181f"
+    },
+    "attributes": {
+      "external_id": "example-543b2f6f",
+      "family": "model",
+      "model_id": "example-543b2f6f",
+      "name": "example-dd5e181f",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-2ae4b5713e4b36ab",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-aca50385",
+      "name": "example-a7860cf0"
+    },
+    "attributes": {
+      "external_id": "example-aca50385",
+      "family": "model",
+      "model_id": "example-aca50385",
+      "name": "example-a7860cf0",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-5cd954926bbde372",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-64c865bd",
+      "name": "example-a27d1543"
+    },
+    "attributes": {
+      "external_id": "example-64c865bd",
+      "family": "model",
+      "model_id": "example-64c865bd",
+      "name": "example-a27d1543",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-7071e6932ed2f4a0",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-9f1bcab0",
+      "name": "example-dd343dcf"
+    },
+    "attributes": {
+      "external_id": "example-9f1bcab0",
+      "family": "model",
+      "model_id": "example-9f1bcab0",
+      "name": "example-dd343dcf",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-b451637fc6c712da",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-d7c4935e",
+      "name": "example-093fa74a"
+    },
+    "attributes": {
+      "external_id": "example-d7c4935e",
+      "family": "model",
+      "model_id": "example-d7c4935e",
+      "name": "example-093fa74a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-95373fc712c08c92",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-da9c977d",
+      "name": "example-f35d03d6"
+    },
+    "attributes": {
+      "external_id": "example-da9c977d",
+      "family": "model",
+      "model_id": "example-da9c977d",
+      "name": "example-f35d03d6",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-8a89822e28d1fc5a",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-9ad7267a",
+      "name": "example-b0e2af78"
+    },
+    "attributes": {
+      "external_id": "example-9ad7267a",
+      "family": "model",
+      "model_id": "example-9ad7267a",
+      "name": "example-b0e2af78",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-197a459a14d72a34",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-b5c998c0",
+      "name": "example-adc34bf6"
+    },
+    "attributes": {
+      "external_id": "example-b5c998c0",
+      "family": "model",
+      "model_id": "example-b5c998c0",
+      "name": "example-adc34bf6",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-91b28cc5336867fc",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-8a000d7e",
+      "name": "example-9e264f90"
+    },
+    "attributes": {
+      "external_id": "example-8a000d7e",
+      "family": "model",
+      "model_id": "example-8a000d7e",
+      "name": "example-9e264f90",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-053eac8c107bae4e",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-079c8b8e",
+      "name": "example-ae58da66"
+    },
+    "attributes": {
+      "external_id": "example-079c8b8e",
+      "family": "model",
+      "model_id": "example-079c8b8e",
+      "name": "example-ae58da66",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-0e9ef45da77909fe",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-fca1e380",
+      "name": "example-57fa0988"
+    },
+    "attributes": {
+      "external_id": "example-fca1e380",
+      "family": "model",
+      "model_id": "example-fca1e380",
+      "name": "example-57fa0988",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-ca449eb38ae35ac6",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-07a8d83a",
+      "name": "example-6883746e"
+    },
+    "attributes": {
+      "external_id": "example-07a8d83a",
+      "family": "model",
+      "model_id": "example-07a8d83a",
+      "name": "example-6883746e",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-fde780cf33e9359e",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-bc25b6ee",
+      "name": "example-a7955462"
+    },
+    "attributes": {
+      "external_id": "example-bc25b6ee",
+      "family": "model",
+      "model_id": "example-bc25b6ee",
+      "name": "example-a7955462",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-b12e8b5e5873ddf3",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-8a2f3278",
+      "name": "example-db3bbb40"
+    },
+    "attributes": {
+      "external_id": "example-8a2f3278",
+      "family": "model",
+      "model_id": "example-8a2f3278",
+      "name": "example-db3bbb40",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-807c1338a2afc4f2",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-762202e2",
+      "name": "example-b6a016f0"
+    },
+    "attributes": {
+      "external_id": "example-762202e2",
+      "family": "model",
+      "model_id": "example-762202e2",
+      "name": "example-b6a016f0",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-b9fe9dc5cd54345a",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-65711717",
+      "name": "example-bc1b0836"
+    },
+    "attributes": {
+      "external_id": "example-65711717",
+      "family": "model",
+      "model_id": "example-65711717",
+      "name": "example-bc1b0836",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-f85a487ea29e4781",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-db3e9623",
+      "name": "example-1fbab21a"
+    },
+    "attributes": {
+      "external_id": "example-db3e9623",
+      "family": "model",
+      "model_id": "example-db3e9623",
+      "name": "example-1fbab21a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-e0a09ab0c68a5e1e",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-fab29cf0",
+      "name": "example-88388bb5"
+    },
+    "attributes": {
+      "external_id": "example-fab29cf0",
+      "family": "model",
+      "model_id": "example-fab29cf0",
+      "name": "example-88388bb5",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-80ad1e359b5a1a7f",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-232d2425",
+      "name": "example-6b3e8f92"
+    },
+    "attributes": {
+      "external_id": "example-232d2425",
+      "family": "model",
+      "model_id": "example-232d2425",
+      "name": "example-6b3e8f92",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-44df345465e9930a",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-73d627db",
+      "name": "example-c493f17e"
+    },
+    "attributes": {
+      "external_id": "example-73d627db",
+      "family": "model",
+      "model_id": "example-73d627db",
+      "name": "example-c493f17e",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-53cbb51d5f92276e",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-96ab5629",
+      "name": "example-09889b82"
+    },
+    "attributes": {
+      "external_id": "example-96ab5629",
+      "family": "model",
+      "model_id": "example-96ab5629",
+      "name": "example-09889b82",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-26665a3c8bb1a26c",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-934e6160",
+      "name": "example-9512c801"
+    },
+    "attributes": {
+      "external_id": "example-934e6160",
+      "family": "model",
+      "model_id": "example-934e6160",
+      "name": "example-9512c801",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-593fab5e0689c388",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-e71ebb16",
+      "name": "example-55db6b43"
+    },
+    "attributes": {
+      "external_id": "example-e71ebb16",
+      "family": "model",
+      "model_id": "example-e71ebb16",
+      "name": "example-55db6b43",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-152d485cb19bb152",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-19ecf77a",
+      "name": "example-4010b7c1"
+    },
+    "attributes": {
+      "external_id": "example-19ecf77a",
+      "family": "model",
+      "model_id": "example-19ecf77a",
+      "name": "example-4010b7c1",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-1c657181373cfb5a",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-d60b7267",
+      "name": "example-37cedf38"
+    },
+    "attributes": {
+      "external_id": "example-d60b7267",
+      "family": "model",
+      "model_id": "example-d60b7267",
+      "name": "example-37cedf38",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-4a006d4322f6a4a6",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-df0dfbef",
+      "name": "example-4b806e70"
+    },
+    "attributes": {
+      "external_id": "example-df0dfbef",
+      "family": "model",
+      "model_id": "example-df0dfbef",
+      "name": "example-4b806e70",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-6d5f559d12e849b0",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-7176a2eb",
+      "name": "example-20f72856"
+    },
+    "attributes": {
+      "external_id": "example-7176a2eb",
+      "family": "model",
+      "model_id": "example-7176a2eb",
+      "name": "example-20f72856",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-9b428a493400ef61",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-3a292577",
+      "name": "example-afa54cb8"
+    },
+    "attributes": {
+      "external_id": "example-3a292577",
+      "family": "model",
+      "model_id": "example-3a292577",
+      "name": "example-afa54cb8",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-aec5839f04a2b7f7",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-07b87dee",
+      "name": "example-771d4a94"
+    },
+    "attributes": {
+      "external_id": "example-07b87dee",
+      "family": "model",
+      "model_id": "example-07b87dee",
+      "name": "example-771d4a94",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-06260bd8f461647f",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-26c492b5",
+      "name": "example-656f4d6b"
+    },
+    "attributes": {
+      "external_id": "example-26c492b5",
+      "family": "model",
+      "model_id": "example-26c492b5",
+      "name": "example-656f4d6b",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-8faa6d8bfad9e576",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-d3e9d049",
+      "name": "example-cf6a90ce"
+    },
+    "attributes": {
+      "external_id": "example-d3e9d049",
+      "family": "model",
+      "model_id": "example-d3e9d049",
+      "name": "example-cf6a90ce",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-6dfd691c6d983698",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-433424a4",
+      "name": "example-6cab564c"
+    },
+    "attributes": {
+      "external_id": "example-433424a4",
+      "family": "model",
+      "model_id": "example-433424a4",
+      "name": "example-6cab564c",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-8e5c8d0a1c87da27",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-e086f286",
+      "name": "example-faf01fd0"
+    },
+    "attributes": {
+      "external_id": "example-e086f286",
+      "family": "model",
+      "model_id": "example-e086f286",
+      "name": "example-faf01fd0",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-d8f11d32c47d3483",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-fa4b56a4",
+      "name": "example-d379a5be"
+    },
+    "attributes": {
+      "external_id": "example-fa4b56a4",
+      "family": "model",
+      "model_id": "example-fa4b56a4",
+      "name": "example-d379a5be",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-86487d94a5be64fa",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-570fc318",
+      "name": "example-b54aeaa4"
+    },
+    "attributes": {
+      "external_id": "example-570fc318",
+      "family": "model",
+      "model_id": "example-570fc318",
+      "name": "example-b54aeaa4",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-09769982bcf3d465",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-9712e4c4",
+      "name": "example-1f6f7fc9"
+    },
+    "attributes": {
+      "external_id": "example-9712e4c4",
+      "family": "model",
+      "model_id": "example-9712e4c4",
+      "name": "example-1f6f7fc9",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-ceb5ce1eeb25da48",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-102810f3",
+      "name": "example-2c75b6c8"
+    },
+    "attributes": {
+      "external_id": "example-102810f3",
+      "family": "model",
+      "model_id": "example-102810f3",
+      "name": "example-2c75b6c8",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-f809194a6a62b159",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-9ffcced3",
+      "name": "example-df417345"
+    },
+    "attributes": {
+      "external_id": "example-9ffcced3",
+      "family": "model",
+      "model_id": "example-9ffcced3",
+      "name": "example-df417345",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-1c468ddaf49db185",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-b83835f4",
+      "name": "example-be4cd89c"
+    },
+    "attributes": {
+      "external_id": "example-b83835f4",
+      "family": "model",
+      "model_id": "example-b83835f4",
+      "name": "example-be4cd89c",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-71d37e0002a1678d",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-e6e51ea9",
+      "name": "example-fe3d1a1a"
+    },
+    "attributes": {
+      "external_id": "example-e6e51ea9",
+      "family": "model",
+      "model_id": "example-e6e51ea9",
+      "name": "example-fe3d1a1a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-6e2d9baa3caa13e4",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-2309deab",
+      "name": "example-3f16aab1"
+    },
+    "attributes": {
+      "external_id": "example-2309deab",
+      "family": "model",
+      "model_id": "example-2309deab",
+      "name": "example-3f16aab1",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-6c793ac01555c8e3",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-78fd7b89",
+      "name": "example-f0bd46d6"
+    },
+    "attributes": {
+      "external_id": "example-78fd7b89",
+      "family": "model",
+      "model_id": "example-78fd7b89",
+      "name": "example-f0bd46d6",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-0777c91b62c091a9",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-c4c47752",
+      "name": "example-0de13eaf"
+    },
+    "attributes": {
+      "external_id": "example-c4c47752",
+      "family": "model",
+      "model_id": "example-c4c47752",
+      "name": "example-0de13eaf",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-911c944173bea12b",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-f3d23c50",
+      "name": "example-27ea4b9a"
+    },
+    "attributes": {
+      "external_id": "example-f3d23c50",
+      "family": "model",
+      "model_id": "example-f3d23c50",
+      "name": "example-27ea4b9a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-669ced88cc9fedb5",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-2537bc6e",
+      "name": "example-3a7d4eed"
+    },
+    "attributes": {
+      "external_id": "example-2537bc6e",
+      "family": "model",
+      "model_id": "example-2537bc6e",
+      "name": "example-3a7d4eed",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-b51efe254c7a2444",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-5cea73e1",
+      "name": "example-f3c3a54b"
+    },
+    "attributes": {
+      "external_id": "example-5cea73e1",
+      "family": "model",
+      "model_id": "example-5cea73e1",
+      "name": "example-f3c3a54b",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-48c28906994ea95d",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-8a90b162",
+      "name": "example-a4314f7e"
+    },
+    "attributes": {
+      "external_id": "example-8a90b162",
+      "family": "model",
+      "model_id": "example-8a90b162",
+      "name": "example-a4314f7e",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-c4f3e32ce1ae5388",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-465c8d49",
+      "name": "example-9dea388d"
+    },
+    "attributes": {
+      "external_id": "example-465c8d49",
+      "family": "model",
+      "model_id": "example-465c8d49",
+      "name": "example-9dea388d",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-967a6c912c68aa38",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-738d9c88",
+      "name": "example-b796f03a"
+    },
+    "attributes": {
+      "external_id": "example-738d9c88",
+      "family": "model",
+      "model_id": "example-738d9c88",
+      "name": "example-b796f03a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-7dda2c1fd3889e5e",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-c2368516",
+      "name": "example-35c9f3b5"
+    },
+    "attributes": {
+      "external_id": "example-c2368516",
+      "family": "model",
+      "model_id": "example-c2368516",
+      "name": "example-35c9f3b5",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-d45269f3fc564e38",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-2bbf1110",
+      "name": "example-0285c583"
+    },
+    "attributes": {
+      "external_id": "example-2bbf1110",
+      "family": "model",
+      "model_id": "example-2bbf1110",
+      "name": "example-0285c583",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-44aaf41112b071ae",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-f4656300",
+      "name": "example-761dec3e"
+    },
+    "attributes": {
+      "external_id": "example-f4656300",
+      "family": "model",
+      "model_id": "example-f4656300",
+      "name": "example-761dec3e",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-232870dd6ff626a4",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-21d08292",
+      "name": "example-203542ee"
+    },
+    "attributes": {
+      "external_id": "example-21d08292",
+      "family": "model",
+      "model_id": "example-21d08292",
+      "name": "example-203542ee",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-447e3c2f83a99e0c",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-05b960c5",
+      "name": "example-c8fc849a"
+    },
+    "attributes": {
+      "external_id": "example-05b960c5",
+      "family": "model",
+      "model_id": "example-05b960c5",
+      "name": "example-c8fc849a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-f3708b94c2b389f4",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-bf44d8e6",
+      "name": "example-91aeaa9e"
+    },
+    "attributes": {
+      "external_id": "example-bf44d8e6",
+      "family": "model",
+      "model_id": "example-bf44d8e6",
+      "name": "example-91aeaa9e",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-97e53169326d1193",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-ad5065df",
+      "name": "example-c602b29a"
+    },
+    "attributes": {
+      "external_id": "example-ad5065df",
+      "family": "model",
+      "model_id": "example-ad5065df",
+      "name": "example-c602b29a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-b7cb7b3390b41f6b",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-56e48c6e",
+      "name": "example-691e0c23"
+    },
+    "attributes": {
+      "external_id": "example-56e48c6e",
+      "family": "model",
+      "model_id": "example-56e48c6e",
+      "name": "example-691e0c23",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-84da446f58cfc6a6",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-289d6999",
+      "name": "example-318f8ba9"
+    },
+    "attributes": {
+      "external_id": "example-289d6999",
+      "family": "model",
+      "model_id": "example-289d6999",
+      "name": "example-318f8ba9",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-67a9001a6ed672f5",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-696224b7",
+      "name": "example-5aece543"
+    },
+    "attributes": {
+      "external_id": "example-696224b7",
+      "family": "model",
+      "model_id": "example-696224b7",
+      "name": "example-5aece543",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-8ae14dd1739b4bc2",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-3ea737e9",
+      "name": "example-0db73a7e"
+    },
+    "attributes": {
+      "external_id": "example-3ea737e9",
+      "family": "model",
+      "model_id": "example-3ea737e9",
+      "name": "example-0db73a7e",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-2bc8d2f5242982ce",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-791bd19a",
+      "name": "example-791bd19a"
+    },
+    "attributes": {
+      "external_id": "example-791bd19a",
+      "family": "model",
+      "model_id": "example-791bd19a",
+      "name": "example-791bd19a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-972a6b5e2800b236",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-71e288f6",
+      "name": "example-3f9538c6"
+    },
+    "attributes": {
+      "external_id": "example-71e288f6",
+      "family": "model",
+      "model_id": "example-71e288f6",
+      "name": "example-3f9538c6",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-35316c220dd0c1a8",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-2ea3c6a6",
+      "name": "example-25f93eb7"
+    },
+    "attributes": {
+      "external_id": "example-2ea3c6a6",
+      "family": "model",
+      "model_id": "example-2ea3c6a6",
+      "name": "example-25f93eb7",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-2d5082f1872f81f4",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-04ce3953",
+      "name": "example-2bc95942"
+    },
+    "attributes": {
+      "external_id": "example-04ce3953",
+      "family": "model",
+      "model_id": "example-04ce3953",
+      "name": "example-2bc95942",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-738d99ceb4a86d71",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-8f7d7a37",
+      "name": "example-4c9bd49b"
+    },
+    "attributes": {
+      "external_id": "example-8f7d7a37",
+      "family": "model",
+      "model_id": "example-8f7d7a37",
+      "name": "example-4c9bd49b",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-8fed29f9bf34ba94",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-b863fef3",
+      "name": "example-6a00da40"
+    },
+    "attributes": {
+      "external_id": "example-b863fef3",
+      "family": "model",
+      "model_id": "example-b863fef3",
+      "name": "example-6a00da40",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-51238dd1e513ed7b",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-8d02d67c",
+      "name": "example-3fff83ff"
+    },
+    "attributes": {
+      "external_id": "example-8d02d67c",
+      "family": "model",
+      "model_id": "example-8d02d67c",
+      "name": "example-3fff83ff",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-5d67870a3c8c3f70",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-7fa5da73",
+      "name": "example-03da7414"
+    },
+    "attributes": {
+      "external_id": "example-7fa5da73",
+      "family": "model",
+      "model_id": "example-7fa5da73",
+      "name": "example-03da7414",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  },
+  {
+    "id": "writer-writer-model-9755b1e16275b32a",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.model",
+    "occurred_at": "2026-08-20T19:30:43Z",
+    "schema_ref": "writer/model/v1",
+    "payload": {
+      "id": "example-04dd7771",
+      "name": "example-be562fc2"
+    },
+    "attributes": {
+      "external_id": "example-04dd7771",
+      "family": "model",
+      "model_id": "example-04dd7771",
+      "name": "example-be562fc2",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer"
+    }
+  }
+]

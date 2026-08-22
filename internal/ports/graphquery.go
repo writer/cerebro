@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"reflect"
 )
 
 // ErrGraphEntityNotFound indicates that the requested graph root entity does not exist.
@@ -79,12 +80,62 @@ type RawCypherQueryStore interface {
 	ExecuteReadCypher(context.Context, CypherQueryRequest) ([]CypherRow, error)
 }
 
-// GraphQueryStore is the transitional composite consumed by existing product
-// packages. The authority adapter serves typed reads from Rust and delegates
-// only raw Cypher through RawCypherQueryStore.
-type GraphQueryStore interface {
-	GraphNeighborhoodStore
-	RawCypherQueryStore
+type GraphReadCapabilities struct {
+	Neighborhoods    GraphNeighborhoodStore
+	RawCypher        RawCypherQueryStore
+	Catalog          EntityCatalogStore
+	Exposure         ExposureCoverageStore
+	EntityKindCounts EntityKindCountStore
+	RelationCounts   RelationCountStore
+}
+
+func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
+	if isNilGraphReadCapability(store) {
+		return GraphReadCapabilities{}
+	}
+	var capabilities GraphReadCapabilities
+	if neighborhoods, ok := store.(GraphNeighborhoodStore); ok && !isNilGraphReadCapability(neighborhoods) {
+		capabilities.Neighborhoods = neighborhoods
+	}
+	if rawCypher, ok := store.(RawCypherQueryStore); ok && !isNilGraphReadCapability(rawCypher) {
+		capabilities.RawCypher = rawCypher
+	}
+	if catalog, ok := store.(EntityCatalogStore); ok && !isNilGraphReadCapability(catalog) {
+		capabilities.Catalog = catalog
+	}
+	if exposure, ok := store.(ExposureCoverageStore); ok && !isNilGraphReadCapability(exposure) {
+		capabilities.Exposure = exposure
+	}
+	if entityKindCounts, ok := store.(EntityKindCountStore); ok && !isNilGraphReadCapability(entityKindCounts) {
+		capabilities.EntityKindCounts = entityKindCounts
+	}
+	if relationCounts, ok := store.(RelationCountStore); ok && !isNilGraphReadCapability(relationCounts) {
+		capabilities.RelationCounts = relationCounts
+	}
+	return capabilities
+}
+
+func (c GraphReadCapabilities) ReadinessStore() GraphStore {
+	if !isNilGraphReadCapability(c.Neighborhoods) {
+		return c.Neighborhoods
+	}
+	if !isNilGraphReadCapability(c.RawCypher) {
+		return c.RawCypher
+	}
+	return nil
+}
+
+func isNilGraphReadCapability(value any) bool {
+	if value == nil {
+		return true
+	}
+	rv := reflect.ValueOf(value)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }
 
 // GraphNeighborhoodBatchStore exposes batched bounded graph neighborhood reads.

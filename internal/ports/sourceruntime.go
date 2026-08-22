@@ -8,8 +8,13 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-// ErrSourceRuntimeNotFound indicates that a stored source runtime does not exist.
-var ErrSourceRuntimeNotFound = errors.New("source runtime not found")
+var (
+	// ErrSourceRuntimeNotFound indicates that a stored source runtime does not exist.
+	ErrSourceRuntimeNotFound = errors.New("source runtime not found")
+	// ErrSourceRuntimeLeaseLost indicates that an operation no longer owns the
+	// durable generation under which it collected a source page.
+	ErrSourceRuntimeLeaseLost = errors.New("source runtime lease lost")
+)
 
 // SourceRuntimeStore persists source runtime configuration and checkpoints.
 type SourceRuntimeStore interface {
@@ -34,6 +39,14 @@ type SourceRuntimePageAttempt struct {
 	RecordsScanned uint32
 	Events         []*cerebrov1.EventEnvelope
 	Admission      SourceRuntimePageAdmission
+	Authority      SourceRuntimeAuthorityEvidenceRef
+}
+
+// SourceRuntimeAuthorityEvidenceRef binds a page or deposit receipt to the
+// append-only source-family authority evidence that allowed the work.
+type SourceRuntimeAuthorityEvidenceRef struct {
+	DecisionID string
+	Epoch      uint64
 }
 
 // SourceRuntimePageAdmission records the exact kernel decision made before append.
@@ -99,6 +112,12 @@ type SourceRuntimePageLedgerStore interface {
 	CommitSourceRuntimePage(context.Context, string, *cerebrov1.SourceRuntime) error
 }
 
+// SourceRuntimeFencedPageCommitter commits progress only while the exact
+// owner and generation that admitted the page still hold the durable lease.
+type SourceRuntimeFencedPageCommitter interface {
+	CommitSourceRuntimePageFenced(context.Context, string, *cerebrov1.SourceRuntime, SourceRuntimeLeaseFence) error
+}
+
 // SourceRuntimeFilter scopes persisted source runtime listing.
 type SourceRuntimeFilter struct {
 	RuntimeID  string
@@ -119,4 +138,18 @@ type SourceRuntimeLeaseStore interface {
 	AcquireSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error)
 	RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error)
 	ReleaseSourceRuntimeLease(context.Context, string, string) error
+}
+
+// SourceRuntimeLeaseFence is the durable owner/generation snapshot bound to
+// one source-runtime execution.
+type SourceRuntimeLeaseFence struct {
+	Owner      string
+	Generation uint64
+	ExpiresAt  time.Time
+}
+
+// SourceRuntimeLeaseFenceReader returns the current durable lease fence only
+// when the requested owner still holds it.
+type SourceRuntimeLeaseFenceReader interface {
+	ReadSourceRuntimeLeaseFence(context.Context, string, string) (SourceRuntimeLeaseFence, error)
 }

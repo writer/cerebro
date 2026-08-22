@@ -40,6 +40,16 @@ The current implementation supports:
 | `graph ingest-runtime` | Postgres plus Neo4j or Aura, and often NATS for replay-oriented flows |
 | source config `env:` references | environment variable plus allowlist configuration |
 
+The production package includes the credential-free `source_worker` binary.
+`CEREBRO_SOURCE_WORKER` selects its absolute path; when unset, Cerebro uses the
+`source_worker` sibling next to the Go executable. The current closed production
+dispatch is `azure` with `family=authorization_policy`. That runtime must store
+an opaque `env:` or `credential:` reference. The trusted host resolves and
+redeems it once; raw credential bytes are never sent to the Rust worker.
+The same closed Rust dispatcher compile-registers `sentinelone.agent`, but its
+trusted-host and catalog activation remain separate from the Azure production
+path.
+
 ## Source preview
 
 Preview source behavior before creating a persisted runtime:
@@ -134,6 +144,9 @@ Operational guidance:
 - Avoid concurrent sync for the same runtime unless the source and persistence path are known to be concurrency-safe.
 - Watch provider rate limits and partial-page errors.
 - Treat cursor advancement as the sign that sync is healthy.
+- For `azure.authorization_policy`, treat a lease-loss error as a fenced retry.
+  The failed worker cannot commit its checkpoint; the next lease generation
+  refetches the singleton and deduplicates the tenant-scoped event identity.
 
 ## Family freshness probes
 

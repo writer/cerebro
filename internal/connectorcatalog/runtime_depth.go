@@ -231,10 +231,19 @@ func inspectRuntimeDepth(root string, repoRoot *os.Root, sourceDir string, proje
 		depth.ProviderAPI.ProofGaps = proof.Gaps
 		depth.ProviderAPI.RuntimeProviderAPIDisproofDepth = providerAPIDisproofDepth(catalog.ProviderAPIDisproof)
 	}
-	depth.HasSourceImplementation = hasRegularFile(filepath.Join(sourceDir, "source.go"))
+	providerSourceGo := filepath.Join(sourceDir, "source.go")
+	providerSourceTests := hasSourceTests(sourceDir)
+	sharedRuntimeDir := filepath.Join(root, "sources", "internal", "catalogruntime")
+	usesCatalogRuntime := depth.HasSourceCatalog &&
+		!hasRegularFile(providerSourceGo) &&
+		hasRegularFile(filepath.Join(sharedRuntimeDir, "source.go"))
+	depth.HasSourceImplementation = hasRegularFile(providerSourceGo) || usesCatalogRuntime
 	sourceGoPath := filepath.ToSlash(filepath.Join(depth.PackagePath, "source.go"))
+	if usesCatalogRuntime {
+		sourceGoPath = "sources/internal/catalogruntime/source.go"
+	}
 	depth.ProviderAPI.HasRuntimeTransport = depth.ProviderAPI.HasContract && runtimeTransportMatchesProviderAPI(repoRoot, sourceGoPath, depth.ProviderAPI.Transport)
-	depth.HasSourceTests = hasSourceTests(sourceDir)
+	depth.HasSourceTests = providerSourceTests || usesCatalogRuntime && hasSourceTests(sharedRuntimeDir)
 	depth.HasDeployManifest = hasRegularFile(filepath.Join(sourceDir, "deploy.yaml"))
 	depth.ReadFixtureFamilies, depth.DiscoverFixtureFamilies = fixtureFamilies(sourceDir)
 	depth.HasReadFixtures = len(depth.ReadFixtureFamilies) > 0

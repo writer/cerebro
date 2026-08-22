@@ -1,0 +1,37 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: writer
+family: application
+case: authorized_detail
+replay_test: source_test.go#TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies
+request:
+    method: GET
+    url: https://api.writer.com/v1/applications/example-application
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-08-20T19:30:45Z"
+    sha256: ef77aa2929a690cea13dd0f78edca12137e15392bd29082f7afa76217d716e77
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.id
+        - $.inputs[0].input_type
+        - $.inputs[0].name
+        - $.inputs[0].options.file_types[0]
+        - $.inputs[0].options.file_types[1]
+        - $.inputs[0].options.file_types[2]
+        - $.inputs[0].options.file_types[3]
+        - $.inputs[0].options.file_types[4]
+        - $.inputs[0].options.max_image_size_mb
+        - $.inputs[1].input_type
+        - $.inputs[1].name
+        - $.inputs[1].options.max_fields
+        - $.inputs[1].options.min_fields
+        - $.inputs[2].input_type
+        - $.inputs[2].name
+        - $.inputs[2].options.max_fields
+        - $.inputs[2].options.min_fields
+        - $.name
+origin:
+    type: operator_request

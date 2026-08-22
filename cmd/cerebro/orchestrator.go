@@ -368,6 +368,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		lister,
 		deps.AppendLog,
 		deps.StateStore,
+		cfg.SourceRuntime.SourceWorkerPath,
 		deps.OrganizationalProjector,
 	)
 	admitter, err := eventadmission.NewNativeAdmitter(
@@ -392,7 +393,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		findingEvaluationRunStore(deps.StateStore),
 		findingEvidenceStore(deps.StateStore),
 		claimStore(deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(dependencyGraphQueryStore(deps)).WithTrustedSourceResolution().WithAppendLog(deps.AppendLog).WithGraphRuleQueryTimeout(graphRuleQueryBudgetForPhase(options.PhaseTimeout)).WithRuntimeIndexReplayPreparer(cfg.AppendLog.JetStreamRuntimeIndexEnabled, deps.AppendLog, deps.StateStore)
+	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithRawCypherQueryStore(deps.GraphReads.RawCypher).WithTrustedSourceResolution().WithAppendLog(deps.AppendLog).WithGraphRuleQueryTimeout(graphRuleQueryBudgetForPhase(options.PhaseTimeout)).WithRuntimeIndexReplayPreparer(cfg.AppendLog.JetStreamRuntimeIndexEnabled, deps.AppendLog, deps.StateStore)
 	graphService := graphingest.New(
 		registry,
 		lister,
@@ -463,14 +464,19 @@ func newOrchestratorRuntimeService(
 	store ports.SourceRuntimeStore,
 	appendLog ports.AppendLog,
 	stateStore ports.StateStore,
+	sourceWorkerPath string,
 	projectors ...*organizationalgraph.ProjectionClient,
 ) *sourceruntime.Service {
-	return sourceruntime.New(
+	service := sourceruntime.New(
 		registry,
 		store,
 		appendLog,
 		newOrchestratorSyncProjector(stateStore, projectors...),
 	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
+	if sourceWorkerPath != "" {
+		service.WithSourceExecutionWorkerPath(sourceWorkerPath)
+	}
+	return service
 }
 
 func newOrchestratorSyncProjector(

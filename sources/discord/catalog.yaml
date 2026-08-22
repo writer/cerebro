@@ -28,7 +28,8 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Normalized contract fixtures are synthetic and do not prove a live provider read.
+        - Entries with a null user_id remain actorless; projection never joins the sibling users array or fabricates an actor.
     - id: member
       type: entity_family
       title: "Member"
@@ -70,7 +71,6 @@ event_contracts:
       - tenant_id
       - source_event_id
       - event_type
-      - actor_id
     required_payload_fields:
       - id
   - kind: discord.member

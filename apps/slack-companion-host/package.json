@@ -36,13 +36,13 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.1111.0",
     "@aws-sdk/lib-dynamodb": "3.1111.0",
-    "@slack/bolt": "5.0.0",
+    "@slack/bolt": "4.7.3",
     "@writer/cerebro-sdk": "0.1.0",
     "@writer/cerebro-slack-companion": "0.1.0"
   },
   "devDependencies": {
-    "@slack/types": "3.0.0",
+    "@slack/types": "2.21.1",
     "@types/node": "^26.2.0",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.0"
   }
 }

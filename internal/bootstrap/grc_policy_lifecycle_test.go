@@ -124,7 +124,7 @@ func TestGRCPolicyLifecycleEndpointReturnsOperationalObjects(t *testing.T) {
 			grcPolicyLifecycleTestRelation(reminder, fabriccontract.RelationAssignedTo, nil, group),
 		},
 	}}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graph}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 

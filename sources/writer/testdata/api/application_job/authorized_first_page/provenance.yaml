@@ -1,0 +1,18 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: writer
+family: application_job
+case: authorized_first_page
+replay_test: source_test.go#TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies
+request:
+    method: GET
+    url: https://api.writer.com/v1/applications/example-application/jobs?limit=1&offset=0
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-08-20T19:47:48Z"
+    sha256: b334489ff366e2a68d397b7b9053b44c924d0e74d6c24c6b112501fc02e52682
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

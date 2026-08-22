@@ -27,6 +27,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
+	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -79,6 +80,16 @@ type Service struct {
 	projector       ports.SourceProjector
 	resolver        sourceconfig.Resolver
 	eventAdmitter   eventadmission.Admitter
+	sourceWorker    sourceworker.Worker
+}
+
+// WithSourceExecutionWorkerPath enables the standalone credential-free worker
+// when a process path is configured.
+func (s *Service) WithSourceExecutionWorkerPath(path string) *Service {
+	if s != nil && strings.TrimSpace(path) != "" {
+		s.sourceWorker = sourceworker.NewProcessWorker(path)
+	}
+	return s
 }
 
 type connectorDefinitionProjectorRegistrar interface {
@@ -315,6 +326,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		lastQuarantineCategory string
 		checkpointAdvanced     bool
 		eventLimitReached      bool
+		sourceExecutionFamily  bool
 		shortCircuitReason     string
 		reconciliationReason   string
 		observedFamilies       = map[string]struct{}{}
@@ -324,7 +336,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			status = "failed"
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
 			telemetry.IncrementMain(ctx, "source_runtime.sync.error.count", 1)
-			if runtimeLoadedForRun && !runtimeSyncCompleted {
+			if runtimeLoadedForRun && !runtimeSyncCompleted && !sourceExecutionFamily {
 				_ = s.recordRuntimeSyncFailure(context.WithoutCancel(ctx), runtime, err, contractConfigured)
 			}
 		}
@@ -418,10 +430,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	for i := uint32(0); i < pageLimit; i++ {
 		pageStarted := time.Now()
 		phaseStarted := pageStarted
-		pull, err := readSourcePull(ctx, source, sourceConfig, cursor, originalCheckpoint)
+		pull, rustPage, err := s.readSourcePull(ctx, runtime, source, sourceConfig, cursor, originalCheckpoint, i+1)
 		if err != nil {
 			return nil, err
 		}
+		sourceExecutionFamily = rustPage
 		pullDuration := time.Since(phaseStarted)
 		pageNumber := i + 1
 		pageShortCircuitReason := string(pullShortCircuitReason(pull))
@@ -639,10 +652,22 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		})
 		phaseStarted = time.Now()
 		if ledgerEnabled {
-			if err := ledger.CommitSourceRuntimePage(ctx, attemptID, candidateRuntime); err != nil {
+			if sourceExecutionFamily {
+				fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
+				committer, fenced := s.store.(ports.SourceRuntimeFencedPageCommitter)
+				if !ok || !fenced {
+					return nil, fmt.Errorf("%w: fenced source-runtime page committer is unavailable", ErrRuntimeUnavailable)
+				}
+				if err := committer.CommitSourceRuntimePageFenced(ctx, attemptID, candidateRuntime, fence); err != nil {
+					return nil, err
+				}
+			} else if err := ledger.CommitSourceRuntimePage(ctx, attemptID, candidateRuntime); err != nil {
 				return nil, err
 			}
 		} else {
+			if sourceExecutionFamily {
+				return nil, fmt.Errorf("%w: durable page ledger is unavailable", ErrRuntimeUnavailable)
+			}
 			if err := s.store.PutSourceRuntime(ctx, candidateRuntime); err != nil {
 				return nil, err
 			}
@@ -1203,7 +1228,7 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 	return pageLimit, nil
 }
 
-func readSourcePull(ctx context.Context, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
+func readCompatibilitySourcePull(ctx context.Context, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	if reader, ok := source.(sourcecdk.CheckpointAwareSource); ok {
 		return reader.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 	}

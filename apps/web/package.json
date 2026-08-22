@@ -28,6 +28,8 @@
     "verify:docker": "docker build -f Dockerfile -t cerebro-web:verify ../.. && npm run smoke:docker -- cerebro-web:verify",
     "verify:devex": "npm run doctor -- --ci && npm run verify:fast && npm run verify:build",
     "benchmark:grc-scale": "node scripts/grc-scale-benchmark.mjs",
+    "demo:compliance": "node scripts/dev-fixtures.mjs --port 3000",
+    "demo:compliance:check": "node scripts/portable-web-fixture-e2e.mjs --browser",
     "demo:rust": "node scripts/rust-product-demo.mjs",
     "demo:rust:check": "node scripts/rust-product-demo.mjs --check",
     "e2e:grc:local": "node scripts/local-grc-e2e.mjs",
@@ -45,16 +47,16 @@
     "audit:high": "npm audit --audit-level=high"
   },
   "dependencies": {
-    "@openai/agents": "^0.15.0",
+    "@openai/agents": "^0.13.2",
     "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.101.4",
-    "@tanstack/react-table": "^9.1.2",
+    "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.9",
     "cytoscape": "^3.34.1",
     "lucide-react": "^1.31.0",
     "next": "16.3.1",
     "nuqs": "^2.9.5",
-    "openai": "^7.4.0",
+    "openai": "^6.48.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1",
@@ -70,9 +72,9 @@
     "@types/react-dom": "^19",
     "eslint": "^10.8.1",
     "eslint-config-next": "16.3.1",
-    "jsdom": "^30.0.1",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4",
-    "typescript": "^7",
+    "typescript": "^6",
     "vitest": "^4.1.10"
   }
 }

@@ -5,17 +5,22 @@ import { dirname, join } from "node:path";
 const DELIVERY_SCHEMA_VERSION = "slack-agent-delivery-outbox/v1";
 
 export interface AgentDeliveryOutboxRecord {
+  botUserId?: string;
   channel: string;
   deliveredAt: string;
   deliveryRef: string;
+  eventTs?: string;
   messageTs: string;
   payloadDigest: string;
   recordRef: string;
   requestId: string;
+  requestKey?: string;
   schemaVersion: typeof DELIVERY_SCHEMA_VERSION;
   state: "prepared" | "slack_delivered";
+  teamId?: string;
   text: string;
   threadRef: string;
+  threadTs?: string;
 }
 
 export class FileAgentDeliveryOutbox {
@@ -137,6 +142,11 @@ function validateRecord(value: unknown): AgentDeliveryOutboxRecord {
     || !requiredText(record.text)
     || !requiredText(record.threadRef)
     || !canonicalTimestamp(record.deliveredAt)
+    || (record.botUserId !== undefined && !requiredText(record.botUserId))
+    || (record.eventTs !== undefined && !requiredText(record.eventTs))
+    || (record.requestKey !== undefined && !requiredText(record.requestKey))
+    || (record.teamId !== undefined && !requiredText(record.teamId))
+    || (record.threadTs !== undefined && !requiredText(record.threadTs))
   ) {
     throw new Error("The Slack agent delivery record is invalid.");
   }

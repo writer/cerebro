@@ -59,9 +59,67 @@ func TestGeneratedProviderPilotsAreHighFidelity(t *testing.T) {
 		if source.Score != 100 || source.Level != "reference" {
 			t.Fatalf("%s fidelity = %d (%s), missing %#v", pilot.name, source.Score, source.Level, source.Missing)
 		}
-		if !source.IsGeneratedScaffold {
-			t.Fatalf("%s was not recognized as sourcegen output", pilot.name)
+		if !source.UsesCatalogRuntime {
+			t.Fatalf("%s was not recognized as a catalog-runtime source", pilot.name)
 		}
+		if source.IsGeneratedScaffold {
+			t.Fatalf("%s retained a provider-local Go scaffold", pilot.name)
+		}
+	}
+}
+
+func TestBackstageGenuineFixturesCoverEveryRuntimeFamily(t *testing.T) {
+	source, err := analyzeSource(filepath.Join("..", "..", "sources", "backstage"))
+	if err != nil {
+		t.Fatalf("analyzeSource(backstage) error = %v", err)
+	}
+	if source.RuntimeFamilies == 0 {
+		t.Fatal("Backstage runtime families = 0")
+	}
+	if source.GenuineAPIFamilies != source.RuntimeFamilies {
+		t.Fatalf("Backstage genuine API families = %d, want every one of %d runtime families", source.GenuineAPIFamilies, source.RuntimeFamilies)
+	}
+	if source.GenuineAPIBundles < source.RuntimeFamilies {
+		t.Fatalf("Backstage genuine API bundles = %d, want at least %d", source.GenuineAPIBundles, source.RuntimeFamilies)
+	}
+	if !source.HasEveryFamilyTest {
+		t.Fatal("Backstage production-decoder replay does not cover every runtime family")
+	}
+}
+
+func TestCatalogRuntimeEveryFamilyEvidenceRequiresRegistrationAndCompleteFixtures(t *testing.T) {
+	root := t.TempDir()
+	sourceRoot := filepath.Join(root, "sources", "provider")
+	harnessPath := filepath.Join(root, "sources", "internal", "catalogruntime", "fixture_corpus_test.go")
+	if err := os.MkdirAll(filepath.Dir(harnessPath), 0o750); err != nil {
+		t.Fatalf("MkdirAll(harness) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceRoot, "testdata"), 0o750); err != nil {
+		t.Fatalf("MkdirAll(source) error = %v", err)
+	}
+	writeFileForTest(t, harnessPath, `package catalogruntime
+
+var retiredStaticLoaderFixtureSources = []string{"provider"}
+`)
+	writeFileForTest(t, filepath.Join(sourceRoot, "testdata", "read_users.json"), `[]`)
+	writeFileForTest(t, filepath.Join(sourceRoot, "testdata", "read_groups.json"), `[]`)
+
+	if !hasCatalogRuntimeEveryFamilyTest(sourceRoot, []string{"users", "groups"}) {
+		t.Fatal("complete registered catalog-runtime fixture corpus was not accepted")
+	}
+	if err := os.Remove(filepath.Join(sourceRoot, "testdata", "read_groups.json")); err != nil {
+		t.Fatalf("remove groups fixture: %v", err)
+	}
+	if hasCatalogRuntimeEveryFamilyTest(sourceRoot, []string{"users", "groups"}) {
+		t.Fatal("incomplete catalog-runtime fixture corpus was accepted")
+	}
+	writeFileForTest(t, filepath.Join(sourceRoot, "testdata", "read_groups.json"), `[]`)
+	writeFileForTest(t, harnessPath, `package catalogruntime
+
+var retiredStaticLoaderFixtureSources = []string{"another_provider"}
+`)
+	if hasCatalogRuntimeEveryFamilyTest(sourceRoot, []string{"users", "groups"}) {
+		t.Fatal("unregistered catalog-runtime fixture corpus was accepted")
 	}
 }
 

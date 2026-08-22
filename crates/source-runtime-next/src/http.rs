@@ -33,12 +33,19 @@ use reqwest::{
     Client, Request, Response, StatusCode, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
+use serde::Deserialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256, Sha512};
 use time::OffsetDateTime;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
-use crate::{CollectedBatch, CollectedScope, CollectionRequest, SourceConnector, SourceRecord};
+use crate::{
+    CollectedBatch, CollectedScope, CollectionRequest, CredentialLeaseError,
+    CredentialLeaseReference, CredentialLeaseScope, CredentialLeaseStatus, EgressPolicy,
+    EgressPolicyError, EgressRequestContext, OperationScopedCredentialLease,
+    ProviderFailureClassification, SourceConnector, SourceRecord, SourceRuntimeOperation,
+    classify_http_connector_failure,
+};
 
 const MAX_PAGES: usize = 10_000;
 const MAX_FANOUT_SCOPES: usize = 1_000;
@@ -59,6 +66,42 @@ pub enum ResolvedAuth {
     Bearer {
         /// Token placed in the `Authorization` header.
         token: String,
+    },
+    /// Exchange OAuth client credentials for one bearer token before provider reads.
+    OauthClientCredentials {
+        /// OAuth client identifier.
+        client_id: String,
+        /// OAuth client secret.
+        client_secret: String,
+        /// Fully rendered provider token endpoint.
+        token_url: String,
+        /// Requested OAuth scopes.
+        scopes: Vec<String>,
+        /// Provider scope separator.
+        scope_separator: String,
+        /// Client authentication method for the token request.
+        token_request_auth_method: String,
+        /// Additional provider-declared token form parameters.
+        token_params: BTreeMap<String, String>,
+    },
+    /// Refresh an OAuth authorization-code grant before provider reads.
+    OauthAuthorizationCode {
+        /// OAuth client identifier.
+        client_id: String,
+        /// OAuth client secret.
+        client_secret: String,
+        /// Provider-issued refresh token.
+        refresh_token: String,
+        /// Fully rendered provider token endpoint.
+        token_url: String,
+        /// Requested OAuth scopes.
+        scopes: Vec<String>,
+        /// Provider scope separator.
+        scope_separator: String,
+        /// Client authentication method for the token request.
+        token_request_auth_method: String,
+        /// Additional provider-declared token form parameters.
+        token_params: BTreeMap<String, String>,
     },
     /// Send HTTP Basic credentials.
     Basic {
@@ -116,6 +159,47 @@ impl fmt::Debug for ResolvedAuth {
         match self {
             Self::None => formatter.write_str("None"),
             Self::Bearer { .. } => formatter.write_str("Bearer { token: [REDACTED] }"),
+            Self::OauthClientCredentials {
+                token_url,
+                scopes,
+                scope_separator,
+                token_request_auth_method,
+                token_params,
+                ..
+            } => formatter
+                .debug_struct("OauthClientCredentials")
+                .field("client_id", &"[REDACTED]")
+                .field("client_secret", &"[REDACTED]")
+                .field("token_url", token_url)
+                .field("scopes", scopes)
+                .field("scope_separator", scope_separator)
+                .field("token_request_auth_method", token_request_auth_method)
+                .field(
+                    "token_param_names",
+                    &token_params.keys().collect::<Vec<_>>(),
+                )
+                .finish(),
+            Self::OauthAuthorizationCode {
+                token_url,
+                scopes,
+                scope_separator,
+                token_request_auth_method,
+                token_params,
+                ..
+            } => formatter
+                .debug_struct("OauthAuthorizationCode")
+                .field("client_id", &"[REDACTED]")
+                .field("client_secret", &"[REDACTED]")
+                .field("refresh_token", &"[REDACTED]")
+                .field("token_url", token_url)
+                .field("scopes", scopes)
+                .field("scope_separator", scope_separator)
+                .field("token_request_auth_method", token_request_auth_method)
+                .field(
+                    "token_param_names",
+                    &token_params.keys().collect::<Vec<_>>(),
+                )
+                .finish(),
             Self::Basic { .. } => {
                 formatter.write_str("Basic { username: [REDACTED], password: [REDACTED] }")
             }
@@ -164,6 +248,32 @@ impl Drop for ResolvedAuth {
         match self {
             Self::None => {}
             Self::Bearer { token } => token.zeroize(),
+            Self::OauthClientCredentials {
+                client_id,
+                client_secret,
+                token_params,
+                ..
+            } => {
+                client_id.zeroize();
+                client_secret.zeroize();
+                for value in token_params.values_mut() {
+                    value.zeroize();
+                }
+            }
+            Self::OauthAuthorizationCode {
+                client_id,
+                client_secret,
+                refresh_token,
+                token_params,
+                ..
+            } => {
+                client_id.zeroize();
+                client_secret.zeroize();
+                refresh_token.zeroize();
+                for value in token_params.values_mut() {
+                    value.zeroize();
+                }
+            }
             Self::Basic { username, password } => {
                 username.zeroize();
                 password.zeroize();
@@ -205,6 +315,17 @@ impl Drop for ResolvedAuth {
     }
 }
 
+impl ResolvedAuth {
+    /// Token endpoint that must be included in the exact provider egress allowlist.
+    pub fn oauth_token_url(&self) -> Option<&str> {
+        match self {
+            Self::OauthClientCredentials { token_url, .. }
+            | Self::OauthAuthorizationCode { token_url, .. } => Some(token_url),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 /// The generic HTTP connector could not safely complete collection.
 pub enum HttpConnectorError {
@@ -224,6 +345,12 @@ pub enum HttpConnectorError {
     Domain(ModelError),
     /// Pagination exceeded the runtime page limit.
     PageLimit,
+    /// Provider access was attempted without an operation-scoped lease and egress policy.
+    MissingProviderAccess,
+    /// Credential lease validation failed before provider access.
+    CredentialLease(CredentialLeaseError),
+    /// Provider egress policy rejected a URL before network access.
+    EgressDenied(EgressPolicyError),
 }
 
 impl fmt::Display for HttpConnectorError {
@@ -239,6 +366,11 @@ impl fmt::Display for HttpConnectorError {
             }
             Self::Domain(error) => write!(formatter, "invalid collection receipt: {error}"),
             Self::PageLimit => formatter.write_str("provider pagination exceeded the page limit"),
+            Self::MissingProviderAccess => formatter.write_str(
+                "provider access requires tenant, family, operation, request intent, egress policy, and credential lease",
+            ),
+            Self::CredentialLease(error) => write!(formatter, "credential lease rejected: {error}"),
+            Self::EgressDenied(error) => write!(formatter, "provider egress denied: {error}"),
         }
     }
 }
@@ -251,6 +383,14 @@ impl From<ModelError> for HttpConnectorError {
     }
 }
 
+impl HttpConnectorError {
+    /// Return a safe no-progress provider-failure classification when this
+    /// error came from provider transport, status, pagination, or body parsing.
+    pub fn provider_failure_classification(&self) -> Option<ProviderFailureClassification> {
+        classify_http_connector_failure(self)
+    }
+}
+
 /// Generic collector for the checked-in definition grammar. Bespoke sources
 /// implement `SourceConnector` directly but still cross the same graph mapper.
 pub struct HttpSourceConnector {
@@ -260,11 +400,67 @@ pub struct HttpSourceConnector {
     base_url: Url,
     config: BTreeMap<String, String>,
     auth: ResolvedAuth,
+    provider_access: Option<HttpProviderAccess>,
+}
+
+/// Provider-access proof required by the real HTTP request path.
+///
+/// The lease reference is opaque credential-broker authority, not credential
+/// material. The cloned egress reference lets every URL decision verify the
+/// original operation scope after the one-operation lease has been consumed.
+#[derive(Clone, Debug)]
+pub struct HttpProviderAccess {
+    context: EgressRequestContext,
+    egress_policy: EgressPolicy,
+    credential_lease: OperationScopedCredentialLease,
+    egress_reference: CredentialLeaseReference,
+    clock_millis: Option<i64>,
+}
+
+impl HttpProviderAccess {
+    /// Build live provider-access proof using the system clock.
+    pub fn new(
+        context: EgressRequestContext,
+        egress_policy: EgressPolicy,
+        credential_lease: OperationScopedCredentialLease,
+    ) -> Self {
+        let egress_reference = credential_lease.reference().clone();
+        Self {
+            context,
+            egress_policy,
+            credential_lease,
+            egress_reference,
+            clock_millis: None,
+        }
+    }
+
+    /// Build provider-access proof with a deterministic test clock.
+    pub fn new_with_clock(
+        context: EgressRequestContext,
+        egress_policy: EgressPolicy,
+        credential_lease: OperationScopedCredentialLease,
+        clock_millis: i64,
+    ) -> Self {
+        let egress_reference = credential_lease.reference().clone();
+        Self {
+            context,
+            egress_policy,
+            credential_lease,
+            egress_reference,
+            clock_millis: Some(clock_millis),
+        }
+    }
+
+    fn now_millis(&self) -> Result<i64, HttpConnectorError> {
+        self.clock_millis.map_or_else(unix_millis, Ok)
+    }
 }
 
 struct RequestScope {
     url: Url,
     query_parameters: BTreeMap<String, String>,
+    headers: BTreeMap<String, String>,
+    json_body: BTreeMap<String, String>,
     record_attributes: BTreeMap<String, String>,
 }
 
@@ -272,6 +468,8 @@ struct RequestScope {
 struct RequestScopeValues {
     path_parameters: BTreeMap<String, String>,
     query_parameters: BTreeMap<String, String>,
+    headers: BTreeMap<String, String>,
+    json_body: BTreeMap<String, String>,
     record_attributes: BTreeMap<String, String>,
 }
 
@@ -279,6 +477,8 @@ struct RequestScopeValues {
 enum RequestParameterTarget {
     Path(String),
     Query(String),
+    Header(String),
+    JsonBody(String),
     RecordAttribute(String),
 }
 
@@ -325,7 +525,74 @@ impl HttpSourceConnector {
             base_url,
             config,
             auth,
+            provider_access: None,
         })
+    }
+
+    /// Attach operation-scoped provider-access proof to this connector.
+    #[must_use]
+    pub fn with_provider_access(mut self, provider_access: HttpProviderAccess) -> Self {
+        self.provider_access = Some(provider_access);
+        self
+    }
+
+    fn validate_provider_access(
+        &mut self,
+        request: &CollectionRequest,
+    ) -> Result<CredentialLeaseScope, HttpConnectorError> {
+        let access = self
+            .provider_access
+            .as_mut()
+            .ok_or(HttpConnectorError::MissingProviderAccess)?;
+        if access.context.tenant_id != request.tenant_id.as_str()
+            || access.context.runtime_id != request.source_runtime_id.as_str()
+            || access.context.source_id != self.source.id()
+            || access.context.family_id != self.family.id()
+            || access.context.operation != SourceRuntimeOperation::ReadPage
+        {
+            return Err(HttpConnectorError::EgressDenied(
+                EgressPolicyError::ContextMismatch,
+            ));
+        }
+        let scope = access
+            .context
+            .lease_scope()
+            .map_err(HttpConnectorError::CredentialLease)?;
+        let now = access.now_millis()?;
+        match access.credential_lease.status_for(&scope, &now) {
+            CredentialLeaseStatus::Valid => Ok(scope),
+            CredentialLeaseStatus::Rejected(error) => {
+                Err(HttpConnectorError::CredentialLease(error))
+            }
+        }
+    }
+
+    fn authorize_provider_url(&mut self, url: &Url) -> Result<(), HttpConnectorError> {
+        let access = self
+            .provider_access
+            .as_mut()
+            .ok_or(HttpConnectorError::MissingProviderAccess)?;
+        let scope = access
+            .context
+            .lease_scope()
+            .map_err(HttpConnectorError::CredentialLease)?;
+        let now = access.now_millis()?;
+        let decision = access.egress_policy.decide(
+            url.as_str(),
+            &access.context,
+            &access.egress_reference,
+            &now,
+        );
+        if let Some(reason) = decision.reason {
+            return Err(HttpConnectorError::EgressDenied(reason));
+        }
+        if !access.credential_lease.is_consumed() {
+            access
+                .credential_lease
+                .consume_for(&scope, &now)
+                .map_err(HttpConnectorError::CredentialLease)?;
+        }
+        Ok(())
     }
 
     fn request_scopes(&self) -> Result<Vec<RequestScope>, HttpConnectorError> {
@@ -343,6 +610,20 @@ impl HttpSourceConnector {
                 &mut binding_targets,
                 binding,
                 RequestParameterTarget::Query(parameter.clone()),
+            );
+        }
+        for (header, binding) in self.family.config_headers() {
+            add_binding_target(
+                &mut binding_targets,
+                binding,
+                RequestParameterTarget::Header(header.clone()),
+            );
+        }
+        for (parameter, binding) in self.family.config_json_body() {
+            add_binding_target(
+                &mut binding_targets,
+                binding,
+                RequestParameterTarget::JsonBody(parameter.clone()),
             );
         }
         for (attribute, binding) in self.family.config_attributes() {
@@ -401,6 +682,12 @@ impl HttpSourceConnector {
                                         .query_parameters
                                         .insert(parameter.clone(), value.clone());
                                 }
+                                RequestParameterTarget::Header(header) => {
+                                    scope.headers.insert(header.clone(), value.clone());
+                                }
+                                RequestParameterTarget::JsonBody(parameter) => {
+                                    scope.json_body.insert(parameter.clone(), value.clone());
+                                }
                                 RequestParameterTarget::RecordAttribute(attribute) => {
                                     scope
                                         .record_attributes
@@ -421,6 +708,8 @@ impl HttpSourceConnector {
                     .map(|url| RequestScope {
                         url,
                         query_parameters: scope.query_parameters,
+                        headers: scope.headers,
+                        json_body: scope.json_body,
                         record_attributes: scope.record_attributes,
                     })
             })
@@ -537,6 +826,8 @@ impl SourceConnector for HttpSourceConnector {
 
     async fn collect(&mut self, request: CollectionRequest) -> Result<CollectedBatch, Self::Error> {
         let observed_at = unix_millis()?;
+        let _lease_scope = self.validate_provider_access(&request)?;
+        let oauth_access_token = self.exchange_oauth_token().await?;
         let request_scopes = self.request_scopes()?;
         let initial_cursor = effective_cursor(self.family.pagination(), request.cursor.as_deref());
         if request.cursor.is_some() && request_scopes.len() > 1 {
@@ -551,6 +842,8 @@ impl SourceConnector for HttpSourceConnector {
         for RequestScope {
             mut url,
             query_parameters,
+            headers,
+            json_body,
             record_attributes,
         } in request_scopes
         {
@@ -573,6 +866,7 @@ impl SourceConnector for HttpSourceConnector {
                     page,
                     offset,
                 );
+                self.authorize_provider_url(&url)?;
                 let mut builder = match self.family.method() {
                     HttpMethod::Get => self.client.get(url.clone()),
                     HttpMethod::Post => self.client.post(url.clone()),
@@ -580,6 +874,20 @@ impl SourceConnector for HttpSourceConnector {
                 builder = match &self.auth {
                     ResolvedAuth::None => builder,
                     ResolvedAuth::Bearer { token } => builder.bearer_auth(token),
+                    ResolvedAuth::OauthClientCredentials { .. } => {
+                        builder.bearer_auth(oauth_access_token.as_deref().ok_or_else(|| {
+                            HttpConnectorError::InvalidConfiguration(
+                                "OAuth client-credentials token is unavailable".to_owned(),
+                            )
+                        })?)
+                    }
+                    ResolvedAuth::OauthAuthorizationCode { .. } => {
+                        builder.bearer_auth(oauth_access_token.as_deref().ok_or_else(|| {
+                            HttpConnectorError::InvalidConfiguration(
+                                "OAuth authorization-code token is unavailable".to_owned(),
+                            )
+                        })?)
+                    }
                     ResolvedAuth::Basic { username, password } => {
                         builder.basic_auth(username, Some(password))
                     }
@@ -589,13 +897,14 @@ impl SourceConnector for HttpSourceConnector {
                     | ResolvedAuth::AwsSigV4 { .. }
                     | ResolvedAuth::DuoHmacV5 { .. } => builder,
                 };
-                if let ResolvedAuth::JsonBodyParameters { parameters } = &self.auth {
-                    let body = json_auth_body(
-                        parameters,
-                        self.family.cursor_in_json_body(),
-                        self.family.pagination(),
-                        cursor.as_deref(),
-                    )?;
+                if let Some(body) = json_request_body(
+                    self.family.static_json_body(),
+                    &json_body,
+                    &self.auth,
+                    self.family.cursor_in_json_body(),
+                    self.family.pagination(),
+                    cursor.as_deref(),
+                )? {
                     builder = builder.json(&body);
                 }
                 let sensitive_query = matches!(self.auth, ResolvedAuth::QueryParameters { .. });
@@ -606,6 +915,7 @@ impl SourceConnector for HttpSourceConnector {
                         HttpConnectorError::Request(error)
                     }
                 })?;
+                apply_config_headers(&mut provider_request, &headers)?;
                 apply_auth_headers(&mut provider_request, &self.auth)?;
                 if sensitive_query {
                     apply_auth_query_parameters(&mut provider_request, &self.auth)?;
@@ -636,7 +946,7 @@ impl SourceConnector for HttpSourceConnector {
                 }
                 let next_link = response_next_link(response.headers(), self.family.pagination())?;
                 let body = read_bounded_json(response).await?;
-                let selected = select_records(&body, self.family.record_selector())?;
+                let selected = select_family_records(&body, &self.family)?;
                 let selected_count = selected.len();
                 for value in selected {
                     let value =
@@ -645,7 +955,7 @@ impl SourceConnector for HttpSourceConnector {
                     let provider_id = if let Some(template) = self.family.id_template() {
                         render_id_template(self.family.id(), template, &value, &record_attributes)?
                     } else {
-                        scalar_at(&value, self.family.id_field()).ok_or_else(|| {
+                        scalar_at_candidates(&value, self.family.id_field()).ok_or_else(|| {
                             HttpConnectorError::InvalidResponse(format!(
                                 "family {} record is missing {}",
                                 self.family.id(),
@@ -653,7 +963,18 @@ impl SourceConnector for HttpSourceConnector {
                             ))
                         })?
                     };
-                    let mut fields = flatten_scalars(&value);
+                    let mut fields = if self.family.exact_event_attributes() {
+                        exact_event_fields(
+                            &value,
+                            self.source.id(),
+                            self.family.id(),
+                            &provider_id,
+                            self.family.event_attributes(),
+                            self.family.event_static_attributes(),
+                        )
+                    } else {
+                        flatten_scalars(&value)
+                    };
                     fields.extend(record_attributes.clone());
                     records.push(SourceRecord {
                         observation_id: observation_id(
@@ -676,8 +997,13 @@ impl SourceConnector for HttpSourceConnector {
                         exhausted = true;
                         break;
                     }
-                    Pagination::Cursor { response_path, .. } => {
-                        cursor = scalar_at_path(&body, response_path);
+                    Pagination::Cursor {
+                        parameter,
+                        response_path,
+                        ..
+                    } => {
+                        cursor = scalar_at_candidates(&body, response_path)
+                            .and_then(|value| provider_cursor_value(&value, parameter));
                         if cursor.as_deref().is_none_or(str::is_empty) {
                             exhausted = true;
                             break;
@@ -706,6 +1032,7 @@ impl SourceConnector for HttpSourceConnector {
                             exhausted = true;
                             break;
                         };
+                        self.authorize_provider_url(&next)?;
                         ensure_same_origin(&self.base_url, &next)?;
                         url = next;
                     }
@@ -718,6 +1045,7 @@ impl SourceConnector for HttpSourceConnector {
                             exhausted = true;
                             break;
                         };
+                        self.authorize_provider_url(&next)?;
                         ensure_same_origin(&self.base_url, &next)?;
                         url = next;
                     }
@@ -765,6 +1093,148 @@ impl SourceConnector for HttpSourceConnector {
             records,
             next_cursor: None,
         })
+    }
+}
+
+#[derive(Deserialize)]
+struct OauthTokenResponse {
+    access_token: String,
+    #[serde(default)]
+    token_type: String,
+}
+
+impl Drop for OauthTokenResponse {
+    fn drop(&mut self) {
+        self.access_token.zeroize();
+    }
+}
+
+impl HttpSourceConnector {
+    async fn exchange_oauth_token(
+        &mut self,
+    ) -> Result<Option<Zeroizing<String>>, HttpConnectorError> {
+        let token_url = match &self.auth {
+            ResolvedAuth::OauthClientCredentials { token_url, .. }
+            | ResolvedAuth::OauthAuthorizationCode { token_url, .. } => Url::parse(token_url)
+                .map_err(|_| {
+                    HttpConnectorError::InvalidConfiguration(
+                        "OAuth token URL is invalid".to_owned(),
+                    )
+                })?,
+            _ => return Ok(None),
+        };
+        self.authorize_provider_url(&token_url)?;
+        let (
+            client_id,
+            client_secret,
+            refresh_token,
+            scopes,
+            scope_separator,
+            token_request_auth_method,
+            token_params,
+        ) = match &self.auth {
+            ResolvedAuth::OauthClientCredentials {
+                client_id,
+                client_secret,
+                scopes,
+                scope_separator,
+                token_request_auth_method,
+                token_params,
+                ..
+            } => (
+                client_id,
+                client_secret,
+                None,
+                scopes,
+                scope_separator,
+                token_request_auth_method,
+                token_params,
+            ),
+            ResolvedAuth::OauthAuthorizationCode {
+                client_id,
+                client_secret,
+                refresh_token,
+                scopes,
+                scope_separator,
+                token_request_auth_method,
+                token_params,
+                ..
+            } => (
+                client_id,
+                client_secret,
+                Some(refresh_token),
+                scopes,
+                scope_separator,
+                token_request_auth_method,
+                token_params,
+            ),
+            _ => return Ok(None),
+        };
+        let mut form = token_params.clone();
+        if let Some(refresh_token) = refresh_token {
+            form.insert("grant_type".to_owned(), "refresh_token".to_owned());
+            form.insert("refresh_token".to_owned(), refresh_token.clone());
+        } else {
+            form.insert("grant_type".to_owned(), "client_credentials".to_owned());
+        }
+        let scope = scopes.join(scope_separator);
+        if !scope.trim().is_empty() {
+            form.insert("scope".to_owned(), scope);
+        }
+        let mut builder = self
+            .client
+            .post(token_url)
+            .header("Accept", "application/json");
+        match token_request_auth_method.as_str() {
+            "client_secret_post" => {
+                form.insert("client_id".to_owned(), client_id.clone());
+                form.insert("client_secret".to_owned(), client_secret.clone());
+            }
+            "client_secret_basic" => {
+                form.insert("client_id".to_owned(), client_id.clone());
+                builder = builder.basic_auth(client_id, Some(client_secret));
+            }
+            _ => {
+                return Err(HttpConnectorError::InvalidConfiguration(
+                    "OAuth token request auth method is invalid".to_owned(),
+                ));
+            }
+        }
+        let request = builder
+            .form(&form)
+            .build()
+            .map_err(|_| HttpConnectorError::RedactedRequest)?;
+        for value in form.values_mut() {
+            value.zeroize();
+        }
+        let response = self
+            .client
+            .execute(request)
+            .await
+            .map_err(|_| HttpConnectorError::RedactedRequest)?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(HttpConnectorError::ProviderStatus(status));
+        }
+        let body = read_bounded_json_with_limit(response, 1 << 20).await?;
+        let mut token: OauthTokenResponse = serde_json::from_value(body).map_err(|_| {
+            HttpConnectorError::InvalidResponse(
+                "OAuth token response does not match the expected contract".to_owned(),
+            )
+        })?;
+        if !token.token_type.is_empty() && !token.token_type.eq_ignore_ascii_case("bearer") {
+            return Err(HttpConnectorError::InvalidResponse(
+                "OAuth token response returned an unsupported token type".to_owned(),
+            ));
+        }
+        if token.access_token.trim().is_empty() {
+            return Err(HttpConnectorError::InvalidResponse(
+                "OAuth token response is missing access_token".to_owned(),
+            ));
+        }
+        Ok(Some(Zeroizing::new(std::mem::take(
+            &mut token.access_token,
+        ))))
     }
 }
 
@@ -818,9 +1288,32 @@ fn response_too_large(max_response_bytes: usize) -> HttpConnectorError {
 }
 
 fn validate_auth(source: &CompiledSource, actual: &ResolvedAuth) -> Result<(), HttpConnectorError> {
-    let valid = match source.auth() {
+    let valid = source
+        .configurable_auth_models()
+        .iter()
+        .any(|model| auth_matches_model(source, model, actual));
+    if valid {
+        Ok(())
+    } else {
+        Err(HttpConnectorError::InvalidConfiguration(
+            "resolved credential does not match the source auth model".to_owned(),
+        ))
+    }
+}
+
+fn auth_matches_model(source: &CompiledSource, model: &AuthModel, actual: &ResolvedAuth) -> bool {
+    match model {
         AuthModel::None => matches!(actual, ResolvedAuth::None),
-        AuthModel::Basic => matches!(actual, ResolvedAuth::Basic { .. }),
+        AuthModel::Basic => match actual {
+            ResolvedAuth::Basic { .. } => true,
+            ResolvedAuth::Header { name, value } => {
+                name.eq_ignore_ascii_case("Authorization")
+                    && value
+                        .strip_prefix("Basic ")
+                        .is_some_and(|value| !value.trim().is_empty())
+            }
+            _ => false,
+        },
         AuthModel::ApiKey if !source.auth_json_body_parameters().is_empty() => {
             matches!(actual, ResolvedAuth::JsonBodyParameters { .. })
         }
@@ -862,24 +1355,55 @@ fn validate_auth(source: &CompiledSource, actual: &ResolvedAuth) -> Result<(), H
             }
             _ => false,
         },
-        AuthModel::BearerToken
-        | AuthModel::OauthAuthorizationCode
-        | AuthModel::OauthClientCredentials
-        | AuthModel::TwoStep
-        | AuthModel::Jwt => matches!(
+        AuthModel::BearerToken => match actual {
+            ResolvedAuth::Bearer { token } => !token.trim().is_empty(),
+            ResolvedAuth::Header { name, value } => {
+                name.eq_ignore_ascii_case("Authorization")
+                    && value
+                        .strip_prefix("Bearer ")
+                        .is_some_and(|token| !token.trim().is_empty())
+            }
+            _ => false,
+        },
+        AuthModel::TwoStep | AuthModel::Jwt => matches!(
             actual,
             ResolvedAuth::Bearer { .. } | ResolvedAuth::Header { .. }
         ),
+        AuthModel::OauthClientCredentials => {
+            matches!(
+                actual,
+                ResolvedAuth::OauthClientCredentials { .. } | ResolvedAuth::Bearer { .. }
+            )
+        }
+        AuthModel::OauthAuthorizationCode => {
+            matches!(
+                actual,
+                ResolvedAuth::OauthAuthorizationCode { .. } | ResolvedAuth::Bearer { .. }
+            )
+        }
         AuthModel::AwsSigV4 => matches!(actual, ResolvedAuth::AwsSigV4 { .. }),
         AuthModel::DuoHmacV5 => matches!(actual, ResolvedAuth::DuoHmacV5 { .. }),
-        AuthModel::Signature | AuthModel::DuoHmac => false,
-    };
-    if valid {
-        Ok(())
-    } else {
-        Err(HttpConnectorError::InvalidConfiguration(
-            "resolved credential does not match the source auth model".to_owned(),
-        ))
+        AuthModel::Signature => match actual {
+            ResolvedAuth::Header { name, value } => {
+                let expected_header = if source.token_header().trim().is_empty() {
+                    "Authorization"
+                } else {
+                    source.token_header()
+                };
+                let expected_scheme = if source.token_scheme().trim().is_empty() {
+                    "Signature"
+                } else {
+                    source.token_scheme()
+                };
+                name.eq_ignore_ascii_case(expected_header)
+                    && value
+                        .strip_prefix(expected_scheme)
+                        .and_then(|value| value.strip_prefix(' '))
+                        .is_some_and(|value| !value.trim().is_empty())
+            }
+            _ => false,
+        },
+        AuthModel::DuoHmac => false,
     }
 }
 
@@ -897,6 +1421,26 @@ fn apply_auth_headers(
         }
         _ => Ok(()),
     }
+}
+
+fn apply_config_headers(
+    request: &mut Request,
+    headers: &BTreeMap<String, String>,
+) -> Result<(), HttpConnectorError> {
+    for (name, value) in headers {
+        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
+            HttpConnectorError::InvalidConfiguration(
+                "request config header name is invalid".to_owned(),
+            )
+        })?;
+        let value = HeaderValue::from_str(value).map_err(|_| {
+            HttpConnectorError::InvalidConfiguration(format!(
+                "request config header {name} value is invalid"
+            ))
+        })?;
+        request.headers_mut().insert(name, value);
+    }
+    Ok(())
 }
 
 fn insert_sensitive_header(
@@ -968,25 +1512,49 @@ fn valid_auth_query_parameter_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~'))
 }
 
-fn json_auth_body(
-    parameters: &BTreeMap<String, String>,
+fn json_request_body(
+    static_json_body: &BTreeMap<String, Value>,
+    configured_json_body: &BTreeMap<String, String>,
+    auth: &ResolvedAuth,
     cursor_in_json_body: bool,
     pagination: &Pagination,
     cursor: Option<&str>,
-) -> Result<BTreeMap<String, String>, HttpConnectorError> {
-    if parameters.is_empty() || parameters.len() > 16 {
-        return Err(HttpConnectorError::InvalidConfiguration(
-            "JSON body authentication requires 1 to 16 parameters".to_owned(),
-        ));
-    }
-    let mut body = BTreeMap::new();
-    for (name, value) in parameters {
-        if !valid_auth_query_parameter_name(name) || value.is_empty() {
+) -> Result<Option<BTreeMap<String, Value>>, HttpConnectorError> {
+    let mut body = static_json_body.clone();
+    for (name, value) in configured_json_body {
+        if value.is_empty() {
+            continue;
+        }
+        if body
+            .insert(name.clone(), Value::String(value.clone()))
+            .is_some()
+        {
             return Err(HttpConnectorError::InvalidConfiguration(
-                "JSON body authentication parameters are invalid".to_owned(),
+                "configured JSON body conflicts with a static request-body parameter".to_owned(),
             ));
         }
-        body.insert(name.clone(), value.clone());
+    }
+    if let ResolvedAuth::JsonBodyParameters { parameters } = auth {
+        if parameters.is_empty() || parameters.len() > 16 {
+            return Err(HttpConnectorError::InvalidConfiguration(
+                "JSON body authentication requires 1 to 16 parameters".to_owned(),
+            ));
+        }
+        for (name, value) in parameters {
+            if !valid_auth_query_parameter_name(name) || value.is_empty() {
+                return Err(HttpConnectorError::InvalidConfiguration(
+                    "JSON body authentication parameters are invalid".to_owned(),
+                ));
+            }
+            if body
+                .insert(name.clone(), Value::String(value.clone()))
+                .is_some()
+            {
+                return Err(HttpConnectorError::InvalidConfiguration(
+                    "static JSON body conflicts with an authentication parameter".to_owned(),
+                ));
+            }
+        }
     }
     if cursor_in_json_body {
         let Pagination::Cursor { parameter, .. } = pagination else {
@@ -996,14 +1564,17 @@ fn json_auth_body(
         };
         if body.contains_key(parameter) {
             return Err(HttpConnectorError::InvalidConfiguration(
-                "JSON body cursor conflicts with an authentication parameter".to_owned(),
+                "JSON body cursor conflicts with an existing request-body parameter".to_owned(),
             ));
         }
         if let Some(cursor) = cursor.filter(|value| !value.is_empty()) {
-            body.insert(parameter.clone(), cursor.to_owned());
+            body.insert(parameter.clone(), Value::String(cursor.to_owned()));
         }
     }
-    Ok(body)
+    if body.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(body))
 }
 
 fn sign_duo_hmac_v5(
@@ -1418,6 +1989,40 @@ fn apply_query(
     }
 }
 
+fn select_family_records(
+    body: &Value,
+    family: &CompiledFamily,
+) -> Result<Vec<Value>, HttpConnectorError> {
+    if family.map_records().is_empty() {
+        return select_records(body, family.record_selector());
+    }
+    let (object_path, value_key) = family
+        .map_records()
+        .iter()
+        .next()
+        .expect("nonempty map record binding");
+    let selected = value_at_path(body, object_path).ok_or_else(|| {
+        HttpConnectorError::InvalidResponse(format!("map record path {object_path} did not match"))
+    })?;
+    let values = selected.as_object().ok_or_else(|| {
+        HttpConnectorError::InvalidResponse(format!(
+            "map record path {object_path} did not select an object"
+        ))
+    })?;
+    let mut keys = values.keys().collect::<Vec<_>>();
+    keys.sort();
+    Ok(keys
+        .into_iter()
+        .map(|key| {
+            Value::Object(Map::from_iter([
+                ("id".to_owned(), Value::String(key.to_owned())),
+                ("name".to_owned(), Value::String(key.to_owned())),
+                (value_key.clone(), values[key].clone()),
+            ]))
+        })
+        .collect())
+}
+
 fn select_records(body: &Value, selector: &str) -> Result<Vec<Value>, HttpConnectorError> {
     let selector = selector.trim();
     if selector == "$" {
@@ -1459,6 +2064,35 @@ fn normalize_selected_record(
 
 fn scalar_at(value: &Value, field: &str) -> Option<String> {
     scalar_at_path(value, field)
+}
+
+fn scalar_at_candidates(value: &Value, expression: &str) -> Option<String> {
+    expression
+        .split('|')
+        .find_map(|path| scalar_at_path(value, path))
+}
+
+fn provider_cursor_value(value: &str, parameter: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let parsed = Url::parse(value).or_else(|_| {
+        Url::parse("https://cursor.invalid/")
+            .expect("static cursor base URL is valid")
+            .join(value)
+    });
+    if let Ok(parsed) = parsed
+        && let Some((_, cursor)) = parsed
+            .query_pairs()
+            .find(|(name, _)| name.as_ref() == parameter)
+    {
+        let cursor = cursor.trim();
+        if !cursor.is_empty() {
+            return Some(cursor.to_owned());
+        }
+    }
+    Some(value.to_owned())
 }
 
 fn render_id_template(
@@ -1515,14 +2149,18 @@ fn scalar_at_path(value: &Value, path: &str) -> Option<String> {
     value_at_path(value, path).and_then(scalar)
 }
 
-fn value_at_path<'a>(mut value: &'a Value, path: &str) -> Option<&'a Value> {
+fn value_at_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     if path.is_empty() {
         return Some(value);
     }
-    for part in path.split('.') {
-        value = value.get(part)?;
+    if let Some((head, tail)) = path.split_once('.')
+        && let Some(nested) = value
+            .get(head)
+            .and_then(|nested| value_at_path(nested, tail))
+    {
+        return Some(nested);
     }
-    Some(value)
+    value.get(path)
 }
 
 fn scalar(value: &Value) -> Option<String> {
@@ -1544,6 +2182,46 @@ fn flatten_scalars(value: &Value) -> BTreeMap<String, String> {
         }
     }
     fields
+}
+
+fn exact_event_fields(
+    value: &Value,
+    source_id: &str,
+    family_id: &str,
+    provider_id: &str,
+    attributes: &BTreeMap<String, String>,
+    static_attributes: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut fields = BTreeMap::from([
+        ("external_id".to_owned(), provider_id.to_owned()),
+        ("family".to_owned(), family_id.to_owned()),
+        ("provider".to_owned(), source_id.to_owned()),
+        ("source_provider".to_owned(), source_id.to_owned()),
+    ]);
+    for (attribute, candidates) in attributes {
+        if let Some(value) = semantic_at_candidates(value, candidates) {
+            fields.insert(attribute.clone(), value);
+        }
+    }
+    fields.extend(static_attributes.clone());
+    fields
+}
+
+fn semantic_at_candidates(value: &Value, expression: &str) -> Option<String> {
+    expression.split('|').find_map(|path| {
+        let path = path.trim().trim_start_matches("$.").trim_start_matches('$');
+        value_at_path(value, path).and_then(semantic_scalar)
+    })
+}
+
+fn semantic_scalar(value: &Value) -> Option<String> {
+    match value {
+        Value::Array(values) => {
+            let values = values.iter().filter_map(scalar).collect::<Vec<_>>();
+            (!values.is_empty()).then(|| values.join(","))
+        }
+        _ => scalar(value),
+    }
 }
 
 fn validate_record_scope(
@@ -1695,7 +2373,7 @@ mod tests {
     use cerebro_source_catalog::SourceCatalog;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    use crate::{CatalogGraphMapper, GraphMapper};
+    use crate::{CatalogGraphMapper, GraphMapper, ProviderFailureKind};
 
     use super::*;
 
@@ -1704,6 +2382,362 @@ mod tests {
             .join("../..")
             .canonicalize()
             .unwrap()
+    }
+
+    fn request_intent_digest() -> String {
+        "a".repeat(64)
+    }
+
+    fn with_test_provider_access(
+        connector: HttpSourceConnector,
+        tenant_id: &str,
+        runtime_id: &str,
+        base_url: &str,
+    ) -> HttpSourceConnector {
+        let context = EgressRequestContext {
+            tenant_id: tenant_id.to_owned(),
+            runtime_id: runtime_id.to_owned(),
+            source_id: connector.source.id().to_owned(),
+            family_id: connector.family.id().to_owned(),
+            operation: SourceRuntimeOperation::ReadPage,
+            request_intent_digest: request_intent_digest(),
+            logical_page_id: "page-0001".to_owned(),
+            source_generation: 1,
+            authority_epoch: 1,
+        };
+        let scope = context.lease_scope().unwrap();
+        let lease = OperationScopedCredentialLease::new(
+            CredentialLeaseReference::new("lease-ref-1", scope, 1_000, 1_000).unwrap(),
+        );
+        let policy = EgressPolicy::live(
+            &context.tenant_id,
+            &context.family_id,
+            &context.request_intent_digest,
+            [base_url],
+        )
+        .unwrap();
+        connector.with_provider_access(HttpProviderAccess::new_with_clock(
+            context, policy, lease, 1_500,
+        ))
+    }
+
+    fn test_provider_access_with_policy(
+        connector: &HttpSourceConnector,
+        tenant_id: &str,
+        runtime_id: &str,
+        policy: EgressPolicy,
+    ) -> HttpProviderAccess {
+        let context = EgressRequestContext {
+            tenant_id: tenant_id.to_owned(),
+            runtime_id: runtime_id.to_owned(),
+            source_id: connector.source.id().to_owned(),
+            family_id: connector.family.id().to_owned(),
+            operation: SourceRuntimeOperation::ReadPage,
+            request_intent_digest: request_intent_digest(),
+            logical_page_id: "page-0001".to_owned(),
+            source_generation: 1,
+            authority_epoch: 1,
+        };
+        let scope = context.lease_scope().unwrap();
+        let lease = OperationScopedCredentialLease::new(
+            CredentialLeaseReference::new("lease-ref-1", scope, 1_000, 1_000).unwrap(),
+        );
+        HttpProviderAccess::new_with_clock(context, policy, lease, 1_500)
+    }
+
+    fn box_users_connector(base_url: &str) -> HttpSourceConnector {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        HttpSourceConnector::new(
+            catalog.get("box").unwrap().clone(),
+            "users",
+            base_url,
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn connector_path_requires_provider_access_before_network() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut connector = box_users_connector(&format!("http://{address}"));
+        let error = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(error, HttpConnectorError::MissingProviderAccess));
+    }
+
+    #[tokio::test]
+    async fn fixture_policy_is_offline_through_connector_collect() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let base_url = format!("http://{address}");
+        let connector = box_users_connector(&base_url);
+        let policy = EgressPolicy::fixture("tenant-a", "users", request_intent_digest());
+        let access = test_provider_access_with_policy(&connector, "tenant-a", "box-prod", policy);
+        let mut connector = connector.with_provider_access(access);
+        let error = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            HttpConnectorError::EgressDenied(EgressPolicyError::OfflineMode)
+        ));
+    }
+
+    #[tokio::test]
+    async fn pagination_next_url_is_checked_by_egress_policy_before_network() {
+        let first_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let first_address = first_listener.local_addr().unwrap();
+        let second_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let second_address = second_listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = first_listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            let body = r#"[{"id":"24","type":"mention","group_key":"safe","account":{"id":"116387030920493064","acct":"admin","url":"https://mastodon.example/@admin"},"status":null}]"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nlink: <http://{second_address}/api/v1/notifications?max_id=24&limit=80>; rel=\"next\"\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("mastodon")
+        .unwrap()
+        .clone();
+        let first_url = format!("http://{first_address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "notification",
+                &first_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "mastodon-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "mastodon-prod",
+            &first_url,
+        );
+        let error = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("mastodon-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap_err();
+        server.await.unwrap();
+        drop(second_listener);
+        assert!(matches!(
+            error,
+            HttpConnectorError::EgressDenied(EgressPolicyError::HostNotAllowed)
+                | HttpConnectorError::InvalidResponse(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn provider_failure_is_classified_and_redacted_through_collect() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            let body = "secret-sentinel provider error body";
+            let response = format!(
+                "HTTP/1.1 502 Bad Gateway\r\ncontent-type: text/plain\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            box_users_connector(&base_url),
+            "tenant-a",
+            "box-prod",
+            &base_url,
+        );
+        let error = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: Some("go-cursor-input".to_owned()),
+            })
+            .await
+            .unwrap_err();
+        server.await.unwrap();
+        let classification = error.provider_failure_classification().unwrap();
+        assert_eq!(classification.kind, ProviderFailureKind::Http5xx);
+        assert!(!classification.advances_progress);
+        assert!(!format!("{error:?}").contains("secret-sentinel"));
+        assert!(!format!("{classification:?}").contains("secret-sentinel"));
+    }
+
+    #[tokio::test]
+    async fn oauth_client_credentials_exchange_is_egress_scoped_and_redacted() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let count = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..count]);
+            assert!(request.starts_with("POST /oauth2/token HTTP/1.1"));
+            assert!(request.contains("grant_type=client_credentials"));
+            assert!(request.contains("client_id=client-example"));
+            assert!(request.contains("client_secret=credential-example"));
+            assert!(request.contains("scope=read%3Ausers+read%3Agroups"));
+            let body = r#"{"access_token":"oauth-token-example","token_type":"Bearer"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let base_url = format!("http://{address}");
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("box")
+        .unwrap()
+        .clone();
+        let auth = ResolvedAuth::OauthClientCredentials {
+            client_id: "client-example".to_owned(),
+            client_secret: "credential-example".to_owned(),
+            token_url: format!("{base_url}/oauth2/token"),
+            scopes: vec!["read:users".to_owned(), "read:groups".to_owned()],
+            scope_separator: " ".to_owned(),
+            token_request_auth_method: "client_secret_post".to_owned(),
+            token_params: BTreeMap::new(),
+        };
+        assert!(!format!("{auth:?}").contains("credential-example"));
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(source, "users", &base_url, BTreeMap::new(), auth).unwrap(),
+            "tenant-a",
+            "box-prod",
+            &base_url,
+        );
+        let token = connector.exchange_oauth_token().await.unwrap().unwrap();
+        assert_eq!(token.as_str(), "oauth-token-example");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn oauth_authorization_code_refresh_is_egress_scoped_and_redacted() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let count = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..count]);
+            assert!(request.starts_with("POST /oauth/token HTTP/1.1"));
+            assert!(
+                request
+                    .contains("authorization: Basic Y2xpZW50LWV4YW1wbGU6Y3JlZGVudGlhbC1leGFtcGxl")
+            );
+            assert!(request.contains("grant_type=refresh_token"));
+            assert!(request.contains("refresh_token=refresh-example"));
+            assert!(request.contains("client_id=client-example"));
+            assert!(!request.contains("client_secret=credential-example"));
+            assert!(request.contains("scope=read%3Ausers+read%3Agroups"));
+            let body = r#"{"access_token":"oauth-token-example","token_type":"Bearer"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let base_url = format!("http://{address}");
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("hubspot")
+        .unwrap()
+        .clone();
+        let auth = ResolvedAuth::OauthAuthorizationCode {
+            client_id: "client-example".to_owned(),
+            client_secret: "credential-example".to_owned(),
+            refresh_token: "refresh-example".to_owned(),
+            token_url: format!("{base_url}/oauth/token"),
+            scopes: vec!["read:users".to_owned(), "read:groups".to_owned()],
+            scope_separator: " ".to_owned(),
+            token_request_auth_method: "client_secret_basic".to_owned(),
+            token_params: BTreeMap::new(),
+        };
+        let debug = format!("{auth:?}");
+        for secret in ["client-example", "credential-example", "refresh-example"] {
+            assert!(!debug.contains(secret));
+        }
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(source.clone(), "users", &base_url, BTreeMap::new(), auth)
+                .unwrap(),
+            "tenant-a",
+            "hubspot-prod",
+            &base_url,
+        );
+        let token = connector.exchange_oauth_token().await.unwrap().unwrap();
+        assert_eq!(token.as_str(), "oauth-token-example");
+        server.await.unwrap();
+
+        let denied_auth = ResolvedAuth::OauthAuthorizationCode {
+            client_id: "client-example".to_owned(),
+            client_secret: "credential-example".to_owned(),
+            refresh_token: "refresh-example".to_owned(),
+            token_url: "http://127.0.0.1:1/oauth/token".to_owned(),
+            scopes: Vec::new(),
+            scope_separator: " ".to_owned(),
+            token_request_auth_method: "client_secret_post".to_owned(),
+            token_params: BTreeMap::new(),
+        };
+        let mut denied = with_test_provider_access(
+            HttpSourceConnector::new(source, "users", &base_url, BTreeMap::new(), denied_auth)
+                .unwrap(),
+            "tenant-a",
+            "hubspot-prod",
+            &base_url,
+        );
+        assert!(matches!(
+            denied.exchange_oauth_token().await,
+            Err(HttpConnectorError::EgressDenied(_))
+        ));
     }
 
     #[test]
@@ -2192,16 +3226,22 @@ mod tests {
             root.join("sources"),
         )
         .unwrap();
-        let mut connector = HttpSourceConnector::new(
-            catalog.get("box").unwrap().clone(),
-            "users",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Bearer {
-                token: "token".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("box").unwrap().clone(),
+                "users",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "token".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "box-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2214,6 +3254,222 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn langsmith_run_posts_static_body_headers_and_body_cursor_without_query_cursor() {
+        async fn read_request(socket: &mut tokio::net::TcpStream) -> Vec<u8> {
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            loop {
+                let read = socket.read(&mut chunk).await.unwrap();
+                assert!(read > 0, "request closed before body completed");
+                request.extend_from_slice(&chunk[..read]);
+                let Some(header_end) = request.windows(4).position(|part| part == b"\r\n\r\n")
+                else {
+                    continue;
+                };
+                let headers = String::from_utf8_lossy(&request[..header_end]);
+                let content_length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap_or(0);
+                if request.len() >= header_end + 4 + content_length {
+                    return request;
+                }
+            }
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for page in 1..=2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let request = read_request(&mut socket).await;
+                let header_end = request
+                    .windows(4)
+                    .position(|part| part == b"\r\n\r\n")
+                    .unwrap();
+                let headers = String::from_utf8_lossy(&request[..header_end]);
+                let request_line = headers.lines().next().unwrap();
+                assert_eq!(request_line, "POST /api/v1/runs/query HTTP/1.1");
+                let lower_headers = headers.to_ascii_lowercase();
+                assert!(lower_headers.contains("x-api-key: langsmith-secret"));
+                assert!(lower_headers.contains("x-organization-id: organization-example"));
+                assert!(lower_headers.contains("x-tenant-id: workspace-example"));
+                let body: Value = serde_json::from_slice(&request[header_end + 4..]).unwrap();
+                assert_eq!(body["limit"], 100);
+                assert_eq!(body["project"], "project-example");
+                assert_eq!(body["filter"], "eq(status,success)");
+                assert!(
+                    body["select"]
+                        .as_array()
+                        .is_some_and(|values| !values.is_empty())
+                );
+                if page == 1 {
+                    assert!(body.get("cursor").is_none());
+                } else {
+                    assert_eq!(body["cursor"], "next-page");
+                }
+                let next = (page == 1).then_some("next-page");
+                let response_body = serde_json::json!({
+                    "runs": [{
+                        "id": format!("run-{page}"),
+                        "name": format!("Run {page}"),
+                        "run_type": "llm",
+                        "start_time": "2026-08-20T12:00:00Z"
+                    }],
+                    "cursors": {"next": next}
+                })
+                .to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{response_body}",
+                    response_body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("langchain")
+        .unwrap()
+        .clone();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "run",
+                &base_url,
+                BTreeMap::from([
+                    (
+                        "organization_id".to_owned(),
+                        "organization-example".to_owned(),
+                    ),
+                    ("workspace_id".to_owned(), "workspace-example".to_owned()),
+                    ("project".to_owned(), "project-example".to_owned()),
+                    ("filter".to_owned(), "eq(status,success)".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "X-API-Key".to_owned(),
+                    value: "langsmith-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "langsmith-prod",
+            &base_url,
+        );
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("langsmith-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].provider_id, "run-1");
+        assert_eq!(batch.records[1].provider_id, "run-2");
+    }
+
+    #[test]
+    fn conjur_and_langsmith_auth_and_map_contracts_are_exact() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        let conjur = catalog.get("conjur").unwrap();
+        assert_eq!(conjur.configurable_auth_models(), &[AuthModel::Basic]);
+        assert!(
+            validate_auth(
+                conjur,
+                &ResolvedAuth::Basic {
+                    username: "alice".to_owned(),
+                    password: "fixture-password".to_owned(),
+                },
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_auth(
+                conjur,
+                &ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Basic fixture-token".to_owned(),
+                },
+            )
+            .is_ok()
+        );
+        let conjur_family = conjur
+            .families()
+            .iter()
+            .find(|family| family.id() == "resource_3")
+            .unwrap();
+        assert_eq!(
+            conjur_family.map_records().get("data.key_info"),
+            Some(&"resource".to_owned())
+        );
+        let records = select_family_records(
+            &serde_json::json!({
+                "data": {"key_info": {
+                    "myorg:variable:apps/web/password": {"annotations": "Web"},
+                    "myorg:variable:apps/api/password": {"annotations": "API"}
+                }}
+            }),
+            conjur_family,
+        )
+        .unwrap();
+        assert_eq!(records[0]["id"], "myorg:variable:apps/api/password");
+        assert_eq!(records[0]["resource"]["annotations"], "API");
+        assert_eq!(records[1]["id"], "myorg:variable:apps/web/password");
+
+        let langsmith = catalog.get("langchain").unwrap();
+        assert_eq!(
+            langsmith.configurable_auth_models(),
+            &[AuthModel::ApiKey, AuthModel::BearerToken]
+        );
+        assert!(
+            validate_auth(
+                langsmith,
+                &ResolvedAuth::Header {
+                    name: "X-API-Key".to_owned(),
+                    value: "fixture-secret".to_owned(),
+                },
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_auth(
+                langsmith,
+                &ResolvedAuth::Bearer {
+                    token: "fixture-secret".to_owned(),
+                },
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_auth(
+                langsmith,
+                &ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Basic wrong-model".to_owned(),
+                },
+            )
+            .is_err()
+        );
     }
 
     #[tokio::test]
@@ -2284,14 +3540,20 @@ mod tests {
             ]),
         };
         assert!(!format!("{malformed_auth:?}").contains("account-secret"));
-        let mut malformed = HttpSourceConnector::new(
-            source.clone(),
-            "attribute_group_list_json",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            malformed_auth,
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut malformed = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "attribute_group_list_json",
+                &base_url,
+                BTreeMap::new(),
+                malformed_auth,
+            )
+            .unwrap(),
+            "tenant-a",
+            "api2cart-malformed",
+            &base_url,
+        );
         assert!(matches!(
             malformed
                 .collect(CollectionRequest {
@@ -2317,14 +3579,19 @@ mod tests {
         assert!(request.headers()["x-api-key"].is_sensitive());
         assert!(request.headers()["x-store-key"].is_sensitive());
 
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "attribute_group_list_json",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            auth,
-        )
-        .unwrap();
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "attribute_group_list_json",
+                &base_url,
+                BTreeMap::new(),
+                auth,
+            )
+            .unwrap(),
+            "tenant-a",
+            "api2cart-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2336,6 +3603,150 @@ mod tests {
         server.await.unwrap();
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "group-1");
+    }
+
+    #[tokio::test]
+    async fn datadog_uses_dual_sensitive_headers_audit_cursor_and_exact_event_fields() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for page in 1..=2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 8192];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                let request_line = request.lines().next().unwrap();
+                assert!(request_line.starts_with("GET /api/v2/audit/events?"));
+                assert!(request_line.contains("page%5Blimit%5D=100"));
+                assert_eq!(
+                    request_line.contains("page%5Bcursor%5D=cursor-2"),
+                    page == 2
+                );
+                assert!(
+                    request.lines().any(|line| {
+                        line.eq_ignore_ascii_case("dd-api-key: datadog-api-secret")
+                    })
+                );
+                assert!(request.lines().any(|line| {
+                    line.eq_ignore_ascii_case("dd-application-key: datadog-application-secret")
+                }));
+                let body = if page == 1 {
+                    serde_json::json!({
+                        "data": [{
+                            "id": "audit-1",
+                            "type": "audit_events",
+                            "attributes": {
+                                "timestamp": "2026-08-22T00:00:00Z",
+                                "evt": {"name": "role.updated"},
+                                "usr": {"id": "user-1", "email": "user@example.test"}
+                            }
+                        }],
+                        "links": {"next": "/api/v2/audit/events?page%5Bcursor%5D=cursor-2"}
+                    })
+                } else {
+                    serde_json::json!({"data": []})
+                }
+                .to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("datadog")
+        .unwrap()
+        .clone();
+        let auth = ResolvedAuth::HeaderParameters {
+            parameters: BTreeMap::from([
+                ("DD-API-KEY".to_owned(), "datadog-api-secret".to_owned()),
+                (
+                    "DD-APPLICATION-KEY".to_owned(),
+                    "datadog-application-secret".to_owned(),
+                ),
+            ]),
+        };
+        assert!(!format!("{auth:?}").contains("datadog-api-secret"));
+        let mut request = Client::new()
+            .get("https://api.example.test/resource")
+            .build()
+            .unwrap();
+        apply_auth_headers(&mut request, &auth).unwrap();
+        assert!(request.headers()["DD-API-KEY"].is_sensitive());
+        assert!(request.headers()["DD-APPLICATION-KEY"].is_sensitive());
+
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "audit_events",
+                &base_url,
+                BTreeMap::new(),
+                auth.clone(),
+            )
+            .unwrap(),
+            "tenant-a",
+            "datadog-prod",
+            &base_url,
+        );
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("datadog-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "audit-1");
+        assert_eq!(batch.records[0].payload["id"], "audit-1");
+        assert_eq!(batch.records[0].fields["audit_id"], "audit-1");
+        assert_eq!(batch.records[0].fields["event_type"], "role.updated");
+        assert_eq!(batch.records[0].fields["actor_email"], "user@example.test");
+        assert_eq!(batch.records[0].fields["source_product"], "datadog");
+        assert!(!batch.records[0].fields.contains_key("record_class"));
+
+        let failure_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let failure_address = failure_listener.local_addr().unwrap();
+        let failure_server = tokio::spawn(async move {
+            let (mut socket, _) = failure_listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            let body = r#"{"errors":["service unavailable"]}"#;
+            let response = format!(
+                "HTTP/1.1 503 Service Unavailable\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+        let failure_url = format!("http://{failure_address}");
+        let mut failing = with_test_provider_access(
+            HttpSourceConnector::new(source, "audit_events", &failure_url, BTreeMap::new(), auth)
+                .unwrap(),
+            "tenant-a",
+            "datadog-failure",
+            &failure_url,
+        );
+        assert!(matches!(
+            failing
+                .collect(CollectionRequest {
+                    tenant_id: TenantId::parse("tenant-a").unwrap(),
+                    source_runtime_id: SourceRuntimeId::parse("datadog-failure").unwrap(),
+                    cursor: None,
+                })
+                .await,
+            Err(HttpConnectorError::ProviderStatus(status))
+                if status == StatusCode::SERVICE_UNAVAILABLE
+        ));
+        failure_server.await.unwrap();
     }
 
     #[tokio::test]
@@ -2420,20 +3831,26 @@ mod tests {
             .request_scopes(),
             Err(HttpConnectorError::InvalidConfiguration(_))
         ));
-        let mut connector = HttpSourceConnector::new(
-            source.clone(),
-            "reports",
-            &format!("http://{address}"),
-            BTreeMap::from([
-                ("ip_address".to_owned(), "203.0.113.9".to_owned()),
-                ("max_age_in_days".to_owned(), "90".to_owned()),
-            ]),
-            ResolvedAuth::Header {
-                name: "Key".to_owned(),
-                value: "abuseipdb-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "reports",
+                &base_url,
+                BTreeMap::from([
+                    ("ip_address".to_owned(), "203.0.113.9".to_owned()),
+                    ("max_age_in_days".to_owned(), "90".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "Key".to_owned(),
+                    value: "abuseipdb-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "abuseipdb-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2502,20 +3919,26 @@ mod tests {
         .get("abuseipdb")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "ip_addresses",
-            &format!("http://{address}"),
-            BTreeMap::from([
-                ("confidence_minimum".to_owned(), "75".to_owned()),
-                ("ip_version".to_owned(), "6".to_owned()),
-            ]),
-            ResolvedAuth::Header {
-                name: "Key".to_owned(),
-                value: "abuseipdb-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "ip_addresses",
+                &base_url,
+                BTreeMap::from([
+                    ("confidence_minimum".to_owned(), "75".to_owned()),
+                    ("ip_version".to_owned(), "6".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "Key".to_owned(),
+                    value: "abuseipdb-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "abuseipdb-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2590,21 +4013,27 @@ mod tests {
             Err(HttpConnectorError::InvalidConfiguration(_))
         ));
 
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "out_of_config",
-            &format!("http://{address}"),
-            BTreeMap::from([
-                ("analysis_slug".to_owned(), "20260728".to_owned()),
-                ("project_slug".to_owned(), "project".to_owned()),
-                ("username".to_owned(), "owner".to_owned()),
-            ]),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Token botify-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "out_of_config",
+                &base_url,
+                BTreeMap::from([
+                    ("analysis_slug".to_owned(), "20260728".to_owned()),
+                    ("project_slug".to_owned(), "project".to_owned()),
+                    ("username".to_owned(), "owner".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Token botify-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "botify-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2657,16 +4086,22 @@ mod tests {
             source.authority(),
             cerebro_source_catalog::CollectionAuthority::Authoritative
         );
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "verify_credential",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Bearer {
-                token: "mastodon-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "verify_credential",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "mastodon-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "mastodon-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2720,16 +4155,22 @@ mod tests {
         .get("mastodon")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "activity",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Bearer {
-                token: "mastodon-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "activity",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "mastodon-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "mastodon-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2800,16 +4241,22 @@ mod tests {
         .get("mastodon")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "notification",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Bearer {
-                token: "mastodon-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "notification",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "mastodon-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "mastodon-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2906,17 +4353,23 @@ mod tests {
                 Err(HttpConnectorError::InvalidConfiguration(_))
             ));
         }
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "accesspolicy",
-            &format!("http://{address}"),
-            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Bearer meraki-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "accesspolicy",
+                &base_url,
+                BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer meraki-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "meraki-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -2962,17 +4415,23 @@ mod tests {
         .get("meraki")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "eventtype",
-            &format!("http://{address}"),
-            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Bearer meraki-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "eventtype",
+                &base_url,
+                BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer meraki-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "meraki-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3034,17 +4493,23 @@ mod tests {
         .get("meraki")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "organization",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Bearer meraki-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "organization",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer meraki-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "meraki-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3097,17 +4562,23 @@ mod tests {
         .get("meraki")
         .unwrap()
         .clone();
-        let mut connector = HttpSourceConnector::new(
-            source,
-            "merakiauthuser",
-            &format!("http://{address}"),
-            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
-            ResolvedAuth::Header {
-                name: "Authorization".to_owned(),
-                value: "Bearer meraki-secret".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "merakiauthuser",
+                &base_url,
+                BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer meraki-secret".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "meraki-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3224,14 +4695,20 @@ mod tests {
             Err(HttpConnectorError::InvalidConfiguration(_))
         ));
         assert!(invalid_name.url().query().is_none());
-        let mut connector = HttpSourceConnector::new(
-            catalog.get("alchemer").unwrap().clone(),
-            "account",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            auth,
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("alchemer").unwrap().clone(),
+                "account",
+                &base_url,
+                BTreeMap::new(),
+                auth,
+            )
+            .unwrap(),
+            "tenant-a",
+            "alchemer-prod",
+            &base_url,
+        );
         assert!(connector.config.is_empty());
         let batch = connector
             .collect(CollectionRequest {
@@ -3248,19 +4725,25 @@ mod tests {
         let closed_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let closed_address = closed_listener.local_addr().unwrap();
         drop(closed_listener);
-        let mut failing = HttpSourceConnector::new(
-            catalog.get("alchemer").unwrap().clone(),
-            "account",
-            &format!("http://{closed_address}"),
-            BTreeMap::new(),
-            ResolvedAuth::QueryParameters {
-                parameters: BTreeMap::from([
-                    ("api_token".to_owned(), "token&admin=true".to_owned()),
-                    ("api_token_secret".to_owned(), "secret#fragment".to_owned()),
-                ]),
-            },
-        )
-        .unwrap();
+        let closed_base_url = format!("http://{closed_address}");
+        let mut failing = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("alchemer").unwrap().clone(),
+                "account",
+                &closed_base_url,
+                BTreeMap::new(),
+                ResolvedAuth::QueryParameters {
+                    parameters: BTreeMap::from([
+                        ("api_token".to_owned(), "token&admin=true".to_owned()),
+                        ("api_token_secret".to_owned(), "secret#fragment".to_owned()),
+                    ]),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "alchemer-prod",
+            &closed_base_url,
+        );
         let error = failing
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3339,14 +4822,20 @@ mod tests {
             parameters: BTreeMap::from([("token".to_owned(), "body-secret".to_owned())]),
         };
         assert!(!format!("{auth:?}").contains("body-secret"));
-        let mut connector = HttpSourceConnector::new(
-            catalog.get("akeyless").unwrap().clone(),
-            "items",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            auth,
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("akeyless").unwrap().clone(),
+                "items",
+                &base_url,
+                BTreeMap::new(),
+                auth,
+            )
+            .unwrap(),
+            "tenant-a",
+            "akeyless-prod",
+            &base_url,
+        );
         assert!(connector.config.is_empty());
         let batch = connector
             .collect(CollectionRequest {
@@ -3393,19 +4882,25 @@ mod tests {
         )
         .unwrap();
         let source = catalog.get("box").unwrap().clone();
-        let mut connector = HttpSourceConnector::new(
-            source.clone(),
-            "group_memberships",
-            &format!("http://{address}"),
-            BTreeMap::from([(
-                "group_ids".to_owned(),
-                " group-a, group-a, group/b ".to_owned(),
-            )]),
-            ResolvedAuth::Bearer {
-                token: "token".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "group_memberships",
+                &base_url,
+                BTreeMap::from([(
+                    "group_ids".to_owned(),
+                    " group-a, group-a, group/b ".to_owned(),
+                )]),
+                ResolvedAuth::Bearer {
+                    token: "token".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "box-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3464,17 +4959,23 @@ mod tests {
         )
         .unwrap();
         let source = catalog.get("jira").unwrap().clone();
-        let mut connector = HttpSourceConnector::new(
-            source.clone(),
-            "group_members",
-            &format!("http://{address}"),
-            BTreeMap::from([("group_ids".to_owned(), "group-a,group/b".to_owned())]),
-            ResolvedAuth::Basic {
-                username: "user@example.test".to_owned(),
-                password: "token".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source.clone(),
+                "group_members",
+                &base_url,
+                BTreeMap::from([("group_ids".to_owned(), "group-a,group/b".to_owned())]),
+                ResolvedAuth::Basic {
+                    username: "user@example.test".to_owned(),
+                    password: "token".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "jira-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3508,6 +5009,21 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "invalid provider response: family memberships record changed requested group_id scope"
+        );
+    }
+
+    #[test]
+    fn provider_paths_preserve_nested_keys_that_contain_dots() {
+        let value = serde_json::json!({
+            "metadata": {
+                "annotations": {
+                    "cerebro.io/criticality": "high"
+                }
+            }
+        });
+        assert_eq!(
+            scalar_at_path(&value, "metadata.annotations.cerebro.io/criticality"),
+            Some("high".to_owned())
         );
     }
 
@@ -3626,17 +5142,23 @@ mod tests {
             root.join("sources"),
         )
         .unwrap();
-        let mut connector = HttpSourceConnector::new(
-            catalog.get("duo").unwrap().clone(),
-            "user",
-            &format!("http://{address}"),
-            BTreeMap::new(),
-            ResolvedAuth::DuoHmacV5 {
-                integration_key: "integration-example".to_owned(),
-                secret_key: "secret-example".to_owned(),
-            },
-        )
-        .unwrap();
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                catalog.get("duo").unwrap().clone(),
+                "user",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::DuoHmacV5 {
+                    integration_key: "integration-example".to_owned(),
+                    secret_key: "secret-example".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "duo-prod",
+            &base_url,
+        );
         let batch = connector
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
@@ -3649,6 +5171,158 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn signature_catalog_family_executes_with_a_redacted_precomputed_header() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /v1/assets?"));
+            assert!(request.lines().any(|line| {
+                line.eq_ignore_ascii_case("authorization: Signature precomputed-proof")
+            }));
+            let body = r#"{"data":[{"id":"asset-1","name":"Asset One"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("veracode").unwrap().clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::ShadowOnly
+        );
+        let auth = ResolvedAuth::Header {
+            name: "Authorization".to_owned(),
+            value: "Signature precomputed-proof".to_owned(),
+        };
+        assert!(!format!("{auth:?}").contains("precomputed-proof"));
+        assert!(
+            HttpSourceConnector::new(
+                source.clone(),
+                "assets",
+                &format!("http://{address}"),
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "precomputed-proof".to_owned(),
+                },
+            )
+            .is_err()
+        );
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(source, "assets", &base_url, BTreeMap::new(), auth).unwrap(),
+            "tenant-a",
+            "veracode-prod",
+            &base_url,
+        );
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("veracode-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::NonAuthoritative(_)));
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "asset-1");
+    }
+
+    #[tokio::test]
+    async fn backstage_catalog_family_executes_documented_cursor_contract() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for page in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                requests.push(String::from_utf8_lossy(&request[..read]).into_owned());
+                let body = if page == 0 {
+                    r#"{"items":[{"kind":"Component","metadata":{"uid":"component-1","name":"cerebro","namespace":"default","annotations":{"cerebro.io/criticality":"high"}},"spec":{"type":"service","lifecycle":"production","owner":"group:platform/security","system":"security"},"repository":"writer/cerebro"}],"totalItems":2,"pageInfo":{"nextCursor":"page-2"}}"#
+                } else {
+                    r#"{"items":[{"kind":"Component","metadata":{"name":"fallback-component","namespace":"default"},"spec":{"type":"service","owner":"group:platform/security"}}],"totalItems":2,"pageInfo":{}}"#
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+            requests
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("backstage").unwrap().clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::Authoritative
+        );
+        let base_url = format!("http://{address}");
+        let mut connector = with_test_provider_access(
+            HttpSourceConnector::new(
+                source,
+                "component",
+                &base_url,
+                BTreeMap::new(),
+                ResolvedAuth::Bearer {
+                    token: "backstage-token".to_owned(),
+                },
+            )
+            .unwrap(),
+            "tenant-a",
+            "backstage-prod",
+            &base_url,
+        );
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("backstage-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        let requests = server.await.unwrap();
+
+        for request in &requests {
+            assert!(request.starts_with("GET /api/catalog/entities/by-query?"));
+            assert!(request.contains("filter=kind%3Dcomponent"));
+            assert!(request.contains("limit=100"));
+            assert!(request.lines().any(|line| {
+                line.eq_ignore_ascii_case("authorization: Bearer backstage-token")
+            }));
+        }
+        assert!(!requests[0].contains("cursor="));
+        assert!(requests[1].contains("cursor=page-2"));
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].provider_id, "component-1");
+        assert_eq!(batch.records[1].provider_id, "fallback-component");
+        assert_eq!(
+            batch.records[0].payload["spec"]["owner"],
+            "group:platform/security"
+        );
     }
 
     #[tokio::test]

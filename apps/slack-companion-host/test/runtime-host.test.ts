@@ -4,9 +4,10 @@ import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:f
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { FileAgentApprovalStore } from "../src/runtime/agent-approval-store.js";
-import { FileAgentDeliveryOutbox } from "../src/runtime/agent-delivery-outbox.js";
+import { FileAgentDeliveryOutbox, type AgentDeliveryOutboxRecord } from "../src/runtime/agent-delivery-outbox.js";
 import {
   CerebroAskClient,
   CerebroAskError,
@@ -33,13 +34,17 @@ import {
   createAssistantTurnHost,
   dispatchSlackEnvelopeDurably,
   environmentHomeView,
+  formatEnvironmentAnswer,
   formatEnvironmentMessage,
   formatSlackThreadContext,
   handleSlackMention,
   humanSlackThreadReply,
   readSlackThreadContext,
+  replayPreparedAgentDelivery,
   slackDeliveryReferences,
+  splitSlackAnswerParts,
 } from "../src/runtime/slack-runtime.js";
+import { decodeSlackActionEnvelope } from "@writer/cerebro-slack-companion";
 
 async function withIngressExecution<T>(
   ingress: FileSlackIngressQueue,
@@ -381,6 +386,8 @@ test("Slack ingress preserves mention-before-reply order across queue processes"
       ...slackEnvelopeFixture(),
       event: {
         channel: "C-ONE",
+        channel_type: "group",
+        parent_user_id: "U-BOT",
         text: "Keep going from the prior answer.",
         thread_ts: "1710000000.000001",
         ts: "1710000001.000002",
@@ -414,6 +421,77 @@ test("Slack ingress preserves mention-before-reply order across queue processes"
   }
 });
 
+test("Slack ingress ignores ambient replies in human-owned channel threads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-addressing-"));
+  try {
+    const ingress = new FileSlackIngressQueue(root);
+    const envelope = slackEnvelopeFixture();
+    assert.equal(await ingress.admitEnvelope({
+      ...envelope,
+      event: {
+        channel: "C-ONE",
+        channel_type: "group",
+        parent_user_id: "U-HUMAN",
+        text: "This reply is for the people already in the thread.",
+        thread_ts: "1710000000.000001",
+        ts: "1710000001.000002",
+        type: "message",
+        user: "U-ONE",
+      },
+    }), false);
+    assert.equal(await withIngressExecution(
+      ingress,
+      "worker:ambient-channel-reply",
+      async (permit) => ingress.claimNext(permit),
+    ), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack ingress keeps unmentioned replies in direct messages and bot-owned threads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-addressed-"));
+  try {
+    const ingress = new FileSlackIngressQueue(root);
+    const envelope = slackEnvelopeFixture();
+    for (const event of [
+      {
+        channel: "D-ONE",
+        channel_type: "im",
+        parent_user_id: "U-ONE",
+        text: "Keep going in this direct conversation.",
+        thread_ts: "1710000000.000001",
+        ts: "1710000001.000002",
+        type: "message",
+        user: "U-ONE",
+      },
+      {
+        channel: "C-ONE",
+        channel_type: "group",
+        parent_user_id: "U-BOT",
+        text: "Keep going from the Cerebro message.",
+        thread_ts: "1710000000.000003",
+        ts: "1710000001.000004",
+        type: "message",
+        user: "U-ONE",
+      },
+    ]) {
+      assert.equal(await ingress.admitEnvelope({ ...envelope, event }), true);
+    }
+    await withIngressExecution(ingress, "worker:addressed-replies", async (permit) => {
+      const direct = await ingress.claimNext(permit);
+      assert.equal(direct?.event.channel, "D-ONE");
+      if (direct) await ingress.complete(permit, direct);
+      const botOwned = await ingress.claimNext(permit);
+      assert.equal(botOwned?.event.channel, "C-ONE");
+      if (botOwned) await ingress.complete(permit, botOwned);
+      assert.equal(await ingress.claimNext(permit), undefined);
+    });
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("Slack ingress keeps one durable client message binding across restarts", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-"));
   try {
@@ -428,6 +506,105 @@ test("Slack ingress keeps one durable client message binding across restarts", a
     await assert.rejects(
       restarted.bindMessage("request:one", "client-message-one", "1710000000.000003"),
       /changed for an exact request/u,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack ingress binds one message per delivered part under the same request", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-multipart-binding-"));
+  try {
+    const ingress = new FileSlackIngressQueue(root);
+    // A multipart delivery posts the progress message and each continuation
+    // part under the same request key but distinct client message ids. The v1
+    // binding table keyed on request_key alone threw on the second part; the
+    // composite (request_key, client_message_id) key must hold each part.
+    await ingress.bindMessage("request:one", "client-message-progress", "1710000000.000002");
+    await ingress.bindMessage("request:one", "client-message-part-2", "1710000000.000003");
+    await ingress.bindMessage("request:one", "client-message-part-3", "1710000000.000004");
+    assert.equal(
+      await ingress.readMessageBinding("request:one", "client-message-progress"),
+      "1710000000.000002",
+    );
+    assert.equal(
+      await ingress.readMessageBinding("request:one", "client-message-part-2"),
+      "1710000000.000003",
+    );
+    assert.equal(
+      await ingress.readMessageBinding("request:one", "client-message-part-3"),
+      "1710000000.000004",
+    );
+    // A missing part id resolves to no binding rather than throwing.
+    assert.equal(
+      await ingress.readMessageBinding("request:one", "client-message-part-4"),
+      undefined,
+    );
+    // Rebinding the same part to a different ts still fails closed.
+    await assert.rejects(
+      ingress.bindMessage("request:one", "client-message-part-2", "1710000000.000099"),
+      /changed for an exact request/u,
+    );
+    // The binding survives a restart and the migration is idempotent.
+    const restarted = new FileSlackIngressQueue(root);
+    assert.equal(
+      await restarted.readMessageBinding("request:one", "client-message-part-3"),
+      "1710000000.000004",
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack ingress migrates the v1 single-key binding table to the composite key", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-binding-migration-"));
+  try {
+    // Seed a legacy v1 binding table keyed on request_key alone, as shipped
+    // before multipart delivery. A row is bound so the migration must preserve
+    // it rather than dropping in-flight retry bindings.
+    const legacy = new DatabaseSync(join(root, "slack-ingress.sqlite3"));
+    legacy.exec(`
+      PRAGMA journal_mode = DELETE;
+      CREATE TABLE slack_message_bindings (
+        request_key TEXT PRIMARY KEY,
+        client_message_id TEXT NOT NULL,
+        message_ts TEXT NOT NULL,
+        bound_at_ms INTEGER NOT NULL,
+        binding_json TEXT NOT NULL
+      ) STRICT;
+    `);
+    legacy.prepare(`
+      INSERT INTO slack_message_bindings (
+        request_key, client_message_id, message_ts, bound_at_ms, binding_json
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(
+      "request:legacy",
+      "client-legacy",
+      "1710000000.000010",
+      1710000000000,
+      JSON.stringify({
+        boundAt: "2026-08-17T00:00:00.000Z",
+        clientMessageId: "client-legacy",
+        messageTs: "1710000000.000010",
+        requestKey: "request:legacy",
+        schemaVersion: "cerebro-slack-message-binding/v1",
+      }),
+    );
+    legacy.close();
+
+    const ingress = new FileSlackIngressQueue(root);
+    await ingress.initialize();
+    // The legacy binding is preserved and readable through the v2 store.
+    assert.equal(
+      await ingress.readMessageBinding("request:legacy", "client-legacy"),
+      "1710000000.000010",
+    );
+    // The migrated composite key accepts a second part under the same request,
+    // which the v1 single-key table rejected.
+    await ingress.bindMessage("request:legacy", "client-legacy-part-2", "1710000000.000011");
+    assert.equal(
+      await ingress.readMessageBinding("request:legacy", "client-legacy-part-2"),
+      "1710000000.000011",
     );
   } finally {
     await rm(root, { force: true, recursive: true });
@@ -1145,6 +1322,131 @@ test("Slack agent delivery outbox survives restart until both delivery boundarie
     assert.deepEqual(await thirdProcess.list(), [slackDelivered]);
     await thirdProcess.complete(prepared.recordRef);
     assert.deepEqual(await thirdProcess.list(), []);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a prepared multipart agent delivery replays every part to Slack from the outbox", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-agent-delivery-replay-multipart-"));
+  try {
+    const text = `${"Verified evidence line.\n\n".repeat(400)}Done.`;
+    const parts = splitSlackAnswerParts(text);
+    assert.ok(parts.length > 2, "the fixture answer must exceed one Slack message");
+    const ingressQueue = new FileSlackIngressQueue(root);
+    const outbox = new FileAgentDeliveryOutbox(root);
+    const prepared = await outbox.prepare({
+      botUserId: "U-BOT",
+      channel: "C-ONE",
+      deliveredAt: "2026-07-31T20:01:00.000Z",
+      deliveryRef: "slack-message://sha256/receipt",
+      eventTs: "1710000000.000001",
+      messageTs: "1710000000.000002",
+      payloadDigest: `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`,
+      requestId: "slack-request-replay",
+      requestKey: "T-ONE:C-ONE:1710000000.000001:1710000000.000001",
+      teamId: "T-ONE",
+      text,
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+      threadTs: "1710000000.000001",
+    });
+
+    const posted: { text: string; ts: string }[] = [];
+    const updated: { blocks?: unknown; text: string; ts: string; withBlocks: boolean }[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          const ts = `1710000000.0000${10 + posted.length}`;
+          posted.push({ text: input.text, ts });
+          return { ts };
+        },
+        update: async (input: { blocks?: unknown; text: string; ts: string }) => {
+          updated.push({
+            blocks: input.blocks,
+            text: input.text,
+            ts: input.ts,
+            withBlocks: input.blocks !== undefined,
+          });
+        },
+      },
+      conversations: {
+        replies: async () => ({ messages: [] }),
+      },
+    };
+
+    // The progress message (part 1) was already posted before the crash, so the
+    // replay only posts the continuations and rewrites every part. Before the
+    // outbox modeled parts, this replay crammed the whole answer into one
+    // chat.update on the progress message and dropped every continuation.
+    await replayPreparedAgentDelivery(client, prepared, { bindings: ingressQueue });
+
+    assert.equal(posted.length, parts.length - 1, "only continuations are posted");
+    assert.equal(updated.length, parts.length, "every part is rewritten");
+    const feedbackUpdate = updated.find((update) => update.withBlocks);
+    assert.ok(feedbackUpdate, "the last part carries the feedback controls");
+    assert.equal(
+      updated[updated.length - 1]!.withBlocks,
+      true,
+      "feedback controls follow the last part",
+    );
+    assert.ok(
+      updated.slice(0, -1).every((update) => !update.withBlocks),
+      "earlier parts carry no feedback controls",
+    );
+    // The thread reads as the exact answer in order: part 1 at the progress ts,
+    // then each posted continuation in order.
+    const finalTextByTs = new Map<string, string>();
+    finalTextByTs.set(prepared.messageTs, updated.find((u) => u.ts === prepared.messageTs)!.text);
+    for (const [index, message] of posted.entries()) {
+      const ts = message.ts;
+      finalTextByTs.set(ts, updated.find((u) => u.ts === ts)!.text);
+      assert.equal(finalTextByTs.get(ts), parts[index + 1]);
+    }
+    assert.equal(finalTextByTs.get(prepared.messageTs), parts[0]);
+    // Each continuation is durably bound so a further retry recovers without
+    // posting again.
+    await replayPreparedAgentDelivery(client, prepared, { bindings: ingressQueue });
+    assert.equal(posted.length, parts.length - 1, "the second replay recovers without posting");
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a prepared legacy single-message agent delivery replays as one chat update", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-agent-delivery-replay-legacy-"));
+  try {
+    const outbox = new FileAgentDeliveryOutbox(root);
+    // A v1 record carries no multipart identity, so the replay must fall back to
+    // the single-message update rather than splitting or posting continuations.
+    const prepared = await outbox.prepare({
+      channel: "C-ONE",
+      deliveredAt: "2026-07-31T20:01:00.000Z",
+      deliveryRef: "slack-message://sha256/receipt",
+      messageTs: "1753992060.000100",
+      payloadDigest: `sha256:${"d".repeat(64)}`,
+      requestId: "request-pending",
+      text: "The current graph state is verified.",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+    const posted: { text: string; ts: string }[] = [];
+    const updated: { text: string; ts: string }[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          posted.push({ text: input.text, ts: "unexpected" });
+          return { ts: "unexpected" };
+        },
+        update: async (input: { text: string; ts: string }) => {
+          updated.push({ text: input.text, ts: input.ts });
+        },
+      },
+      conversations: {
+        replies: async () => ({ messages: [] }),
+      },
+    };
+    await replayPreparedAgentDelivery(client, prepared, {});
+    assert.equal(posted.length, 0, "a legacy replay never posts continuations");
+    assert.deepEqual(updated, [{ text: prepared.text, ts: prepared.messageTs }]);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -3253,6 +3555,270 @@ test("an ambiguous Slack post is recovered by metadata-bound delivery identity",
   }
 });
 
+test("one long answer splits into ordered Slack parts without losing content", () => {
+  assert.deepEqual(splitSlackAnswerParts("short answer"), ["short answer"]);
+  const paragraph = `${"e".repeat(1_200)}\n\n`;
+  const answer = paragraph.repeat(8);
+  const parts = splitSlackAnswerParts(answer);
+  assert.ok(parts.length > 1, "a long answer must use more than one Slack message");
+  assert.equal(parts.join(""), answer);
+  for (const part of parts) {
+    assert.ok(Array.from(part).length <= 3_500);
+  }
+  assert.ok(parts.slice(0, -1).every((part) => part.endsWith("\n\n")));
+});
+
+test("a long agent answer is delivered as ordered Slack parts with one delivery receipt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-multipart-"));
+  try {
+    const markdown = `${"Verified evidence line.\n\n".repeat(400)}Done.`;
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root, {
+      markdown,
+    });
+    const posted: { text: string; ts: string }[] = [];
+    const updated: { text: string; ts: string; withBlocks: boolean }[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          const ts = `1710000000.00000${posted.length + 2}`;
+          posted.push({ text: input.text, ts });
+          return { ts };
+        },
+        update: async (
+          input: { blocks?: unknown; text: string; ts: string },
+        ) => {
+          updated.push({
+            text: input.text,
+            ts: input.ts,
+            withBlocks: input.blocks !== undefined,
+          });
+        },
+      },
+      conversations: {
+        replies: async () => {
+          throw new Error("a first successful delivery must not scan Slack history");
+        },
+      },
+    };
+
+    assert.equal(
+      await handleSlackMention({ client, config, event, host, outcomes, questions }),
+      true,
+    );
+    const parts = splitSlackAnswerParts(formatEnvironmentAnswer(config, markdown));
+    assert.ok(parts.length > 2, "the fixture answer must exceed one Slack message");
+    assert.equal(
+      posted.length,
+      parts.length,
+      "one progress message plus one message per continuation part",
+    );
+    const finalTextByTs = new Map<string, { text: string; withBlocks: boolean }>(
+      posted.map((message) => [message.ts, { text: message.text, withBlocks: false }]),
+    );
+    for (const update of updated) {
+      finalTextByTs.set(update.ts, { text: update.text, withBlocks: update.withBlocks });
+    }
+    assert.deepEqual(
+      posted.map((message) => finalTextByTs.get(message.ts)!.text),
+      parts,
+      "the thread reads as the exact answer in order",
+    );
+    const feedbackTs = posted[posted.length - 1]!.ts;
+    assert.equal(
+      finalTextByTs.get(feedbackTs)!.withBlocks,
+      true,
+      "feedback controls follow the last part",
+    );
+    assert.ok(
+      posted.slice(0, -1).every((message) => !finalTextByTs.get(message.ts)!.withBlocks),
+      "earlier parts carry no duplicate feedback controls",
+    );
+    const deliveryFiles = await readdir(join(root, "delivery"));
+    assert.equal(deliveryFiles.length, 1);
+    const delivery = JSON.parse(
+      await readFile(join(root, "delivery", deliveryFiles[0]!), "utf8"),
+    );
+    assert.equal(delivery.part_count, parts.length);
+    assert.equal(delivery.accepted_part_count, parts.length);
+    assert.equal(delivery.undelivered_part_count, 0);
+    assert.deepEqual(
+      delivery.parts.map((part: { sequence: number }) => part.sequence),
+      parts.map((_part, index) => index + 1),
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a multi-part answer anchors feedback identity on the last part and refreshes every part", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-multipart-feedback-"));
+  try {
+    const markdown = `${"Verified evidence line.\n\n".repeat(400)}Done.`;
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root, {
+      markdown,
+    });
+    const posted: { text: string; ts: string }[] = [];
+    const updated: {
+      blocks?: unknown;
+      text: string;
+      ts: string;
+      withBlocks: boolean;
+    }[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          const ts = `1710000000.00000${posted.length + 2}`;
+          posted.push({ text: input.text, ts });
+          return { ts };
+        },
+        update: async (
+          input: { blocks?: unknown; text: string; ts: string },
+        ) => {
+          updated.push({
+            blocks: input.blocks,
+            text: input.text,
+            ts: input.ts,
+            withBlocks: input.blocks !== undefined,
+          });
+        },
+      },
+      conversations: {
+        replies: async () => {
+          throw new Error("a first successful delivery must not scan Slack history");
+        },
+      },
+    };
+
+    assert.equal(
+      await handleSlackMention({ client, config, event, host, outcomes, questions }),
+      true,
+    );
+    const parts = splitSlackAnswerParts(formatEnvironmentAnswer(config, markdown));
+    assert.ok(parts.length > 2, "the fixture answer must exceed one Slack message");
+
+    // Finding 2: every delivered part is rewritten with its current text, so a
+    // continuation message recovered from a previous attempt cannot keep stale
+    // content. The progress message and each continuation are all updated.
+    assert.equal(
+      updated.length,
+      parts.length,
+      "every delivered part must be updated with its current text",
+    );
+
+    // Finding 1: the feedback controls live on the last part, so the answer
+    // reference embedded in the button envelope and the pending outcome's
+    // delivered_message_ts must identify that last part. The Slack action
+    // handler recomputes the reference from the ts of the message hosting the
+    // button, and FileOutcomeStore.recordFeedback matches the pending record by
+    // delivered_message_ts.
+    const feedbackUpdate = updated.find((update) => update.withBlocks);
+    assert.ok(feedbackUpdate, "one part must carry the feedback controls");
+    const feedbackPartTs = feedbackUpdate!.ts;
+    const actionsBlock = (feedbackUpdate!.blocks as Array<{ type: string; elements?: Array<{ value?: string }> }>)
+      .find((block) => block.type === "actions");
+    assert.ok(actionsBlock, "the feedback part must render an actions block");
+    const buttonValue = actionsBlock!.elements?.[0]?.value;
+    assert.equal(typeof buttonValue, "string");
+    const envelope = decodeSlackActionEnvelope(buttonValue!);
+    const expectedAnswerRef = `slack-answer://sha256/${
+      createHash("sha256").update(`${event.teamId}:${event.channel}:${feedbackPartTs}`, "utf8").digest("hex")
+    }`;
+    assert.equal(envelope.subject_ref, expectedAnswerRef);
+
+    const pendingFiles = await readdir(join(root, "pending"));
+    assert.equal(pendingFiles.length, 1);
+    const pending = JSON.parse(
+      await readFile(join(root, "pending", pendingFiles[0]!), "utf8"),
+    );
+    assert.equal(pending.delivered_message_ts, feedbackPartTs);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a multi-part answer binds every part under one request and recovers on retry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-multipart-ingress-"));
+  try {
+    const markdown = `${"Verified evidence line.\n\n".repeat(400)}Done.`;
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root, {
+      markdown,
+    });
+    const ingressQueue = new FileSlackIngressQueue(root);
+    const posted: { text: string; ts: string }[] = [];
+    const updated: { text: string; ts: string; withBlocks: boolean }[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          const ts = `1710000000.00000${posted.length + 2}`;
+          posted.push({ text: input.text, ts });
+          return { ts };
+        },
+        update: async (
+          input: { blocks?: unknown; text: string; ts: string },
+        ) => {
+          updated.push({
+            text: input.text,
+            ts: input.ts,
+            withBlocks: input.blocks !== undefined,
+          });
+        },
+      },
+      conversations: {
+        replies: async () => {
+          throw new Error("a first successful delivery must not scan Slack history");
+        },
+      },
+    };
+    const parts = splitSlackAnswerParts(formatEnvironmentAnswer(config, markdown));
+    assert.ok(parts.length > 2, "the fixture answer must exceed one Slack message");
+
+    // With the durable ingress queue wired in (as production does), the v1
+    // binding table keyed on request_key alone threw when the second part was
+    // bound. The composite (request_key, client_message_id) key lets every
+    // part bind and the first delivery succeeds.
+    assert.equal(
+      await handleSlackMention({
+        client,
+        config,
+        event,
+        host,
+        ingressQueue,
+        outcomes,
+        questions,
+      }),
+      true,
+    );
+    assert.equal(
+      posted.length,
+      parts.length,
+      "the first delivery posts one message per part",
+    );
+    const firstRunUpdates = updated.length;
+    assert.equal(firstRunUpdates, parts.length);
+
+    // A retry recovers the bound parts by their client message ids without
+    // posting again, then rewrites every part with the current text.
+    const postedBeforeRetry = posted.length;
+    assert.equal(
+      await handleSlackMention({
+        client,
+        config,
+        event,
+        host,
+        ingressQueue,
+        outcomes,
+        priorDeliveryAttempt: true,
+        questions,
+      }),
+      true,
+    );
+    assert.equal(posted.length, postedBeforeRetry, "the retry must not post again");
+    assert.equal(updated.length - firstRunUpdates, parts.length);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("a first Slack delivery posts without scanning thread history", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-first-delivery-"));
   try {
@@ -3950,8 +4516,11 @@ function sseResponse(events: ReadonlyArray<readonly [string, unknown]>): Respons
   });
 }
 
-function slackDeliveryTestFixture(root: string) {
+function slackDeliveryTestFixture(root: string, options: { markdown?: string } = {}) {
   const config = loadSlackRuntimeConfig({
+    ...(options.markdown === undefined
+      ? {}
+      : { CEREBRO_SLACK_AGENT_ENABLED: "true" }),
     CEREBRO_BASE_URL: "https://cerebro.example.com",
     CEREBRO_READ_API_KEY: "bound-at-runtime",
     CEREBRO_SLACK_APP_NAME: "Cerebro Development",
@@ -3980,8 +4549,20 @@ function slackDeliveryTestFixture(root: string) {
       answerAuthority: testAnswerAuthority,
       apiKey: "bound-at-runtime",
       baseUrl: "https://cerebro.example.com",
-      fetchImpl: async () => sseResponse([]),
+      fetchImpl: async () =>
+        options.markdown === undefined ? sseResponse([]) : Response.json({
+          evidence_refs: ["evidence://graph/current"],
+          final_state: "answered",
+          lane: "investigate",
+          markdown: options.markdown,
+          outcome: "delivered",
+          schema_version: "agent-turn-result/v1",
+          tool_call_count: 2,
+        }),
       tenantId: "writer",
+      ...(options.markdown === undefined
+        ? {}
+        : { agentRuntimeUrl: config.slackAnswerAuthorityUrl }),
     }),
   );
   return { config, event, host, outcomes, questions };

@@ -58,8 +58,9 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	graphStore := dependencyGraphQueryStore(a.deps)
-	if graphStore == nil {
+	rawCypher := a.deps.GraphReads.RawCypher
+	neighborhoods := a.deps.GraphReads.Neighborhoods
+	if rawCypher == nil || neighborhoods == nil {
 		evt.failureStage = "graph_store_nil"
 		evt.finish(r, started, http.StatusServiceUnavailable, graphquery.ErrRuntimeUnavailable)
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
@@ -81,7 +82,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 
 	clearLongRunningWriteDeadline(w)
 	flusher, _ := w.(http.Flusher)
-	service := graphagent.NewServiceWithOptions(graphStore, llm, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
+	service := graphagent.NewServiceWithGraphCapabilities(rawCypher, neighborhoods, a.deps.GraphReads.EntityKindCounts, a.deps.GraphReads.RelationCounts, llm, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
 		TrajectoryStore:             askTrajectoryStore(a.deps.StateStore),
 		EnableGraphProbes:           true,
 		EnableDeterministicFastPath: true,

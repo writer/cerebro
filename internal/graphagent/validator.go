@@ -30,11 +30,11 @@ type ValidatorOptions struct {
 }
 
 type Validator struct {
-	store   ports.GraphQueryStore
+	store   ports.RawCypherQueryStore
 	options ValidatorOptions
 }
 
-func NewValidator(store ports.GraphQueryStore, options ValidatorOptions) *Validator {
+func NewValidator(store ports.RawCypherQueryStore, options ValidatorOptions) *Validator {
 	if options.MaxRows <= 0 {
 		options.MaxRows = defaultMaxRows
 	}

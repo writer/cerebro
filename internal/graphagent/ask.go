@@ -44,24 +44,63 @@ type AskRequest struct {
 
 type Emitter func(Event) error
 
-type Service struct {
-	store     ports.GraphQueryStore
-	llm       LLMClient
-	validator *Validator
-	options   ServiceOptions
+type Store interface {
+	ports.RawCypherQueryStore
+	ports.GraphNeighborhoodStore
 }
 
-func NewService(store ports.GraphQueryStore, llm LLMClient, options ValidatorOptions) *Service {
+type Service struct {
+	rawCypher        ports.RawCypherQueryStore
+	neighborhoods    ports.GraphNeighborhoodStore
+	entityKindCounts ports.EntityKindCountStore
+	relationCounts   ports.RelationCountStore
+	llm              LLMClient
+	validator        *Validator
+	options          ServiceOptions
+}
+
+func NewService(store Store, llm LLMClient, options ValidatorOptions) *Service {
 	return NewServiceWithOptions(store, llm, options, ServiceOptions{})
 }
 
-func NewServiceWithOptions(store ports.GraphQueryStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
-	return &Service{
-		store:     store,
-		llm:       llm,
-		validator: NewValidator(store, validatorOptions),
-		options:   normalizeServiceOptions(serviceOptions),
+func NewServiceWithOptions(store Store, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
+	if store == nil {
+		return NewServiceWithGraphCapabilities(nil, nil, nil, nil, llm, validatorOptions, serviceOptions)
 	}
+	return NewServiceWithGraphCapabilities(store, store, entityKindCountCapability(store), relationCountCapability(store), llm, validatorOptions, serviceOptions)
+}
+
+func NewServiceWithCapabilities(rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
+	return NewServiceWithGraphCapabilities(rawCypher, neighborhoods, entityKindCountCapability(rawCypher), relationCountCapability(rawCypher), llm, validatorOptions, serviceOptions)
+}
+
+// NewServiceWithGraphCapabilities wires the graphagent's separate read
+// capabilities. Raw Cypher remains required for runtime-authored Ask queries,
+// while graph probes use the typed count operations directly.
+func NewServiceWithGraphCapabilities(rawCypher ports.RawCypherQueryStore, neighborhoods ports.GraphNeighborhoodStore, entityKindCounts ports.EntityKindCountStore, relationCounts ports.RelationCountStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
+	return &Service{
+		rawCypher:        rawCypher,
+		neighborhoods:    neighborhoods,
+		entityKindCounts: entityKindCounts,
+		relationCounts:   relationCounts,
+		llm:              llm,
+		validator:        NewValidator(rawCypher, validatorOptions),
+		options:          normalizeServiceOptions(serviceOptions),
+	}
+}
+
+func entityKindCountCapability(store any) ports.EntityKindCountStore {
+	if counts, ok := store.(ports.EntityKindCountStore); ok {
+		return counts
+	}
+	return nil
+}
+
+func relationCountCapability(store any) ports.RelationCountStore {
+	if counts, ok := store.(ports.RelationCountStore); ok {
+		return counts
+	}
+	return nil
 }
 
 func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) error {
@@ -71,7 +110,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err := ValidateRequest(request); err != nil {
 		return err
 	}
-	if s == nil || s.store == nil || s.llm == nil || s.validator == nil {
+	if s == nil || s.rawCypher == nil || s.neighborhoods == nil || s.llm == nil || s.validator == nil {
 		return ErrRuntimeUnavailable
 	}
 	started := time.Now()
@@ -95,7 +134,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 			return err
 		}
 		probeStarted := time.Now()
-		collected := collectGraphProbe(ctx, s.store, request, params)
+		collected := collectGraphProbe(ctx, s.entityKindCounts, s.relationCounts, s.neighborhoods, request)
 		timings.ProbeMS = time.Since(probeStarted).Milliseconds()
 		probe = &collected
 		if err := emit(Event{Name: EventGraphProbe, Data: GraphProbeEvent{Probe: collected}}); err != nil {
@@ -180,7 +219,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	execStarted := time.Now()
-	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+	rows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query:    cypher,
 		Params:   params,
 		RowLimit: rowLimit,
@@ -212,7 +251,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	}
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
-		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
+		Graph:  scopedNeighborhood(ctx, s.neighborhoods, request.ScopeURN),
 		ExecMS: timings.ExecuteMS,
 	}
 	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {
@@ -1143,7 +1182,7 @@ func rowValueEmpty(value any) bool {
 	}
 }
 
-func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore, scopeURN string) *ports.EntityNeighborhood {
+func scopedNeighborhood(ctx context.Context, store ports.GraphNeighborhoodStore, scopeURN string) *ports.EntityNeighborhood {
 	scopeURN = strings.TrimSpace(scopeURN)
 	if scopeURN == "" || store == nil {
 		return nil

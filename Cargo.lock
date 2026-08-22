@@ -1033,6 +1033,7 @@ dependencies = [
  "cerebro-control-kernel",
  "cerebro-organizational-model",
  "serde",
+ "serde_jcs",
  "serde_json",
  "sha2 0.11.0",
 ]
@@ -1120,6 +1121,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde-saphyr",
+ "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -1139,10 +1142,12 @@ dependencies = [
  "cerebro-source-catalog",
  "futures-util",
  "hmac",
+ "packageurl",
  "prost",
  "prost-types",
  "reqwest",
  "serde",
+ "serde-saphyr",
  "serde_json",
  "sha2 0.11.0",
  "time",
@@ -1911,9 +1916,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.15"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -2690,6 +2695,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
+name = "packageurl"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d33fa1a190c3c9024f21b82e6b30f94137d9c1bf25071e2ab2ba13020135fbaf"
+dependencies = [
+ "percent-encoding",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3168,6 +3183,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -3341,6 +3357,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
+name = "ryu-js"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6518fc26bced4d53678a22d6e423e9d8716377def84545fe328236e3af070e7f"
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3448,6 +3470,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.2",
+]
+
+[[package]]
+name = "serde_jcs"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3a60f3fda61525e439ef6d67422118f11e986566997d9021c56867ad814a0aa"
+dependencies = [
+ "ryu-js",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

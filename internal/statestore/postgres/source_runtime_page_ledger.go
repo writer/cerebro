@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -31,6 +32,8 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   admission_scanned_sha256 TEXT NOT NULL DEFAULT '',
   admission_accepted_sha256 TEXT NOT NULL DEFAULT '',
   admission_result_sha256 TEXT NOT NULL DEFAULT '',
+  authority_decision_id TEXT NOT NULL DEFAULT '',
+  authority_epoch BIGINT NOT NULL DEFAULT 0,
   entities_projected INTEGER NOT NULL DEFAULT 0,
   links_projected INTEGER NOT NULL DEFAULT 0,
   runtime_json JSONB,
@@ -48,7 +51,9 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   ADD COLUMN IF NOT EXISTS admission_contracts_sha256 TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS admission_scanned_sha256 TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS admission_accepted_sha256 TEXT NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS admission_result_sha256 TEXT NOT NULL DEFAULT ''`,
+  ADD COLUMN IF NOT EXISTS admission_result_sha256 TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS authority_decision_id TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS authority_epoch BIGINT NOT NULL DEFAULT 0`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtime_page_ledger_runtime_status_idx ON source_runtime_page_ledger (runtime_id, status, updated_at ASC)`,
 	`CREATE TABLE IF NOT EXISTS source_runtime_page_outbox (
   attempt_id TEXT NOT NULL REFERENCES source_runtime_page_ledger(attempt_id) ON DELETE CASCADE,
@@ -84,9 +89,10 @@ INSERT INTO source_runtime_page_ledger (
   attempt_id, runtime_id, source_id, tenant_id, page_number, status,
   records_scanned, records_accepted, records_quarantined, duplicate_events,
   admission_kernel, admission_abi_version, admission_contracts_sha256,
-  admission_scanned_sha256, admission_accepted_sha256, admission_result_sha256
+  admission_scanned_sha256, admission_accepted_sha256, admission_result_sha256,
+  authority_decision_id, authority_epoch
 )
-VALUES ($1, $2, $3, $4, $5, 'started', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+VALUES ($1, $2, $3, $4, $5, 'started', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 ON CONFLICT (attempt_id)
 DO UPDATE SET status = 'started',
               records_scanned = EXCLUDED.records_scanned,
@@ -99,6 +105,8 @@ DO UPDATE SET status = 'started',
               admission_scanned_sha256 = EXCLUDED.admission_scanned_sha256,
               admission_accepted_sha256 = EXCLUDED.admission_accepted_sha256,
               admission_result_sha256 = EXCLUDED.admission_result_sha256,
+              authority_decision_id = EXCLUDED.authority_decision_id,
+              authority_epoch = EXCLUDED.authority_epoch,
               updated_at = NOW()`,
 		attemptID,
 		strings.TrimSpace(attempt.RuntimeID),
@@ -115,6 +123,8 @@ DO UPDATE SET status = 'started',
 		strings.TrimSpace(attempt.Admission.ScannedSHA256),
 		strings.TrimSpace(attempt.Admission.AcceptedSHA256),
 		strings.TrimSpace(attempt.Admission.ResultSHA256),
+		strings.TrimSpace(attempt.Authority.DecisionID),
+		attempt.Authority.Epoch,
 	); err != nil {
 		return fmt.Errorf("upsert source runtime page ledger %q: %w", attemptID, err)
 	}
@@ -147,6 +157,17 @@ func (s *Store) MarkSourceRuntimePageProjected(ctx context.Context, attemptID st
 }
 
 func (s *Store) CommitSourceRuntimePage(ctx context.Context, attemptID string, runtime *cerebrov1.SourceRuntime) error {
+	return s.commitSourceRuntimePage(ctx, attemptID, runtime, nil)
+}
+
+// CommitSourceRuntimePageFenced commits checkpoint progress only while the
+// exact source-runtime lease generation remains current. The lease row stays
+// locked through the runtime and page-ledger updates.
+func (s *Store) CommitSourceRuntimePageFenced(ctx context.Context, attemptID string, runtime *cerebrov1.SourceRuntime, fence ports.SourceRuntimeLeaseFence) error {
+	return s.commitSourceRuntimePage(ctx, attemptID, runtime, &fence)
+}
+
+func (s *Store) commitSourceRuntimePage(ctx context.Context, attemptID string, runtime *cerebrov1.SourceRuntime, fence *ports.SourceRuntimeLeaseFence) error {
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
 	}
@@ -162,6 +183,25 @@ func (s *Store) CommitSourceRuntimePage(ctx context.Context, attemptID string, r
 		return fmt.Errorf("begin source runtime page commit: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if fence != nil {
+		if strings.TrimSpace(fence.Owner) == "" || fence.Generation == 0 || fence.Generation > math.MaxInt64 {
+			return ports.ErrSourceRuntimeLeaseLost
+		}
+		var currentGeneration int64
+		if err := tx.QueryRowContext(ctx, `
+SELECT lease_generation
+FROM source_runtimes
+WHERE id = $1
+  AND lease_owner = $2
+  AND lease_generation = $3
+  AND lease_expires_at > NOW()
+FOR UPDATE`, runtime.GetId(), strings.TrimSpace(fence.Owner), int64(fence.Generation)).Scan(&currentGeneration); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ports.ErrSourceRuntimeLeaseLost
+			}
+			return fmt.Errorf("validate source runtime page lease fence %q: %w", runtime.GetId(), err)
+		}
+	}
 	if err := putSourceRuntime(ctx, tx, runtime); err != nil {
 		return err
 	}
@@ -246,4 +286,5 @@ func (s *Store) ensureSourceRuntimePageLedgerTables(ctx context.Context) error {
 }
 
 var _ ports.SourceRuntimePageLedgerStore = (*Store)(nil)
+var _ ports.SourceRuntimeFencedPageCommitter = (*Store)(nil)
 var _ sourceRuntimeExecutor = (*sql.Tx)(nil)

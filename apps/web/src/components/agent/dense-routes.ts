@@ -5,7 +5,7 @@ export const denseAgentRouteLabels = new Set([
   "Evidence",
   "Frameworks",
   "Issues",
-  "Packet review",
+  "Audit packets",
   "Reports",
   "Shared snapshot",
 ]);

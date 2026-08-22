@@ -107,6 +107,9 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
         "Run the candidate through its declared Rust entrypoint",
         "cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- seed",
         "cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- verify",
+        r#"test "$(jq -r .sources <<<"${summary}")" -eq 799"#,
+        r#"test "$(jq -r .families <<<"${summary}")" -eq 3986"#,
+        r#"evidence:"799 sources and 3986 families loaded""#,
         "cerebro.rust-only-e2e/v1",
         "cerebro.rust-only-candidate/v1",
     ] {
@@ -131,6 +134,9 @@ fn graph_qualification_stays_on_retired_rust_authority_path() {
     }
     for forbidden in [
         "CEREBRO_RUST_READ_MODE=canary",
+        "CEREBRO_RUST_SHADOW_PERCENT",
+        "CEREBRO_RUST_AUTHORITY_PERCENT",
+        "CEREBRO_RUST_CANARY_VERIFY_PERCENT",
         "go_canary",
         "rust_canary",
         "CEREBRO_RUST_CANARY_API_KEYS",

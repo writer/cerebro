@@ -1,0 +1,20 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: langfuse
+family: score
+case: authorized_first_page
+replay_test: source_test.go#TestGenuineProviderResponsesReplayAcceptedRuntimeFamilies
+request:
+    method: GET
+    url: https://langfuse.example.com/api/public/v2/scores?limit=1&page=1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-08-20T19:43:26Z"
+    sha256: ec03912c7a775632d6dae612f095fb031f511200b77c61c4f99b9c60eba610c5
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $request.url
+origin:
+    type: operator_request

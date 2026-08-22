@@ -80,7 +80,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 	if s == nil || s.runtimeStore == nil || s.store == nil || s.runStore == nil || s.evidenceStore == nil || s.rules == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	if s.graphQuery == nil {
+	if s.rawCypher == nil {
 		return nil, ErrGraphRuntimeUnavailable
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
@@ -242,7 +242,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		queryCtx, cancelQuery = context.WithTimeout(ctx, budget)
 		defer cancelQuery()
 	}
-	rows, err := s.graphQuery.ExecuteReadCypher(queryCtx, queryRequest)
+	rows, err := s.rawCypher.ExecuteReadCypher(queryCtx, queryRequest)
 	if err != nil {
 		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
 		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)

@@ -58,12 +58,12 @@ var (
 // Service exposes the first durable report-run foundation.
 type Service struct {
 	findingStore ports.FindingStore
-	graphStore   ports.GraphQueryStore
+	graphStore   ports.GraphNeighborhoodStore
 	reportStore  ports.ReportStore
 }
 
 // New constructs the report service.
-func New(findingStore ports.FindingStore, graphStore ports.GraphQueryStore, reportStore ports.ReportStore) *Service {
+func New(findingStore ports.FindingStore, graphStore ports.GraphNeighborhoodStore, reportStore ports.ReportStore) *Service {
 	return &Service{
 		findingStore: findingStore,
 		graphStore:   graphStore,

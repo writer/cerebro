@@ -1,0 +1,27 @@
+{
+  "audit_log_entries": [
+    {
+      "action_type": 10,
+      "changes": [],
+      "id": "100000000000000001",
+      "reason": "duplicate contract vector",
+      "target_id": "300000000000000001",
+      "user_id": "400000000000000001"
+    },
+    {
+      "action_type": 10,
+      "changes": [],
+      "id": "100000000000000001",
+      "reason": "duplicate contract vector",
+      "target_id": "300000000000000001",
+      "user_id": "400000000000000001"
+    },
+    {
+      "action_type": 20,
+      "changes": [],
+      "id": "100000000000000002",
+      "target_id": "300000000000000002",
+      "user_id": null
+    }
+  ]
+}

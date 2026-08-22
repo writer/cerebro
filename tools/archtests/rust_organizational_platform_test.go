@@ -154,13 +154,16 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 			t.Errorf("Rust graph read adapter restored handwritten wire contract %q", forbidden)
 		}
 	}
-	for _, required := range []string{
+	for _, forbidden := range []string{
 		"NewShadowQueryStore",
-		"return legacy, nil",
+		"NewLegacyQueryStore",
+		"readModeShadow",
+		"readModeLegacy",
 		"RecordOrganizationalGraphShadow",
+		"return legacy, nil",
 	} {
-		if !strings.Contains(queryAdapter, required) {
-			t.Errorf("bounded shadow comparison missing enforced safety boundary %q", required)
+		if strings.Contains(queryAdapter, forbidden) {
+			t.Errorf("Rust graph read adapter retained removed compatibility mode %q", forbidden)
 		}
 	}
 
@@ -171,7 +174,7 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		"cmd/cerebro/finding_rule_graph_evaluate.go",
 	} {
 		source := readText(t, filepath.Join(root, filepath.FromSlash(productionPath)))
-		if !strings.Contains(source, "dependencyGraphQueryStore(") {
+		if !strings.Contains(source, ".GraphReads.RawCypher") {
 			t.Errorf("%s bypasses configured Rust graph authority", productionPath)
 		}
 	}
@@ -185,13 +188,112 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		}
 	}
 
+	queryAdapterSource := readText(t, filepath.Join(root, "internal/sourcehttp/organizationalgraph/query.go"))
+	for _, widenedRawCypherBoundary := range []string{
+		"func NewQueryStore(rawCypher ports.GraphQueryStore",
+		"func NewConfiguredQueryStore(rawCypher ports.GraphQueryStore",
+	} {
+		if strings.Contains(queryAdapterSource, widenedRawCypherBoundary) {
+			t.Errorf("Rust graph query adapter widened raw-Cypher compatibility boundary %q", widenedRawCypherBoundary)
+		}
+	}
+	knowledgeService := readText(t, filepath.Join(root, "internal/knowledge/service.go"))
+	if strings.Contains(knowledgeService, "func New(query ports.RawCypherQueryStore") {
+		t.Error("knowledge writer restored unused graph query dependency")
+	}
+	provenanceService := readText(t, filepath.Join(root, "internal/graphprovenance/provenance.go"))
+	if strings.Contains(provenanceService, "store ports.GraphQueryStore") {
+		t.Error("graph provenance restored full graph query dependency")
+	}
+	grcPolicyLifecycle := readText(t, filepath.Join(root, "internal/grcpolicylifecycle/lifecycle.go"))
+	if strings.Contains(grcPolicyLifecycle, "func Build(ctx context.Context, store ports.GraphQueryStore") {
+		t.Error("GRC policy lifecycle restored full graph query dependency")
+	}
+	reportService := readText(t, filepath.Join(root, "internal/reports/service.go"))
+	if strings.Contains(reportService, "graphStore   ports.GraphQueryStore") {
+		t.Error("reports service restored full graph query dependency")
+	}
+	complianceImpactGraph := readText(t, filepath.Join(root, "internal/complianceimpact/projected_graph.go"))
+	if strings.Contains(complianceImpactGraph, "queries ports.GraphQueryStore") {
+		t.Error("compliance impact graph restored full graph query dependency")
+	}
+	policyCandidateService := readText(t, filepath.Join(root, "internal/policycandidate/service.go"))
+	if strings.Contains(policyCandidateService, "Graph       ports.GraphQueryStore") {
+		t.Error("policy candidate service restored full graph query dependency")
+	}
+	policyCandidateGrounding := readText(t, filepath.Join(root, "internal/policycandidate/grounding.go"))
+	if strings.Contains(policyCandidateGrounding, "graph ports.GraphQueryStore") {
+		t.Error("policy candidate grounding restored full graph query dependency")
+	}
+	findingsService := readText(t, filepath.Join(root, "internal/findings/service.go"))
+	if strings.Contains(findingsService, "WithGraphQueryStore") || strings.Contains(findingsService, "graphQuery                ports.RawCypherQueryStore") {
+		t.Error("findings service restored graph query naming for raw-Cypher dependency")
+	}
+	grcVendorService := readText(t, filepath.Join(root, "internal/grcvendor/service.go"))
+	if strings.Contains(grcVendorService, "store ports.GraphQueryStore") {
+		t.Error("GRC vendor service restored full graph query dependency")
+	}
+	mcpSource := readText(t, filepath.Join(root, "internal/bootstrap/mcp.go"))
+	if strings.Contains(mcpSource, "fetchMCPGraphStoreNeighborhoods(ctx context.Context, graphStore ports.GraphQueryStore") {
+		t.Error("MCP graph neighborhood helper restored full graph query dependency")
+	}
+	securityPathCapture := readText(t, filepath.Join(root, "internal/runtimeorchestration/security_path_capture.go"))
+	if strings.Contains(securityPathCapture, "GraphQueries ports.GraphQueryStore") {
+		t.Error("security path capture restored full graph query dependency")
+	}
+	if strings.Contains(securityPathCapture, "GraphQueries ports.RawCypherQueryStore") {
+		t.Error("security path capture restored graph query naming for raw-Cypher dependency")
+	}
+	graphAgentValidator := readText(t, filepath.Join(root, "internal/graphagent/validator.go"))
+	if strings.Contains(graphAgentValidator, "store   ports.GraphQueryStore") || strings.Contains(graphAgentValidator, "func NewValidator(store ports.GraphQueryStore") {
+		t.Error("graph agent validator restored full graph query dependency")
+	}
+	graphAgentProbe := readText(t, filepath.Join(root, "internal/graphagent/probe.go"))
+	if strings.Contains(graphAgentProbe, "func probeCounts(ctx context.Context, store ports.GraphQueryStore") {
+		t.Error("graph agent probe counts restored full graph query dependency")
+	}
+	graphAgentAsk := readText(t, filepath.Join(root, "internal/graphagent/ask.go"))
+	if strings.Contains(graphAgentAsk, "func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore") {
+		t.Error("graph agent scoped neighborhood restored full graph query dependency")
+	}
+	if strings.Contains(graphAgentAsk, "store     ports.GraphQueryStore") {
+		t.Error("graph agent service restored stored full graph query dependency")
+	}
+	if strings.Contains(graphAgentAsk, "func NewService(store ports.GraphQueryStore") || strings.Contains(graphAgentAsk, "func NewServiceWithOptions(store ports.GraphQueryStore") {
+		t.Error("graph agent service restored full graph query constructor dependency")
+	}
+
+	graphQueryService := readText(t, filepath.Join(root, "internal/graphquery/service.go"))
+	if strings.Contains(graphQueryService, "store ports.GraphQueryStore") || strings.Contains(graphQueryService, "func New(store ports.GraphQueryStore") {
+		t.Error("graphquery service restored full graph query dependency")
+	}
+	bootstrapApp := readText(t, filepath.Join(root, "internal/bootstrap/app.go"))
+	if strings.Contains(bootstrapApp, "ports.GraphQueryStore") {
+		t.Error("bootstrap app restored transitional composite graph query dependency")
+	}
+	featureDependencies := readText(t, filepath.Join(root, "internal/bootstrap/feature_dependencies.go"))
+	if strings.Contains(featureDependencies, "ports.GraphQueryStore") {
+		t.Error("bootstrap feature dependencies restored transitional composite graph query dependency")
+	}
+	cerebroMain := readText(t, filepath.Join(root, "cmd/cerebro/main.go"))
+	if strings.Contains(cerebroMain, "ports.GraphQueryStore") {
+		t.Error("cerebro main restored transitional composite graph query dependency")
+	}
+	portsGraphQuery := readText(t, filepath.Join(root, "internal/ports/graphquery.go"))
+	if strings.Contains(portsGraphQuery, "type GraphReadStore interface") {
+		t.Error("ports restored aggregate graph read store interface")
+	}
+	if strings.Contains(bootstrapApp, "GraphQueries") || strings.Contains(bootstrapApp, "ports.GraphReadStore") {
+		t.Error("bootstrap app restored aggregate graph read handle")
+	}
+
 	goNeo4jStore := readText(t, filepath.Join(root, "internal/graphstore/neo4j/store.go"))
-	for _, rollbackCompatibility := range []string{
+	for _, removedTypedRead := range []string{
 		"func (s *Store) GetEntityNeighborhood(",
 		"func (s *Store) GetEntityNeighborhoods(",
 	} {
-		if !strings.Contains(goNeo4jStore, rollbackCompatibility) {
-			t.Errorf("Go Neo4j store removed required rollback compatibility %q", rollbackCompatibility)
+		if strings.Contains(goNeo4jStore, removedTypedRead) {
+			t.Errorf("Go Neo4j store retained removed typed read %q", removedTypedRead)
 		}
 	}
 	for _, retained := range []string{

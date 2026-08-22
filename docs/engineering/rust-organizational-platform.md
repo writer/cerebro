@@ -41,7 +41,7 @@ cerebro-source-catalog --> cerebro-source-runtime-next
 
 `cerebro-organizational-graph` is the only crate that advances current organizational graph state. A commit takes a validated `GraphDelta`; there is no public entity/link mutation method.
 
-`cerebro-source-catalog` compiles all 794 checked-in source definitions and 3,891 resource families into a closed runtime grammar. Every family is assigned one Rust-owned projection class: identity, access, resource, finding, activity, or bespoke. Connector YAML cannot declare another class. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed. Bespoke families also remain shadow-only until a native mapper is added.
+`cerebro-source-catalog` compiles all 798 checked-in pull-source definitions and 3,925 resource families into a closed runtime grammar. Every family is assigned one Rust-owned projection class: identity, access, resource, finding, activity, or bespoke. Connector YAML cannot declare another class. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed. Bespoke families also remain shadow-only until a native mapper is added. Separately, the catalog admits one push-only Trusted Endpoint source through ten exact event contracts; it does not construct an HTTP collector or change the pull-source totals.
 
 `cerebro-source-runtime-next` owns source collection, pagination, mapping, and graph commit sequencing. Provider redirects are disabled, pagination cannot change origin, pages are bounded, and resolved credentials never enter the graph model. A source cannot obtain a graph store or construct an unvalidated graph write.
 
@@ -257,18 +257,18 @@ Each receipt binds the tenant, runtime, source, family, collection, exact input 
 
 The runtime reads the same authority record before every projection. Legacy authority calls only Go. Rust authority calls only Rust, requires a commit receipt, and fails closed. The compatibility mapper remains available for parity comparison, but it is no longer a write fallback for a promoted family.
 
-The current checked-in catalog compiles to 794 sources and 3,891 families:
+The current checked-in pull catalog compiles to 798 sources and 3,925 families. The push catalog separately compiles one Trusted Endpoint source and ten event families:
 
 | Projection class | Families | Rust meaning |
 | --- | ---: | --- |
-| Identity | 823 | people, provider identities, groups, memberships, credentials, and applications |
-| Access | 371 | policies and application grants |
-| Resource | 1,549 | assets, repositories, deployments, devices, cloud resources, and secrets |
+| Identity | 832 | people, provider identities, groups, memberships, credentials, and applications |
+| Access | 373 | policies and application grants |
+| Resource | 1,566 | assets, repositories, deployments, devices, cloud resources, and secrets |
 | Finding | 407 | findings, vulnerabilities, and alerts |
-| Activity | 738 | audit and operational events |
+| Activity | 744 | audit and operational events |
 | Bespoke | 3 | retained for source coverage but barred from authority |
 
-Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 52 sources and 351 families are authoritative; the other 742 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 53 sources and 355 families are authoritative; the other 745 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
 
 ## Family cutover
 
@@ -295,17 +295,13 @@ Go projector                Rust mapper
 
 `cerebro-platform evaluate-family` evaluates stored parity receipts without changing authority. `cerebro-platform promote-family` repeats that evaluation and records Rust authority. `cerebro-platform show-authority` reads the effective record. These commands use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
 
-`cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for pre-cutover shadow and read canaries. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
+`cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for the authority read endpoint. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
 
-Read promotion uses four explicit states. `legacy` is the retained-Go rollback
-state and does not call Rust. `shadow` always returns Go and compares a stable
-sample with Rust. `canary` assigns each tenant to Rust or Go with a stable
-hash; readiness requires both authorities, and a Rust-tenant failure fails
-closed without retrying against Go. `authority` returns Rust for every typed
-read and does not depend on Go health.
+Read promotion has completed. `authority` is the only supported product read
+mode: every typed read goes to Rust, readiness uses Rust health, and a Rust read
+failure fails closed without retrying through Go.
 
-The promotion sequence is `legacy` or `shadow` -> `canary` -> `authority`.
-Moving forward requires all of these receipts against the same candidate and
+Keeping authority enabled requires these receipts against the same candidate and
 stream fence:
 
 - a completed bounded replay using the original persisted upper fence;
@@ -313,42 +309,55 @@ stream fence:
   forward-consumer checkpoint at or beyond that fence;
 - a separate receipt proving the compatibility deltas were materialized into
   the Rust `OrganizationalEntity` and assertion projection;
-- a fresh, nonzero typed-read comparison window with zero mismatches, Rust
-  errors, encoding errors, or dropped comparisons;
+- a fresh, nonzero typed-read authority probe window with zero Rust errors or
+  encoding errors;
 - the exact task definition and image rollout receipt; and
-- a tested rollback receipt naming `legacy` as the expected read mode.
+- a tested rollback receipt naming the retained-Go image.
 
 Process liveness, Neo4j connectivity, consumer acknowledgement, and an empty
-projection are not authority evidence. A failed Rust request in `canary` or
-`authority` remains failed; the router never retries it through Go.
+projection are not authority evidence. A failed Rust request remains failed; the
+router never retries it through Go.
 
 Raw Cypher is a separate compatibility port. It remains delegated to the Go
-Neo4j reader until each caller has a typed Rust operation. The Go
-`GetEntityNeighborhood` and `GetEntityNeighborhoods` implementation may be
-deleted after the authority burn-in because typed neighborhood reads no longer
-need it; `ExecuteReadCypher` and `ExplainReadCypher` stay until their callers
-are migrated. After that deletion, rollback uses the last retained-Go image in
-`legacy` mode rather than pretending the current image still contains a Go
-typed reader.
+Neo4j reader until each caller has a typed Rust operation. The Go typed
+neighborhood read implementation has been removed because Rust now owns those
+product reads; `ExecuteReadCypher` and `ExplainReadCypher` stay until their
+callers are migrated. Rollback uses the last retained-Go image rather than a
+live read mode in the current image.
 
-The canary percentage controls tenant allocation, not a random share of
-requests. Monitor `cerebro.organizational_graph.canary.routes` by `authority`,
-`status`, `operation`, and `configured_percent` to compare the configured
-tenant cohort with actual Go and Rust request volume. These labels are bounded
-and never contain tenant or graph identifiers.
+## Remaining compatibility callers
 
-During the first low-volume canary, set
-`CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT=100`. Every selected
-Rust-authority read remains Rust-authoritative and is also compared with Go.
-The Go verification runs outside the request path under the same bounded
-comparison ceiling. Mismatch, Go-oracle failure, or saturation changes only
-the verification receipt; it does not delay, replace, or retry the Rust result
-through Go. Monitor
-`cerebro.organizational_graph.canary.verifications` for `match`, `mismatch`,
-`legacy_error`, `comparison_error`, and `dropped`, and compare
-`cerebro.organizational_graph.canary.duration` by authority before increasing
-the Rust cohort. Reduce the verification percentage independently when the
-duplicate Go load is no longer justified.
+The raw-Cypher compatibility port serves the callers below. None are
+expressible through `QueryFacts` today, and each migrates only after the
+listed capability lands in the Rust read API.
+
+One structural prerequisite applies to every caller: `QueryFacts` and
+`FindPaths` run against the organizational graph (`OrganizationalEntity` /
+`ORGANIZATIONAL_RELATION`, closed kind and relation vocabularies, sealed
+`EntityId` endpoints), while every caller targets the legacy projection
+(`Entity` / `RELATION`, keyed by `urn` and `entity_type` with
+`attributes_json` payloads). Migrating any caller requires mapping its entity
+kinds and relations into the organizational schema first, and path callers
+additionally need URN-keyed (or `agent_key`) `FindPaths` endpoints because
+Go callers hold Cerebro URNs rather than sealed Rust entity identifiers.
+
+| Caller | Query shape | Required Rust capability |
+| --- | --- | --- |
+| `internal/attackpath` | variable-length paths with counts and samples | relation-filtered variable-length traversal, aggregations, attribute substring predicates, optional ownership match |
+| `internal/graphquery` person access | person anchor to reachable targets | variable-length traversal with relation whitelist, label/attribute substring anchor lookup |
+| `internal/graphquery` effective access | fixed-arity fifteen-way union | union variants, substring predicates (`CONTAINS`/`ENDS WITH`) |
+| `internal/graphquery` crown jewel ranking | seed scan plus per-root bounded traversal | attribute substring seed predicates, batched relation-whitelisted traversal |
+| `internal/complianceimpact` | single-key fact lookup, dependency list/count, paged dependents | organizational kinds/relations for compliance facts, edge properties in results, keyset cursors, count aggregate |
+| `internal/policycandidate` grounding | closed key re-resolution of declared evidence | organizational schema mapping, edge properties in results |
+| `internal/findings` graph rules | fixed built-in rules using collect/optional/varlen | aggregations, optional match, variable-length traversal (per rule) |
+| `internal/grcpolicylifecycle` | per-type entity scan plus relation scan | attribute substring predicates, per-type subqueries |
+| `internal/workflowprojection` pruning | keyset-paged edge enumeration | keyset cursors, organizational mapping for finding kinds |
+| `internal/graphagent` probe counts | entity-kind and relation counts | relation-count aggregate RPC (entity-kind counts map to the existing `CountEntityKinds`) |
+
+Two callers are permanent residents of the compatibility port because their
+query text is authored at runtime rather than in code: the `graphagent` ask
+flow (LLM-drafted Cypher) and `policycandidate` shadow/experiment evaluation
+(`rule.Spec.Graph.Query`). The port exists for them; it is not migrated away.
 
 The append-log consumer defaults to new events. A rebuild uses
 `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff

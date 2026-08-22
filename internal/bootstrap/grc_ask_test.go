@@ -38,7 +38,7 @@ LIMIT 25`,
 		},
 		Summary: "Review `urn:cerebro:example:asset:alpha` first.",
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphAgentLLM: llm}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore), GraphAgentLLM: llm}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -64,11 +64,14 @@ LIMIT 25`,
 			t.Fatalf("event[%d] = %q, want %q", i, events[i].Name, name)
 		}
 	}
-	if len(graphStore.cypherRequests) != 4 {
-		t.Fatalf("cypher request count = %d, want 2 probes + EXPLAIN + execute", len(graphStore.cypherRequests))
+	if len(graphStore.entityKindRequests) != 1 || len(graphStore.relationRequests) != 1 {
+		t.Fatalf("typed probe requests = entity kinds %d relations %d, want one each", len(graphStore.entityKindRequests), len(graphStore.relationRequests))
 	}
-	if !strings.HasPrefix(graphStore.cypherRequests[2].Query, "EXPLAIN ") {
-		t.Fatalf("third cypher request = %q, want EXPLAIN", graphStore.cypherRequests[2].Query)
+	if len(graphStore.cypherRequests) != 2 {
+		t.Fatalf("cypher request count = %d, want EXPLAIN + execute", len(graphStore.cypherRequests))
+	}
+	if !strings.HasPrefix(graphStore.cypherRequests[0].Query, "EXPLAIN ") {
+		t.Fatalf("first cypher request = %q, want EXPLAIN", graphStore.cypherRequests[0].Query)
 	}
 }
 
@@ -91,7 +94,7 @@ LIMIT 25`,
 		},
 		Summary: "Review `urn:cerebro:example:asset:alpha` first.",
 	}
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphAgentLLM: llm}, nil)
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, GraphReads: NewGraphReadCapabilities(graphStore), GraphAgentLLM: llm}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -108,8 +111,10 @@ LIMIT 25`,
 }
 
 func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
+	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		GraphStore: &stubGraphStore{},
+		GraphStore: graphStore,
+		GraphReads: NewGraphReadCapabilities(graphStore),
 		GraphAgentLLM: &graphagent.StubLLMClient{DraftResponse: &graphagent.DraftResponse{
 			Rationale: "Planning filtered high-risk findings.",
 			Plan:      &graphagent.AskQueryPlan{Intent: graphagent.IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}},
@@ -218,8 +223,10 @@ func TestGRCAskMissingStartupLLMReturnsUnavailable(t *testing.T) {
 }
 
 func TestGRCAskDraftFailureReturnsServiceUnavailable(t *testing.T) {
+	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		GraphStore:    &stubGraphStore{},
+		GraphStore:    graphStore,
+		GraphReads:    NewGraphReadCapabilities(graphStore),
 		GraphAgentLLM: &graphagent.StubLLMClient{DraftErr: errors.New("bedrock unavailable")},
 	}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -267,8 +274,10 @@ func TestGRCAskDraftFailureReturnsServiceUnavailable(t *testing.T) {
 }
 
 func TestGRCAskLLMAuthenticationFailureUsesSpecificErrorCode(t *testing.T) {
+	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		GraphStore: &stubGraphStore{},
+		GraphStore: graphStore,
+		GraphReads: NewGraphReadCapabilities(graphStore),
 		GraphAgentLLM: &graphagent.StubLLMClient{DraftErr: errors.Join(
 			graphagent.ErrLLMAuthenticationFailed,
 			errors.New("openrouter authentication failed; check CEREBRO_OPENROUTER_API_KEY"),
@@ -310,8 +319,10 @@ func TestGRCAskLLMAuthenticationFailureUsesSpecificErrorCode(t *testing.T) {
 }
 
 func TestGRCAskLLMAccessDeniedUsesSpecificErrorCode(t *testing.T) {
+	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		GraphStore: &stubGraphStore{},
+		GraphStore: graphStore,
+		GraphReads: NewGraphReadCapabilities(graphStore),
 		GraphAgentLLM: &graphagent.StubLLMClient{DraftErr: errors.Join(
 			graphagent.ErrLLMAccessDenied,
 			errors.New("bedrock access denied; grant bedrock:InvokeModel"),
@@ -353,8 +364,10 @@ func TestGRCAskLLMAccessDeniedUsesSpecificErrorCode(t *testing.T) {
 }
 
 func TestGRCAskExplainFailureReturnsServiceUnavailable(t *testing.T) {
+	graphStore := &stubGraphStore{err: errors.New("neo4j unavailable")}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
-		GraphStore:    &stubGraphStore{err: errors.New("neo4j unavailable")},
+		GraphStore:    graphStore,
+		GraphReads:    NewGraphReadCapabilities(graphStore),
 		GraphAgentLLM: graphagent.NewStubLLMClient(),
 	}, nil)
 	server := httptest.NewServer(app.Handler())

@@ -3232,7 +3232,7 @@ func newMCPTestServerWithGraphReasoningAndSources(t *testing.T, store *stubRunti
 				TenantID:  "writer",
 			}},
 		},
-	}, Dependencies{StateStore: store, GraphStore: graph, GraphAgentLLM: llm}, sources)
+	}, Dependencies{StateStore: store, GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph), GraphAgentLLM: llm}, sources)
 	return httptest.NewServer(app.Handler())
 }
 

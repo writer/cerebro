@@ -1,0 +1,123 @@
+{
+  "data": [
+    {
+      "bookmarked": false,
+      "createdAt": "2026-08-20T19:35:52.000Z",
+      "environment": "default",
+      "externalId": null,
+      "htmlPath": "/project/cmhjguysg0001wl07p0gz3ch2/traces/f5611c9923a4443e8a3edf1097440c69",
+      "id": "example-2a9bdccc",
+      "input": "example-80b746f1",
+      "latency": 15.667,
+      "metadata": {
+        "action_id": "example-9d7d50ce",
+        "agent_run_id": "example-40f11500",
+        "assistant_mode": "example-d4f0bc5a",
+        "billing_model_name": "example-37a8eec1",
+        "eb_profile_injected": false,
+        "enable_thinking": false,
+        "harness": "example-3bfc2695",
+        "instance_id": "example-947f1875",
+        "llm_cache_read_pct": 835654355,
+        "llm_cache_read_ratio": 360713438,
+        "llm_cache_write_pct": 0,
+        "llm_cache_write_ratio": 0,
+        "llm_call_count": 282885559,
+        "llm_total_cache_write_tokens": {
+          "intValue": 0
+        },
+        "llm_total_cached_tokens": 246019278,
+        "llm_total_cost_details": {},
+        "llm_total_cost_usd": 0,
+        "llm_total_input_tokens": 447091929,
+        "llm_total_openrouter_billed_cost_usd": 0,
+        "llm_total_output_tokens": 476643176,
+        "llm_total_raw_cost_details": {},
+        "llm_total_reasoning_tokens": 921533316,
+        "llm_total_token_details": {
+          "input_cached_tokens": 246019278,
+          "output_reasoning_tokens": 921533316
+        },
+        "llm_total_tokens": 904228089,
+        "llm_total_upstream_inference_cost_usd": 0,
+        "llm_total_usage_details": {
+          "input": 447091929,
+          "output": 476643176,
+          "total": 904228089
+        },
+        "mcp_tools": [
+          "example-c1980f6d",
+          "example-4b60532a"
+        ],
+        "model_name": "example-bfd9c2d3",
+        "organization_id": 145634317,
+        "presentation_enabled": false,
+        "reasoning_effort": "example-c082456a",
+        "resourceAttributes": {
+          "service.name": "example-a0b88f76",
+          "telemetry.sdk.language": "example-11a4a60b",
+          "telemetry.sdk.name": "example-15646ccf",
+          "telemetry.sdk.version": "example-800c935f"
+        },
+        "restate_loop_attempt": 310162913,
+        "restate_loop_workflow_key": "example-40f11500",
+        "sandbox_enabled": false,
+        "scope": {
+          "attributes": {
+            "public_key": "example-b3651117"
+          },
+          "name": "example-b8e573c9",
+          "version": "example-3fa31b4b"
+        },
+        "selected_knowledge_graphs": [],
+        "subscription_type": "example-9b97ac5e",
+        "thread_id": "example-a27d91ef",
+        "user_id": 134433454
+      },
+      "name": "example-5384a87b",
+      "observations": [
+        "911d5d386277fb7a",
+        "ea0c77dc087d6474",
+        "2a9af5dc44bda294",
+        "39baea98e384ec99",
+        "dc85cac98b6c7a53",
+        "5be5359658a7bb5e",
+        "804a64d005e9e7ec",
+        "9ba74ffed807d701",
+        "fc9a007a7a77987c",
+        "d0fbfba4d7407c3d",
+        "b8f54d77474eaa25",
+        "bbc8302c8a8500ee",
+        "548f369f715115bf",
+        "b411033975369e58",
+        "7db432a12bf0a99c",
+        "71c1fe1d911b092a"
+      ],
+      "output": {
+        "final_status": "example-4ddb3e96",
+        "total_responses": 341359752
+      },
+      "projectId": "example-36bcc519",
+      "public": false,
+      "release": null,
+      "scores": [],
+      "sessionId": "example-a27d91ef",
+      "tags": [
+        "example-4cfd275a",
+        "example-db8fa515",
+        "example-a16882ba"
+      ],
+      "timestamp": "2026-08-20T19:35:48.044Z",
+      "totalCost": 0,
+      "updatedAt": "2026-08-20T19:36:02.916Z",
+      "userId": "example-fc1b5c53",
+      "version": null
+    }
+  ],
+  "meta": {
+    "limit": 1,
+    "page": 1,
+    "totalItems": 124214,
+    "totalPages": 124214
+  }
+}

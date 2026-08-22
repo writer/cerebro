@@ -13,7 +13,7 @@ func (a *App) handleGetGraphProvenance(w http.ResponseWriter, r *http.Request) {
 		writeGraphQueryError(w, err)
 		return
 	}
-	response, err := graphprovenance.New(dependencyGraphQueryStore(a.deps)).Get(r.Context(), graphprovenance.Request{URN: urn})
+	response, err := graphprovenance.New(a.deps.GraphReads.Catalog).Get(r.Context(), graphprovenance.Request{URN: urn})
 	if err != nil {
 		writeGraphQueryError(w, err)
 		return

@@ -1,0 +1,140 @@
+{
+  "tenant_id": "tenant-archetype",
+  "observed_at": "2026-08-20T02:00:00Z",
+  "scans": [
+    {
+      "id": 9,
+      "repository_id": 7,
+      "status": "completed",
+      "completed_at": "2026-08-20T01:02:03Z"
+    }
+  ],
+  "repositories": [
+    {
+      "id": 7,
+      "owner": "WriterInternal",
+      "name": "Archetype"
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "id": 1,
+      "scan_id": 9,
+      "line_number": 42,
+      "file_path": "app/main.py",
+      "category": "ssrf",
+      "severity": "high"
+    }
+  ],
+  "knowledge": {
+    "entries": [
+      {
+        "slug": "security:sql/injection",
+        "title": "SQL injection context",
+        "summary": "Repository query handling context.",
+        "topics": ["security", "sql"],
+        "metadata": {
+          "context_pack": "repository_context_pack_v2",
+          "health_score": 72,
+          "context_stale": true
+        }
+      }
+    ]
+  },
+  "expected": {
+    "scan": {
+      "family": "vulnerability",
+      "provider_kind": "archetype.scan",
+      "schema_ref": "archetype/scan/v1",
+      "event_id": "archetype-scan-9",
+      "request_kind": "scans",
+      "request_path": "/api/v1/scans?limit=100",
+      "occurred_at": "2026-08-20T01:02:03Z",
+      "fields": {
+        "owner": "WriterInternal",
+        "repo": "Archetype",
+        "repository_id": "7",
+        "scan_id": "9",
+        "source_product": "archetype",
+        "status": "completed",
+        "vulnerability_collection_state": "complete"
+      },
+      "payload": {
+        "id": 9,
+        "repository_id": 7,
+        "status": "completed",
+        "started_at": "",
+        "completed_at": "2026-08-20T01:02:03Z",
+        "created_at": ""
+      }
+    },
+    "vulnerability": {
+      "family": "vulnerability",
+      "provider_kind": "archetype.vulnerability",
+      "schema_ref": "archetype/vulnerability/v1",
+      "event_id": "archetype-vulnerability-9-1",
+      "request_kind": "vulnerabilities",
+      "request_path": "/api/v1/scans/9/vulnerabilities",
+      "occurred_at": "2026-08-20T01:02:03Z",
+      "fields": {
+        "category": "ssrf",
+        "file_path": "app/main.py",
+        "line_number": "42",
+        "owner": "WriterInternal",
+        "repo": "Archetype",
+        "repository_id": "7",
+        "scan_id": "9",
+        "severity": "high",
+        "source_product": "archetype",
+        "vulnerability_id": "1"
+      },
+      "payload": {
+        "id": 1,
+        "scan_id": 9,
+        "line_number": 42,
+        "file_path": "app/main.py",
+        "category": "ssrf",
+        "severity": "high",
+        "description": "",
+        "analyzer_score": 0.0,
+        "analyzer_label": "",
+        "created_at": ""
+      }
+    },
+    "library_note": {
+      "family": "vulnerability",
+      "provider_kind": "archetype.library_note",
+      "schema_ref": "archetype/library-note/v1",
+      "event_id": "archetype-library-7-security%3Asql%2Finjection",
+      "request_kind": "knowledge",
+      "request_path": "/api/v1/repositories/7/knowledge",
+      "occurred_at": "2026-08-20T01:02:03Z",
+      "fields": {
+        "context_pack": "repository_context_pack_v2",
+        "context_stale": "true",
+        "health_score": "72",
+        "knowledge_slug": "security:sql/injection",
+        "owner": "WriterInternal",
+        "repo": "Archetype",
+        "repository_id": "7",
+        "scan_id": "9",
+        "title": "SQL injection context",
+        "topics": "security,sql"
+      },
+      "payload": {
+        "slug": "security:sql/injection",
+        "title": "SQL injection context",
+        "summary": "Repository query handling context.",
+        "topics": ["security", "sql"],
+        "metadata": {
+          "context_pack": "repository_context_pack_v2",
+          "health_score": 72,
+          "context_stale": true
+        },
+        "repository_id": 7,
+        "repository_name": "Archetype",
+        "owner": "WriterInternal"
+      }
+    }
+  }
+}

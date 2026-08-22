@@ -675,4 +675,4 @@ func (s *validatorStore) ExplainReadCypher(_ context.Context, request ports.Cyph
 	return s.plan, nil
 }
 
-var _ ports.GraphQueryStore = (*validatorStore)(nil)
+var _ ports.RawCypherQueryStore = (*validatorStore)(nil)

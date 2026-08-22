@@ -437,7 +437,10 @@ func proofGateIssues(path string, definition connectordefinitions.Definition) []
 			highValueFamilies++
 		}
 	}
-	if len(definition.ResourceFamilies) < 2 || highValueFamilies > 12 {
+	singleFirstPartyKernel := len(definition.ResourceFamilies) == 1 &&
+		definition.ResourceFamilies[0].Read != nil &&
+		strings.TrimSpace(definition.ResourceFamilies[0].Read.ProviderKernel) != ""
+	if (len(definition.ResourceFamilies) < 2 && !singleFirstPartyKernel) || highValueFamilies > 12 {
 		issues = append(issues, Issue{Path: path, Message: "definition must include at least 2 resource families and at most 12 high-value resource families"})
 	}
 	if highValueFamilies == 0 {

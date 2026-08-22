@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import { useUserPreferences } from "@/components/providers";
-import { AttentionBanner, DataStateBanner, PageHeader, RiskBadge } from "@/components/grc/Primitives";
+import { AttentionBanner, DataStateBanner, PageHeader } from "@/components/grc/Primitives";
 import { countLabel } from "@/lib/format";
 import {
   displayDate,
@@ -22,6 +22,7 @@ import {
   shortEntity,
 } from "@/lib/grc";
 import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcPath, grcProgramReadinessPath, useGRCQuery } from "@/lib/grc-client";
+import { normalizeLegacyControlHref } from "@/lib/navigation";
 
 const HOME_DASHBOARD_FINDING_LIMIT = DASHBOARD_FINDING_LIMIT;
 
@@ -55,26 +56,21 @@ type HomeMetrics = {
 };
 
 type HomeQueueItem = {
-  action: string;
   dedupeKey: string;
   detail: string;
   href: string;
   id: string;
-  meta: string;
+  due: string;
+  framework: string;
+  owner: string;
   rank: number;
-  riskScore?: number;
   title: string;
   tone: WorkChipTone;
   type: string;
-  why: string;
+  status: string;
 };
 
 const ownerMissing = (finding: GRCFinding) => !finding.owner || finding.owner === "Unassigned";
-
-const confidenceLabel = (finding: GRCFinding) => {
-  if (typeof finding.confidence_score === "number") return `${Math.round(finding.confidence_score)}% confidence`;
-  return finding.evidence_count <= 1 ? "limited evidence" : `${finding.evidence_count} evidence`;
-};
 
 const findingSlaLabel = (finding: GRCFinding) => {
   if (finding.due_at) return `${humanize(finding.sla_status)} - ${displayDate(finding.due_at)}`;
@@ -84,18 +80,18 @@ const findingSlaLabel = (finding: GRCFinding) => {
 const findingReviewItem = (finding: GRCFinding): HomeQueueItem => {
   const riskScore = finding.risk_score ?? 0;
   return {
-    action: "Open risk",
     dedupeKey: `finding:${finding.id}`,
     detail: `${finding.owner || "Unassigned"} - ${findingSlaLabel(finding)}`,
     href: `/findings/${encodeURIComponent(finding.id)}`,
     id: `finding:${finding.id}`,
-    meta: confidenceLabel(finding),
+    due: finding.due_at ? displayDate(finding.due_at) : "Not set",
+    framework: finding.controls?.[0]?.framework_name || "Risk",
+    owner: finding.owner || "Unassigned",
     rank: riskScore >= 85 ? 0 : finding.severity === "CRITICAL" || finding.severity === "HIGH" ? 5 : ownerMissing(finding) ? 20 : 60,
-    riskScore,
     title: finding.title,
     tone: riskScore >= 85 || finding.severity === "CRITICAL" ? "danger" : "warning",
     type: "Risk",
-    why: riskScore >= 85 ? "risk 85+" : ownerMissing(finding) ? "no owner" : humanize(finding.severity),
+    status: humanize(finding.sla_status || finding.status),
   };
 };
 
@@ -110,21 +106,22 @@ const findingKeyFromHref = (href: string) => {
 };
 
 const workItemReviewItem = (item: GRCProgramWorkItem): HomeQueueItem => {
-  const href = item.href || (item.framework_name && item.control_id ? `/controls?framework=${encodeURIComponent(item.framework_name)}&control=${encodeURIComponent(item.control_id)}` : "/controls");
+  const href = normalizeLegacyControlHref(item.href || (item.framework_name && item.control_id ? `/controls?framework=${encodeURIComponent(item.framework_name)}&control=${encodeURIComponent(item.control_id)}` : "/controls"));
   const evidenceIssue = (item.missing_evidence_items ?? 0) + (item.stale_evidence_items ?? 0);
   const pointsAtRisk = href.startsWith("/findings/");
   return {
-    action: pointsAtRisk ? "Open risk" : "Open item",
     dedupeKey: findingKeyFromHref(href) || `work:${href}`,
     detail: item.reasons?.[0] || countLabel(item.open_findings ?? 0, "mapped finding"),
     href,
     id: `work:${item.id}`,
-    meta: [item.owner_domain || "Unassigned", item.status ? humanize(item.status) : ""].filter(Boolean).join(" - "),
+    due: item.due_at ? displayDate(item.due_at) : "Not set",
+    framework: item.framework_name || (pointsAtRisk ? "Risk" : "Control"),
+    owner: item.assignee || item.owner_domain || "Unassigned",
     rank: pointsAtRisk ? 45 : item.status === "failing" ? 12 : evidenceIssue > 0 ? 18 : 35,
     title: item.title,
     tone: item.status === "failing" ? "danger" : "warning",
     type: pointsAtRisk ? "Risk" : "Control",
-    why: item.missing_evidence_items ? `${item.missing_evidence_items} missing evidence` : item.stale_evidence_items ? `${item.stale_evidence_items} stale evidence` : "readiness",
+    status: humanize(item.status || "needs review"),
   };
 };
 
@@ -139,12 +136,6 @@ const earliestDueAt = (findings: GRCFinding[] | undefined) => {
     .filter((value) => Number.isFinite(value));
   if (timestamps.length === 0) return undefined;
   return new Date(Math.min(...timestamps)).toISOString();
-};
-
-const controlEvidenceProgress = (control: GRCControl) => {
-  const expected = Math.max(control.evidence_expectations ?? 0, control.evidence_items + (control.missing_evidence_items ?? 0));
-  if (expected <= 0) return `${control.evidence_items} attached`;
-  return `${control.evidence_items}/${expected} attached`;
 };
 
 const controlRecommendation = (control: GRCControl) => {
@@ -177,18 +168,20 @@ const controlHref = (control: GRCControl) =>
 const controlReviewItem = (control: GRCControl): HomeQueueItem => {
   const missingEvidence = control.missing_evidence_items ?? 0;
   const staleEvidence = control.stale_evidence_items ?? 0;
+  const dueAt = earliestDueAt(control.findings);
   return {
-    action: "Open control",
     dedupeKey: `control:${control.framework_name}:${control.control_id}`,
     detail: controlRecommendation(control),
     href: controlHref(control),
     id: `control:${controlKey(control)}`,
-    meta: `${controlOwner(control)} - ${controlEvidenceProgress(control)}`,
+    due: dueAt ? displayDate(dueAt) : "Not set",
+    framework: control.framework_name,
+    owner: controlOwner(control),
     rank: control.status === "failing" ? 15 : missingEvidence + staleEvidence > 0 ? 25 : 70,
     title: `${control.framework_name} ${control.control_id}`,
     tone: control.status === "failing" ? "danger" : missingEvidence + staleEvidence > 0 ? "warning" : "success",
     type: "Control",
-    why: control.status === "failing" ? "failing" : missingEvidence ? `${missingEvidence} missing` : staleEvidence ? `${staleEvidence} stale` : "review",
+    status: humanize(control.status),
   };
 };
 
@@ -207,32 +200,34 @@ const connectorReviewItem = (connector: GRCConnector): HomeQueueItem => {
   const dataDetail = dataLag === "\u2014" ? "not observed" : `${dataLag} ago`;
   const status = connector.status === "healthy" && connector.freshness !== "fresh" ? connector.freshness : connector.status;
   return {
-    action: "Open source",
     dedupeKey: `source:${sourceFilter}`,
     detail: `Sync ${syncDetail} - data ${dataDetail}`,
     href: `/connectors?source_id=${encodeURIComponent(sourceFilter)}`,
     id: `connector:${connector.runtime_id}`,
-    meta: humanize(status || "needs_review"),
+    due: "Review now",
+    framework: "Integration",
+    owner: "Unassigned",
     rank: connector.status === "failed" ? 30 : 50,
     title: source,
     tone: connector.status === "healthy" ? "warning" : "danger",
     type: "Source",
-    why: humanize(status || "needs review"),
+    status: humanize(status || "needs review"),
   };
 };
 
 const coverageReviewItem = (record: GRCSourceCoverageRecord): HomeQueueItem => ({
-  action: "Review scope",
   dedupeKey: `coverage:${record.source_id}:${record.dimension_id}`,
   detail: record.warning || record.notes?.[0] || `${record.dimension_type} coverage is incomplete.`,
   href: `/connectors/${encodeURIComponent(record.source_id)}?tab=scope`,
   id: `coverage:${record.source_id}:${record.dimension_id}`,
-  meta: record.source_id,
+  due: "Review now",
+  framework: "Integration",
+  owner: "Unassigned",
   rank: record.high_value ? 35 : 55,
   title: record.title || humanize(record.dimension_id),
   tone: record.high_value ? "danger" : "warning",
   type: "Coverage",
-  why: record.high_value ? "high-value gap" : humanize(record.state || record.support_level || "coverage gap"),
+  status: humanize(record.state || record.support_level || "coverage gap"),
 });
 
 const dedupeQueueItems = (items: HomeQueueItem[]) => {
@@ -244,7 +239,7 @@ const dedupeQueueItems = (items: HomeQueueItem[]) => {
   });
 };
 
-function buildHomeQueue({
+export function buildHomeQueue({
   connectors,
   controls,
   coverageBlindSpots,
@@ -291,45 +286,43 @@ function buildHomeQueue({
     .slice(0, 5);
 }
 
-const pageSummary = (metrics: HomeMetrics) =>
-  [
-    countLabel(metrics.summary.open_findings, "open risk"),
-    countLabel(metrics.summary.controls_failing, "failing control"),
-    countLabel(metrics.evidenceIssues, "evidence issue"),
-    countLabel(metrics.summary.stale_connectors, "stale source"),
-  ].join(", ") + ".";
-
-function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
+export function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
   return (
-    <section className="surface-panel">
+    <section className="surface-panel min-w-0 overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--border)] px-5 py-4">
         <div>
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Review now</h2>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Priority risk, control, and source items.</p>
+          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Open work queue</h2>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Items blocking readiness or waiting for an owner.</p>
         </div>
         <Link href="/risk-inbox" className="secondary-button px-3 py-1.5 text-[12px]">Open queue</Link>
+      </div>
+      <div className="hidden grid-cols-[minmax(220px,1fr)_120px_140px_100px_120px] gap-3 border-b border-[color:var(--border)] bg-[var(--surface-muted)] px-5 py-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] lg:grid">
+        <span>Work</span>
+        <span>Framework</span>
+        <span>Owner</span>
+        <span>Due</span>
+        <span>Status</span>
       </div>
       <div className="divide-y divide-[color:var(--border)]">
         {items.map((item) => (
           <Link
             key={item.id}
-            href={item.href}
-            className="grid gap-3 px-5 py-4 transition hover:bg-[var(--surface-muted)] lg:grid-cols-[96px_minmax(0,1fr)_180px_128px]"
+            href={normalizeLegacyControlHref(item.href)}
+            className="grid gap-3 px-5 py-4 transition hover:bg-[var(--surface-muted)] lg:grid-cols-[minmax(220px,1fr)_120px_140px_100px_120px] lg:items-center"
           >
-            <div className="flex items-start gap-2">
-              <WorkChip tone={item.tone}>{item.type}</WorkChip>
-            </div>
             <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{item.title}</div>
-              <div className="mt-1 text-[12px] leading-5 text-[var(--text-muted)]">{item.detail}</div>
+              <div className="flex items-center gap-2">
+                <WorkChip tone={item.tone}>{item.type}</WorkChip>
+                <div className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{item.title}</div>
+              </div>
+              <div className="mt-1 truncate text-[12px] leading-5 text-[var(--text-muted)]">{item.detail}</div>
             </div>
-            <div className="min-w-0 text-[12px] text-[var(--text-secondary)]">
-              <div className="font-semibold text-[var(--text-primary)]">{item.why}</div>
-              <div className="mt-1 truncate text-[var(--text-muted)]">{item.meta}</div>
-            </div>
-            <div className="flex items-center justify-between gap-2 lg:justify-end">
-              {typeof item.riskScore === "number" ? <RiskBadge score={item.riskScore} /> : <span className="text-[12px] font-semibold text-[var(--text-primary)]">{item.action}</span>}
-              <span className="text-[18px] leading-none text-[var(--text-muted)]" aria-hidden="true">&gt;</span>
+            <div className="truncate text-[12px] text-[var(--text-secondary)]"><span className="mr-2 text-[var(--text-muted)] lg:hidden">Framework</span>{item.framework}</div>
+            <div className="truncate text-[12px] text-[var(--text-secondary)]"><span className="mr-2 text-[var(--text-muted)] lg:hidden">Owner</span>{item.owner}</div>
+            <div className="text-[12px] text-[var(--text-secondary)]"><span className="mr-2 text-[var(--text-muted)] lg:hidden">Due</span>{item.due}</div>
+            <div className="flex items-center justify-between gap-2">
+              <WorkChip tone={item.tone}>{item.status}</WorkChip>
+              <span className="text-[16px] leading-none text-[var(--text-muted)]" aria-hidden="true">›</span>
             </div>
           </Link>
         ))}
@@ -338,6 +331,25 @@ function ReviewNowPanel({ items }: { items: HomeQueueItem[] }) {
         )}
       </div>
     </section>
+  );
+}
+
+function ReadinessBand({ framework, metrics }: { framework: string; metrics: HomeMetrics }) {
+  const score = Math.max(0, Math.min(100, metrics.auditReadinessScore));
+  return (
+    <Link href="/frameworks" className="surface-panel block px-5 py-4 transition hover:border-[color:var(--border-strong)]">
+      <div className="grid items-center gap-4 md:grid-cols-[180px_minmax(0,1fr)_80px_190px]">
+        <div>
+          <div className="text-[12px] font-semibold text-[var(--text-primary)]">{framework} readiness</div>
+          <div className="mt-1 text-[12px] text-[var(--text-muted)]">Open framework details</div>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+          <div className="h-full rounded-full bg-[var(--primary)]" style={{ width: `${score}%` }} />
+        </div>
+        <div className="text-2xl font-semibold tabular-nums text-[var(--text-primary)]">{Math.round(score)}%</div>
+        <div className="text-[12px] text-[var(--text-muted)]">{metrics.passingControls} of {metrics.controlTotal} controls ready</div>
+      </div>
+    </Link>
   );
 }
 
@@ -386,7 +398,7 @@ function ProgramHealthPanel({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Program health</h2>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Risk, controls, evidence, and sources.</p>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Current program blockers.</p>
         </div>
         <div className="text-right">
           <div className="text-2xl font-semibold text-[var(--text-primary)]">{Math.round(metrics.auditReadinessScore)}%</div>
@@ -399,13 +411,6 @@ function ProgramHealthPanel({
         </div>
       )}
       <div className="mt-4 divide-y divide-[color:var(--border)]">
-        <HealthRow
-          href="/risk-inbox"
-          label="Risk backlog"
-          value={metrics.summary.open_findings}
-          detail={`${metrics.criticalOrHighFindings} critical or high, ${metrics.summary.overdue_findings} overdue`}
-          tone={metrics.criticalOrHighFindings > 0 ? "danger" : metrics.summary.open_findings > 0 ? "warning" : "success"}
-        />
         <HealthRow
           href="/controls"
           label="Controls"
@@ -428,6 +433,12 @@ function ProgramHealthPanel({
           tone={sourceIssues > 0 ? "warning" : "success"}
         />
       </div>
+      <div className="mt-5 border-t border-[color:var(--border)] pt-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Next audit</div>
+        <div className="mt-2 text-[13px] font-semibold text-[var(--text-primary)]">Review the current evidence packet</div>
+        <p className="mt-1 text-[12px] leading-5 text-[var(--text-muted)]">Resolve packet blockers before sharing a snapshot.</p>
+        <Link href="/reports/audit-packages" className="secondary-button mt-3 inline-flex px-3 py-1.5 text-[12px]">Open audit packet</Link>
+      </div>
     </aside>
   );
 }
@@ -438,9 +449,9 @@ export default function Home() {
   const compactHome = preferences.display.density === "compact";
   const dashboard = useGRCQuery<GRCDashboard>(grcDashboardPath({ limit: HOME_DASHBOARD_FINDING_LIMIT }));
   const data = dashboard.data;
-  const readinessQuery = useGRCQuery<GRCProgramReadiness>(data ? grcProgramReadinessPath() : null);
+  const readinessQuery = useGRCQuery<GRCProgramReadiness>(grcProgramReadinessPath());
   const coverageQuery = useGRCQuery<{ blind_spots?: GRCSourceCoverageRecord[]; records?: GRCSourceCoverageRecord[] }>(
-    data ? grcPath("/connectors/coverage", { coverage_scope: "configured", coverage_view: "page", blind_spots_only: "true", page_size: 3 }) : null,
+    grcPath("/connectors/coverage", { coverage_scope: "configured", coverage_view: "page", blind_spots_only: "true", page_size: 3 }),
   );
   const readiness = readinessQuery.data?.summary;
   const priorityFindings = useMemo(() => (data?.findings ?? []).slice().sort(riskSort), [data?.findings]);
@@ -482,10 +493,8 @@ export default function Home() {
     findings: priorityFindings,
     readinessData: readinessQuery.data ?? undefined,
   }), [coverageBlindSpots, data?.connectors, data?.controls, priorityFindings, readinessQuery.data]);
-  const pageDescription = homeMetrics
-    ? pageSummary(homeMetrics)
-    : "Risks, controls, evidence, reports, and source health.";
   const readinessLabel = readiness ? humanize(readiness.status) : "current counts";
+  const primaryFramework = readinessQuery.data?.frameworks?.[0]?.framework_name || "Program";
 
   const reload = () => {
     void dashboard.reload();
@@ -496,16 +505,14 @@ export default function Home() {
     <div className={compactHome ? "space-y-4" : "space-y-5"}>
       <PageHeader
         contractId="overview"
-        title="Home"
-        description={pageDescription}
+        title="Compliance overview"
+        description="Review open work, evidence gaps, and audit readiness."
         action={
-          <button
-            type="button"
-            onClick={reload}
-            className="secondary-button px-3 py-1.5 text-[13px]"
-          >
-            Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={reload} className="secondary-button px-3 py-2 text-[13px]">Refresh data</button>
+            <Link href="/connectors" className="secondary-button px-3 py-2 text-[13px]">Connect source</Link>
+            <Link href="/reports/audit-packages" className="primary-button px-3 py-2 text-[13px]">Export audit packet</Link>
+          </div>
         }
       />
 
@@ -520,6 +527,7 @@ export default function Home() {
 
       {data && summary && homeMetrics && (
         <>
+          <ReadinessBand framework={primaryFramework} metrics={homeMetrics} />
           {(visibleSections.reviewNow || visibleSections.programHealth) && (
             <div className={`grid gap-4 ${visibleSections.reviewNow && visibleSections.programHealth ? "xl:grid-cols-[minmax(0,1fr)_340px]" : ""}`}>
               {visibleSections.reviewNow && <ReviewNowPanel items={queueItems} />}

@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/csv"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -453,6 +456,51 @@ func TestGeneratedPolicyMappingCSVsStayBelowGitHubBlobLimit(t *testing.T) {
 		if got := len(file.Content); got > maxCSVBlobBytes {
 			t.Fatalf("%s size = %d bytes, want <= %d bytes", file.Name, got, maxCSVBlobBytes)
 		}
+	}
+}
+
+func TestArtifactManifestRecordsDigestSizeAndRows(t *testing.T) {
+	files := []generatedFile{
+		{Name: "b.csv", Content: []byte("id,name\n2,Beta\n")},
+		{Name: "a.csv", Content: []byte("id,name\n1,Alpha\n")},
+	}
+
+	rows := readGeneratedCSV(t, generatedFile{Name: "artifact_manifest.csv", Content: artifactManifestBytes(files)})
+	if got, want := len(rows), 3; got != want {
+		t.Fatalf("manifest rows = %d, want %d", got, want)
+	}
+	if got, want := rows[0], []string{"file", "sha256", "bytes", "rows"}; !slices.Equal(got, want) {
+		t.Fatalf("manifest header = %v, want %v", got, want)
+	}
+	digest := sha256.Sum256(files[0].Content)
+	if got, want := rows[1], []string{"b.csv", fmt.Sprintf("%x", digest), "15", "2"}; !slices.Equal(got, want) {
+		t.Fatalf("manifest row = %v, want %v", got, want)
+	}
+}
+
+func TestWriteAndCheckArtifactManifest(t *testing.T) {
+	root := t.TempDir()
+	files := []generatedFile{{Name: "review.csv", Content: []byte("id\n1\n")}}
+	manifest := "docs/reference/policy-compliance-mapping-manifest.csv"
+
+	if err := writeArtifactManifest(root, manifest, files); err != nil {
+		t.Fatalf("writeArtifactManifest() error = %v", err)
+	}
+	stale, err := checkArtifactManifest(root, manifest, files)
+	if err != nil {
+		t.Fatalf("checkArtifactManifest() error = %v", err)
+	}
+	if stale {
+		t.Fatal("checkArtifactManifest() stale = true, want false")
+	}
+
+	files[0].Content = []byte("id\n2\n")
+	stale, err = checkArtifactManifest(root, manifest, files)
+	if err != nil {
+		t.Fatalf("checkArtifactManifest() after change error = %v", err)
+	}
+	if !stale {
+		t.Fatal("checkArtifactManifest() stale = false after content change")
 	}
 }
 

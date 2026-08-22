@@ -57,10 +57,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: ./.github/actions/setup-javascript-workspaces
         with:
-          node-version: 22
-          cache: npm
+          install: "false"
 
       - name: Verify portable contract consumers and release inputs
         run: scripts/release/verify_portable_consumer_chain.sh

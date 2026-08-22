@@ -13,6 +13,13 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+mod authority_evidence;
+pub use authority_evidence::{
+    AuthorityDecisionKind, AuthorityEvidenceError, AuthorityEvidenceRecord,
+    AuthorityEvidenceStream, validate_authority_evidence_record,
+};
 
 const MAX_PAGE_SIZE: usize = 1_000;
 
@@ -95,6 +102,7 @@ impl AuthModel {
                 | Self::OauthClientCredentials
                 | Self::TwoStep
                 | Self::Jwt
+                | Self::Signature
                 | Self::AwsSigV4
                 | Self::DuoHmacV5
         )
@@ -225,6 +233,7 @@ impl ProjectionClass {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompiledFamily {
     id: String,
+    base_url: Option<String>,
     method: HttpMethod,
     path: String,
     record_selector: String,
@@ -234,18 +243,32 @@ pub struct CompiledFamily {
     name_field: Option<String>,
     static_query: BTreeMap<String, String>,
     config_query: BTreeMap<String, PathParameterBinding>,
+    config_headers: BTreeMap<String, PathParameterBinding>,
     config_attributes: BTreeMap<String, PathParameterBinding>,
+    static_json_body: BTreeMap<String, serde_json::Value>,
+    config_json_body: BTreeMap<String, PathParameterBinding>,
+    map_records: BTreeMap<String, String>,
+    event_attributes: BTreeMap<String, String>,
+    event_static_attributes: BTreeMap<String, String>,
+    exact_event_attributes: bool,
     pagination: Pagination,
     cursor_in_json_body: bool,
     path_parameters: BTreeMap<String, PathParameterBinding>,
     projection: Projection,
     authoritative: bool,
     projection_authoritative: bool,
+    unsupported_reasons: Vec<UnsupportedReasonCode>,
 }
 
 impl CompiledFamily {
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// Public family-specific provider base URL, when it differs from the
+    /// source transport origin.
+    pub fn base_url(&self) -> Option<&str> {
+        self.base_url.as_deref()
     }
 
     pub fn method(&self) -> HttpMethod {
@@ -284,8 +307,36 @@ impl CompiledFamily {
         &self.config_query
     }
 
+    pub fn config_headers(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_headers
+    }
+
     pub fn config_attributes(&self) -> &BTreeMap<String, PathParameterBinding> {
         &self.config_attributes
+    }
+
+    pub fn static_json_body(&self) -> &BTreeMap<String, serde_json::Value> {
+        &self.static_json_body
+    }
+
+    pub fn config_json_body(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_json_body
+    }
+
+    pub fn map_records(&self) -> &BTreeMap<String, String> {
+        &self.map_records
+    }
+
+    pub fn event_attributes(&self) -> &BTreeMap<String, String> {
+        &self.event_attributes
+    }
+
+    pub fn event_static_attributes(&self) -> &BTreeMap<String, String> {
+        &self.event_static_attributes
+    }
+
+    pub fn exact_event_attributes(&self) -> bool {
+        self.exact_event_attributes
     }
 
     pub fn pagination(&self) -> &Pagination {
@@ -317,6 +368,10 @@ impl CompiledFamily {
     pub fn is_projection_authoritative(&self) -> bool {
         self.projection_authoritative
     }
+
+    pub fn unsupported_reasons(&self) -> &[UnsupportedReasonCode] {
+        &self.unsupported_reasons
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -324,13 +379,78 @@ pub struct CompiledSource {
     id: String,
     display_name: String,
     auth: AuthModel,
+    configurable_auth_models: Vec<AuthModel>,
     token_header: String,
     token_scheme: String,
     auth_header_parameters: BTreeMap<String, String>,
     auth_query_parameters: BTreeMap<String, String>,
     auth_json_body_parameters: BTreeMap<String, String>,
+    oauth_authorization_code: Option<CompiledOauthAuthorizationCode>,
+    oauth_client_credentials: Option<CompiledOauthClientCredentials>,
     authority: CollectionAuthority,
     families: Vec<CompiledFamily>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledOauthAuthorizationCode {
+    token_url: String,
+    scopes: Vec<String>,
+    scope_separator: String,
+    token_request_auth_method: String,
+    token_params: BTreeMap<String, String>,
+}
+
+impl CompiledOauthAuthorizationCode {
+    pub fn token_url(&self) -> &str {
+        &self.token_url
+    }
+
+    pub fn scopes(&self) -> &[String] {
+        &self.scopes
+    }
+
+    pub fn scope_separator(&self) -> &str {
+        &self.scope_separator
+    }
+
+    pub fn token_request_auth_method(&self) -> &str {
+        &self.token_request_auth_method
+    }
+
+    pub fn token_params(&self) -> &BTreeMap<String, String> {
+        &self.token_params
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledOauthClientCredentials {
+    token_url: String,
+    scopes: Vec<String>,
+    scope_separator: String,
+    token_request_auth_method: String,
+    token_params: BTreeMap<String, String>,
+}
+
+impl CompiledOauthClientCredentials {
+    pub fn token_url(&self) -> &str {
+        &self.token_url
+    }
+
+    pub fn scopes(&self) -> &[String] {
+        &self.scopes
+    }
+
+    pub fn scope_separator(&self) -> &str {
+        &self.scope_separator
+    }
+
+    pub fn token_request_auth_method(&self) -> &str {
+        &self.token_request_auth_method
+    }
+
+    pub fn token_params(&self) -> &BTreeMap<String, String> {
+        &self.token_params
+    }
 }
 
 impl CompiledSource {
@@ -344,6 +464,10 @@ impl CompiledSource {
 
     pub fn auth(&self) -> &AuthModel {
         &self.auth
+    }
+
+    pub fn configurable_auth_models(&self) -> &[AuthModel] {
+        &self.configurable_auth_models
     }
 
     pub fn token_header(&self) -> &str {
@@ -366,6 +490,14 @@ impl CompiledSource {
         &self.auth_json_body_parameters
     }
 
+    pub fn oauth_client_credentials(&self) -> Option<&CompiledOauthClientCredentials> {
+        self.oauth_client_credentials.as_ref()
+    }
+
+    pub fn oauth_authorization_code(&self) -> Option<&CompiledOauthAuthorizationCode> {
+        self.oauth_authorization_code.as_ref()
+    }
+
     pub fn authority(&self) -> CollectionAuthority {
         self.authority
     }
@@ -379,15 +511,146 @@ impl CompiledSource {
 pub struct CatalogSummary {
     pub sources: usize,
     pub families: usize,
+    pub push_sources: usize,
+    pub push_families: usize,
     pub authoritative_sources: usize,
     pub authoritative_families: usize,
     pub shadow_only_sources: usize,
     pub projection_classes: BTreeMap<ProjectionClass, usize>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogFamilyClassification {
+    RustAuthoritative,
+    ShadowOnly,
+    ProjectionOnly,
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnsupportedReasonCode {
+    UnsupportedAuthModel,
+    MissingProviderProof,
+    UnboundPathConfigParameter,
+    UnboundConfigQueryParameter,
+    UnboundConfigHeader,
+    UnboundConfigJsonBody,
+    UnboundConfigAttribute,
+    UnsupportedProjectionTemplate,
+    UnsupportedPaginationGrammar,
+    BespokeRuntime,
+    IncompleteRuntimeFamilyProof,
+    MissingProviderAuthorityEvidence,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct UnsupportedFeatureFamilyReport {
+    pub source_id: String,
+    pub family_id: String,
+    pub classification: CatalogFamilyClassification,
+    pub reason_codes: Vec<UnsupportedReasonCode>,
+    pub safe_detail: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct UnsupportedFeatureReport {
+    pub total_sources: usize,
+    pub total_families: usize,
+    pub rust_authoritative_families: usize,
+    pub shadow_only_families: usize,
+    pub projection_only_families: usize,
+    pub unsupported_families: usize,
+    pub reason_code_counts: BTreeMap<UnsupportedReasonCode, usize>,
+    pub missing_family_reports: Vec<String>,
+    pub families: Vec<UnsupportedFeatureFamilyReport>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct AuthorityReadinessFamilyReport {
+    pub source_id: String,
+    pub family_id: String,
+    pub engine: String,
+    pub authority_epoch: u64,
+    pub plan_digest: String,
+    pub proof_revision: String,
+    pub fixture_revision: String,
+    pub parity_status: String,
+    pub rollback_status: String,
+    pub projection_status: String,
+    pub promotion_decision_id: String,
+    pub blocking_reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct AuthorityReadinessReport {
+    pub total_families: usize,
+    pub rust_authoritative_families: usize,
+    pub shadow_or_go_families: usize,
+    pub families: Vec<AuthorityReadinessFamilyReport>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceCatalog {
     sources: BTreeMap<String, CompiledSource>,
+    push_sources: BTreeMap<String, CompiledPushSource>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledPushSource {
+    id: String,
+    display_name: String,
+    families: BTreeMap<String, CompiledPushFamily>,
+}
+
+impl CompiledPushSource {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
+    pub fn families(&self) -> impl Iterator<Item = &CompiledPushFamily> {
+        self.families.values()
+    }
+
+    pub fn family(&self, family_id: &str) -> Option<&CompiledPushFamily> {
+        self.families.get(family_id)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledPushFamily {
+    id: String,
+    event_kind: String,
+    schema_ref: String,
+    required_attributes: Vec<String>,
+    required_payload_fields: Vec<String>,
+}
+
+impl CompiledPushFamily {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn event_kind(&self) -> &str {
+        &self.event_kind
+    }
+
+    pub fn schema_ref(&self) -> &str {
+        &self.schema_ref
+    }
+
+    pub fn required_attributes(&self) -> &[String] {
+        &self.required_attributes
+    }
+
+    pub fn required_payload_fields(&self) -> &[String] {
+        &self.required_payload_fields
+    }
 }
 
 impl SourceCatalog {
@@ -397,7 +660,7 @@ impl SourceCatalog {
         definition_root: impl AsRef<Path>,
         source_root: impl AsRef<Path>,
     ) -> Result<Self, CatalogError> {
-        let proofs = load_proofs(source_root.as_ref())?;
+        let manifests = load_source_manifests(source_root.as_ref())?;
         let mut definition_paths = yaml_files(definition_root.as_ref())?;
         definition_paths.sort();
         let mut sources = BTreeMap::new();
@@ -409,13 +672,17 @@ impl SourceCatalog {
                     message: error.to_string(),
                 })?;
             for entry in file.entries {
-                let source = compile_source(&path, entry, &proofs)?;
+                let source = compile_source(&path, entry, &manifests.proofs)?;
                 if sources.insert(source.id.clone(), source.clone()).is_some() {
                     return Err(CatalogError::DuplicateSource(source.id));
                 }
             }
         }
-        Ok(Self { sources })
+        reject_dual_mode_source_ids(sources.keys(), &manifests.push_sources)?;
+        Ok(Self {
+            sources,
+            push_sources: manifests.push_sources,
+        })
     }
 
     pub fn get(&self, source_id: &str) -> Option<&CompiledSource> {
@@ -424,6 +691,27 @@ impl SourceCatalog {
 
     pub fn sources(&self) -> impl Iterator<Item = &CompiledSource> {
         self.sources.values()
+    }
+
+    /// Returns a checked-in push-only source contract. Push contracts are
+    /// intentionally separate from HTTP connector definitions so they cannot
+    /// be selected as empty pollers.
+    pub fn push_source(&self, source_id: &str) -> Option<&CompiledPushSource> {
+        self.push_sources.get(source_id)
+    }
+
+    pub fn push_sources(&self) -> impl Iterator<Item = &CompiledPushSource> {
+        self.push_sources.values()
+    }
+
+    /// Returns whether an append-log source/family pair is admitted by either
+    /// the pull connector catalog or an exact push-only event contract.
+    pub fn admits_event_family(&self, source_id: &str, family_id: &str) -> bool {
+        self.sources.contains_key(source_id)
+            || self
+                .push_sources
+                .get(source_id)
+                .is_some_and(|source| source.family(family_id).is_some())
     }
 
     pub fn summary(&self) -> CatalogSummary {
@@ -452,12 +740,151 @@ impl SourceCatalog {
         CatalogSummary {
             sources: self.sources.len(),
             families,
+            push_sources: self.push_sources.len(),
+            push_families: self
+                .push_sources
+                .values()
+                .map(|source| source.families.len())
+                .sum(),
             authoritative_sources,
             authoritative_families,
             shadow_only_sources: self.sources.len() - authoritative_sources,
             projection_classes,
         }
     }
+
+    pub fn unsupported_feature_report(&self) -> UnsupportedFeatureReport {
+        let mut families = Vec::new();
+        let mut reason_code_counts = BTreeMap::new();
+        let mut rust_authoritative_families = 0usize;
+        let mut shadow_only_families = 0usize;
+        let mut projection_only_families = 0usize;
+        let mut unsupported_families = 0usize;
+        for source in self.sources() {
+            for family in source.families() {
+                let mut reason_codes = family.unsupported_reasons().to_vec();
+                if family.is_authoritative() {
+                    reason_codes.push(UnsupportedReasonCode::MissingProviderAuthorityEvidence);
+                }
+                reason_codes.sort();
+                reason_codes.dedup();
+                let classification = if family.is_authoritative()
+                    && !reason_codes
+                        .contains(&UnsupportedReasonCode::MissingProviderAuthorityEvidence)
+                {
+                    rust_authoritative_families += 1;
+                    CatalogFamilyClassification::RustAuthoritative
+                } else if family.is_projection_authoritative() {
+                    projection_only_families += 1;
+                    CatalogFamilyClassification::ProjectionOnly
+                } else if source.authority() == CollectionAuthority::ShadowOnly {
+                    shadow_only_families += 1;
+                    CatalogFamilyClassification::ShadowOnly
+                } else {
+                    unsupported_families += 1;
+                    CatalogFamilyClassification::Unsupported
+                };
+                if classification != CatalogFamilyClassification::RustAuthoritative {
+                    if reason_codes.is_empty() {
+                        reason_codes.push(UnsupportedReasonCode::IncompleteRuntimeFamilyProof);
+                    }
+                    for reason in &reason_codes {
+                        *reason_code_counts.entry(*reason).or_insert(0) += 1;
+                    }
+                }
+                families.push(UnsupportedFeatureFamilyReport {
+                    source_id: source.id().to_owned(),
+                    family_id: family.id().to_owned(),
+                    classification,
+                    reason_codes,
+                    safe_detail: format!(
+                        "source={} family={} classification={classification:?}",
+                        source.id(),
+                        family.id()
+                    ),
+                });
+            }
+        }
+        let total_families = families.len();
+        UnsupportedFeatureReport {
+            total_sources: self.sources.len(),
+            total_families,
+            rust_authoritative_families,
+            shadow_only_families,
+            projection_only_families,
+            unsupported_families,
+            reason_code_counts,
+            missing_family_reports: Vec::new(),
+            families,
+        }
+    }
+
+    pub fn authority_readiness_report(&self) -> AuthorityReadinessReport {
+        let mut families = Vec::new();
+        for source in self.sources() {
+            for family in source.families() {
+                let plan_digest = family_plan_digest(source, family);
+                let mut blocking_reasons = vec![
+                    "fixture_corpus_revision".to_owned(),
+                    "supported_auth_modes".to_owned(),
+                    "supported_pagination_grammar".to_owned(),
+                    "supported_provider_error_modes".to_owned(),
+                    "egress_allowlist".to_owned(),
+                    "response_decompression_limits".to_owned(),
+                    "credential_lease_mode".to_owned(),
+                    "rollback_receipt".to_owned(),
+                    "fixture_parity_status".to_owned(),
+                    "canonical_digest_vectors".to_owned(),
+                    "credential_config_safety_proof".to_owned(),
+                    "cursor_checkpoint_rollback_proof".to_owned(),
+                    "operational_fencing_recovery_proof".to_owned(),
+                    "worker_runtime_build_identity".to_owned(),
+                    "promotion_receipt".to_owned(),
+                ];
+                if !family.is_projection_authoritative() {
+                    blocking_reasons.push("projection_intent_readiness".to_owned());
+                }
+                blocking_reasons.sort();
+                families.push(AuthorityReadinessFamilyReport {
+                    source_id: source.id().to_owned(),
+                    family_id: family.id().to_owned(),
+                    engine: "go_or_shadow_only".to_owned(),
+                    authority_epoch: 0,
+                    plan_digest,
+                    proof_revision: "provider-proof:incomplete".to_owned(),
+                    fixture_revision: String::new(),
+                    parity_status: "missing".to_owned(),
+                    rollback_status: "missing".to_owned(),
+                    projection_status: if family.is_projection_authoritative() {
+                        "go_projection_dependency".to_owned()
+                    } else {
+                        "missing".to_owned()
+                    },
+                    promotion_decision_id: String::new(),
+                    blocking_reasons,
+                });
+            }
+        }
+        AuthorityReadinessReport {
+            total_families: families.len(),
+            rust_authoritative_families: 0,
+            shadow_or_go_families: families.len(),
+            families,
+        }
+    }
+}
+
+fn reject_dual_mode_source_ids<'a>(
+    pull_source_ids: impl Iterator<Item = &'a String>,
+    push_sources: &BTreeMap<String, CompiledPushSource>,
+) -> Result<(), CatalogError> {
+    if let Some(source_id) = pull_source_ids
+        .filter(|source_id| push_sources.contains_key(source_id.as_str()))
+        .min()
+    {
+        return Err(CatalogError::DuplicateSource(source_id.clone()));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -496,6 +923,10 @@ struct ConfigFieldWire {
 struct AuthWire {
     model: String,
     #[serde(default)]
+    configurable_models: Vec<String>,
+    #[serde(default)]
+    model_config_key: String,
+    #[serde(default)]
     credential_fields: Vec<CredentialFieldWire>,
     #[serde(default)]
     token_header: String,
@@ -507,6 +938,18 @@ struct AuthWire {
     query_parameters: BTreeMap<String, String>,
     #[serde(default)]
     json_body_parameters: BTreeMap<String, String>,
+    #[serde(default)]
+    token_url: String,
+    #[serde(default)]
+    refresh_url: String,
+    #[serde(default)]
+    scopes: Vec<String>,
+    #[serde(default)]
+    scope_separator: String,
+    #[serde(default)]
+    token_request_auth_method: String,
+    #[serde(default)]
+    token_params: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -517,6 +960,8 @@ struct CredentialFieldWire {
 #[derive(Deserialize)]
 struct FamilyWire {
     id: String,
+    #[serde(default)]
+    singleton: bool,
     #[serde(default)]
     method: String,
     path: String,
@@ -535,14 +980,30 @@ struct FamilyWire {
     config: Option<FamilyConfigWire>,
     #[serde(default)]
     read: Option<FamilyReadWire>,
+    #[serde(default)]
+    event: EventWire,
     pagination: Option<PaginationWire>,
     projection: Option<ProjectionWire>,
 }
 
 #[derive(Default, Deserialize)]
+struct EventWire {
+    #[serde(default)]
+    attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    static_attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    exact_attributes: bool,
+}
+
+#[derive(Default, Deserialize)]
 struct FamilyConfigWire {
     #[serde(default)]
+    base_url: String,
+    #[serde(default)]
     config_query: BTreeMap<String, String>,
+    #[serde(default)]
+    config_headers: BTreeMap<String, String>,
     #[serde(default)]
     config_attributes: BTreeMap<String, String>,
     #[serde(default)]
@@ -555,9 +1016,15 @@ struct FamilyReadWire {
     path_param_fanout: BTreeMap<String, String>,
     #[serde(default)]
     scalar_record_field: String,
+    #[serde(default)]
+    static_json_body: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    config_json_body: BTreeMap<String, String>,
+    #[serde(default)]
+    map_records: BTreeMap<String, String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct PaginationWire {
     #[serde(default)]
     r#type: String,
@@ -580,7 +1047,7 @@ struct PaginationWire {
     #[serde(default)]
     next_url_json_path: String,
     #[serde(default)]
-    start_page: usize,
+    start_page: Option<usize>,
     #[serde(default)]
     page_size: usize,
     #[serde(default)]
@@ -600,9 +1067,27 @@ struct ProjectionWire {
 #[derive(Clone, Debug, Deserialize)]
 struct ProofManifestWire {
     id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    collection_mode: String,
+    #[serde(default)]
+    emitted_kinds: Vec<String>,
+    #[serde(default)]
+    event_contracts: Vec<PushEventContractWire>,
     provider_api: Option<ProviderApiWire>,
     #[serde(default)]
     runtime_families: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct PushEventContractWire {
+    kind: String,
+    schema_ref: String,
+    #[serde(default)]
+    required_attributes: Vec<String>,
+    #[serde(default)]
+    required_payload_fields: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -641,6 +1126,27 @@ fn compile_source(
             message: format!("unsupported auth model {}", entry.definition.auth.model),
         }
     })?;
+    let configurable_auth_models = if entry.definition.auth.configurable_models.is_empty() {
+        vec![auth.clone()]
+    } else {
+        let mut models = Vec::new();
+        for model in &entry.definition.auth.configurable_models {
+            let model = AuthModel::parse(model.trim()).ok_or_else(|| CatalogError::Invalid {
+                path: path.to_path_buf(),
+                message: format!("unsupported configurable auth model {model}"),
+            })?;
+            if !models.contains(&model) {
+                models.push(model);
+            }
+        }
+        if !models.contains(&auth) {
+            return invalid(
+                path,
+                "configurable auth models must include the default auth model",
+            );
+        }
+        models
+    };
     let token_header = entry.definition.auth.token_header.trim().to_owned();
     if token_header.len() > 128
         || token_header
@@ -660,6 +1166,9 @@ fn compile_source(
         .iter()
         .map(|field| field.key.trim())
         .collect::<BTreeSet<_>>();
+    let oauth_authorization_code = compile_oauth_authorization_code(path, &entry.definition.auth)?;
+    let oauth_client_credentials =
+        compile_oauth_client_credentials(path, &entry.definition.auth, &credential_fields)?;
     let mut auth_header_parameters = BTreeMap::new();
     let mut normalized_header_names = BTreeSet::new();
     for (header, credential_field) in entry.definition.auth.header_parameters {
@@ -785,13 +1294,29 @@ fn compile_source(
         .iter()
         .map(|field| (field.key.as_str(), field.required))
         .collect::<BTreeMap<_, _>>();
-    let generic_runtime_supported = classifier_supported
-        && auth.supports_generic_runtime()
+    let model_config_key = entry.definition.auth.model_config_key.trim();
+    if configurable_auth_models.len() > 1 {
+        if model_config_key.is_empty() || !config_fields.contains_key(model_config_key) {
+            return invalid(
+                path,
+                "selectable authentication requires a declared model_config_key config field",
+            );
+        }
+    } else if !model_config_key.is_empty() {
+        return invalid(
+            path,
+            "model_config_key requires more than one configurable auth model",
+        );
+    }
+    let auth_runtime_supported = configurable_auth_models
+        .iter()
+        .all(AuthModel::supports_generic_runtime)
         && (auth != AuthModel::ApiKey
             || !token_header.is_empty()
             || !auth_header_parameters.is_empty()
             || !auth_query_parameters.is_empty()
             || !auth_json_body_parameters.is_empty());
+    let generic_runtime_supported = classifier_supported && auth_runtime_supported;
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
     let mut families = Vec::with_capacity(entry.definition.resource_families.len());
@@ -804,6 +1329,8 @@ fn compile_source(
             family,
             &verified_families,
             generic_runtime_supported,
+            classifier_supported,
+            auth_runtime_supported,
             &config_fields,
         )?);
     }
@@ -818,11 +1345,13 @@ fn compile_source(
         );
     }
     if auth_json_body_parameters.is_empty()
-        && families.iter().any(CompiledFamily::cursor_in_json_body)
+        && families
+            .iter()
+            .any(|family| family.cursor_in_json_body() && family.static_json_body().is_empty())
     {
         return invalid(
             path,
-            "JSON body cursor placement requires JSON body authentication",
+            "JSON body cursor placement requires a static JSON body or JSON body authentication",
         );
     }
     if families.is_empty() {
@@ -838,14 +1367,164 @@ fn compile_source(
         id,
         display_name: nonempty(path, "display_name", entry.definition.display_name)?,
         auth,
+        configurable_auth_models,
         token_header,
         token_scheme,
         auth_header_parameters,
         auth_query_parameters,
         auth_json_body_parameters,
+        oauth_authorization_code,
+        oauth_client_credentials,
         authority,
         families,
     })
+}
+
+fn compile_oauth_authorization_code(
+    path: &Path,
+    auth: &AuthWire,
+) -> Result<Option<CompiledOauthAuthorizationCode>, CatalogError> {
+    if auth.model.trim() != "oauth_authorization_code" {
+        return Ok(None);
+    }
+    let token_url = if auth.refresh_url.trim().is_empty() {
+        auth.token_url.trim()
+    } else {
+        auth.refresh_url.trim()
+    };
+    if token_url.is_empty() || token_url.len() > 2_048 || token_url.chars().any(char::is_control) {
+        return invalid(path, "oauth_authorization_code token_url is invalid");
+    }
+    let token_request_auth_method = match auth.token_request_auth_method.trim() {
+        "" | "client_secret_post" => "client_secret_post",
+        "client_secret_basic" | "basic" => "client_secret_basic",
+        _ => {
+            return invalid(
+                path,
+                "oauth_authorization_code token request auth method is invalid",
+            );
+        }
+    };
+    let scope_separator = if auth.scope_separator.is_empty() {
+        " "
+    } else {
+        auth.scope_separator.as_str()
+    };
+    if scope_separator.len() > 16 || scope_separator.chars().any(char::is_control) {
+        return invalid(path, "oauth_authorization_code scope separator is invalid");
+    }
+    let scopes = auth
+        .scopes
+        .iter()
+        .map(|scope| scope.trim())
+        .filter(|scope| !scope.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if scopes.len() > 128
+        || scopes
+            .iter()
+            .any(|scope| scope.len() > 512 || scope.chars().any(char::is_control))
+    {
+        return invalid(path, "oauth_authorization_code scopes are invalid");
+    }
+    if auth.token_params.len() > 32
+        || auth.token_params.iter().any(|(key, value)| {
+            key.is_empty()
+                || key.len() > 128
+                || !key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+                || value.len() > 2_048
+                || value.chars().any(char::is_control)
+        })
+    {
+        return invalid(
+            path,
+            "oauth_authorization_code token parameters are invalid",
+        );
+    }
+    Ok(Some(CompiledOauthAuthorizationCode {
+        token_url: token_url.to_owned(),
+        scopes,
+        scope_separator: scope_separator.to_owned(),
+        token_request_auth_method: token_request_auth_method.to_owned(),
+        token_params: auth.token_params.clone(),
+    }))
+}
+
+fn compile_oauth_client_credentials(
+    path: &Path,
+    auth: &AuthWire,
+    credential_fields: &BTreeSet<&str>,
+) -> Result<Option<CompiledOauthClientCredentials>, CatalogError> {
+    if auth.model.trim() != "oauth_client_credentials" {
+        return Ok(None);
+    }
+    if !credential_fields.contains("client_id") || !credential_fields.contains("client_secret") {
+        return invalid(
+            path,
+            "oauth_client_credentials requires client_id and client_secret credential fields",
+        );
+    }
+    let token_url = auth.token_url.trim();
+    if token_url.is_empty() || token_url.len() > 2_048 || token_url.chars().any(char::is_control) {
+        return invalid(path, "oauth_client_credentials token_url is invalid");
+    }
+    let token_request_auth_method = match auth.token_request_auth_method.trim() {
+        "" | "client_secret_post" => "client_secret_post",
+        "client_secret_basic" | "basic" => "client_secret_basic",
+        _ => {
+            return invalid(
+                path,
+                "oauth_client_credentials token request auth method is invalid",
+            );
+        }
+    };
+    let scope_separator = if auth.scope_separator.is_empty() {
+        " "
+    } else {
+        auth.scope_separator.as_str()
+    };
+    if scope_separator.len() > 16 || scope_separator.chars().any(char::is_control) {
+        return invalid(path, "oauth_client_credentials scope separator is invalid");
+    }
+    let scopes = auth
+        .scopes
+        .iter()
+        .map(|scope| scope.trim())
+        .filter(|scope| !scope.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if scopes.len() > 128
+        || scopes
+            .iter()
+            .any(|scope| scope.len() > 512 || scope.chars().any(char::is_control))
+    {
+        return invalid(path, "oauth_client_credentials scopes are invalid");
+    }
+    if auth.token_params.len() > 32
+        || auth.token_params.iter().any(|(key, value)| {
+            key.is_empty()
+                || key.len() > 128
+                || !key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+                || value.len() > 2_048
+                || value.chars().any(char::is_control)
+        })
+    {
+        return invalid(
+            path,
+            "oauth_client_credentials token parameters are invalid",
+        );
+    }
+    Ok(Some(CompiledOauthClientCredentials {
+        token_url: token_url.to_owned(),
+        scopes,
+        scope_separator: scope_separator.to_owned(),
+        token_request_auth_method: token_request_auth_method.to_owned(),
+        token_params: auth.token_params.clone(),
+    }))
 }
 
 fn compile_family(
@@ -853,6 +1532,8 @@ fn compile_family(
     family: FamilyWire,
     verified: &BTreeSet<(String, String, String)>,
     generic_runtime_supported: bool,
+    classifier_supported: bool,
+    auth_runtime_supported: bool,
     config_fields: &BTreeMap<&str, bool>,
 ) -> Result<CompiledFamily, CatalogError> {
     let method = match family.method.trim() {
@@ -957,6 +1638,49 @@ fn compile_family(
         })
         .collect::<BTreeMap<_, _>>();
     let config_query_configured = config_query.len() == config_query_wire.len();
+    let config_headers_wire = family
+        .config
+        .as_ref()
+        .map(|config| &config.config_headers)
+        .cloned()
+        .unwrap_or_default();
+    if config_headers_wire.keys().any(|header| {
+        header.is_empty()
+            || header.len() > 128
+            || !header.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || matches!(
+                        byte,
+                        b'!' | b'#'
+                            | b'$'
+                            | b'%'
+                            | b'&'
+                            | b'\''
+                            | b'*'
+                            | b'+'
+                            | b'-'
+                            | b'.'
+                            | b'^'
+                            | b'_'
+                            | b'`'
+                            | b'|'
+                            | b'~'
+                    )
+            })
+    }) {
+        return invalid(
+            path,
+            &format!("family {} config header name is invalid", family.id),
+        );
+    }
+    let config_headers = config_headers_wire
+        .iter()
+        .filter_map(|(header, config_field)| {
+            config_query_binding(config_field, config_fields)
+                .map(|binding| (header.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_headers_configured = config_headers.len() == config_headers_wire.len();
     let config_attributes_wire = family
         .config
         .as_ref()
@@ -983,10 +1707,13 @@ fn compile_family(
         .config
         .as_ref()
         .and_then(|config| optional(config.id_template.clone()));
-    if id_template
-        .as_deref()
-        .is_some_and(|template| !valid_id_template(template))
-    {
+    let base_url = family
+        .config
+        .as_ref()
+        .and_then(|config| optional(config.base_url.trim().to_owned()));
+    if id_template.as_deref().is_some_and(|template| {
+        !(valid_id_template(template) || family.singleton && valid_singleton_id_literal(template))
+    }) {
         return invalid(
             path,
             &format!("family {} id_template is invalid", family.id),
@@ -1030,35 +1757,171 @@ fn compile_family(
     }) {
         return invalid(path, "family scalar_record_field is invalid");
     }
-    let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
-        verified.contains(&(
-            family.id.clone(),
-            match method {
-                HttpMethod::Get => "GET".to_owned(),
-                HttpMethod::Post => "POST".to_owned(),
-            },
+    let static_json_body = family
+        .read
+        .as_ref()
+        .map(|read| read.static_json_body.clone())
+        .unwrap_or_default();
+    if !static_json_body.is_empty() {
+        if method != HttpMethod::Post {
+            return invalid(
+                path,
+                &format!("family {} static JSON body requires POST", family.id),
+            );
+        }
+        if static_json_body.keys().any(|key| {
+            key.is_empty()
+                || key.len() > 128
+                || !key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        }) {
+            return invalid(
+                path,
+                &format!("family {} static JSON body key is invalid", family.id),
+            );
+        }
+        let body_size = serde_json::to_vec(&static_json_body)
+            .map_err(|error| CatalogError::Invalid {
+                path: path.to_path_buf(),
+                message: format!("family {} static JSON body is invalid: {error}", family.id),
+            })?
+            .len();
+        if body_size > 16 * 1024 {
+            return invalid(
+                path,
+                &format!("family {} static JSON body exceeds 16384 bytes", family.id),
+            );
+        }
+    }
+    let config_json_body_wire = family
+        .read
+        .as_ref()
+        .map(|read| read.config_json_body.clone())
+        .unwrap_or_default();
+    if !config_json_body_wire.is_empty() && method != HttpMethod::Post {
+        return invalid(
             path,
-        ))
-    });
+            &format!("family {} configured JSON body requires POST", family.id),
+        );
+    }
+    if config_json_body_wire.keys().any(|key| {
+        key.is_empty()
+            || key.len() > 128
+            || !key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    }) {
+        return invalid(
+            path,
+            &format!("family {} configured JSON body key is invalid", family.id),
+        );
+    }
+    let config_json_body = config_json_body_wire
+        .iter()
+        .filter_map(|(parameter, config_field)| {
+            config_query_binding(config_field, config_fields)
+                .map(|binding| (parameter.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_json_body_configured = config_json_body.len() == config_json_body_wire.len();
+    let map_records = family
+        .read
+        .as_ref()
+        .map(|read| read.map_records.clone())
+        .unwrap_or_default();
+    if map_records.len() > 1
+        || map_records
+            .iter()
+            .any(|(path, value)| path.trim().is_empty() || value.trim().is_empty())
+    {
+        return invalid(
+            path,
+            &format!("family {} map records are invalid", family.id),
+        );
+    }
+    let provider_contract_verified = canonical_family_locator(base_url.as_deref(), &family.path)
+        .is_some_and(|path| {
+            verified.contains(&(
+                family.id.clone(),
+                match method {
+                    HttpMethod::Get => "GET".to_owned(),
+                    HttpMethod::Post => "POST".to_owned(),
+                },
+                path,
+            ))
+        });
+    let authoritative = generic_runtime_supported
+        && provider_contract_verified
+        && path_parameters_configured
+        && config_query_configured
+        && config_headers_configured
+        && config_json_body_configured
+        && config_attributes_configured;
+    let projection_authoritative =
+        provider_contract_verified && projection_class.can_be_authoritative();
+    let mut unsupported_reasons = Vec::new();
+    if !auth_runtime_supported {
+        unsupported_reasons.push(UnsupportedReasonCode::UnsupportedAuthModel);
+    }
+    if !classifier_supported {
+        unsupported_reasons.push(UnsupportedReasonCode::BespokeRuntime);
+    }
+    if !provider_contract_verified {
+        unsupported_reasons.push(UnsupportedReasonCode::MissingProviderProof);
+        unsupported_reasons.push(UnsupportedReasonCode::IncompleteRuntimeFamilyProof);
+    }
+    if !path_parameters_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundPathConfigParameter);
+    }
+    if !config_query_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigQueryParameter);
+    }
+    if !config_headers_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigHeader);
+    }
+    if !config_json_body_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigJsonBody);
+    }
+    if !config_attributes_configured {
+        unsupported_reasons.push(UnsupportedReasonCode::UnboundConfigAttribute);
+    }
+    if !projection_class.can_be_authoritative() {
+        unsupported_reasons.push(UnsupportedReasonCode::BespokeRuntime);
+        unsupported_reasons.push(UnsupportedReasonCode::UnsupportedProjectionTemplate);
+    }
+    if matches!(
+        compile_pagination(path, family.pagination.as_ref().cloned())?,
+        Pagination::NextUrl { .. }
+    ) {
+        unsupported_reasons.push(UnsupportedReasonCode::UnsupportedPaginationGrammar);
+    }
+    unsupported_reasons.sort();
+    unsupported_reasons.dedup();
+    let family_id = nonempty(path, "family id", family.id)?;
+    let id_field = validate_id_field(path, &family_id, family.id_field)?;
     Ok(CompiledFamily {
-        authoritative: generic_runtime_supported
-            && provider_contract_verified
-            && path_parameters_configured
-            && config_query_configured
-            && config_attributes_configured,
-        projection_authoritative: provider_contract_verified
-            && projection_class.can_be_authoritative(),
-        id: nonempty(path, "family id", family.id)?,
+        authoritative,
+        projection_authoritative,
+        id: family_id,
+        base_url,
         method,
         path: family.path,
         record_selector,
         scalar_record_field,
         id_template,
-        id_field: nonempty(path, "family id_field", family.id_field)?,
+        id_field,
         name_field: optional(family.name_field),
         static_query: family.static_query,
         config_query,
+        config_headers,
         config_attributes,
+        static_json_body,
+        config_json_body,
+        map_records,
+        event_attributes: family.event.attributes,
+        event_static_attributes: family.event.static_attributes,
+        exact_event_attributes: family.event.exact_attributes,
         pagination: compile_pagination(path, family.pagination)?,
         cursor_in_json_body,
         path_parameters,
@@ -1068,6 +1931,7 @@ fn compile_family(
             fields: projection.fields,
             static_fields: projection.static_fields,
         },
+        unsupported_reasons,
     })
 }
 
@@ -1144,6 +2008,59 @@ fn valid_id_template(template: &str) -> bool {
     placeholders > 0 && !rest.contains('{') && !rest.contains('}')
 }
 
+fn valid_singleton_id_literal(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 1_024
+        && value.trim() == value
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
+        })
+}
+
+fn validate_id_field(
+    path: &Path,
+    family_id: &str,
+    expression: String,
+) -> Result<String, CatalogError> {
+    const MAX_CANDIDATES: usize = 8;
+    const MAX_COMPOSITE_PARTS: usize = 8;
+    const MAX_EXPRESSION_BYTES: usize = 2_048;
+    const MAX_PATH_BYTES: usize = 128;
+
+    let expression = nonempty(path, "family id_field", expression)?;
+    let candidates = expression.split('|').collect::<Vec<_>>();
+    if expression.len() > MAX_EXPRESSION_BYTES {
+        return invalid(
+            path,
+            &format!("family {family_id} id_field exceeds the {MAX_EXPRESSION_BYTES}-byte limit"),
+        );
+    }
+    if candidates.len() > MAX_CANDIDATES {
+        return invalid(
+            path,
+            &format!("family {family_id} id_field exceeds the {MAX_CANDIDATES}-candidate limit"),
+        );
+    }
+    if candidates.iter().any(|candidate| {
+        candidate.is_empty()
+            || candidate.trim() != *candidate
+            || candidate.split('+').count() > MAX_COMPOSITE_PARTS
+            || candidate.split('+').any(|path| {
+                path.is_empty()
+                    || path.len() > MAX_PATH_BYTES
+                    || path.split('.').any(|part| {
+                        part.is_empty()
+                            || !part.bytes().all(|byte| {
+                                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
+                            })
+                    })
+            })
+    }) {
+        return invalid(path, &format!("family {family_id} id_field is invalid"));
+    }
+    Ok(expression)
+}
+
 fn compile_pagination(
     path: &Path,
     wire: Option<PaginationWire>,
@@ -1166,8 +2083,18 @@ fn compile_pagination(
             },
             response_path: if !wire.cursor_json_path.is_empty() {
                 wire.cursor_json_path
-            } else if let Some(key) = wire.next_cursor_keys.first() {
-                format!("$.{key}")
+            } else if !wire.next_cursor_keys.is_empty() {
+                wire.next_cursor_keys
+                    .iter()
+                    .map(|key| {
+                        if key.starts_with('$') {
+                            key.clone()
+                        } else {
+                            format!("$.{key}")
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("|")
             } else {
                 "$.next_cursor".to_owned()
             },
@@ -1180,7 +2107,7 @@ fn compile_pagination(
             } else {
                 wire.page_param
             },
-            start: wire.start_page.max(1),
+            start: wire.start_page.unwrap_or(1),
             page_size_parameter: optional(wire.page_size_param),
             page_size,
         },
@@ -1237,7 +2164,7 @@ fn verified_families(proof: Option<&ProofManifestWire>) -> BTreeSet<(String, Str
                 && (family.method.is_empty() || family.method == "GET" || family.method == "POST")
         })
         .filter_map(|family| {
-            canonical_path_template(&family.path).map(|path| {
+            canonical_contract_locator(&family.path).map(|path| {
                 (
                     family.id.clone(),
                     if family.method.is_empty() {
@@ -1250,6 +2177,31 @@ fn verified_families(proof: Option<&ProofManifestWire>) -> BTreeSet<(String, Str
             })
         })
         .collect()
+}
+
+fn family_plan_digest(source: &CompiledSource, family: &CompiledFamily) -> String {
+    let payload = serde_json::json!({
+        "source_id": source.id(),
+        "family_id": family.id(),
+        "base_url": family.base_url(),
+        "method": match family.method() {
+            HttpMethod::Get => "GET",
+            HttpMethod::Post => "POST",
+        },
+        "path": family.path(),
+        "record_selector": family.record_selector(),
+        "id_field": family.id_field(),
+        "projection_template": family.projection().template(),
+        "static_query": family.static_query(),
+        "config_query": family.config_query().keys().collect::<Vec<_>>(),
+        "config_headers": family.config_headers().keys().collect::<Vec<_>>(),
+        "static_json_body": family.static_json_body(),
+        "cursor_in_json_body": family.cursor_in_json_body(),
+        "path_parameters": family.path_parameters().keys().collect::<Vec<_>>(),
+    });
+    let bytes = serde_json::to_vec(&payload).expect("family plan digest payload serializes");
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn canonical_path_template(path: &str) -> Option<String> {
@@ -1283,6 +2235,31 @@ fn canonical_path_template(path: &str) -> Option<String> {
     Some(canonical)
 }
 
+fn canonical_family_locator(base_url: Option<&str>, path: &str) -> Option<String> {
+    let base_url = base_url.unwrap_or_default().trim().trim_end_matches('/');
+    if base_url.starts_with("https://") && !base_url.contains("${") {
+        return canonical_contract_locator(&format!("{base_url}{path}"));
+    }
+    canonical_path_template(path)
+}
+
+fn canonical_contract_locator(locator: &str) -> Option<String> {
+    if locator.starts_with('/') {
+        return canonical_path_template(locator);
+    }
+    let remainder = locator.strip_prefix("https://")?;
+    let (host, path) = remainder.split_once('/')?;
+    if host.is_empty()
+        || host.contains('@')
+        || host
+            .chars()
+            .any(|character| matches!(character, '?' | '#' | '\\'))
+    {
+        return None;
+    }
+    canonical_path_template(&format!("/{path}")).map(|path| format!("https://{host}{path}"))
+}
+
 fn path_parameter(segment: &str) -> Option<&str> {
     let parameter = segment
         .strip_prefix("${config.")
@@ -1299,8 +2276,14 @@ fn path_parameter(segment: &str) -> Option<&str> {
     .then_some(parameter)
 }
 
-fn load_proofs(root: &Path) -> Result<BTreeMap<String, ProofManifestWire>, CatalogError> {
+struct SourceManifests {
+    proofs: BTreeMap<String, ProofManifestWire>,
+    push_sources: BTreeMap<String, CompiledPushSource>,
+}
+
+fn load_source_manifests(root: &Path) -> Result<SourceManifests, CatalogError> {
     let mut proofs = BTreeMap::new();
+    let mut push_sources = BTreeMap::new();
     let entries = fs::read_dir(root).map_err(|error| CatalogError::Io {
         path: root.to_path_buf(),
         message: error.to_string(),
@@ -1330,13 +2313,136 @@ fn load_proofs(root: &Path) -> Result<BTreeMap<String, ProofManifestWire>, Catal
                 path: path.clone(),
                 message: error.to_string(),
             })?;
+        if proof.collection_mode.trim() == "push" {
+            let push_source = compile_push_source(&path, &proof)?;
+            if push_sources
+                .insert(push_source.id.clone(), push_source.clone())
+                .is_some()
+            {
+                return Err(CatalogError::DuplicateSource(push_source.id));
+            }
+        } else if !matches!(proof.collection_mode.trim(), "" | "pull") {
+            return invalid(&path, "collection_mode must be pull or push");
+        }
         if proofs.insert(proof.id.clone(), proof).is_some() {
             return Err(CatalogError::DuplicateSource(
                 entry.file_name().to_string_lossy().into(),
             ));
         }
     }
-    Ok(proofs)
+    Ok(SourceManifests {
+        proofs,
+        push_sources,
+    })
+}
+
+fn compile_push_source(
+    path: &Path,
+    manifest: &ProofManifestWire,
+) -> Result<CompiledPushSource, CatalogError> {
+    let source_id = validate_push_identifier(path, "push source id", &manifest.id)?;
+    let display_name = nonempty(path, "name", manifest.name.clone())?;
+    if manifest.emitted_kinds.is_empty() {
+        return invalid(path, "push source must emit at least one event kind");
+    }
+    let emitted_kinds = manifest
+        .emitted_kinds
+        .iter()
+        .map(|kind| kind.trim().to_owned())
+        .collect::<BTreeSet<_>>();
+    if emitted_kinds.len() != manifest.emitted_kinds.len() {
+        return invalid(path, "push source emitted_kinds must be unique");
+    }
+    let mut families = BTreeMap::new();
+    for contract in &manifest.event_contracts {
+        let event_kind = contract.kind.trim();
+        let family_id = event_kind
+            .strip_prefix(&format!("{source_id}."))
+            .ok_or_else(|| CatalogError::Invalid {
+                path: path.to_path_buf(),
+                message: format!("push event kind {event_kind} must use source prefix {source_id}"),
+            })?;
+        let family_id = validate_push_identifier(path, "push family id", family_id)?;
+        if !emitted_kinds.contains(event_kind) {
+            return invalid(
+                path,
+                &format!("push event kind {event_kind} is not listed in emitted_kinds"),
+            );
+        }
+        let schema_ref = contract.schema_ref.trim();
+        let expected_schema = format!("{source_id}/{family_id}/v1");
+        if schema_ref != expected_schema {
+            return invalid(
+                path,
+                &format!("push family {family_id} schema_ref must be {expected_schema}"),
+            );
+        }
+        let required_attributes = compile_push_fields(
+            path,
+            family_id.as_str(),
+            "required attribute",
+            &contract.required_attributes,
+        )?;
+        let required_payload_fields = compile_push_fields(
+            path,
+            family_id.as_str(),
+            "required payload field",
+            &contract.required_payload_fields,
+        )?;
+        let family = CompiledPushFamily {
+            id: family_id.clone(),
+            event_kind: event_kind.to_owned(),
+            schema_ref: schema_ref.to_owned(),
+            required_attributes,
+            required_payload_fields,
+        };
+        if families.insert(family_id.clone(), family).is_some() {
+            return invalid(path, &format!("duplicate push family {family_id}"));
+        }
+    }
+    if families.len() != emitted_kinds.len() {
+        return invalid(
+            path,
+            "every push emitted kind must have exactly one event_contract",
+        );
+    }
+    Ok(CompiledPushSource {
+        id: source_id,
+        display_name,
+        families,
+    })
+}
+
+fn compile_push_fields(
+    path: &Path,
+    family_id: &str,
+    field_kind: &str,
+    fields: &[String],
+) -> Result<Vec<String>, CatalogError> {
+    let mut compiled = BTreeSet::new();
+    for field in fields {
+        let field = validate_push_identifier(path, field_kind, field)?;
+        if !compiled.insert(field) {
+            return invalid(
+                path,
+                &format!("push family {family_id} {field_kind}s must be unique"),
+            );
+        }
+    }
+    Ok(compiled.into_iter().collect())
+}
+
+fn validate_push_identifier(path: &Path, field: &str, value: &str) -> Result<String, CatalogError> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return invalid(path, &format!("{field} is invalid"));
+    }
+    Ok(value.to_owned())
 }
 
 fn yaml_files(root: &Path) -> Result<Vec<PathBuf>, CatalogError> {
@@ -1479,7 +2585,7 @@ mod tests {
         )
     }
 
-    fn invalid_message(result: Result<CompiledSource, CatalogError>) -> String {
+    fn invalid_message<T: fmt::Debug>(result: Result<T, CatalogError>) -> String {
         match result.unwrap_err() {
             CatalogError::Invalid { message, .. } => message,
             error => panic!("unexpected error: {error}"),
@@ -1559,7 +2665,7 @@ mod tests {
         );
         assert_eq!(
             invalid_message(unbound_body_cursor),
-            "JSON body cursor placement requires JSON body authentication"
+            "JSON body cursor placement requires a static JSON body or JSON body authentication"
         );
     }
 
@@ -1670,6 +2776,192 @@ mod tests {
     }
 
     #[test]
+    fn id_field_candidates_and_composites_are_bounded_and_path_only() {
+        let path = Path::new("id-field-fixture.yaml");
+        assert_eq!(
+            validate_id_field(
+                path,
+                "components",
+                "metadata.uid|metadata.name|name".to_owned()
+            )
+            .unwrap(),
+            "metadata.uid|metadata.name|name"
+        );
+        assert_eq!(
+            validate_id_field(path, "audit_events", "date+type+actingUserId".to_owned()).unwrap(),
+            "date+type+actingUserId"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "components",
+                "metadata.uid||name".to_owned()
+            )),
+            "family components id_field is invalid"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "audit_events",
+                "date++actingUserId".to_owned()
+            )),
+            "family audit_events id_field is invalid"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "audit_events",
+                (0..9)
+                    .map(|index| format!("part{index}"))
+                    .collect::<Vec<_>>()
+                    .join("+")
+            )),
+            "family audit_events id_field is invalid"
+        );
+        assert_eq!(
+            invalid_message(validate_id_field(
+                path,
+                "components",
+                (0..9)
+                    .map(|index| format!("candidate{index}"))
+                    .collect::<Vec<_>>()
+                    .join("|")
+            )),
+            "family components id_field exceeds the 8-candidate limit"
+        );
+    }
+
+    #[test]
+    fn backstage_is_compiled_as_a_verified_authoritative_source() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let backstage = catalog.get("backstage").unwrap();
+        assert_eq!(backstage.authority(), CollectionAuthority::Authoritative);
+        let component = backstage
+            .families()
+            .iter()
+            .find(|family| family.id() == "component")
+            .unwrap();
+        assert!(component.is_authoritative());
+        assert_eq!(component.id_field(), "metadata.uid|metadata.name|name");
+        assert_eq!(component.record_selector(), "$.items[*]");
+        assert_eq!(
+            component.pagination(),
+            &Pagination::Cursor {
+                parameter: "cursor".to_owned(),
+                response_path: "$.pageInfo.nextCursor".to_owned(),
+                page_size_parameter: Some("limit".to_owned()),
+                page_size: 100,
+            }
+        );
+        let system = backstage
+            .families()
+            .iter()
+            .find(|family| family.id() == "system")
+            .unwrap();
+        assert!(system.is_authoritative());
+        assert_eq!(system.static_query().get("filter").unwrap(), "kind=system");
+        assert_eq!(system.record_selector(), "$.items[*]");
+    }
+
+    #[test]
+    fn datadog_compiles_exact_provider_runtime_contract() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let datadog = catalog.get("datadog").unwrap();
+        assert_eq!(
+            datadog.auth_header_parameters(),
+            &BTreeMap::from([
+                ("DD-API-KEY".to_owned(), "api_key".to_owned()),
+                (
+                    "DD-APPLICATION-KEY".to_owned(),
+                    "application_key".to_owned(),
+                ),
+            ])
+        );
+        assert_eq!(datadog.families().len(), 8);
+        assert!(
+            datadog
+                .families()
+                .iter()
+                .all(|family| family.is_authoritative() && family.is_projection_authoritative())
+        );
+        let family = |id: &str| {
+            datadog
+                .families()
+                .iter()
+                .find(|family| family.id() == id)
+                .unwrap()
+        };
+        assert!(matches!(
+            family("users").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[cursor]"
+                && response_path == "$.meta.page.after|$.meta.page.cursor"
+                && page_size_parameter == "page[size]"
+        ));
+        assert!(matches!(
+            family("monitors").pagination(),
+            Pagination::Page {
+                parameter,
+                start: 0,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page" && page_size_parameter == "page_size"
+        ));
+        assert!(matches!(
+            family("slos").pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100,
+            } if parameter == "offset" && limit_parameter == "limit"
+        ));
+        assert!(matches!(
+            family("dashboards").pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100,
+            } if parameter == "start" && limit_parameter == "count"
+        ));
+        assert!(matches!(
+            family("incidents").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[offset]"
+                && response_path == "$.meta.pagination.next_offset"
+                && page_size_parameter == "page[size]"
+        ));
+        assert!(matches!(
+            family("audit_events").pagination(),
+            Pagination::Cursor {
+                parameter,
+                response_path,
+                page_size_parameter: Some(page_size_parameter),
+                page_size: 100,
+            } if parameter == "page[cursor]"
+                && response_path == "$.meta.page.after|$.meta.page.cursor|$.links.next"
+                && page_size_parameter == "page[limit]"
+        ));
+    }
+
+    #[test]
     fn compiles_the_complete_checked_in_catalog() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -1678,8 +2970,10 @@ mod tests {
         )
         .unwrap();
         let summary = catalog.summary();
-        assert_eq!(summary.sources, 794);
-        assert_eq!(summary.families, 3_894);
+        assert_eq!(summary.sources, 799);
+        assert_eq!(summary.families, 3_986);
+        assert_eq!(summary.push_sources, 1);
+        assert_eq!(summary.push_families, 10);
         assert_eq!(
             summary.projection_classes.values().sum::<usize>(),
             summary.families
@@ -2115,6 +3409,93 @@ mod tests {
     }
 
     #[test]
+    fn trusted_endpoint_is_a_push_contract_not_an_http_poller() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        assert!(catalog.get("trusted_endpoint").is_none());
+        let source = catalog.push_source("trusted_endpoint").unwrap();
+        assert_eq!(source.id(), "trusted_endpoint");
+        assert_eq!(source.display_name(), "Trusted Endpoint");
+        let families = source
+            .families()
+            .map(|family| family.id())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            families,
+            BTreeSet::from([
+                "action_outcome",
+                "agent_execution_receipt",
+                "agent_identity",
+                "ai_session_summary",
+                "ai_workflow_risk",
+                "grc_evidence",
+                "host_posture",
+                "repo_worktree_context",
+                "security_finding",
+                "trust_gate_decision",
+            ])
+        );
+        for family in source.families() {
+            assert_eq!(
+                family.event_kind(),
+                format!("trusted_endpoint.{}", family.id())
+            );
+            assert_eq!(
+                family.schema_ref(),
+                format!("trusted_endpoint/{}/v1", family.id())
+            );
+            assert!(
+                catalog.admits_event_family("trusted_endpoint", family.id()),
+                "push family {} was not admitted",
+                family.id()
+            );
+        }
+        let receipt = source.family("agent_execution_receipt").unwrap();
+        let required_attributes = receipt
+            .required_attributes()
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let required_payload_fields = receipt
+            .required_payload_fields()
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let producer_authority_fields =
+            BTreeSet::from(["provider_binding", "receipt_digest", "sequence"]);
+        assert!(required_attributes.is_superset(&producer_authority_fields));
+        assert!(required_payload_fields.is_superset(&producer_authority_fields));
+        assert!(!catalog.admits_event_family("trusted_endpoint", "unknown"));
+    }
+
+    #[test]
+    fn pull_and_push_source_ids_cannot_intersect() {
+        let pull_sources = BTreeMap::from([("shared_source".to_owned(), ())]);
+        let push_sources = BTreeMap::from([(
+            "shared_source".to_owned(),
+            CompiledPushSource {
+                id: "shared_source".to_owned(),
+                display_name: "Shared Source".to_owned(),
+                families: BTreeMap::new(),
+            },
+        )]);
+        assert_eq!(
+            reject_dual_mode_source_ids(pull_sources.keys(), &push_sources),
+            Err(CatalogError::DuplicateSource("shared_source".to_owned()))
+        );
+
+        let disjoint_pull_sources = BTreeMap::from([("pull_source".to_owned(), ())]);
+        assert_eq!(
+            reject_dual_mode_source_ids(disjoint_pull_sources.keys(), &push_sources),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn verified_source_is_authoritative_but_unproven_source_is_not() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -2173,6 +3554,186 @@ mod tests {
     }
 
     #[test]
+    fn retired_static_loader_sources_are_fully_rust_authoritative() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        for source_id in [
+            "acunetix",
+            "adobe_workfront",
+            "aircall",
+            "airfocus",
+            "beezup",
+            "bitwarden",
+            "deepseek",
+            "openai",
+        ] {
+            let source = catalog.get(source_id).unwrap();
+            assert_eq!(
+                source.authority(),
+                CollectionAuthority::Authoritative,
+                "{source_id} must keep complete Rust collection authority"
+            );
+            assert!(
+                source
+                    .families()
+                    .iter()
+                    .all(CompiledFamily::is_authoritative),
+                "{source_id} contains a non-authoritative collection family"
+            );
+            assert!(
+                source
+                    .families()
+                    .iter()
+                    .all(CompiledFamily::is_projection_authoritative),
+                "{source_id} contains a non-authoritative projection family"
+            );
+        }
+    }
+
+    #[test]
+    fn oauth_client_credentials_contract_is_compiled_without_credential_material() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let oauth = catalog
+            .get("auth0")
+            .unwrap()
+            .oauth_client_credentials()
+            .unwrap();
+        assert_eq!(oauth.token_url(), "https://${config.domain}/oauth/token");
+        assert_eq!(oauth.scope_separator(), " ");
+        assert_eq!(oauth.token_request_auth_method(), "client_secret_post");
+        assert_eq!(
+            oauth.token_params().get("audience").map(String::as_str),
+            Some("https://${config.domain}/api/v2/")
+        );
+        assert!(oauth.scopes().contains(&"read:users".to_owned()));
+    }
+
+    #[test]
+    fn oauth_authorization_code_contract_is_compiled_for_every_catalog_source() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let actual = catalog
+            .sources()
+            .filter(|source| source.oauth_authorization_code().is_some())
+            .map(CompiledSource::id)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual,
+            vec![
+                "azure_devops",
+                "bitbucket_cloud",
+                "dracoon",
+                "drchrono",
+                "dropbox_business",
+                "google_drive",
+                "hubspot",
+                "miro",
+                "runscope",
+                "salesforce",
+                "servicenow",
+                "signl4",
+                "slack",
+                "square",
+            ]
+        );
+        let drchrono = catalog
+            .get("drchrono")
+            .unwrap()
+            .oauth_authorization_code()
+            .unwrap();
+        assert_eq!(drchrono.token_url(), "https://drchrono.com/o/token/");
+        assert_eq!(drchrono.token_request_auth_method(), "client_secret_basic");
+        assert!(drchrono.scopes().contains(&"patients:read".to_owned()));
+        assert_eq!(drchrono.scope_separator(), " ");
+        assert!(drchrono.token_params().is_empty());
+        assert_eq!(
+            catalog
+                .get("signl4")
+                .unwrap()
+                .oauth_authorization_code()
+                .unwrap()
+                .token_url(),
+            "https://connect.signl4.com/identity/connect/token"
+        );
+    }
+
+    #[test]
+    fn precomputed_signature_contract_is_executable_but_remains_shadow_only() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let actual = catalog
+            .sources()
+            .filter(|source| source.auth() == &AuthModel::Signature)
+            .map(CompiledSource::id)
+            .collect::<Vec<_>>();
+        assert_eq!(actual, vec!["netsuite", "veracode"]);
+
+        for source_id in actual {
+            let source = catalog.get(source_id).unwrap();
+            assert!(source.auth().supports_generic_runtime());
+            assert_eq!(source.token_header(), "Authorization");
+            assert_eq!(source.token_scheme(), "Signature");
+            assert_eq!(source.authority(), CollectionAuthority::ShadowOnly);
+            for family in source.families() {
+                assert!(
+                    !family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::UnsupportedAuthModel)
+                );
+                assert!(
+                    family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::MissingProviderProof)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bespoke_classifier_is_not_reported_as_an_auth_failure() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        for source_id in ["auth0", "kubernetes"] {
+            let source = catalog.get(source_id).unwrap();
+            assert!(source.auth().supports_generic_runtime());
+            for family in source.families() {
+                assert!(
+                    !family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::UnsupportedAuthModel)
+                );
+                assert!(
+                    family
+                        .unsupported_reasons()
+                        .contains(&UnsupportedReasonCode::BespokeRuntime)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn composite_id_templates_are_closed_and_bounded() {
         for valid in [
             "${reportedAt}:${reporterId}",
@@ -2197,6 +3758,16 @@ mod tests {
             "${{field}}{}",
             "x".repeat(1_024)
         )));
+        assert!(valid_singleton_id_literal("organization:data_retention"));
+        for invalid in [
+            "",
+            " leading",
+            "trailing ",
+            "contains${field}",
+            "line\nbreak",
+        ] {
+            assert!(!valid_singleton_id_literal(invalid), "{invalid:?}");
+        }
     }
 
     #[test]
@@ -2266,7 +3837,7 @@ mod tests {
     }
 
     #[test]
-    fn undeclared_query_scope_cannot_become_collection_authority() {
+    fn slack_membership_scope_compiles_to_collection_authority() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
             root.join("internal/connectorcatalog/catalog"),
@@ -2280,8 +3851,13 @@ mod tests {
             .iter()
             .find(|family| family.id() == "channel_member")
             .unwrap();
-        assert!(!family.is_authoritative());
-        assert!(family.config_query().is_empty());
+        assert!(family.is_authoritative());
+        assert_eq!(
+            family.config_query().get("channel"),
+            Some(&PathParameterBinding::OptionalScalarConfig {
+                field: "channel_id".to_owned()
+            })
+        );
     }
 
     #[test]
@@ -2346,5 +3922,223 @@ mod tests {
         );
         assert_eq!(canonical_path_template("/accounts/prefix-{id}/users"), None);
         assert_eq!(canonical_path_template("/accounts/${config.id/users"), None);
+        assert_eq!(
+            canonical_family_locator(Some("https://api.slack.com/audit/v1"), "/logs"),
+            canonical_contract_locator("https://api.slack.com/audit/v1/logs")
+        );
+        assert_eq!(
+            canonical_contract_locator("https://user@example.test/logs"),
+            None
+        );
+    }
+
+    #[test]
+    fn unsupported_feature_report_classifies_every_family_with_reason_codes() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let report = catalog.unsupported_feature_report();
+        assert_eq!(report.total_sources, 799);
+        assert_eq!(report.total_families, 3_986);
+        assert_eq!(report.families.len(), report.total_families);
+        assert!(report.missing_family_reports.is_empty());
+        assert_eq!(
+            report.total_families,
+            report.rust_authoritative_families
+                + report.shadow_only_families
+                + report.projection_only_families
+                + report.unsupported_families
+        );
+        for family in &report.families {
+            if family.classification != CatalogFamilyClassification::RustAuthoritative {
+                assert!(
+                    !family.reason_codes.is_empty(),
+                    "{}:{} lacks unsupported reason codes",
+                    family.source_id,
+                    family.family_id
+                );
+            }
+            assert!(!family.safe_detail.contains("sentinel-secret-value"));
+            assert!(!family.safe_detail.contains("sentinel-token-value"));
+        }
+        assert!(
+            report
+                .reason_code_counts
+                .contains_key(&UnsupportedReasonCode::MissingProviderAuthorityEvidence)
+        );
+        println!(
+            "unsupported_feature_report total_sources={} total_families={} rust_authoritative={} shadow_only={} projection_only={} unsupported={} missing_family_reports={:?} reason_code_counts={:?}",
+            report.total_sources,
+            report.total_families,
+            report.rust_authoritative_families,
+            report.shadow_only_families,
+            report.projection_only_families,
+            report.unsupported_families,
+            report.missing_family_reports,
+            report.reason_code_counts
+        );
+    }
+
+    #[test]
+    fn authority_readiness_defaults_to_shadow_until_provider_proof_is_complete() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let report = catalog.authority_readiness_report();
+        assert_eq!(report.total_families, 3_986);
+        assert_eq!(report.rust_authoritative_families, 0);
+        assert_eq!(report.shadow_or_go_families, report.total_families);
+        let aws_bedrock = report
+            .families
+            .iter()
+            .find(|family| family.source_id == "aws_bedrock")
+            .expect("aws_bedrock readiness row");
+        assert_eq!(aws_bedrock.engine, "go_or_shadow_only");
+        assert_eq!(aws_bedrock.authority_epoch, 0);
+        assert_eq!(aws_bedrock.plan_digest.len(), 64);
+        for required in [
+            "fixture_corpus_revision",
+            "rollback_receipt",
+            "promotion_receipt",
+            "worker_runtime_build_identity",
+        ] {
+            assert!(
+                aws_bedrock.blocking_reasons.contains(&required.to_owned()),
+                "{required}"
+            );
+        }
+        println!(
+            "authority_readiness total_families={} rust_authoritative={} shadow_or_go={} sample_plan_digest={}",
+            report.total_families,
+            report.rust_authoritative_families,
+            report.shadow_or_go_families,
+            aws_bedrock.plan_digest
+        );
+    }
+
+    #[test]
+    fn conjur_and_langsmith_compile_exact_request_contracts() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        let conjur = catalog.get("conjur").unwrap();
+        assert_eq!(conjur.auth(), &AuthModel::Basic);
+        assert_eq!(conjur.configurable_auth_models(), &[AuthModel::Basic]);
+        assert_eq!(conjur.families().len(), 4);
+        let resource = conjur
+            .families()
+            .iter()
+            .find(|family| family.id() == "resource_3")
+            .unwrap();
+        assert_eq!(
+            resource.path(),
+            "/resources/${config.account}/${config.kind}"
+        );
+        assert_eq!(
+            resource.map_records().get("data.key_info"),
+            Some(&"resource".to_owned())
+        );
+        assert!(matches!(
+            resource.pagination(),
+            Pagination::Offset {
+                parameter,
+                limit_parameter,
+                page_size: 100
+            } if parameter == "offset" && limit_parameter == "limit"
+        ));
+
+        let langsmith = catalog.get("langchain").unwrap();
+        assert_eq!(
+            langsmith.configurable_auth_models(),
+            &[AuthModel::ApiKey, AuthModel::BearerToken]
+        );
+        assert_eq!(langsmith.families().len(), 13);
+        let run = langsmith
+            .families()
+            .iter()
+            .find(|family| family.id() == "run")
+            .unwrap();
+        assert_eq!(run.method(), HttpMethod::Post);
+        assert_eq!(run.path(), "/api/v1/runs/query");
+        assert_eq!(run.config_json_body().len(), 6);
+        assert_eq!(
+            run.static_json_body().get("limit"),
+            Some(&serde_json::json!(100))
+        );
+        assert!(matches!(
+            run.pagination(),
+            Pagination::Cursor { parameter, response_path, .. }
+                if parameter == "cursor" && response_path == "$.cursors.next"
+        ));
+        let audit = langsmith
+            .families()
+            .iter()
+            .find(|family| family.id() == "audit_log")
+            .unwrap();
+        assert!(matches!(
+            audit.pagination(),
+            Pagination::Cursor { parameter, response_path, .. }
+                if parameter == "cursor" && response_path == "$.cursor"
+        ));
+        for family_id in [
+            "workspace_member",
+            "project",
+            "run",
+            "feedback",
+            "dataset",
+            "usage_limit",
+            "audit_log",
+        ] {
+            let family = langsmith
+                .families()
+                .iter()
+                .find(|family| family.id() == family_id)
+                .unwrap();
+            assert_eq!(
+                family
+                    .config_headers()
+                    .get("X-Organization-Id")
+                    .map(PathParameterBinding::field),
+                Some("organization_id")
+            );
+            assert_eq!(
+                family
+                    .config_headers()
+                    .get("X-Tenant-Id")
+                    .map(PathParameterBinding::field),
+                Some("workspace_id")
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_digest_vectors_are_stable_for_catalog_plans() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("okta").unwrap();
+        let family = source
+            .families()
+            .iter()
+            .find(|family| family.id() == "group_membership")
+            .unwrap();
+        let first = family_plan_digest(source, family);
+        let second = family_plan_digest(source, family);
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 64);
+        println!("canonical_digest okta/group_membership plan={first}");
     }
 }

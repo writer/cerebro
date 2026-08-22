@@ -1,6 +1,7 @@
 id: trusted_endpoint
 name: Trusted Endpoint
 description: Metadata-only endpoint posture, AI trust, GRC evidence, and trust-gate source for Writer-managed workstations.
+collection_mode: push
 emitted_kinds:
   - trusted_endpoint.agent_identity
   - trusted_endpoint.host_posture
@@ -181,17 +182,23 @@ event_contracts:
       - agent_id
       - device_id
       - receipt_id
+      - receipt_digest
+      - sequence
       - captured_at
       - agent_product
       - session_id
       - phase
       - action
       - evidence_integrity
+      - provider_binding
     required_payload_fields:
       - receipt_id
+      - receipt_digest
+      - sequence
       - captured_at
       - agent_product
       - session_id
       - phase
       - action
       - evidence_integrity
+      - provider_binding

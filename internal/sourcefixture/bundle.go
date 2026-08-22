@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"io/fs"
 	"net/url"
@@ -15,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,16 +26,22 @@ import (
 )
 
 const (
-	SchemaVersion    = "cerebro.source-api-fixture.v1"
-	SanitizerName    = "sourcefixture"
-	SanitizerVersion = 1
+	SchemaVersion                = "cerebro.source-api-fixture.v1"
+	SanitizerName                = "sourcefixture"
+	SanitizerVersion             = 1
+	langSmithRunsQueryBodySHA256 = "c58c62a9a6c15cfcc152d632eaeab82a875f779d5caa6474337365a3586fe327"
 )
 
 var (
 	ErrCredentialField = errors.New("provider response contains credential field")
 	ErrCredentialQuery = errors.New("request URL contains credential query parameter")
+	ErrMalformedQuery  = errors.New("request query is malformed")
 	ErrPersonalEmail   = errors.New("provider response contains non-example email")
 	ErrProviderID      = errors.New("provider response contains unsanitized provider identifier")
+	ErrReplayBinding   = errors.New("replay test does not bind the fixture contract")
+	ErrReplayQuery     = errors.New("replay query is malformed")
+	ErrSanitizedURL    = errors.New("request URL sanitization contract is invalid")
+	ErrURLFragment     = errors.New("request URL contains a fragment")
 
 	emailPattern             = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
 	credentialFieldKey       = regexp.MustCompile(`(?i)^(?:authorization|credentials?|tokens?|secrets?|passwords?|access[_-]?tokens?|refresh[_-]?tokens?|api[_-]?keys?|client[_-]?secrets?|private[_-]?keys?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
@@ -67,8 +77,28 @@ type Manifest struct {
 }
 
 type Request struct {
-	Method string `yaml:"method"`
-	URL    string `yaml:"url"`
+	Method     string `yaml:"method"`
+	URL        string `yaml:"url"`
+	Semantics  string `yaml:"semantics,omitempty"`
+	BodySHA256 string `yaml:"body_sha256,omitempty"`
+}
+
+// ReplayContract binds a production decoder replay to the exact sanitized
+// provenance contract carried by one provider response bundle.
+type ReplayContract struct {
+	SourceID string
+	Family   string
+	Case     string
+	Method   string
+	Host     string
+	Path     string
+	RawQuery string
+}
+
+// ReplayTestReporter is the subset of testing.T used by replay assertions.
+type ReplayTestReporter interface {
+	Helper()
+	Fatalf(format string, args ...any)
 }
 
 type Response struct {
@@ -156,6 +186,93 @@ func Digest(payload []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
+// CanonicalRequestBodySHA256 returns the digest of a canonical JSON request
+// body without writing or echoing the request body. It is used to bind an
+// explicitly read-only POST query to its provenance manifest.
+func CanonicalRequestBodySHA256(payload []byte) (string, error) {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return "", fmt.Errorf("decode JSON request body: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return "", errors.New("decode JSON request body: multiple values")
+		}
+		return "", fmt.Errorf("decode JSON request body trailing data: %w", err)
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode canonical JSON request body: %w", err)
+	}
+	return Digest(canonical), nil
+}
+
+// ValidateReplayContract rejects a bundle unless its identity and sanitized
+// provider request provenance match the contract exercised by the replay test.
+func ValidateReplayContract(bundle Bundle, expected ReplayContract) error {
+	actual := bundle.Manifest
+	for name, values := range map[string][2]string{
+		"source_id": {actual.SourceID, strings.TrimSpace(expected.SourceID)},
+		"family":    {actual.Family, strings.TrimSpace(expected.Family)},
+		"case":      {actual.Case, strings.TrimSpace(expected.Case)},
+		"method":    {strings.ToUpper(strings.TrimSpace(actual.Request.Method)), strings.ToUpper(strings.TrimSpace(expected.Method))},
+	} {
+		if values[0] == "" || values[0] != values[1] {
+			return fmt.Errorf("replay provenance %s = %q, want %q", name, values[0], values[1])
+		}
+	}
+	rawRequestURL := strings.TrimSpace(actual.Request.URL)
+	if strings.Contains(rawRequestURL, "#") {
+		return fmt.Errorf("%w: replay provenance request URL must not contain a fragment", ErrURLFragment)
+	}
+	requestURL, err := url.ParseRequestURI(rawRequestURL)
+	if err != nil || requestURL.Scheme != "https" || requestURL.User != nil {
+		return errors.New("replay provenance request URL must be sanitized HTTPS")
+	}
+	if requestURL.Fragment != "" {
+		return fmt.Errorf("%w: replay provenance request URL must not contain a fragment", ErrURLFragment)
+	}
+	if requestURL.Port() != "" || !strings.EqualFold(requestURL.Hostname(), strings.TrimSpace(expected.Host)) {
+		return fmt.Errorf("replay provenance host = %q, want %q", requestURL.Host, expected.Host)
+	}
+	if requestURL.EscapedPath() != strings.TrimSpace(expected.Path) {
+		return fmt.Errorf("replay provenance path = %q, want %q", requestURL.EscapedPath(), expected.Path)
+	}
+	actualQuery, err := canonicalRawQuery(requestURL.RawQuery)
+	if err != nil {
+		return fmt.Errorf("%w: replay provenance query is invalid: %w", ErrReplayQuery, err)
+	}
+	expectedQuery, err := canonicalRawQuery(strings.TrimSpace(expected.RawQuery))
+	if err != nil {
+		return fmt.Errorf("%w: expected replay query is invalid: %w", ErrReplayQuery, err)
+	}
+	if actualQuery != expectedQuery {
+		return fmt.Errorf("replay provenance query = %q, want %q", actualQuery, expectedQuery)
+	}
+	return nil
+}
+
+// RequireReplayContract makes provenance validation non-ignorable in replay
+// tests. Repository verification accepts only direct calls to this helper with
+// an exact literal ReplayContract bound to the matching fixture variable.
+func RequireReplayContract(t ReplayTestReporter, bundle Bundle, expected ReplayContract) {
+	t.Helper()
+	if err := ValidateReplayContract(bundle, expected); err != nil {
+		t.Fatalf("ValidateReplayContract() error = %v", err)
+	}
+}
+
+func canonicalRawQuery(rawQuery string) (string, error) {
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", err
+	}
+	return values.Encode(), nil
+}
+
 func WriteBundle(root string, manifest Manifest, payload []byte) (Bundle, error) {
 	canonical, err := CanonicalJSON(payload)
 	if err != nil {
@@ -170,6 +287,8 @@ func WriteBundle(root string, manifest Manifest, payload []byte) (Bundle, error)
 	}
 	manifest.Request.Method = strings.ToUpper(strings.TrimSpace(manifest.Request.Method))
 	manifest.Request.URL = strings.TrimSpace(manifest.Request.URL)
+	manifest.Request.Semantics = strings.TrimSpace(manifest.Request.Semantics)
+	manifest.Request.BodySHA256 = strings.ToLower(strings.TrimSpace(manifest.Request.BodySHA256))
 	manifest.Response.SHA256 = Digest(canonical)
 	manifest.Sanitization.Tool = SanitizerName
 	manifest.Sanitization.Version = SanitizerVersion
@@ -235,14 +354,65 @@ func ValidateManifest(manifest Manifest, payload []byte) error {
 	if _, _, err := parseReplayTest(manifest.ReplayTest); err != nil {
 		return err
 	}
-	if strings.ToUpper(strings.TrimSpace(manifest.Request.Method)) != "GET" {
-		return errors.New("only read-only GET captures are accepted")
+	method := strings.ToUpper(strings.TrimSpace(manifest.Request.Method))
+	switch method {
+	case "GET":
+		if strings.TrimSpace(manifest.Request.Semantics) != "" || strings.TrimSpace(manifest.Request.BodySHA256) != "" {
+			return errors.New("GET captures must not declare POST query semantics or a request body digest")
+		}
+	case "POST":
+		if strings.TrimSpace(manifest.Request.Semantics) != "read_only_query" {
+			return errors.New("POST captures require request.semantics = read_only_query")
+		}
+		if !sha256Digest.MatchString(strings.ToLower(strings.TrimSpace(manifest.Request.BodySHA256))) {
+			return errors.New("read-only POST captures require a canonical request body SHA-256")
+		}
+	default:
+		return fmt.Errorf("request.method = %q, want GET or explicitly read-only POST query", method)
 	}
-	requestURL, err := url.ParseRequestURI(strings.TrimSpace(manifest.Request.URL))
+	rawRequestURL := strings.TrimSpace(manifest.Request.URL)
+	if strings.Contains(rawRequestURL, "#") {
+		return fmt.Errorf("%w: request.url must not contain a fragment", ErrURLFragment)
+	}
+	requestURL, err := url.ParseRequestURI(rawRequestURL)
 	if err != nil || requestURL.Scheme != "https" || requestURL.Host == "" || requestURL.User != nil {
 		return errors.New("request.url must be an HTTPS URL without user information")
 	}
-	for key := range requestURL.Query() {
+	if requestURL.Fragment != "" {
+		return fmt.Errorf("%w: request.url must not contain a fragment", ErrURLFragment)
+	}
+	requestQuery, err := url.ParseQuery(requestURL.RawQuery)
+	if err != nil {
+		return fmt.Errorf("%w: request.url query is invalid: %w", ErrMalformedQuery, err)
+	}
+	if manifest.SourceID == "langfuse" && strings.HasSuffix(strings.ToLower(requestURL.Hostname()), ".writer.com") {
+		return fmt.Errorf("%w: langfuse capture provenance must not publish an environment-specific Writer host", ErrSanitizedURL)
+	}
+	if manifest.SourceID == "langfuse" && strings.EqualFold(requestURL.Hostname(), "langfuse.example.com") {
+		markedSanitized := false
+		for _, field := range manifest.Sanitization.ChangedFields {
+			if strings.TrimSpace(field) == "$request.url" {
+				markedSanitized = true
+				break
+			}
+		}
+		if !markedSanitized {
+			return fmt.Errorf("%w: langfuse example-host provenance must mark $request.url as sanitized", ErrSanitizedURL)
+		}
+	}
+	allowedReadOnlyQuery := manifest.SourceID == "langchain" &&
+		strings.EqualFold(requestURL.Hostname(), "api.smith.langchain.com") &&
+		requestURL.Port() == "" &&
+		requestURL.EscapedPath() == "/api/v1/runs/query" &&
+		requestURL.RawQuery == "" &&
+		requestURL.Fragment == ""
+	if method == "POST" && !allowedReadOnlyQuery {
+		return errors.New("read-only POST captures are limited to langchain https://api.smith.langchain.com/api/v1/runs/query")
+	}
+	if method == "POST" && strings.ToLower(strings.TrimSpace(manifest.Request.BodySHA256)) != langSmithRunsQueryBodySHA256 {
+		return errors.New("read-only POST capture body digest does not match the approved LangSmith runs query")
+	}
+	for key := range requestQuery {
 		if isCredentialQueryKey(key) {
 			return fmt.Errorf("%w %q", ErrCredentialQuery, key)
 		}
@@ -335,7 +505,16 @@ func VerifyRepository(root string) (RepositoryReport, error) {
 
 func PackagesWithBundles(root string) ([]string, error) {
 	sources := map[string]struct{}{}
+	needsCatalogRuntimeHarness := false
 	if err := WalkBundles(root, func(bundle Bundle) error {
+		goFiles, err := filepath.Glob(filepath.Join(root, "sources", bundle.Manifest.SourceID, "*.go"))
+		if err != nil {
+			return err
+		}
+		if len(goFiles) == 0 {
+			needsCatalogRuntimeHarness = true
+			return nil
+		}
 		sources[bundle.Manifest.SourceID] = struct{}{}
 		return nil
 	}); err != nil {
@@ -344,6 +523,9 @@ func PackagesWithBundles(root string) ([]string, error) {
 	packages := make([]string, 0, len(sources))
 	for sourceID := range sources {
 		packages = append(packages, "./sources/"+sourceID)
+	}
+	if needsCatalogRuntimeHarness {
+		packages = append(packages, "./sources/internal/catalogruntime")
 	}
 	sort.Strings(packages)
 	return packages, nil
@@ -429,14 +611,235 @@ func verifyReplayTest(root string, bundle Bundle) error {
 	}
 	testPath := filepath.Join(root, "sources", bundle.Manifest.SourceID, fileName)
 	payload, err := os.ReadFile(testPath) // #nosec G304 -- path uses validated fixture source and test-file segments under the repository root.
+	if os.IsNotExist(err) {
+		sourcePath := filepath.Join(root, "sources", bundle.Manifest.SourceID, "source.go")
+		if _, sourceErr := os.Stat(sourcePath); os.IsNotExist(sourceErr) {
+			return verifyCatalogRuntimeReplayHarness(root, bundle)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("read replay test for %s: %w", bundle.ManifestPath, err)
 	}
-	text := string(payload)
-	if !strings.Contains(text, "func "+testName+"(") || !strings.Contains(text, "sourcefixture.FindBundle") || !strings.Contains(text, `"`+bundle.Manifest.Case+`"`) {
+	foundFunction, foundBundle, foundContract, err := replayTestBindings(payload, testName, bundle.Manifest)
+	if err != nil {
+		return fmt.Errorf("parse replay test for %s: %w", bundle.ManifestPath, err)
+	}
+	requiresBoundReplay := bundle.Manifest.SourceID == "langchain" || bundle.Manifest.SourceID == "langfuse" || bundle.Manifest.SourceID == "writer"
+	if !foundFunction {
+		return fmt.Errorf("%s replay_test %s must name a real Go test function", bundle.ManifestPath, bundle.Manifest.ReplayTest)
+	}
+	if requiresBoundReplay && !foundBundle {
+		return fmt.Errorf("%s replay_test %s must load fixture case %q with sourcefixture.FindBundle", bundle.ManifestPath, bundle.Manifest.ReplayTest, bundle.Manifest.Case)
+	}
+	if requiresBoundReplay && !foundContract {
+		return fmt.Errorf("%w: %s replay_test %s must directly bind fixture case %q with sourcefixture.RequireReplayContract and an exact literal contract", ErrReplayBinding, bundle.ManifestPath, bundle.Manifest.ReplayTest, bundle.Manifest.Case)
+	}
+	if !requiresBoundReplay && (!strings.Contains(string(payload), "sourcefixture.FindBundle") || !strings.Contains(string(payload), `"`+bundle.Manifest.Case+`"`)) {
 		return fmt.Errorf("%s replay_test %s must load fixture case %q with sourcefixture.FindBundle", bundle.ManifestPath, bundle.Manifest.ReplayTest, bundle.Manifest.Case)
 	}
 	return nil
+}
+
+func verifyCatalogRuntimeReplayHarness(root string, bundle Bundle) error {
+	harnessPath := filepath.Join(root, "sources", "internal", "catalogruntime", "fixture_corpus_test.go")
+	payload, err := os.ReadFile(harnessPath) // #nosec G304 -- path is fixed beneath the operator-selected repository root.
+	if err != nil {
+		return fmt.Errorf("read catalog-runtime replay harness for %s: %w", bundle.ManifestPath, err)
+	}
+	text := string(payload)
+	for _, marker := range []string{
+		"TestCatalogRuntimeRetainsRetiredProviderFixtureCorpus",
+		"sourcefixture.WalkBundles",
+		"connectorcatalog.BuiltinEntry",
+	} {
+		if !strings.Contains(text, marker) {
+			return fmt.Errorf("%s catalog-runtime replay harness is missing %q", bundle.ManifestPath, marker)
+		}
+	}
+	return nil
+}
+
+func replayTestBindings(payload []byte, testName string, manifest Manifest) (bool, bool, bool, error) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), "source_test.go", payload, 0)
+	if err != nil {
+		return false, false, false, err
+	}
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name == nil || function.Name.Name != testName || function.Body == nil {
+			continue
+		}
+		foundBundle := false
+		foundContract := false
+		bundleVariables := map[string]struct{}{}
+		testReporter := testReporterName(function)
+		for _, statement := range function.Body.List {
+			if assignment, ok := statement.(*ast.AssignStmt); ok {
+				for _, expression := range assignment.Rhs {
+					call, ok := expression.(*ast.CallExpr)
+					if !ok || !matchingFindBundleCall(call, manifest.SourceID, manifest.Family, manifest.Case) {
+						continue
+					}
+					foundBundle = true
+					if len(assignment.Lhs) > 0 {
+						if identifier, ok := assignment.Lhs[0].(*ast.Ident); ok && identifier.Name != "_" {
+							bundleVariables[identifier.Name] = struct{}{}
+						}
+					}
+				}
+			}
+			expression, ok := statement.(*ast.ExprStmt)
+			if !ok {
+				continue
+			}
+			call, ok := expression.X.(*ast.CallExpr)
+			if ok && matchingRequiredReplayContractCall(call, testReporter, bundleVariables, manifest) {
+				foundContract = true
+			}
+		}
+		return true, foundBundle, foundContract, nil
+	}
+	return false, false, false, nil
+}
+
+func testReporterName(function *ast.FuncDecl) string {
+	if function == nil || function.Type == nil || function.Type.Params == nil {
+		return ""
+	}
+	for _, field := range function.Type.Params.List {
+		for _, name := range field.Names {
+			if name.Name == "t" {
+				return name.Name
+			}
+		}
+	}
+	return ""
+}
+
+func matchingRequiredReplayContractCall(call *ast.CallExpr, testReporter string, bundleVariables map[string]struct{}, manifest Manifest) bool {
+	if call == nil || selectorName(call.Fun) != "sourcefixture.RequireReplayContract" || len(call.Args) != 3 || testReporter == "" {
+		return false
+	}
+	reporter, ok := call.Args[0].(*ast.Ident)
+	if !ok || reporter.Name != testReporter {
+		return false
+	}
+	bundle, ok := call.Args[1].(*ast.Ident)
+	if !ok {
+		return false
+	}
+	if _, ok := bundleVariables[bundle.Name]; !ok {
+		return false
+	}
+	contract, ok := literalReplayContract(call.Args[2])
+	if !ok {
+		return false
+	}
+	expected, err := manifestReplayContract(manifest)
+	return err == nil && contract == expected
+}
+
+func literalReplayContract(expression ast.Expr) (ReplayContract, bool) {
+	literal, ok := expression.(*ast.CompositeLit)
+	if !ok || selectorName(literal.Type) != "sourcefixture.ReplayContract" {
+		return ReplayContract{}, false
+	}
+	values := map[string]string{}
+	for _, element := range literal.Elts {
+		field, ok := element.(*ast.KeyValueExpr)
+		if !ok {
+			return ReplayContract{}, false
+		}
+		key, ok := field.Key.(*ast.Ident)
+		if !ok {
+			return ReplayContract{}, false
+		}
+		value := stringLiteral(field.Value)
+		if key.Name == "Method" && value == "" {
+			value = httpMethodConstant(field.Value)
+		}
+		if _, duplicate := values[key.Name]; duplicate {
+			return ReplayContract{}, false
+		}
+		values[key.Name] = value
+	}
+	for _, required := range []string{"SourceID", "Family", "Case", "Method", "Host", "Path", "RawQuery"} {
+		if _, ok := values[required]; !ok {
+			return ReplayContract{}, false
+		}
+	}
+	if len(values) != 7 || values["SourceID"] == "" || values["Family"] == "" || values["Case"] == "" || values["Method"] == "" || values["Host"] == "" || values["Path"] == "" {
+		return ReplayContract{}, false
+	}
+	return ReplayContract{
+		SourceID: values["SourceID"],
+		Family:   values["Family"],
+		Case:     values["Case"],
+		Method:   values["Method"],
+		Host:     values["Host"],
+		Path:     values["Path"],
+		RawQuery: values["RawQuery"],
+	}, true
+}
+
+func httpMethodConstant(expression ast.Expr) string {
+	switch selectorName(expression) {
+	case "http.MethodGet":
+		return "GET"
+	case "http.MethodPost":
+		return "POST"
+	default:
+		return ""
+	}
+}
+
+func manifestReplayContract(manifest Manifest) (ReplayContract, error) {
+	requestURL, err := url.ParseRequestURI(strings.TrimSpace(manifest.Request.URL))
+	if err != nil {
+		return ReplayContract{}, err
+	}
+	rawQuery, err := canonicalRawQuery(requestURL.RawQuery)
+	if err != nil {
+		return ReplayContract{}, err
+	}
+	return ReplayContract{
+		SourceID: manifest.SourceID,
+		Family:   manifest.Family,
+		Case:     manifest.Case,
+		Method:   strings.ToUpper(strings.TrimSpace(manifest.Request.Method)),
+		Host:     requestURL.Hostname(),
+		Path:     requestURL.EscapedPath(),
+		RawQuery: rawQuery,
+	}, nil
+}
+
+func matchingFindBundleCall(call *ast.CallExpr, sourceID, family, fixtureCase string) bool {
+	return call != nil && selectorName(call.Fun) == "sourcefixture.FindBundle" && len(call.Args) >= 4 &&
+		stringLiteral(call.Args[1]) == sourceID && stringLiteral(call.Args[2]) == family && stringLiteral(call.Args[3]) == fixtureCase
+}
+
+func selectorName(expression ast.Expr) string {
+	selector, ok := expression.(*ast.SelectorExpr)
+	if !ok || selector.Sel == nil {
+		return ""
+	}
+	identifier, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return ""
+	}
+	return identifier.Name + "." + selector.Sel.Name
+}
+
+func stringLiteral(expression ast.Expr) string {
+	literal, ok := expression.(*ast.BasicLit)
+	if !ok || literal.Kind != token.STRING {
+		return ""
+	}
+	value, err := strconv.Unquote(literal.Value)
+	if err != nil {
+		return ""
+	}
+	return value
 }
 
 func walkJSON(value any, path string) error {
@@ -610,6 +1013,9 @@ func validateOrigin(origin Origin) error {
 	origin = normalizedOrigin(origin)
 	switch origin.Type {
 	case "operator_request":
+		if origin.Repository != "" || origin.Commit != "" || origin.Path != "" || origin.ArtifactSHA256 != "" || origin.License != "" || origin.RecordingTool != "" || origin.HarnessPath != "" || origin.InteractionIndex != 0 || origin.Freshness != "" || origin.CaptureTimeBasis != "" || origin.Locator != "" || origin.RedistributionBasis != "" || origin.Release != "" || origin.ImageDigest != "" || len(origin.SeedCommands) != 0 {
+			return errors.New("operator_request origin must not declare upstream import or artifact fields")
+		}
 		return nil
 	case "upstream_recording":
 		if err := validateHTTPSURL("origin.repository", origin.Repository); err != nil {

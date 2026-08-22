@@ -20,6 +20,11 @@ func New(entry connectorcatalog.Entry) (*Source, error) {
 	return internal.New(entry)
 }
 
+// NewWithCatalog creates a runnable source with validated portable source metadata.
+func NewWithCatalog(entry connectorcatalog.Entry, catalogBytes []byte) (*Source, error) {
+	return internal.NewWithCatalog(entry, catalogBytes)
+}
+
 // NewDefinition creates a runnable source from a connector definition.
 func NewDefinition(definition connectordefinitions.Definition) (*Source, error) {
 	return internal.NewDefinition(definition)

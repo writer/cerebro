@@ -325,6 +325,34 @@ func (s *graphTestStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 	return rows, nil
 }
 
+func (s *graphTestStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
+	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(rootURNs))
+	for _, rootURN := range rootURNs {
+		neighborhood, err := s.GetEntityNeighborhood(ctx, rootURN, limit)
+		if err != nil {
+			return nil, err
+		}
+		neighborhoods[rootURN] = neighborhood
+	}
+	return neighborhoods, nil
+}
+
+func (s *graphTestStore) ListEntities(context.Context, ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	return nil, nil
+}
+
+func (s *graphTestStore) CountEntityKinds(context.Context, ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	return nil, nil
+}
+
+func (s *graphTestStore) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	return nil, nil
+}
+
+func (s *graphTestStore) CompareExposureCoverage(context.Context, ports.ExposureCoverageRequest) (*ports.ExposureCoverageResult, error) {
+	return nil, nil
+}
+
 func (s *graphTestStore) ListIngestRuns(_ context.Context, filter graphstore.IngestRunFilter) ([]graphstore.IngestRun, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

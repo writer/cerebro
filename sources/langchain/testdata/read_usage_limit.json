@@ -1,0 +1,8 @@
+[
+  {
+    "id": "usage_limit_123",
+    "name": "monthly traces",
+    "limit": 100000,
+    "period": "month"
+  }
+]

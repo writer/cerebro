@@ -523,7 +523,7 @@ func runSourceRuntime(args []string) error {
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
 		appendLogSourceProjector(deps),
-	))
+	), cfg.SourceRuntime.SourceWorkerPath)
 	admitter, err := eventadmission.NewNativeAdmitter(
 		ctx,
 		cfg.SourceRuntime.EventAdmissionWorkerPath,
@@ -619,8 +619,12 @@ func runSourceRuntime(args []string) error {
 	}
 }
 
-func configureSourceRuntimeCommandService(service *sourceruntime.Service) *sourceruntime.Service {
-	return service.WithConfigResolver(appconfig.ResolveSourceRuntimeConfigSecretReferences)
+func configureSourceRuntimeCommandService(service *sourceruntime.Service, sourceWorkerPath ...string) *sourceruntime.Service {
+	service.WithConfigResolver(appconfig.ResolveSourceRuntimeConfigSecretReferences)
+	if len(sourceWorkerPath) != 0 && strings.TrimSpace(sourceWorkerPath[0]) != "" {
+		service.WithSourceExecutionWorkerPath(sourceWorkerPath[0])
+	}
+	return service
 }
 
 func sourceRuntimeCommandLeaseStore(store ports.StateStore) ports.SourceRuntimeLeaseStore {
@@ -897,21 +901,6 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 		return nil
 	}
 	return sourceprojection.New(state, graph)
-}
-
-func compatibilityGraphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
-	queryStore, ok := store.(ports.GraphQueryStore)
-	if !ok {
-		return nil
-	}
-	return queryStore
-}
-
-func dependencyGraphQueryStore(deps bootstrap.Dependencies) ports.GraphQueryStore {
-	if deps.GraphQueries != nil {
-		return deps.GraphQueries
-	}
-	return compatibilityGraphQueryStore(deps.GraphStore)
 }
 
 func appendLogSourceProjector(deps bootstrap.Dependencies) ports.SourceProjector {

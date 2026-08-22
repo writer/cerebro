@@ -81,10 +81,12 @@ hmac = "0.13.0"
 jsonwebtoken = { version = "11.0.0", default-features = false, features = ["aws_lc_rs"] }
 prost = "0.14.4"
 prost-types = "0.14.4"
+packageurl = "0.7.0"
 regex = { version = "1.12.3", default-features = false, features = ["perf", "std"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde-saphyr = { version = "1.0.0", default-features = false, features = ["deserialize"] }
 serde_json = "1.0.149"
+serde_jcs = "0.2.0"
 sha2 = "0.11.0"
 stats_alloc = "0.1.10"
 neo4rs = "0.8.0"

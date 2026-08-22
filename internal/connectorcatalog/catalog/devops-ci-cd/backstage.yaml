@@ -1,0 +1,166 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: token
+            label: Bearer token
+            reference_only: true
+            required: true
+            secret: true
+        model: bearer_token
+        requires_references: true
+      categories:
+        - saas
+        - devops_ci_cd
+      config_fields:
+        - help: Backstage backend base URL, including any deployment-specific host.
+          key: base_url
+          label: Backstage base URL
+          required: true
+      description: Collects Backstage software catalog components and systems and projects ownership, lifecycle, repository, and runtime context into the Cerebro graph.
+      display_name: Backstage
+      id: builtin-backstage
+      ingest:
+        mode: pull
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - component
+              high_value: true
+              id: components
+              support: supported
+              title: Backstage components
+              type: entity_family
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - relationship_evidence
+              families:
+                - component
+              high_value: true
+              id: ownership_relationships
+              support: partial
+              title: Component ownership relationships
+              type: relationship
+          default_enabled: true
+          event:
+            kind: backstage.component
+            required_payload_fields:
+              - metadata.name
+            schema_ref: backstage/component/v1
+            urn_kind: backstage_component
+          id: component
+          id_field: metadata.uid|metadata.name|name
+          label: Components
+          method: GET
+          name_field: metadata.name
+          pagination:
+            cursor_json_path: $.pageInfo.nextCursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/catalog/entities/by-query
+          projection:
+            fields:
+              criticality: metadata.annotations.cerebro.io/criticality|criticality|tier
+              data_class: metadata.annotations.cerebro.io/data-classification|data_class
+              description: metadata.description|description
+              dora_service: dora_service
+              entity_ref: entity_ref
+              kind: kind
+              lifecycle: spec.lifecycle|lifecycle
+              name: metadata.name|name
+              namespace: metadata.namespace
+              owner: spec.owner|owner
+              repository: repository|repo
+              resource_id: metadata.uid|metadata.name|name
+              resource_name: metadata.name|name
+              resource_type: spec.type|type|kind
+              score_grade: score_grade|grade
+              scorecard: scorecard
+              source_url: source_url
+              system: spec.system|system
+              uid: metadata.uid
+            static_fields:
+              source_product: backstage
+            template: asset
+          record_selector: $.items[*]
+          static_query:
+            filter: kind=component
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - system
+              high_value: true
+              id: systems
+              support: supported
+              title: Backstage systems
+              type: entity_family
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - relationship_evidence
+              families:
+                - system
+              high_value: true
+              id: system_ownership_relationships
+              support: partial
+              title: System ownership relationships
+              type: relationship
+          default_enabled: true
+          event:
+            kind: backstage.system
+            required_payload_fields:
+              - metadata.name
+            schema_ref: backstage/system/v1
+            urn_kind: backstage_system
+          id: system
+          id_field: metadata.uid|metadata.name|name
+          label: Systems
+          method: GET
+          name_field: metadata.name
+          pagination:
+            cursor_json_path: $.pageInfo.nextCursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /api/catalog/entities/by-query
+          projection:
+            fields:
+              description: metadata.description|description
+              domain: spec.domain|domain
+              kind: kind
+              name: metadata.name|name
+              namespace: metadata.namespace
+              owner: spec.owner|owner
+              resource_id: metadata.uid|metadata.name|name
+              resource_name: metadata.name|name
+              resource_type: spec.type|type|kind
+              source_url: source_url
+              uid: metadata.uid
+            static_fields:
+              source_product: backstage
+            template: asset
+          record_selector: $.items[*]
+          static_query:
+            filter: kind=system
+      schema_version: cerebro.integration/v1
+      source_id: backstage
+      tenant_id: builtin_catalog
+      transport:
+        base_url: ${config.base_url}
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /api/catalog/entities/by-query?filter=kind=component&limit=1

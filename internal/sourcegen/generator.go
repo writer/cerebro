@@ -62,13 +62,17 @@ type Request struct {
 
 // DefinitionRequest describes a generated integration backed by a connector definition.
 type DefinitionRequest struct {
-	Definition           connectordefinitions.Definition
-	ProviderContract     *ProviderContractEvidence
-	FreshnessExpectation string
-	HealthPath           string
-	OutputDir            string
-	DryRun               bool
-	Force                bool
+	Definition       connectordefinitions.Definition
+	ProviderContract *ProviderContractEvidence
+	// EmitGoDifferentialOracle retains the retired provider-local Go runtime
+	// only for bounded sourcegen differential tests. Production connector
+	// definitions execute through the shared catalog runtime.
+	EmitGoDifferentialOracle bool
+	FreshnessExpectation     string
+	HealthPath               string
+	OutputDir                string
+	DryRun                   bool
+	Force                    bool
 }
 
 // ProviderContractEvidence binds a reviewed provider contract lock to a
@@ -95,26 +99,27 @@ type Result struct {
 
 type normalizedRequest struct {
 	Request
-	FreshnessDuration time.Duration
-	TokenHeader       string
-	TokenScheme       string
-	TokenConfigKey    string
-	AuthTokenURL      string
-	OAuthScopes       []string
-	OAuthTokenParams  map[string]string
-	OAuthTokenMethod  string
-	ProviderAPI       *connectordefinitions.ProviderAPISpec
-	ProviderContract  *ProviderContractEvidence
-	EnvPrefix         string
-	PackageName       string
-	DefaultFamily     string
-	DefaultPath       string
-	BaseURLTemplate   string
-	StaticHeaders     map[string]string
-	ConfigKeys        []string
-	CredentialKeys    []string
-	OAuth             *oauthClientCredentialsData
-	Families          []familyData
+	EmitGoDifferentialOracle bool
+	FreshnessDuration        time.Duration
+	TokenHeader              string
+	TokenScheme              string
+	TokenConfigKey           string
+	AuthTokenURL             string
+	OAuthScopes              []string
+	OAuthTokenParams         map[string]string
+	OAuthTokenMethod         string
+	ProviderAPI              *connectordefinitions.ProviderAPISpec
+	ProviderContract         *ProviderContractEvidence
+	EnvPrefix                string
+	PackageName              string
+	DefaultFamily            string
+	DefaultPath              string
+	BaseURLTemplate          string
+	StaticHeaders            map[string]string
+	ConfigKeys               []string
+	CredentialKeys           []string
+	OAuth                    *oauthClientCredentialsData
+	Families                 []familyData
 }
 
 type familyData struct {
@@ -214,6 +219,16 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 	}
 	paths = append(paths, plan.ManifestPath)
 	paths = append(paths, plan.ProofPath)
+	nextSteps := []string{
+		"Review generated adapter field mappings and provider paths.",
+		fmt.Sprintf("Run: go run ./tools/sourceproofcheck -source-id %s", normalized.SourceID),
+		"Keep runtime registration and projector dispatch data-driven from the connector definition.",
+		"Run: go test ./internal/sourceprojection -count=1",
+		"Run: make catalog-check",
+	}
+	if normalized.EmitGoDifferentialOracle {
+		nextSteps[3] = fmt.Sprintf("Run: go test ./sources/%s ./internal/sourceprojection -count=1", normalized.SourceID)
+	}
 	result := &Result{
 		SourceID:           normalized.SourceID,
 		SourceType:         normalized.SourceType,
@@ -224,14 +239,7 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 		GenerationManifest: plan.ManifestPath,
 		ProofBundle:        plan.ProofPath,
 		ChangePlan:         plan.ChangePlan,
-		NextSteps: []string{
-			"Review generated adapter field mappings and provider paths.",
-			fmt.Sprintf("Run: go run ./tools/sourceproofcheck -source-id %s", normalized.SourceID),
-			"Register the source loader in internal/sourceregistry/registry.go.",
-			"Register generated projector functions in internal/sourceprojection/registry.go.",
-			fmt.Sprintf("Run: go test ./sources/%s ./internal/sourceprojection -count=1", normalized.SourceID),
-			"Run: make catalog-check",
-		},
+		NextSteps:          nextSteps,
 	}
 	if normalized.DryRun {
 		return result, nil
@@ -320,6 +328,7 @@ func normalizeDefinitionRequest(request DefinitionRequest) (normalizedRequest, e
 		outputDir = "."
 	}
 	normalized := normalizedRequest{
+		EmitGoDifferentialOracle: request.EmitGoDifferentialOracle,
 		Request: Request{
 			SourceID:             sourceID,
 			SourceType:           SourceTypeJSONAPI,
@@ -441,6 +450,7 @@ func normalizeRequest(request Request) (normalizedRequest, error) {
 		outputDir = "."
 	}
 	normalized := normalizedRequest{
+		EmitGoDifferentialOracle: true,
 		Request: Request{
 			SourceID:             sourceID,
 			SourceType:           sourceType,
@@ -811,10 +821,13 @@ func methodForResource(resource connectordefinitions.ResourceFamily) string {
 
 func idKeysForResource(resource connectordefinitions.ResourceFamily) []string {
 	keys := []string{}
-	for _, key := range []string{resource.IDField, resource.NameField} {
+	for _, key := range strings.Split(resource.IDField, "|") {
 		if key = strings.TrimSpace(key); key != "" {
 			keys = append(keys, key)
 		}
+	}
+	if key := strings.TrimSpace(resource.NameField); key != "" {
+		keys = append(keys, key)
 	}
 	return uniqueStrings(keys)
 }
@@ -1020,10 +1033,14 @@ func renderFiles(request normalizedRequest) ([]generatedFile, error) {
 	files := []generatedFile{
 		{Path: filepath.Join(sourceRoot, "catalog.yaml"), Content: renderCatalog(request)},
 		{Path: filepath.Join(sourceRoot, "deploy.yaml"), Content: renderDeploy(request)},
-		{Path: filepath.Join(sourceRoot, "source.go"), Content: renderSourceGo(request)},
-		{Path: filepath.Join(sourceRoot, "source_test.go"), Content: renderSourceTestGo(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+".go"), Content: renderProjectionGo(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+"_test.go"), Content: renderProjectionTestGo(request)},
+	}
+	if request.EmitGoDifferentialOracle {
+		files = append(files,
+			generatedFile{Path: filepath.Join(sourceRoot, "source.go"), Content: renderSourceGo(request)},
+			generatedFile{Path: filepath.Join(sourceRoot, "source_test.go"), Content: renderSourceTestGo(request)},
+		)
 	}
 	for _, family := range request.Families {
 		files = append(files,

@@ -44,6 +44,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_CONTENT_PACK_TENANT_ID` | unset | Tenant grant selected from the content-pack allowlist. Required when a content-pack root is set; never emitted as a metric label. |
 | `CEREBRO_CONTENT_PACK_KERNEL_VERSION` | `1.0.0` | Kernel compatibility version used for signed pack range checks. |
 | `CEREBRO_SOURCE_MIN_CERTIFICATION_TIER` | `cataloged` | Minimum connector certification tier for availability decisions. Supported values: `cataloged`, `spec_verified`, `contract_tested`, `production_observed`, and `outcome_validated`. Catalog-only and configured connectors remain discoverable with an explicit below-minimum state. |
+| `CEREBRO_SOURCE_WORKER` | sibling `source_worker` binary | Absolute path to the credential-free Rust source worker used by the closed production dispatcher. |
 | `CEREBRO_POSTGRES_MAX_OPEN_CONNS` | Go default | Optional `database/sql` maximum open connections. |
 | `CEREBRO_POSTGRES_MAX_IDLE_CONNS` | Go default | Optional `database/sql` maximum idle connections. |
 | `CEREBRO_POSTGRES_CONN_MAX_LIFETIME` | Go default | Optional maximum lifetime for pooled Postgres connections. |
@@ -71,10 +72,7 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | unset | Legacy combined Rust graph origin. Prefer the separate read and projection origins so observing reads cannot activate a writer path. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL` | unset | Rust bounded graph read origin. This does not configure Rust projection writes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` | unset | Rust family-authority and projection origin. Leave unset until the Rust writer path is intentionally enabled. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `authority` | `legacy` keeps Go product reads authoritative without calling Rust; `shadow` returns the Go result and compares sampled Rust reads; `canary` assigns a stable tenant sample to Rust; `authority` returns Rust results and fails closed. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT` | `0` | Stable percentage from 1 through 100 of typed reads compared in shadow mode. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT` | `0` | Stable percentage from 1 through 99 of tenants assigned to Rust for typed reads in canary mode. This is tenant allocation, not exact request share; measure actual Go and Rust request volume with `cerebro.organizational_graph.canary.routes`. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT` | `0` | Stable percentage from 0 through 100 of Rust-authority canary reads also compared with Go. Verification uses bounded background work, records parity evidence, and never delays or changes authority. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `authority` | Optional explicit read mode. Only `authority` is supported; typed product reads return Rust results and fail closed. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | unset | Shared secret used to sign tenant-bound requests to the Rust organizational graph service. Required with any Rust graph origin; minimum 32 bytes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | `1s` | Timeout for Rust organizational graph reads and projection-authority requests. |
 | `CEREBRO_ORGANIZATIONAL_CONSUMER_MODE` | `forward` | `forward` for durable projection or `replay` for a bounded retained-history run. |

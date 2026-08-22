@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { navigationEntries, operatorNavLinks, utilityLinks } from "./navigation";
+import { navigationEntries, normalizeLegacyControlHref, operatorNavLinks, utilityLinks } from "./navigation";
 
 describe("navigation entries", () => {
   it("has unique hrefs across all entries", () => {
@@ -53,5 +53,14 @@ describe("navigation entries", () => {
   it("includes developer tools in utility links", () => {
     const hrefs = utilityLinks.map((e) => e.href);
     expect(hrefs).toContain("/developer");
+  });
+
+  it("normalizes only the legacy internal control route", () => {
+    expect(normalizeLegacyControlHref("/grc/controls?framework=SOC%202&control=CC6.6")).toBe(
+      "/controls?framework=SOC%202&control=CC6.6",
+    );
+    expect(normalizeLegacyControlHref("/grc/controls")).toBe("/controls");
+    expect(normalizeLegacyControlHref("/grc/controls/export?format=csv")).toBe("/grc/controls/export?format=csv");
+    expect(normalizeLegacyControlHref("/api/grc/controls?framework=SOC%202")).toBe("/api/grc/controls?framework=SOC%202");
   });
 });

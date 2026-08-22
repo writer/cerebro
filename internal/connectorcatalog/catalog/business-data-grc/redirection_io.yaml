@@ -10,6 +10,8 @@ entries:
         secret: true
       model: api_key
       requires_references: true
+      token_header: Authorization
+      token_scheme: Token
     categories:
     - saas
     description: "Collects aggregate log, user, agent rule, notification, smart list, and log from redirection.io and projects them into the Cerebro graph as audit events, users, policies, alerts, and assets for owner, account, evidence, and compliance context."

@@ -27,7 +27,8 @@ func TestVerifyProofBundleChecksOutputsAndProviderContract(t *testing.T) {
 		t.Fatalf("Write() error = %v", err)
 	}
 	if _, err := GenerateDefinition(DefinitionRequest{
-		Definition: proofVerificationDefinition(),
+		EmitGoDifferentialOracle: true,
+		Definition:               proofVerificationDefinition(),
 		ProviderContract: &ProviderContractEvidence{
 			LockDigest:  lockDigest,
 			DriftStatus: "unchanged",

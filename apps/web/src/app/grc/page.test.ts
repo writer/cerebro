@@ -94,6 +94,20 @@ describe("GRC page helpers", () => {
     ]);
   });
 
+  it("normalizes legacy control work-item links", () => {
+    const readinessData = {
+      work_items: [{
+        id: "control-cc6.6",
+        kind: "control",
+        status: "failing",
+        title: "SOC 2 CC6.6",
+        href: "/grc/controls?framework=SOC%202&control=CC6.6",
+      }],
+    } as GRCProgramReadiness;
+
+    expect(buildIssueQueue(readinessData, [])[0]?.href).toBe("/controls?framework=SOC%202&control=CC6.6");
+  });
+
   it("builds packet blocker checks instead of roadmap steps", () => {
     const checks = buildReadinessChecks({ summary: summary() });
 

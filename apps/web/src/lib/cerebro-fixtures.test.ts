@@ -59,6 +59,12 @@ describe("cerebro fixture proxy responses", () => {
       "environment_managed",
       "hashicorp_vault",
     ]));
+    expect(library.connectors).toContainEqual(expect.objectContaining({
+      source_id: "google_workspace",
+      status: "available",
+      configured_runtimes: 0,
+      setup_allowed: true,
+    }));
   });
 
   it("rejects fixture writes without an explicit handler", () => {

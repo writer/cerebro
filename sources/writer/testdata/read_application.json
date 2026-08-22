@@ -1,0 +1,72 @@
+[
+  {
+    "id": "writer-writer-application-9dd16ba4de70f7f3",
+    "tenant_id": "writer",
+    "source_id": "writer",
+    "kind": "writer.application",
+    "occurred_at": "2026-08-20T19:30:45Z",
+    "schema_ref": "writer/application/v1",
+    "payload": {
+      "created_at": "2026-07-30T03:36:07.935951Z",
+      "id": "example-3082e709",
+      "inputs": [
+        {
+          "description": "",
+          "input_type": "example-721c9525",
+          "name": "example-6105d6cc",
+          "options": {
+            "file_types": [
+              "example-f8146b6c",
+              "example-8f8cbb7d",
+              "example-41e5787e",
+              "example-acdb1373",
+              "example-179c1c7d"
+            ],
+            "max_image_size_mb": 785712040
+          },
+          "required": false
+        },
+        {
+          "description": "",
+          "input_type": "example-982d9e3e",
+          "name": "example-4dfb6939",
+          "options": {
+            "max_fields": 613495083,
+            "min_fields": 310162913
+          },
+          "required": false
+        },
+        {
+          "description": "",
+          "input_type": "example-982d9e3e",
+          "name": "example-95eedec5",
+          "options": {
+            "max_fields": 613495083,
+            "min_fields": 310162913
+          },
+          "required": false
+        }
+      ],
+      "last_deployed_at": "2026-07-30T03:37:55.646334Z",
+      "name": "example-eb3ce52a",
+      "status": "deployed",
+      "type": "generation",
+      "updated_at": "2026-07-30T03:36:12.734884Z"
+    },
+    "attributes": {
+      "application_id": "example-3082e709",
+      "created_at": "2026-07-30T03:36:07.935951Z",
+      "external_id": "example-3082e709",
+      "family": "application",
+      "inputs": "{\"description\":\"\",\"input_type\":\"example-721c9525\",\"name\":\"example-6105d6cc\",\"options\":{\"file_types\":[\"example-f8146b6c\",\"example-8f8cbb7d\",\"example-41e5787e\",\"example-acdb1373\",\"example-179c1c7d\"],\"max_image_size_mb\":785712040},\"required\":false},{\"description\":\"\",\"input_type\":\"example-982d9e3e\",\"name\":\"example-4dfb6939\",\"options\":{\"max_fields\":613495083,\"min_fields\":310162913},\"required\":false},{\"description\":\"\",\"input_type\":\"example-982d9e3e\",\"name\":\"example-95eedec5\",\"options\":{\"max_fields\":613495083,\"min_fields\":310162913},\"required\":false}",
+      "last_deployed_at": "2026-07-30T03:37:55.646334Z",
+      "name": "example-eb3ce52a",
+      "provider": "writer",
+      "source_product": "writer",
+      "source_provider": "writer",
+      "status": "deployed",
+      "type": "generation",
+      "updated_at": "2026-07-30T03:36:12.734884Z"
+    }
+  }
+]

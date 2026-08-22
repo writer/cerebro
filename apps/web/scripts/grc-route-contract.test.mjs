@@ -7,13 +7,16 @@ const pageSourcesByRoute = {
   "/": "src/app/page.tsx",
   "/risk-inbox": "src/app/risk-inbox/page.tsx",
   "/controls": "src/app/controls/page.tsx",
+  "/policies": "src/app/policies/page.tsx",
   "/frameworks": "src/app/frameworks/page.tsx",
   "/controls/builder": "src/app/controls/builder/page.tsx",
   "/evidence": "src/app/evidence/page.tsx",
+  "/questionnaires": "src/app/questionnaires/page.tsx",
   "/vendors": "src/app/vendors/page.tsx",
   "/connectors": "src/app/connectors/page.tsx",
   "/impact": "src/app/impact/page.tsx",
   "/reports": "src/app/reports/page.tsx",
+  "/reports/audit-packages": "src/app/reports/audit-packages/page.tsx",
 };
 
 describe("GRC browser route contract", () => {
@@ -23,25 +26,31 @@ describe("GRC browser route contract", () => {
       "/",
       "/risk-inbox",
       "/controls",
+      "/policies",
       "/frameworks",
       "/controls/builder",
       "/evidence",
+      "/questionnaires",
       "/vendors",
       "/connectors",
       "/impact?root_urn=urn%3Acerebro%3Ae2e-tenant%3Aidentity%3Aadmin",
       "/reports",
+      "/reports/audit-packages",
     ]);
     expect(contracts.map((contract) => contract.pageId)).toEqual([
       "overview",
       "risk-inbox",
       "controls",
+      "policies",
       "frameworks",
       "control-builder",
       "evidence",
+      "questionnaires",
       "vendors",
       "connectors",
       "impact-map",
       "reports",
+      "audit-packages",
     ]);
     expect(new Set(contracts.map((contract) => contract.pageId)).size).toBe(contracts.length);
   });

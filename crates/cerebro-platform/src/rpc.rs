@@ -8,13 +8,19 @@ use cerebro_agent_context::{
 };
 use cerebro_organizational_model::{AssertionId, EntityId, TenantId};
 use cerebro_organizational_store::{
+    CloudAttackPath as StoreCloudAttackPath, CloudAttackPathCounts as StoreCloudAttackPathCounts,
+    CloudAttackPathEdge as StoreCloudAttackPathEdge,
+    CloudAttackPathNode as StoreCloudAttackPathNode,
+    CloudAttackPathOwnership as StoreCloudAttackPathOwnership,
+    CloudAttackPathPage as StoreCloudAttackPathPage,
     EntityCatalogDirection as StoreCatalogDirection, EntityCatalogFilter as StoreCatalogFilter,
     EntityCatalogKindPage as StoreCatalogKindPage, EntityCatalogPage as StoreCatalogPage,
     EntityCatalogRelationCountFilter as StoreCatalogRelationCountFilter,
+    EntityCatalogRelationKindPage as StoreCatalogRelationKindPage,
     EntityCatalogRelationPage as StoreCatalogRelationPage,
     ExposureCoverageEntity as StoreExposureEntity, ExposureCoverageProfile as StoreExposureProfile,
     ExposureCoverageQuery as StoreExposureQuery, ExposureCoverageResult as StoreExposureResult,
-    Neo4jProjector, StoreError,
+    Neo4jProjector, PersonAccessPathPage as StorePersonAccessPathPage, StoreError,
 };
 use cerebro_security_lifecycle::{
     LifecycleQuery, LifecycleState, ProjectedResource, QueryResult as LifecycleQueryResult,
@@ -634,6 +640,93 @@ impl OrganizationalGraphService for GraphRpc {
         Response::ok(catalog_kind_response(result))
     }
 
+    async fn count_relations(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, CountRelationsRequest>,
+    ) -> ServiceResult<CountRelationsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.count_catalog_relations(
+                &tenant,
+                limit,
+                request.after_relation,
+                request.expected_graph_revision,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Relation count read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(catalog_relation_kind_response(result))
+    }
+
+    async fn list_person_access_paths(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListPersonAccessPathsRequest>,
+    ) -> ServiceResult<ListPersonAccessPathsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let depth = usize::try_from(request.max_depth)
+            .map_err(|_| ConnectError::invalid_argument("max_depth exceeds usize"))?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.list_person_access_paths(
+                &tenant,
+                request.person_urn,
+                request.person_query,
+                limit,
+                depth,
+                request.expected_graph_revision,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Person access path read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(person_access_path_response(result))
+    }
+
+    async fn list_cloud_attack_paths(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListCloudAttackPathsRequest>,
+    ) -> ServiceResult<ListCloudAttackPathsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let depth = usize::try_from(request.max_depth)
+            .map_err(|_| ConnectError::invalid_argument("max_depth exceeds usize"))?;
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.list_cloud_attack_paths(
+                &tenant,
+                request.account_id,
+                request.runtime_id,
+                request.require_assertion_proof,
+                limit,
+                depth,
+                request.expected_graph_revision,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Cloud attack path read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(cloud_attack_path_response(result))
+    }
+
     async fn list_entity_relations(
         &self,
         context: RequestContext,
@@ -1239,6 +1332,128 @@ fn catalog_kind_response(page: StoreCatalogKindPage) -> CountEntityKindsResponse
     }
 }
 
+fn catalog_relation_kind_response(page: StoreCatalogRelationKindPage) -> CountRelationsResponse {
+    CountRelationsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        counts: page
+            .counts
+            .into_iter()
+            .map(|value| RelationCount {
+                relation: value.relation,
+                count: value.count,
+                ..Default::default()
+            })
+            .collect(),
+        truncated: page.truncated,
+        next_after_relation: page.next_after_relation,
+        ..Default::default()
+    }
+}
+
+fn person_access_path_response(page: StorePersonAccessPathPage) -> ListPersonAccessPathsResponse {
+    ListPersonAccessPathsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        paths: page
+            .paths
+            .into_iter()
+            .map(|path| PersonAccessPath {
+                person: graph_entity(path.person).into(),
+                identity: graph_entity(path.identity).into(),
+                principal: graph_entity(path.principal).into(),
+                access_target: graph_entity(path.access_target).into(),
+                relation_chain: path.relation_chain,
+                ..Default::default()
+            })
+            .collect(),
+        truncated: page.truncated,
+        ..Default::default()
+    }
+}
+
+fn cloud_attack_path_response(page: StoreCloudAttackPathPage) -> ListCloudAttackPathsResponse {
+    ListCloudAttackPathsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        counts: cloud_attack_path_counts(page.counts).into(),
+        paths: page.paths.into_iter().map(cloud_attack_path).collect(),
+        truncated: page.truncated,
+        ..Default::default()
+    }
+}
+
+fn cloud_attack_path_counts(counts: StoreCloudAttackPathCounts) -> CloudAttackPathCounts {
+    CloudAttackPathCounts {
+        paths: counts.paths,
+        exposed_resources: counts.exposed_resources,
+        privileged_principals: counts.privileged_principals,
+        cloud_accounts: counts.cloud_accounts,
+        ..Default::default()
+    }
+}
+
+fn cloud_attack_path(path: StoreCloudAttackPath) -> CloudAttackPath {
+    CloudAttackPath {
+        public_principal: cloud_attack_path_node(path.public_principal).into(),
+        exposed_resource: cloud_attack_path_node(path.exposed_resource).into(),
+        cloud_account: cloud_attack_path_node(path.cloud_account).into(),
+        principal: cloud_attack_path_node(path.principal).into(),
+        permission: cloud_attack_path_node(path.permission).into(),
+        ownerships: path
+            .ownerships
+            .into_iter()
+            .map(cloud_attack_path_ownership)
+            .collect(),
+        reach_relation: path.reach_relation,
+        access_relation: path.access_relation,
+        relation_chain: path.relation_chain,
+        exposure_edge: cloud_attack_path_edge(path.exposure_edge).into(),
+        resource_account_edge: cloud_attack_path_edge(path.resource_account_edge).into(),
+        traversal_edges: path
+            .traversal_edges
+            .into_iter()
+            .map(cloud_attack_path_edge)
+            .collect(),
+        privilege_edge: cloud_attack_path_edge(path.privilege_edge).into(),
+        permission_account_edge: cloud_attack_path_edge(path.permission_account_edge).into(),
+        ..Default::default()
+    }
+}
+
+fn cloud_attack_path_ownership(
+    ownership: StoreCloudAttackPathOwnership,
+) -> CloudAttackPathOwnership {
+    CloudAttackPathOwnership {
+        owner: cloud_attack_path_node(ownership.owner).into(),
+        edge: cloud_attack_path_edge(ownership.edge).into(),
+        ..Default::default()
+    }
+}
+
+fn cloud_attack_path_edge(edge: StoreCloudAttackPathEdge) -> CloudAttackPathEdge {
+    CloudAttackPathEdge {
+        from: cloud_attack_path_node(edge.from).into(),
+        relation: edge.relation,
+        to: cloud_attack_path_node(edge.to).into(),
+        direction: edge.direction,
+        source_id: edge.source_id,
+        source_runtime_id: edge.source_runtime_id,
+        assertion_runtime_ids: edge.assertion_runtime_ids,
+        attributes_json: edge.attributes_json,
+        ..Default::default()
+    }
+}
+
+fn cloud_attack_path_node(node: StoreCloudAttackPathNode) -> CloudAttackPathNode {
+    CloudAttackPathNode {
+        urn: node.urn,
+        entity_kind: node.entity_kind,
+        label: node.label,
+        ..Default::default()
+    }
+}
+
 fn catalog_relation_response(page: StoreCatalogRelationPage) -> ListEntityRelationsResponse {
     let next_after_direction = match page.next_after_direction {
         Some(StoreCatalogDirection::Incoming) => EntityRelationDirection::Incoming,
@@ -1386,13 +1601,20 @@ mod tests {
 
     use buffa::{HasMessageView, Message};
     use cerebro_organizational_store::{
-        EntityCatalogKindCount, EntityCatalogRelation, EntityCatalogRelationCount,
+        CloudAttackPath as StoreCloudAttackPath,
+        CloudAttackPathCounts as StoreCloudAttackPathCounts,
+        CloudAttackPathEdge as StoreCloudAttackPathEdge,
+        CloudAttackPathNode as StoreCloudAttackPathNode,
+        CloudAttackPathOwnership as StoreCloudAttackPathOwnership,
+        CloudAttackPathPage as StoreCloudAttackPathPage, EntityCatalogKindCount,
+        EntityCatalogRelation, EntityCatalogRelationCount,
         ExposureCoverageAccount as StoreExposureAccount,
         ExposureCoverageCompleteness as StoreExposureCompleteness,
         ExposureCoverageCorroboratingOnly as StoreExposureCorroboratingOnly,
         ExposureCoverageCounts as StoreExposureCounts,
         ExposureCoverageKindCount as StoreExposureKindCount,
         ExposureCoverageOverlap as StoreExposureOverlap, ExposureCoveragePair as StoreExposurePair,
+        PersonAccessPath as StorePersonAccessPath,
     };
     use connectrpc::ErrorCode;
 
@@ -1785,6 +2007,104 @@ mod tests {
         });
         assert_eq!(kinds.counts[0].count, 4);
         assert_eq!(kinds.next_after_entity_kind, "service");
+
+        let relation_kinds = catalog_relation_kind_response(StoreCatalogRelationKindPage {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            counts: vec![
+                cerebro_organizational_store::EntityCatalogRelationKindCount {
+                    relation: "has_finding".to_owned(),
+                    count: 5,
+                },
+            ],
+            truncated: true,
+            next_after_relation: "has_finding".to_owned(),
+        });
+        assert_eq!(relation_kinds.counts[0].relation, "has_finding");
+        assert_eq!(relation_kinds.counts[0].count, 5);
+        assert_eq!(relation_kinds.next_after_relation, "has_finding");
+
+        let access_paths = person_access_path_response(StorePersonAccessPathPage {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            paths: vec![StorePersonAccessPath {
+                person: context_entity("person-a", "person"),
+                identity: context_entity("identity-a", "identity.email"),
+                principal: context_entity("principal-a", "okta.user"),
+                access_target: context_entity("target-a", "aws.role"),
+                relation_chain: vec!["assigned_to".to_owned()],
+            }],
+            truncated: true,
+        });
+        assert_eq!(access_paths.graph_revision, 42);
+        assert_eq!(access_paths.paths[0].access_target.entity_kind, "aws.role");
+        assert_eq!(access_paths.paths[0].relation_chain, ["assigned_to"]);
+        assert!(access_paths.truncated);
+
+        let node = |suffix: &str, kind: &str| StoreCloudAttackPathNode {
+            urn: format!("urn:cerebro:tenant-a:{kind}:{suffix}"),
+            entity_kind: kind.to_owned(),
+            label: suffix.to_owned(),
+        };
+        let public = node("public", "aws.public_principal");
+        let exposed = node("eni", "aws.network.interface");
+        let account = node("account", "cloud.account");
+        let principal = node("role", "aws.role");
+        let permission = node("policy", "aws.policy");
+        let edge = |from: StoreCloudAttackPathNode,
+                    relation: &str,
+                    to: StoreCloudAttackPathNode,
+                    direction: &str|
+         -> StoreCloudAttackPathEdge {
+            StoreCloudAttackPathEdge {
+                from,
+                relation: relation.to_owned(),
+                to,
+                direction: direction.to_owned(),
+                source_id: "aws".to_owned(),
+                source_runtime_id: "runtime-a".to_owned(),
+                assertion_runtime_ids: vec!["runtime-a".to_owned()],
+                attributes_json: "{}".to_owned(),
+            }
+        };
+        let attack_paths = cloud_attack_path_response(StoreCloudAttackPathPage {
+            tenant_id: "tenant-a".to_owned(),
+            graph_revision: 42,
+            counts: StoreCloudAttackPathCounts {
+                paths: 1,
+                exposed_resources: 1,
+                privileged_principals: 1,
+                cloud_accounts: 1,
+            },
+            paths: vec![StoreCloudAttackPath {
+                public_principal: public.clone(),
+                exposed_resource: exposed.clone(),
+                cloud_account: account.clone(),
+                principal: principal.clone(),
+                permission: permission.clone(),
+                ownerships: vec![StoreCloudAttackPathOwnership {
+                    owner: node("team", "team"),
+                    edge: edge(exposed.clone(), "owned_by", node("team", "team"), "forward"),
+                }],
+                reach_relation: "can_reach".to_owned(),
+                access_relation: "can_admin".to_owned(),
+                relation_chain: vec!["attached_to".to_owned()],
+                exposure_edge: edge(public, "can_reach", exposed.clone(), "forward"),
+                resource_account_edge: edge(
+                    exposed.clone(),
+                    "belongs_to",
+                    account.clone(),
+                    "forward",
+                ),
+                traversal_edges: vec![edge(exposed, "attached_to", principal.clone(), "forward")],
+                privilege_edge: edge(principal, "can_admin", permission.clone(), "forward"),
+                permission_account_edge: edge(permission, "belongs_to", account, "forward"),
+            }],
+            truncated: false,
+        });
+        assert_eq!(attack_paths.counts.as_option().unwrap().paths, 1);
+        assert_eq!(attack_paths.paths[0].access_relation, "can_admin");
+        assert_eq!(attack_paths.paths[0].traversal_edges.len(), 1);
 
         for direction in [
             StoreCatalogDirection::Incoming,

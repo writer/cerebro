@@ -593,6 +593,160 @@ pub struct EntityCatalogKindPage {
     pub next_after_entity_kind: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Aggregate count for one legacy relation kind.
+pub struct EntityCatalogRelationKindCount {
+    /// Stored relation kind.
+    pub relation: String,
+    /// Tenant-scoped relation count.
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded relation-count page.
+pub struct EntityCatalogRelationKindPage {
+    /// Tenant whose catalog was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Counts ordered by relation kind.
+    pub counts: Vec<EntityCatalogRelationKindCount>,
+    /// Whether another page exists.
+    pub truncated: bool,
+    /// Relation kind after which the next page begins.
+    pub next_after_relation: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One person-to-access-target path from the legacy projection.
+pub struct PersonAccessPath {
+    /// Human subject whose access was resolved.
+    pub person: ContextEntity,
+    /// Identity bound to the person.
+    pub identity: ContextEntity,
+    /// Principal that represents the identity.
+    pub principal: ContextEntity,
+    /// Reached access target.
+    pub access_target: ContextEntity,
+    /// Ordered relationship kinds from principal to target.
+    pub relation_chain: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded page of person access paths.
+pub struct PersonAccessPathPage {
+    /// Tenant whose graph was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Bounded paths ordered by person, principal, and target label.
+    pub paths: Vec<PersonAccessPath>,
+    /// Whether another path exists beyond the requested limit.
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One node in a cloud attack path.
+pub struct CloudAttackPathNode {
+    /// Stable tenant-scoped entity URN.
+    pub urn: String,
+    /// Legacy entity type.
+    pub entity_kind: String,
+    /// Human-readable label.
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One source-backed edge in a cloud attack path.
+pub struct CloudAttackPathEdge {
+    /// Edge source.
+    pub from: CloudAttackPathNode,
+    /// Legacy relation kind.
+    pub relation: String,
+    /// Edge target.
+    pub to: CloudAttackPathNode,
+    /// Direction relative to the emitted proof path.
+    pub direction: String,
+    /// Source identifier.
+    pub source_id: String,
+    /// Source runtime identifier.
+    pub source_runtime_id: String,
+    /// Runtime IDs whose assertions contributed to this material edge.
+    pub assertion_runtime_ids: Vec<String>,
+    /// Raw edge attributes retained for the Go compatibility view.
+    pub attributes_json: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One ownership assignment on an exposed resource.
+pub struct CloudAttackPathOwnership {
+    /// Observed owner.
+    pub owner: CloudAttackPathNode,
+    /// Edge that established ownership.
+    pub edge: CloudAttackPathEdge,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One public-exposure-to-privilege path.
+pub struct CloudAttackPath {
+    /// Public principal that can reach the resource.
+    pub public_principal: CloudAttackPathNode,
+    /// Publicly exposed cloud resource.
+    pub exposed_resource: CloudAttackPathNode,
+    /// Cloud account containing the resource and permission.
+    pub cloud_account: CloudAttackPathNode,
+    /// Principal reached from the exposed resource.
+    pub principal: CloudAttackPathNode,
+    /// Privileged permission granted to the principal.
+    pub permission: CloudAttackPathNode,
+    /// Explicit ownership observations.
+    pub ownerships: Vec<CloudAttackPathOwnership>,
+    /// Boundary reach relation.
+    pub reach_relation: String,
+    /// Privilege relation.
+    pub access_relation: String,
+    /// Traversal relation chain.
+    pub relation_chain: Vec<String>,
+    /// Public reachability proof edge.
+    pub exposure_edge: CloudAttackPathEdge,
+    /// Resource-to-account proof edge.
+    pub resource_account_edge: CloudAttackPathEdge,
+    /// Traversal proof edges.
+    pub traversal_edges: Vec<CloudAttackPathEdge>,
+    /// Principal-to-permission proof edge.
+    pub privilege_edge: CloudAttackPathEdge,
+    /// Permission-to-account proof edge.
+    pub permission_account_edge: CloudAttackPathEdge,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// Aggregates for the current cloud attack path query.
+pub struct CloudAttackPathCounts {
+    /// Total material paths.
+    pub paths: u64,
+    /// Distinct exposed resources.
+    pub exposed_resources: u64,
+    /// Distinct privileged principals.
+    pub privileged_principals: u64,
+    /// Distinct cloud accounts.
+    pub cloud_accounts: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Bounded cloud attack paths at one graph revision.
+pub struct CloudAttackPathPage {
+    /// Tenant whose graph was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Aggregate counts for the query.
+    pub counts: CloudAttackPathCounts,
+    /// Bounded sample paths.
+    pub paths: Vec<CloudAttackPath>,
+    /// Whether another sample path exists beyond the requested limit.
+    pub truncated: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 /// Direction of a direct entity-catalog relation.
 pub enum EntityCatalogDirection {
@@ -963,6 +1117,204 @@ impl Neo4jProjector {
             counts,
             truncated,
             next_after_entity_kind,
+        })
+    }
+
+    /// Counts relation kinds in one revision-bound catalog page.
+    pub async fn count_catalog_relations(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        after_relation: &str,
+        expected_graph_revision: u64,
+    ) -> Result<EntityCatalogRelationKindPage, StoreError> {
+        if !(1..=500).contains(&limit) {
+            return Err(StoreError::Conflict(
+                "entity catalog relation-count limit must be between 1 and 500".to_owned(),
+            ));
+        }
+        validate_catalog_text("after_relation", after_relation, 128, false)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(expected_graph_revision, revision)?;
+        let statement = "MATCH (:Entity {tenant_id: $tenant_id})-[edge:RELATION {tenant_id: $tenant_id}]->(:Entity {tenant_id: $tenant_id}) WITH coalesce(edge.relation, 'unknown') AS relation WHERE relation > $after_relation RETURN relation, count(edge) AS relation_count ORDER BY relation LIMIT $row_limit";
+        let mut rows = transaction
+            .execute(
+                query(statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("after_relation", after_relation)
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut counts = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            counts.push(EntityCatalogRelationKindCount {
+                relation: catalog_row_string(&row, "relation")?,
+                count: catalog_row_u64(&row, "relation_count")?,
+            });
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut counts, limit);
+        let next_after_relation = truncated
+            .then(|| counts.last().map(|count| count.relation.clone()))
+            .flatten()
+            .unwrap_or_default();
+        Ok(EntityCatalogRelationKindPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            counts,
+            truncated,
+            next_after_relation,
+        })
+    }
+
+    /// Lists bounded person access paths using a Rust-owned legacy projection query.
+    pub async fn list_person_access_paths(
+        &self,
+        tenant_id: &TenantId,
+        person_urn: &str,
+        person_query: &str,
+        limit: usize,
+        depth: usize,
+        expected_graph_revision: u64,
+    ) -> Result<PersonAccessPathPage, StoreError> {
+        validate_person_access_request(tenant_id, person_urn, person_query, limit, depth)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(expected_graph_revision, revision)?;
+        let access_relations = vec![
+            "assigned_to".to_owned(),
+            "member_of".to_owned(),
+            "can_admin".to_owned(),
+            "can_perform".to_owned(),
+            "can_assume".to_owned(),
+            "can_impersonate".to_owned(),
+            "runs_as".to_owned(),
+        ];
+        let statement = format!(
+            "MATCH (person:Entity {{tenant_id: $tenant_id, entity_type: 'person'}}) WHERE ($person_urn = '' OR person.urn = $person_urn) AND ($person_query = '' OR toLower(coalesce(person.label, '')) CONTAINS $person_query OR toLower(coalesce(person.attributes_json, '')) CONTAINS $person_query) MATCH (person)-[person_identity:RELATION {{relation: 'same_actor'}}]-(identity:Entity {{tenant_id: $tenant_id}}) MATCH (principal:Entity {{tenant_id: $tenant_id}})-[principal_identity:RELATION {{relation: 'represents_identity'}}]->(identity) MATCH path = (principal)-[:RELATION*1..{depth}]->(target:Entity {{tenant_id: $tenant_id}}) WHERE person_identity.tenant_id = $tenant_id AND principal_identity.tenant_id = $tenant_id AND all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(rel IN relationships(path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $access_relations) AND target.urn <> person.urn AND target.urn <> identity.urn RETURN person.urn AS person_key, coalesce(person.entity_type, 'unknown') AS person_kind, coalesce(person.label, person.urn) AS person_label, coalesce(person.attributes_json, '{{}}') AS person_properties, coalesce(person.source_id, '') AS person_source_id, coalesce(person.runtime_id, '') AS person_runtime_id, identity.urn AS identity_key, coalesce(identity.entity_type, 'unknown') AS identity_kind, coalesce(identity.label, identity.urn) AS identity_label, coalesce(identity.attributes_json, '{{}}') AS identity_properties, coalesce(identity.source_id, '') AS identity_source_id, coalesce(identity.runtime_id, '') AS identity_runtime_id, principal.urn AS principal_key, coalesce(principal.entity_type, 'unknown') AS principal_kind, coalesce(principal.label, principal.urn) AS principal_label, coalesce(principal.attributes_json, '{{}}') AS principal_properties, coalesce(principal.source_id, '') AS principal_source_id, coalesce(principal.runtime_id, '') AS principal_runtime_id, target.urn AS target_key, coalesce(target.entity_type, 'unknown') AS target_kind, coalesce(target.label, target.urn) AS target_label, coalesce(target.attributes_json, '{{}}') AS target_properties, coalesce(target.source_id, '') AS target_source_id, coalesce(target.runtime_id, '') AS target_runtime_id, [rel IN relationships(path) | rel.relation] AS relation_chain ORDER BY person.label, principal.label, target.label LIMIT $row_limit"
+        );
+        let mut rows = transaction
+            .execute(
+                query(&statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("person_urn", person_urn)
+                    .param("person_query", person_query)
+                    .param("access_relations", string_list(&access_relations))
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut paths = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            let relation_chain: Vec<String> = row
+                .get("relation_chain")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            if relation_chain.is_empty()
+                || relation_chain.len() > depth
+                || relation_chain
+                    .iter()
+                    .any(|relation| !access_relations.contains(relation))
+            {
+                return Err(StoreError::Conflict(
+                    "person access path relation chain is invalid".to_owned(),
+                ));
+            }
+            paths.push(PersonAccessPath {
+                person: legacy_context_entity_from_row_prefix(tenant_id, &row, "person")?,
+                identity: legacy_context_entity_from_row_prefix(tenant_id, &row, "identity")?,
+                principal: legacy_context_entity_from_row_prefix(tenant_id, &row, "principal")?,
+                access_target: legacy_context_entity_from_row_prefix(tenant_id, &row, "target")?,
+                relation_chain,
+            });
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut paths, limit);
+        Ok(PersonAccessPathPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            paths,
+            truncated,
+        })
+    }
+
+    /// Lists bounded cloud attack paths using a Rust-owned legacy projection query.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_cloud_attack_paths(
+        &self,
+        tenant_id: &TenantId,
+        account_id: &str,
+        runtime_id: &str,
+        require_assertion_proof: bool,
+        limit: usize,
+        depth: usize,
+        expected_graph_revision: u64,
+    ) -> Result<CloudAttackPathPage, StoreError> {
+        validate_cloud_attack_path_request(account_id, runtime_id, limit, depth)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(expected_graph_revision, revision)?;
+        let relation_type = if require_assertion_proof {
+            "RELATION_ASSERTION"
+        } else {
+            "RELATION"
+        };
+        let traversal_relations = cloud_attack_path_traversal_relations();
+        let access_relations = cloud_attack_path_access_relations();
+        let counts_statement = cloud_attack_path_counts_statement(depth, relation_type);
+        let mut count_rows = transaction
+            .execute(
+                query(&counts_statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("account_id", account_id)
+                    .param("runtime_id", runtime_id)
+                    .param("traversal_relations", string_list(&traversal_relations))
+                    .param("access_relations", string_list(&access_relations)),
+            )
+            .await?;
+        let counts = if let Some(row) = count_rows.next(transaction.handle()).await? {
+            CloudAttackPathCounts {
+                paths: catalog_row_u64(&row, "path_count")?,
+                exposed_resources: catalog_row_u64(&row, "exposed_resource_count")?,
+                privileged_principals: catalog_row_u64(&row, "privileged_principal_count")?,
+                cloud_accounts: catalog_row_u64(&row, "cloud_account_count")?,
+            }
+        } else {
+            CloudAttackPathCounts::default()
+        };
+        drop(count_rows);
+        let samples_statement = cloud_attack_path_samples_statement(depth, relation_type);
+        let mut rows = transaction
+            .execute(
+                query(&samples_statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("account_id", account_id)
+                    .param("runtime_id", runtime_id)
+                    .param("traversal_relations", string_list(&traversal_relations))
+                    .param("access_relations", string_list(&access_relations))
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut paths = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            paths.push(cloud_attack_path_from_row(&row)?);
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut paths, limit);
+        Ok(CloudAttackPathPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            counts,
+            paths,
+            truncated,
         })
     }
 
@@ -3120,6 +3472,289 @@ fn validate_catalog_relation_request(
     Ok(())
 }
 
+fn validate_person_access_request(
+    tenant_id: &TenantId,
+    person_urn: &str,
+    person_query: &str,
+    limit: usize,
+    depth: usize,
+) -> Result<(), StoreError> {
+    if !(1..=100).contains(&limit) {
+        return Err(StoreError::Conflict(
+            "person access path limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    if !(1..=4).contains(&depth) {
+        return Err(StoreError::Conflict(
+            "person access path depth must be between 1 and 4".to_owned(),
+        ));
+    }
+    validate_catalog_text("person_urn", person_urn, 4096, false)?;
+    validate_catalog_text("person_query", person_query, 512, false)?;
+    if person_urn.is_empty() && person_query.is_empty() {
+        return Err(StoreError::Conflict(
+            "person access path selector is required".to_owned(),
+        ));
+    }
+    if !person_urn.is_empty()
+        && !person_urn.starts_with(&format!("urn:cerebro:{}:", tenant_id.as_str()))
+    {
+        return Err(StoreError::Conflict(
+            "person access path person_urn is not tenant scoped".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_cloud_attack_path_request(
+    account_id: &str,
+    runtime_id: &str,
+    limit: usize,
+    depth: usize,
+) -> Result<(), StoreError> {
+    if !(1..=100).contains(&limit) {
+        return Err(StoreError::Conflict(
+            "cloud attack path limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    if !(1..=6).contains(&depth) {
+        return Err(StoreError::Conflict(
+            "cloud attack path depth must be between 1 and 6".to_owned(),
+        ));
+    }
+    validate_catalog_text("account_id", account_id, 256, false)?;
+    validate_catalog_text("runtime_id", runtime_id, 256, false)?;
+    Ok(())
+}
+
+fn cloud_attack_path_traversal_relations() -> Vec<String> {
+    vec![
+        "assigned_to".to_owned(),
+        "attached_to".to_owned(),
+        "can_assume".to_owned(),
+        "can_impersonate".to_owned(),
+        "depends_on".to_owned(),
+        "member_of".to_owned(),
+        "runs_as".to_owned(),
+    ]
+}
+
+fn cloud_attack_path_access_relations() -> Vec<String> {
+    vec![
+        "can_admin".to_owned(),
+        "can_perform".to_owned(),
+        "can_assume".to_owned(),
+        "can_impersonate".to_owned(),
+    ]
+}
+
+fn cloud_attack_path_counts_statement(depth: usize, relation_type: &str) -> String {
+    format!(
+        "{}\nRETURN count(*) AS path_count, count(DISTINCT exposed) AS exposed_resource_count, count(DISTINCT principal) AS privileged_principal_count, count(DISTINCT account) AS cloud_account_count",
+        cloud_attack_path_pattern(depth, relation_type)
+    )
+}
+
+fn cloud_attack_path_samples_statement(depth: usize, relation_type: &str) -> String {
+    format!(
+        r#"{}
+CALL {{
+  WITH exposed
+  OPTIONAL MATCH (exposed)-[ownership:__RELATION_TYPE__ {{tenant_id: $tenant_id, relation: 'owned_by'}}]->(candidate_owner:Entity {{tenant_id: $tenant_id}})
+  WHERE $runtime_id = '' OR ownership.runtime_id = $runtime_id
+  WITH exposed, candidate_owner, collect(ownership) AS ownership_assertions
+  WITH exposed, candidate_owner, head(ownership_assertions) AS ownership,
+       [assertion IN ownership_assertions WHERE assertion.runtime_id IS NOT NULL | assertion.runtime_id] AS ownership_assertion_runtime_ids
+  ORDER BY candidate_owner.urn, candidate_owner.entity_type, candidate_owner.label
+  WITH [item IN collect({{
+    owner_urn: candidate_owner.urn,
+    owner_entity_type: candidate_owner.entity_type,
+    owner_label: candidate_owner.label,
+    from_urn: exposed.urn,
+    from_entity_type: exposed.entity_type,
+    from_label: exposed.label,
+    relation: ownership.relation,
+    to_urn: candidate_owner.urn,
+    to_entity_type: candidate_owner.entity_type,
+    to_label: candidate_owner.label,
+    direction: 'forward',
+    source_id: ownership.source_id,
+    source_runtime_id: ownership.runtime_id,
+    assertion_runtime_ids: ownership_assertion_runtime_ids,
+    attributes_json: ownership.attributes_json
+  }}) WHERE item.owner_urn IS NOT NULL] AS ownerships
+  RETURN [item IN ownerships | coalesce(item.owner_urn, '')] AS ownership_owner_urns,
+         [item IN ownerships | coalesce(item.owner_entity_type, 'unknown')] AS ownership_owner_entity_types,
+         [item IN ownerships | coalesce(item.owner_label, item.owner_urn)] AS ownership_owner_labels,
+         [item IN ownerships | coalesce(item.from_urn, '')] AS ownership_from_urns,
+         [item IN ownerships | coalesce(item.from_entity_type, 'unknown')] AS ownership_from_entity_types,
+         [item IN ownerships | coalesce(item.from_label, item.from_urn)] AS ownership_from_labels,
+         [item IN ownerships | coalesce(item.relation, '')] AS ownership_relations,
+         [item IN ownerships | coalesce(item.to_urn, '')] AS ownership_to_urns,
+         [item IN ownerships | coalesce(item.to_entity_type, 'unknown')] AS ownership_to_entity_types,
+         [item IN ownerships | coalesce(item.to_label, item.to_urn)] AS ownership_to_labels,
+         [item IN ownerships | coalesce(item.direction, '')] AS ownership_directions,
+         [item IN ownerships | coalesce(item.source_id, '')] AS ownership_source_ids,
+         [item IN ownerships | coalesce(item.source_runtime_id, '')] AS ownership_source_runtime_ids,
+         [item IN ownerships | reduce(text = '', id IN item.assertion_runtime_ids | text + CASE WHEN text = '' THEN '' ELSE '\u001f' END + coalesce(id, ''))] AS ownership_assertion_runtime_id_sets,
+         [item IN ownerships | coalesce(item.attributes_json, '{{}}')] AS ownership_attributes_jsons
+}}
+RETURN public.urn AS public_urn,
+       coalesce(public.entity_type, 'unknown') AS public_entity_type,
+       coalesce(public.label, public.urn) AS public_label,
+       exposed.urn AS exposed_urn,
+       coalesce(exposed.entity_type, 'unknown') AS exposed_entity_type,
+       coalesce(exposed.label, exposed.urn) AS exposed_label,
+       account.urn AS account_urn,
+       coalesce(account.entity_type, 'unknown') AS account_entity_type,
+       coalesce(account.label, account.urn) AS account_label,
+       principal.urn AS principal_urn,
+       coalesce(principal.entity_type, 'unknown') AS principal_entity_type,
+       coalesce(principal.label, principal.urn) AS principal_label,
+       permission.urn AS permission_urn,
+       coalesce(permission.entity_type, 'unknown') AS permission_entity_type,
+       coalesce(permission.label, permission.urn) AS permission_label,
+       ownership_owner_urns, ownership_owner_entity_types, ownership_owner_labels,
+       ownership_from_urns, ownership_from_entity_types, ownership_from_labels, ownership_relations,
+       ownership_to_urns, ownership_to_entity_types, ownership_to_labels, ownership_directions,
+       ownership_source_ids, ownership_source_runtime_ids, ownership_assertion_runtime_id_sets, ownership_attributes_jsons,
+       reach.relation AS reach_relation,
+       access.relation AS access_relation,
+       proof_relations AS relation_chain,
+       public.urn AS exposure_from_urn,
+       coalesce(public.entity_type, 'unknown') AS exposure_from_entity_type,
+       coalesce(public.label, public.urn) AS exposure_from_label,
+       reach.relation AS exposure_relation,
+       exposed.urn AS exposure_to_urn,
+       coalesce(exposed.entity_type, 'unknown') AS exposure_to_entity_type,
+       coalesce(exposed.label, exposed.urn) AS exposure_to_label,
+       'forward' AS exposure_direction,
+       coalesce(reach.source_id, '') AS exposure_source_id,
+       coalesce(reach.runtime_id, '') AS exposure_source_runtime_id,
+       [id IN reach_assertion_runtime_ids WHERE id IS NOT NULL | id] AS exposure_assertion_runtime_ids,
+       coalesce(reach.attributes_json, '{{}}') AS exposure_attributes_json,
+       exposed.urn AS resource_account_from_urn,
+       coalesce(exposed.entity_type, 'unknown') AS resource_account_from_entity_type,
+       coalesce(exposed.label, exposed.urn) AS resource_account_from_label,
+       resource_account.relation AS resource_account_relation,
+       account.urn AS resource_account_to_urn,
+       coalesce(account.entity_type, 'unknown') AS resource_account_to_entity_type,
+       coalesce(account.label, account.urn) AS resource_account_to_label,
+       'forward' AS resource_account_direction,
+       coalesce(resource_account.source_id, '') AS resource_account_source_id,
+       coalesce(resource_account.runtime_id, '') AS resource_account_source_runtime_id,
+       [id IN resource_account_assertion_runtime_ids WHERE id IS NOT NULL | id] AS resource_account_assertion_runtime_ids,
+       coalesce(resource_account.attributes_json, '{{}}') AS resource_account_attributes_json,
+       [idx IN range(0, length(proof_path) - 1) | nodes(proof_path)[idx].urn] AS traversal_from_urns,
+       [idx IN range(0, length(proof_path) - 1) | coalesce(nodes(proof_path)[idx].entity_type, 'unknown')] AS traversal_from_entity_types,
+       [idx IN range(0, length(proof_path) - 1) | coalesce(nodes(proof_path)[idx].label, nodes(proof_path)[idx].urn)] AS traversal_from_labels,
+       [idx IN range(0, length(proof_path) - 1) | relationships(proof_path)[idx].relation] AS traversal_relations,
+       [idx IN range(0, length(proof_path) - 1) | nodes(proof_path)[idx + 1].urn] AS traversal_to_urns,
+       [idx IN range(0, length(proof_path) - 1) | coalesce(nodes(proof_path)[idx + 1].entity_type, 'unknown')] AS traversal_to_entity_types,
+       [idx IN range(0, length(proof_path) - 1) | coalesce(nodes(proof_path)[idx + 1].label, nodes(proof_path)[idx + 1].urn)] AS traversal_to_labels,
+       [idx IN range(0, length(proof_path) - 1) | CASE WHEN startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx] THEN 'forward' ELSE 'reverse' END] AS traversal_directions,
+       [idx IN range(0, length(proof_path) - 1) | coalesce(relationships(proof_path)[idx].source_id, '')] AS traversal_source_ids,
+       [idx IN range(0, length(proof_path) - 1) | coalesce(relationships(proof_path)[idx].runtime_id, '')] AS traversal_source_runtime_ids,
+       [ids IN traversal_assertion_runtime_ids | reduce(text = '', id IN ids | text + CASE WHEN text = '' THEN '' ELSE '\u001f' END + coalesce(id, ''))] AS traversal_assertion_runtime_id_sets,
+       [idx IN range(0, length(proof_path) - 1) | coalesce(relationships(proof_path)[idx].attributes_json, '{{}}')] AS traversal_attributes_jsons,
+       principal.urn AS privilege_from_urn,
+       coalesce(principal.entity_type, 'unknown') AS privilege_from_entity_type,
+       coalesce(principal.label, principal.urn) AS privilege_from_label,
+       access.relation AS privilege_relation,
+       permission.urn AS privilege_to_urn,
+       coalesce(permission.entity_type, 'unknown') AS privilege_to_entity_type,
+       coalesce(permission.label, permission.urn) AS privilege_to_label,
+       'forward' AS privilege_direction,
+       coalesce(access.source_id, '') AS privilege_source_id,
+       coalesce(access.runtime_id, '') AS privilege_source_runtime_id,
+       [id IN access_assertion_runtime_ids WHERE id IS NOT NULL | id] AS privilege_assertion_runtime_ids,
+       coalesce(access.attributes_json, '{{}}') AS privilege_attributes_json,
+       permission.urn AS permission_account_from_urn,
+       coalesce(permission.entity_type, 'unknown') AS permission_account_from_entity_type,
+       coalesce(permission.label, permission.urn) AS permission_account_from_label,
+       permission_account.relation AS permission_account_relation,
+       account.urn AS permission_account_to_urn,
+       coalesce(account.entity_type, 'unknown') AS permission_account_to_entity_type,
+       coalesce(account.label, account.urn) AS permission_account_to_label,
+       'forward' AS permission_account_direction,
+       coalesce(permission_account.source_id, '') AS permission_account_source_id,
+       coalesce(permission_account.runtime_id, '') AS permission_account_source_runtime_id,
+       [id IN permission_account_assertion_runtime_ids WHERE id IS NOT NULL | id] AS permission_account_assertion_runtime_ids,
+       coalesce(permission_account.attributes_json, '{{}}') AS permission_account_attributes_json
+ORDER BY account.label, exposed.label, principal.label, permission.label
+LIMIT $row_limit"#,
+        cloud_attack_path_pattern(depth, relation_type)
+    )
+    .replace("__RELATION_TYPE__", relation_type)
+}
+
+fn cloud_attack_path_pattern(depth: usize, relation_type: &str) -> String {
+    let pattern = r#"MATCH (public:Entity {tenant_id: $tenant_id})-[reach:__RELATION_TYPE__ {relation: 'can_reach'}]->(exposed:Entity {tenant_id: $tenant_id})-[resource_account:__RELATION_TYPE__ {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
+WHERE public.entity_type ENDS WITH '.public_principal'
+  AND ($account_id = '' OR account.label = $account_id OR account.urn CONTAINS $account_id)
+MATCH proof_path = (exposed)-[:__RELATION_TYPE__*1..__DEPTH__]-(principal:Entity {tenant_id: $tenant_id})
+WHERE all(node IN nodes(proof_path) WHERE node.tenant_id = $tenant_id)
+  AND all(rel IN relationships(proof_path) WHERE rel.tenant_id = $tenant_id AND rel.relation IN $traversal_relations)
+  AND all(idx IN range(0, length(proof_path) - 1) WHERE
+    (
+      relationships(proof_path)[idx].relation = 'member_of'
+      AND startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx + 1]
+    )
+    OR (
+      relationships(proof_path)[idx].relation <> 'member_of'
+      AND startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx]
+    )
+  )
+MATCH (principal)-[access:__RELATION_TYPE__]->(permission:Entity {tenant_id: $tenant_id})-[permission_account:__RELATION_TYPE__ {relation: 'belongs_to'}]->(account)
+WHERE access.relation IN $access_relations
+  AND (
+    access.relation <> 'can_perform'
+    OR coalesce(access.attributes_json, '') CONTAINS '"is_admin":"true"'
+    OR coalesce(access.attributes_json, '') CONTAINS '"privilege_level":"admin"'
+    OR coalesce(access.attributes_json, '') CONTAINS 'AdministratorAccess'
+    OR coalesce(access.attributes_json, '') CONTAINS '"permission":"*"'
+  )
+  AND ($runtime_id = '' OR (
+    reach.runtime_id = $runtime_id
+    AND resource_account.runtime_id = $runtime_id
+    AND access.runtime_id = $runtime_id
+    AND permission_account.runtime_id = $runtime_id
+    AND all(rel IN relationships(proof_path) WHERE rel.runtime_id = $runtime_id)
+  ))
+WITH public, reach, exposed, resource_account, account, principal, access, permission, permission_account, proof_path,
+     reach.relation AS reach_relation, access.relation AS access_relation,
+     [node IN nodes(proof_path) | node.urn] AS proof_node_urns,
+     [rel IN relationships(proof_path) | rel.relation] AS proof_relations,
+     [idx IN range(0, length(proof_path) - 1) |
+       CASE WHEN startNode(relationships(proof_path)[idx]) = nodes(proof_path)[idx] THEN 'forward' ELSE 'reverse' END
+     ] AS proof_directions
+ORDER BY length(proof_path), principal.label, principal.urn, permission.label, permission.urn,
+         reach.runtime_id, resource_account.runtime_id, access.runtime_id, permission_account.runtime_id
+WITH public, exposed, account, principal, permission, reach_relation, access_relation,
+     proof_node_urns, proof_relations, proof_directions,
+     collect(reach) AS reach_assertions,
+     collect(resource_account) AS resource_account_assertions,
+     collect(access) AS access_assertions,
+     collect(permission_account) AS permission_account_assertions,
+     collect(proof_path) AS proof_paths
+WITH public, exposed, account, principal, permission, reach_relation, access_relation, proof_relations,
+     head(reach_assertions) AS reach,
+     head(resource_account_assertions) AS resource_account,
+     head(access_assertions) AS access,
+     head(permission_account_assertions) AS permission_account,
+     head(proof_paths) AS proof_path,
+     [assertion IN reach_assertions WHERE assertion.runtime_id IS NOT NULL | assertion.runtime_id] AS reach_assertion_runtime_ids,
+     [assertion IN resource_account_assertions WHERE assertion.runtime_id IS NOT NULL | assertion.runtime_id] AS resource_account_assertion_runtime_ids,
+     [assertion IN access_assertions WHERE assertion.runtime_id IS NOT NULL | assertion.runtime_id] AS access_assertion_runtime_ids,
+     [assertion IN permission_account_assertions WHERE assertion.runtime_id IS NOT NULL | assertion.runtime_id] AS permission_account_assertion_runtime_ids,
+     [idx IN range(0, size(proof_relations) - 1) |
+       [candidate_path IN proof_paths WHERE relationships(candidate_path)[idx].runtime_id IS NOT NULL | relationships(candidate_path)[idx].runtime_id]
+     ] AS traversal_assertion_runtime_ids"#;
+    pattern
+        .replace("__RELATION_TYPE__", relation_type)
+        .replace("__DEPTH__", &depth.to_string())
+}
+
 fn validate_catalog_list(name: &str, values: &[String], max: usize) -> Result<(), StoreError> {
     if values.len() > max {
         return Err(StoreError::Conflict(format!(
@@ -3194,6 +3829,185 @@ fn catalog_row_u64(row: &Row, field: &str) -> Result<u64, StoreError> {
         .map_err(|error| StoreError::Conflict(error.to_string()))?;
     u64::try_from(value)
         .map_err(|_| StoreError::Conflict(format!("entity catalog {field} is negative")))
+}
+
+fn catalog_row_string_list(row: &Row, field: &str) -> Result<Vec<String>, StoreError> {
+    row.get(field)
+        .map_err(|error| StoreError::Conflict(error.to_string()))
+}
+
+fn cloud_attack_path_from_row(row: &Row) -> Result<CloudAttackPath, StoreError> {
+    Ok(CloudAttackPath {
+        public_principal: cloud_attack_path_node(row, "public")?,
+        exposed_resource: cloud_attack_path_node(row, "exposed")?,
+        cloud_account: cloud_attack_path_node(row, "account")?,
+        principal: cloud_attack_path_node(row, "principal")?,
+        permission: cloud_attack_path_node(row, "permission")?,
+        ownerships: cloud_attack_path_ownerships(row)?,
+        reach_relation: catalog_row_string(row, "reach_relation")?,
+        access_relation: catalog_row_string(row, "access_relation")?,
+        relation_chain: catalog_row_string_list(row, "relation_chain")?,
+        exposure_edge: cloud_attack_path_edge(row, "exposure")?,
+        resource_account_edge: cloud_attack_path_edge(row, "resource_account")?,
+        traversal_edges: cloud_attack_path_traversal_edges(row)?,
+        privilege_edge: cloud_attack_path_edge(row, "privilege")?,
+        permission_account_edge: cloud_attack_path_edge(row, "permission_account")?,
+    })
+}
+
+fn cloud_attack_path_node(row: &Row, prefix: &str) -> Result<CloudAttackPathNode, StoreError> {
+    Ok(CloudAttackPathNode {
+        urn: catalog_row_string(row, &format!("{prefix}_urn"))?,
+        entity_kind: catalog_row_string(row, &format!("{prefix}_entity_type"))?,
+        label: catalog_row_string(row, &format!("{prefix}_label"))?,
+    })
+}
+
+fn cloud_attack_path_edge(row: &Row, prefix: &str) -> Result<CloudAttackPathEdge, StoreError> {
+    Ok(CloudAttackPathEdge {
+        from: cloud_attack_path_node(row, &format!("{prefix}_from"))?,
+        relation: catalog_row_string(row, &format!("{prefix}_relation"))?,
+        to: cloud_attack_path_node(row, &format!("{prefix}_to"))?,
+        direction: catalog_row_string(row, &format!("{prefix}_direction"))?,
+        source_id: catalog_row_string(row, &format!("{prefix}_source_id"))?,
+        source_runtime_id: catalog_row_string(row, &format!("{prefix}_source_runtime_id"))?,
+        assertion_runtime_ids: catalog_row_string_list(
+            row,
+            &format!("{prefix}_assertion_runtime_ids"),
+        )?,
+        attributes_json: catalog_row_string(row, &format!("{prefix}_attributes_json"))?,
+    })
+}
+
+fn cloud_attack_path_ownerships(row: &Row) -> Result<Vec<CloudAttackPathOwnership>, StoreError> {
+    let owner_urns = catalog_row_string_list(row, "ownership_owner_urns")?;
+    let owner_entity_types = catalog_row_string_list(row, "ownership_owner_entity_types")?;
+    let owner_labels = catalog_row_string_list(row, "ownership_owner_labels")?;
+    let from_urns = catalog_row_string_list(row, "ownership_from_urns")?;
+    let from_entity_types = catalog_row_string_list(row, "ownership_from_entity_types")?;
+    let from_labels = catalog_row_string_list(row, "ownership_from_labels")?;
+    let relations = catalog_row_string_list(row, "ownership_relations")?;
+    let to_urns = catalog_row_string_list(row, "ownership_to_urns")?;
+    let to_entity_types = catalog_row_string_list(row, "ownership_to_entity_types")?;
+    let to_labels = catalog_row_string_list(row, "ownership_to_labels")?;
+    let directions = catalog_row_string_list(row, "ownership_directions")?;
+    let source_ids = catalog_row_string_list(row, "ownership_source_ids")?;
+    let source_runtime_ids = catalog_row_string_list(row, "ownership_source_runtime_ids")?;
+    let assertion_sets = catalog_row_string_list(row, "ownership_assertion_runtime_id_sets")?;
+    let attributes = catalog_row_string_list(row, "ownership_attributes_jsons")?;
+    if !same_len(&[
+        owner_urns.len(),
+        owner_entity_types.len(),
+        owner_labels.len(),
+        from_urns.len(),
+        from_entity_types.len(),
+        from_labels.len(),
+        relations.len(),
+        to_urns.len(),
+        to_entity_types.len(),
+        to_labels.len(),
+        directions.len(),
+        source_ids.len(),
+        source_runtime_ids.len(),
+        assertion_sets.len(),
+        attributes.len(),
+    ]) {
+        return Err(StoreError::Conflict(
+            "cloud attack path ownership fields are misaligned".to_owned(),
+        ));
+    }
+    let mut ownerships = Vec::with_capacity(owner_urns.len());
+    for index in 0..owner_urns.len() {
+        ownerships.push(CloudAttackPathOwnership {
+            owner: CloudAttackPathNode {
+                urn: owner_urns[index].clone(),
+                entity_kind: owner_entity_types[index].clone(),
+                label: owner_labels[index].clone(),
+            },
+            edge: CloudAttackPathEdge {
+                from: CloudAttackPathNode {
+                    urn: from_urns[index].clone(),
+                    entity_kind: from_entity_types[index].clone(),
+                    label: from_labels[index].clone(),
+                },
+                relation: relations[index].clone(),
+                to: CloudAttackPathNode {
+                    urn: to_urns[index].clone(),
+                    entity_kind: to_entity_types[index].clone(),
+                    label: to_labels[index].clone(),
+                },
+                direction: directions[index].clone(),
+                source_id: source_ids[index].clone(),
+                source_runtime_id: source_runtime_ids[index].clone(),
+                assertion_runtime_ids: split_runtime_id_set(&assertion_sets[index]),
+                attributes_json: attributes[index].clone(),
+            },
+        });
+    }
+    Ok(ownerships)
+}
+
+fn cloud_attack_path_traversal_edges(row: &Row) -> Result<Vec<CloudAttackPathEdge>, StoreError> {
+    let from_urns = catalog_row_string_list(row, "traversal_from_urns")?;
+    let from_entity_types = catalog_row_string_list(row, "traversal_from_entity_types")?;
+    let from_labels = catalog_row_string_list(row, "traversal_from_labels")?;
+    let relations = catalog_row_string_list(row, "traversal_relations")?;
+    let to_urns = catalog_row_string_list(row, "traversal_to_urns")?;
+    let to_entity_types = catalog_row_string_list(row, "traversal_to_entity_types")?;
+    let to_labels = catalog_row_string_list(row, "traversal_to_labels")?;
+    let directions = catalog_row_string_list(row, "traversal_directions")?;
+    let source_ids = catalog_row_string_list(row, "traversal_source_ids")?;
+    let source_runtime_ids = catalog_row_string_list(row, "traversal_source_runtime_ids")?;
+    let assertion_sets = catalog_row_string_list(row, "traversal_assertion_runtime_id_sets")?;
+    let attributes = catalog_row_string_list(row, "traversal_attributes_jsons")?;
+    if !same_len(&[
+        from_urns.len(),
+        from_entity_types.len(),
+        from_labels.len(),
+        relations.len(),
+        to_urns.len(),
+        to_entity_types.len(),
+        to_labels.len(),
+        directions.len(),
+        source_ids.len(),
+        source_runtime_ids.len(),
+        assertion_sets.len(),
+        attributes.len(),
+    ]) {
+        return Err(StoreError::Conflict(
+            "cloud attack path traversal fields are misaligned".to_owned(),
+        ));
+    }
+    let mut edges = Vec::with_capacity(relations.len());
+    for index in 0..relations.len() {
+        edges.push(CloudAttackPathEdge {
+            from: CloudAttackPathNode {
+                urn: from_urns[index].clone(),
+                entity_kind: from_entity_types[index].clone(),
+                label: from_labels[index].clone(),
+            },
+            relation: relations[index].clone(),
+            to: CloudAttackPathNode {
+                urn: to_urns[index].clone(),
+                entity_kind: to_entity_types[index].clone(),
+                label: to_labels[index].clone(),
+            },
+            direction: directions[index].clone(),
+            source_id: source_ids[index].clone(),
+            source_runtime_id: source_runtime_ids[index].clone(),
+            assertion_runtime_ids: split_runtime_id_set(&assertion_sets[index]),
+            attributes_json: attributes[index].clone(),
+        });
+    }
+    Ok(edges)
+}
+
+fn split_runtime_id_set(value: &str) -> Vec<String> {
+    value
+        .split('\u{1f}')
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 fn row_u64(row: &Row, field: &str) -> Result<u64, StoreError> {
@@ -3557,6 +4371,23 @@ fn legacy_context_entity(
         label,
         properties,
     })
+}
+
+fn legacy_context_entity_from_row_prefix(
+    tenant_id: &TenantId,
+    row: &Row,
+    prefix: &str,
+) -> Result<ContextEntity, StoreError> {
+    legacy_context_entity(
+        tenant_id,
+        &catalog_row_string(row, &format!("{prefix}_key"))?,
+        catalog_row_string(row, &format!("{prefix}_kind"))?,
+        catalog_row_string(row, &format!("{prefix}_label"))?,
+        catalog_row_string(row, &format!("{prefix}_properties"))?,
+        catalog_row_string(row, &format!("{prefix}_source_id"))?,
+        catalog_row_string(row, &format!("{prefix}_runtime_id"))?,
+    )
+    .map_err(|error| StoreError::Conflict(error.to_string()))
 }
 
 fn legacy_context_edge(

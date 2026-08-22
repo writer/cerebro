@@ -1,8 +1,8 @@
 # Policy Compliance Mapping
 
-Policy compliance mapping is YAML-first. The checked-in CSV files under `docs/reference/policy-compliance-mapping/` are generated review tables for auditors, control owners, and policy authors.
+Policy compliance mapping is YAML-first. The repository keeps the authoritative YAML and JSON inputs plus `docs/reference/policy-compliance-mapping-manifest.csv`, which records the digest, byte count, and row count of every generated review table. The complete CSV workbook is generated under `tmp/policy-compliance-mapping/` and published by the Generated Docs Refresh workflow.
 
-Do not edit the CSV rows by hand. Update the YAML inputs, regenerate the mapping, and review the diff.
+Do not edit generated CSV rows by hand. Update the YAML inputs, regenerate the workbook and manifest, then review the source diff and manifest changes.
 
 ## Source Files
 
@@ -61,6 +61,8 @@ For policy-sourced detections, merge order is:
 For non-policy detections, public detection catalog fields load first as fallback values, then the same YAML layers override them in the order above through `findings.<finding-id>`. Finding domains resolve from `finding_domains` by finding ID, pack, source, then tag. `audit_language_source` reports the final source of the emitted audit fields.
 
 ## Generated Tables
+
+Run `make policy-mapping-export` to materialize these files locally. The output directory is ignored by Git and includes `artifact_manifest.csv` so downloaded workflow artifacts can be verified without repository state.
 
 | File | Use |
 |------|-----|
@@ -216,7 +218,8 @@ Each requirement declares:
 ```bash
 make detection-catalog-generate
 make policy-mapping-export
+make policy-mapping-manifest-update
 make policy-mapping-check
 ```
 
-Run `make policy-mapping-export` after changing policy YAML, public detection metadata, control families, framework sources, control evidence requirements, or policy rule extensions. The target regenerates the policy rule catalog and public detection catalog first so all-finding CSVs use the latest checked-in catalogs. Run `make policy-mapping-check` before opening a PR.
+Run `make policy-mapping-export` after changing policy YAML, public detection metadata, control families, framework sources, control evidence requirements, or policy rule extensions. The target regenerates the policy rule catalog and public detection catalog first so all-finding CSVs use the latest catalogs. Run `make policy-mapping-manifest-update` to record the new artifact digests and row counts, then run `make policy-mapping-check` before opening a PR.

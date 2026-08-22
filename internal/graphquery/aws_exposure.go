@@ -96,19 +96,15 @@ type ExposureCoverageCompleteness struct {
 }
 
 func (s *Service) GetAWSPublicEndpointInsights(ctx context.Context, request AWSPublicEndpointInsightsRequest) (*AWSPublicEndpointInsightsResult, error) {
-	if s == nil || s.store == nil {
+	if s == nil || s.exposure == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	store, ok := s.store.(ports.ExposureCoverageStore)
-	if !ok {
-		return nil, fmt.Errorf("%w: typed exposure coverage is unavailable", ErrRuntimeUnavailable)
-	}
 	limit := normalizeAWSExposureLimit(request.Limit)
-	typed, err := store.CompareExposureCoverage(ctx, ports.ExposureCoverageRequest{
+	typed, err := s.exposure.CompareExposureCoverage(ctx, ports.ExposureCoverageRequest{
 		TenantID: tenantID,
 		Profile: ports.ExposureCoverageProfile{
 			PrimarySourceID:              "aws",

@@ -11,14 +11,17 @@ import (
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	sourcecatalogs "github.com/writer/cerebro/sources"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
 
 // Source adapts a normalized connector catalog definition into a runnable JSON API source.
 type Source struct {
-	inner              *jsonapi.Source
-	verificationPath   string
-	verificationStatus []int
+	inner                  *jsonapi.Source
+	spec                   *cerebrov1.SourceSpec
+	verificationPath       string
+	verificationConfigPath string
+	verificationStatus     []int
 }
 
 // ValidationOptions narrows test-only source behavior for contract validation.
@@ -28,7 +31,28 @@ type ValidationOptions struct {
 
 // New creates a runnable source from a connector catalog entry.
 func New(entry connectorcatalog.Entry) (*Source, error) {
-	return NewDefinition(entry.Definition)
+	catalogBytes, err := sourcecatalogs.BuiltinCatalog(entry.Definition.SourceID)
+	if err != nil {
+		return nil, err
+	}
+	return NewWithCatalog(entry, catalogBytes)
+}
+
+// NewWithCatalog creates a runnable source with validated portable source metadata.
+func NewWithCatalog(entry connectorcatalog.Entry, catalogBytes []byte) (*Source, error) {
+	catalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)
+	if err != nil {
+		return nil, fmt.Errorf("load %s source catalog: %w", entry.Definition.SourceID, err)
+	}
+	if catalog.Spec == nil || catalog.Spec.Id != entry.Definition.SourceID {
+		return nil, fmt.Errorf("source catalog id does not match connector definition %q", entry.Definition.SourceID)
+	}
+	source, err := NewDefinition(entry.Definition)
+	if err != nil {
+		return nil, err
+	}
+	source.spec = catalog.Spec
+	return source, nil
 }
 
 // NewDefinition creates a runnable source from a connector definition.
@@ -52,17 +76,20 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		return nil, fmt.Errorf("%s resource families are required", definition.SourceID)
 	}
 	families := make([]jsonapi.Family, 0, len(definition.ResourceFamilies))
+	emittedKinds := make([]string, 0, len(definition.ResourceFamilies))
 	for _, resource := range definition.ResourceFamilies {
 		family, err := jsonapiFamily(definition.SourceID, resource)
 		if err != nil {
 			return nil, err
 		}
 		families = append(families, family)
+		emittedKinds = append(emittedKinds, familyEventKind(definition.SourceID, resource))
 	}
 	spec := &cerebrov1.SourceSpec{
-		Id:          definition.SourceID,
-		Name:        firstNonEmpty(definition.DisplayName, titleFromID(definition.SourceID)),
-		Description: definition.Description,
+		Id:           definition.SourceID,
+		Name:         firstNonEmpty(definition.DisplayName, titleFromID(definition.SourceID)),
+		Description:  definition.Description,
+		EmittedKinds: emittedKinds,
 	}
 	options := jsonapi.Options{
 		SourceID:                    definition.SourceID,
@@ -70,6 +97,7 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		DefaultFamily:               families[0].Name,
 		RequireTenantID:             true,
 		AuthModel:                   definition.Auth.Model,
+		ConfigurableAuthModels:      append([]string(nil), definition.Auth.ConfigurableModels...),
 		TokenHeader:                 definition.Auth.TokenHeader,
 		TokenScheme:                 definition.Auth.TokenScheme,
 		OAuthTokenURL:               definition.Auth.TokenURL,
@@ -77,6 +105,7 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		OAuthTokenParams:            definition.Auth.TokenParams,
 		OAuthTokenRequestAuthMethod: definition.Auth.TokenRequestAuthMethod,
 		StaticHeaders:               definition.Transport.Headers,
+		ConfigHeaders:               definition.Auth.HeaderParameters,
 		Families:                    families,
 	}
 	inner, err := jsonapi.New(spec, options)
@@ -84,20 +113,25 @@ func NewDefinitionWithValidationOptions(definition connectordefinitions.Definiti
 		return nil, err
 	}
 	inner.AllowLoopbackBaseURL = validationOptions.AllowLoopbackBaseURL
-	source := &Source{inner: inner}
+	source := &Source{inner: inner, spec: spec}
 	if definition.Transport.Verification != nil {
 		source.verificationPath = strings.TrimSpace(definition.Transport.Verification.Path)
+		source.verificationConfigPath = strings.TrimSpace(definition.Transport.Verification.ConfigPath)
 		source.verificationStatus = append([]int(nil), definition.Transport.Verification.ExpectStatus...)
 	}
 	return source, nil
 }
 
+func familyEventKind(sourceID string, resource connectordefinitions.ResourceFamily) string {
+	return firstNonEmpty(resource.Event.Kind, resource.EventKind, sourceID+"."+resource.ID)
+}
+
 // Spec returns static source metadata.
 func (s *Source) Spec() *cerebrov1.SourceSpec {
-	if s == nil || s.inner == nil {
+	if s == nil || s.inner == nil || s.spec == nil {
 		return nil
 	}
-	return s.inner.Spec()
+	return s.spec
 }
 
 // Check validates the catalog verification endpoint when present.
@@ -105,8 +139,12 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if s == nil || s.inner == nil {
 		return fmt.Errorf("catalogruntime source is required")
 	}
-	if strings.TrimSpace(s.verificationPath) != "" {
-		return s.inner.CheckPath(ctx, cfg, s.verificationPath, s.verificationStatus)
+	verificationPath := strings.TrimSpace(s.verificationPath)
+	if key := strings.TrimSpace(s.verificationConfigPath); key != "" {
+		verificationPath = firstNonEmpty(sourcecdk.ConfigValue(cfg, key), verificationPath)
+	}
+	if verificationPath != "" {
+		return s.inner.CheckPath(ctx, cfg, verificationPath, s.verificationStatus)
 	}
 	return s.inner.Check(ctx, cfg)
 }
@@ -148,6 +186,13 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 	config := familyConfig(resource)
 	config.Method = method
 	config.FinalStaticAttributes = finalStaticAttributes(resource.Projection)
+	attributes := attributePaths(resource, class)
+	static := staticAttributes(sourceID, name, class)
+	if resource.Event.ExactAttributes {
+		attributes = cloneStringMap(resource.Event.Attributes)
+		static = nil
+		config.FinalStaticAttributes = cloneStringMap(resource.Event.StaticAttributes)
+	}
 	return jsonapi.Family{
 		Name:                  name,
 		Path:                  resource.Path,
@@ -162,11 +207,11 @@ func jsonapiFamily(sourceID string, resource connectordefinitions.ResourceFamily
 		URNKind:               firstNonEmpty(resource.Event.URNKind, "runtime_"+name),
 		IDKeys:                idKeys(resource, class),
 		TimestampKeys:         timestampKeys(resource),
-		Attributes:            attributePaths(resource, class),
-		StaticAttributes:      staticAttributes(sourceID, name, class),
+		Attributes:            attributes,
+		StaticAttributes:      static,
 		Config:                config,
 		PageSizeParams:        pageSizeParams(resource.Pagination),
-		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination),
+		DisablePageSize:       read.DisablePageSize || disablePageSize(resource.Pagination) || cursorInJSONBody(resource.Pagination),
 		ListKeys:              listKeys(resource),
 		MapRecords:            cloneStringMap(read.MapRecords),
 		Singleton:             read.Singleton || resource.Singleton,
@@ -219,10 +264,20 @@ func linkHeader(pagination *connectordefinitions.PaginationSpec) string {
 }
 
 func pageFirstCursor(pagination *connectordefinitions.PaginationSpec) string {
-	if pagination == nil || strings.TrimSpace(pagination.Type) != "page" || strings.TrimSpace(pagination.PageParam) == "" {
+	if pagination == nil {
 		return ""
 	}
-	return strconv.Itoa(pagination.StartPage)
+	switch strings.TrimSpace(pagination.Type) {
+	case "page":
+		if strings.TrimSpace(pagination.PageParam) != "" {
+			return strconv.Itoa(pagination.StartPage)
+		}
+	case "offset":
+		if pagination.InjectFirstPage && strings.TrimSpace(pagination.OffsetParam) != "" {
+			return strconv.Itoa(pagination.StartPage)
+		}
+	}
+	return ""
 }
 
 func hasMoreKey(pagination *connectordefinitions.PaginationSpec) string {
@@ -245,11 +300,31 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		out.AuthModel = strings.TrimSpace(resource.Config.AuthModel)
 		out.StaticQuery = mergeStringMaps(out.StaticQuery, resource.Config.StaticQuery)
 		out.ConfigQuery = mergeStringMaps(out.ConfigQuery, resource.Config.ConfigQuery)
+		out.Request.ConfigHeaders = cloneStringMap(resource.Config.ConfigHeaders)
 		out.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
 		out.IDTemplate = strings.TrimSpace(resource.Config.IDTemplate)
 		out.EncodeURNID = resource.Config.EncodeURNID
 		out.ResourceURNKind = strings.TrimSpace(resource.Config.ResourceURNKind)
 		out.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
+	}
+	if resource.Read != nil {
+		out.Request.JSONBody.Static = cloneJSONMap(resource.Read.StaticJSONBody)
+		out.Request.JSONBody.Config = cloneStringMap(resource.Read.ConfigJSONBody)
+	}
+	if resource.Pagination != nil && resource.Pagination.CursorInJSONBody {
+		out.Request.JSONBody.CursorParam = strings.TrimSpace(resource.Pagination.CursorParam)
+		out.Request.JSONBody.SizeParam = strings.TrimSpace(resource.Pagination.PageSizeParam)
+	}
+	return out
+}
+
+func cloneJSONMap(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(values))
+	for key, value := range values {
+		out[key] = value
 	}
 	return out
 }
@@ -303,6 +378,10 @@ func pageSizeParams(pagination *connectordefinitions.PaginationSpec) []string {
 
 func disablePageSize(pagination *connectordefinitions.PaginationSpec) bool {
 	return pagination != nil && pagination.DisablePageSize
+}
+
+func cursorInJSONBody(pagination *connectordefinitions.PaginationSpec) bool {
+	return pagination != nil && pagination.CursorInJSONBody
 }
 
 func listKeys(resource connectordefinitions.ResourceFamily) []string {
