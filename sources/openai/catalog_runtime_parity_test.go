@@ -99,7 +99,7 @@ type oracleEvent struct {
 func readOracleEvent(t *testing.T, family string) oracleEvent {
 	t.Helper()
 	path := filepath.Join("testdata", "read_"+family+".json")
-	bytes, err := os.ReadFile(path)
+	bytes, err := os.ReadFile(path) // #nosec G304 -- family comes from the closed OpenAI catalog table.
 	if err != nil {
 		t.Fatal(err)
 	}
