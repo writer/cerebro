@@ -212,10 +212,10 @@ fn page_checkpoint_and_restart_are_round_trippable() {
 #[test]
 fn duplicates_statuses_bounds_scope_and_secret_material_fail_closed() {
     let family = AhaFamily::Products;
-    let kernel = kernel("tenant", family);
-    let request = kernel.plan(None).unwrap();
+    let product_kernel = kernel("tenant", family);
+    let request = product_kernel.plan(None).unwrap();
     let raw = oracle(family).payload;
-    let page = kernel
+    let page = product_kernel
         .decode(
             &request,
             200,
@@ -227,7 +227,7 @@ fn duplicates_statuses_bounds_scope_and_secret_material_fail_closed() {
     let mut conflict = raw.clone();
     conflict["updated_at"] = Value::String("2026-06-03T00:00:00Z".to_owned());
     assert_eq!(
-        kernel.decode(&request, 200, None, &response(family, vec![raw, conflict])),
+        product_kernel.decode(&request, 200, None, &response(family, vec![raw, conflict])),
         Err(AhaError::ConflictingDuplicate)
     );
     for (status, expected) in [
@@ -244,13 +244,13 @@ fn duplicates_statuses_bounds_scope_and_secret_material_fail_closed() {
         (418, AhaError::UnexpectedStatus { status: 418 }),
     ] {
         assert_eq!(
-            kernel.decode(&request, status, Some(60), b"{}"),
+            product_kernel.decode(&request, status, Some(60), b"{}"),
             Err(expected)
         );
     }
     let oversized = vec![b' '; request.max_response_bytes() + 1];
     assert_eq!(
-        kernel.decode(&request, 200, None, &oversized),
+        product_kernel.decode(&request, 200, None, &oversized),
         Err(AhaError::ResponseTooLarge)
     );
 
@@ -275,7 +275,7 @@ fn duplicates_statuses_bounds_scope_and_secret_material_fail_closed() {
     ] {
         let mut raw = oracle(family).payload;
         raw[field] = Value::String("sentinel-secret-value".to_owned());
-        let error = kernel
+        let error = product_kernel
             .decode(&request, 200, None, &response(family, vec![raw]))
             .unwrap_err();
         assert_eq!(error, expected);
