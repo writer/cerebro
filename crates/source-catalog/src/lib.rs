@@ -3314,6 +3314,7 @@ mod tests {
             "airfocus",
             "beezup",
             "bitwarden",
+            "openai",
         ] {
             let source = catalog.get(source_id).unwrap();
             assert_eq!(

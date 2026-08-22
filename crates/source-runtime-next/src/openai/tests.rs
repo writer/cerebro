@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
-use cerebro_source_catalog::{CollectionAuthority, SourceCatalog};
+use cerebro_source_catalog::{AuthModel, CollectionAuthority, SourceCatalog};
 use serde_json::{Value, json};
 
 use super::{OpenAiError, OpenAiFamily, OpenAiKernel, OpenAiRequestInput, family::Pagination};
@@ -71,20 +71,27 @@ fn connector_catalog_compiles_the_same_closed_authoritative_family_set() {
     .expect("compile source catalog");
     let source = catalog.get("openai").expect("compiled OpenAI source");
     assert_eq!(source.authority(), CollectionAuthority::Authoritative);
+    assert_eq!(source.auth(), &AuthModel::BearerToken);
     let compiled = source
         .families()
         .iter()
         .map(|family| family.id())
-        .collect::<std::collections::BTreeSet<_>>();
+        .collect::<Vec<_>>();
     let closed = OpenAiFamily::all()
         .map(OpenAiFamily::id)
-        .collect::<std::collections::BTreeSet<_>>();
+        .collect::<Vec<_>>();
     assert_eq!(compiled, closed);
     assert!(
         source
             .families()
             .iter()
             .all(|family| family.is_authoritative())
+    );
+    assert!(
+        source
+            .families()
+            .iter()
+            .all(|family| family.is_projection_authoritative())
     );
 }
 

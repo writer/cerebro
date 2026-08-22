@@ -305,7 +305,6 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"langfuse":              true,
 		"okta":                  true,
 		"onelogin":              true,
-		"openai":                true,
 		"pagerduty":             true,
 		"sailpoint_identitynow": true,
 		"snyk":                  true,
@@ -363,6 +362,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"fivetran",
 		"increase",
 		"jira",
+		"openai",
 	}
 	static := make(map[string]struct{}, len(builtinSourceLoaders))
 	for _, loader := range builtinSourceLoaders {

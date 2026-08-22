@@ -43,6 +43,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"fivetran":        {},
 	"increase":        {},
 	"jira":            {},
+	"openai":          {},
 }
 
 //go:embed testdata/catalog_runtime_go_retirement_v1.txt

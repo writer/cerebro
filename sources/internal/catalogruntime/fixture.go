@@ -63,6 +63,18 @@ func fixtureConfig(definition connectordefinitions.Definition, familyID string, 
 		}
 		values[key] = fixtureValue(key)
 	}
+	for _, family := range definition.ResourceFamilies {
+		if family.ID != familyID || family.Read == nil {
+			continue
+		}
+		for _, key := range family.Read.PathParams {
+			key = strings.TrimSpace(key)
+			if key != "" && strings.TrimSpace(values[key]) == "" {
+				values[key] = fixtureValue(key)
+			}
+		}
+		break
+	}
 	return sourcecdk.NewConfig(values)
 }
 
