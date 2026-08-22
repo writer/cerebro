@@ -11,6 +11,7 @@ import (
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	sourcecatalogs "github.com/writer/cerebro/sources"
 	"github.com/writer/cerebro/sources/internal/jsonapi"
 )
 
@@ -28,6 +29,17 @@ type ValidationOptions struct {
 
 // New creates a runnable source from a connector catalog entry.
 func New(entry connectorcatalog.Entry) (*Source, error) {
+	catalogBytes, err := sourcecatalogs.BuiltinCatalog(entry.Definition.SourceID)
+	if err != nil {
+		return nil, err
+	}
+	spec, err := sourcecdk.LoadCatalog(catalogBytes)
+	if err != nil {
+		return nil, fmt.Errorf("load %s source catalog: %w", entry.Definition.SourceID, err)
+	}
+	if spec == nil || spec.Id != entry.Definition.SourceID {
+		return nil, fmt.Errorf("source catalog id does not match connector definition %q", entry.Definition.SourceID)
+	}
 	return NewDefinition(entry.Definition)
 }
 

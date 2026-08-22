@@ -780,9 +780,11 @@ provider evidence
 Registration is data-driven for standard Go compatibility sources: the runtime
 loads normalized catalog definitions instead of importing 756 provider-specific
 packages. The remaining explicit loaders cover deep, push, bespoke, and
-metadata-incompatible sources. The Rust runtime target remains a compiled
-first-party plan index that is deterministic, included in release provenance,
-and validated before serving traffic.
+metadata-incompatible sources. A single embedded portable source-catalog index
+preserves the same event, coverage, and lifecycle contracts for those standard
+sources without restoring their provider-package imports. The Rust runtime
+target remains a compiled first-party plan index that is deterministic,
+included in release provenance, and validated before serving traffic.
 
 ## Migration plan
 
