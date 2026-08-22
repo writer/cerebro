@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/csv"
 	"encoding/json"
 	"flag"
@@ -18,7 +19,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const defaultOutputDir = "docs/reference/policy-compliance-mapping"
+const defaultOutputDir = "tmp/policy-compliance-mapping"
+const defaultManifestPath = "docs/reference/policy-compliance-mapping-manifest.csv"
 const policyRuleExtensionsPath = "internal/compliance/policy_rule_extensions.yaml"
 const controlFamiliesPath = "internal/compliance/control_families.yaml"
 const frameworkSourcesPath = "internal/compliance/framework_sources.yaml"
@@ -314,12 +316,14 @@ type generatedFile struct {
 func main() {
 	root := flag.String("root", ".", "repository root")
 	output := flag.String("output", defaultOutputDir, "output directory for generated CSV mapping files")
+	manifest := flag.String("manifest", defaultManifestPath, "checked-in digest manifest for generated mapping files")
 	write := flag.Bool("write", false, "write generated policy compliance mapping CSVs")
-	check := flag.Bool("check", false, "check generated policy compliance mapping CSVs are current")
+	writeManifest := flag.Bool("write-manifest", false, "write the checked-in digest manifest")
+	check := flag.Bool("check", false, "check the generated policy compliance mapping manifest")
 	flag.Parse()
 
-	if !*write && !*check {
-		fmt.Fprintln(os.Stderr, "policymappingexport: one of --write or --check is required")
+	if !*write && !*writeManifest && !*check {
+		fmt.Fprintln(os.Stderr, "policymappingexport: one of --write, --write-manifest, or --check is required")
 		os.Exit(2)
 	}
 
@@ -335,8 +339,14 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if *writeManifest {
+		if err := writeArtifactManifest(cleanRoot, *manifest, files); err != nil {
+			fmt.Fprintf(os.Stderr, "policymappingexport: write manifest: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	if *check {
-		stale, err := checkFiles(cleanRoot, *output, files)
+		stale, err := checkArtifactManifest(cleanRoot, *manifest, files)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "policymappingexport: %v\n", err)
 			os.Exit(1)
@@ -5114,32 +5124,68 @@ func writeFiles(root string, output string, files []generatedFile) error {
 			return fmt.Errorf("write %s: %w", path, err)
 		}
 	}
+	manifestPath := filepath.Join(dir, "artifact_manifest.csv")
+	if err := os.WriteFile(manifestPath, artifactManifestBytes(files), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", manifestPath, err)
+	}
 	return nil
 }
 
-func checkFiles(root string, output string, files []generatedFile) (bool, error) {
-	dir := outputDir(root, output)
-	stale := false
-	for _, file := range files {
-		path := filepath.Join(dir, file.Name)
-		existing, err := os.ReadFile(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				fmt.Fprintf(os.Stderr, "policymappingexport: %s is missing; run `make policy-mapping-export`\n", path)
-				stale = true
-				continue
-			}
-			return false, fmt.Errorf("read %s: %w", path, err)
-		}
-		if !bytes.Equal(existing, file.Content) {
-			fmt.Fprintf(os.Stderr, "policymappingexport: %s is stale; run `make policy-mapping-export`\n", path)
-			stale = true
-		}
+func writeArtifactManifest(root string, manifest string, files []generatedFile) error {
+	path := outputPath(root, manifest)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
 	}
-	return stale, nil
+	if err := os.WriteFile(path, artifactManifestBytes(files), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+func checkArtifactManifest(root string, manifest string, files []generatedFile) (bool, error) {
+	path := outputPath(root, manifest)
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "policymappingexport: %s is missing; run `make policy-mapping-manifest-update`\n", path)
+			return true, nil
+		}
+		return false, fmt.Errorf("read %s: %w", path, err)
+	}
+	if !bytes.Equal(existing, artifactManifestBytes(files)) {
+		fmt.Fprintf(os.Stderr, "policymappingexport: %s is stale; run `make policy-mapping-manifest-update`\n", path)
+		return true, nil
+	}
+	return false, nil
+}
+
+func artifactManifestBytes(files []generatedFile) []byte {
+	rows := [][]string{{"file", "sha256", "bytes", "rows"}}
+	for _, file := range files {
+		digest := sha256.Sum256(file.Content)
+		rows = append(rows, []string{
+			file.Name,
+			fmt.Sprintf("%x", digest),
+			fmt.Sprintf("%d", len(file.Content)),
+			fmt.Sprintf("%d", csvRowCount(file.Content)),
+		})
+	}
+	return csvBytes(rows)
+}
+
+func csvRowCount(content []byte) int {
+	rows, err := csv.NewReader(bytes.NewReader(content)).ReadAll()
+	if err != nil {
+		panic(fmt.Sprintf("generated CSV is invalid: %v", err))
+	}
+	return len(rows)
 }
 
 func outputDir(root string, output string) string {
+	return outputPath(root, output)
+}
+
+func outputPath(root string, output string) string {
 	if filepath.IsAbs(output) {
 		return filepath.Clean(output)
 	}
