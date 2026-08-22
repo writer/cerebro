@@ -4,6 +4,7 @@
 //! Rust-native source collection and graph admission boundary.
 
 mod amplitude;
+mod anthropic;
 mod append_log;
 mod archetype;
 mod aurelius;
@@ -40,6 +41,10 @@ mod vulnview;
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,
     AmplitudeRequest,
+};
+pub use anthropic::{
+    AnthropicAuthentication, AnthropicError, AnthropicFamily, AnthropicKernel, AnthropicPage,
+    AnthropicRecord, AnthropicRequest, AnthropicScope,
 };
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use archetype::{
