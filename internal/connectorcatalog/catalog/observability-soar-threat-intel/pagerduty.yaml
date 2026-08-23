@@ -1,237 +1,494 @@
 entries:
-  - classifier_output: supported
+  - classifier_output: bespoke_required
     definition:
       auth:
         credential_fields:
           - key: token
-            label: Bearer token
+            label: PagerDuty API token
             reference_only: true
             required: true
             secret: true
-        model: bearer_token
+        model: api_key
         requires_references: true
+        token_header: Authorization
+        token_scheme: Token
       categories:
         - saas
         - observability_soar_threat_intel
       config_fields:
-        - help: Tenant or regional API base URL.
+        - help: PagerDuty REST API origin. Use the US or EU PagerDuty API origin.
           key: base_url
           label: API base URL
           required: true
-      description: Collects alerts, incidents, monitors, dashboards, and audit events from Pagerduty and projects them into the Cerebro graph as alerts, findings, assets, and audit events for alert, incident, service health, and response context.
-      display_name: Pagerduty
+        - help: Comma-separated PagerDuty service IDs used to collect service integrations.
+          key: service_ids
+          label: Service IDs
+      description: Collects PagerDuty users, teams, services, schedules, escalation policies, service integrations, and vendors for responder identity, escalation coverage, and incident-routing topology.
+      display_name: PagerDuty
       id: builtin-pagerduty
       ingest:
         mode: pull
       resource_families:
         - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - security_monitoring
-              families:
-                - alerts
+            - control_domains: [asset_inventory, identity_access]
+              evidence_types: [source_snapshot]
+              families: [user]
               high_value: true
-              id: alerts
-              support: partial
-              title: Alerts
-              type: alert_state
+              id: users
+              support: supported
+              title: Users
+              type: entity_family
           default_enabled: true
           event:
-            kind: pagerduty.alerts
-            required_payload_fields:
-              - id
-            schema_ref: pagerduty/alerts/v1
-            urn_kind: pagerduty_alerts
-          id: alerts
+            attributes:
+              email: email
+              job_title: job_title
+              name: name
+              role: role
+              time_zone: time_zone
+              user_id: id
+            exact_attributes: true
+            kind: pagerduty.user
+            required_attributes:
+              - external_id
+              - family
+              - source_provider
+              - source_product
+              - user_id
+            required_payload_fields: [id]
+            schema_ref: pagerduty/user/v1
+            static_attributes:
+              source_product: pagerduty
+            urn_kind: pagerduty_user
+          id: user
           id_field: id
-          label: Alerts
+          label: Users
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            has_more_key: more
+            limit_param: limit
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/alerts
+            type: offset
+          path: /users
           projection:
+            entity:
+              entity_type: pagerduty.user
+              id_attributes: [user_id]
+              label_attribute: name
+              urn_kind: pagerduty_user
             fields:
-              alert_id: id
-              alert_name: name
-              alert_severity: severity
-              alert_status: status
-            template: alert
-          record_selector: $.data[*]
+              display_name: name
+              email: email
+              job_title: job_title
+              role: role
+              source_event_id: id
+              time_zone: time_zone
+              user_id: id
+            template: identity_user
+          record_selector: $.users[*]
         - coverage:
-            - control_domains:
-                - incident_response
-              evidence_types:
-                - finding_snapshot
-              families:
-                - incidents
+            - control_domains: [asset_inventory, identity_access]
+              evidence_types: [source_snapshot]
+              families: [team]
               high_value: true
-              id: incidents
-              support: partial
-              title: Incidents
-              type: finding
+              id: teams
+              support: supported
+              title: Teams
+              type: entity_family
           default_enabled: true
           event:
-            kind: pagerduty.incidents
-            required_payload_fields:
-              - id
-            schema_ref: pagerduty/incidents/v1
-            urn_kind: pagerduty_incidents
-          id: incidents
+            attributes:
+              description: description
+              name: name
+              team_id: id
+            exact_attributes: true
+            kind: pagerduty.team
+            required_attributes:
+              - external_id
+              - family
+              - source_provider
+              - source_product
+              - team_id
+            required_payload_fields: [id]
+            schema_ref: pagerduty/team/v1
+            static_attributes:
+              source_product: pagerduty
+            urn_kind: pagerduty_team
+          id: team
           id_field: id
-          label: Incidents
+          label: Teams
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            has_more_key: more
+            limit_param: limit
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/incidents
+            type: offset
+          path: /teams
           projection:
+            entity:
+              entity_type: pagerduty.team
+              id_attributes: [team_id]
+              label_attribute: name
+              urn_kind: pagerduty_team
             fields:
-              finding_id: id
-              resource_id: resource_id
-              resource_type: resource_type
-              severity: severity
+              description: description
+              group_id: id
+              group_name: name
+              source_event_id: id
+              team_id: id
+            template: identity_group
+          record_selector: $.teams[*]
+        - coverage:
+            - control_domains: [asset_inventory, incident_response]
+              evidence_types: [source_snapshot, relationship_evidence]
+              families: [service]
+              high_value: true
+              id: services
+              support: supported
+              title: Services
+              type: entity_family
+          default_enabled: true
+          event:
+            attributes:
+              escalation_policy_id: escalation_policy.id
+              escalation_policy_name: escalation_policy.summary|escalation_policy.name
+              html_url: html_url
+              name: name
+              service_id: id
               status: status
-              title: title
-            template: finding
-          record_selector: $.data[*]
+              summary: summary
+            exact_attributes: true
+            kind: pagerduty.service
+            required_attributes:
+              - external_id
+              - family
+              - source_provider
+              - source_product
+              - service_id
+            required_payload_fields: [id]
+            schema_ref: pagerduty/service/v1
+            static_attributes:
+              source_product: pagerduty
+            urn_kind: pagerduty_service
+          id: service
+          id_field: id
+          label: Services
+          method: GET
+          name_field: name
+          pagination:
+            has_more_key: more
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /services
+          projection:
+            entity:
+              entity_type: pagerduty.service
+              id_attributes: [service_id]
+              label_attribute: name
+              urn_kind: pagerduty_service
+            fields:
+              escalation_policy_id: escalation_policy.id
+              escalation_policy_name: escalation_policy.summary|escalation_policy.name
+              resource_id: id
+              resource_name: name
+              service_id: id
+              source_event_id: id
+              status: status
+            static_fields:
+              resource_type: pagerduty_service
+            template: asset
+          record_selector: $.services[*]
+          updated_at_field: created_at
         - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - monitors
+            - control_domains: [asset_inventory, incident_response]
+              evidence_types: [source_snapshot]
+              families: [schedule]
               high_value: true
-              id: monitors
-              support: partial
-              title: Monitors
+              id: schedules
+              support: supported
+              title: Schedules
               type: entity_family
           default_enabled: true
           event:
-            kind: pagerduty.monitors
-            required_payload_fields:
-              - id
-            schema_ref: pagerduty/monitors/v1
-            urn_kind: pagerduty_monitors
-          id: monitors
+            attributes:
+              html_url: html_url
+              name: name
+              schedule_id: id
+              summary: summary
+              time_zone: time_zone
+            exact_attributes: true
+            kind: pagerduty.schedule
+            required_attributes:
+              - external_id
+              - family
+              - source_provider
+              - source_product
+              - schedule_id
+            required_payload_fields: [id]
+            schema_ref: pagerduty/schedule/v1
+            static_attributes:
+              source_product: pagerduty
+            urn_kind: pagerduty_schedule
+          id: schedule
           id_field: id
-          label: Monitors
+          label: Schedules
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            has_more_key: more
+            limit_param: limit
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/monitors
+            type: offset
+          path: /schedules
           projection:
+            entity:
+              entity_type: pagerduty.schedule
+              id_attributes: [schedule_id]
+              label_attribute: name
+              urn_kind: pagerduty_schedule
             fields:
-              id: id
-              name: name
               resource_id: id
               resource_name: name
-              resource_type: monitor
+              schedule_id: id
+              source_event_id: id
+              time_zone: time_zone
+            static_fields:
+              resource_type: pagerduty_schedule
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.schedules[*]
         - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - dashboards
+            - control_domains: [incident_response, security_operations]
+              evidence_types: [configuration_state, relationship_evidence]
+              families: [escalation_policy]
               high_value: true
-              id: dashboards
-              support: partial
-              title: Dashboards
+              id: escalation_policies
+              support: supported
+              title: Escalation policies
+              type: lifecycle_state
+          default_enabled: true
+          event:
+            attributes:
+              escalation_policy_id: id
+              html_url: html_url
+              name: name
+              num_loops: num_loops
+              summary: summary
+            exact_attributes: true
+            kind: pagerduty.escalation_policy
+            required_attributes:
+              - external_id
+              - family
+              - source_provider
+              - source_product
+              - escalation_policy_id
+            required_payload_fields: [id]
+            schema_ref: pagerduty/escalation_policy/v1
+            static_attributes:
+              source_product: pagerduty
+            urn_kind: pagerduty_escalation_policy
+          id: escalation_policy
+          id_field: id
+          label: Escalation policies
+          list_key: escalation_policies
+          method: GET
+          name_field: name
+          pagination:
+            has_more_key: more
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /escalation_policies
+          projection:
+            entity:
+              entity_type: pagerduty.escalation_policy
+              id_attributes: [escalation_policy_id]
+              label_attribute: name
+              urn_kind: pagerduty_escalation_policy
+            fields:
+              escalation_policy_id: id
+              policy_id: id
+              policy_name: name
+              source_event_id: id
+            static_fields:
+              policy_type: escalation_policy
+            template: policy
+          record_selector: $.escalation_policies[*]
+        - coverage:
+            - control_domains: [asset_inventory, incident_response]
+              evidence_types: [source_snapshot, relationship_evidence]
+              families: [integration]
+              high_value: true
+              id: integrations
+              support: supported
+              title: Service integrations
+              type: relationship
+          default_enabled: true
+          event:
+            attributes:
+              integration_id: id
+              name: name
+              service_id: service.id|service_id
+              service_name: service.summary|service.name
+              summary: summary
+              vendor_id: vendor.id
+              vendor_name: vendor.summary|vendor.name
+            exact_attributes: true
+            kind: pagerduty.integration
+            required_attributes:
+              - external_id
+              - family
+              - integration_id
+              - service_id
+              - source_provider
+              - source_product
+            required_payload_fields: [id]
+            schema_ref: pagerduty/integration/v1
+            static_attributes:
+              source_product: pagerduty
+            urn_kind: pagerduty_integration
+          id: integration
+          id_field: id
+          label: Service integrations
+          method: GET
+          name_field: name|summary
+          pagination:
+            has_more_key: more
+            limit_param: limit
+            offset_param: offset
+            page_size: 100
+            type: offset
+          path: /services/{service_id}/integrations
+          projection:
+            entity:
+              entity_type: pagerduty.integration
+              id_attributes: [integration_id]
+              label_attribute: name
+              urn_kind: pagerduty_integration
+            fields:
+              integration_id: id
+              resource_id: id
+              resource_name: name|summary
+              service_id: service.id|service_id
+              service_name: service.summary|service.name
+              source_event_id: id
+              vendor_id: vendor.id
+            relationships:
+              - match_type: integration_service
+                relation: belongs_to
+                required_attributes: [service_id]
+                to:
+                  entity_type: pagerduty.service
+                  id_attributes: [service_id]
+                  label_attribute: service_name
+                  urn_kind: pagerduty_service
+            static_fields:
+              resource_type: pagerduty_integration
+            template: asset
+          read:
+            path_param_fanout:
+              service_id: service_ids
+            path_params: [service_id]
+          record_selector: $.integrations[*]
+        - coverage:
+            - control_domains: [asset_inventory, vendor_management]
+              evidence_types: [source_snapshot]
+              families: [vendor]
+              high_value: true
+              id: vendors
+              support: supported
+              title: Vendors
               type: entity_family
           default_enabled: true
           event:
-            kind: pagerduty.dashboards
-            required_payload_fields:
-              - id
-            schema_ref: pagerduty/dashboards/v1
-            urn_kind: pagerduty_dashboards
-          id: dashboards
-          id_field: id
-          label: Dashboards
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/dashboards
-          projection:
-            fields:
-              id: id
+            attributes:
               name: name
-              resource_id: id
-              resource_name: name
-              resource_type: dashboard
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - logging_monitoring
-              evidence_types:
-                - logging_configuration
-              families:
-                - audit_events
-              high_value: true
-              id: audit_events
-              support: partial
-              title: Audit events
-              type: audit_event
-          default_enabled: true
-          event:
-            kind: pagerduty.audit_events
-            required_payload_fields:
-              - id
-            schema_ref: pagerduty/audit_events/v1
-            urn_kind: pagerduty_audit_events
-          id: audit_events
+              summary: summary
+              vendor_id: id
+              website_url: website_url
+            exact_attributes: true
+            kind: pagerduty.vendor
+            required_attributes:
+              - external_id
+              - family
+              - source_provider
+              - source_product
+              - vendor_id
+            required_payload_fields: [id]
+            schema_ref: pagerduty/vendor/v1
+            static_attributes:
+              source_product: pagerduty
+            urn_kind: pagerduty_vendor
+          id: vendor
           id_field: id
-          label: Audit events
+          label: Vendors
           method: GET
-          name_field: name
+          name_field: name|summary
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            has_more_key: more
+            limit_param: limit
+            offset_param: offset
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
+            type: offset
+          path: /vendors
           projection:
+            entity:
+              entity_type: pagerduty.vendor
+              id_attributes: [vendor_id]
+              label_attribute: name
+              urn_kind: pagerduty_vendor
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
-            template: audit_event
-          record_selector: $.data[*]
+              resource_id: id
+              resource_name: name|summary
+              source_event_id: id
+              vendor_id: id
+              website_url: website_url
+            static_fields:
+              resource_type: pagerduty_vendor
+            template: asset
+          record_selector: $.vendors[*]
       schema_version: cerebro.integration/v1
+      scope_options:
+        - default_enabled: true
+          families: [user]
+          id: user
+          label: Users
+        - default_enabled: true
+          families: [team]
+          id: team
+          label: Teams
+        - default_enabled: true
+          families: [service]
+          id: service
+          label: Services
+        - default_enabled: true
+          families: [schedule]
+          id: schedule
+          label: Schedules
+        - default_enabled: true
+          families: [escalation_policy]
+          id: escalation_policy
+          label: Escalation policies
+        - default_enabled: true
+          families: [integration]
+          id: integration
+          label: Service integrations
+        - default_enabled: true
+          families: [vendor]
+          id: vendor
+          label: Vendors
       source_id: pagerduty
       tenant_id: builtin_catalog
       transport:
         base_url: ${config.base_url}
         verification:
-          expect_status:
-            - 200
+          expect_status: [200]
           method: GET
-          path: /v1/me
+          path: /users

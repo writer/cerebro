@@ -23,6 +23,11 @@ pub struct PagerDutyRequest {
 }
 
 impl PagerDutyRequest {
+    /// Exact HTTP method.
+    pub const fn method(&self) -> &'static str {
+        "GET"
+    }
+
     /// Exact origin-restricted provider URL. A trusted host applies credentials before I/O.
     pub fn url(&self) -> &Url {
         &self.url
@@ -33,9 +38,29 @@ impl PagerDutyRequest {
         "Token token="
     }
 
+    /// Authentication header applied only by the trusted host.
+    pub const fn authorization_header(&self) -> &'static str {
+        "Authorization"
+    }
+
     /// Required response media type.
     pub const fn accept(&self) -> &'static str {
         "application/json"
+    }
+
+    /// Requests never carry credential material across the kernel boundary.
+    pub const fn contains_credentials(&self) -> bool {
+        false
+    }
+
+    /// Redirects are not part of the closed request contract.
+    pub const fn allows_redirects(&self) -> bool {
+        false
+    }
+
+    /// Maximum response bytes accepted by the decoder.
+    pub const fn max_response_bytes(&self) -> usize {
+        MAX_RESPONSE_BYTES
     }
 }
 
@@ -101,10 +126,17 @@ impl PagerDutyKernel {
             source_id: "pagerduty",
             family_id: self.family.as_str(),
             method: "GET",
+            auth_header: "Authorization",
+            auth_scheme: "Token token=",
             origin: self.origin.clone(),
             path_template: self.family.path_template(),
             record_selector: format!("$.{}[*]", self.family.response_key()),
             id_field: "id",
+            offset_param: "offset",
+            page_size_param: "limit",
+            has_more_key: "more",
+            fanout_config_key: (self.family == PagerDutyFamily::Integration)
+                .then_some("service_ids"),
             event_kind: self.family.event_kind(),
             schema_ref: self.family.schema_ref(),
             required_attributes: vec![

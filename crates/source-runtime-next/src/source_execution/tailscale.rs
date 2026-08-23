@@ -577,6 +577,99 @@ mod tests {
     }
 
     #[test]
+    fn combined_provider_and_dispatcher_seal_terminal_progress_for_all_seven_families() {
+        let dispatcher = SourceExecutionDispatcher;
+        let cases = [
+            ("device", br#"{"devices":[{"id":"device-1"}]}"#.as_slice()),
+            ("grant", br#"{"grants":[{"id":"grant-1"}]}"#.as_slice()),
+            (
+                "group",
+                br#"{"groups":{"group:eng":["alice@example.test"]}}"#.as_slice(),
+            ),
+            (
+                "service",
+                br#"{"vipServices":[{"name":"svc:api"}]}"#.as_slice(),
+            ),
+            (
+                "tag",
+                br#"{"tagOwners":{"tag:prod":["group:eng"]}}"#.as_slice(),
+            ),
+            ("tailnet", br#"{}"#.as_slice()),
+            (
+                "user",
+                br#"{"users":[{"id":"user-1","loginName":"alice@example.test"}]}"#.as_slice(),
+            ),
+        ];
+
+        for (family, body) in cases {
+            let plan = plan(dispatcher, family);
+            let first_context = context("", 1);
+            let mut metadata = metadata();
+            metadata.prior_terminal_watermark_unix_millis = OBSERVED_AT_MILLIS - 1_000;
+            let execution = plan_page(dispatcher, &plan, &first_context, &metadata);
+            let mut output = decode_page(
+                dispatcher,
+                &plan,
+                &first_context,
+                &metadata,
+                &execution,
+                body,
+            );
+            let receipt = output.receipt.take().unwrap();
+            let result = output.result.take().unwrap();
+            let last = result.records.last().expect("terminal provider record");
+            let terminal_cursor = last.provider_id.clone();
+            let terminal_watermark = last.occurred_at_unix_millis;
+
+            assert_eq!(result.next_cursor, terminal_cursor, "{family}");
+            let program = seal_page_program_v2(&SourceExecutionLifecycleEnvelopeV2 {
+                request: Some(SourceExecutionLifecycleRequestV1 {
+                    plan: Some(plan.clone()),
+                    context: Some(first_context),
+                    receipt: Some(receipt),
+                    result: Some(result),
+                    current_lease_generation: 11,
+                }),
+                metadata: Some(metadata.clone()),
+            })
+            .unwrap();
+            assert_eq!(program.checkpoint_cursor, terminal_cursor, "{family}");
+            assert_eq!(
+                program.checkpoint_watermark_unix_millis, terminal_watermark,
+                "{family}"
+            );
+
+            let restarted = plan_page(
+                dispatcher,
+                &plan,
+                &context(&program.checkpoint_cursor, 2),
+                &metadata,
+            );
+            let restarted_url = reqwest::Url::parse(&restarted.request.unwrap().url).unwrap();
+            assert_eq!(
+                restarted_url
+                    .query_pairs()
+                    .find(|(key, _)| key == "cursor")
+                    .map(|(_, value)| value.into_owned())
+                    .as_deref(),
+                Some(program.checkpoint_cursor.as_str()),
+                "{family}"
+            );
+
+            let error = dispatcher
+                .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+                    request: Some(SourceWorkerPlanRequestV1 {
+                        plan: Some(plan),
+                        context: Some(context("https://other.example/page", 2)),
+                    }),
+                    metadata: Some(metadata),
+                })
+                .unwrap_err();
+            assert_eq!(error, SourceExecutionError::InvalidCursor, "{family}");
+        }
+    }
+
+    #[test]
     fn cursor_checkpoint_and_restart_are_rust_sealed_and_fail_closed() {
         let dispatcher = SourceExecutionDispatcher;
         let plan = plan(dispatcher, "user");
