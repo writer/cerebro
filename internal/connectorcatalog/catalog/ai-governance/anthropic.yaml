@@ -1,218 +1,1863 @@
 entries:
-  - classifier_output: supported
-    definition:
-      auth:
-        credential_fields:
-          - key: api_key
-            label: API key
-            reference_only: true
-            secret: true
-        model: api_key
-        token_header: x-api-key
-      categories:
-        - ai
-        - governance
-      description: Collects model catalog, organization members, api keys, workspaces, and organization invites from Anthropic and projects them into the Cerebro graph as assets, secrets, and users for inventory, access review, audit, risk, and operational context.
-      display_name: Anthropic
-      id: builtin-anthropic
-      resource_families:
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - model_catalog
-              high_value: true
-              id: model_catalog
-              support: partial
-              title: Model catalog
-              type: entity_family
-          event:
-            kind: anthropic.model_catalog
-            required_payload_fields:
-              - id
-            schema_ref: anthropic/model_catalog/v1
-            urn_kind: anthropic_model_catalog
-          id: model_catalog
-          id_field: id
-          label: Model catalog
-          method: GET
-          name_field: display_name
-          pagination:
-            disable_page_size: true
-            type: none
-          path: /v1/models
-          projection:
-            fields:
-              resource_id: id
-              resource_name: display_name
-              resource_type: resource_type|type|kind
-              resource_urn: resource_urn|urn|metadata.resource_urn
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-                - identity_access
-              evidence_types:
-                - source_snapshot
-              families:
-                - organization_members
-              high_value: true
-              id: organization_members
-              support: partial
-              title: Organization members
-              type: entity_family
-          event:
-            kind: anthropic.organization_members
-            required_payload_fields:
-              - id
-            schema_ref: anthropic/organization_members/v1
-            urn_kind: anthropic_organization_members
-          id: organization_members
-          id_field: id
-          label: Organization members
-          method: GET
-          name_field: email
-          pagination:
-            cursor_json_path: $.last_id
-            cursor_param: after_id
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/organizations/users
-          projection:
-            fields:
-              display_name: email
-              email: email|primary_email|profile.email
-              status: status|state|lifecycle_state
-              user_id: id
-            template: identity_user
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - identity_access
-              evidence_types:
-                - identity_configuration
-              families:
-                - api_keys
-              high_value: true
-              id: api_keys
-              support: partial
-              title: API keys
-              type: app_entitlement
-          event:
-            kind: anthropic.api_keys
-            required_payload_fields:
-              - id
-            schema_ref: anthropic/api_keys/v1
-            urn_kind: anthropic_api_keys
-          id: api_keys
-          id_field: id
-          label: API keys
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.last_id
-            cursor_param: after_id
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/organizations/api_keys
-          projection:
-            fields:
-              secret_id: id
-              secret_name: name
-              secret_status: secret_status|status|state
-              secret_type: secret_type|type|kind
-            template: secret
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - asset_inventory
-              evidence_types:
-                - source_snapshot
-              families:
-                - workspaces
-              high_value: true
-              id: workspaces
-              support: partial
-              title: Workspaces
-              type: entity_family
-          event:
-            kind: anthropic.workspaces
-            required_payload_fields:
-              - id
-            schema_ref: anthropic/workspaces/v1
-            urn_kind: anthropic_workspaces
-          id: workspaces
-          id_field: id
-          label: Workspaces
-          method: GET
-          name_field: name
-          pagination:
-            cursor_json_path: $.last_id
-            cursor_param: after_id
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/organizations/workspaces
-          projection:
-            fields:
-              resource_id: id
-              resource_name: name
-              resource_type: resource_type|type|kind
-              resource_urn: resource_urn|urn|metadata.resource_urn
-            template: asset
-          record_selector: $.data[*]
-        - coverage:
-            - control_domains:
-                - identity_access
-              evidence_types:
-                - identity_configuration
-              families:
-                - organization_invites
-              high_value: true
-              id: organization_invites
-              support: partial
-              title: Organization invites
-              type: app_entitlement
-          event:
-            kind: anthropic.organization_invites
-            required_payload_fields:
-              - id
-            schema_ref: anthropic/organization_invites/v1
-            urn_kind: anthropic_organization_invites
-          id: organization_invites
-          id_field: id
-          label: Organization invites
-          method: GET
-          name_field: email
-          pagination:
-            cursor_json_path: $.last_id
-            cursor_param: after_id
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/organizations/invites
-          projection:
-            fields:
-              display_name: email
-              email: email|primary_email|profile.email
-              status: status|state|lifecycle_state
-              user_id: id
-            template: identity_user
-          record_selector: $.data[*]
-      schema_version: cerebro.integration/v1
-      source_id: anthropic
-      tenant_id: builtin_catalog
-      transport:
-        base_url: https://api.anthropic.com
-        headers:
-          anthropic-version: "2023-06-01"
-        verification:
-          expect_status:
-            - 200
-          method: GET
-          path: /v1/models
+- classifier_output: supported
+  definition:
+    auth:
+      configurable_models:
+      - api_key
+      - bearer_token
+      credential_fields:
+      - key: api_key
+        label: Anthropic Admin or Compliance API key reference
+        reference_only: true
+        secret: true
+      - key: token
+        label: Anthropic OAuth bearer reference
+        reference_only: true
+        secret: true
+      model: api_key
+      model_config_key: auth_model
+      requires_references: true
+      token_header: x-api-key
+    categories:
+    - ai
+    - governance
+    config_fields:
+    - key: activity_types
+      label: Compliance activity types
+    - key: actor_ids
+      label: Actor IDs
+    - key: api_key_ids
+      label: API key IDs
+    - key: auth_model
+      label: Authentication model
+    - key: bucket_width
+      label: Report bucket width
+    - key: context_windows
+      label: Context windows
+    - key: created_at_gt
+      label: Created after
+    - key: created_at_gte
+      label: Created at or after
+    - key: created_at_lt
+      label: Created before
+    - key: created_at_lte
+      label: Created at or before
+    - key: ending_at
+      label: Report end
+    - key: group_by
+      label: Report grouping
+    - key: group_id
+      label: Compliance group ID
+    - key: include_archived
+      label: Include archived workspaces
+    - key: inference_geos
+      label: Inference geographies
+    - key: model
+      label: Model filter
+    - key: models
+      label: Models
+    - key: organization_ids
+      label: Compliance organization IDs
+    - key: organization_uuid
+      label: Compliance organization UUID
+    - key: periods
+      label: Spend periods
+    - key: project_id
+      label: Compliance project ID
+    - key: role_id
+      label: Compliance role ID
+    - key: service_tiers
+      label: Service tiers
+    - key: speeds
+      label: Inference speeds
+    - key: starting_at
+      label: Report start
+    - key: status
+      label: Status filter
+    - key: terminal_types
+      label: Claude Code terminal types
+    - key: user_ids
+      label: User IDs
+    - key: workspace_id
+      label: Workspace ID
+    - key: workspace_ids
+      label: Workspace IDs
+    description: Collects Anthropic organization governance, workspaces, members,
+      roles, credentials, service accounts, federation, usage, costs, limits, compliance
+      activity, directory metadata, projects, collaborators, and organization settings
+      through documented read-only APIs.
+    display_name: Anthropic
+    id: builtin-anthropic
+    resource_families:
+    - config:
+        config_query:
+          api_key_ids[]: api_key_ids
+          bucket_width: bucket_width
+          context_window[]: context_windows
+          ending_at: ending_at
+          group_by[]: group_by
+          inference_geos[]: inference_geos
+          models[]: models
+          service_tiers[]: service_tiers
+          speeds[]: speeds
+          starting_at: starting_at
+          terminal_types[]: terminal_types
+          workspace_ids[]: workspace_ids
+      coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - analytics_cost
+        id: analytics_cost
+        support: supported
+        title: Enterprise analytics cost buckets
+        type: entity_family
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          api_key_id: api_key_id
+          cost_usd: cost_usd|cost
+          end_time: end_time|ending_at
+          external_id: id
+          input_tokens: input_tokens
+          model: model
+          organization_id: organization_id
+          output_tokens: output_tokens
+          request_count: request_count|requests
+          start_time: start_time|starting_at|date
+          user_id: user_id
+          workspace_id: workspace_id
+        exact_attributes: true
+        kind: anthropic.analytics_cost
+        required_attributes:
+        - external_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/analytics_cost/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_analytics_cost
+      id: analytics_cost
+      id_field: id
+      label: Enterprise analytics cost buckets
+      method: GET
+      name_field: model
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/analytics/cost_report"
+      projection:
+        fields:
+          resource_id: id
+          resource_name: model|starting_at|start_time
+          resource_type: type|kind
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$.data[*]"
+    - config:
+        config_query:
+          status: status
+          workspace_id: workspace_id
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - api_key
+        high_value: true
+        id: api_key
+        support: supported
+        title: Organization API keys
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          api_key_id: id
+          created_at: created_at
+          last_used_at: last_used_at
+          name: name
+          owner_user_id: created_by.id|owner.id|user_id
+          status: status
+          workspace_id: workspace_id|workspace.id
+        exact_attributes: true
+        kind: anthropic.api_key
+        required_attributes:
+        - api_key_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/api_key/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_api_key
+      id: api_key
+      id_field: id
+      label: Organization API keys
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/api_keys"
+      projection:
+        fields:
+          secret_id: id
+          secret_name: name
+          secret_status: status
+          secret_type: type|kind
+        static_fields:
+          source_product: anthropic
+        template: secret
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+        config_query:
+          activity_types[]: activity_types
+          actor_ids[]: actor_ids
+          created_at.gt: created_at_gt
+          created_at.gte: created_at_gte
+          created_at.lt: created_at_lt
+          created_at.lte: created_at_lte
+          organization_ids[]: organization_ids
+      coverage:
+      - control_domains:
+        - logging_monitoring
+        evidence_types:
+        - logging_configuration
+        families:
+        - compliance_activity
+        high_value: true
+        id: compliance_activity
+        support: supported
+        title: Compliance audit activity
+        type: audit_event
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          activity_id: id
+          activity_type: type
+          actor_admin_api_key_id: actor.admin_api_key_id
+          actor_api_key_id: actor.api_key_id
+          actor_directory_id: actor.directory_id
+          actor_email: actor.email_address|actor.email|actor.unauthenticated_email_address
+          actor_idp_connection_type: actor.idp_connection_type
+          actor_ip_address: actor.ip_address
+          actor_type: actor.type
+          actor_user_agent: actor.user_agent
+          actor_user_id: actor.user_id
+          actor_workos_event_id: actor.workos_event_id
+          claude_chat_id: claude_chat_id|chat_id|chat.id
+          claude_file_id: claude_file_id|file_id|file.id
+          claude_project_id: claude_project_id|project_id|project.id
+          created_at: created_at
+          file_id: claude_file_id|file_id|file.id
+          filename: filename|file.name
+          organization_id: organization_id
+          organization_uuid: organization_uuid
+          project_id: claude_project_id|project_id|project.id
+        exact_attributes: true
+        kind: anthropic.compliance_activity
+        required_attributes:
+        - activity_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/compliance_activity/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_activity
+      id: compliance_activity
+      id_field: id
+      label: Compliance audit activity
+      method: GET
+      name_field: type
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/compliance/activities"
+      projection:
+        fields:
+          actor_id: actor.user_id|actor.api_key_id|actor.admin_api_key_id
+          created_at: created_at
+          event_id: id
+          event_type: type
+          resource_id: project_id|claude_project_id|file_id|claude_file_id|chat_id|claude_chat_id
+          resource_type: type
+        static_fields:
+          source_product: anthropic
+        template: audit_event
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - compliance_group
+        high_value: true
+        id: compliance_group
+        support: supported
+        title: Compliance directory groups
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          created_at: created_at
+          description: description
+          group_id: id|group_id
+          group_name: name
+          name: name
+          roles: roles
+          source_type: source_type
+          updated_at: updated_at
+        exact_attributes: true
+        kind: anthropic.compliance_group
+        required_attributes:
+        - group_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/compliance_group/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_group
+      id: compliance_group
+      id_field: id|group_id
+      label: Compliance directory groups
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/compliance/groups"
+      projection:
+        fields:
+          description: description
+          group_id: id|group_id
+          group_name: name
+        static_fields:
+          source_product: anthropic
+        template: identity_group
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+        config_attributes:
+          group_id: group_id
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - compliance_group_member
+        id: compliance_group_member
+        support: supported
+        title: Compliance directory group members
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          created_at: created_at
+          email: email
+          group_id: group_id
+          updated_at: updated_at
+          user_id: user_id|id
+        exact_attributes: true
+        kind: anthropic.compliance_group_member
+        required_attributes:
+        - group_id
+        - user_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/compliance_group_member/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_group_member
+      id: compliance_group_member
+      id_field: user_id|id|email
+      label: Compliance directory group members
+      method: GET
+      name_field: email
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/compliance/groups/${config.group_id}/members"
+      projection:
+        fields:
+          group_id: group_id
+          member_email: email
+          member_user_id: user_id|id
+        static_fields:
+          source_product: anthropic
+        template: group_membership
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+      coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - compliance_organization
+        id: compliance_organization
+        support: supported
+        title: Compliance directory organizations
+        type: entity_family
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          created_at: created_at
+          name: name
+          organization_id: id|organization_id
+          organization_uuid: uuid
+        exact_attributes: true
+        kind: anthropic.compliance_organization
+        required_attributes:
+        - organization_uuid
+        required_payload_fields:
+        - uuid
+        schema_ref: anthropic/compliance_organization/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_organization
+      id: compliance_organization
+      id_field: uuid|id
+      label: Compliance directory organizations
+      method: GET
+      name_field: name
+      pagination:
+        disable_page_size: true
+        type: none
+      path: "/v1/compliance/organizations"
+      projection:
+        fields:
+          resource_id: uuid|id
+          resource_name: name
+          resource_type: type|kind
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+        config_attributes:
+          organization_uuid: organization_uuid
+      coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - compliance_organization_setting
+        id: compliance_organization_setting
+        support: supported
+        title: Effective compliance organization settings
+        type: lifecycle_state
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          organization_uuid: organization_uuid
+          setting_name: name
+          setting_type: type
+          setting_value: value
+        exact_attributes: true
+        kind: anthropic.compliance_organization_setting
+        required_attributes:
+        - organization_uuid
+        - setting_name
+        required_payload_fields:
+        - name
+        schema_ref: anthropic/compliance_organization_setting/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_organization_setting
+      id: compliance_organization_setting
+      id_field: name
+      label: Effective compliance organization settings
+      method: GET
+      name_field: name
+      pagination:
+        disable_page_size: true
+        type: none
+      path: "/v1/compliance/organizations/${config.organization_uuid}/settings"
+      projection:
+        fields:
+          description: value
+          policy_id: name
+          policy_name: name
+        static_fields:
+          source_product: anthropic
+        template: policy
+      record_selector: "$.settings[*]"
+    - config:
+        auth_model: api_key
+        config_attributes:
+          organization_uuid: organization_uuid
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - compliance_organization_user
+        id: compliance_organization_user
+        support: supported
+        title: Compliance directory organization users
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          created_at: created_at
+          email: email
+          name: full_name|name
+          organization_role: organization_role|role
+          organization_uuid: organization_uuid
+          role: organization_role|role
+          user_id: id|user_id
+        exact_attributes: true
+        kind: anthropic.compliance_organization_user
+        required_attributes:
+        - organization_uuid
+        - user_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/compliance_organization_user/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_organization_user
+      id: compliance_organization_user
+      id_field: id|user_id
+      label: Compliance directory organization users
+      method: GET
+      name_field: full_name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/compliance/organizations/${config.organization_uuid}/users"
+      projection:
+        fields:
+          display_name: full_name|name|email
+          email: email
+          status: status
+          user_id: id|user_id
+        static_fields:
+          source_product: anthropic
+        template: identity_user
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - compliance_project
+        high_value: true
+        id: compliance_project
+        support: supported
+        title: Claude compliance projects
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          archived_at: archived_at
+          created_at: created_at
+          creator_email: created_by.email|creator.email|owner.email|email
+          creator_user_id: created_by.id|creator.id|owner.id|created_by_user_id|user_id
+          description: description
+          name: name|title
+          organization_id: organization.id|organization_id
+          organization_uuid: organization.uuid|organization_uuid|organization.id|organization_id
+          project_id: id|project_id
+          status: status
+          updated_at: updated_at
+          visibility: visibility
+        exact_attributes: true
+        kind: anthropic.compliance_project
+        required_attributes:
+        - project_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/compliance_project/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_project
+      id: compliance_project
+      id_field: id|project_id
+      label: Claude compliance projects
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/compliance/apps/projects"
+      projection:
+        fields:
+          resource_id: id|project_id
+          resource_name: name|title
+          resource_type: type|kind|status
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+        config_attributes:
+          project_id: project_id
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - compliance_project_collaborator
+        id: compliance_project_collaborator
+        support: supported
+        title: Claude project collaborators
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          assignment_id: id|assignment_id
+          created_at: created_at
+          email: principal.email|user.email|email
+          group_id: group.id|group_id|principal.group_id
+          name: principal.name|user.name|group.name|name
+          organization_id: organization.id|organization_id
+          organization_uuid: organization.uuid|organization_uuid|organization.id|organization_id
+          principal_id: principal.id|principal.user_id|principal.group_id|user.id|user_id|group.id|group_id|organization.id|organization_uuid|organization_id|id
+          principal_type: principal.type|principal_type|type|collaborator_type
+          project_id: project_id
+          role: role.name|role.id|role_id
+          role_id: role.id|role_id|role
+          role_name: role.name|role_name|role.id|role_id
+          updated_at: updated_at
+          user_id: user.id|user_id|principal.user_id
+        exact_attributes: true
+        kind: anthropic.compliance_project_collaborator
+        required_attributes:
+        - project_id
+        - principal_type
+        - principal_id
+        - role_id
+        required_payload_fields:
+        - id|assignment_id|principal.id|user.id|group.id|organization.id
+        schema_ref: anthropic/compliance_project_collaborator/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_project_collaborator
+      id: compliance_project_collaborator
+      id_field: id|assignment_id|principal.id|user.id|group.id|organization.id
+      label: Claude project collaborators
+      method: GET
+      name_field: principal.name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/compliance/apps/projects/${config.project_id}/collaborators"
+      projection:
+        fields:
+          resource_id: id|assignment_id|principal.id
+          resource_name: principal.name|user.name|group.name|name
+          resource_type: principal.type|principal_type|type
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+        config_attributes:
+          organization_uuid: organization_uuid
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - compliance_role
+        high_value: true
+        id: compliance_role
+        support: supported
+        title: Compliance directory roles
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          created_at: created_at
+          description: description
+          name: name
+          organization_uuid: organization_uuid
+          role_id: id|role_id
+          updated_at: updated_at
+        exact_attributes: true
+        kind: anthropic.compliance_role
+        required_attributes:
+        - organization_uuid
+        - role_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/compliance_role/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_role
+      id: compliance_role
+      id_field: id|role_id
+      label: Compliance directory roles
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/compliance/organizations/${config.organization_uuid}/roles"
+      projection:
+        fields:
+          description: description
+          policy_id: id|role_id
+          policy_name: name
+        static_fields:
+          source_product: anthropic
+        template: policy
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: api_key
+        config_attributes:
+          organization_uuid: organization_uuid
+          role_id: role_id
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - compliance_role_permission
+        id: compliance_role_permission
+        support: supported
+        title: Compliance role permissions
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Compliance Access Key'
+      event:
+        attributes:
+          action: action
+          category: category|type
+          created_at: created_at
+          organization_uuid: organization_uuid
+          permission: permission|permission_id|id|name
+          permission_description: description
+          permission_id: id|permission_id|permission|name
+          permission_name: name|permission|permission_id|id
+          resource_type: resource_type|resource
+          role_id: role_id
+          scope: scope
+          updated_at: updated_at
+        exact_attributes: true
+        kind: anthropic.compliance_role_permission
+        required_attributes:
+        - organization_uuid
+        - role_id
+        - permission_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/compliance_role_permission/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_compliance_role_permission
+      id: compliance_role_permission
+      id_field: id|permission_id|permission|name
+      label: Compliance role permissions
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/compliance/organizations/${config.organization_uuid}/roles/${config.role_id}/permissions"
+      projection:
+        fields:
+          description: description
+          policy_id: id|permission_id|permission|name
+          policy_name: name|permission|permission_id|id
+        static_fields:
+          source_product: anthropic
+        template: policy
+      record_selector: "$.data[*]"
+    - config:
+        config_query:
+          api_key_ids[]: api_key_ids
+          bucket_width: bucket_width
+          context_window[]: context_windows
+          ending_at: ending_at
+          group_by[]: group_by
+          inference_geos[]: inference_geos
+          models[]: models
+          service_tiers[]: service_tiers
+          speeds[]: speeds
+          starting_at: starting_at
+          terminal_types[]: terminal_types
+          workspace_ids[]: workspace_ids
+      coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - cost_report
+        id: cost_report
+        support: supported
+        title: Admin usage cost report buckets
+        type: entity_family
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          api_key_id: api_key_id
+          cost_usd: cost_usd|cost
+          end_time: end_time|ending_at
+          external_id: id
+          input_tokens: input_tokens
+          model: model
+          organization_id: organization_id
+          output_tokens: output_tokens
+          request_count: request_count|requests
+          start_time: start_time|starting_at|date
+          user_id: user_id
+          workspace_id: workspace_id
+        exact_attributes: true
+        kind: anthropic.cost_report
+        required_attributes:
+        - external_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/cost_report/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_cost_report
+      id: cost_report
+      id_field: id
+      label: Admin usage cost report buckets
+      method: GET
+      name_field: model
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/cost_report"
+      projection:
+        fields:
+          resource_id: id
+          resource_name: model|starting_at|start_time
+          resource_type: type|kind
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - external_key
+        id: external_key
+        support: supported
+        title: External key configurations
+        type: lifecycle_state
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          created_at: created_at
+          external_key_id: id
+          last_used_at: last_used_at
+          name: name
+          provider: provider
+          status: status
+          workspace_id: workspace_id|workspace.id
+        exact_attributes: true
+        kind: anthropic.external_key
+        required_attributes:
+        - external_key_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/external_key/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_external_key
+      id: external_key
+      id_field: id
+      label: External key configurations
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/external_keys"
+      projection:
+        fields:
+          secret_id: id
+          secret_name: name
+          secret_status: status
+          secret_type: provider|type|kind
+        static_fields:
+          source_product: anthropic
+        template: secret
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: bearer_token
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - federation_issuer
+        id: federation_issuer
+        support: supported
+        title: Workload identity federation issuers
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: OAuth bearer with org:admin'
+      event:
+        attributes:
+          created_at: created_at
+          federation_issuer_id: id
+          issuer: issuer
+          name: name
+          status: status
+          updated_at: updated_at
+        exact_attributes: true
+        kind: anthropic.federation_issuer
+        required_attributes:
+        - federation_issuer_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/federation_issuer/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_federation_issuer
+      id: federation_issuer
+      id_field: id
+      label: Workload identity federation issuers
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/federation_issuers"
+      projection:
+        fields:
+          app_id: id
+          app_name: name|issuer
+          status: status
+        static_fields:
+          source_product: anthropic
+        template: identity_application
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: bearer_token
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - federation_rule
+        id: federation_rule
+        support: supported
+        title: Workload identity federation rules
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: OAuth bearer with org:admin'
+      event:
+        attributes:
+          created_at: created_at
+          federation_rule_id: id
+          issuer_id: issuer_id|federation_issuer_id
+          scopes: scopes
+          service_account_id: service_account_id
+          subject: subject
+          updated_at: updated_at
+        exact_attributes: true
+        kind: anthropic.federation_rule
+        required_attributes:
+        - federation_rule_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/federation_rule/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_federation_rule
+      id: federation_rule
+      id_field: id
+      label: Workload identity federation rules
+      method: GET
+      name_field: subject
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/federation_rules"
+      projection:
+        fields:
+          description: scopes
+          policy_id: id
+          policy_name: subject|name
+        static_fields:
+          source_product: anthropic
+        template: policy
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - invite
+        high_value: true
+        id: invite
+        support: supported
+        title: Pending organization invites
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          created_at: created_at
+          email: email
+          expires_at: expires_at
+          invite_id: id
+          role: role
+          status: status
+        exact_attributes: true
+        kind: anthropic.invite
+        required_attributes:
+        - invite_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/invite/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_invite
+      id: invite
+      id_field: id
+      label: Pending organization invites
+      method: GET
+      name_field: email
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/invites"
+      projection:
+        fields:
+          display_name: email
+          email: email
+          status: status
+          user_id: id
+        static_fields:
+          source_product: anthropic
+        template: identity_user
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - organization
+        high_value: true
+        id: organization
+        support: supported
+        title: Current organization profile
+        type: entity_family
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          name: name
+          organization_id: id
+          type: type
+        exact_attributes: true
+        kind: anthropic.organization
+        required_attributes:
+        - organization_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/organization/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_organization
+      id: organization
+      id_field: id
+      label: Current organization profile
+      method: GET
+      name_field: name
+      pagination:
+        disable_page_size: true
+        type: none
+      path: "/v1/organizations/me"
+      projection:
+        fields:
+          resource_id: id
+          resource_name: name
+          resource_type: type
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$"
+      singleton: true
+    - config:
+        config_query:
+          model: model
+      coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - rate_limit
+        id: rate_limit
+        support: supported
+        title: Organization rate limits
+        type: lifecycle_state
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          group_type: group_type
+          input_tokens: input_tokens
+          limits: limits
+          model: model
+          models: models
+          name: name
+          output_tokens: output_tokens
+          rate_limit_id: id
+          requests_per_minute: requests_per_minute|rpm
+          tokens_per_minute: tokens_per_minute|tpm
+          updated_at: updated_at
+          workspace_id: workspace_id
+        exact_attributes: true
+        kind: anthropic.rate_limit
+        required_attributes:
+        - external_id
+        required_payload_fields:
+        - id|group_type|model|name
+        schema_ref: anthropic/rate_limit/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_rate_limit
+      id: rate_limit
+      id_field: id|group_type|model|name
+      label: Organization rate limits
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/rate_limits"
+      projection:
+        fields:
+          description: limits
+          policy_id: id|group_type|model|name
+          policy_name: name|model|group_type
+        static_fields:
+          source_product: anthropic
+        template: policy
+      record_selector: "$.data[*]"
+    - config:
+        auth_model: bearer_token
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - service_account
+        high_value: true
+        id: service_account
+        support: supported
+        title: Workload service accounts
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: OAuth bearer with org:admin'
+      event:
+        attributes:
+          created_at: created_at
+          description: description
+          name: name
+          service_account_id: id
+          status: status
+        exact_attributes: true
+        kind: anthropic.service_account
+        required_attributes:
+        - service_account_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/service_account/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_service_account
+      id: service_account
+      id_field: id
+      label: Workload service accounts
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/service_accounts"
+      projection:
+        fields:
+          app_id: id
+          app_name: name
+          status: status
+        static_fields:
+          source_product: anthropic
+        template: identity_application
+      record_selector: "$.data[*]"
+    - config:
+        config_query:
+          actor_ids[]: actor_ids
+          period[]: periods
+          user_ids[]: user_ids
+      coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - spend_limit
+        high_value: true
+        id: spend_limit
+        support: supported
+        title: Effective spend limits
+        type: lifecycle_state
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          actor_email: actor.email_address|actor.email
+          amount: amount
+          created_at: created_at
+          currency: currency
+          period: period
+          period_to_date_spend: period_to_date_spend
+          scope_type: scope.type
+          source_type: source.type
+          spend_limit_id: spend_limit_id|id
+          updated_at: updated_at
+          user_id: scope.user_id|actor.user_id
+        exact_attributes: true
+        kind: anthropic.spend_limit
+        required_attributes:
+        - external_id
+        required_payload_fields:
+        - spend_limit_id|id|scope.user_id|actor.user_id
+        schema_ref: anthropic/spend_limit/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_spend_limit
+      id: spend_limit
+      id_field: spend_limit_id|id|scope.user_id|actor.user_id
+      label: Effective spend limits
+      method: GET
+      name_field: period
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/spend_limits/effective"
+      projection:
+        fields:
+          description: amount
+          policy_id: spend_limit_id|id|scope.user_id|actor.user_id
+          policy_name: period|scope.type
+        static_fields:
+          source_product: anthropic
+        template: policy
+      record_selector: "$.data[*]"
+    - config:
+        config_query:
+          actor_ids[]: actor_ids
+          status[]: status
+      coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - spend_limit_increase_request
+        id: spend_limit_increase_request
+        support: supported
+        title: Spend-limit increase requests
+        type: lifecycle_state
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          actor_email: actor.email_address|actor.email
+          amount: amount
+          created_at: created_at
+          currency: currency
+          period: period
+          request_id: id
+          status: status
+          updated_at: updated_at
+          user_id: scope.user_id|actor.user_id
+        exact_attributes: true
+        kind: anthropic.spend_limit_increase_request
+        required_attributes:
+        - request_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/spend_limit_increase_request/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_spend_limit_increase_request
+      id: spend_limit_increase_request
+      id_field: id
+      label: Spend-limit increase requests
+      method: GET
+      name_field: status
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/spend_limit_increase_requests"
+      projection:
+        fields:
+          description: amount
+          policy_id: id
+          policy_name: status|period
+        static_fields:
+          source_product: anthropic
+        template: policy
+      record_selector: "$.data[*]"
+    - config:
+        config_query:
+          api_key_ids[]: api_key_ids
+          bucket_width: bucket_width
+          context_window[]: context_windows
+          ending_at: ending_at
+          group_by[]: group_by
+          inference_geos[]: inference_geos
+          models[]: models
+          service_tiers[]: service_tiers
+          speeds[]: speeds
+          starting_at: starting_at
+          terminal_types[]: terminal_types
+          workspace_ids[]: workspace_ids
+      coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - usage_report_claude_code
+        id: usage_report_claude_code
+        support: supported
+        title: Claude Code usage report buckets
+        type: entity_family
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          api_key_id: api_key_id
+          cost_usd: cost_usd|cost
+          end_time: end_time|ending_at
+          external_id: id
+          input_tokens: input_tokens
+          model: model
+          organization_id: organization_id
+          output_tokens: output_tokens
+          request_count: request_count|requests
+          start_time: start_time|starting_at|date
+          user_id: user_id
+          workspace_id: workspace_id
+        exact_attributes: true
+        kind: anthropic.usage_report_claude_code
+        required_attributes:
+        - external_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/usage_report_claude_code/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_usage_report_claude_code
+      id: usage_report_claude_code
+      id_field: id
+      label: Claude Code usage report buckets
+      method: GET
+      name_field: model
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/usage_report/claude_code"
+      projection:
+        fields:
+          resource_id: id
+          resource_name: model|starting_at|start_time
+          resource_type: type|kind
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$.data[*]"
+    - config:
+        config_query:
+          api_key_ids[]: api_key_ids
+          bucket_width: bucket_width
+          context_window[]: context_windows
+          ending_at: ending_at
+          group_by[]: group_by
+          inference_geos[]: inference_geos
+          models[]: models
+          service_tiers[]: service_tiers
+          speeds[]: speeds
+          starting_at: starting_at
+          terminal_types[]: terminal_types
+          workspace_ids[]: workspace_ids
+      coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - usage_report_message
+        id: usage_report_message
+        support: supported
+        title: Messages usage report buckets
+        type: entity_family
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          api_key_id: api_key_id
+          cost_usd: cost_usd|cost
+          end_time: end_time|ending_at
+          external_id: id
+          input_tokens: input_tokens
+          model: model
+          organization_id: organization_id
+          output_tokens: output_tokens
+          request_count: request_count|requests
+          start_time: start_time|starting_at|date
+          user_id: user_id
+          workspace_id: workspace_id
+        exact_attributes: true
+        kind: anthropic.usage_report_message
+        required_attributes:
+        - external_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/usage_report_message/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_usage_report_message
+      id: usage_report_message
+      id_field: id
+      label: Messages usage report buckets
+      method: GET
+      name_field: model
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/usage_report/messages"
+      projection:
+        fields:
+          resource_id: id
+          resource_name: model|starting_at|start_time
+          resource_type: type|kind
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$.data[*]"
+    - coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - user
+        high_value: true
+        id: user
+        support: supported
+        title: Organization users and roles
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          added_at: added_at
+          email: email
+          name: name
+          role: role
+          status: status
+          user_id: id
+        exact_attributes: true
+        kind: anthropic.user
+        required_attributes:
+        - user_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/user/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_user
+      id: user
+      id_field: id
+      label: Organization users and roles
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/users"
+      projection:
+        fields:
+          display_name: name|email
+          email: email
+          status: status
+          user_id: id
+        static_fields:
+          source_product: anthropic
+        template: identity_user
+      record_selector: "$.data[*]"
+    - config:
+        config_query:
+          include_archived: include_archived
+      coverage:
+      - control_domains:
+        - asset_inventory
+        evidence_types:
+        - source_snapshot
+        families:
+        - workspace
+        high_value: true
+        id: workspace
+        support: supported
+        title: Organization workspaces
+        type: entity_family
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          archived_at: archived_at
+          created_at: created_at
+          display_color: display_color
+          name: name
+          workspace_id: id
+        exact_attributes: true
+        kind: anthropic.workspace
+        required_attributes:
+        - workspace_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/workspace/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_workspace
+      id: workspace
+      id_field: id
+      label: Organization workspaces
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/workspaces"
+      projection:
+        fields:
+          resource_id: id
+          resource_name: name
+          resource_type: type|kind|status
+        static_fields:
+          source_product: anthropic
+        template: asset
+      record_selector: "$.data[*]"
+    - config:
+        config_attributes:
+          workspace_id: workspace_id
+      coverage:
+      - control_domains:
+        - identity_access
+        evidence_types:
+        - identity_configuration
+        families:
+        - workspace_member
+        high_value: true
+        id: workspace_member
+        support: supported
+        title: Workspace members and roles
+        type: app_entitlement
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          added_at: added_at
+          email: email
+          name: name
+          user_id: id|user_id
+          workspace_id: workspace_id
+          workspace_role: workspace_role|role
+        exact_attributes: true
+        kind: anthropic.workspace_member
+        required_attributes:
+        - user_id
+        - workspace_id
+        required_payload_fields:
+        - id
+        schema_ref: anthropic/workspace_member/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_workspace_member
+      id: workspace_member
+      id_field: id|user_id
+      label: Workspace members and roles
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.last_id"
+        cursor_param: after_id
+        has_more_key: has_more
+        next_cursor_keys:
+        - last_id
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/workspaces/${config.workspace_id}/members"
+      projection:
+        fields:
+          group_id: workspace_id
+          group_name: workspace_id
+          member_email: email
+          member_name: name
+          member_user_id: id|user_id
+          role: workspace_role|role
+        static_fields:
+          source_product: anthropic
+        template: group_membership
+      record_selector: "$.data[*]"
+    - config:
+        config_attributes:
+          workspace_id: workspace_id
+      coverage:
+      - control_domains:
+        - security_operations
+        evidence_types:
+        - configuration_state
+        families:
+        - workspace_rate_limit
+        id: workspace_rate_limit
+        support: supported
+        title: Workspace rate limits
+        type: lifecycle_state
+        notes:
+        - 'Authentication requirement: Anthropic Admin API key or OAuth bearer with
+          org:admin'
+      event:
+        attributes:
+          group_type: group_type
+          input_tokens: input_tokens
+          limits: limits
+          model: model
+          models: models
+          name: name
+          output_tokens: output_tokens
+          rate_limit_id: id
+          requests_per_minute: requests_per_minute|rpm
+          tokens_per_minute: tokens_per_minute|tpm
+          updated_at: updated_at
+          workspace_id: workspace_id
+        exact_attributes: true
+        kind: anthropic.workspace_rate_limit
+        required_attributes:
+        - external_id
+        - workspace_id
+        required_payload_fields:
+        - id|group_type|model|name
+        schema_ref: anthropic/workspace_rate_limit/v1
+        static_attributes:
+          source_product: anthropic
+        urn_kind: anthropic_workspace_rate_limit
+      id: workspace_rate_limit
+      id_field: id|group_type|model|name
+      label: Workspace rate limits
+      method: GET
+      name_field: name
+      pagination:
+        cursor_json_path: "$.next_page"
+        cursor_param: page
+        next_cursor_keys:
+        - next_page
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+      path: "/v1/organizations/workspaces/${config.workspace_id}/rate_limits"
+      projection:
+        fields:
+          description: limits
+          policy_id: id|group_type|model|name
+          policy_name: name|model|group_type
+        static_fields:
+          source_product: anthropic
+        template: policy
+      record_selector: "$.data[*]"
+    schema_version: cerebro.integration/v1
+    source_id: anthropic
+    tenant_id: builtin_catalog
+    transport:
+      base_url: https://api.anthropic.com
+      headers:
+        anthropic-version: '2023-06-01'
+      verification:
+        expect_status:
+        - 200
+        method: GET
+        path: "/v1/organizations/me"

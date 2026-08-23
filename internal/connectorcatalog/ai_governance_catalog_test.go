@@ -12,7 +12,7 @@ func TestAIGovernanceProvidersAreGenerateable(t *testing.T) {
 		entries[entry.Definition.SourceID] = entry
 	}
 	expected := map[string][]string{
-		"anthropic":             {"api_keys", "model_catalog", "organization_invites", "organization_members", "workspaces"},
+		"anthropic":             {"analytics_cost", "api_key", "compliance_activity", "compliance_group", "compliance_group_member", "compliance_organization", "compliance_organization_setting", "compliance_organization_user", "compliance_project", "compliance_project_collaborator", "compliance_role", "compliance_role_permission", "cost_report", "external_key", "federation_issuer", "federation_rule", "invite", "organization", "rate_limit", "service_account", "spend_limit", "spend_limit_increase_request", "usage_report_claude_code", "usage_report_message", "user", "workspace", "workspace_member", "workspace_rate_limit"},
 		"aws_bedrock":           {"custom_models", "foundation_models", "guardrails", "model_customization_jobs", "provisioned_model_throughputs"},
 		"azure_openai":          {"deployments", "model_catalog", "private_endpoint_connections", "rai_blocklists", "rai_policies"},
 		"cerebras":              {"api_keys", "model_deployments", "projects", "usage_reports"},
