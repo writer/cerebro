@@ -66,20 +66,30 @@ impl TailscaleKernel {
         {
             return Err(TailscaleError::TenantMismatch);
         }
-        if let Some(cursor) = &page.next_cursor {
+        let cursor = page
+            .next_cursor
+            .clone()
+            .or_else(|| {
+                page.records
+                    .last()
+                    .and_then(|record| record.attributes.get("external_id"))
+                    .cloned()
+            })
+            .map(|cursor| validate_cursor(&cursor))
+            .transpose()?;
+        if let Some(cursor) = &cursor {
             self.plan(Some(cursor))?;
         }
         let prior = prior_watermark.map(valid_time).transpose()?;
         let watermark = page
             .records
-            .iter()
+            .last()
             .map(|record| record.occurred_at.clone())
-            .chain(prior)
-            .max();
+            .or(prior);
         Ok(TailscaleCheckpointCandidate {
             tenant_id: self.tenant_id.clone(),
             family: self.family,
-            cursor: page.next_cursor.clone(),
+            cursor,
             watermark,
         })
     }

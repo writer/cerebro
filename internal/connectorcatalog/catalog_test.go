@@ -10,7 +10,7 @@ import (
 )
 
 const wantBuiltinCatalogEntries = 799
-const wantBuiltinCatalogBespokeRuntimeEntries = 1
+const wantBuiltinCatalogBespokeRuntimeEntries = 2
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
 	root := t.TempDir()
@@ -244,7 +244,7 @@ func TestBuiltinCatalogSeedSummary(t *testing.T) {
 		t.Fatalf("summary = %#v, want no auth-extension entries", analysis.Summary)
 	}
 	if analysis.Summary.NeedsBespokeRuntime != wantBuiltinCatalogBespokeRuntimeEntries {
-		t.Fatalf("summary = %#v, want one bespoke-runtime entry", analysis.Summary)
+		t.Fatalf("summary = %#v, want %d bespoke-runtime entries", analysis.Summary, wantBuiltinCatalogBespokeRuntimeEntries)
 	}
 	counted := analysis.Summary.CatalogReady + analysis.Summary.Generateable + analysis.Summary.NeedsAuthExtension + analysis.Summary.NeedsBespokeRuntime
 	if counted != analysis.Summary.Total {
@@ -452,11 +452,11 @@ func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 		t.Fatalf("runtime catalog size = total %d entries %d, want %d", analysis.Summary.Total, len(analysis.Entries), wantBuiltinCatalogEntries)
 	}
 	if analysis.Summary.CatalogReady != wantBuiltinCatalogEntries-wantBuiltinCatalogBespokeRuntimeEntries || analysis.Summary.Generateable != 0 || analysis.Summary.NeedsBespokeRuntime != wantBuiltinCatalogBespokeRuntimeEntries {
-		t.Fatalf("runtime summary = %#v, want catalog-ready supported entries and one bespoke runtime entry", analysis.Summary)
+		t.Fatalf("runtime summary = %#v, want catalog-ready supported entries and %d bespoke runtime entries", analysis.Summary, wantBuiltinCatalogBespokeRuntimeEntries)
 	}
 	for _, entry := range analysis.Entries {
 		wantStatus := StatusCatalogReady
-		if entry.Definition.SourceID == "auth0" {
+		if entry.Definition.SourceID == "auth0" || entry.Definition.SourceID == "kubernetes" {
 			wantStatus = StatusNeedsBespokeRuntime
 		}
 		if entry.SourcegenDryRun || entry.Generateable || entry.Status != wantStatus {
@@ -538,6 +538,81 @@ func TestBuiltinCloudflareCatalogClosesTheProviderFamilyAndCredentialContracts(t
 		}
 		if family.Projection == nil || strings.TrimSpace(family.Projection.Template) == "" {
 			t.Fatalf("%s projection is not compiled", family.ID)
+		}
+		delete(want, family.ID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing families = %#v", want)
+	}
+}
+
+func TestBuiltinKubernetesCatalogMatchesRuntimeContract(t *testing.T) {
+	entry, ok, err := BuiltinEntry("kubernetes")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(kubernetes) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(kubernetes) ok = false")
+	}
+	definition := entry.Definition
+	if definition.Auth.Model != "none" || len(definition.Auth.CredentialFields) != 0 || definition.Auth.RequiresReferences {
+		t.Fatalf("auth = %#v, want host-managed credentials outside the connector contract", definition.Auth)
+	}
+	if entry.Status != StatusNeedsBespokeRuntime {
+		t.Fatalf("status = %q, want %q", entry.Status, StatusNeedsBespokeRuntime)
+	}
+	if definition.Transport == nil || definition.Transport.BaseURL != "${config.api_server}" || definition.Transport.Verification == nil || definition.Transport.Verification.Path != "/version" {
+		t.Fatalf("transport = %#v, want configured API-server origin and /version verification", definition.Transport)
+	}
+	configFields := map[string]connectordefinitions.Field{}
+	for _, field := range definition.ConfigFields {
+		configFields[field.Key] = field
+	}
+	if !configFields["api_server"].Required {
+		t.Fatalf("config fields = %#v, want required api_server", definition.ConfigFields)
+	}
+
+	type familyContract struct {
+		path               string
+		requiredAttributes []string
+	}
+	want := map[string]familyContract{
+		"cluster":                   {path: "/version", requiredAttributes: []string{"cluster_id", "cluster_name"}},
+		"namespace":                 {path: "/api/v1/namespaces", requiredAttributes: []string{"cluster_id", "namespace"}},
+		"node":                      {path: "/api/v1/nodes", requiredAttributes: []string{"cluster_id", "node_name", "ready"}},
+		"pod":                       {path: "/api/v1/pods", requiredAttributes: []string{"cluster_id", "namespace", "workload_uid"}},
+		"workload":                  {path: "/api/v1/pods", requiredAttributes: []string{"cluster_id", "namespace", "workload_uid"}},
+		"container":                 {path: "/api/v1/pods", requiredAttributes: []string{"cluster_id", "container_name", "namespace"}},
+		"service":                   {path: "/api/v1/services", requiredAttributes: []string{"cluster_id", "namespace", "service_name", "service_type"}},
+		"ingress":                   {path: "/apis/networking.k8s.io/v1/ingresses", requiredAttributes: []string{"cluster_id", "ingress_name", "namespace"}},
+		"service_account":           {path: "/api/v1/serviceaccounts", requiredAttributes: []string{"cluster_id", "namespace", "service_account_name"}},
+		"rbac_role":                 {path: "/apis/rbac.authorization.k8s.io/v1/roles", requiredAttributes: []string{"cluster_id", "role_kind", "role_name"}},
+		"rbac_binding":              {path: "/apis/rbac.authorization.k8s.io/v1/rolebindings", requiredAttributes: []string{"binding_kind", "binding_name", "cluster_id", "role_name"}},
+		"workload_identity_binding": {path: "/api/v1/serviceaccounts", requiredAttributes: []string{"cloud_provider", "cluster_id", "namespace", "service_account_name", "target_id"}},
+	}
+	if len(definition.ResourceFamilies) != len(want) || len(definition.ScopeOptions) != len(want) {
+		t.Fatalf("families/scopes = %d/%d, want %d/%d", len(definition.ResourceFamilies), len(definition.ScopeOptions), len(want), len(want))
+	}
+	for _, family := range definition.ResourceFamilies {
+		contract, ok := want[family.ID]
+		if !ok {
+			t.Fatalf("unexpected family %q", family.ID)
+		}
+		if family.Path != contract.path || family.Event.Kind != "kubernetes."+family.ID || family.Event.SchemaRef != "kubernetes/"+family.ID+"/v1" {
+			t.Fatalf("%s path/event = %q/%#v", family.ID, family.Path, family.Event)
+		}
+		if strings.Join(family.Event.RequiredAttributes, ",") != strings.Join(contract.requiredAttributes, ",") {
+			t.Fatalf("%s required attributes = %#v, want %#v", family.ID, family.Event.RequiredAttributes, contract.requiredAttributes)
+		}
+		if family.Projection == nil || strings.TrimSpace(family.Projection.Template) == "" || len(family.Coverage) == 0 {
+			t.Fatalf("%s projection/coverage = %#v/%#v", family.ID, family.Projection, family.Coverage)
+		}
+		if family.ID == "cluster" {
+			if !family.Singleton || family.Pagination == nil || family.Pagination.Type != "none" {
+				t.Fatalf("cluster singleton/pagination = %v/%#v", family.Singleton, family.Pagination)
+			}
+		} else if family.Pagination == nil || family.Pagination.Type != "cursor" || family.Pagination.CursorParam != "continue" || family.Pagination.CursorJSONPath != "$.metadata.continue" || family.Pagination.PageSizeParam != "limit" {
+			t.Fatalf("%s pagination = %#v", family.ID, family.Pagination)
 		}
 		delete(want, family.ID)
 	}

@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -46,18 +47,14 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	generatedAt := time.Now().UTC()
-	sourceSummaries, err := a.grcSourceRuntimeHealthSummaries(r.Context(), runtimes, generatedAt)
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	coverage, err := a.sourceCoverageRecordsScoped(r.Context(), runtimes, ports.SourceRuntimeFilter{
-		RuntimeID:  scope.RuntimeID,
-		RuntimeIDs: scope.RuntimeIDs,
-		TenantID:   scope.TenantID,
-		SourceID:   scope.SourceID,
-		Limit:      scope.Limit,
-	}, generatedAt, coverageScope)
+	coverage, sourceSummaries, err := grcprogram.RunReadinessEnrichments(r.Context(), grcRuntimeHealthEnrichmentTimeout, func(ctx context.Context) ([]sourcecoverage.Record, error) {
+		return a.sourceCoverageRecordsScoped(ctx, runtimes, ports.SourceRuntimeFilter{
+			RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID,
+			SourceID: scope.SourceID, Limit: scope.Limit,
+		}, generatedAt, coverageScope)
+	}, func(ctx context.Context) ([]sourceRuntimeHealthSummary, error) {
+		return a.grcSourceRuntimeHealthSummaries(ctx, runtimes, generatedAt)
+	})
 	if err != nil {
 		writeGRCError(w, err)
 		return

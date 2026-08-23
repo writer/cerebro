@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -95,5 +96,51 @@ func TestGRCProgramReadinessEndpointReturnsProofBundleWorkQueue(t *testing.T) {
 	}
 	if payload.ProductAreas[0].ID != "compliance" || payload.ProductAreas[0].Status == "" {
 		t.Fatalf("first product area = %+v, want compliance area with status", payload.ProductAreas[0])
+	}
+}
+
+func TestGRCProgramReadinessReturnsCoreDataWhenRuntimeHealthUnavailable(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-grc": {
+				Id:       "writer-grc",
+				SourceId: "grc",
+				TenantId: "writer",
+			},
+		},
+		findings:        map[string]*ports.FindingRecord{},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{},
+	}
+	app := New(
+		config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second},
+		Dependencies{
+			StateStore: store,
+			GraphStore: &stubGraphStore{err: errors.New("runtime health graph read unavailable")},
+		},
+		nil,
+	)
+	server := httptest.NewServer(app.Handler())
+
+	stderr := captureBootstrapStderr(t, func() {
+		defer server.Close()
+		resp, err := server.Client().Get(server.URL + "/grc/program-readiness?tenant_id=writer&limit=1")
+		if err != nil {
+			t.Fatalf("GET /grc/program-readiness error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /grc/program-readiness status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+		var payload grcProgramReadinessResponse
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode /grc/program-readiness: %v", err)
+		}
+		if len(payload.SourceSummaries) != 0 {
+			t.Fatalf("source summaries = %#v, want omitted degraded enrichment", payload.SourceSummaries)
+		}
+	})
+
+	if !strings.Contains(stderr, `"name":"sourcehealth.latest_graph_runs"`) {
+		t.Fatalf("runtime health failure telemetry missing: %s", stderr)
 	}
 }

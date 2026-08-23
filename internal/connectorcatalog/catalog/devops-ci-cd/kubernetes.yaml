@@ -1,213 +1,780 @@
 entries:
-- classifier_output: supported
+- classifier_output: bespoke_required
   definition:
     auth:
-      credential_fields:
-      - key: api_key
-        label: API key
-        reference_only: true
-        required: true
-        secret: true
-      model: api_key
-      requires_references: true
+      model: none
     categories:
-    - saas
-    description: "Collects event, clusterrole, secret, and serviceaccount from Kubernetes and projects them into the Cerebro graph as audit events, groups, secrets, and users for repository, build, deployment, and release context."
+    - cloud
+    - infrastructure
+    config_fields:
+    - help: HTTPS origin of the Kubernetes API server selected by the trusted runtime
+        host.
+      key: api_server
+      label: API server
+      required: true
+    - help: Stable cluster identity. The runtime falls back to external_id, cloud
+        account plus cluster name, or cluster_name.
+      key: cluster_id
+      label: Cluster ID
+    - help: Operator-facing cluster name.
+      key: cluster_name
+      label: Cluster name
+    - help: Optional provider-owned external cluster identity.
+      key: external_id
+      label: External ID
+    - help: Normalized cloud provider identifier when the cluster is cloud-hosted.
+      key: cloud_provider
+      label: Cloud provider
+    - help: Cloud account, project, or subscription identity.
+      key: cloud_account_id
+      label: Cloud account ID
+    - help: Host-local kubeconfig path. Required by the Go compatibility runtime unless
+        in_cluster is true.
+      key: kubeconfig_path
+      label: Kubeconfig path
+    - help: Optional kubeconfig context override.
+      key: context
+      label: Kubeconfig context
+    - help: Use the runtime host's in-cluster Kubernetes identity.
+      key: in_cluster
+      label: In-cluster authentication
+    - help: Provider page size from 1 through 500. Defaults to 100.
+      key: per_page
+      label: Page size
+    description: Collects Kubernetes clusters, namespaces, nodes, pods, workloads,
+      containers, services, ingresses, service accounts, RBAC roles and bindings,
+      and workload identity bindings for asset, identity, and access context.
     display_name: Kubernetes
     id: builtin_catalog-kubernetes
     resource_families:
     - coverage:
-      - families:
-        - event
-        high_value: true
-        evidence_types:
-        - logging_configuration
-        control_domains:
-        - logging_monitoring
-        id: audit_events
-        support: partial
-        title: Event
-        type: audit_event
-      default_enabled: true
-      event:
-        kind: kubernetes.event
-        required_payload_fields:
-        - action
-        schema_ref: kubernetes/event/v1
-        urn_kind: kubernetes_event
-      event_kind: event
-      id: event
-      id_field: action
-      label: Event
-      list_key: items
-      method: GET
-      name_field: action
-      pagination:
-        page_size: 100
-        page_size_param: limit
-        type: page
-      path: "/api/v1/events"
-      permissions_needed:
-      - BearerToken
-      projection:
-        fields:
-          id: action
-          name: action
-          provider_id: action
-        template: audit_event
-      record_selector: "$.items[*]"
-    - coverage:
-      - families:
-        - clusterrole
+      - id: clusters
+        type: entity_family
+        title: Kubernetes clusters
+        families:
+        - cluster
+        support: supported
         high_value: true
         evidence_types:
         - source_snapshot
         control_domains:
         - asset_inventory
-        id: clusterrole
-        support: partial
-        title: Clusterrole
-        type: entity_family
       default_enabled: true
       event:
-        kind: kubernetes.clusterrole
+        kind: kubernetes.cluster
+        required_attributes:
+        - cluster_id
+        - cluster_name
         required_payload_fields:
-        - aggregationRule
-        schema_ref: kubernetes/clusterrole/v1
-        urn_kind: kubernetes_clusterrole
-      event_kind: clusterrole
-      id: clusterrole
-      id_field: aggregationRule
-      label: Clusterrole
-      list_key: items
+        - cluster_id
+        - cluster_name
+        schema_ref: kubernetes/cluster/v1
+        urn_kind: kubernetes_cluster
+      id: cluster
+      id_field: cluster_id
+      label: Cluster
       method: GET
-      name_field: aggregationRule
-      pagination:
-        page_size: 100
-        page_size_param: limit
-        type: page
-      path: "/apis/rbac.authorization.k8s.io/v1/clusterroles"
-      permissions_needed:
-      - BearerToken
+      name_field: cluster_name
+      path: "/version"
       projection:
+        entity:
+          entity_type: kubernetes.cluster
+          id_attributes:
+          - cluster_id
+          label_attribute: cluster_name
+          urn_kind: kubernetes_cluster
         fields:
-          id: aggregationRule
-          name: aggregationRule
-          provider_id: aggregationRule
-        template: identity_group
-      record_selector: "$.items[*]"
+          id: cluster_name
+          name: cluster_name
+          provider_id: cluster_name
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$"
+      pagination:
+        type: none
+      singleton: true
     - coverage:
-      - families:
-        - secret
+      - id: namespaces
+        type: entity_family
+        title: Kubernetes namespaces
+        families:
+        - namespace
+        support: supported
         high_value: true
         evidence_types:
         - source_snapshot
         control_domains:
         - asset_inventory
-        id: secrets
-        support: partial
-        title: Secret
-        type: entity_family
       default_enabled: true
       event:
-        kind: kubernetes.secret
+        kind: kubernetes.namespace
+        required_attributes:
+        - cluster_id
+        - namespace
         required_payload_fields:
-        - apiVersion
-        schema_ref: kubernetes/secret/v1
-        urn_kind: kubernetes_secret
-      event_kind: secret
-      id: secret
-      id_field: apiVersion
-      label: Secret
-      list_key: items
+        - name
+        - uid
+        schema_ref: kubernetes/namespace/v1
+        urn_kind: kubernetes_namespace
+      id: namespace
+      id_field: metadata.uid
+      label: Namespaces
       method: GET
-      name_field: apiVersion
+      name_field: metadata.name
+      path: "/api/v1/namespaces"
+      projection:
+        entity:
+          entity_type: kubernetes.namespace
+          id_attributes:
+          - cluster_id
+          - namespace
+          label_attribute: namespace
+          urn_kind: kubernetes_namespace
+        fields:
+          id: namespace
+          name: namespace
+          provider_id: namespace
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$.items[*]"
+      list_key: items
       pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
         page_size: 100
         page_size_param: limit
-        type: page
-      path: "/api/v1/secrets"
-      permissions_needed:
-      - BearerToken
-      projection:
-        fields:
-          id: apiVersion
-          name: apiVersion
-          secret_id: apiVersion
-          secret_name: apiVersion
-          secret_type: secret
-        template: secret
-      record_selector: "$.items[*]"
+        type: cursor
     - coverage:
-      - families:
-        - serviceaccount
+      - id: nodes
+        type: entity_family
+        title: Kubernetes nodes
+        families:
+        - node
+        support: supported
         high_value: true
         evidence_types:
         - source_snapshot
         control_domains:
         - asset_inventory
-        id: serviceaccount
-        support: partial
-        title: Serviceaccount
-        type: entity_family
       default_enabled: true
       event:
-        kind: kubernetes.serviceaccount
+        kind: kubernetes.node
+        required_attributes:
+        - cluster_id
+        - node_name
+        - ready
         required_payload_fields:
-        - apiVersion
-        schema_ref: kubernetes/serviceaccount/v1
-        urn_kind: kubernetes_serviceaccount
-      event_kind: serviceaccount
-      id: serviceaccount
-      id_field: apiVersion
-      label: Serviceaccount
-      list_key: items
+        - name
+        - node_info
+        - ready
+        schema_ref: kubernetes/node/v1
+        urn_kind: kubernetes_node
+      id: node
+      id_field: metadata.uid
+      label: Nodes
       method: GET
-      name_field: apiVersion
+      name_field: metadata.name
+      path: "/api/v1/nodes"
+      projection:
+        entity:
+          entity_type: kubernetes.node
+          id_attributes:
+          - cluster_id
+          - node_name
+          label_attribute: node_name
+          urn_kind: kubernetes_node
+        fields:
+          id: node_name
+          name: node_name
+          provider_id: node_name
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$.items[*]"
+      list_key: items
       pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
         page_size: 100
         page_size_param: limit
-        type: page
+        type: cursor
+    - coverage:
+      - id: pods
+        type: entity_family
+        title: Kubernetes pods
+        families:
+        - pod
+        - container
+        support: supported
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      default_enabled: true
+      event:
+        kind: kubernetes.pod
+        required_attributes:
+        - cluster_id
+        - namespace
+        - workload_uid
+        required_payload_fields:
+        - name
+        - namespace
+        - uid
+        schema_ref: kubernetes/pod/v1
+        urn_kind: kubernetes_pod
+      id: pod
+      id_field: metadata.uid
+      label: Pods
+      method: GET
+      name_field: metadata.name
+      path: "/api/v1/pods"
+      projection:
+        entity:
+          entity_type: kubernetes.pod
+          id_attributes:
+          - cluster_id
+          - namespace
+          - workload_uid
+          label_attribute: resource_name
+          urn_kind: kubernetes_pod
+        fields:
+          id: resource_name
+          name: resource_name
+          provider_id: resource_name
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+    - coverage:
+      - id: workloads
+        type: entity_family
+        title: Kubernetes workloads
+        families:
+        - workload
+        support: supported
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      default_enabled: true
+      event:
+        kind: kubernetes.workload
+        required_attributes:
+        - cluster_id
+        - namespace
+        - workload_uid
+        required_payload_fields:
+        - workload_kind
+        - workload_name
+        - workload_uid
+        schema_ref: kubernetes/workload/v1
+        urn_kind: kubernetes_workload
+      id: workload
+      id_field: metadata.uid
+      label: Workloads
+      method: GET
+      name_field: metadata.name
+      path: "/api/v1/pods"
+      projection:
+        entity:
+          entity_type: kubernetes.workload
+          id_attributes:
+          - cluster_id
+          - namespace
+          - workload_uid
+          label_attribute: workload_name
+          urn_kind: kubernetes_workload
+        fields:
+          id: workload_name
+          name: workload_name
+          provider_id: workload_name
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+    - coverage:
+      - id: pods
+        type: entity_family
+        title: Kubernetes pods
+        families:
+        - pod
+        - container
+        support: supported
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      default_enabled: true
+      event:
+        kind: kubernetes.container
+        required_attributes:
+        - cluster_id
+        - container_name
+        - namespace
+        required_payload_fields:
+        - container_name
+        - pod_uid
+        schema_ref: kubernetes/container/v1
+        urn_kind: kubernetes_container
+      id: container
+      id_field: metadata.uid
+      label: Containers
+      method: GET
+      name_field: metadata.name
+      path: "/api/v1/pods"
+      projection:
+        entity:
+          entity_type: kubernetes.container
+          id_attributes:
+          - cluster_id
+          - namespace
+          - resource_id
+          - container_name
+          label_attribute: container_name
+          urn_kind: kubernetes_container
+        fields:
+          id: container_name
+          name: container_name
+          provider_id: container_name
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+    - coverage:
+      - id: services
+        type: entity_family
+        title: Kubernetes services
+        families:
+        - service
+        support: supported
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      default_enabled: true
+      event:
+        kind: kubernetes.service
+        required_attributes:
+        - cluster_id
+        - namespace
+        - service_name
+        - service_type
+        required_payload_fields:
+        - name
+        - namespace
+        - ports
+        - type
+        schema_ref: kubernetes/service/v1
+        urn_kind: kubernetes_service
+      id: service
+      id_field: metadata.uid
+      label: Services
+      method: GET
+      name_field: metadata.name
+      path: "/api/v1/services"
+      projection:
+        entity:
+          entity_type: kubernetes.service
+          id_attributes:
+          - cluster_id
+          - namespace
+          - service_name
+          label_attribute: service_name
+          urn_kind: kubernetes_service
+        fields:
+          id: service_name
+          name: service_name
+          provider_id: service_name
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+    - coverage:
+      - id: ingresses
+        type: entity_family
+        title: Kubernetes ingresses
+        families:
+        - ingress
+        support: supported
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      default_enabled: true
+      event:
+        kind: kubernetes.ingress
+        required_attributes:
+        - cluster_id
+        - ingress_name
+        - namespace
+        required_payload_fields:
+        - name
+        - namespace
+        - rules
+        schema_ref: kubernetes/ingress/v1
+        urn_kind: kubernetes_ingress
+      id: ingress
+      id_field: metadata.uid
+      label: Ingresses
+      method: GET
+      name_field: metadata.name
+      path: "/apis/networking.k8s.io/v1/ingresses"
+      projection:
+        entity:
+          entity_type: kubernetes.ingress
+          id_attributes:
+          - cluster_id
+          - namespace
+          - ingress_name
+          label_attribute: ingress_name
+          urn_kind: kubernetes_ingress
+        fields:
+          id: ingress_name
+          name: ingress_name
+          provider_id: ingress_name
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+    - coverage:
+      - id: service_accounts
+        type: entity_family
+        title: Kubernetes service accounts
+        families:
+        - service_account
+        support: supported
+        high_value: true
+        evidence_types:
+        - source_snapshot
+        control_domains:
+        - asset_inventory
+      default_enabled: true
+      event:
+        kind: kubernetes.service_account
+        required_attributes:
+        - cluster_id
+        - namespace
+        - service_account_name
+        required_payload_fields:
+        - name
+        - namespace
+        schema_ref: kubernetes/service_account/v1
+        urn_kind: kubernetes_service_account
+      id: service_account
+      id_field: metadata.uid
+      label: Service accounts
+      method: GET
+      name_field: metadata.name
       path: "/api/v1/serviceaccounts"
-      permissions_needed:
-      - BearerToken
       projection:
+        entity:
+          entity_type: kubernetes.service_account
+          id_attributes:
+          - cluster_id
+          - namespace
+          - service_account_name
+          label_attribute: service_account_name
+          urn_kind: kubernetes_service_account
         fields:
-          id: apiVersion
-          name: apiVersion
-          provider_id: apiVersion
+          user_id: service_account_name
+          login: service_account_name
+          display_name: service_account_name
+        static_fields:
+          source_product: kubernetes
         template: identity_user
       record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
       sensitive_payload_paths:
       - automountServiceAccountToken
       - imagePullSecrets
       - secrets
+    - coverage:
+      - id: rbac_roles
+        type: app_entitlement
+        title: Kubernetes RBAC roles
+        families:
+        - rbac_role
+        support: supported
+        high_value: true
+        evidence_types:
+        - identity_configuration
+        control_domains:
+        - identity_access
+      default_enabled: true
+      event:
+        kind: kubernetes.rbac_role
+        required_attributes:
+        - cluster_id
+        - role_kind
+        - role_name
+        required_payload_fields:
+        - name
+        - role_kind
+        - rules
+        schema_ref: kubernetes/rbac_role/v1
+        urn_kind: kubernetes_rbac_role
+      id: rbac_role
+      id_field: metadata.uid
+      label: RBAC roles
+      method: GET
+      name_field: metadata.name
+      path: "/apis/rbac.authorization.k8s.io/v1/roles"
+      projection:
+        entity:
+          entity_type: kubernetes.rbac_role
+          id_attributes:
+          - cluster_id
+          - role_kind
+          - role_scope
+          - role_name
+          label_attribute: role_name
+          urn_kind: kubernetes_rbac_role
+        fields:
+          group_id: role_name
+          group_name: role_name
+          display_name: role_name
+        static_fields:
+          source_product: kubernetes
+        template: identity_group
+      record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+    - coverage:
+      - id: rbac_bindings
+        type: relationship
+        title: Kubernetes RBAC bindings
+        families:
+        - rbac_binding
+        support: supported
+        high_value: true
+        evidence_types:
+        - relationship_evidence
+        control_domains:
+        - asset_inventory
+      default_enabled: true
+      event:
+        kind: kubernetes.rbac_binding
+        required_attributes:
+        - binding_kind
+        - binding_name
+        - cluster_id
+        - role_name
+        required_payload_fields:
+        - binding_kind
+        - name
+        - role_ref
+        schema_ref: kubernetes/rbac_binding/v1
+        urn_kind: kubernetes_rbac_binding
+      id: rbac_binding
+      id_field: metadata.uid
+      label: RBAC bindings
+      method: GET
+      name_field: metadata.name
+      path: "/apis/rbac.authorization.k8s.io/v1/rolebindings"
+      projection:
+        entity:
+          entity_type: kubernetes.rbac_binding
+          id_attributes:
+          - cluster_id
+          - binding_kind
+          - binding_scope
+          - binding_name
+          label_attribute: binding_name
+          urn_kind: kubernetes_rbac_binding
+        fields:
+          id: binding_name
+          name: binding_name
+          provider_id: binding_name
+        static_fields:
+          source_product: kubernetes
+        template: asset
+      record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
+    - coverage:
+      - id: workload_identity_bindings
+        type: relationship
+        title: Kubernetes workload identity bindings
+        families:
+        - workload_identity_binding
+        support: supported
+        high_value: true
+        evidence_types:
+        - relationship_evidence
+        control_domains:
+        - asset_inventory
+      default_enabled: true
+      event:
+        kind: kubernetes.workload_identity_binding
+        required_attributes:
+        - cloud_provider
+        - cluster_id
+        - namespace
+        - service_account_name
+        - target_id
+        required_payload_fields:
+        - cloud_provider
+        - service_account_name
+        - target_id
+        schema_ref: kubernetes/workload_identity_binding/v1
+        urn_kind: kubernetes_service_account
+      id: workload_identity_binding
+      id_field: metadata.uid
+      label: Workload identity bindings
+      method: GET
+      name_field: metadata.name
+      path: "/api/v1/serviceaccounts"
+      projection:
+        entity:
+          entity_type: kubernetes.workload_identity_binding
+          id_attributes:
+          - cluster_id
+          - namespace
+          - service_account_name
+          - cloud_provider
+          - target_id
+          label_attribute: service_account_name
+          urn_kind: kubernetes_service_account
+        fields:
+          user_id: service_account_name
+          login: service_account_name
+          display_name: service_account_name
+        static_fields:
+          source_product: kubernetes
+        template: identity_user
+      record_selector: "$.items[*]"
+      list_key: items
+      pagination:
+        cursor_json_path: "$.metadata.continue"
+        cursor_param: continue
+        page_size: 100
+        page_size_param: limit
+        type: cursor
     schema_version: cerebro.integration/v1
     scope_options:
     - default_enabled: true
       families:
-      - event
-      id: event
-      label: Event
+      - cluster
+      id: cluster
+      label: Cluster
     - default_enabled: true
       families:
-      - clusterrole
-      id: clusterrole
-      label: Clusterrole
+      - namespace
+      id: namespace
+      label: Namespaces
     - default_enabled: true
       families:
-      - secret
-      id: secret
-      label: Secret
+      - node
+      id: node
+      label: Nodes
     - default_enabled: true
       families:
-      - serviceaccount
-      id: serviceaccount
-      label: Serviceaccount
+      - pod
+      id: pod
+      label: Pods
+    - default_enabled: true
+      families:
+      - workload
+      id: workload
+      label: Workloads
+    - default_enabled: true
+      families:
+      - container
+      id: container
+      label: Containers
+    - default_enabled: true
+      families:
+      - service
+      id: service
+      label: Services
+    - default_enabled: true
+      families:
+      - ingress
+      id: ingress
+      label: Ingresses
+    - default_enabled: true
+      families:
+      - service_account
+      id: service_account
+      label: Service accounts
+    - default_enabled: true
+      families:
+      - rbac_role
+      id: rbac_role
+      label: RBAC roles
+    - default_enabled: true
+      families:
+      - rbac_binding
+      id: rbac_binding
+      label: RBAC bindings
+    - default_enabled: true
+      families:
+      - workload_identity_binding
+      id: workload_identity_binding
+      label: Workload identity bindings
     source_id: kubernetes
     tenant_id: builtin_catalog
     transport:
-      base_url: https://kubernetes.local
+      base_url: "${config.api_server}"
       retry:
         backoff: exponential
         max_attempts: 3
@@ -222,4 +789,4 @@ entries:
         expect_status:
         - 200
         method: GET
-        path: "/api/v1/events"
+        path: "/version"
