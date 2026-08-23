@@ -257,6 +257,7 @@ fn public_connector_matches_go_contract_but_remains_non_authoritative() {
         assert_eq!(public.id_field, plan.id_field);
         assert_eq!(public.event.kind, plan.event_kind);
         assert_eq!(public.event.schema_ref, plan.schema_ref);
+        assert_eq!(contract.schema_ref, plan.schema_ref);
         assert_eq!(
             public.event.required_attributes,
             contract.required_attributes
