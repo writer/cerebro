@@ -23,15 +23,16 @@ import (
 )
 
 type sourceFeatureDeps struct {
-	Sources *sourcecdk.Registry
+	Sources          *sourcecdk.Registry
+	SourceWorkerPath string
 }
 
-func newSourceFeatureDeps(sources *sourcecdk.Registry) sourceFeatureDeps {
-	return sourceFeatureDeps{Sources: sources}
+func newSourceFeatureDeps(cfg config.Config, sources *sourcecdk.Registry) sourceFeatureDeps {
+	return sourceFeatureDeps{Sources: sources, SourceWorkerPath: cfg.SourceRuntime.SourceWorkerPath}
 }
 
 func newSourceFeatureService(deps sourceFeatureDeps) *sourceops.Service {
-	return sourceops.New(deps.Sources)
+	return sourceops.New(deps.Sources).WithSourceExecutionWorkerPath(deps.SourceWorkerPath)
 }
 
 type reportFeatureDeps struct {

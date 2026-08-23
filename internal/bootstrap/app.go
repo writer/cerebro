@@ -283,7 +283,7 @@ func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Reg
 		}
 		app.mcpOAuthService = service
 	}
-	app.services.sourceOps = newSourceService(app.sources)
+	app.services.sourceOps = newSourceService(app.cfg, app.sources)
 	app.services.reports = app.newReportService()
 	app.services.runtimeOps = newRuntimeService(app.cfg, app.deps, app.sources)
 	if cfg.SourceRuntime.EventAdmissionWorkerPath != "" {
@@ -731,11 +731,11 @@ func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Reques
 }
 
 func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cerebrov1.ListSourcesRequest]) (*connect.Response[cerebrov1.ListSourcesResponse], error) {
-	return connect.NewResponse(newSourceService(s.sources).List()), nil
+	return connect.NewResponse(newSourceService(s.cfg, s.sources).List()), nil
 }
 
 func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request[cerebrov1.CheckSourceRequest]) (*connect.Response[cerebrov1.CheckSourceResponse], error) {
-	response, err := newSourceService(s.sources).Check(ctx, req.Msg)
+	response, err := newSourceService(s.cfg, s.sources).Check(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -743,7 +743,7 @@ func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request
 }
 
 func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Request[cerebrov1.DiscoverSourceRequest]) (*connect.Response[cerebrov1.DiscoverSourceResponse], error) {
-	response, err := newSourceService(s.sources).Discover(ctx, req.Msg)
+	response, err := newSourceService(s.cfg, s.sources).Discover(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -751,7 +751,7 @@ func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Requ
 }
 
 func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[cerebrov1.ReadSourceRequest]) (*connect.Response[cerebrov1.ReadSourceResponse], error) {
-	response, err := newSourceService(s.sources).Read(ctx, req.Msg)
+	response, err := newSourceService(s.cfg, s.sources).Read(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -1491,7 +1491,7 @@ func (a *App) sourceService() *sourceops.Service {
 	if a != nil && a.services.sourceOps != nil {
 		return a.services.sourceOps
 	}
-	return newSourceService(a.sources)
+	return newSourceService(a.cfg, a.sources)
 }
 
 func (a *App) reportService() *reports.Service {
@@ -1512,8 +1512,8 @@ func (a *App) runtimeService() *sourceruntime.Service {
 	return newRuntimeService(a.cfg, a.deps, a.sources)
 }
 
-func newSourceService(sources *sourcecdk.Registry) *sourceops.Service {
-	return newSourceFeatureService(newSourceFeatureDeps(sources))
+func newSourceService(cfg config.Config, sources *sourcecdk.Registry) *sourceops.Service {
+	return newSourceFeatureService(newSourceFeatureDeps(cfg, sources))
 }
 
 func newRuntimeService(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {

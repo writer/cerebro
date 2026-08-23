@@ -251,7 +251,11 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	if err != nil {
 		return nil, err
 	}
-	if err := source.Check(ctx, sourcecdk.NewConfig(resolvedConfig)); err != nil {
+	if _, authoritative := sourceworker.TailscaleFamily(runtime.GetSourceId(), resolvedConfig["family"]); authoritative {
+		if err := s.validateRustSourceRuntimePlan(ctx, runtime, resolvedConfig); err != nil {
+			return nil, err
+		}
+	} else if err := source.Check(ctx, sourcecdk.NewConfig(resolvedConfig)); err != nil {
 		if errors.Is(err, sourcecdk.ErrInvalidConfig) {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 		}

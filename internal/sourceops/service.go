@@ -12,6 +12,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -24,6 +25,8 @@ var (
 type Service struct {
 	registry            *sourcecdk.Registry
 	allowInternalConfig bool
+	sourceWorker        sourceworker.Worker
+	runSourceExecution  sourceExecutionRunner
 }
 
 // New constructs a source operations service.
@@ -70,7 +73,11 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 	if err != nil {
 		return nil, err
 	}
-	if err := source.Check(ctx, sourcecdk.NewConfig(config)); err != nil {
+	if tailscaleSource(req.GetSourceId()) {
+		if _, err := s.executeTailscale(ctx, config, nil); err != nil {
+			return nil, sourceOperationError(err)
+		}
+	} else if err := source.Check(ctx, sourcecdk.NewConfig(config)); err != nil {
 		return nil, sourceOperationError(err)
 	}
 	return &cerebrov1.CheckSourceResponse{
@@ -100,7 +107,16 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 	if err != nil {
 		return nil, err
 	}
-	urns, err := source.Discover(ctx, sourcecdk.NewConfig(config))
+	var urns []sourcecdk.URN
+	if tailscaleSource(req.GetSourceId()) {
+		pull, executeErr := s.executeTailscale(ctx, config, nil)
+		if executeErr != nil {
+			return nil, sourceOperationError(executeErr)
+		}
+		urns, err = discoverURNs(pull)
+	} else {
+		urns, err = source.Discover(ctx, sourcecdk.NewConfig(config))
+	}
 	if err != nil {
 		return nil, sourceOperationError(err)
 	}
@@ -136,7 +152,12 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (_
 	if err != nil {
 		return nil, err
 	}
-	pull, err := source.Read(ctx, sourcecdk.NewConfig(config), req.GetCursor())
+	var pull sourcecdk.Pull
+	if tailscaleSource(req.GetSourceId()) {
+		pull, err = s.executeTailscale(ctx, config, req.GetCursor())
+	} else {
+		pull, err = source.Read(ctx, sourcecdk.NewConfig(config), req.GetCursor())
+	}
 	if err != nil {
 		return nil, sourceOperationError(err)
 	}

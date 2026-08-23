@@ -264,6 +264,7 @@ impl SourceExecutionAdapter for TailscaleExecutionBridge {
                 optional_watermark(metadata)?.as_deref(),
             )
             .map_err(map_error)?;
+        let next_cursor = page.next_cursor.clone().unwrap_or_default();
         let records = page
             .records
             .into_iter()
@@ -291,7 +292,10 @@ impl SourceExecutionAdapter for TailscaleExecutionBridge {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let records = validate_and_deduplicate_records(records)?;
-        let next_cursor = checkpoint.cursor.unwrap_or_default();
+        // A provider continuation controls only the current collection loop.
+        // The last-record fallback from `checkpoint_candidate` is durable
+        // restart state and is sealed separately by the Rust lifecycle.
+        let _validated_checkpoint = checkpoint.cursor;
         let result_digest_sha256 = canonical_result_digest(receipt, &next_cursor, &records)?;
         Ok(SourceWorkerDecodeResultV1 {
             plan_id: plan.plan_id.clone(),
@@ -308,6 +312,29 @@ impl SourceExecutionAdapter for TailscaleExecutionBridge {
             observed_at_unix_millis: context.observed_at_unix_millis,
         })
     }
+}
+
+pub(super) fn durable_checkpoint_cursor(
+    plan: &SourceExecutionPlanV1,
+    result: &SourceWorkerDecodeResultV1,
+) -> Option<String> {
+    if plan.source_id != "tailscale"
+        || !TAILSCALE_ADAPTERS
+            .iter()
+            .any(|adapter| adapter.family_id() == plan.family_id)
+    {
+        return None;
+    }
+    if !result.next_cursor.is_empty() {
+        return Some(result.next_cursor.clone());
+    }
+    Some(
+        result
+            .records
+            .last()
+            .map(|record| record.provider_id.clone())
+            .unwrap_or_default(),
+    )
 }
 
 fn public_value<'a>(config: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
@@ -621,7 +648,7 @@ mod tests {
             let terminal_cursor = last.provider_id.clone();
             let terminal_watermark = last.occurred_at_unix_millis;
 
-            assert_eq!(result.next_cursor, terminal_cursor, "{family}");
+            assert!(result.next_cursor.is_empty(), "{family}");
             let program = seal_page_program_v2(&SourceExecutionLifecycleEnvelopeV2 {
                 request: Some(SourceExecutionLifecycleRequestV1 {
                     plan: Some(plan.clone()),

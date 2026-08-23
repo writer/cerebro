@@ -276,7 +276,12 @@ func runGraph(args []string) error {
 		if projector == nil {
 			return fmt.Errorf("projection graph store is required")
 		}
-		result, err := ingestGraph(ctx, sourceops.New(registry), projector, deps.GraphStore, options)
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		sourceService := sourceops.New(registry).WithSourceExecutionWorkerPath(cfg.SourceRuntime.SourceWorkerPath)
+		result, err := ingestGraph(ctx, sourceService, projector, deps.GraphStore, options)
 		if err != nil {
 			return err
 		}
