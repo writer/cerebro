@@ -67,12 +67,24 @@ fn user_attributes(
     provider_id: &str,
 ) -> Result<(), AhaError> {
     let name = required_scalar(values, "name")?;
+    let tenant = output
+        .get("tenant_id")
+        .cloned()
+        .ok_or(AhaError::InternalRuntimeFailure)?;
     output.extend(BTreeMap::from([
         ("display_name".to_owned(), name.clone()),
         ("record_class".to_owned(), "identity_user".to_owned()),
         ("resource_id".to_owned(), provider_id.to_owned()),
         ("resource_name".to_owned(), name),
         ("resource_type".to_owned(), "user".to_owned()),
+        (
+            "resource_urn".to_owned(),
+            format!(
+                "urn:cerebro:{}:aha_users:{}",
+                encode_segment(&tenant),
+                encode_segment(provider_id)
+            ),
+        ),
         ("user_id".to_owned(), provider_id.to_owned()),
     ]));
     if let Some(email) = scalar(values.get("email")).filter(|value| !value.is_empty()) {
