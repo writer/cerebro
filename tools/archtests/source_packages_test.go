@@ -52,6 +52,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"deepseek":        {},
 	"openai":          {},
 	"slack":           {},
+	"tailscale":       {},
 }
 
 //go:embed testdata/catalog_runtime_go_retirement_v1.txt

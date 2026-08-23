@@ -41,7 +41,6 @@ import (
 	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
 	sentinelonesource "github.com/writer/cerebro/sources/sentinelone"
 	snyksource "github.com/writer/cerebro/sources/snyk"
-	tailscalesource "github.com/writer/cerebro/sources/tailscale"
 	trivysource "github.com/writer/cerebro/sources/trivy"
 	trustedendpointsource "github.com/writer/cerebro/sources/trustedendpoint"
 	twiliosource "github.com/writer/cerebro/sources/twilio"
@@ -253,12 +252,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "snyk",
 		load: func() (sourcecdk.Source, error) {
 			return snyksource.New()
-		},
-	},
-	{
-		name: "tailscale",
-		load: func() (sourcecdk.Source, error) {
-			return tailscalesource.New()
 		},
 	},
 	{
