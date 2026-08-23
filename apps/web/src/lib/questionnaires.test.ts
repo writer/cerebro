@@ -3,6 +3,22 @@ import { describe, expect, it } from "vitest";
 import type { GRCQuestionnaireRun, GRCVendor } from "@/lib/grc";
 import { inferQuestionnaireIntakeFormat, initialQuestionnaireRowID, primaryAnswerForRun, questionnaireQueueRows, questionnaireRollups, suggestQuestionnaireVendor } from "@/lib/questionnaires";
 
+const emptyRunCounts = {
+  ready_answer_count: 0,
+  blocked_answer_count: 0,
+  review_answer_count: 0,
+  missing_evidence_count: 0,
+  stale_evidence_count: 0,
+  unassigned_count: 0,
+} satisfies Pick<GRCQuestionnaireRun,
+  | "ready_answer_count"
+  | "blocked_answer_count"
+  | "review_answer_count"
+  | "missing_evidence_count"
+  | "stale_evidence_count"
+  | "unassigned_count"
+>;
+
 describe("questionnaire queue helpers", () => {
   it("builds answer rows and rollups from questionnaire runs", () => {
     const runs: GRCQuestionnaireRun[] = [
@@ -117,6 +133,7 @@ describe("questionnaire queue helpers", () => {
       updated_at: "2026-01-02T00:00:00.000Z",
       question_count: 0,
       answer_count: 0,
+      ...emptyRunCounts,
       assignments: [{
         id: "assignment-1",
         question_id: "",
@@ -207,6 +224,7 @@ describe("questionnaire queue helpers", () => {
         question: "Do you enforce MFA?",
         answer_state: "supported",
         review_state: "ready",
+        freshness: { status: "current" },
         citations: [{ id: "citation-1" }],
       }],
     }];
@@ -231,6 +249,7 @@ describe("questionnaire queue helpers", () => {
         updated_at: "2026-01-02T00:00:00.000Z",
         question_count: 0,
         answer_count: 0,
+        ...emptyRunCounts,
       },
       {
         id: "run-2",
@@ -243,6 +262,7 @@ describe("questionnaire queue helpers", () => {
         updated_at: "2026-01-02T00:00:00.000Z",
         question_count: 2,
         answer_count: 2,
+        ...emptyRunCounts,
         answers: [
           {
             id: "answer-1",
@@ -250,6 +270,7 @@ describe("questionnaire queue helpers", () => {
             question: "Is access reviewed?",
             answer_state: "ready_for_approval",
             review_state: "needs_review",
+            freshness: { status: "missing" },
           },
           {
             id: "answer-2",
@@ -257,6 +278,7 @@ describe("questionnaire queue helpers", () => {
             question: "Is encryption enabled?",
             answer_state: "supported",
             review_state: "approved",
+            freshness: { status: "current" },
             reviewer_decision: "approved_with_conditions",
           },
         ],
@@ -281,6 +303,7 @@ describe("questionnaire queue helpers", () => {
       updated_at: "2026-01-02T00:00:00.000Z",
       question_count: 1,
       answer_count: 1,
+      ...emptyRunCounts,
       owner_id: "run-owner@example.com",
       assignments: [{ id: "assignment-1", owner_id: "queue-owner@example.com", status: "open" }],
       answers: [{
@@ -289,6 +312,7 @@ describe("questionnaire queue helpers", () => {
         question: "Is the report current?",
         answer_state: "partial",
         review_state: "needs_review",
+        freshness: { status: "missing" },
       }],
     }]);
 
@@ -306,7 +330,14 @@ describe("questionnaire queue helpers", () => {
       updated_at: "2026-01-02T00:00:00.000Z",
       question_count: 1,
       answer_count: 1,
-      answers: [{ id: "answer-1", question_id: "q-1", answer_state: "blocked" }],
+      ...emptyRunCounts,
+      answers: [{
+        id: "answer-1",
+        question_id: "q-1",
+        answer_state: "blocked",
+        review_state: "blocked",
+        freshness: { status: "missing" },
+      }],
     })).toBe("run-1:q-1");
   });
 
@@ -321,6 +352,7 @@ describe("questionnaire queue helpers", () => {
       updated_at: "2026-01-02T00:00:00.000Z",
       question_count: 2,
       answer_count: 2,
+      ...emptyRunCounts,
       answers: [
         {
           id: "answer-1",

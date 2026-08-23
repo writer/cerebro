@@ -16,6 +16,7 @@ provider_api:
     - https://tailscale.com/docs/reference/tailscale-api
     - https://tailscale.com/api
     - https://tailscale.com/docs/reference/trust-credentials
+    - https://tailscale.com/docs/features/logging/audit-logging
     - https://tailscale.com/docs/features/oauth-clients
     - https://tailscale.com/docs/reference/syntax/policy-file
     - https://tailscale.com/docs/features/tailscale-services
@@ -23,6 +24,9 @@ provider_api:
     - https://github.com/tailscale/tailscale/blob/b727675a8be8eb307420eb5e6cb8d7b902eb751b/client/tailscale/acl.go
     - https://github.com/tailscale/tailscale/blob/b727675a8be8eb307420eb5e6cb8d7b902eb751b/internal/client/tailscale/vip_service.go
   families:
+    - id: configuration
+      method: GET
+      path: /tailnet/{tailnet}/logging/configuration
     - id: device
       method: GET
       path: /tailnet/{tailnet}/devices
@@ -32,6 +36,9 @@ provider_api:
     - id: group
       method: GET
       path: /tailnet/{tailnet}/acl
+    - id: integration
+      method: GET
+      path: /tailnet/{tailnet}/posture/integrations
     - id: service
       method: GET
       path: /tailnet/{tailnet}/vip-services
