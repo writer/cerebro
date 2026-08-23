@@ -1388,6 +1388,7 @@ type orchestratorRuntimeStore struct {
 	releaseID      string
 	fenceReadID    string
 	fenceReadOwner string
+	fenceReadErr   error
 }
 
 func (s *orchestratorRuntimeStore) Ping(context.Context) error { return nil }
@@ -1433,7 +1434,7 @@ func (s *orchestratorRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, 
 func (s *orchestratorRuntimeStore) ReadSourceRuntimeLeaseFence(_ context.Context, runtimeID string, owner string) (ports.SourceRuntimeLeaseFence, error) {
 	s.fenceReadID = runtimeID
 	s.fenceReadOwner = owner
-	return ports.SourceRuntimeLeaseFence{Owner: owner, Generation: 1, ExpiresAt: time.Now().Add(defaultSourceRuntimeLeaseTTL)}, nil
+	return ports.SourceRuntimeLeaseFence{Owner: owner, Generation: 1, ExpiresAt: time.Now().Add(defaultSourceRuntimeLeaseTTL)}, s.fenceReadErr
 }
 
 type orchestratorTestSource struct{}
