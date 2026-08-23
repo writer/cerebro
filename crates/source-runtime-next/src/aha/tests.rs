@@ -172,6 +172,10 @@ fn every_family_matches_the_checked_go_event_and_projection_fixture() {
         assert_eq!(record.occurred_at, oracle.occurred_at);
         assert_eq!(record.payload, oracle.payload);
         assert_eq!(record.attributes, oracle.attributes);
+        assert_eq!(
+            record.attributes.get("observed_at"),
+            Some(&record.occurred_at)
+        );
         assert!(oracle.id.starts_with("aha-"));
         assert!(record.event_id.starts_with("aha-tenant-"));
         assert_eq!(project_aha_records(&page.records).entities.len(), 1);
