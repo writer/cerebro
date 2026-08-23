@@ -12,6 +12,7 @@ mod ada_support;
 mod addigy;
 mod adp_workforce_now;
 mod aha;
+mod akeneo;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -106,6 +107,11 @@ pub use adp_workforce_now::{
 pub use aha::{
     AhaCheckpointCandidate, AhaEntityFact, AhaError, AhaEventContract, AhaFamily, AhaKernel,
     AhaPage, AhaProjectionFacts, AhaRecord, AhaRequest, AhaRuntimeDefinition, project_aha_records,
+};
+pub use akeneo::{
+    AkeneoCheckpointCandidate, AkeneoEntityFact, AkeneoError, AkeneoEventContract, AkeneoFamily,
+    AkeneoKernel, AkeneoPage, AkeneoProjectionFacts, AkeneoRecord, AkeneoRequest,
+    AkeneoRuntimeDefinition, AkeneoScope, project_akeneo_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,

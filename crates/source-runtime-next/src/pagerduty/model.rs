@@ -162,6 +162,10 @@ pub struct PagerDutyPlan {
     pub family_id: &'static str,
     /// HTTP method.
     pub method: &'static str,
+    /// Authentication header applied only by the trusted host.
+    pub auth_header: &'static str,
+    /// Exact PagerDuty authentication scheme metadata without credential bytes.
+    pub auth_scheme: &'static str,
     /// Allowed provider origin.
     pub origin: String,
     /// Closed request path template.
@@ -170,6 +174,14 @@ pub struct PagerDutyPlan {
     pub record_selector: String,
     /// Stable provider identity field.
     pub id_field: &'static str,
+    /// Provider offset parameter.
+    pub offset_param: &'static str,
+    /// Provider page-size parameter.
+    pub page_size_param: &'static str,
+    /// Provider continuation flag.
+    pub has_more_key: &'static str,
+    /// Optional plural config field that drives bounded path fan-out.
+    pub fanout_config_key: Option<&'static str>,
     /// Event kind.
     pub event_kind: &'static str,
     /// Event schema reference.
