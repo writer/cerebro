@@ -18,6 +18,7 @@ pub(super) fn normalize(kernel: &AhaKernel, raw: Value) -> Result<AhaRecord, Aha
             return Err(AhaError::ProductMismatch);
         }
     }
+    let occurred_at = occurred_at(kernel, values)?;
     let record = AhaRecord {
         tenant_id: kernel.tenant_id.clone(),
         event_id: event_id(kernel, &provider_id),
@@ -25,8 +26,8 @@ pub(super) fn normalize(kernel: &AhaKernel, raw: Value) -> Result<AhaRecord, Aha
         family: kernel.family,
         kind: kernel.family.event_kind().to_owned(),
         schema_ref: kernel.family.schema_ref().to_owned(),
-        occurred_at: occurred_at(kernel, values)?,
-        attributes: attributes(kernel, values, &provider_id)?,
+        attributes: attributes(kernel, values, &provider_id, &occurred_at)?,
+        occurred_at,
         payload: raw,
     };
     admit(&record)?;
@@ -37,11 +38,12 @@ fn attributes(
     kernel: &AhaKernel,
     values: &Map<String, Value>,
     provider_id: &str,
+    occurred_at: &str,
 ) -> Result<BTreeMap<String, String>, AhaError> {
     let mut output = BTreeMap::from([
         ("external_id".to_owned(), provider_id.to_owned()),
         ("family".to_owned(), kernel.family.as_str().to_owned()),
-        ("observed_at".to_owned(), kernel.observed_at.clone()),
+        ("observed_at".to_owned(), occurred_at.to_owned()),
         ("provider".to_owned(), "aha".to_owned()),
         ("schema".to_owned(), kernel.family.as_str().to_owned()),
         ("source_event_id".to_owned(), provider_id.to_owned()),
