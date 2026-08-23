@@ -100,10 +100,16 @@ fn seal_page_program_inner(
             |watermark| watermark.max(prior_watermark),
         );
 
+    let checkpoint_cursor = if plan.source_id == "tailscale" {
+        super::tailscale::durable_checkpoint_cursor(plan, result).unwrap_or_default()
+    } else {
+        result.next_cursor.clone()
+    };
+
     Ok(SourceExecutionLifecycleDecisionV1 {
         transition_digest_sha256: page_program_digest(plan, context, result, metadata),
         admitted_records: records,
-        checkpoint_cursor: result.next_cursor.clone(),
+        checkpoint_cursor,
         checkpoint_watermark_unix_millis,
     })
 }

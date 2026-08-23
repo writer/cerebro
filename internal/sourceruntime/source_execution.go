@@ -7,20 +7,55 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
-
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 )
 
+func (s *Service) validateRustSourceRuntimePlan(ctx context.Context, runtime *cerebrov1.SourceRuntime, config map[string]string) error {
+	familyID, authoritative := sourceworker.TailscaleFamily(runtime.GetSourceId(), config["family"])
+	if !authoritative {
+		return nil
+	}
+	if s == nil || s.sourceWorker == nil {
+		return fmt.Errorf("%w: the closed Rust worker is required for Tailscale", ErrRuntimeUnavailable)
+	}
+	plan, err := s.sourceWorker.Compile(ctx, sourceworker.SelectionRequest{SourceID: runtime.GetSourceId(), FamilyID: familyID})
+	if err != nil {
+		return fmt.Errorf("%w: compile Tailscale source plan: %w", ErrInvalidRequest, err)
+	}
+	now := time.Now().UTC()
+	executionContext, err := s.sourceWorker.Context(ctx, sourceworker.ContextRequest{
+		TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()),
+		PageNumber: 1, RuntimeGeneration: 1, LeaseGeneration: 1,
+		ObservedAtUnixMillis: now.UnixMilli(), PublicConfig: sourceworker.PublicExecutionConfig(config),
+	})
+	if err != nil {
+		return fmt.Errorf("%w: validate Tailscale execution context: %w", ErrInvalidRequest, err)
+	}
+	_, err = s.sourceWorker.PlanV2(ctx, &cerebrov1.SourceWorkerPlanEnvelopeV2{
+		Request:  &cerebrov1.SourceWorkerPlanRequestV1{Plan: plan, Context: executionContext},
+		Metadata: &cerebrov1.SourceWorkerRuntimeMetadataV2{PublicConfig: sourceworker.PublicExecutionConfig(config)},
+	})
+	if err != nil {
+		return fmt.Errorf("%w: validate Tailscale source plan: %w", ErrInvalidRequest, err)
+	}
+	return nil
+}
+
 func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceRuntime, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, pageNumber uint32) (sourcecdk.Pull, bool, error) {
+	familyID, _ := cfg.Lookup("family")
+	if normalized, authoritative := sourceworker.TailscaleFamily(runtime.GetSourceId(), familyID); authoritative {
+		familyID = normalized
+		if s == nil || s.sourceWorker == nil {
+			return sourcecdk.Pull{}, false, fmt.Errorf("%w: the closed Rust worker is required for Tailscale", ErrRuntimeUnavailable)
+		}
+	}
 	if s == nil || s.sourceWorker == nil {
 		pull, err := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
 		return pull, false, err
 	}
-	familyID, _ := cfg.Lookup("family")
 	fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
 	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
@@ -38,59 +73,38 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	credential := []byte(resolved)
 	host := sourceworker.NewHost(s.sourceWorker, reference, credential, fence.ExpiresAt)
 	clear(credential)
-	publicConfig := publicSourceExecutionConfig(cfg)
+	providerCursor, cursorWatermark, err := sourceworker.ProviderResume(cursor, runtime.GetSourceId(), familyID)
+	if err != nil {
+		return sourcecdk.Pull{}, false, err
+	}
+	publicConfig := sourceworker.PublicExecutionConfig(cfg.Values())
 	priorWatermark := int64(0)
 	if watermark := checkpoint.GetWatermark(); watermark != nil && watermark.CheckValid() == nil {
 		priorWatermark = watermark.AsTime().UTC().UnixMilli()
+	}
+	if cursorWatermark > priorWatermark {
+		priorWatermark = cursorWatermark
 	}
 	output, err := host.Execute(ctx, sourceworker.ExecutionInput{
 		SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID), CredentialReference: reference, PageNumber: pageNumber,
 		Scope: sourceworker.CredentialScope{
 			TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()),
-			PriorCursor: strings.TrimSpace(cursor.GetOpaque()), LeaseOwner: fence.Owner,
+			PriorCursor: providerCursor, LeaseOwner: fence.Owner,
 			RuntimeGeneration: fence.Generation, LeaseGeneration: fence.Generation, LeaseExpiresAt: fence.ExpiresAt,
 			PublicConfig: publicConfig, PriorTerminalWatermarkUnixMillis: priorWatermark,
 			PriorCheckpoint: strings.TrimSpace(checkpoint.GetCursorOpaque()),
 		},
 	})
-	if errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+	if errors.Is(err, sourceworker.ErrWorkerUnsupported) && !sourceworker.RustAuthoritativeTailscale(runtime.GetSourceId(), familyID) {
 		pull, compatibilityErr := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
 		return pull, false, compatibilityErr
 	}
 	if err != nil {
 		return sourcecdk.Pull{}, false, err
 	}
-	if output.Program == nil || output.Program.TransitionDigest == "" {
-		return sourcecdk.Pull{}, false, fmt.Errorf("%w: Rust did not seal the page program", sourceworker.ErrWorkerContract)
-	}
-	events := make([]*cerebrov1.EventEnvelope, 0, len(output.Program.AdmittedRecords))
-	for _, record := range output.Program.AdmittedRecords {
-		events = append(events, &cerebrov1.EventEnvelope{
-			Id: record.GetEventId(), TenantId: runtime.GetTenantId(), SourceId: output.Plan.GetSourceId(),
-			Kind: output.Plan.GetEventKind(), SchemaRef: output.Plan.GetSchemaRef(), Payload: record.GetPayloadJson(),
-			Attributes: record.GetAttributes(), OccurredAt: timestamppb.New(time.UnixMilli(record.GetOccurredAtUnixMillis()).UTC()),
-		})
-	}
-	pull := sourcecdk.Pull{Events: events, Checkpoint: &cerebrov1.SourceCheckpoint{
-		CursorOpaque: output.Result.GetResultDigestSha256(),
-		Watermark:    timestamppb.New(time.UnixMilli(output.Program.CheckpointWatermarkUnixMillis).UTC()),
-	}}
-	if output.Program.CheckpointCursor != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: output.Program.CheckpointCursor}
+	pull, err := sourceworker.PullFromExecutionOutput(output, runtime.GetTenantId())
+	if err != nil {
+		return sourcecdk.Pull{}, false, err
 	}
 	return pull, true, nil
-}
-
-func publicSourceExecutionConfig(cfg sourcecdk.Config) map[string]string {
-	public := make(map[string]string)
-	for _, key := range []string{
-		"audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
-		"family", "group_id", "group_ids", "insights_base_url", "org_id", "per_page",
-		"tailnet", "user_group_id", "user_group_ids",
-	} {
-		if value, ok := cfg.Lookup(key); ok {
-			public[key] = strings.TrimSpace(value)
-		}
-	}
-	return public
 }

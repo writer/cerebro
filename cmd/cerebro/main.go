@@ -410,6 +410,13 @@ func runSource(args []string) error {
 		return fmt.Errorf("open source registry: %w", err)
 	}
 	service := sourceops.New(registry)
+	if args[0] != "list" {
+		cfg, loadErr := appconfig.Load()
+		if loadErr != nil {
+			return fmt.Errorf("load config: %w", loadErr)
+		}
+		service.WithSourceExecutionWorkerPath(cfg.SourceRuntime.SourceWorkerPath)
+	}
 
 	switch args[0] {
 	case "list":
