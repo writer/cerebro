@@ -2,7 +2,6 @@ package sourceruntime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -46,15 +45,14 @@ func (s *Service) validateRustSourceRuntimePlan(ctx context.Context, runtime *ce
 
 func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceRuntime, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, pageNumber uint32) (sourcecdk.Pull, bool, error) {
 	familyID, _ := cfg.Lookup("family")
-	if normalized, authoritative := sourceworker.TailscaleFamily(runtime.GetSourceId(), familyID); authoritative {
-		familyID = normalized
-		if s == nil || s.sourceWorker == nil {
-			return sourcecdk.Pull{}, false, fmt.Errorf("%w: the closed Rust worker is required for Tailscale", ErrRuntimeUnavailable)
-		}
-	}
-	if s == nil || s.sourceWorker == nil {
+	normalizedFamilyID, authoritative := sourceworker.TailscaleFamily(runtime.GetSourceId(), familyID)
+	if !authoritative {
 		pull, err := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
 		return pull, false, err
+	}
+	familyID = normalizedFamilyID
+	if s == nil || s.sourceWorker == nil {
+		return sourcecdk.Pull{}, false, fmt.Errorf("%w: the closed Rust worker is required for Tailscale", ErrRuntimeUnavailable)
 	}
 	fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
 	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
@@ -95,12 +93,6 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 			PriorCheckpoint: strings.TrimSpace(checkpoint.GetCursorOpaque()),
 		},
 	})
-	if errors.Is(err, sourceworker.ErrWorkerUnsupported) {
-		if _, tailscale := sourceworker.TailscaleFamily(runtime.GetSourceId(), familyID); !tailscale {
-			pull, compatibilityErr := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
-			return pull, false, compatibilityErr
-		}
-	}
 	if err != nil {
 		return sourcecdk.Pull{}, false, err
 	}

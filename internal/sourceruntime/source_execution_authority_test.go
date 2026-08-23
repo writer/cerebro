@@ -87,6 +87,21 @@ func TestUnknownTailscaleFamilyNeverFallsBackToGoAuthority(t *testing.T) {
 	}
 }
 
+func TestNonTailscaleRuntimeUsesGoCompatibilityBeforeRustCredentialChecks(t *testing.T) {
+	legacy := &runtimeTailscaleProbe{}
+	service := &Service{sourceWorker: &runtimePlanWorker{}}
+	runtime := &cerebrov1.SourceRuntime{Id: "gcp-runtime", SourceId: "gcp", TenantId: "tenant-1"}
+
+	if _, rustPage, err := service.readSourcePull(context.Background(), runtime, legacy, sourcecdk.NewConfig(nil), nil, nil, 1); err != nil {
+		t.Fatalf("readSourcePull() error = %v", err)
+	} else if rustPage {
+		t.Fatal("readSourcePull() reported a Rust page for a Go-authoritative source")
+	}
+	if legacy.readCalls != 1 {
+		t.Fatalf("Go Read calls = %d, want 1", legacy.readCalls)
+	}
+}
+
 type runtimeTailscaleProbe struct{ checkCalls, readCalls int }
 
 func (*runtimeTailscaleProbe) Spec() *cerebrov1.SourceSpec {
