@@ -56,6 +56,18 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 		pull, err := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
 		return pull, false, err
 	}
+	plan, err := s.sourceWorker.Compile(ctx, sourceworker.SelectionRequest{
+		SourceID: strings.TrimSpace(runtime.GetSourceId()), FamilyID: strings.TrimSpace(familyID),
+	})
+	if errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		if _, tailscale := sourceworker.TailscaleFamily(runtime.GetSourceId(), familyID); !tailscale {
+			pull, compatibilityErr := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
+			return pull, false, compatibilityErr
+		}
+	}
+	if err != nil {
+		return sourcecdk.Pull{}, false, err
+	}
 	fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
 	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
@@ -86,9 +98,10 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 		priorWatermark = cursorWatermark
 	}
 	output, err := host.Execute(ctx, sourceworker.ExecutionInput{
-		SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID), CredentialReference: reference, PageNumber: pageNumber,
+		SourceID: runtime.GetSourceId(), FamilyID: strings.TrimSpace(familyID), Plan: plan, CredentialReference: reference, PageNumber: pageNumber,
 		Scope: sourceworker.CredentialScope{
-			TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()),
+			TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()), SourceID: plan.GetSourceId(),
+			FamilyID: plan.GetFamilyId(), PlanDigestSHA256: plan.GetPlanDigestSha256(),
 			PriorCursor: providerCursor, LeaseOwner: fence.Owner,
 			RuntimeGeneration: fence.Generation, LeaseGeneration: fence.Generation, LeaseExpiresAt: fence.ExpiresAt,
 			PublicConfig: publicConfig, PriorTerminalWatermarkUnixMillis: priorWatermark,

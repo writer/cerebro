@@ -87,6 +87,31 @@ func TestUnknownTailscaleFamilyNeverFallsBackToGoAuthority(t *testing.T) {
 	}
 }
 
+func TestCompatibilitySourceFallsBackBeforeRustLeaseAndCredentialValidation(t *testing.T) {
+	legacy := &runtimeCompatibilityProbe{sourceID: "gcp"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "gcp-audit-runtime", SourceId: "gcp", TenantId: "tenant-1",
+		Config: map[string]string{"family": "audit", "project_id": "project-1"},
+	}
+	resolved := sourcecdk.NewConfig(runtime.GetConfig())
+
+	if _, executedByRust, err := service.readSourcePull(context.Background(), runtime, legacy, resolved, nil, nil, 1); err != nil {
+		t.Fatalf("readSourcePull() error = %v", err)
+	} else if executedByRust {
+		t.Fatal("readSourcePull() reported Rust execution for a compatibility family")
+	}
+	if legacy.readCalls != 1 || worker.compileCalls != 1 {
+		t.Fatalf("execution calls = Go %d, Rust compile %d", legacy.readCalls, worker.compileCalls)
+	}
+}
+
 type runtimeTailscaleProbe struct{ checkCalls, readCalls int }
 
 func (*runtimeTailscaleProbe) Spec() *cerebrov1.SourceSpec {
@@ -104,13 +129,32 @@ func (s *runtimeTailscaleProbe) Read(context.Context, sourcecdk.Config, *cerebro
 	return sourcecdk.Pull{}, nil
 }
 
+type runtimeCompatibilityProbe struct {
+	sourceID  string
+	readCalls int
+}
+
+func (s *runtimeCompatibilityProbe) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.sourceID}
+}
+func (*runtimeCompatibilityProbe) Check(context.Context, sourcecdk.Config) error { return nil }
+func (*runtimeCompatibilityProbe) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+func (s *runtimeCompatibilityProbe) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.readCalls++
+	return sourcecdk.Pull{}, nil
+}
+
 type runtimePlanWorker struct {
+	compileCalls int
 	planCalls    int
 	publicConfig map[string]string
 	compileErr   error
 }
 
 func (w *runtimePlanWorker) Compile(_ context.Context, request sourceworker.SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error) {
+	w.compileCalls++
 	if w.compileErr != nil {
 		return nil, w.compileErr
 	}
