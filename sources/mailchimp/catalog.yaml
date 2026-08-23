@@ -1,6 +1,38 @@
 id: mailchimp
 name: "Mailchimp"
 description: "Collects lists, members, and audit events from Mailchimp and projects them into the Cerebro graph as groups, users, and audit events for alert, incident, service health, and response context."
+certification:
+  owner: source-runtime
+  reviewed_at: 2026-08-22T00:00:00Z
+  expires_at: 2026-11-22T00:00:00Z
+  evidence:
+    - kind: provider_spec
+      reference: https://raw.githubusercontent.com/mailchimp/mailchimp-client-lib-codegen/74feb256f8ba8bb9d5a322de83c92b42306831fd/spec/marketing.json
+      digest: sha256:374046a5209daa8d68cdb5dd7e0244fcf214928af4321ff539755849641b9a21
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-08-22T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: api_key_as_basic_password
+  base_url: https://{dc}.api.mailchimp.com/3.0
+  spec_url: https://raw.githubusercontent.com/mailchimp/mailchimp-client-lib-codegen/74feb256f8ba8bb9d5a322de83c92b42306831fd/spec/marketing.json
+  spec_kind: openapi
+  references:
+    - https://mailchimp.com/developer/marketing/guides/quick-start/
+    - https://mailchimp.com/developer/marketing/docs/methods-parameters/
+    - https://github.com/mailchimp/mailchimp-client-lib-codegen/blob/74feb256f8ba8bb9d5a322de83c92b42306831fd/spec/marketing.json
+  families:
+    - id: lists
+      method: GET
+      path: /lists
+    - id: members
+      method: GET
+      path: /lists/{list_id}/members
+    - id: audit_events
+      method: GET
+      path: /activity-feed/chimp-chatter
 emitted_kinds:
   - mailchimp.lists
   - mailchimp.members
@@ -29,7 +61,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - The official Marketing API 3.0.91 contract and the sanitized upstream list recording bind the lists array, id and name fields, and offset/count pagination.
     - id: members
       type: entity_family
       title: "Members"
@@ -39,7 +71,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - The official Marketing API 3.0.91 contract and the sanitized upstream member recording bind the members array, email identity fallback, audience scope, and offset/count pagination.
     - id: audit_events
       type: audit_event
       title: "Audit Events"
@@ -49,7 +81,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - The official Marketing API 3.0.91 contract binds the Chimp Chatter endpoint and response shape; no live provider recording is claimed.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -81,4 +113,5 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - type
+      - update_time

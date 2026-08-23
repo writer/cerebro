@@ -1,0 +1,14 @@
+{
+  "chimp_chatter": [
+    {
+      "campaign_id": "fixture-campaign",
+      "list_id": "fixture-list",
+      "message": "A subscriber joined an audience.",
+      "title": "1 new subscriber",
+      "type": "lists:new-subscriber",
+      "update_time": "2017-08-04T11:09:01+00:00",
+      "url": "https://example.test/reports/summary?id=1"
+    }
+  ],
+  "total_items": 1
+}

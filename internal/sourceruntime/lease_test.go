@@ -36,6 +36,22 @@ type stubLeaseStore struct {
 	events []leaseEvent
 }
 
+type fencedStubLeaseStore struct {
+	*stubLeaseStore
+	fence ports.SourceRuntimeLeaseFence
+	err   error
+}
+
+func (s *fencedStubLeaseStore) ReadSourceRuntimeLeaseFence(_ context.Context, runtimeID string, owner string) (ports.SourceRuntimeLeaseFence, error) {
+	if s.err != nil {
+		return ports.SourceRuntimeLeaseFence{}, s.err
+	}
+	if strings.TrimSpace(runtimeID) == "" || strings.TrimSpace(owner) == "" {
+		return ports.SourceRuntimeLeaseFence{}, errors.New("runtime ID and owner are required")
+	}
+	return s.fence, nil
+}
+
 func (s *stubLeaseStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,6 +118,33 @@ func TestSyncWithLeaseFallsThroughWhenLeaseStoreIsNil(t *testing.T) {
 	_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("SyncWithLease() err = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+}
+
+func TestWithCurrentSourceRuntimeLeaseFenceBindsDurableFence(t *testing.T) {
+	fence := ports.SourceRuntimeLeaseFence{Owner: "owner-a", Generation: 7, ExpiresAt: time.Now().Add(time.Minute)}
+	store := &fencedStubLeaseStore{stubLeaseStore: &stubLeaseStore{}, fence: fence}
+
+	ctx, err := WithCurrentSourceRuntimeLeaseFence(context.Background(), store, "runtime-a", "owner-a")
+	if err != nil {
+		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v", err)
+	}
+	got, ok := sourceRuntimeLeaseFenceFromContext(ctx)
+	if !ok {
+		t.Fatal("sourceRuntimeLeaseFenceFromContext() = false, want true")
+	}
+	if got != fence {
+		t.Fatalf("lease fence = %#v, want %#v", got, fence)
+	}
+}
+
+func TestWithCurrentSourceRuntimeLeaseFencePreservesReaderFailure(t *testing.T) {
+	want := errors.New("fence unavailable")
+	store := &fencedStubLeaseStore{stubLeaseStore: &stubLeaseStore{}, err: want}
+
+	_, err := WithCurrentSourceRuntimeLeaseFence(context.Background(), store, "runtime-a", "owner-a")
+	if !errors.Is(err, want) {
+		t.Fatalf("WithCurrentSourceRuntimeLeaseFence() error = %v, want %v", err, want)
 	}
 }
 

@@ -288,7 +288,6 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"anthropic":             true,
 		"asana":                 true,
 		"azure":                 true,
-		"cloudflare":            true,
 		"digitalocean":          true,
 		"github":                true,
 		"google_drive":          true,
@@ -334,15 +333,6 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 	}
 }
 
-func TestBuiltinKeepsCloudflareConcreteLoaderUntilSeparateRetirementGate(t *testing.T) {
-	for _, loader := range builtinSourceLoaders {
-		if loader.name == "cloudflare" {
-			return
-		}
-	}
-	t.Fatal("cloudflare concrete source loader retired before the separate authority gate")
-}
-
 func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 	retired := []string{
 		"acunetix",
@@ -354,6 +344,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"beezup",
 		"bitwarden",
 		"box",
+		"cloudflare",
 		"conjur",
 		"deepseek",
 		"duo",

@@ -671,6 +671,24 @@ func runOrchestratorIteration(
 			continue
 		}
 		acquiredCount++
+		runtimeCtx, err = sourceruntime.WithCurrentSourceRuntimeLeaseFence(runtimeCtx, leaser, runtime.GetId(), leaseOwner)
+		if err != nil {
+			runtimeResult.Sync = "failed"
+			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "lease_fence", err)
+			result.Runtimes = append(result.Runtimes, runtimeResult)
+			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error_stage", "lease_fence")
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error_kind", telemetry.ErrorKind(err))
+			captureOrchestratorError(runtimeCtx, "orchestrator.runtime.error", iteration, runtime, "lease_fence", err)
+			if releaseErr := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); releaseErr != nil {
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", releaseErr)
+				runErr = errors.Join(runErr, releaseErr)
+			}
+			annotateOrchestratorRuntimeMain(runtimeCtx, runtimeResult, runtimeStatus, runtimeSpanAttrs)
+			emitOrchestratorJobRuntimeEvent(runtimeCtx, "platform.job.runtime.failed", runtimeStatus, iteration, runtime, runtimeResult, runtimeSpanAttrs)
+			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
+			continue
+		}
 		runtimeCtx, cancelRuntime := context.WithCancel(runtimeCtx)
 		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(ctx, leaser, runtime, leaseOwner, cancelRuntime)
 		syncStartCursorOpaque := orchestratorRuntimeStartCursorOpaque(runtime)
