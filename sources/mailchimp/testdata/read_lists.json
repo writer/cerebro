@@ -170,15 +170,16 @@
       "web_id": 683972092
     },
     "attributes": {
+      "description": "example-12b57194",
       "external_id": "example-2e767a40",
       "family": "lists",
+      "group_email": "user-dd532eec@example.test",
       "group_id": "example-2e767a40",
       "group_name": "example-57a6d1b3",
       "provider": "mailchimp",
       "record_class": "identity_group",
       "resource_id": "example-2e767a40",
       "resource_name": "example-57a6d1b3",
-      "schema": "lists",
       "source_event_id": "example-2e767a40",
       "source_provider": "mailchimp",
       "source_system": "mailchimp",

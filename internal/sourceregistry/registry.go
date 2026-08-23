@@ -16,11 +16,9 @@ import (
 	azuresource "github.com/writer/cerebro/sources/azure"
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
-	cloudflaresource "github.com/writer/cerebro/sources/cloudflare"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	digitaloceansource "github.com/writer/cerebro/sources/digitalocean"
 	discordsource "github.com/writer/cerebro/sources/discord"
-	dopplersource "github.com/writer/cerebro/sources/doppler"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
@@ -28,7 +26,6 @@ import (
 	googledrivesource "github.com/writer/cerebro/sources/google_drive"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	grcsource "github.com/writer/cerebro/sources/grc"
-	hashicorpvaultsource "github.com/writer/cerebro/sources/hashicorp_vault"
 	jumpcloudsource "github.com/writer/cerebro/sources/jumpcloud"
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
@@ -109,12 +106,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		},
 	},
 	{
-		name: "cloudflare",
-		load: func() (sourcecdk.Source, error) {
-			return cloudflaresource.New()
-		},
-	},
-	{
 		name: "cosmo",
 		load: func() (sourcecdk.Source, error) {
 			return cosmosource.New()
@@ -130,12 +121,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "discord",
 		load: func() (sourcecdk.Source, error) {
 			return discordsource.New()
-		},
-	},
-	{
-		name: "doppler",
-		load: func() (sourcecdk.Source, error) {
-			return dopplersource.New()
 		},
 	},
 	{
@@ -178,12 +163,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "grc",
 		load: func() (sourcecdk.Source, error) {
 			return grcsource.New()
-		},
-	},
-	{
-		name: "hashicorp_vault",
-		load: func() (sourcecdk.Source, error) {
-			return hashicorpvaultsource.New()
 		},
 	},
 	{

@@ -36,7 +36,7 @@ describe("audit events API", () => {
   });
 
   it("returns normalized events from the provider-neutral contract", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       events: [{
         action: "resource.updated",
         actor: { id: "actor-1", kind: "user" },

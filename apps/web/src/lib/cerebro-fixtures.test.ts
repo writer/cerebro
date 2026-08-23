@@ -59,6 +59,12 @@ describe("cerebro fixture proxy responses", () => {
       "environment_managed",
       "hashicorp_vault",
     ]));
+    expect(library.connectors).toContainEqual(expect.objectContaining({
+      source_id: "google_workspace",
+      status: "available",
+      configured_runtimes: 0,
+      setup_allowed: true,
+    }));
   });
 
   it("rejects fixture writes without an explicit handler", () => {
@@ -91,7 +97,7 @@ describe("cerebro fixture proxy responses", () => {
     const lifecycle = parseFixture(cerebroFixtureResponseFor({
       method: "GET",
       path: "v1/security/lifecycle",
-    })!);
+    })!) as { records: Array<{ findings: unknown[] }> };
     const response = cerebroFixtureResponseFor({
       method: "GET",
       path: "grc/audit-packets/deploy-signing-expiry",
@@ -268,13 +274,16 @@ describe("cerebro fixture proxy responses", () => {
       path: "grc/vendors",
       searchParams: new URLSearchParams("q=payments"),
     });
-    expect(parseFixture(resetResponse!)).toMatchObject({
+    const resetPayload = parseFixture(resetResponse!) as {
+      vendors: Array<{ name: string; owner?: string; owner_state: string }>;
+    };
+    expect(resetPayload).toMatchObject({
       vendors: [expect.objectContaining({
         name: "Payments Processor",
         owner_state: "missing",
       })],
     });
-    expect(parseFixture(resetResponse!).vendors[0].owner).toBeUndefined();
+    expect(resetPayload.vendors[0].owner).toBeUndefined();
   });
 
   it("returns and mutates unified questionnaire run fixtures", () => {
@@ -518,7 +527,9 @@ describe("cerebro fixture proxy responses", () => {
   it("returns policy lifecycle records in fixture mode", () => {
     withFixtureMode();
     const response = cerebroFixtureResponseFor({ method: "GET", path: "grc/policy-lifecycle" });
-    const payload = parseFixture(response!);
+    const payload = parseFixture(response!) as Record<string, unknown> & {
+      governance_gap_rollups: { by_state: unknown[] };
+    };
     expect(response?.status).toBe(200);
     expect(payload.summary).toMatchObject({
       policies: 4,

@@ -63,6 +63,23 @@ func sourceRuntimeLeaseFenceFromContext(ctx context.Context) (ports.SourceRuntim
 	return fence, ok && strings.TrimSpace(fence.Owner) != "" && fence.Generation > 0 && !fence.ExpiresAt.IsZero()
 }
 
+// WithCurrentSourceRuntimeLeaseFence binds the durable owner/generation snapshot
+// for an already acquired lease to source-runtime work. Callers that acquire a
+// lease outside SyncWithLease, such as the orchestrator, must use the returned
+// context before invoking Sync so credential-free source execution can reject
+// stale workers and fenced page commits can use the same generation.
+func WithCurrentSourceRuntimeLeaseFence(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtimeID string, owner string) (context.Context, error) {
+	reader, ok := store.(ports.SourceRuntimeLeaseFenceReader)
+	if !ok {
+		return ctx, nil
+	}
+	fence, err := reader.ReadSourceRuntimeLeaseFence(ctx, strings.TrimSpace(runtimeID), strings.TrimSpace(owner))
+	if err != nil {
+		return ctx, fmt.Errorf("read source runtime lease fence %q: %w", strings.TrimSpace(runtimeID), err)
+	}
+	return context.WithValue(ctx, sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: fence}), nil
+}
+
 // SyncWithLease wraps Sync with a durable, renewable runtime lease so the
 // cursor advance is safe when several API replicas (or the API and the
 // orchestrator) try to sync the same runtime concurrently.
@@ -132,14 +149,11 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 		return nil, fmt.Errorf("%w: %s", ErrSyncInProgress, runtimeID)
 	}
 	syncCtx, cancelSync := context.WithCancel(ctx)
-	if reader, ok := opts.LeaseStore.(ports.SourceRuntimeLeaseFenceReader); ok {
-		fence, fenceErr := reader.ReadSourceRuntimeLeaseFence(syncCtx, runtimeID, owner)
-		if fenceErr != nil {
-			cancelSync()
-			_ = releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
-			return nil, fmt.Errorf("read source runtime lease fence %q: %w", runtimeID, fenceErr)
-		}
-		syncCtx = context.WithValue(syncCtx, sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: fence})
+	syncCtx, fenceErr := WithCurrentSourceRuntimeLeaseFence(syncCtx, opts.LeaseStore, runtimeID, owner)
+	if fenceErr != nil {
+		cancelSync()
+		_ = releaseLease(ctx, opts.LeaseStore, runtimeID, owner)
+		return nil, fenceErr
 	}
 	stopRenewal := startLeaseRenewal(syncCtx, opts.LeaseStore, runtimeID, owner, ttl, cancelSync)
 	response, syncErr := s.Sync(syncCtx, req)

@@ -25,7 +25,7 @@ describe("GRC upload history", () => {
   it("ignores malformed stored history", () => {
     const storage = {
       getItem: () => JSON.stringify([upload("one"), { upload_id: "two", file_name: "two.pdf" }, { nope: true }]),
-    } as Storage;
+    } as unknown as Storage;
     expect(readGRCUploadHistory(storage, "key")).toHaveLength(1);
   });
 });

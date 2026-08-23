@@ -288,12 +288,9 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"anthropic":             true,
 		"asana":                 true,
 		"azure":                 true,
-		"cloudflare":            true,
 		"digitalocean":          true,
-		"doppler":               true,
 		"github":                true,
 		"google_drive":          true,
-		"hashicorp_vault":       true,
 		"jumpcloud":             true,
 		"kandji":                true,
 		"kolide":                true,
@@ -318,29 +315,22 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 	seenExceptions := make(map[string]bool, len(compatibilityExceptions))
 	for _, loader := range builtinSourceLoaders {
 		entry, ok := entries[loader.name]
-		if !ok || entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
+		if !ok {
 			continue
 		}
-		if !compatibilityExceptions[loader.name] {
+		if compatibilityExceptions[loader.name] {
+			seenExceptions[loader.name] = true
+			continue
+		}
+		if entry.Report.Verdict == connectordefinitions.SupportVerdictSupported {
 			t.Errorf("catalog-supported source %q has a redundant compile-time loader", loader.name)
-			continue
 		}
-		seenExceptions[loader.name] = true
 	}
 	for sourceID := range compatibilityExceptions {
 		if !seenExceptions[sourceID] {
 			t.Errorf("catalog compatibility exception %q has no static loader", sourceID)
 		}
 	}
-}
-
-func TestBuiltinKeepsCloudflareConcreteLoaderUntilSeparateRetirementGate(t *testing.T) {
-	for _, loader := range builtinSourceLoaders {
-		if loader.name == "cloudflare" {
-			return
-		}
-	}
-	t.Fatal("cloudflare concrete source loader retired before the separate authority gate")
 }
 
 func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
@@ -354,6 +344,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"beezup",
 		"bitwarden",
 		"box",
+		"cloudflare",
 		"conjur",
 		"deepseek",
 		"duo",

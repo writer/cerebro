@@ -1,6 +1,6 @@
 {
   "schema_version": "cerebro.source-fixture-parity.v2",
-  "corpus_revision": "EDC6D250D6D145155E45656AFCBD1BE6C28E95F5BC2010C69B792E0FC073D731",
+  "corpus_revision": "CBCBB3982C413E019FE9B22BCAD3A190B137B839DF6A5EE31DBF3312765A5074",
   "cases": [
     {
       "source_id": "appwrite",
@@ -13520,6 +13520,96 @@
       },
       "go_page_digest_sha256": "1C002C5CE30153DF98EC686DD853C9C13BAFD2B7D22F5497184EEA6B2C61F2DC",
       "oracle_digest_sha256": "F95940C07CD412FC34069E77D5ADA84B37A4D52631E5A96EBC6F6240C2795786",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "mailchimp",
+      "family_id": "audit_events",
+      "case_id": "chimp_chatter",
+      "operation": "check",
+      "payload_sha256": "255304bcdcb7a2a93db838a6bcc982ca0b5d1370c985760e2df5d213d2c5ca18",
+      "go_page": {
+        "source_id": "mailchimp",
+        "family_id": "audit_events",
+        "case_id": "chimp_chatter",
+        "operation": "check",
+        "accepted_events": [],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 0,
+        "accepted_count": 0,
+        "rejected_count": 0,
+        "short_circuit_reasons": [
+          "check_only"
+        ]
+      },
+      "go_page_digest_sha256": "179274B486A1B9C7ECE7AC012B3359BB9368CCEB06791C9C9AD24CB9D2604C1D",
+      "oracle_digest_sha256": "608F61A7FE754340EF43F7BAC821BEC15F5559A0B7E2DED232DA674C91B592F3",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "mailchimp",
+      "family_id": "audit_events",
+      "case_id": "chimp_chatter",
+      "operation": "discover",
+      "payload_sha256": "255304bcdcb7a2a93db838a6bcc982ca0b5d1370c985760e2df5d213d2c5ca18",
+      "go_page": {
+        "source_id": "mailchimp",
+        "family_id": "audit_events",
+        "case_id": "chimp_chatter",
+        "operation": "discover",
+        "accepted_events": [
+          {
+            "event_id": "9A43599100090D8EC6AE91E2E2E3FC3ED6A466E11B514D7D27F3B592496549B3",
+            "kind": "mailchimp.audit_events",
+            "input_index": 0,
+            "payload_sha256": "C9FAD5F540597171D505DCB7173A4C4533E660A833ED3FC3DE99A05AA56CB16D"
+          }
+        ],
+        "quarantines": [],
+        "duplicates": [],
+        "scanned_count": 1,
+        "accepted_count": 1,
+        "rejected_count": 0,
+        "proposed_checkpoint": "25FCD002C6BEF9A835D5320B38500B3511ECFCE20455724A1A0A76386A06E103"
+      },
+      "go_page_digest_sha256": "21A3E7BAF583B26679CA27FAC9505AF65394D98D84DCA7AA5B6E33C8F99F489C",
+      "oracle_digest_sha256": "933EC2629AD09C21D6DBEAE63B243C851BC8228F27C9DEAA9C1FBE0AF9E6617B",
+      "offline_proof": "fixture_only_no_provider_network",
+      "provider_network_egress": false
+    },
+    {
+      "source_id": "mailchimp",
+      "family_id": "audit_events",
+      "case_id": "chimp_chatter",
+      "operation": "read-page",
+      "payload_sha256": "255304bcdcb7a2a93db838a6bcc982ca0b5d1370c985760e2df5d213d2c5ca18",
+      "go_page": {
+        "source_id": "mailchimp",
+        "family_id": "audit_events",
+        "case_id": "chimp_chatter",
+        "operation": "read-page",
+        "accepted_events": [],
+        "quarantines": [
+          {
+            "category": "missing_identity",
+            "field_path": "$.id",
+            "input_index": 0
+          }
+        ],
+        "duplicates": [],
+        "scanned_count": 1,
+        "accepted_count": 0,
+        "rejected_count": 1,
+        "proposed_checkpoint": "B9769AFC838E1236193FF917C670B585FB718E928203B357870A6DA78C972D1E",
+        "short_circuit_reasons": [
+          "final_page"
+        ]
+      },
+      "go_page_digest_sha256": "F415DFE4968C449A58C69DC568EE4FE0A313B252F0EA53EB3A4992347E4AFEA1",
+      "oracle_digest_sha256": "98809AF50068B31077A8AA8B707FAF7E59C7339D955123CC711EDBC9F8F8C800",
       "offline_proof": "fixture_only_no_provider_network",
       "provider_network_egress": false
     },

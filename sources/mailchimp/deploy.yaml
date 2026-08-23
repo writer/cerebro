@@ -4,10 +4,35 @@ secretKeys:
 runtimes:
   - localId: lists
     config:
+      dc: config:MAILCHIMP_DATA_CENTER
       family: lists
       failure_modes: api_error,auth_error,rate_limit,schema_drift
       health_path: /ping
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      api_token: env:MAILCHIMP_API_TOKEN
+      password: env:MAILCHIMP_API_TOKEN
+      username: cerebro
+  - localId: members
+    config:
+      dc: config:MAILCHIMP_DATA_CENTER
+      family: members
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /ping
+      expected_cadence_seconds: "86400"
+      stale_after_seconds: "86400"
+      per_page: "100"
+      list_id: config:MAILCHIMP_LIST_ID
+      password: env:MAILCHIMP_API_TOKEN
+      username: cerebro
+  - localId: audit-events
+    config:
+      dc: config:MAILCHIMP_DATA_CENTER
+      family: audit_events
+      failure_modes: api_error,auth_error,rate_limit,schema_drift
+      health_path: /ping
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
+      per_page: "100"
+      password: env:MAILCHIMP_API_TOKEN
+      username: cerebro

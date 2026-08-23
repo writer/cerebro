@@ -1,0 +1,18 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: mailchimp
+family: audit_events
+case: chimp_chatter
+replay_test: provider_fixture_test.go#TestSourceReplaysSpecShapedMailchimpAuditEvents
+request:
+  method: GET
+  url: https://us19.api.mailchimp.com/3.0/activity-feed/chimp-chatter
+response:
+  status: 200
+  content_type: application/json
+  captured_at: "2026-08-22T16:20:00Z"
+  sha256: 255304bcdcb7a2a93db838a6bcc982ca0b5d1370c985760e2df5d213d2c5ca18
+sanitization:
+  tool: sourcefixture
+  version: 1
+origin:
+  type: operator_request

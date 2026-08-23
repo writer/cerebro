@@ -523,6 +523,9 @@ func TestRunOrchestratorIterationStopsAfterSyncFailure(t *testing.T) {
 	if store.leaseID != "runtime-1" || store.releaseID != "runtime-1" {
 		t.Fatalf("lease/release = %q/%q, want runtime-1/runtime-1", store.leaseID, store.releaseID)
 	}
+	if store.fenceReadID != "runtime-1" || store.fenceReadOwner != "test-owner" {
+		t.Fatalf("lease fence read = %q/%q, want runtime-1/test-owner", store.fenceReadID, store.fenceReadOwner)
+	}
 }
 
 func TestRunOrchestratorIterationPreservesGraphCountersOnPartialFailure(t *testing.T) {
@@ -1376,13 +1379,16 @@ func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(ctx context.Context, _ str
 }
 
 type orchestratorRuntimeStore struct {
-	runtime      *cerebrov1.SourceRuntime
-	runtimes     []*cerebrov1.SourceRuntime
-	acquired     bool
-	acquiredByID map[string]bool
-	listFilter   ports.SourceRuntimeFilter
-	leaseID      string
-	releaseID    string
+	runtime        *cerebrov1.SourceRuntime
+	runtimes       []*cerebrov1.SourceRuntime
+	acquired       bool
+	acquiredByID   map[string]bool
+	listFilter     ports.SourceRuntimeFilter
+	leaseID        string
+	releaseID      string
+	fenceReadID    string
+	fenceReadOwner string
+	fenceReadErr   error
 }
 
 func (s *orchestratorRuntimeStore) Ping(context.Context) error { return nil }
@@ -1423,6 +1429,12 @@ func (s *orchestratorRuntimeStore) RenewSourceRuntimeLease(context.Context, stri
 func (s *orchestratorRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, runtimeID string, _ string) error {
 	s.releaseID = runtimeID
 	return nil
+}
+
+func (s *orchestratorRuntimeStore) ReadSourceRuntimeLeaseFence(_ context.Context, runtimeID string, owner string) (ports.SourceRuntimeLeaseFence, error) {
+	s.fenceReadID = runtimeID
+	s.fenceReadOwner = owner
+	return ports.SourceRuntimeLeaseFence{Owner: owner, Generation: 1, ExpiresAt: time.Now().Add(defaultSourceRuntimeLeaseTTL)}, s.fenceReadErr
 }
 
 type orchestratorTestSource struct{}
