@@ -13,6 +13,7 @@ mod addigy;
 mod adp_workforce_now;
 mod aha;
 mod airbrake;
+mod akeneo;
 mod amplitude;
 mod anthropic;
 mod append_log;
@@ -112,6 +113,11 @@ pub use airbrake::{
     AirbrakeCheckpointCandidate, AirbrakeEntityFact, AirbrakeError, AirbrakeEventContract,
     AirbrakeFamily, AirbrakeKernel, AirbrakePage, AirbrakeProjectionFacts, AirbrakeRecord,
     AirbrakeRequest, AirbrakeRuntimeDefinition, project_airbrake_records,
+};
+pub use akeneo::{
+    AkeneoCheckpointCandidate, AkeneoEntityFact, AkeneoError, AkeneoEventContract, AkeneoFamily,
+    AkeneoKernel, AkeneoPage, AkeneoProjectionFacts, AkeneoRecord, AkeneoRequest,
+    AkeneoRuntimeDefinition, AkeneoScope, project_akeneo_records,
 };
 pub use amplitude::{
     AmplitudeError, AmplitudeFamily, AmplitudeKernel, AmplitudePage, AmplitudeRecord,

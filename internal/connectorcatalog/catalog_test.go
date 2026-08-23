@@ -10,7 +10,7 @@ import (
 )
 
 const wantBuiltinCatalogEntries = 799
-const wantBuiltinCatalogBespokeRuntimeEntries = 2
+const wantBuiltinCatalogBespokeRuntimeEntries = 3
 
 func TestAnalyzeDirAcceptsGenerateableCatalogEntry(t *testing.T) {
 	root := t.TempDir()
@@ -456,7 +456,7 @@ func TestBuiltinRuntimeSkipsSourcegenDryRun(t *testing.T) {
 	}
 	for _, entry := range analysis.Entries {
 		wantStatus := StatusCatalogReady
-		if entry.Definition.SourceID == "auth0" || entry.Definition.SourceID == "kubernetes" {
+		if entry.Definition.SourceID == "auth0" || entry.Definition.SourceID == "kubernetes" || entry.Definition.SourceID == "pagerduty" {
 			wantStatus = StatusNeedsBespokeRuntime
 		}
 		if entry.SourcegenDryRun || entry.Generateable || entry.Status != wantStatus {
