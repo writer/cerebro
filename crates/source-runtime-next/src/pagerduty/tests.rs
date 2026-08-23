@@ -1,5 +1,13 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
+use cerebro_source_catalog::{
+    AuthModel, CollectionAuthority, Pagination, PathParameterBinding, SourceCatalog,
+    UnsupportedReasonCode,
+};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -7,9 +15,120 @@ use super::*;
 
 const OBSERVED_AT: &str = "2026-06-01T00:00:00Z";
 const SECRET_CANARY: &str = "pagerduty-secret-test-value";
+const SOURCE_CATALOG: &[u8] = include_bytes!("../../../../sources/pagerduty/catalog.yaml");
+const CONNECTOR_CATALOG: &[u8] = include_bytes!(
+    "../../../../internal/connectorcatalog/catalog/observability-soar-threat-intel/pagerduty.yaml"
+);
+
+#[derive(Deserialize)]
+struct SourceCatalogWire {
+    runtime_families: Vec<String>,
+    provider_api: ProviderApiWire,
+    event_contracts: Vec<EventContractWire>,
+}
+
+#[derive(Deserialize)]
+struct ProviderApiWire {
+    auth: String,
+    base_url: String,
+    families: Vec<ProviderFamilyWire>,
+}
+
+#[derive(Deserialize)]
+struct ProviderFamilyWire {
+    id: String,
+    method: String,
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct EventContractWire {
+    kind: String,
+    schema_ref: String,
+    required_attributes: Vec<String>,
+    required_payload_fields: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct ConnectorCatalogWire {
+    entries: Vec<ConnectorEntryWire>,
+}
+
+#[derive(Deserialize)]
+struct ConnectorEntryWire {
+    classifier_output: String,
+    definition: ConnectorDefinitionWire,
+}
+
+#[derive(Deserialize)]
+struct ConnectorDefinitionWire {
+    source_id: String,
+    auth: ConnectorAuthWire,
+    resource_families: Vec<ConnectorFamilyWire>,
+    scope_options: Vec<ScopeOptionWire>,
+}
+
+#[derive(Deserialize)]
+struct ConnectorAuthWire {
+    model: String,
+    token_header: String,
+    token_scheme: String,
+}
+
+#[derive(Deserialize)]
+struct ConnectorFamilyWire {
+    id: String,
+    method: String,
+    path: String,
+    record_selector: String,
+    id_field: String,
+    event: ConnectorEventWire,
+    pagination: ConnectorPaginationWire,
+    #[serde(default)]
+    read: Option<ConnectorReadWire>,
+}
+
+#[derive(Deserialize)]
+struct ConnectorEventWire {
+    kind: String,
+    schema_ref: String,
+    required_attributes: Vec<String>,
+    required_payload_fields: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct ConnectorPaginationWire {
+    #[serde(rename = "type")]
+    kind: String,
+    offset_param: String,
+    limit_param: String,
+    has_more_key: String,
+    page_size: usize,
+}
+
+#[derive(Deserialize)]
+struct ConnectorReadWire {
+    path_params: Vec<String>,
+    path_param_fanout: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct ScopeOptionWire {
+    id: String,
+    families: Vec<String>,
+}
 
 #[test]
 fn closed_definition_covers_exact_pagerduty_families() {
+    let source: SourceCatalogWire =
+        serde_saphyr::from_slice(SOURCE_CATALOG).expect("PagerDuty source catalog YAML");
+    let connector: ConnectorCatalogWire =
+        serde_saphyr::from_slice(CONNECTOR_CATALOG).expect("PagerDuty connector catalog YAML");
+    let connector = connector
+        .entries
+        .into_iter()
+        .next()
+        .expect("PagerDuty entry");
     let got = PagerDutyFamily::ALL
         .into_iter()
         .map(|family| {
@@ -18,6 +137,8 @@ fn closed_definition_covers_exact_pagerduty_families() {
             assert_eq!(plan.source_id, "pagerduty");
             assert_eq!(plan.family_id, family.as_str());
             assert_eq!(plan.method, "GET");
+            assert_eq!(plan.auth_header, "Authorization");
+            assert_eq!(plan.auth_scheme, "Token token=");
             assert_eq!(plan.origin, "https://api.pagerduty.com");
             assert_eq!(plan.path_template, family.path_template());
             assert_eq!(
@@ -25,6 +146,13 @@ fn closed_definition_covers_exact_pagerduty_families() {
                 format!("$.{}[*]", family.response_key())
             );
             assert_eq!(plan.id_field, "id");
+            assert_eq!(plan.offset_param, "offset");
+            assert_eq!(plan.page_size_param, "limit");
+            assert_eq!(plan.has_more_key, "more");
+            assert_eq!(
+                plan.fanout_config_key,
+                (family == PagerDutyFamily::Integration).then_some("service_ids")
+            );
             assert_eq!(plan.event_kind, family.event_kind());
             assert_eq!(plan.schema_ref, family.schema_ref());
             assert_eq!(plan.required_payload_fields, ["id"]);
@@ -46,6 +174,157 @@ fn closed_definition_covers_exact_pagerduty_families() {
             "integration",
             "vendor",
         ]
+    );
+    let expected = got.into_iter().collect::<BTreeSet<_>>();
+    assert_eq!(
+        source
+            .runtime_families
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        expected
+    );
+    assert_eq!(
+        connector
+            .definition
+            .resource_families
+            .iter()
+            .map(|family| family.id.as_str())
+            .collect::<BTreeSet<_>>(),
+        expected
+    );
+    assert_eq!(
+        connector
+            .definition
+            .scope_options
+            .iter()
+            .map(|scope| scope.id.as_str())
+            .collect::<BTreeSet<_>>(),
+        expected
+    );
+    assert!(
+        connector
+            .definition
+            .scope_options
+            .iter()
+            .all(|scope| scope.families.len() == 1 && scope.families[0] == scope.id)
+    );
+}
+
+#[test]
+fn public_connector_matches_go_contract_but_remains_non_authoritative() {
+    let source: SourceCatalogWire =
+        serde_saphyr::from_slice(SOURCE_CATALOG).expect("PagerDuty source catalog YAML");
+    let connector: ConnectorCatalogWire =
+        serde_saphyr::from_slice(CONNECTOR_CATALOG).expect("PagerDuty connector catalog YAML");
+    let connector = connector
+        .entries
+        .into_iter()
+        .next()
+        .expect("PagerDuty entry");
+    assert_eq!(connector.classifier_output, "bespoke_required");
+    assert_eq!(connector.definition.source_id, "pagerduty");
+    assert_eq!(connector.definition.auth.model, "api_key");
+    assert_eq!(connector.definition.auth.token_header, "Authorization");
+    assert_eq!(connector.definition.auth.token_scheme, "Token");
+    assert_eq!(source.provider_api.auth, "pagerduty_api_token");
+    assert_eq!(source.provider_api.base_url, "https://api.pagerduty.com");
+
+    for family in PagerDutyFamily::ALL {
+        let plan = kernel(family, "tenant", None).definition();
+        let provider = source
+            .provider_api
+            .families
+            .iter()
+            .find(|candidate| candidate.id == family.as_str())
+            .expect("provider proof family");
+        let public = connector
+            .definition
+            .resource_families
+            .iter()
+            .find(|candidate| candidate.id == family.as_str())
+            .expect("public connector family");
+        let contract = source
+            .event_contracts
+            .iter()
+            .find(|candidate| candidate.kind == family.event_kind())
+            .expect("source event contract");
+        assert_eq!(provider.method, plan.method);
+        assert_eq!(provider.path, plan.path_template);
+        assert_eq!(public.method, plan.method);
+        assert_eq!(public.path, plan.path_template);
+        assert_eq!(public.record_selector, plan.record_selector);
+        assert_eq!(public.id_field, plan.id_field);
+        assert_eq!(public.event.kind, plan.event_kind);
+        assert_eq!(public.event.schema_ref, plan.schema_ref);
+        assert_eq!(contract.schema_ref, plan.schema_ref);
+        assert_eq!(
+            public.event.required_attributes,
+            contract.required_attributes
+        );
+        assert_eq!(
+            public.event.required_payload_fields,
+            contract.required_payload_fields
+        );
+        assert_eq!(public.pagination.kind, "offset");
+        assert_eq!(public.pagination.offset_param, plan.offset_param);
+        assert_eq!(public.pagination.limit_param, plan.page_size_param);
+        assert_eq!(public.pagination.has_more_key, plan.has_more_key);
+        assert_eq!(public.pagination.page_size, plan.max_records_per_page);
+        if family == PagerDutyFamily::Integration {
+            let read = public.read.as_ref().expect("integration fanout");
+            assert_eq!(read.path_params, ["service_id"]);
+            assert_eq!(
+                read.path_param_fanout,
+                BTreeMap::from([("service_id".to_owned(), "service_ids".to_owned())])
+            );
+        } else {
+            assert!(public.read.is_none());
+        }
+    }
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let compiled = SourceCatalog::load(
+        root.join("internal/connectorcatalog/catalog"),
+        root.join("sources"),
+    )
+    .expect("compile source catalog");
+    let pagerduty = compiled
+        .get("pagerduty")
+        .expect("compiled PagerDuty source");
+    assert_eq!(pagerduty.authority(), CollectionAuthority::ShadowOnly);
+    assert_eq!(pagerduty.auth(), &AuthModel::ApiKey);
+    assert_eq!(pagerduty.token_header(), "Authorization");
+    assert_eq!(pagerduty.token_scheme(), "Token");
+    assert_eq!(pagerduty.families().len(), PagerDutyFamily::ALL.len());
+    for family in pagerduty.families() {
+        assert!(!family.is_authoritative(), "{}", family.id());
+        assert!(family.is_projection_authoritative(), "{}", family.id());
+        assert_eq!(
+            family.unsupported_reasons(),
+            [UnsupportedReasonCode::BespokeRuntime],
+            "{}",
+            family.id()
+        );
+        assert_eq!(
+            family.pagination(),
+            &Pagination::Offset {
+                parameter: "offset".to_owned(),
+                limit_parameter: "limit".to_owned(),
+                page_size: 100,
+            }
+        );
+    }
+    let integration = pagerduty
+        .families()
+        .iter()
+        .find(|family| family.id() == "integration")
+        .expect("integration family");
+    assert_eq!(
+        integration.path_parameters().get("service_id"),
+        Some(&PathParameterBinding::CsvFanout {
+            field: "service_ids".to_owned(),
+        })
     );
 }
 
@@ -70,7 +349,12 @@ fn requests_are_bounded_origin_locked_and_credential_free() {
         );
         assert!(request.url().query_pairs().all(|(key, _)| key != "offset"));
         assert_eq!(request.authorization_scheme(), "Token token=");
+        assert_eq!(request.authorization_header(), "Authorization");
+        assert_eq!(request.method(), "GET");
         assert_eq!(request.accept(), "application/json");
+        assert!(!request.contains_credentials());
+        assert!(!request.allows_redirects());
+        assert_eq!(request.max_response_bytes(), request::MAX_RESPONSE_BYTES);
         let debug = format!("{kernel:?}{request:?}");
         assert!(!debug.contains(SECRET_CANARY));
         assert!(!debug.contains("Authorization"));
