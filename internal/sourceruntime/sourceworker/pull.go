@@ -13,19 +13,10 @@ import (
 
 const rustCheckpointCursorMode = "rust_provider_checkpoint"
 
-var tailscaleFamilies = map[string]struct{}{
-	"device": {}, "grant": {}, "group": {}, "service": {}, "tag": {}, "tailnet": {}, "user": {},
-}
-
-// RustAuthoritativeTailscale reports whether the closed Rust dispatcher owns
-// the exact public Tailscale family.
-func RustAuthoritativeTailscale(sourceID, familyID string) bool {
-	_, ok := TailscaleFamily(sourceID, familyID)
-	return ok
-}
-
-// TailscaleFamily returns the exact closed-dispatch family, including the
-// public default used when family is omitted.
+// TailscaleFamily normalizes the requested Tailscale family, including the
+// public default used when family is omitted. The closed Rust dispatcher owns
+// family membership validation; Go must not restore legacy authority for an
+// unknown family.
 func TailscaleFamily(sourceID, familyID string) (string, bool) {
 	if strings.TrimSpace(sourceID) != "tailscale" {
 		return "", false
@@ -34,8 +25,7 @@ func TailscaleFamily(sourceID, familyID string) (string, bool) {
 	if familyID == "" {
 		familyID = "device"
 	}
-	_, ok := tailscaleFamilies[familyID]
-	return familyID, ok
+	return familyID, true
 }
 
 // PublicExecutionConfig returns only configuration declared safe for the
@@ -75,6 +65,9 @@ func ProviderResume(cursor *cerebrov1.SourceCursor, sourceID, familyID string) (
 	if envelope.Version != 1 || !envelope.ResumableCheckpoint || envelope.Mode != rustCheckpointCursorMode || envelope.Source != strings.TrimSpace(sourceID) || envelope.Family != strings.TrimSpace(familyID) {
 		return "", 0, fmt.Errorf("%w: durable cursor source or family mismatch", ErrWorkerContract)
 	}
+	if envelope.Token != "" && len(envelope.BoundaryIDs) != 0 {
+		return "", 0, fmt.Errorf("%w: durable cursor mixes continuation and terminal boundary", ErrWorkerContract)
+	}
 	watermark := sourcecdk.CursorWatermark(envelope)
 	if envelope.Watermark != "" && watermark.IsZero() {
 		return "", 0, fmt.Errorf("%w: durable cursor watermark is malformed", ErrWorkerContract)
@@ -105,10 +98,14 @@ func PullFromExecutionOutput(output *ExecutionOutput, tenantID string) (sourcecd
 		return sourcecdk.Pull{}, fmt.Errorf("%w: Rust checkpoint watermark is invalid", ErrWorkerContract)
 	}
 	checkpointCursor := output.Result.GetResultDigestSha256()
-	if RustAuthoritativeTailscale(output.Plan.GetSourceId(), output.Plan.GetFamilyId()) {
+	nextCursor := strings.TrimSpace(output.Result.GetNextCursor())
+	if _, tailscale := TailscaleFamily(output.Plan.GetSourceId(), output.Plan.GetFamilyId()); tailscale {
 		envelope := sourcecdk.CursorEnvelope{
 			Version: 1, Source: output.Plan.GetSourceId(), Family: output.Plan.GetFamilyId(),
-			Mode: rustCheckpointCursorMode, ResumableCheckpoint: true, Token: output.Program.CheckpointCursor,
+			Mode: rustCheckpointCursorMode, ResumableCheckpoint: true, Token: nextCursor,
+		}
+		if boundary := strings.TrimSpace(output.Program.CheckpointCursor); nextCursor == "" && boundary != "" {
+			envelope.BoundaryIDs = []string{boundary}
 		}
 		sourcecdk.SetCursorWatermark(&envelope, watermark.AsTime())
 		var err error
@@ -118,8 +115,8 @@ func PullFromExecutionOutput(output *ExecutionOutput, tenantID string) (sourcecd
 		}
 	}
 	pull := sourcecdk.Pull{Events: events, Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: checkpointCursor, Watermark: watermark}}
-	if next := strings.TrimSpace(output.Result.GetNextCursor()); next != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
+	if nextCursor != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
 	}
 	return pull, nil
 }

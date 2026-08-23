@@ -58,42 +58,54 @@ func TestTailscaleCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
 }
 
 func TestTailscaleReadPersistsTerminalRestartWithoutContinuingCurrentRun(t *testing.T) {
-	service := tailscaleAuthorityService(t)
-	var inputs []sourceworker.ExecutionInput
-	service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, _ string, _ []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
-		inputs = append(inputs, input)
-		return previewOutput("user", "", "user-terminal", max(input.Scope.PriorTerminalWatermarkUnixMillis, 1_725_000_000_000)), nil
-	}
-	config := tailscalePreviewConfig("user")
-	first, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "tailscale", Config: config})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.GetNextCursor() != nil {
-		t.Fatalf("terminal page scheduled another page: %#v", first.GetNextCursor())
-	}
-	second, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{
-		SourceId: "tailscale", Config: config, Cursor: &cerebrov1.SourceCursor{Opaque: first.GetCheckpoint().GetCursorOpaque()},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(inputs) != 2 || inputs[1].Scope.PriorCursor != "user-terminal" || inputs[1].Scope.PriorTerminalWatermarkUnixMillis != 1_725_000_000_000 {
-		t.Fatalf("restart input = %#v", inputs)
-	}
-	if second.GetNextCursor() != nil {
-		t.Fatal("restarted terminal page scheduled another page")
+	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
+		t.Run(family, func(t *testing.T) {
+			service := tailscaleAuthorityService(t)
+			var inputs []sourceworker.ExecutionInput
+			service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, _ string, _ []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+				inputs = append(inputs, input)
+				return previewOutput(family, "", family+"-terminal", max(input.Scope.PriorTerminalWatermarkUnixMillis, 1_725_000_000_000)), nil
+			}
+			config := tailscalePreviewConfig(family)
+			first, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "tailscale", Config: config})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if first.GetNextCursor() != nil {
+				t.Fatalf("terminal page scheduled another page: %#v", first.GetNextCursor())
+			}
+			second, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{
+				SourceId: "tailscale", Config: config, Cursor: &cerebrov1.SourceCursor{Opaque: first.GetCheckpoint().GetCursorOpaque()},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(inputs) != 2 || inputs[1].Scope.PriorCursor != "" || inputs[1].Scope.PriorTerminalWatermarkUnixMillis != 1_725_000_000_000 {
+				t.Fatalf("restart input = %#v", inputs)
+			}
+			if second.GetNextCursor() != nil {
+				t.Fatal("restarted terminal page scheduled another page")
+			}
+		})
 	}
 }
 
 func TestTailscaleReadContinuesOnlyForProviderCursorAndFailsClosed(t *testing.T) {
 	service := tailscaleAuthorityService(t)
+	var inputs []sourceworker.ExecutionInput
 	service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, _ string, _ []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+		inputs = append(inputs, input)
 		return previewOutput("device", "provider-page-2", "provider-page-2", 1_725_000_000_000), nil
 	}
 	response, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "tailscale", Config: tailscalePreviewConfig("device")})
 	if err != nil || response.GetNextCursor().GetOpaque() != "provider-page-2" {
 		t.Fatalf("Read() continuation = %#v, %v", response, err)
+	}
+	_, err = service.Read(context.Background(), &cerebrov1.ReadSourceRequest{
+		SourceId: "tailscale", Config: tailscalePreviewConfig("device"), Cursor: &cerebrov1.SourceCursor{Opaque: response.GetCheckpoint().GetCursorOpaque()},
+	})
+	if err != nil || len(inputs) != 2 || inputs[1].Scope.PriorCursor != "provider-page-2" {
+		t.Fatalf("continuation restart inputs = %#v, %v", inputs, err)
 	}
 
 	for name, cursor := range map[string]string{
@@ -109,6 +121,32 @@ func TestTailscaleReadContinuesOnlyForProviderCursorAndFailsClosed(t *testing.T)
 				t.Fatalf("Read() error = %v, want typed fail-closed cursor error", err)
 			}
 		})
+	}
+}
+
+func TestUnknownTailscaleFamilyFailsClosedWithoutLegacyCalls(t *testing.T) {
+	legacy := &authorityProbeSource{}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(registry)
+	service.sourceWorker = previewWorkerStub{}
+	service.runSourceExecution = func(context.Context, sourceworker.Worker, string, []byte, time.Time, sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+		return nil, sourceworker.ErrWorkerUnsupported
+	}
+	config := tailscalePreviewConfig("future-family")
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "tailscale", Config: config}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if _, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "tailscale", Config: config}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "tailscale", Config: config}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if legacy.checkCalls != 0 || legacy.discoverCalls != 0 || legacy.readCalls != 0 {
+		t.Fatalf("legacy calls = check/discover/read %d/%d/%d", legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
 	}
 }
 
