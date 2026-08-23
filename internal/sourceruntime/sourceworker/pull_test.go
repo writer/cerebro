@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 func TestPullSeparatesTerminalCheckpointFromSameRunContinuation(t *testing.T) {
@@ -22,8 +23,12 @@ func TestPullSeparatesTerminalCheckpointFromSameRunContinuation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if providerCursor != "user-1" || watermark != 1_725_000_000_000 {
-		t.Fatalf("restart = (%q, %d), want terminal cursor and watermark", providerCursor, watermark)
+	if providerCursor != "" || watermark != 1_725_000_000_000 {
+		t.Fatalf("restart = (%q, %d), want no provider cursor and terminal watermark", providerCursor, watermark)
+	}
+	terminalEnvelope, ok := sourcecdk.DecodeCursorEnvelope(pull.Checkpoint.GetCursorOpaque())
+	if !ok || terminalEnvelope.Token != "" || len(terminalEnvelope.BoundaryIDs) != 1 || terminalEnvelope.BoundaryIDs[0] != "user-1" {
+		t.Fatalf("terminal checkpoint envelope = %#v, %v", terminalEnvelope, ok)
 	}
 
 	nonterminal := tailscaleOutput("page-2", "page-2", 1_725_000_001_000)
@@ -40,6 +45,10 @@ func TestPullSeparatesTerminalCheckpointFromSameRunContinuation(t *testing.T) {
 	if err != nil || providerCursor != "page-2" {
 		t.Fatalf("nonterminal checkpoint = %q, %v", providerCursor, err)
 	}
+	continuationEnvelope, ok := sourcecdk.DecodeCursorEnvelope(pull.Checkpoint.GetCursorOpaque())
+	if !ok || continuationEnvelope.Token != "page-2" || len(continuationEnvelope.BoundaryIDs) != 0 {
+		t.Fatalf("continuation checkpoint envelope = %#v, %v", continuationEnvelope, ok)
+	}
 }
 
 func TestProviderResumeFailsClosedForMalformedAndCrossFamilyCheckpoints(t *testing.T) {
@@ -47,6 +56,8 @@ func TestProviderResumeFailsClosedForMalformedAndCrossFamilyCheckpoints(t *testi
 		"malformed":    `{"version":1`,
 		"cross family": `{"version":1,"source":"tailscale","family":"device","mode":"rust_provider_checkpoint","resumable_checkpoint":true,"token":"device-1"}`,
 		"cross source": `{"version":1,"source":"other","family":"user","mode":"rust_provider_checkpoint","resumable_checkpoint":true,"token":"user-1"}`,
+		"mixed continuation and boundary": `{"version":1,"source":"tailscale","family":"user","mode":"rust_provider_checkpoint",` +
+			`"resumable_checkpoint":true,"token":"page-2","boundary_ids":["user-1"]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, _, err := ProviderResume(&cerebrov1.SourceCursor{Opaque: cursor}, "tailscale", "user")

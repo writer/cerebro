@@ -51,9 +51,6 @@ func (s *Service) executeTailscale(ctx context.Context, config map[string]string
 	if family == "" {
 		family = "device"
 	}
-	if !sourceworker.RustAuthoritativeTailscale(tailscaleSourceID, family) {
-		return sourcecdk.Pull{}, sourceExecutionError(family, sourceworker.ErrWorkerUnsupported)
-	}
 	tenantID := strings.TrimSpace(config["tenant_id"])
 	credential := []byte(strings.TrimSpace(config["token"]))
 	if tenantID == "" || len(credential) == 0 {

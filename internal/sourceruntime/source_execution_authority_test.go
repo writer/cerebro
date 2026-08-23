@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
@@ -51,7 +53,41 @@ func TestTailscaleRuntimeFailsClosedWithoutRustWorker(t *testing.T) {
 	}
 }
 
-type runtimeTailscaleProbe struct{ checkCalls int }
+func TestUnknownTailscaleFamilyNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeTailscaleProbe{}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "tailscale-future-runtime", SourceId: "tailscale", TenantId: "tenant-1",
+		Config: map[string]string{"family": "future-family", "tailnet": "example.com", "token": sourceconfig.CredentialReferenceValue("tailscale", "token")},
+	}
+	if _, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: runtime}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if legacy.checkCalls != 0 {
+		t.Fatalf("Go Check calls = %d", legacy.checkCalls)
+	}
+
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{
+		"family": "future-family", "tailnet": "example.com", "token": "host-only-secret",
+	})
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 {
+		t.Fatalf("Go Read calls = %d", legacy.readCalls)
+	}
+}
+
+type runtimeTailscaleProbe struct{ checkCalls, readCalls int }
 
 func (*runtimeTailscaleProbe) Spec() *cerebrov1.SourceSpec {
 	return &cerebrov1.SourceSpec{Id: "tailscale"}
@@ -63,16 +99,21 @@ func (s *runtimeTailscaleProbe) Check(context.Context, sourcecdk.Config) error {
 func (*runtimeTailscaleProbe) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return nil, nil
 }
-func (*runtimeTailscaleProbe) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+func (s *runtimeTailscaleProbe) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.readCalls++
 	return sourcecdk.Pull{}, nil
 }
 
 type runtimePlanWorker struct {
 	planCalls    int
 	publicConfig map[string]string
+	compileErr   error
 }
 
-func (*runtimePlanWorker) Compile(_ context.Context, request sourceworker.SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error) {
+func (w *runtimePlanWorker) Compile(_ context.Context, request sourceworker.SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error) {
+	if w.compileErr != nil {
+		return nil, w.compileErr
+	}
 	return &cerebrov1.SourceExecutionPlanV1{SourceId: request.SourceID, FamilyId: request.FamilyID}, nil
 }
 func (*runtimePlanWorker) Context(_ context.Context, request sourceworker.ContextRequest) (*cerebrov1.SourceWorkerExecutionContextV1, error) {

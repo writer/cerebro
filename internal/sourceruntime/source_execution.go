@@ -95,9 +95,11 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 			PriorCheckpoint: strings.TrimSpace(checkpoint.GetCursorOpaque()),
 		},
 	})
-	if errors.Is(err, sourceworker.ErrWorkerUnsupported) && !sourceworker.RustAuthoritativeTailscale(runtime.GetSourceId(), familyID) {
-		pull, compatibilityErr := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
-		return pull, false, compatibilityErr
+	if errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		if _, tailscale := sourceworker.TailscaleFamily(runtime.GetSourceId(), familyID); !tailscale {
+			pull, compatibilityErr := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
+			return pull, false, compatibilityErr
+		}
 	}
 	if err != nil {
 		return sourcecdk.Pull{}, false, err

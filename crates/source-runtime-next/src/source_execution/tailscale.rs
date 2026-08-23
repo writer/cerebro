@@ -666,12 +666,9 @@ mod tests {
                 "{family}"
             );
 
-            let restarted = plan_page(
-                dispatcher,
-                &plan,
-                &context(&program.checkpoint_cursor, 2),
-                &metadata,
-            );
+            let mut restart_metadata = metadata.clone();
+            restart_metadata.prior_terminal_watermark_unix_millis = terminal_watermark;
+            let restarted = plan_page(dispatcher, &plan, &context("", 2), &restart_metadata);
             let restarted_url = reqwest::Url::parse(&restarted.request.unwrap().url).unwrap();
             assert_eq!(
                 restarted_url
@@ -679,7 +676,7 @@ mod tests {
                     .find(|(key, _)| key == "cursor")
                     .map(|(_, value)| value.into_owned())
                     .as_deref(),
-                Some(program.checkpoint_cursor.as_str()),
+                None,
                 "{family}"
             );
 
