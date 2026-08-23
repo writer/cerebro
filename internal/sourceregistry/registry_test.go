@@ -256,8 +256,9 @@ func TestBuiltinCatalogSourcesPreservePortableSourceContracts(t *testing.T) {
 		if !reflect.DeepEqual(source.Spec(), catalog.Spec) {
 			t.Errorf("%s source spec differs from portable catalog", sourceID)
 		}
-		if !slices.Equal(entry.ResourceFamilyIDs, catalog.RuntimeFamilies) {
-			t.Errorf("%s runtime families = %#v, want %#v", sourceID, entry.ResourceFamilyIDs, catalog.RuntimeFamilies)
+		portableFamilyIDs := portableCatalogFamilyIDs(catalog)
+		if !slices.Equal(entry.ResourceFamilyIDs, portableFamilyIDs) {
+			t.Errorf("%s portable families = %#v, want %#v", sourceID, entry.ResourceFamilyIDs, portableFamilyIDs)
 		}
 		coverageProvider, ok := source.(sourcecdk.CoverageContractProvider)
 		if !ok || catalog.CoverageContract == nil || !reflect.DeepEqual(coverageProvider.CoverageContract(), *catalog.CoverageContract) {
@@ -283,6 +284,24 @@ func TestBuiltinCatalogSourcesPreservePortableSourceContracts(t *testing.T) {
 	}
 }
 
+func portableCatalogFamilyIDs(catalog *sourcecdk.SourceCatalog) []string {
+	if catalog.ProviderAPI == nil {
+		return catalog.RuntimeFamilies
+	}
+	providerFamilyIDs := make([]string, 0, len(catalog.ProviderAPI.Families))
+	for _, family := range catalog.ProviderAPI.Families {
+		if !slices.Contains(providerFamilyIDs, family.ID) {
+			providerFamilyIDs = append(providerFamilyIDs, family.ID)
+		}
+	}
+	for _, familyID := range catalog.RuntimeFamilies {
+		if !slices.Contains(providerFamilyIDs, familyID) {
+			return catalog.RuntimeFamilies
+		}
+	}
+	return providerFamilyIDs
+}
+
 func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testing.T) {
 	compatibilityExceptions := map[string]bool{
 		"anthropic":             true,
@@ -301,7 +320,6 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"pagerduty":             true,
 		"sailpoint_identitynow": true,
 		"snyk":                  true,
-		"tailscale":             true,
 		"writer":                true,
 	}
 	catalog, err := connectorcatalog.BuiltinRuntime()
@@ -353,6 +371,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"jira",
 		"langchain",
 		"openai",
+		"tailscale",
 	}
 	static := make(map[string]struct{}, len(builtinSourceLoaders))
 	for _, loader := range builtinSourceLoaders {
