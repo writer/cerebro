@@ -43,10 +43,10 @@ fn validate_project_scope(
     let Some(configured) = kernel.project_id.as_deref() else {
         return Ok(());
     };
-    if let Some(provider_project) = scalar(values.get("projectId")) {
-        if provider_project != configured {
-            return Err(AirbrakeError::ProjectMismatch);
-        }
+    if let Some(provider_project) = scalar(values.get("projectId"))
+        && provider_project != configured
+    {
+        return Err(AirbrakeError::ProjectMismatch);
     }
     Ok(())
 }
@@ -120,6 +120,11 @@ fn asset_attributes(
     name_field: &str,
 ) -> Result<(), AirbrakeError> {
     let name = required_scalar(values, name_field)?;
+    let urn_id = if kernel.family == AirbrakeFamily::SourceMaps {
+        provider_id.replacen("source-maps", "source_maps", 1)
+    } else {
+        provider_id.to_owned()
+    };
     output.extend(BTreeMap::from([
         ("record_class".to_owned(), "asset".to_owned()),
         ("resource_id".to_owned(), provider_id.to_owned()),
@@ -130,7 +135,7 @@ fn asset_attributes(
             format!(
                 "urn:cerebro:{}:{urn_kind}:{}",
                 encode_segment(&kernel.tenant_id),
-                encode_segment(provider_id)
+                encode_segment(&urn_id)
             ),
         ),
     ]));
