@@ -15,7 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcefixture"
 )
 
-func TestSourceReplaysCapturedMailchimpFamilies(t *testing.T) {
+func TestMailchimpCatalogRuntimeReplaysCapturedFamilies(t *testing.T) {
 	listsBundle, err := sourcefixture.FindBundle("../../..", "mailchimp", "lists", "list_lists")
 	if err != nil {
 		t.Fatalf("FindBundle(lists) error = %v", err)
@@ -57,7 +57,7 @@ func TestSourceReplaysCapturedMailchimpFamilies(t *testing.T) {
 	}
 }
 
-func TestSourceReplaysSpecShapedMailchimpAuditEvents(t *testing.T) {
+func TestMailchimpCatalogRuntimeReplaysSpecShapedAuditEvents(t *testing.T) {
 	bundle, err := sourcefixture.FindBundle("../../..", "mailchimp", "audit_events", "chimp_chatter")
 	if err != nil {
 		t.Fatalf("FindBundle(audit_events) error = %v", err)

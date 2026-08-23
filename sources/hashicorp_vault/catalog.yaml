@@ -34,15 +34,15 @@ provider_api:
   families:
     - id: users
       method: GET
-      path: /identity/entity/id
+      path: /v1/identity/entity/id
       operation: identity_entity_list_by_id
     - id: secrets
       method: GET
-      path: /sys/mounts
+      path: /v1/sys/mounts
       operation: sys_mounts_list
     - id: audit_events
       method: GET
-      path: /sys/audit
+      path: /v1/sys/audit
       operation: sys_audit_list_enabled_devices
 coverage_contract:
   owner_domain: source_runtime

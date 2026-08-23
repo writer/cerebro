@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use cerebro_source_catalog::{
-    CollectionAuthority, Pagination, PathParameterBinding, SourceCatalog, UnsupportedReasonCode,
+    AuthModel, CollectionAuthority, HttpMethod, Pagination, PathParameterBinding, SourceCatalog,
+    UnsupportedReasonCode,
 };
 
 #[test]
@@ -15,6 +16,9 @@ fn mailchimp_compiles_the_provider_shapes_but_stays_unpromoted() {
     let source = catalog.get("mailchimp").expect("Mailchimp source");
 
     assert_eq!(source.authority(), CollectionAuthority::ShadowOnly);
+    assert_eq!(source.auth(), &AuthModel::Basic);
+    assert_eq!(source.token_header(), "Authorization");
+    assert_eq!(source.token_scheme(), "Basic");
     for (family_id, path, selector) in [
         ("lists", "/lists", "$.lists[*]"),
         (
@@ -33,6 +37,7 @@ fn mailchimp_compiles_the_provider_shapes_but_stays_unpromoted() {
             .iter()
             .find(|family| family.id() == family_id)
             .unwrap_or_else(|| panic!("Mailchimp {family_id} family"));
+        assert_eq!(family.method(), HttpMethod::Get);
         assert_eq!(family.path(), path);
         assert_eq!(family.record_selector(), selector);
         assert_eq!(
