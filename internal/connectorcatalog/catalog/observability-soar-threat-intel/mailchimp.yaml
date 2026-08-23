@@ -136,7 +136,7 @@ entries:
             schema_ref: mailchimp/audit_events/v1
             urn_kind: mailchimp_audit_events
           id: audit_events
-          id_field: update_time|url|title|message
+          id_field: update_time+type+title+url+message+campaign_id+list_id|update_time+type+title+url+message|update_time+type+title+url|update_time+type+title+message|update_time+type+title
           label: Audit events
           method: GET
           pagination:
@@ -149,7 +149,8 @@ entries:
           config:
             config_attributes:
               tenant_id: tenant_id
-            id_template: "${update_time}:${type}:${title}"
+            encode_urn_id: true
+            identity_keys: [campaign_id, list_id, url, message]
           projection:
             fields:
               event_type: type

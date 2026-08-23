@@ -2,7 +2,7 @@ schema_version: cerebro.source-api-fixture.v1
 source_id: mailchimp
 family: audit_events
 case: chimp_chatter
-replay_test: provider_fixture_test.go#TestSourceReplaysSpecShapedMailchimpAuditEvents
+replay_test: mailchimp_test.go#TestSourceReplaysSpecShapedMailchimpAuditEvents
 request:
   method: GET
   url: https://us19.api.mailchimp.com/3.0/activity-feed/chimp-chatter
