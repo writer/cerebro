@@ -2,7 +2,7 @@ schema_version: cerebro.source-api-fixture.v1
 source_id: mailchimp
 family: lists
 case: list_lists
-replay_test: provider_fixture_test.go#TestSourceReplaysCapturedMailchimpFamilies
+replay_test: mailchimp_test.go#TestMailchimpCatalogRuntimeReplaysCapturedFamilies
 request:
     method: GET
     url: https://us19.api.mailchimp.com/3.0/lists

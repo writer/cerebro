@@ -69,6 +69,16 @@ fn mailchimp_compiles_the_provider_shapes_but_stays_unpromoted() {
         })
     );
 
+    let audit_events = source
+        .families()
+        .iter()
+        .find(|family| family.id() == "audit_events")
+        .expect("Mailchimp audit_events family");
+    assert_eq!(
+        audit_events.id_field(),
+        "update_time+type+title+url+message+campaign_id+list_id|update_time+type+title+url+message|update_time+type+title+url|update_time+type+title+message|update_time+type+title"
+    );
+
     let readiness = catalog.authority_readiness_report();
     for family_id in ["lists", "members", "audit_events"] {
         let row = readiness

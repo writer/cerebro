@@ -77,6 +77,57 @@ func TestMailchimpCatalogRuntimeReplaysSpecShapedAuditEvents(t *testing.T) {
 	replayMailchimpBundle(t, entry, "audit_events", "mailchimp.audit_events", "/activity-feed/chimp-chatter", bundle, false)
 }
 
+func TestMailchimpAuditIdentityDoesNotCollapseSameSecondActivity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.EscapedPath() != "/activity-feed/chimp-chatter" {
+			t.Fatalf("request path = %q", r.URL.EscapedPath())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"chimp_chatter":[
+			{"campaign_id":"campaign-a","list_id":"list-a","message":"subscriber a joined","title":"1 new subscriber","type":"lists:new-subscriber","update_time":"2017-08-04T11:09:01+00:00","url":"https://example.test/reports/a"},
+			{"campaign_id":"campaign-b","list_id":"list-b","message":"subscriber b joined","title":"1 new subscriber","type":"lists:new-subscriber","update_time":"2017-08-04T11:09:01+00:00","url":"https://example.test/reports/b"}
+		],"total_items":2}`))
+	}))
+	defer server.Close()
+
+	entry, ok, err := connectorcatalog.BuiltinEntry("mailchimp")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(mailchimp) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(mailchimp) ok = false, want true")
+	}
+	source, err := NewDefinitionWithValidationOptions(entry.Definition, ValidationOptions{AllowLoopbackBaseURL: true})
+	if err != nil {
+		t.Fatalf("NewDefinitionWithValidationOptions() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL, "dc": "us19", "family": "audit_events", "password": "fixture-api-key", "tenant_id": "tenant", "username": "cerebro",
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(audit_events) error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("Read(audit_events) event count = %d, want 2", len(pull.Events))
+	}
+	firstID := pull.Events[0].Attributes["source_event_id"]
+	secondID := pull.Events[1].Attributes["source_event_id"]
+	if firstID == secondID {
+		t.Fatalf("same-second activity collapsed to source_event_id %q", firstID)
+	}
+	if strings.Contains(firstID, "lists:new-subscriber") || strings.Contains(secondID, "lists:new-subscriber") {
+		t.Fatalf("source_event_id contains an unencoded provider delimiter: %q, %q", firstID, secondID)
+	}
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(audit_events) error = %v", err)
+	}
+	if len(urns) != 2 || urns[0] == urns[1] {
+		t.Fatalf("Discover(audit_events) URNs = %#v, want two distinct URNs", urns)
+	}
+}
+
 func replayMailchimpBundle(t *testing.T, entry connectorcatalog.Entry, family, kind, requestPath string, bundle sourcefixture.Bundle, captureTime bool) {
 	t.Helper()
 	wantAuthorization := "Basic " + base64.StdEncoding.EncodeToString([]byte("cerebro:fixture-api-key"))
