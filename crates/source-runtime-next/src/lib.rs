@@ -12,6 +12,7 @@ mod ada_support;
 mod addigy;
 mod adp_workforce_now;
 mod aha;
+mod airbrake;
 mod akeneo;
 mod amplitude;
 mod anthropic;
@@ -107,6 +108,11 @@ pub use adp_workforce_now::{
 pub use aha::{
     AhaCheckpointCandidate, AhaEntityFact, AhaError, AhaEventContract, AhaFamily, AhaKernel,
     AhaPage, AhaProjectionFacts, AhaRecord, AhaRequest, AhaRuntimeDefinition, project_aha_records,
+};
+pub use airbrake::{
+    AirbrakeCheckpointCandidate, AirbrakeEntityFact, AirbrakeError, AirbrakeEventContract,
+    AirbrakeFamily, AirbrakeKernel, AirbrakePage, AirbrakeProjectionFacts, AirbrakeRecord,
+    AirbrakeRequest, AirbrakeRuntimeDefinition, project_airbrake_records,
 };
 pub use akeneo::{
     AkeneoCheckpointCandidate, AkeneoEntityFact, AkeneoError, AkeneoEventContract, AkeneoFamily,
