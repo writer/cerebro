@@ -41,10 +41,6 @@ impl AsanaSourceExecutionAdapter {
         Self { family }
     }
 
-    pub(crate) const fn family(&self) -> AsanaFamily {
-        self.family
-    }
-
     pub(crate) fn compiled_plan(&self) -> Result<SourceExecutionPlanV1, SourceExecutionError> {
         let definition = AsanaRuntimeDefinition::compile(self.family).map_err(map_error)?;
         let contract = definition.event_contract;

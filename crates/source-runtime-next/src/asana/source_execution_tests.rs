@@ -46,7 +46,7 @@ fn closed_dispatcher_compiles_every_asana_family() {
         AsanaFamily::ALL.len()
     );
     for adapter in &ASANA_SOURCE_EXECUTION_ADAPTERS {
-        let family = adapter.family();
+        let family = adapter.family;
         let plan = dispatcher
             .compile_plan(&SourceExecutionSelectionRequestV1 {
                 source_id: "asana".to_owned(),
@@ -74,7 +74,7 @@ fn closed_dispatcher_compiles_every_asana_family() {
 fn plans_all_families_without_credentials_and_requires_workspace_scope() {
     let dispatcher = SourceExecutionDispatcher;
     for adapter in &ASANA_SOURCE_EXECUTION_ADAPTERS {
-        let family = adapter.family();
+        let family = adapter.family;
         let plan = adapter.compiled_plan().unwrap();
         let execution = dispatcher
             .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
@@ -109,7 +109,7 @@ fn plans_all_families_without_credentials_and_requires_workspace_scope() {
     }
 
     let adapter = &ASANA_SOURCE_EXECUTION_ADAPTERS[0];
-    let mut missing = metadata(adapter.family());
+    let mut missing = metadata(adapter.family);
     missing.public_config.remove("workspace_gid");
     assert_eq!(
         dispatcher.dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
