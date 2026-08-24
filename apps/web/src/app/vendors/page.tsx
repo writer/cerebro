@@ -1342,8 +1342,8 @@ function VendorSectionSwitcher({
     uploads: uploadCount > 0 ? countLabel(uploadCount, "recent upload") : "Add documents",
   };
   return (
-    <section className="border-b border-[color:var(--border)] pb-2">
-      <div role="tablist" aria-label="Vendor work areas" className="flex flex-wrap gap-1.5">
+    <section className="overflow-x-auto border-b border-[color:var(--border)]" data-vendor-sections>
+      <div role="tablist" aria-label="Vendor work areas" className="flex min-w-max gap-6">
         {vendorSections.map((section) => {
           const selected = activeSection === section.id;
           return (
@@ -1353,10 +1353,10 @@ function VendorSectionSwitcher({
               role="tab"
               aria-selected={selected}
               onClick={() => onChange(section.id)}
-              className={`rounded-md border px-3 py-2 text-left text-[13px] transition ${selected ? "border-[color:var(--border-strong)] bg-[var(--surface-muted)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-secondary)] hover:border-[color:var(--border)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"}`}
+              className={`border-b-2 px-0 py-2.5 text-left text-[13px] transition ${selected ? "border-[var(--primary)] text-[var(--primary)]" : "border-transparent text-[var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]"}`}
             >
               <span className="block font-semibold">{section.label}</span>
-              <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">{detailBySection[section.id]}</span>
+              <span className="mt-0.5 block text-[11px] font-normal text-[var(--text-muted)]">{detailBySection[section.id]}</span>
             </button>
           );
         })}
@@ -2334,7 +2334,7 @@ export default function VendorsPage() {
       )}
 
       {activeSection !== "uploads" && (
-      <section className="surface-panel p-4">
+      <section className="border-b border-[color:var(--border)] pb-4" data-vendor-filters>
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_160px]">
           <label className={labelClass}>
             Search

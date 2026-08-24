@@ -226,6 +226,22 @@ describe("product UI contract", () => {
     expect(page.indexOf("data-policy-status-summary")).toBeLessThan(page.indexOf("data-policy-sections"));
   });
 
+  it("keeps vendor navigation and filters out of standalone card shells", () => {
+    const vendorSource = readProjectFile("src/app/vendors/page.tsx");
+    const vendorDetailSource = readProjectFile("src/app/vendors/[urn]/page.tsx");
+    const page = vendorSource.slice(vendorSource.indexOf("export default function VendorsPage"));
+
+    expect(vendorSource).toContain("data-vendor-sections");
+    expect(vendorSource).toContain("border-b-2 px-0 py-2.5");
+    expect(page).toContain('className="border-b border-[color:var(--border)] pb-4" data-vendor-filters');
+    expect(page).not.toContain('className="surface-panel p-4"');
+    expect(vendorDetailSource).toContain("data-vendor-summary");
+    expect(vendorDetailSource).toContain("data-questionnaire-summary");
+    expect(vendorDetailSource).toContain("data-questionnaire-answer-summary");
+    expect(vendorDetailSource).not.toContain("<MetricCard");
+    expect(vendorDetailSource).not.toContain("function ConsoleStatCard");
+  });
+
   it("keeps lifecycle details modal and lifecycle records usable at mobile width", () => {
     const lifecycleSource = readProjectFile("src/app/security/lifecycle/page.tsx");
 
