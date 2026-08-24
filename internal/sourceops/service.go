@@ -109,11 +109,7 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 	}
 	var urns []sourcecdk.URN
 	if family, authoritative := rustSourceFamily(req.GetSourceId(), config); authoritative {
-		pull, executeErr := s.executeRustSource(ctx, req.GetSourceId(), family, config, nil)
-		if executeErr != nil {
-			return nil, sourceOperationError(executeErr)
-		}
-		urns, err = discoverURNs(pull)
+		urns, err = s.discoverRustSource(ctx, req.GetSourceId(), family, config)
 	} else {
 		urns, err = source.Discover(ctx, sourcecdk.NewConfig(config))
 	}

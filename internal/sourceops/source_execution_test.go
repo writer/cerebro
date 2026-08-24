@@ -144,6 +144,39 @@ func TestTailscaleReadContinuesOnlyForProviderCursorAndFailsClosed(t *testing.T)
 	}
 }
 
+func TestRustDiscoveryReadsEveryPageAndDeduplicatesURNs(t *testing.T) {
+	service := tailscaleAuthorityService(t)
+	var inputs []sourceworker.ExecutionInput
+	service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, _ string, _ []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+		inputs = append(inputs, input)
+		if len(inputs) == 1 {
+			return previewOutput("device", "provider-page-2", "provider-page-2", 1_725_000_000_000), nil
+		}
+		return previewOutput("device", "", "device-terminal", 1_725_000_001_000), nil
+	}
+	urns, err := service.discoverRustSource(context.Background(), "tailscale", "device", tailscalePreviewConfig("device"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inputs) != 2 || inputs[1].Scope.PriorCursor != "provider-page-2" {
+		t.Fatalf("discovery inputs = %#v", inputs)
+	}
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:tenant-1:tailscale_device:device-1" {
+		t.Fatalf("deduplicated URNs = %#v", urns)
+	}
+}
+
+func TestRustDiscoveryRejectsRepeatedContinuation(t *testing.T) {
+	service := tailscaleAuthorityService(t)
+	service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, _ string, _ []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+		return previewOutput("device", "provider-page-2", "provider-page-2", input.Scope.PriorTerminalWatermarkUnixMillis), nil
+	}
+	_, err := service.discoverRustSource(context.Background(), "tailscale", "device", tailscalePreviewConfig("device"))
+	if !errors.Is(err, sourceworker.ErrWorkerContract) || !strings.Contains(err.Error(), "continuation repeated") {
+		t.Fatalf("discoverRustSource() error = %v", err)
+	}
+}
+
 func TestUnknownTailscaleFamilyFailsClosedWithoutLegacyCalls(t *testing.T) {
 	legacy := &authorityProbeSource{}
 	registry, err := sourcecdk.NewRegistry(legacy)

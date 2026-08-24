@@ -17,6 +17,7 @@ const (
 	previewLeaseOwner                 = "source-preview"
 	previewRuntimeGeneration   uint64 = 1
 	previewLeaseGeneration     uint64 = 1
+	maxRustDiscoveryPages             = 10_000
 )
 
 type sourceExecutionRunner func(context.Context, sourceworker.Worker, string, []byte, time.Time, sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error)
@@ -90,6 +91,43 @@ func (s *Service) executeRustSource(ctx context.Context, sourceID, family string
 		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
 	}
 	return pull, nil
+}
+
+func (s *Service) discoverRustSource(ctx context.Context, sourceID, family string, config map[string]string) ([]sourcecdk.URN, error) {
+	seenURNs := make(map[string]struct{})
+	seenCursors := make(map[string]struct{})
+	urns := make([]sourcecdk.URN, 0)
+	var cursor *cerebrov1.SourceCursor
+	for page := 0; page < maxRustDiscoveryPages; page++ {
+		pull, err := s.executeRustSource(ctx, sourceID, family, config, cursor)
+		if err != nil {
+			return nil, err
+		}
+		pageURNs, err := discoverURNs(pull)
+		if err != nil {
+			return nil, err
+		}
+		for _, urn := range pageURNs {
+			if _, ok := seenURNs[urn.String()]; ok {
+				continue
+			}
+			seenURNs[urn.String()] = struct{}{}
+			urns = append(urns, urn)
+		}
+		if pull.NextCursor == nil {
+			return urns, nil
+		}
+		next := strings.TrimSpace(pull.NextCursor.GetOpaque())
+		if next == "" {
+			return nil, fmt.Errorf("%w: Rust discovery continuation is empty", sourceworker.ErrWorkerContract)
+		}
+		if _, ok := seenCursors[next]; ok {
+			return nil, fmt.Errorf("%w: Rust discovery continuation repeated", sourceworker.ErrWorkerContract)
+		}
+		seenCursors[next] = struct{}{}
+		cursor = &cerebrov1.SourceCursor{Opaque: next}
+	}
+	return nil, fmt.Errorf("%w: Rust discovery exceeded %d pages", sourceworker.ErrWorkerContract, maxRustDiscoveryPages)
 }
 
 func previewCredential(sourceID string, config map[string]string) string {
