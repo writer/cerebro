@@ -163,6 +163,64 @@ func TestOtherAzureFamilyRemainsGoCompatible(t *testing.T) {
 	}
 }
 
+func TestPutJumpCloudFamiliesValidateWithRustWithoutCallingGoCheck(t *testing.T) {
+	families := []string{"users", "groups", "systems", "applications", "system_groups", "group_members", "audit_events"}
+	for _, family := range families {
+		t.Run(family, func(t *testing.T) {
+			legacy := &runtimeAuthorityProbe{sourceID: "jumpcloud"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			worker := &runtimePlanWorker{}
+			service := New(registry, &runtimeStore{}, nil, nil)
+			service.sourceWorker = worker
+			config := map[string]string{
+				"family": family, "api_key": sourceconfig.CredentialReferenceValue("jumpcloud", "api_key"),
+			}
+			if family == "group_members" {
+				config["group_ids"] = "group-1,group-2"
+			}
+			_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+				Id: "jumpcloud-" + family + "-runtime", SourceId: "jumpcloud", TenantId: "tenant-1", Config: config,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if legacy.checkCalls != 0 || worker.planCalls != 1 {
+				t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+			}
+			if worker.selection.SourceID != "jumpcloud" || worker.selection.FamilyID != family {
+				t.Fatalf("Rust selection = %#v", worker.selection)
+			}
+			if worker.publicConfig["api_key"] != "" || worker.publicConfig["family"] != family {
+				t.Fatalf("Rust public config = %#v", worker.publicConfig)
+			}
+		})
+	}
+}
+
+func TestUnknownJumpCloudFamilyNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "jumpcloud"}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := &Service{sourceWorker: worker}
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "jumpcloud-future-runtime", SourceId: "jumpcloud", TenantId: "tenant-1",
+		Config: map[string]string{"family": "future-family", "api_key": sourceconfig.CredentialReferenceValue("jumpcloud", "api_key")},
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{"family": "future-family", "api_key": "host-only-value"})
+
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "jumpcloud" || worker.selection.FamilyID != "future-family" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+	}
+}
+
 type runtimeAuthorityProbe struct {
 	sourceID              string
 	checkCalls, readCalls int
