@@ -204,6 +204,20 @@ func TestHostCarriesCredentialFreeBodyAndHeadersBeforeApplyingJumpCloudAuth(t *t
 	}
 }
 
+func TestCredentialHeaderAppliesOnlyTheClosedSentinelOneScheme(t *testing.T) {
+	header, value, err := credentialHeader("sentinelone.api_token", []byte("synthetic-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "Authorization" || string(value) != "ApiToken synthetic-secret" {
+		t.Fatal("SentinelOne credential operation did not produce the exact provider scheme")
+	}
+	if _, _, err := credentialHeader("sentinelone.bearer", []byte("synthetic-secret")); !errors.Is(err, ErrWorkerContract) {
+		t.Fatalf("unregistered credential operation error = %v, want ErrWorkerContract", err)
+	}
+}
+
 func TestSafeResponseHeadersRedactsAndBounds(t *testing.T) {
 	headers := http.Header{
 		"X-Result-Count": {"2"}, "X-Limit": {"2"}, "X-Search_after": {`{"id":"event-2"}`}, "Retry-After": {"30"},

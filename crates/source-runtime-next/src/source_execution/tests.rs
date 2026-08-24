@@ -69,26 +69,7 @@ fn exact_plan() -> SourceExecutionPlanV1 {
 }
 
 fn sentinelone_plan() -> SourceExecutionPlanV1 {
-    let mut plan = SourceExecutionPlanV1 {
-        plan_id: "source-plan-v1:sentinelone:agent".to_owned(),
-        source_id: "sentinelone".to_owned(),
-        family_id: "agent".to_owned(),
-        provider_kernel: "sentinelone.agent".to_owned(),
-        method: "GET".to_owned(),
-        origin: "https://sentinelone.example.test".to_owned(),
-        path: "/web/api/v2.1/agents".to_owned(),
-        record_selector: "$.data[*]".to_owned(),
-        id_field: "id".to_owned(),
-        singleton_fallback_id: String::new(),
-        max_response_bytes: 8 << 20,
-        event_kind: "sentinelone.agent".to_owned(),
-        schema_ref: "sentinelone/agent/v1".to_owned(),
-        required_attributes: vec!["family".to_owned()],
-        required_payload_fields: vec!["id".to_owned()],
-        plan_digest_sha256: String::new(),
-    };
-    plan.plan_digest_sha256 = canonical_plan_digest(&plan);
-    plan
+    crate::sentinelone::SentinelOneAgentSourceExecutionAdapter.compiled_plan()
 }
 
 fn sentinelone_context(cursor: &str) -> SourceWorkerExecutionContextV1 {
@@ -545,7 +526,7 @@ fn closed_dispatcher_registers_and_executes_the_exact_sentinelone_agent_plan() {
         .unwrap();
     assert_eq!(
         planned.url,
-        "https://sentinelone.example.test/web/api/v2.1/agents?limit=200&cursor=cursor-A-1"
+        "https://sentinelone.invalid/web/api/v2.1/agents?limit=200&cursor=cursor-A-1"
     );
 
     let context = sentinelone_context("");

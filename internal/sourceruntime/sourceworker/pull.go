@@ -76,7 +76,7 @@ func PublicExecutionConfig(values map[string]string) map[string]string {
 	for _, key := range []string{
 		"audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
 		"family", "group_id", "group_ids", "insights_base_url", "org_id", "per_page",
-		"tailnet", "user_group_id", "user_group_ids",
+		"site_id", "tailnet", "user_group_id", "user_group_ids",
 	} {
 		if value, ok := values[key]; ok {
 			public[key] = strings.TrimSpace(value)

@@ -100,10 +100,14 @@ fn seal_page_program_inner(
             |watermark| watermark.max(prior_watermark),
         );
 
-    let checkpoint_cursor = if plan.source_id == "tailscale" {
-        super::tailscale::durable_checkpoint_cursor(plan, result).unwrap_or_default()
-    } else {
-        result.next_cursor.clone()
+    let checkpoint_cursor = match plan.source_id.as_str() {
+        "sentinelone" => {
+            crate::sentinelone::durable_checkpoint_cursor(plan, result).unwrap_or_default()
+        }
+        "tailscale" => {
+            super::tailscale::durable_checkpoint_cursor(plan, result).unwrap_or_default()
+        }
+        _ => result.next_cursor.clone(),
     };
 
     Ok(SourceExecutionLifecycleDecisionV1 {

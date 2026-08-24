@@ -7,8 +7,9 @@
 
 use crate::source_execution::{
     SourceExecutionAdapter, SourceExecutionError, SourceExecutionPlanV1,
-    SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
-    SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+    SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
+    SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1,
+    SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
     canonical_plan_digest, canonical_request_intent_digest, canonical_result_digest,
     validate_and_deduplicate_records, validate_decode_result, validate_execution_context,
     validate_http_request, validate_safe_receipt,
@@ -22,6 +23,8 @@ use super::{
 mod error;
 #[path = "source_execution_adapter/normalization.rs"]
 mod normalization;
+#[path = "source_execution_adapter/runtime.rs"]
+mod runtime;
 
 use error::SentinelOneAgentAdapterError;
 use normalization::normalize_agent_record;
@@ -30,6 +33,8 @@ const SOURCE_ID: &str = "sentinelone";
 const FAMILY_ID: &str = "agent";
 const PROVIDER_KERNEL: &str = "sentinelone.agent";
 const PLAN_ID: &str = "source-plan-v1:sentinelone:agent";
+const COMPILED_ORIGIN: &str = "https://sentinelone.invalid";
+const CREDENTIAL_OPERATION: &str = "sentinelone.api_token";
 const METHOD: &str = "GET";
 const PATH: &str = "/web/api/v2.1/agents";
 const RECORD_SELECTOR: &str = "$.data[*]";
@@ -42,6 +47,31 @@ const PAGE_SIZE: usize = 200;
 /// Credential-free adapter for the representative SentinelOne agent family.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct SentinelOneAgentSourceExecutionAdapter;
+
+impl SentinelOneAgentSourceExecutionAdapter {
+    pub(crate) fn compiled_plan(&self) -> SourceExecutionPlanV1 {
+        let mut plan = SourceExecutionPlanV1 {
+            plan_id: PLAN_ID.to_owned(),
+            source_id: SOURCE_ID.to_owned(),
+            family_id: FAMILY_ID.to_owned(),
+            provider_kernel: PROVIDER_KERNEL.to_owned(),
+            method: METHOD.to_owned(),
+            origin: COMPILED_ORIGIN.to_owned(),
+            path: PATH.to_owned(),
+            record_selector: RECORD_SELECTOR.to_owned(),
+            id_field: ID_FIELD.to_owned(),
+            singleton_fallback_id: String::new(),
+            max_response_bytes: MAX_RESPONSE_BYTES,
+            event_kind: EVENT_KIND.to_owned(),
+            schema_ref: SCHEMA_REF.to_owned(),
+            required_attributes: vec!["family".to_owned()],
+            required_payload_fields: vec!["id".to_owned()],
+            plan_digest_sha256: String::new(),
+        };
+        plan.plan_digest_sha256 = canonical_plan_digest(&plan);
+        plan
+    }
+}
 
 impl SourceExecutionAdapter for SentinelOneAgentSourceExecutionAdapter {
     fn source_id(&self) -> &'static str {
@@ -76,11 +106,25 @@ impl SourceExecutionAdapter for SentinelOneAgentSourceExecutionAdapter {
         plan_agent_request(request)
     }
 
+    fn plan_v2(
+        &self,
+        envelope: &SourceWorkerPlanEnvelopeV2,
+    ) -> Result<SourceWorkerHttpExecutionV2, SourceExecutionError> {
+        runtime::plan_v2(envelope)
+    }
+
     fn decode(
         &self,
         request: &SourceWorkerDecodeRequestV1,
     ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
         decode_agent_response(request)
+    }
+
+    fn decode_v2(
+        &self,
+        envelope: &SourceWorkerDecodeEnvelopeV2,
+    ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
+        runtime::decode_v2(envelope)
     }
 }
 
@@ -100,12 +144,23 @@ fn plan_agent_request(
     validate_agent_tenant(&context.tenant_id).map_err(SourceExecutionError::from)?;
 
     let kernel = agent_kernel(plan)?;
+    let result = plan_with_kernel(plan, context, &kernel, &plan.origin)?;
+    validate_http_request(plan, context, &result)?;
+    Ok(result)
+}
+
+fn plan_with_kernel(
+    plan: &SourceExecutionPlanV1,
+    context: &SourceWorkerExecutionContextV1,
+    kernel: &SentinelOneKernel,
+    allowed_origin: &str,
+) -> Result<SourceWorkerHttpRequestV1, SourceExecutionError> {
     let provider_request = kernel
         .plan(optional_cursor(&context.prior_cursor))
         .map_err(map_kernel_error)
         .map_err(SourceExecutionError::from)?;
-    validate_provider_request(plan, &provider_request).map_err(SourceExecutionError::from)?;
-
+    validate_provider_request(plan, allowed_origin, &provider_request)
+        .map_err(SourceExecutionError::from)?;
     let mut result = SourceWorkerHttpRequestV1 {
         plan_id: plan.plan_id.clone(),
         method: METHOD.to_owned(),
@@ -116,7 +171,6 @@ fn plan_agent_request(
         request_intent_digest: String::new(),
     };
     result.request_intent_digest = canonical_request_intent_digest(plan, context, &result);
-    validate_http_request(plan, context, &result)?;
     Ok(result)
 }
 
@@ -131,11 +185,29 @@ fn decode_agent_response(
         .context
         .as_ref()
         .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    let kernel = agent_kernel(plan)?;
+    let expected = plan_with_kernel(plan, context, &kernel, &plan.origin)?;
+    decode_agent_response_with_kernel(request, &kernel, &plan.origin, &expected)
+}
+
+fn decode_agent_response_with_kernel(
+    request: &SourceWorkerDecodeRequestV1,
+    kernel: &SentinelOneKernel,
+    allowed_origin: &str,
+    expected: &SourceWorkerHttpRequestV1,
+) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
+    let plan = request
+        .plan
+        .as_ref()
+        .ok_or(SourceExecutionError::InvalidPlan)?;
+    let context = request
+        .context
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
     let receipt = request
         .receipt
         .as_ref()
         .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
-
     validate_plan(plan).map_err(SourceExecutionError::from)?;
     validate_execution_context(context)?;
     validate_agent_tenant(&context.tenant_id).map_err(SourceExecutionError::from)?;
@@ -154,21 +226,15 @@ fn decode_agent_response(
         request.status_code,
         &request.request_intent_digest,
     )?;
-    let expected_intent = plan_agent_request(&SourceWorkerPlanRequestV1 {
-        plan: Some(plan.clone()),
-        context: Some(context.clone()),
-    })?
-    .request_intent_digest;
-    if request.request_intent_digest != expected_intent {
+    if request.request_intent_digest != expected.request_intent_digest {
         return Err(SourceExecutionError::InvalidDigest);
     }
-
-    let kernel = agent_kernel(plan)?;
     let provider_request = kernel
         .plan(optional_cursor(&context.prior_cursor))
         .map_err(map_kernel_error)
         .map_err(SourceExecutionError::from)?;
-    validate_provider_request(plan, &provider_request).map_err(SourceExecutionError::from)?;
+    validate_provider_request(plan, allowed_origin, &provider_request)
+        .map_err(SourceExecutionError::from)?;
     let SentinelOneOutcome::Page(page) = kernel
         .decode(&provider_request, &request.response_body)
         .map_err(map_kernel_error)
@@ -208,24 +274,7 @@ fn decode_agent_response(
 }
 
 fn validate_plan(plan: &SourceExecutionPlanV1) -> Result<(), SentinelOneAgentAdapterError> {
-    let expected_attributes = ["family"];
-    let expected_payload_fields = ["id"];
-    let exact = plan.plan_id == PLAN_ID
-        && plan.source_id == SOURCE_ID
-        && plan.family_id == FAMILY_ID
-        && plan.provider_kernel == PROVIDER_KERNEL
-        && plan.method == METHOD
-        && plan.path == PATH
-        && plan.record_selector == RECORD_SELECTOR
-        && plan.id_field == ID_FIELD
-        && plan.singleton_fallback_id.is_empty()
-        && plan.max_response_bytes == MAX_RESPONSE_BYTES
-        && plan.event_kind == EVENT_KIND
-        && plan.schema_ref == SCHEMA_REF
-        && plan.required_attributes == expected_attributes
-        && plan.required_payload_fields == expected_payload_fields
-        && canonical_plan_digest(plan) == plan.plan_digest_sha256;
-    if !exact {
+    if plan != &SentinelOneAgentSourceExecutionAdapter.compiled_plan() {
         return Err(SentinelOneAgentAdapterError::InvalidPlan);
     }
     Ok(())
@@ -233,9 +282,10 @@ fn validate_plan(plan: &SourceExecutionPlanV1) -> Result<(), SentinelOneAgentAda
 
 fn validate_provider_request(
     plan: &SourceExecutionPlanV1,
+    allowed_origin: &str,
     request: &super::SentinelOneRequest,
 ) -> Result<(), SentinelOneAgentAdapterError> {
-    if request.url().origin().ascii_serialization() != plan.origin
+    if request.url().origin().ascii_serialization() != allowed_origin
         || request.url().path() != plan.path
         || request.authorization_scheme() != "ApiToken"
         || request.accept() != "application/json"
@@ -294,6 +344,25 @@ fn map_kernel_error(error: SentinelOneError) -> SentinelOneAgentAdapterError {
 
 fn optional_cursor(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
+}
+
+pub(crate) fn durable_checkpoint_cursor(
+    plan: &SourceExecutionPlanV1,
+    result: &SourceWorkerDecodeResultV1,
+) -> Option<String> {
+    if plan.source_id != SOURCE_ID || plan.family_id != FAMILY_ID {
+        return None;
+    }
+    if !result.next_cursor.is_empty() {
+        return Some(result.next_cursor.clone());
+    }
+    Some(
+        result
+            .records
+            .last()
+            .map(|record| record.provider_id.clone())
+            .unwrap_or_default(),
+    )
 }
 
 fn validate_agent_tenant(tenant_id: &str) -> Result<(), SentinelOneAgentAdapterError> {

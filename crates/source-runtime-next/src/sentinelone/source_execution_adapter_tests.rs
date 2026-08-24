@@ -1,7 +1,11 @@
+use std::collections::HashMap;
+
 use prost::Message;
 use serde_json::Value;
 
-use crate::source_execution::{SourceWorkerSafeReceiptV1, response_digest};
+use crate::source_execution::{
+    SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1, response_digest,
+};
 
 use super::*;
 
@@ -21,26 +25,7 @@ fn context(cursor: &str) -> SourceWorkerExecutionContextV1 {
 }
 
 fn exact_plan() -> SourceExecutionPlanV1 {
-    let mut plan = SourceExecutionPlanV1 {
-        plan_id: PLAN_ID.to_owned(),
-        source_id: SOURCE_ID.to_owned(),
-        family_id: FAMILY_ID.to_owned(),
-        provider_kernel: PROVIDER_KERNEL.to_owned(),
-        method: METHOD.to_owned(),
-        origin: "https://sentinelone.example.test".to_owned(),
-        path: PATH.to_owned(),
-        record_selector: RECORD_SELECTOR.to_owned(),
-        id_field: ID_FIELD.to_owned(),
-        singleton_fallback_id: String::new(),
-        max_response_bytes: MAX_RESPONSE_BYTES,
-        event_kind: EVENT_KIND.to_owned(),
-        schema_ref: SCHEMA_REF.to_owned(),
-        required_attributes: vec!["family".to_owned()],
-        required_payload_fields: vec!["id".to_owned()],
-        plan_digest_sha256: String::new(),
-    };
-    plan.plan_digest_sha256 = canonical_plan_digest(&plan);
-    plan
+    SentinelOneAgentSourceExecutionAdapter.compiled_plan()
 }
 
 fn receipt(
@@ -97,7 +82,7 @@ fn plans_deterministic_agent_request_without_credentials() {
     assert_eq!(output.method, "GET");
     assert_eq!(
         output.url,
-        "https://sentinelone.example.test/web/api/v2.1/agents?limit=200&cursor=cursor-A-1"
+        "https://sentinelone.invalid/web/api/v2.1/agents?limit=200&cursor=cursor-A-1"
     );
     assert_eq!(output.request_intent_digest.len(), 64);
     let first_page = plan_agent_request(&SourceWorkerPlanRequestV1 {
@@ -121,6 +106,118 @@ fn plans_deterministic_agent_request_without_credentials() {
                 .windows(secret_shape.len())
                 .any(|window| window == secret_shape)
         );
+    }
+}
+
+#[test]
+fn metadata_aware_dispatch_uses_dynamic_origin_closed_auth_and_restart_boundary() {
+    let dispatcher = crate::source_execution::SourceExecutionDispatcher;
+    let plan = dispatcher
+        .compile_plan(
+            &crate::source_execution::SourceExecutionSelectionRequestV1 {
+                source_id: SOURCE_ID.to_owned(),
+                family_id: FAMILY_ID.to_owned(),
+            },
+        )
+        .unwrap();
+    let execution_context = context("cursor-A-1");
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: HashMap::from([
+            (
+                "base_url".to_owned(),
+                "https://sentinelone.example.test/".to_owned(),
+            ),
+            ("per_page".to_owned(), "200".to_owned()),
+            ("site_id".to_owned(), "site-1".to_owned()),
+        ]),
+        prior_terminal_watermark_unix_millis: 0,
+        prior_checkpoint: String::new(),
+    };
+    let planned = dispatcher
+        .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(execution_context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        })
+        .unwrap();
+    assert_eq!(planned.allowed_origin, "https://sentinelone.example.test");
+    assert_eq!(planned.credential_operation, CREDENTIAL_OPERATION);
+    assert_eq!(
+        planned.request.as_ref().unwrap().url,
+        "https://sentinelone.example.test/web/api/v2.1/agents?limit=200&cursor=cursor-A-1&siteIds=site-1"
+    );
+    assert!(planned.body.is_empty());
+    assert!(planned.declared_headers.is_empty());
+
+    let first_context = context("");
+    let first = dispatcher
+        .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(first_context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        })
+        .unwrap();
+    let first_request = first.request.as_ref().unwrap();
+    let decoded = dispatcher
+        .dispatch_decode_v2(&SourceWorkerDecodeEnvelopeV2 {
+            request: Some(SourceWorkerDecodeRequestV1 {
+                plan: Some(plan.clone()),
+                status_code: 200,
+                response_body: AGENT_PAGE.to_vec(),
+                logical_page_id: first_context.logical_page_id.clone(),
+                request_intent_digest: first_request.request_intent_digest.clone(),
+                receipt: None,
+                context: Some(first_context),
+            }),
+            metadata: Some(metadata),
+            response_headers: HashMap::new(),
+            execution_intent_digest_sha256: first.execution_intent_digest_sha256,
+            response_headers_sha256: String::new(),
+        })
+        .unwrap();
+    let result = decoded.result.unwrap();
+    assert_eq!(result.next_cursor, "cursor-A-2");
+    assert_eq!(
+        durable_checkpoint_cursor(&plan, &result).as_deref(),
+        Some("cursor-A-2")
+    );
+    let mut terminal = result;
+    terminal.next_cursor.clear();
+    assert_eq!(
+        durable_checkpoint_cursor(&plan, &terminal).as_deref(),
+        Some("A-1")
+    );
+}
+
+#[test]
+fn metadata_aware_dispatch_requires_a_safe_public_origin() {
+    let plan = SentinelOneAgentSourceExecutionAdapter.compiled_plan();
+    for config in [
+        HashMap::new(),
+        HashMap::from([(
+            "base_url".to_owned(),
+            "http://sentinelone.example.test".to_owned(),
+        )]),
+    ] {
+        let result = SentinelOneAgentSourceExecutionAdapter.plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(context("")),
+            }),
+            metadata: Some(SourceWorkerRuntimeMetadataV2 {
+                public_config: config,
+                prior_terminal_watermark_unix_millis: 0,
+                prior_checkpoint: String::new(),
+            }),
+        });
+        assert!(matches!(
+            result,
+            Err(SourceExecutionError::MissingConfiguration | SourceExecutionError::InvalidPlan)
+        ));
     }
 }
 

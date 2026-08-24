@@ -28,9 +28,10 @@ mod wire;
 pub use contract::{
     MAX_CONTEXT_IDENTIFIER_BYTES, MAX_CURSOR_BYTES, MAX_PUBLIC_CONFIG_BYTES,
     MAX_PUBLIC_CONFIG_ENTRIES, MAX_RECORD_PAYLOAD_BYTES, MAX_RECORDS_PER_RESULT,
-    MAX_REQUEST_BODY_BYTES, MAX_SAFE_HEADER_BYTES, MAX_SAFE_HEADER_ENTRIES, canonical_plan_digest,
-    canonical_request_intent_digest, canonical_response_headers_digest, canonical_result_digest,
-    response_digest, tenant_scoped_event_id, validate_and_deduplicate_records, validate_cursor,
+    MAX_REQUEST_BODY_BYTES, MAX_SAFE_HEADER_BYTES, MAX_SAFE_HEADER_ENTRIES,
+    canonical_http_execution_digest, canonical_plan_digest, canonical_request_intent_digest,
+    canonical_response_headers_digest, canonical_result_digest, response_digest,
+    tenant_scoped_event_id, validate_and_deduplicate_records, validate_cursor,
     validate_declared_headers, validate_decode_envelope, validate_decode_result,
     validate_execution_context, validate_http_execution, validate_http_request,
     validate_public_config, validate_response_headers, validate_runtime_metadata,
