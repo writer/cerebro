@@ -393,6 +393,12 @@ type VendorDetail struct {
 	Graph         *ports.EntityNeighborhood `json:"graph,omitempty"`
 }
 
+type VendorPage struct {
+	Vendors       []Vendor `json:"vendors"`
+	DataAuthority string   `json:"data_authority"`
+	GraphRevision uint64   `json:"graph_revision"`
+}
+
 type VendorRelationships struct {
 	Contracts              []RelatedRecord `json:"contracts,omitempty"`
 	SecurityReviews        []RelatedRecord `json:"security_reviews,omitempty"`
@@ -499,8 +505,13 @@ func (s graphStoreCapabilities) ListEntityRelations(ctx context.Context, request
 }
 
 func (s *Service) ListVendors(ctx context.Context, request ListVendorsRequest) ([]Vendor, error) {
+	page, err := s.ListVendorsPage(ctx, request)
+	return page.Vendors, err
+}
+
+func (s *Service) ListVendorsPage(ctx context.Context, request ListVendorsRequest) (VendorPage, error) {
 	if s == nil || s.store == nil {
-		return nil, ErrRuntimeUnavailable
+		return VendorPage{}, ErrRuntimeUnavailable
 	}
 	limit := normalizeVendorLimit(request.Limit)
 	queryLimit := limit
@@ -509,23 +520,23 @@ func (s *Service) ListVendors(ctx context.Context, request ListVendorsRequest) (
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
-		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
+		return VendorPage{}, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
 	store, ok := s.store.(ports.EntityCatalogStore)
 	if !ok {
-		return nil, ErrRuntimeUnavailable
+		return VendorPage{}, ErrRuntimeUnavailable
 	}
 	filter, possible := vendorCatalogFilter(tenantID, request.RuntimeID, request.RuntimeIDs, request.SourceID, request.Query, "vendor")
 	if !possible {
-		return []Vendor{}, nil
+		return VendorPage{Vendors: []Vendor{}}, nil
 	}
 	filter.RelationCounts = &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract", "security.review", "security.questionnaire", "assurance.document"}}
 	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: queryLimit})
 	if err != nil {
-		return nil, err
+		return VendorPage{}, err
 	}
 	if page == nil || page.TenantID != tenantID {
-		return nil, ErrRuntimeUnavailable
+		return VendorPage{}, ErrRuntimeUnavailable
 	}
 	vendors := make([]Vendor, 0, len(page.Entities))
 	for _, entity := range page.Entities {
@@ -542,7 +553,7 @@ func (s *Service) ListVendors(ctx context.Context, request ListVendorsRequest) (
 	if !request.DeferLimit && len(vendors) > limit {
 		vendors = vendors[:limit]
 	}
-	return vendors, nil
+	return VendorPage{Vendors: vendors, GraphRevision: page.GraphRevision}, nil
 }
 
 func (s *Service) ListDiscoveries(ctx context.Context, request ListDiscoveriesRequest) ([]VendorDiscovery, error) {

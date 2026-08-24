@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDir, "..");
 const repositoryRoot = path.resolve(webRoot, "..", "..");
-const defaultTimeoutMs = 10 * 60_000;
+const defaultTimeoutMs = 20 * 60_000;
 const tenantID = "tenant-demo";
 const tenantAuthContext = Buffer.from(
   "cerebro-organizational-graph/tenant/v1\0",
@@ -423,6 +423,70 @@ async function browserProof(webBase, rootURN, expectedProof, workDir, deadlineAt
   }
 }
 
+async function vendorBrowserProof(webBase, workDir, deadlineAt) {
+  const { chromium } = await import("@playwright/test");
+  let browser;
+  try {
+    browser = await withDeadline(
+      chromium.launch({ headless: true }),
+      deadlineAt,
+      "Chromium launch",
+    );
+  } catch (error) {
+    if (!String(error?.message).includes("Executable doesn't exist")) throw error;
+    browser = await withDeadline(
+      chromium.launch({ channel: "chrome", headless: true }),
+      deadlineAt,
+      "installed Chrome launch",
+    );
+  }
+  try {
+    const page = await browser.newPage({ viewport: { height: 900, width: 1440 } });
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(error));
+    const vendorsResponse = page.waitForResponse(
+      (candidate) => new URL(candidate.url()).pathname === "/api/cerebro/grc/vendors",
+      { timeout: Math.min(30_000, remaining(deadlineAt, "vendor browser request")) },
+    );
+    const navigation = await page.goto(`${webBase}/vendors?tenant_id=${tenantID}`, {
+      timeout: Math.min(30_000, remaining(deadlineAt, "vendor navigation")),
+      waitUntil: "domcontentloaded",
+    });
+    expect(navigation?.status() === 200, `Vendor page returned ${navigation?.status()}`);
+    const response = await vendorsResponse;
+    expect(response.status() === 200, `Vendor browser query returned ${response.status()}`);
+    expect(response.headers()["x-cerebro-fixture"] !== "true", "Vendor browser query used fixture data");
+    const payload = await response.json();
+    expect(payload.data_authority === "rust_graph", "Vendor response did not report Rust graph authority");
+    expect(
+      Number.isSafeInteger(payload.graph_revision) && payload.graph_revision > 0,
+      "Vendor response did not report a positive graph revision",
+    );
+    expect(payload.vendors?.length === 2, `Vendor response returned ${payload.vendors?.length ?? 0} rows; expected 2`);
+    await page.getByText("Identity Platform", { exact: true }).first().waitFor({
+      state: "visible",
+      timeout: Math.min(30_000, remaining(deadlineAt, "vendor row rendering")),
+    });
+    await page.getByText(`Rust graph revision ${payload.graph_revision}`, { exact: false }).waitFor({
+      state: "visible",
+      timeout: Math.min(30_000, remaining(deadlineAt, "vendor authority rendering")),
+    });
+    expect(pageErrors.length === 0, `Vendor page raised ${pageErrors[0]?.message}`);
+    const screenshot = path.join(workDir, "rust-product-vendors.png");
+    await page.screenshot({ fullPage: true, path: screenshot });
+    return {
+      endpoint_status: 200,
+      data_authority: payload.data_authority,
+      graph_revision: payload.graph_revision,
+      vendor_count: payload.vendors.length,
+      fixture_header: response.headers()["x-cerebro-fixture"] ?? "absent",
+      screenshot: path.basename(screenshot),
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
 function waitForOperatorShutdown(children) {
   return new Promise((resolve, reject) => {
     const childListeners = new Map();
@@ -468,21 +532,37 @@ export async function runRustProductDemo(options = {}) {
   const processes = [];
   let failed = true;
   try {
-    const [rustPort, webPort] = await Promise.all([
+    const [rustPort, apiPort, webPort] = await Promise.all([
+      reserveLoopbackPort(),
       reserveLoopbackPort(),
       reserveLoopbackPort(),
     ]);
-    expect(rustPort !== webPort, "Reserved ports collided");
+    expect(new Set([rustPort, apiPort, webPort]).size === 3, "Reserved ports collided");
 
     const rustBinary = await cargoBinary(deadlineAt);
+    const eventAdmissionBinary = path.join(
+      path.dirname(rustBinary),
+      process.platform === "win32"
+        ? "cerebro-event-admission-worker.exe"
+        : "cerebro-event-admission-worker",
+    );
     await run(
       "cargo",
-      ["build", "--locked", "-p", "cerebro-platform"],
+      [
+        "build", "--locked",
+        "-p", "cerebro-platform",
+        "-p", "cerebro-sourceruntime-eventadmission",
+        "--bin", "cerebro-platform",
+        "--bin", "cerebro-event-admission-worker",
+      ],
       { cwd: repositoryRoot },
       deadlineAt,
     );
     await access(rustBinary).catch(() => {
       throw new Error(`Cargo did not produce the Rust platform binary at ${rustBinary}`);
+    });
+    await access(eventAdmissionBinary).catch(() => {
+      throw new Error(`Cargo did not produce the event admission binary at ${eventAdmissionBinary}`);
     });
     const { neighborhood, rootURN } = parseDemoNeighborhood(
       await run(
@@ -517,6 +597,43 @@ export async function runRustProductDemo(options = {}) {
       deadlineAt,
     );
 
+    const apiBinary = path.join(
+      workDir,
+      process.platform === "win32" ? "cerebro-demo-api.exe" : "cerebro-demo-api",
+    );
+    await run(
+      "go",
+      ["build", "-o", apiBinary, "./cmd/cerebro"],
+      { cwd: repositoryRoot },
+      deadlineAt,
+    );
+    const api = startLogged(
+      "go-api-adapter",
+      apiBinary,
+      ["serve"],
+      {
+        cwd: repositoryRoot,
+        env: portableEnvironment(process.env, {
+          CEREBRO_DEV_MODE: "1",
+          CEREBRO_DEV_MODE_ACK: "1",
+          CEREBRO_EVENT_ADMISSION_WORKER: eventAdmissionBinary,
+          CEREBRO_HTTP_ADDR: `127.0.0.1:${apiPort}`,
+          CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE: "authority",
+          CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL: `http://127.0.0.1:${rustPort}`,
+          CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: sharedSecret,
+          CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT: "30s",
+        }),
+      },
+      logDir,
+    );
+    processes.push(api);
+    await waitFor(
+      "Go product adapter",
+      async () => (await request(`http://127.0.0.1:${apiPort}/healthz`)).status === 200,
+      api,
+      deadlineAt,
+    );
+
     const graphQuery = `/platform/graph/neighborhood?root_urn=${encodeURIComponent(rootURN)}&limit=50`;
     const directGraphResponse = await request(
       `http://127.0.0.1:${rustPort}${graphQuery}`,
@@ -541,8 +658,7 @@ export async function runRustProductDemo(options = {}) {
       {
         cwd: webRoot,
         env: portableEnvironment(process.env, {
-          CEREBRO_API_BASE: `http://127.0.0.1:${rustPort}`,
-          CEREBRO_AUTHORIZATION: `Bearer ${bearer}`,
+          CEREBRO_API_BASE: `http://127.0.0.1:${apiPort}`,
           CEREBRO_FORWARD_AUTH_HEADERS: "false",
           CEREBRO_IDENTITY_REQUIRED: "false",
           CEREBRO_LOCAL_IDENTITY_FALLBACK: "true",
@@ -570,14 +686,16 @@ export async function runRustProductDemo(options = {}) {
     expect(proxiedGraph.root?.urn === rootURN, "Web proxy returned another graph root");
 
     const graphURL = `${webBase}/explore?root_urn=${encodeURIComponent(rootURN)}`;
+    const vendorsURL = `${webBase}/vendors?tenant_id=${tenantID}`;
     if (!options.check) {
       console.log(`[demo:rust] Graph explorer: ${graphURL}`);
+      console.log(`[demo:rust] Vendor register: ${vendorsURL}`);
       console.log("[demo:rust] Authority: Rust in-memory organizational graph");
       console.log("[demo:rust] Provider credentials: not required");
       console.log("[demo:rust] Press Ctrl-C to stop the Rust and web processes.");
       await waitForOperatorShutdown(processes);
       failed = false;
-      return { graphURL, workDir };
+      return { graphURL, vendorsURL, workDir };
     }
 
     const browser = await browserProof(
@@ -587,6 +705,7 @@ export async function runRustProductDemo(options = {}) {
       workDir,
       deadlineAt,
     );
+    const vendors = await vendorBrowserProof(webBase, workDir, deadlineAt);
     const revision = (
       process.env.GITHUB_SHA?.trim() ||
       (
@@ -608,6 +727,7 @@ export async function runRustProductDemo(options = {}) {
         command: "cerebro-platform serve-demo",
         graph_authority: "rust",
         persistence: "memory",
+        product_adapter: "go_http",
       },
       authentication: {
         kind: "ephemeral_hmac",
@@ -617,6 +737,7 @@ export async function runRustProductDemo(options = {}) {
       },
       contract: {
         path: "/platform/graph/neighborhood",
+        vendor_path: "/grc/vendors",
         root_urn: rootURN,
         tenant_selected_by_browser: false,
       },
@@ -624,6 +745,7 @@ export async function runRustProductDemo(options = {}) {
         direct_rust_status: 200,
         web_proxy_status: 200,
         browser,
+        vendors,
       },
     };
     await mkdir(path.dirname(receiptPath), { recursive: true });

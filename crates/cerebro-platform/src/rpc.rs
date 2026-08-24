@@ -1,4 +1,9 @@
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+    sync::Arc,
+    time::Duration,
+};
 
 use cerebro_agent_context::{
     AgentGraph, ContextEdge, ContextEntity, ContextError, FactQuery, GraphPath as ContextPath,
@@ -80,6 +85,7 @@ use service::cerebro::v1::{SecurityLifecycleService, SecurityLifecycleServiceExt
 // Bound every durable graph read independently of client-side deadlines.
 const GRAPH_RPC_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
+const MAX_IN_MEMORY_CATALOG_SCAN: usize = 500;
 
 pub(crate) fn router(
     graph: Arc<dyn AgentGraph>,
@@ -233,6 +239,164 @@ impl GraphRpc {
             },
         )
         .map_err(|error| ConnectError::invalid_argument(error.to_string()))
+    }
+
+    async fn in_memory_catalog_page(
+        &self,
+        tenant: &TenantId,
+        filter: &StoreCatalogFilter,
+        limit: usize,
+        after_agent_key: &str,
+    ) -> Result<StoreCatalogPage, ConnectError> {
+        validate_in_memory_catalog_request(tenant, filter, after_agent_key)?;
+        let revision_before = self.graph_call(self.graph.revision(tenant)).await?;
+        if filter.expected_graph_revision != 0 && filter.expected_graph_revision != revision_before
+        {
+            return Err(ConnectError::unavailable(
+                "Entity catalog revision changed before continuation.",
+            ));
+        }
+
+        let mut entities = if filter.exact_agent_key.is_empty() {
+            let entities = self
+                .graph_call(
+                    self.graph
+                        .search(tenant, "", &[], MAX_IN_MEMORY_CATALOG_SCAN),
+                )
+                .await?;
+            if entities.len() == MAX_IN_MEMORY_CATALOG_SCAN {
+                return Err(ConnectError::unavailable(
+                    "The in-memory entity catalog exceeds its authoritative scan bound.",
+                ));
+            }
+            entities
+        } else {
+            match self
+                .graph_call(self.graph.resolve(tenant, &filter.exact_agent_key))
+                .await
+            {
+                Ok(entity) => vec![entity],
+                Err(error) if error.code == connectrpc::ErrorCode::NotFound => Vec::new(),
+                Err(error) => return Err(error),
+            }
+        };
+        entities.retain(|entity| {
+            entity.agent_key.as_str() > after_agent_key
+                && in_memory_catalog_entity_matches(entity, filter)
+        });
+        entities.sort_by(|left, right| left.agent_key.cmp(&right.agent_key));
+        let truncated = entities.len() > limit;
+        entities.truncate(limit);
+
+        let relation_counts = if let Some(count_filter) = filter.relation_counts.as_ref() {
+            self.in_memory_catalog_relation_counts(tenant, revision_before, &entities, count_filter)
+                .await?
+        } else {
+            Vec::new()
+        };
+        let revision_after = self.graph_call(self.graph.revision(tenant)).await?;
+        if revision_after != revision_before {
+            return Err(ConnectError::unavailable(
+                "Entity catalog revision changed during the read.",
+            ));
+        }
+        let next_after_agent_key = truncated
+            .then(|| entities.last().map(|entity| entity.agent_key.clone()))
+            .flatten()
+            .unwrap_or_default();
+        Ok(StoreCatalogPage {
+            tenant_id: tenant.as_str().to_owned(),
+            graph_revision: revision_before,
+            entities,
+            truncated,
+            next_after_agent_key,
+            relation_counts,
+        })
+    }
+
+    async fn in_memory_catalog_relation_counts(
+        &self,
+        tenant: &TenantId,
+        graph_revision: u64,
+        entities: &[ContextEntity],
+        filter: &StoreCatalogRelationCountFilter,
+    ) -> Result<Vec<cerebro_organizational_store::EntityCatalogRelationCount>, ConnectError> {
+        let mut grouped = BTreeMap::<(String, String, String, String), BTreeSet<EntityId>>::new();
+        for chunk in entities.chunks(100) {
+            let keys = chunk
+                .iter()
+                .map(|entity| entity.agent_key.clone())
+                .collect::<Vec<_>>();
+            let neighborhoods = self
+                .graph_call(self.graph.expand_many(tenant, &keys, 1, 500))
+                .await?;
+            for root_key in keys {
+                let neighborhood = neighborhoods.get(&root_key).ok_or_else(|| {
+                    ConnectError::unavailable("The in-memory catalog omitted a requested root.")
+                })?;
+                if neighborhood.graph_revision != graph_revision || neighborhood.truncated {
+                    return Err(ConnectError::unavailable(
+                        "The in-memory catalog could not produce complete revision-bound relation counts.",
+                    ));
+                }
+                let neighbors = neighborhood
+                    .entities
+                    .iter()
+                    .map(|entity| (entity.entity_id.clone(), entity))
+                    .collect::<BTreeMap<_, _>>();
+                for edge in &neighborhood.edges {
+                    let (direction, neighbor_id) = if edge.from == neighborhood.root.entity_id {
+                        (StoreCatalogDirection::Outgoing, &edge.to)
+                    } else if edge.to == neighborhood.root.entity_id {
+                        (StoreCatalogDirection::Incoming, &edge.from)
+                    } else {
+                        continue;
+                    };
+                    let Some(neighbor) = neighbors.get(neighbor_id) else {
+                        return Err(ConnectError::unavailable(
+                            "The in-memory catalog relation omitted its neighbor.",
+                        ));
+                    };
+                    if !filter.directions.contains(&direction)
+                        || !filter.relations.contains(&edge.relation)
+                        || !filter.neighbor_kinds.contains(&neighbor.entity_kind)
+                    {
+                        continue;
+                    }
+                    let direction_key = match direction {
+                        StoreCatalogDirection::Incoming => "incoming",
+                        StoreCatalogDirection::Outgoing => "outgoing",
+                    };
+                    grouped
+                        .entry((
+                            root_key.clone(),
+                            direction_key.to_owned(),
+                            edge.relation.clone(),
+                            neighbor.entity_kind.clone(),
+                        ))
+                        .or_default()
+                        .insert(neighbor.entity_id.clone());
+                }
+            }
+        }
+        Ok(grouped
+            .into_iter()
+            .map(
+                |((agent_key, direction, relation, neighbor_kind), neighbors)| {
+                    cerebro_organizational_store::EntityCatalogRelationCount {
+                        agent_key,
+                        direction: if direction == "incoming" {
+                            StoreCatalogDirection::Incoming
+                        } else {
+                            StoreCatalogDirection::Outgoing
+                        },
+                        relation,
+                        neighbor_kind,
+                        count: neighbors.len() as u64,
+                    }
+                },
+            )
+            .collect())
     }
 }
 
@@ -590,23 +754,26 @@ impl OrganizationalGraphService for GraphRpc {
             .as_option()
             .ok_or_else(|| ConnectError::invalid_argument("entity catalog filter is required"))?;
         let tenant = self.authorized_tenant(&context, filter.tenant_id)?;
-        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
-            ConnectError::unavailable("The entity catalog projection is not loaded.")
-        })?;
         let limit = usize::try_from(request.limit)
             .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
-        let result = tokio::time::timeout(
-            GRAPH_RPC_TIMEOUT,
-            projection.list_catalog_entities(
-                &tenant,
-                &catalog_filter(filter),
-                limit,
-                request.after_agent_key,
-            ),
-        )
-        .await
-        .map_err(|_| ConnectError::unavailable("Entity catalog read exceeded 2 seconds."))?
-        .map_err(catalog_store_error)?;
+        let mapped_filter = catalog_filter(filter);
+        let result = if let Some(projection) = self.lifecycle_projection.as_ref() {
+            tokio::time::timeout(
+                GRAPH_RPC_TIMEOUT,
+                projection.list_catalog_entities(
+                    &tenant,
+                    &mapped_filter,
+                    limit,
+                    request.after_agent_key,
+                ),
+            )
+            .await
+            .map_err(|_| ConnectError::unavailable("Entity catalog read exceeded 2 seconds."))?
+            .map_err(catalog_store_error)?
+        } else {
+            self.in_memory_catalog_page(&tenant, &mapped_filter, limit, request.after_agent_key)
+                .await?
+        };
         Response::ok(catalog_page_response(result))
     }
 
@@ -1265,6 +1432,99 @@ fn catalog_filter(filter: &__buffa::view::EntityCatalogFilterView<'_>) -> StoreC
     }
 }
 
+fn validate_in_memory_catalog_request(
+    tenant: &TenantId,
+    filter: &StoreCatalogFilter,
+    after_agent_key: &str,
+) -> Result<(), ConnectError> {
+    let tenant_prefix = format!("urn:cerebro:{}:", tenant.as_str());
+    if (!filter.exact_agent_key.is_empty() && !filter.exact_agent_key.starts_with(&tenant_prefix))
+        || (!after_agent_key.is_empty() && !after_agent_key.starts_with(&tenant_prefix))
+        || !catalog_values_are_closed(&filter.runtime_ids)
+        || !catalog_values_are_closed(&filter.include_kinds)
+        || !catalog_values_are_closed(&filter.include_kind_prefixes)
+        || !catalog_values_are_closed(&filter.exclude_kinds)
+        || !catalog_values_are_closed(&filter.exclude_kind_prefixes)
+        || filter.search.trim() != filter.search
+    {
+        return Err(ConnectError::invalid_argument(
+            "invalid in-memory entity catalog request",
+        ));
+    }
+    if let Some(counts) = filter.relation_counts.as_ref()
+        && (counts.directions.is_empty()
+            || counts.relations.is_empty()
+            || counts.neighbor_kinds.is_empty()
+            || counts.directions.iter().collect::<BTreeSet<_>>().len() != counts.directions.len()
+            || !catalog_values_are_closed(&counts.relations)
+            || !catalog_values_are_closed(&counts.neighbor_kinds))
+    {
+        return Err(ConnectError::invalid_argument(
+            "invalid in-memory entity catalog relation counts",
+        ));
+    }
+    Ok(())
+}
+
+fn catalog_values_are_closed(values: &[String]) -> bool {
+    values.len() <= 100
+        && values
+            .iter()
+            .all(|value| !value.is_empty() && value.trim() == value)
+        && values.iter().collect::<BTreeSet<_>>().len() == values.len()
+}
+
+fn in_memory_catalog_entity_matches(entity: &ContextEntity, filter: &StoreCatalogFilter) -> bool {
+    if !filter.exact_agent_key.is_empty() && entity.agent_key != filter.exact_agent_key {
+        return false;
+    }
+    if !filter.source_id.is_empty() && entity.properties.get("source_id") != Some(&filter.source_id)
+    {
+        return false;
+    }
+    if !filter.runtime_ids.is_empty() {
+        let runtime_id = entity
+            .properties
+            .get("runtime_id")
+            .map(String::as_str)
+            .or_else(|| {
+                entity
+                    .authority
+                    .get("source_runtime_id")
+                    .and_then(serde_json::Value::as_str)
+            })
+            .unwrap_or_default();
+        if !filter.runtime_ids.iter().any(|value| value == runtime_id) {
+            return false;
+        }
+    }
+    let included = filter.include_kinds.is_empty() && filter.include_kind_prefixes.is_empty()
+        || filter.include_kinds.contains(&entity.entity_kind)
+        || filter
+            .include_kind_prefixes
+            .iter()
+            .any(|prefix| entity.entity_kind.starts_with(prefix));
+    if !included
+        || filter.exclude_kinds.contains(&entity.entity_kind)
+        || filter
+            .exclude_kind_prefixes
+            .iter()
+            .any(|prefix| entity.entity_kind.starts_with(prefix))
+    {
+        return false;
+    }
+    if filter.search.is_empty() {
+        return true;
+    }
+    let query = filter.search.to_lowercase();
+    entity.agent_key.to_lowercase().contains(&query)
+        || entity.label.to_lowercase().contains(&query)
+        || (filter.search_attributes
+            && entity.properties.iter().any(|(key, value)| {
+                key.to_lowercase().contains(&query) || value.to_lowercase().contains(&query)
+            }))
+}
+
 fn catalog_store_error(error: StoreError) -> ConnectError {
     match error {
         StoreError::Conflict(message)
@@ -1634,6 +1894,43 @@ mod tests {
             error.message.as_deref(),
             Some("The graph backend exceeded its RPC deadline.")
         );
+    }
+
+    #[tokio::test]
+    async fn in_memory_catalog_lists_demo_vendors_at_one_revision() {
+        let (graph, tenant, _) = crate::demo_graph().unwrap();
+        let graph = Arc::new(cerebro_agent_context::MemoryAgentGraph::new(graph));
+        let service = GraphRpc {
+            graph,
+            lifecycle_projection: None,
+            catalog_summary: None,
+            tenant_auth: TenantRequestAuth::new(
+                "test-organizational-graph-secret-32-bytes".to_owned(),
+            )
+            .unwrap(),
+        };
+
+        let page = service
+            .in_memory_catalog_page(
+                &tenant,
+                &StoreCatalogFilter {
+                    include_kinds: vec!["vendor".to_owned()],
+                    ..Default::default()
+                },
+                100,
+                "",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(page.graph_revision, 2);
+        assert_eq!(page.entities.len(), 2);
+        assert!(
+            page.entities
+                .iter()
+                .all(|entity| entity.entity_kind == "vendor")
+        );
+        assert!(!page.truncated);
     }
 
     #[test]

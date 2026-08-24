@@ -136,6 +136,8 @@ describe("cerebro fixture proxy responses", () => {
     expect(response?.status).toBe(200);
     expect(parseFixture(response!)).toMatchObject({
       summary: { total_vendors: 2, risk_queue_vendors: 1 },
+      data_authority: "fixture",
+      graph_revision: 0,
       vendors: [
         expect.objectContaining({ name: "Core SSO" }),
         expect.objectContaining({ name: "Payments Processor" }),

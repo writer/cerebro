@@ -14,9 +14,9 @@ import (
 const maxGRCVendorDiscoveryDecisionBodyBytes = 32 << 10
 
 type grcVendorsResponse struct {
-	Summary     grcvendor.Summary  `json:"summary"`
-	Vendors     []grcvendor.Vendor `json:"vendors"`
-	GeneratedAt time.Time          `json:"generated_at"`
+	grcvendor.VendorPage
+	Summary     grcvendor.Summary `json:"summary"`
+	GeneratedAt time.Time         `json:"generated_at"`
 }
 
 type grcVendorDetailResponse struct {
@@ -70,7 +70,7 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	vendors, err := grcvendor.NewWithCapabilities(a.deps.GraphReads.Catalog, a.deps.GraphReads.Neighborhoods).ListVendors(r.Context(), grcvendor.ListVendorsRequest{
+	page, err := grcvendor.NewWithCapabilities(a.deps.GraphReads.Catalog, a.deps.GraphReads.Neighborhoods).ListVendorsPage(r.Context(), grcvendor.ListVendorsRequest{
 		TenantID:    scope.TenantID,
 		RuntimeID:   scope.RuntimeID,
 		RuntimeIDs:  scope.RuntimeIDs,
@@ -88,6 +88,7 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
+	vendors := page.Vendors
 	vendors, err = a.enrichGRCVendors(r, scope, vendors)
 	if err != nil {
 		writeGRCError(w, err)
@@ -96,10 +97,11 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 	if queueOnly {
 		vendors = grcvendor.FilterVendorsByQueue(vendors)
 	}
-	vendors = grcvendor.SortAndLimitVendors(vendors, scope.Limit)
+	page.Vendors = grcvendor.SortAndLimitVendors(vendors, scope.Limit)
+	page.DataAuthority = "rust_graph"
 	writeJSON(w, http.StatusOK, grcVendorsResponse{
-		Summary:     grcvendor.Summarize(vendors),
-		Vendors:     vendors,
+		VendorPage:  page,
+		Summary:     grcvendor.Summarize(page.Vendors),
 		GeneratedAt: time.Now().UTC(),
 	})
 }

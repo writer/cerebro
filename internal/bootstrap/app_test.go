@@ -4131,6 +4131,45 @@ func TestGraphPackageImpactEndpointReturnsCanonicalPackageRoot(t *testing.T) {
 	}
 }
 
+func TestGRCVendorsReportsRustGraphAuthority(t *testing.T) {
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{{{
+		Values: map[string]any{
+			"urn":             "urn:cerebro:writer:vendor:one",
+			"tenant_id":       "writer",
+			"runtime_id":      "vendor-runtime",
+			"source_id":       "vendor-source",
+			"entity_type":     "vendor",
+			"label":           "Vendor One",
+			"attributes_json": `{"risk_level":"medium"}`,
+		},
+	}}}}
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/vendors?tenant_id=writer&limit=10")
+	if err != nil {
+		t.Fatalf("GET /grc/vendors error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/vendors status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		DataAuthority string `json:"data_authority"`
+		GraphRevision uint64 `json:"graph_revision"`
+		Vendors       []struct {
+			Name string `json:"name"`
+		} `json:"vendors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.DataAuthority != "rust_graph" || body.GraphRevision != 1 || len(body.Vendors) != 1 || body.Vendors[0].Name != "Vendor One" {
+		t.Fatalf("body = %#v, want one Rust graph vendor at revision 1", body)
+	}
+}
+
 func TestGraphImpactEndpointRejectsExplicitZeroBounds(t *testing.T) {
 	app := New(config.Config{}, Dependencies{GraphStore: &stubGraphStore{}}, nil)
 	server := httptest.NewServer(app.Handler())
