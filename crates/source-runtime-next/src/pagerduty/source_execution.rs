@@ -1,4 +1,4 @@
-//! PagerDuty `user` bridge into the closed source-execution dispatcher.
+//! PagerDuty family bridges into the closed source-execution dispatcher.
 //!
 //! The adapter consumes authenticated tenant context, public configuration, and
 //! bounded provider response bytes. The trusted Go host retains credential
@@ -14,117 +14,32 @@ use crate::source_execution::{
     SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
     SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1,
     SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
-    SourceWorkerRuntimeMetadataV2, canonical_http_execution_digest, canonical_plan_digest,
+    SourceWorkerRuntimeMetadataV2, canonical_http_execution_digest,
     canonical_request_intent_digest, canonical_result_digest, validate_and_deduplicate_records,
-    validate_execution_context, validate_runtime_metadata,
 };
 
-use super::{
-    PagerDutyError, PagerDutyFamily, PagerDutyFilters, PagerDutyKernel,
-    normalize::event_id,
-    origin::{DEFAULT_BASE_URL, origin_string, validate_origin},
+use super::PagerDutyFamily;
+
+#[path = "source_execution/catalog.rs"]
+mod catalog;
+
+pub(crate) use catalog::{
+    PAGERDUTY_SOURCE_EXECUTION_ADAPTERS, PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER,
 };
 
-const SOURCE_ID: &str = "pagerduty";
-const FAMILY_ID: &str = "user";
-const PROVIDER_KERNEL: &str = "pagerduty.user";
-const PLAN_ID: &str = "source-plan-v1:pagerduty:user";
-const METHOD: &str = "GET";
-const PATH: &str = "/users";
-const RECORD_SELECTOR: &str = "$.users[*]";
-const ID_FIELD: &str = "id";
-const MAX_RESPONSE_BYTES: u64 = 8 << 20;
-const EVENT_KIND: &str = "pagerduty.user";
-const SCHEMA_REF: &str = "pagerduty/user/v1";
+use catalog::{DEFAULT_BASE_URL, PagerDutySourceExecutionAdapter, map_error, optional};
 
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct PagerDutyUserSourceExecutionAdapter;
-
-pub(crate) static PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER: PagerDutyUserSourceExecutionAdapter =
-    PagerDutyUserSourceExecutionAdapter;
-
-impl PagerDutyUserSourceExecutionAdapter {
-    pub(crate) fn compiled_plan(&self) -> SourceExecutionPlanV1 {
-        let mut plan = SourceExecutionPlanV1 {
-            plan_id: PLAN_ID.to_owned(),
-            source_id: SOURCE_ID.to_owned(),
-            family_id: FAMILY_ID.to_owned(),
-            provider_kernel: PROVIDER_KERNEL.to_owned(),
-            method: METHOD.to_owned(),
-            origin: DEFAULT_BASE_URL.to_owned(),
-            path: PATH.to_owned(),
-            record_selector: RECORD_SELECTOR.to_owned(),
-            id_field: ID_FIELD.to_owned(),
-            singleton_fallback_id: String::new(),
-            max_response_bytes: MAX_RESPONSE_BYTES,
-            event_kind: EVENT_KIND.to_owned(),
-            schema_ref: SCHEMA_REF.to_owned(),
-            required_attributes: [
-                "external_id",
-                "family",
-                "source_provider",
-                "source_product",
-                "user_id",
-            ]
-            .into_iter()
-            .map(str::to_owned)
-            .collect(),
-            required_payload_fields: vec!["id".to_owned()],
-            plan_digest_sha256: String::new(),
-        };
-        plan.plan_digest_sha256 = canonical_plan_digest(&plan);
-        plan
-    }
-
-    fn validate_plan(&self, plan: &SourceExecutionPlanV1) -> Result<(), SourceExecutionError> {
-        if plan != &self.compiled_plan() {
-            return Err(SourceExecutionError::InvalidPlan);
-        }
-        Ok(())
-    }
-
-    fn kernel(
-        &self,
-        context: &SourceWorkerExecutionContextV1,
-        metadata: &SourceWorkerRuntimeMetadataV2,
-    ) -> Result<(PagerDutyKernel, String), SourceExecutionError> {
-        validate_execution_context(context)?;
-        validate_runtime_metadata(metadata)?;
-        if public_value(&metadata.public_config, "family").is_some_and(|value| value != FAMILY_ID) {
-            return Err(SourceExecutionError::MissingConfiguration);
-        }
-        let base_url = public_value(&metadata.public_config, "base_url");
-        let allowed_origin = origin_string(&validate_origin(base_url).map_err(map_error)?);
-        let page_size = public_value(&metadata.public_config, "per_page")
-            .map(|value| {
-                value
-                    .parse::<usize>()
-                    .map_err(|_| SourceExecutionError::MissingConfiguration)
-            })
-            .transpose()?;
-        let kernel = PagerDutyKernel::new(
-            base_url,
-            &context.tenant_id,
-            PagerDutyFamily::User,
-            PagerDutyFilters::default(),
-            page_size,
-        )
-        .map_err(map_error)?;
-        Ok((kernel, allowed_origin))
-    }
-}
-
-impl SourceExecutionAdapter for PagerDutyUserSourceExecutionAdapter {
+impl SourceExecutionAdapter for PagerDutySourceExecutionAdapter {
     fn source_id(&self) -> &'static str {
-        SOURCE_ID
+        "pagerduty"
     }
 
     fn family_id(&self) -> &'static str {
-        FAMILY_ID
+        self.family().as_str()
     }
 
     fn provider_kernel(&self) -> &'static str {
-        PROVIDER_KERNEL
+        self.family().event_kind()
     }
 
     fn validate_record_identity(
@@ -132,20 +47,15 @@ impl SourceExecutionAdapter for PagerDutyUserSourceExecutionAdapter {
         context: &SourceWorkerExecutionContextV1,
         record: &SourceWorkerRecordV1,
     ) -> Result<(), SourceExecutionError> {
-        let expected = event_id(
-            &context.tenant_id,
-            DEFAULT_BASE_URL,
-            PATH,
-            PagerDutyFamily::User,
-            &record.provider_id,
-        );
-        if record.event_id != expected
-            || record.attributes.get("external_id") != Some(&record.provider_id)
-            || record.attributes.get("user_id") != Some(&record.provider_id)
-        {
-            return Err(SourceExecutionError::TenantMismatch);
-        }
-        Ok(())
+        let metadata = SourceWorkerRuntimeMetadataV2 {
+            public_config: HashMap::from([
+                ("family".to_owned(), self.family().as_str().to_owned()),
+                ("base_url".to_owned(), DEFAULT_BASE_URL.to_owned()),
+            ]),
+            prior_terminal_watermark_unix_millis: 0,
+            prior_checkpoint: String::new(),
+        };
+        self.validate_identity(context, record, &metadata)
     }
 
     fn validate_record_identity_v2(
@@ -154,24 +64,7 @@ impl SourceExecutionAdapter for PagerDutyUserSourceExecutionAdapter {
         record: &SourceWorkerRecordV1,
         metadata: &SourceWorkerRuntimeMetadataV2,
     ) -> Result<(), SourceExecutionError> {
-        let origin = origin_string(
-            &validate_origin(public_value(&metadata.public_config, "base_url"))
-                .map_err(map_error)?,
-        );
-        let expected = event_id(
-            &context.tenant_id,
-            &origin,
-            PATH,
-            PagerDutyFamily::User,
-            &record.provider_id,
-        );
-        if record.event_id != expected
-            || record.attributes.get("external_id") != Some(&record.provider_id)
-            || record.attributes.get("user_id") != Some(&record.provider_id)
-        {
-            return Err(SourceExecutionError::TenantMismatch);
-        }
-        Ok(())
+        self.validate_identity(context, record, metadata)
     }
 
     fn plan(
@@ -206,7 +99,8 @@ impl SourceExecutionAdapter for PagerDutyUserSourceExecutionAdapter {
         let provider_request = kernel
             .plan(optional(&context.prior_cursor))
             .map_err(map_error)?;
-        if provider_request.url().path() != plan.path
+        if (self.family() != PagerDutyFamily::Integration
+            && provider_request.url().path() != plan.path)
             || provider_request.method() != plan.method
             || provider_request.authorization_header() != "Authorization"
             || provider_request.authorization_scheme() != "Token token="
@@ -292,7 +186,7 @@ impl SourceExecutionAdapter for PagerDutyUserSourceExecutionAdapter {
             .into_iter()
             .map(|record| {
                 if record.tenant_id != context.tenant_id
-                    || record.family != PagerDutyFamily::User
+                    || record.family != self.family()
                     || record.event_kind != plan.event_kind
                     || record.schema_ref != plan.schema_ref
                 {
@@ -331,12 +225,11 @@ pub(crate) fn durable_checkpoint_cursor(
     plan: &SourceExecutionPlanV1,
     result: &SourceWorkerDecodeResultV1,
 ) -> Option<String> {
-    if plan.source_id != SOURCE_ID
-        || plan.family_id != FAMILY_ID
-        || plan.provider_kernel != PROVIDER_KERNEL
-    {
-        return None;
-    }
+    PAGERDUTY_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+        plan.source_id == adapter.source_id()
+            && plan.family_id == adapter.family_id()
+            && plan.provider_kernel == adapter.provider_kernel()
+    })?;
     if !result.next_cursor.is_empty() {
         return Some(result.next_cursor.clone());
     }
@@ -349,18 +242,6 @@ pub(crate) fn durable_checkpoint_cursor(
     )
 }
 
-fn public_value<'a>(config: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
-    config
-        .get(key)
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-}
-
-fn optional(value: &str) -> Option<&str> {
-    (!value.is_empty()).then_some(value)
-}
-
 fn timestamp(unix_millis: i64) -> Result<OffsetDateTime, SourceExecutionError> {
     OffsetDateTime::from_unix_timestamp_nanos(i128::from(unix_millis) * 1_000_000)
         .map_err(|_| SourceExecutionError::InvalidExecutionContext)
@@ -371,32 +252,6 @@ fn parse_timestamp(value: &str) -> Result<i64, SourceExecutionError> {
         .map_err(|_| SourceExecutionError::InvalidProviderRecord)?
         .unix_timestamp_nanos();
     i64::try_from(nanos / 1_000_000).map_err(|_| SourceExecutionError::InvalidProviderRecord)
-}
-
-fn map_error(error: PagerDutyError) -> SourceExecutionError {
-    match error {
-        PagerDutyError::InvalidFamily => SourceExecutionError::UnknownAdapter,
-        PagerDutyError::InvalidBaseUrl
-        | PagerDutyError::MissingServiceId
-        | PagerDutyError::InvalidServiceId
-        | PagerDutyError::InvalidPageSize => SourceExecutionError::MissingConfiguration,
-        PagerDutyError::MissingTenantId => SourceExecutionError::InvalidExecutionContext,
-        PagerDutyError::InvalidCursor => SourceExecutionError::InvalidCursor,
-        PagerDutyError::RequestScopeMismatch => SourceExecutionError::InvalidPlan,
-        PagerDutyError::AuthenticationRejected => SourceExecutionError::AuthenticationRejected,
-        PagerDutyError::PermissionDenied => SourceExecutionError::RequiredProviderScopeMissing,
-        PagerDutyError::RateLimited => SourceExecutionError::ProviderRateLimit,
-        PagerDutyError::ProviderUnavailable | PagerDutyError::UnexpectedProviderStatus => {
-            SourceExecutionError::UnexpectedProviderStatus
-        }
-        PagerDutyError::ResponseTooLarge => SourceExecutionError::ResponseTooLarge,
-        PagerDutyError::TooManyRecords => SourceExecutionError::ResultTooLarge,
-        PagerDutyError::MalformedResponse => SourceExecutionError::MalformedResponse,
-        PagerDutyError::MissingProviderIdentity => SourceExecutionError::MissingStableIdentity,
-        PagerDutyError::InvalidProviderIdentity => SourceExecutionError::InvalidProviderRecord,
-        PagerDutyError::ConflictingProviderIdentity => SourceExecutionError::DuplicateConflict,
-        PagerDutyError::EventContractRejected => SourceExecutionError::EventContractRejected,
-    }
 }
 
 #[cfg(test)]
