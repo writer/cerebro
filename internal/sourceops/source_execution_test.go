@@ -29,6 +29,9 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		"JumpCloud default":           {"jumpcloud", "", "users", true},
 		"JumpCloud family":            {"jumpcloud", "group_members", "group_members", true},
 		"unknown JumpCloud family":    {"jumpcloud", "future-family", "future-family", true},
+		"SentinelOne threat":          {"sentinelone", "threat", "threat", true},
+		"SentinelOne application":     {"sentinelone", "application", "application", true},
+		"unknown SentinelOne family":  {"sentinelone", "future-family", "future-family", false},
 		"compatibility source":        {"gcp", "audit", "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -102,6 +105,51 @@ func TestUnknownDigitalOceanFamilyFailsClosedWithoutLegacyCalls(t *testing.T) {
 	}
 	if legacy.checkCalls != 0 {
 		t.Fatalf("legacy check calls = %d", legacy.checkCalls)
+	}
+}
+
+func TestSentinelOneCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
+	const credentialFixture = "host-only-sentinelone-secret" // #nosec G101 -- synthetic boundary-test sentinel, not credential material.
+	for _, family := range []string{"activity", "agent", "application", "exclusion", "group", "site", "threat"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &authorityProbeSource{sourceID: "sentinelone"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := New(registry)
+			service.sourceWorker = previewWorkerStub{}
+			calls := 0
+			service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, reference string, credential []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+				calls++
+				if reference != previewCredentialReference || string(credential) != credentialFixture {
+					t.Fatal("SentinelOne credential was not confined to the trusted runner boundary")
+				}
+				encoded, marshalErr := json.Marshal(input)
+				if marshalErr != nil || strings.Contains(string(encoded), credentialFixture) || input.Scope.PublicConfig["token"] != "" {
+					t.Fatalf("credential crossed the worker protocol: %s, %v", encoded, marshalErr)
+				}
+				if input.SourceID != "sentinelone" || input.FamilyID != family {
+					t.Fatalf("Rust selection = %s.%s", input.SourceID, input.FamilyID)
+				}
+				return sentinelOnePreviewOutput(family, input.Scope.PriorTerminalWatermarkUnixMillis), nil
+			}
+			config := map[string]string{"family": family, "tenant_id": "tenant-1", "token": credentialFixture, "base_url": "https://sentinelone.example.test"}
+			if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "sentinelone", Config: config}); err != nil {
+				t.Fatal(err)
+			}
+			discovered, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "sentinelone", Config: config})
+			if err != nil || len(discovered.GetUrns()) != 1 {
+				t.Fatalf("Discover() = %#v, %v", discovered, err)
+			}
+			read, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "sentinelone", Config: config})
+			if err != nil || len(read.GetEvents()) != 1 || read.GetEvents()[0].GetSourceId() != "sentinelone" || read.GetCheckpoint().GetCursorOpaque() == "" {
+				t.Fatalf("Read() = %#v, %v", read, err)
+			}
+			if calls != 3 || legacy.checkCalls != 0 || legacy.discoverCalls != 0 || legacy.readCalls != 0 {
+				t.Fatalf("calls = Rust %d, Go check/discover/read %d/%d/%d", calls, legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
+			}
+		})
 	}
 }
 
@@ -600,6 +648,26 @@ func digitalOceanPreviewOutput(family string, priorWatermark int64) *sourceworke
 			"tenant_id": "tenant-1", "source_event_id": providerID, "resource_id": providerID,
 			"resource_type": strings.TrimSuffix(family, "s"),
 			"resource_urn":  "urn:cerebro:tenant-1:digitalocean_" + family + ":" + providerID,
+		},
+		PayloadJson: []byte(`{"id":"` + providerID + `"}`),
+	}
+	return &sourceworker.ExecutionOutput{
+		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
+		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: providerID, CheckpointWatermarkUnixMillis: watermark},
+	}
+}
+
+func sentinelOnePreviewOutput(family string, priorWatermark int64) *sourceworker.ExecutionOutput {
+	watermark := max(priorWatermark, 1_725_000_000_000)
+	providerID := family + "-1"
+	plan := &cerebrov1.SourceExecutionPlanV1{
+		SourceId: "sentinelone", FamilyId: family, EventKind: "sentinelone." + family, SchemaRef: "sentinelone/" + family + "/v1",
+	}
+	record := &cerebrov1.SourceWorkerRecordV1{
+		ProviderId: providerID, EventId: "sentinelone-tenant-1-" + providerID, OccurredAtUnixMillis: watermark,
+		Attributes: map[string]string{
+			"family": family, "resource_id": providerID,
+			"resource_urn": "urn:cerebro:tenant-1:sentinelone_" + family + ":" + providerID,
 		},
 		PayloadJson: []byte(`{"id":"` + providerID + `"}`),
 	}

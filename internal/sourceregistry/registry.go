@@ -37,7 +37,6 @@ import (
 	sailpointidentitynowsource "github.com/writer/cerebro/sources/sailpoint_identitynow"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
-	sentinelonesource "github.com/writer/cerebro/sources/sentinelone"
 	snyksource "github.com/writer/cerebro/sources/snyk"
 	trivysource "github.com/writer/cerebro/sources/trivy"
 	trustedendpointsource "github.com/writer/cerebro/sources/trustedendpoint"
@@ -52,7 +51,7 @@ type builtinSourceLoader struct {
 	load func() (sourcecdk.Source, error)
 }
 
-var workerCatalogSourceIDs = []string{"digitalocean"}
+var workerCatalogSourceIDs = []string{"digitalocean", "sentinelone"}
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
@@ -227,12 +226,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "securitytoolingmap",
 		load: func() (sourcecdk.Source, error) {
 			return securitytoolingmapsource.New()
-		},
-	},
-	{
-		name: "sentinelone",
-		load: func() (sourcecdk.Source, error) {
-			return sentinelonesource.New()
 		},
 	},
 	{

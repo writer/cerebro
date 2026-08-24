@@ -153,7 +153,11 @@ pub fn validate_http_execution(
         || !matches!(request.method.as_str(), "GET" | "POST")
         || !matches!(
             execution.credential_operation.as_str(),
-            "source.bearer" | "jumpcloud.x_api_key" | "sentinelone.api_token" | "twilio.basic"
+            "source.bearer"
+                | "jumpcloud.x_api_key"
+                | "sentinelone.api_token"
+                | "twilio.basic"
+                | "pagerduty.token"
         )
     {
         return Err(SourceExecutionError::InvalidPlan);
@@ -576,7 +580,7 @@ fn required_payload_value<'a>(
 
 fn validate_record(record: &SourceWorkerRecordV1) -> Result<(), SourceExecutionError> {
     if !bounded_text(&record.provider_id, MAX_CONTEXT_IDENTIFIER_BYTES)
-        || !safe_identifier(&record.event_id, 512)
+        || !safe_event_identifier(&record.event_id)
         || record.occurred_at_unix_millis <= 0
     {
         return Err(SourceExecutionError::MissingStableIdentity);
@@ -587,6 +591,14 @@ fn validate_record(record: &SourceWorkerRecordV1) -> Result<(), SourceExecutionE
     serde_json::from_slice::<serde_json::Value>(&record.payload_json)
         .map_err(|_| SourceExecutionError::MalformedResponse)?;
     Ok(())
+}
+
+fn safe_event_identifier(value: &str) -> bool {
+    safe_identifier(value, 512)
+        || (value.starts_with("sentinelone-application-")
+            && value == value.trim()
+            && value.len() <= 256
+            && !value.chars().any(char::is_control))
 }
 
 fn update_record_digest(hasher: &mut Sha256, record: &SourceWorkerRecordV1) {
