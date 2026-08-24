@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	tailscaleSourceID                 = "tailscale"
 	previewCredentialReference        = "credential:source-preview:token" // #nosec G101 -- opaque credential-reference label.
 	previewLeaseOwner                 = "source-preview"
 	previewRuntimeGeneration   uint64 = 1
@@ -39,36 +38,33 @@ func (s *Service) WithSourceExecutionWorkerPath(path string) *Service {
 	return s
 }
 
-func tailscaleSource(sourceID string) bool {
-	return strings.TrimSpace(sourceID) == tailscaleSourceID
+func rustSourceFamily(sourceID string, config map[string]string) (string, bool) {
+	return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
 }
 
-func (s *Service) executeTailscale(ctx context.Context, config map[string]string, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+func (s *Service) executeRustSource(ctx context.Context, sourceID, family string, config map[string]string, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	if s == nil || s.sourceWorker == nil || s.runSourceExecution == nil {
-		return sourcecdk.Pull{}, sourceExecutionError("", sourceworker.ErrWorkerUnsupported)
+		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, sourceworker.ErrWorkerUnsupported)
 	}
-	family := strings.TrimSpace(config["family"])
-	if family == "" {
-		family = "device"
-	}
+	sourceID, family = strings.TrimSpace(sourceID), strings.TrimSpace(family)
 	tenantID := strings.TrimSpace(config["tenant_id"])
-	credential := []byte(strings.TrimSpace(config["token"]))
+	credential := []byte(previewCredential(sourceID, config))
 	if tenantID == "" || len(credential) == 0 {
 		clear(credential)
-		return sourcecdk.Pull{}, sourceExecutionError(family, sourceworker.ErrSourceConfiguration)
+		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, sourceworker.ErrSourceConfiguration)
 	}
-	providerCursor, priorWatermark, err := sourceworker.ProviderResume(cursor, tailscaleSourceID, family)
+	providerCursor, priorWatermark, err := sourceworker.ProviderResume(cursor, sourceID, family)
 	if err != nil {
 		clear(credential)
-		return sourcecdk.Pull{}, sourceExecutionError(family, err)
+		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
 	}
 	publicConfig := sourceworker.PublicExecutionConfig(config)
 	publicConfig["family"] = family
 	now := time.Now().UTC()
 	input := sourceworker.ExecutionInput{
-		SourceID: tailscaleSourceID, FamilyID: family, CredentialReference: previewCredentialReference, PageNumber: 1,
+		SourceID: sourceID, FamilyID: family, CredentialReference: previewCredentialReference, PageNumber: 1,
 		Scope: sourceworker.CredentialScope{
-			TenantID: tenantID, RuntimeID: "source-preview-tailscale-" + family,
+			TenantID: tenantID, RuntimeID: "source-preview-" + sourceID + "-" + family,
 			PriorCursor: providerCursor, PublicConfig: publicConfig,
 			PriorTerminalWatermarkUnixMillis: priorWatermark, PriorCheckpoint: strings.TrimSpace(cursor.GetOpaque()),
 			LeaseOwner: previewLeaseOwner, RuntimeGeneration: previewRuntimeGeneration,
@@ -78,13 +74,22 @@ func (s *Service) executeTailscale(ctx context.Context, config map[string]string
 	output, err := s.runSourceExecution(ctx, s.sourceWorker, previewCredentialReference, credential, now.Add(time.Minute), input)
 	clear(credential)
 	if err != nil {
-		return sourcecdk.Pull{}, sourceExecutionError(family, err)
+		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
 	}
 	pull, err := sourceworker.PullFromExecutionOutput(output, tenantID)
 	if err != nil {
-		return sourcecdk.Pull{}, sourceExecutionError(family, err)
+		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
 	}
 	return pull, nil
+}
+
+func previewCredential(sourceID string, config map[string]string) string {
+	if strings.TrimSpace(sourceID) == "azure" {
+		if credential := strings.TrimSpace(config["graph_token"]); credential != "" {
+			return credential
+		}
+	}
+	return strings.TrimSpace(config["token"])
 }
 
 func discoverURNs(pull sourcecdk.Pull) ([]sourcecdk.URN, error) {
@@ -92,6 +97,15 @@ func discoverURNs(pull sourcecdk.Pull) ([]sourcecdk.URN, error) {
 	urns := make([]sourcecdk.URN, 0, len(pull.Events))
 	for _, event := range pull.Events {
 		raw := strings.TrimSpace(event.GetAttributes()["resource_urn"])
+		if raw == "" {
+			attributes := event.GetAttributes()
+			provider := strings.TrimSpace(attributes["resource_provider"])
+			resourceType := strings.TrimSpace(attributes["resource_type"])
+			resourceID := strings.TrimSpace(attributes["resource_id"])
+			if provider != "" && resourceType != "" && resourceID != "" {
+				raw = fmt.Sprintf("urn:cerebro:%s:%s_%s:%s", event.GetTenantId(), provider, resourceType, resourceID)
+			}
+		}
 		urn, err := sourcecdk.ParseURN(raw)
 		if err != nil {
 			return nil, fmt.Errorf("%w: Rust record resource URN is invalid", sourceworker.ErrWorkerContract)
@@ -105,7 +119,7 @@ func discoverURNs(pull sourcecdk.Pull) ([]sourcecdk.URN, error) {
 	return urns, nil
 }
 
-func sourceExecutionError(family string, err error) error {
+func sourceExecutionError(sourceID, family string, err error) error {
 	kind := sourcecdk.ErrorKindProvider
 	switch {
 	case errors.Is(err, sourceworker.ErrSourceConfiguration), errors.Is(err, sourceworker.ErrCredentialReferenceMissing), errors.Is(err, sourceworker.ErrWorkerUnsupported):
@@ -121,5 +135,5 @@ func sourceExecutionError(family string, err error) error {
 	case errors.Is(err, sourceworker.ErrProviderMalformedResponse), errors.Is(err, sourceworker.ErrWorkerContract), errors.Is(err, sourceworker.ErrInvalidExecution):
 		kind = sourcecdk.ErrorKindDecode
 	}
-	return sourcecdk.WrapSourceError(kind, tailscaleSourceID, family, err)
+	return sourcecdk.WrapSourceError(kind, sourceID, family, err)
 }

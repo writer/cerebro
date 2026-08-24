@@ -73,8 +73,8 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 	if err != nil {
 		return nil, err
 	}
-	if tailscaleSource(req.GetSourceId()) {
-		if _, err := s.executeTailscale(ctx, config, nil); err != nil {
+	if family, authoritative := rustSourceFamily(req.GetSourceId(), config); authoritative {
+		if _, err := s.executeRustSource(ctx, req.GetSourceId(), family, config, nil); err != nil {
 			return nil, sourceOperationError(err)
 		}
 	} else if err := source.Check(ctx, sourcecdk.NewConfig(config)); err != nil {
@@ -108,8 +108,8 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 		return nil, err
 	}
 	var urns []sourcecdk.URN
-	if tailscaleSource(req.GetSourceId()) {
-		pull, executeErr := s.executeTailscale(ctx, config, nil)
+	if family, authoritative := rustSourceFamily(req.GetSourceId(), config); authoritative {
+		pull, executeErr := s.executeRustSource(ctx, req.GetSourceId(), family, config, nil)
 		if executeErr != nil {
 			return nil, sourceOperationError(executeErr)
 		}
@@ -153,8 +153,8 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (_
 		return nil, err
 	}
 	var pull sourcecdk.Pull
-	if tailscaleSource(req.GetSourceId()) {
-		pull, err = s.executeTailscale(ctx, config, req.GetCursor())
+	if family, authoritative := rustSourceFamily(req.GetSourceId(), config); authoritative {
+		pull, err = s.executeRustSource(ctx, req.GetSourceId(), family, config, req.GetCursor())
 	} else {
 		pull, err = source.Read(ctx, sourcecdk.NewConfig(config), req.GetCursor())
 	}
