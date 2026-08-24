@@ -1,6 +1,6 @@
 use prost::Message;
 
-use crate::digitalocean::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
+use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
 use crate::sentinelone::SentinelOneAgentSourceExecutionAdapter;
 use crate::twilio::adapter::{
     TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER, TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER,
@@ -132,10 +132,13 @@ impl SourceExecutionDispatcher {
         {
             return Ok(SENTINELONE_AGENT.compiled_plan());
         }
-        if request.source_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.source_id()
-            && request.family_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.family_id()
+        if let Some(adapter) = DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS
+            .iter()
+            .find(|adapter| {
+                request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+            })
         {
-            return Ok(DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+            return Ok(adapter.compiled_plan());
         }
         if request.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
@@ -182,12 +185,15 @@ impl SourceExecutionDispatcher {
         {
             return Ok(&SENTINELONE_AGENT);
         }
-        if plan.source_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.source_id()
-            && plan.family_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.family_id()
-            && plan.provider_kernel
-                == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        if let Some(adapter) = DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS
+            .iter()
+            .find(|adapter| {
+                plan.source_id == adapter.source_id()
+                    && plan.family_id == adapter.family_id()
+                    && plan.provider_kernel == adapter.provider_kernel()
+            })
         {
-            return Ok(&DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER);
+            return Ok(adapter);
         }
         if plan.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
