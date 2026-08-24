@@ -125,7 +125,14 @@ pub(super) fn validated_kernel(
     }
     let guild_id = public_value(&metadata.public_config, "guild_id")
         .ok_or(SourceExecutionError::MissingConfiguration)?;
-    let application_id = public_value(&metadata.public_config, "application_id");
+    let application_id = if family == DiscordFamily::Permission {
+        Some(
+            public_value(&metadata.public_config, "application_id")
+                .ok_or(SourceExecutionError::MissingConfiguration)?,
+        )
+    } else {
+        None
+    };
     let page_size = if matches!(family, DiscordFamily::AuditLog | DiscordFamily::Member) {
         public_value(&metadata.public_config, "per_page")
             .map(|value| {
