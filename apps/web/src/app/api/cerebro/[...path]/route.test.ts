@@ -18,6 +18,7 @@ afterEach(() => {
   if (originalLocalIdentityFallback === undefined) delete process.env.CEREBRO_LOCAL_IDENTITY_FALLBACK;
   else process.env.CEREBRO_LOCAL_IDENTITY_FALLBACK = originalLocalIdentityFallback;
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
@@ -95,6 +96,38 @@ describe("Cerebro proxy route", () => {
     expect(upstreamHeaders.get("x-cerebro-api-key")).toBeNull();
     expect(upstreamHeaders.get("x-cerebro-user-id")).toBeNull();
     expect(upstreamHeaders.get("x-cerebro-user-subject")).toBeNull();
+  });
+
+  it("routes runtime health to Rust with server-owned tenant authentication", async () => {
+    vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
+    vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", "tenant-a");
+    vi.stubEnv(
+      "CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET",
+      "test-organizational-graph-secret-32-bytes",
+    );
+    let upstreamURL = "";
+    let upstreamHeaders = new Headers();
+    vi.stubGlobal("fetch", vi.fn(async (url: URL | RequestInfo, init?: RequestInit) => {
+      upstreamURL = url.toString();
+      upstreamHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ runtimes: [], source_summaries: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }));
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cerebro/v1/source-runtimes/health?limit=500"),
+      { params: Promise.resolve({ path: ["v1", "source-runtimes", "health"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamURL).toBe("http://rust-platform.internal:8080/v1/source-runtimes/health?limit=500");
+    expect(upstreamHeaders.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(upstreamHeaders.get("authorization")).toBe(
+      "Bearer 34b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d6",
+    );
+    expect(upstreamHeaders.get("x-cerebro-api-key")).toBeNull();
   });
 
   it("relays signed Rust-authority writes without authorizing or stamping in Next", async () => {
