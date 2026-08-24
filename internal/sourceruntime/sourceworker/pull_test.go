@@ -86,6 +86,9 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 	}{
 		"Azure authorization policy": {" azure ", " authorization_policy ", "authorization_policy", true},
 		"other Azure family":         {"azure", "user", "user", false},
+		"DigitalOcean default":       {" digitalocean ", "", "droplets", true},
+		"DigitalOcean droplets":      {"digitalocean", " droplets ", "droplets", true},
+		"other DigitalOcean family":  {"digitalocean", "vpcs", "vpcs", false},
 		"JumpCloud default":          {"jumpcloud", "", "users", true},
 		"JumpCloud family":           {"jumpcloud", "group_members", "group_members", true},
 		"unknown JumpCloud family":   {"jumpcloud", "future-family", "future-family", true},

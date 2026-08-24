@@ -205,7 +205,7 @@ fn timestamp_or_epoch(value: &str) -> Result<String, DigitalOceanError> {
         .map_err(|_| DigitalOceanError::InvalidProviderRecord)
 }
 
-fn event_id(tenant_id: &str, family: DigitalOceanFamily, provider_id: &str) -> String {
+pub(super) fn event_id(tenant_id: &str, family: DigitalOceanFamily, provider_id: &str) -> String {
     let digest = Sha256::digest(
         format!(
             "digitalocean\0{tenant_id}\0{}\0{provider_id}",
