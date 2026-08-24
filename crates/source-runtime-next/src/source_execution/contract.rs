@@ -153,7 +153,11 @@ pub fn validate_http_execution(
         || !matches!(request.method.as_str(), "GET" | "POST")
         || !matches!(
             execution.credential_operation.as_str(),
-            "source.bearer" | "jumpcloud.x_api_key" | "sentinelone.api_token" | "twilio.basic"
+            "source.bearer"
+                | "jumpcloud.x_api_key"
+                | "sentinelone.api_token"
+                | "twilio.basic"
+                | "pagerduty.token"
         )
     {
         return Err(SourceExecutionError::InvalidPlan);

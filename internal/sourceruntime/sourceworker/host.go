@@ -196,6 +196,8 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 		return "Authorization", append([]byte("ApiToken "), credential...), nil
 	case "twilio.basic":
 		return "Authorization", append([]byte("Basic "), credential...), nil
+	case "pagerduty.token":
+		return "Authorization", append([]byte("Token token="), credential...), nil
 	default:
 		return "", nil, fmt.Errorf("%w: credential operation is not registered", ErrWorkerContract)
 	}
