@@ -1,9 +1,8 @@
-//! SentinelOne `agent` adapter for the canonical source-execution protocol.
+//! SentinelOne adapters for the canonical source-execution protocol.
 //!
-//! This module intentionally remains outside the provider facade until the
-//! shared `source_execution` module publishes its settled public prost types,
-//! closed error type, and digest helpers. It does not define a second wire
-//! schema. Adding the module declaration is owned by the shared-runtime change.
+//! The agent adapter remains the representative compatibility oracle. Direct
+//! family adapters live in a focused sibling module and reuse this module's
+//! request, receipt, status, identity, and checkpoint invariants.
 
 use crate::source_execution::{
     SourceExecutionAdapter, SourceExecutionError, SourceExecutionPlanV1,
@@ -19,6 +18,8 @@ use super::{
     SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
 };
 
+#[path = "source_execution_adapter/direct.rs"]
+mod direct;
 #[path = "source_execution_adapter/error.rs"]
 mod error;
 #[path = "source_execution_adapter/normalization.rs"]
@@ -28,6 +29,8 @@ mod runtime;
 
 use error::SentinelOneAgentAdapterError;
 use normalization::normalize_agent_record;
+
+pub(crate) use direct::SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS;
 
 const SOURCE_ID: &str = "sentinelone";
 const FAMILY_ID: &str = "agent";
@@ -350,7 +353,14 @@ pub(crate) fn durable_checkpoint_cursor(
     plan: &SourceExecutionPlanV1,
     result: &SourceWorkerDecodeResultV1,
 ) -> Option<String> {
-    if plan.source_id != SOURCE_ID || plan.family_id != FAMILY_ID {
+    let direct_family = SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS
+        .iter()
+        .any(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        });
+    if !direct_family && (plan.source_id != SOURCE_ID || plan.family_id != FAMILY_ID) {
         return None;
     }
     if !result.next_cursor.is_empty() {
