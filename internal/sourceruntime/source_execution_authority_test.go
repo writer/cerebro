@@ -291,19 +291,115 @@ func TestTwilioAccountsNeverFallsBackToGoAuthority(t *testing.T) {
 	}
 }
 
-func TestOtherTwilioFamilyRemainsGoCompatible(t *testing.T) {
+func TestPutTwilioAuditEventsRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
 	legacy := &runtimeAuthorityProbe{sourceID: "twilio"}
-	service := &Service{sourceWorker: &runtimePlanWorker{}}
-	runtime := &cerebrov1.SourceRuntime{Id: "twilio-keys-runtime", SourceId: "twilio", TenantId: "tenant-1"}
-	config := sourcecdk.NewConfig(map[string]string{"family": "keys"})
-
-	if _, rustPage, err := service.readSourcePull(context.Background(), runtime, legacy, config, nil, nil, 1); err != nil {
-		t.Fatalf("readSourcePull() error = %v", err)
-	} else if rustPage {
-		t.Fatal("readSourcePull() reported a Rust page for a Go-authoritative Twilio family")
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if legacy.readCalls != 1 {
-		t.Fatalf("Go Read calls = %d, want 1", legacy.readCalls)
+	worker := &runtimePlanWorker{}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+		Id: "twilio-audit-events-runtime", SourceId: "twilio", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "audit_events", "username": "AC123",
+			"password": sourceconfig.CredentialReferenceValue("twilio", "password"),
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.checkCalls != 0 || worker.planCalls != 1 {
+		t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+	}
+	if worker.selection.SourceID != "twilio" || worker.selection.FamilyID != "audit_events" {
+		t.Fatalf("Rust selection = %#v", worker.selection)
+	}
+	if worker.publicConfig["family"] != "audit_events" || worker.publicConfig["username"] != "" || worker.publicConfig["password"] != "" {
+		t.Fatalf("Rust public config = %#v", worker.publicConfig)
+	}
+}
+
+func TestTwilioAuditEventsNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "twilio"}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := &Service{sourceWorker: worker}
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "twilio-audit-events-runtime", SourceId: "twilio", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "audit_events", "username": "AC123",
+			"password": sourceconfig.CredentialReferenceValue("twilio", "password"),
+		},
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{
+		"family": "audit_events", "username": "AC123", "password": "host-only-secret",
+	})
+
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "twilio" || worker.selection.FamilyID != "audit_events" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+	}
+}
+
+func TestPutTwilioKeysRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "twilio"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &runtimePlanWorker{}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+		Id: "twilio-keys-runtime", SourceId: "twilio", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "keys", "account_sid": "AC123", "username": "AC123",
+			"password": sourceconfig.CredentialReferenceValue("twilio", "password"),
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.checkCalls != 0 || worker.planCalls != 1 {
+		t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+	}
+	if worker.selection.SourceID != "twilio" || worker.selection.FamilyID != "keys" {
+		t.Fatalf("Rust selection = %#v", worker.selection)
+	}
+	if worker.publicConfig["family"] != "keys" || worker.publicConfig["account_sid"] != "AC123" || worker.publicConfig["username"] != "" || worker.publicConfig["password"] != "" {
+		t.Fatalf("Rust public config = %#v", worker.publicConfig)
+	}
+}
+
+func TestTwilioKeysNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "twilio"}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := &Service{sourceWorker: worker}
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "twilio-keys-runtime", SourceId: "twilio", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "keys", "account_sid": "AC123", "username": "AC123",
+			"password": sourceconfig.CredentialReferenceValue("twilio", "password"),
+		},
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{
+		"family": "keys", "account_sid": "AC123", "username": "AC123", "password": "host-only-secret",
+	})
+
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "twilio" || worker.selection.FamilyID != "keys" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
 	}
 }
 

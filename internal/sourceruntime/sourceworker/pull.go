@@ -41,7 +41,7 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 	case "tailscale":
 		return TailscaleFamily(sourceID, familyID)
 	case "twilio":
-		return familyID, familyID == "accounts"
+		return familyID, familyID == "accounts" || familyID == "audit_events" || familyID == "keys"
 	default:
 		return "", false
 	}
@@ -99,7 +99,7 @@ func TailscaleFamily(sourceID, familyID string) (string, bool) {
 func PublicExecutionConfig(values map[string]string) map[string]string {
 	public := make(map[string]string)
 	for _, key := range []string{
-		"audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
+		"account_sid", "audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
 		"family", "group_id", "group_ids", "insights_base_url", "org_id", "per_page",
 		"site_id", "tailnet", "user_group_id", "user_group_ids",
 	} {
