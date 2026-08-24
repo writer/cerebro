@@ -202,7 +202,7 @@ fn canonical_prior_cursor(
 
 mod source_execution;
 
-// The closed shared dispatcher consumes this export in its separately owned
-// registration follow-up.
+// The closed shared dispatcher consumes this export without exposing provider
+// implementation details outside the crate.
 #[allow(unused_imports)]
 pub(crate) use source_execution::TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER;

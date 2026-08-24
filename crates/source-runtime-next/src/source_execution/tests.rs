@@ -16,11 +16,11 @@ use super::{
     validate_cursor, validate_declared_headers, validate_http_request, validate_response_headers,
     validate_runtime_metadata,
     wire::{
-        SourceExecutionPlanV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeOutputV2,
-        SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
-        SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
-        SourceWorkerPlanRequestV1, SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2,
-        SourceWorkerSafeReceiptV1,
+        SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
+        SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
+        SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1,
+        SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+        SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -85,30 +85,12 @@ fn sentinelone_context(cursor: &str) -> SourceWorkerExecutionContextV1 {
 }
 
 fn twilio_plan() -> SourceExecutionPlanV1 {
-    let mut plan = SourceExecutionPlanV1 {
-        plan_id: "source-plan-v1:twilio:accounts".to_owned(),
-        source_id: "twilio".to_owned(),
-        family_id: "accounts".to_owned(),
-        provider_kernel: "twilio.accounts".to_owned(),
-        method: "GET".to_owned(),
-        origin: "https://api.twilio.com".to_owned(),
-        path: "/2010-04-01/Accounts.json".to_owned(),
-        record_selector: "data".to_owned(),
-        id_field: "id".to_owned(),
-        singleton_fallback_id: String::new(),
-        max_response_bytes: 8 << 20,
-        event_kind: "twilio.accounts".to_owned(),
-        schema_ref: "twilio/accounts/v1".to_owned(),
-        required_attributes: vec![
-            "tenant_id".to_owned(),
-            "source_event_id".to_owned(),
-            "user_id".to_owned(),
-        ],
-        required_payload_fields: vec!["id".to_owned()],
-        plan_digest_sha256: String::new(),
-    };
-    plan.plan_digest_sha256 = canonical_plan_digest(&plan);
-    plan
+    super::SourceExecutionDispatcher
+        .compile_plan(&SourceExecutionSelectionRequestV1 {
+            source_id: "twilio".to_owned(),
+            family_id: "accounts".to_owned(),
+        })
+        .unwrap()
 }
 
 fn twilio_context(cursor: &str) -> SourceWorkerExecutionContextV1 {
@@ -580,12 +562,22 @@ fn closed_dispatcher_registers_and_executes_the_exact_twilio_accounts_plan() {
     assert_eq!(adapter.provider_kernel(), "twilio.accounts");
 
     let context = twilio_context("accounts-page-1");
-    let planned = dispatcher
-        .dispatch_plan(&SourceWorkerPlanRequestV1 {
-            plan: Some(plan.clone()),
-            context: Some(context.clone()),
+    let execution = dispatcher
+        .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(context.clone()),
+            }),
+            metadata: Some(SourceWorkerRuntimeMetadataV2 {
+                public_config: HashMap::new(),
+                prior_terminal_watermark_unix_millis: 0,
+                prior_checkpoint: String::new(),
+            }),
         })
         .unwrap();
+    assert_eq!(execution.credential_operation, "twilio.basic");
+    assert_eq!(execution.allowed_origin, "https://api.twilio.com");
+    let planned = execution.request.unwrap();
     assert_eq!(
         planned.url,
         "https://api.twilio.com/2010-04-01/Accounts.json?limit=100&cursor=accounts-page-1"
