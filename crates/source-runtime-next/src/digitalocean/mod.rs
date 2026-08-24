@@ -12,7 +12,10 @@ mod origin;
 mod projection;
 mod request;
 mod response;
+mod source_execution;
 mod types;
+
+pub(crate) use source_execution::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
 
 pub use error::DigitalOceanError;
 pub use family::DigitalOceanFamily;

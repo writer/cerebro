@@ -32,6 +32,7 @@ mod cosmo;
 mod credential_lease;
 mod deepseek;
 mod deposit;
+mod digitalocean;
 mod discord;
 mod docker_hub;
 mod egress;
@@ -185,6 +186,12 @@ pub use deepseek::{
 };
 pub use deposit::{
     DepositIngestError, DepositIngestReceipt, DepositIngestRequest, build_deposit_receipt,
+};
+pub use digitalocean::{
+    DigitalOceanCheckpointCandidate, DigitalOceanEntityFact, DigitalOceanError, DigitalOceanFamily,
+    DigitalOceanKernel, DigitalOceanLinkFact, DigitalOceanOperation, DigitalOceanPage,
+    DigitalOceanProjectionFacts, DigitalOceanRecord, DigitalOceanRequest,
+    project_digitalocean_records,
 };
 pub use discord::{
     DiscordError, DiscordFamily, DiscordKernel, DiscordPage, DiscordRecord, DiscordRequest,
