@@ -199,6 +199,19 @@ describe("product UI contract", () => {
     expect(vendorDetailSource).not.toContain("Open review");
   });
 
+  it("keeps policy work ahead of optional setup and secondary metrics", () => {
+    const source = readProjectFile("src/app/policies/page.tsx");
+    const page = source.slice(source.indexOf("export default function PoliciesPage"));
+
+    expect(page).toContain('const [showUpload, setShowUpload] = useState(false)');
+    expect(page).toContain("{showUpload && <Panel");
+    expect(page).toContain("More filters");
+    expect(page).toContain("data-policy-status-summary");
+    expect(page).toContain("data-policy-sections");
+    expect(page).not.toContain("<MetricCard");
+    expect(page.indexOf("data-policy-status-summary")).toBeLessThan(page.indexOf("data-policy-sections"));
+  });
+
   it("keeps lifecycle details modal and lifecycle records usable at mobile width", () => {
     const lifecycleSource = readProjectFile("src/app/security/lifecycle/page.tsx");
 

@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowRight, Bell, CheckCircle2, ClipboardList, Download, FileCheck2, FileText, GitCompare, History, ListChecks, RefreshCw, Search, Send, ShieldCheck, Upload, Users, X, XCircle } from "lucide-react";
+import { ArrowRight, Bell, CheckCircle2, ClipboardList, Download, FileCheck2, FileText, GitCompare, History, ListChecks, RefreshCw, Search, Send, ShieldCheck, SlidersHorizontal, Upload, Users, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { TableColumn } from "@/components/grc/DataTable";
 import { WorklistTable } from "@/components/grc/DataTable";
-import { AppliedFilterChips, Badge, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
+import { AppliedFilterChips, Badge, ErrorBlock, LoadingBlock, PageHeader, Panel } from "@/components/grc/Primitives";
 import { GRCUploadErrorActions, GRCUploadFileInput, GRCUploadHistoryList, GRCUploadProgress, GRCUploadReceipt } from "@/components/grc/GRCUpload";
 import { useApiKey } from "@/components/providers";
 import { countLabel } from "@/lib/format";
@@ -46,7 +46,6 @@ import { useGRCFilterState } from "@/lib/grc-filters";
 import { grcUploadFileError } from "@/lib/grc-upload-limits";
 import { grcUploadHistoryKey, grcUploadHistoryWith, readGRCUploadHistory, writeGRCUploadHistory } from "@/lib/grc-upload-history";
 import { useQueryParamState } from "@/lib/query-params";
-import { runtimeStateForError, type RuntimeState } from "@/lib/runtime-state";
 
 const inputClass = "mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400/30";
 const labelClass = "text-[11px] font-medium uppercase tracking-wider text-slate-500";
@@ -450,6 +449,7 @@ export default function PoliciesPage() {
   const [selectedPolicyID, setSelectedPolicyID] = useState<string | null>(null);
   const [policySection, setPolicySection] = useState<PolicySection>("queues");
   const [showUpload, setShowUpload] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(Boolean(tenantID || ruleProfile));
   const [selectedAction, setSelectedAction] = useState<GRCPolicyLifecycleAction | null>(null);
   const [actionReason, setActionReason] = useState("");
   const [actionDate, setActionDate] = useState("");
@@ -484,8 +484,6 @@ export default function PoliciesPage() {
   );
   const isInitialLoading = loading && !data;
   const isRefreshing = loading && Boolean(data);
-  const runtimeState = runtimeStateForError(error);
-  const metricState: RuntimeState = error ? runtimeState : isInitialLoading ? "loading" : "ready";
   const policies = useMemo(() => data?.policies ?? [], [data?.policies]);
   const documents = useMemo(() => data?.documents ?? [], [data?.documents]);
   const riskRegister = useMemo(() => data?.risk_register ?? [], [data?.risk_register]);
@@ -568,6 +566,14 @@ export default function PoliciesPage() {
   const summary = data?.summary;
   const generatedAt = data?.generated_at;
   const activeGapCount = (summary?.open_governance_gaps ?? 0) + (summary?.in_progress_governance_gaps ?? 0) + (summary?.acknowledged_governance_gaps ?? 0) + (summary?.snoozed_governance_gaps ?? 0);
+  const openWorkCount = (data?.work_queue?.length ?? 0) + (data?.document_work_queue?.length ?? 0);
+  const policyStatusItems = [
+    { label: "Policies", value: summary?.policies ?? 0, detail: `${summary?.templates ?? 0} templates` },
+    { label: "Open work", value: openWorkCount, detail: "Approvals, reviews, and exceptions" },
+    { label: "Documents due", value: summary?.documents_due_for_review ?? 0, detail: `${summary?.policy_documents ?? 0} documents` },
+    { label: "High risks", value: summary?.high_risks ?? 0, detail: `${summary?.risk_register_items ?? 0} risks tracked` },
+    { label: "Active gaps", value: activeGapCount, detail: `${summary?.resolved_governance_gaps ?? 0} resolved` },
+  ];
   const policyUploadStorageKey = useMemo(() => grcUploadHistoryKey("policy", tenantID), [tenantID]);
 
   useEffect(() => {
@@ -964,10 +970,10 @@ export default function PoliciesPage() {
       <PageHeader
         contractId="policies"
         title="Policies"
-        description="Policy documents, risk-register records, versions, approvals, attestations, exceptions, reminders, and control mappings."
+        description="Review policy work, approve changes, track attestations, and manage supporting documents."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setShowUpload((current) => !current)} aria-expanded={showUpload} className="inline-flex items-center gap-1.5 rounded-md border border-indigo-500 bg-indigo-500 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-indigo-600">
+            <button type="button" onClick={() => setShowUpload((current) => !current)} aria-expanded={showUpload} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700">
               <Upload className="h-3.5 w-3.5" aria-hidden="true" />
               {showUpload ? "Close upload" : "Upload policy"}
             </button>
@@ -983,9 +989,15 @@ export default function PoliciesPage() {
         }
       />
 
-      <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
-        <div className="grid gap-3 md:grid-cols-5">
-          <label className={labelClass}>Tenant<input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="All tenants" className={inputClass} /></label>
+      <div className="border-y border-slate-200 py-4" data-policy-filters>
+        <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.55fr)_minmax(10rem,0.45fr)_auto]">
+          <label className={labelClass}>
+            Search
+            <span className="relative mt-1 block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Policy, document, risk, or control" className={`${inputClass} mt-0 pl-8`} />
+            </span>
+          </label>
           <label className={labelClass}>
             Owner
             <input value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="All owners" list="policy-owner-options" className={inputClass} />
@@ -999,24 +1011,32 @@ export default function PoliciesPage() {
               {lifecycleStates.map((item) => <option key={item.value || "all"} value={item.value}>{item.label}</option>)}
             </select>
           </label>
-          <label className={labelClass}>
-            Rules
-            <select
-              value={activeRuleProfile}
-              onChange={(event) => setRuleProfile(event.target.value === "baseline" ? "" : event.target.value)}
-              className={inputClass}
-            >
-              {ruleProfiles.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
-          </label>
-          <label className={labelClass}>
-            Search
-            <span className="relative mt-1 block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Policy, document, risk, control" className={`${inputClass} mt-0 pl-8`} />
-            </span>
-          </label>
+          <button
+            type="button"
+            onClick={() => setShowAdvancedFilters((current) => !current)}
+            aria-expanded={showAdvancedFilters}
+            aria-controls="policy-advanced-filters"
+            className="inline-flex items-center justify-center gap-1.5 self-end rounded-md px-3 py-2 text-[13px] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+            {showAdvancedFilters ? "Hide filters" : "More filters"}
+          </button>
         </div>
+        {showAdvancedFilters && (
+          <div id="policy-advanced-filters" className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 lg:max-w-2xl">
+            <label className={labelClass}>Tenant<input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="All tenants" className={inputClass} /></label>
+            <label className={labelClass}>
+              Rules
+              <select
+                value={activeRuleProfile}
+                onChange={(event) => setRuleProfile(event.target.value === "baseline" ? "" : event.target.value)}
+                className={inputClass}
+              >
+                {ruleProfiles.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
         <AppliedFilterChips filters={filterState.chips} onClearAll={filterState.clearAll} />
       </div>
 
@@ -1124,18 +1144,6 @@ export default function PoliciesPage() {
         <GRCUploadHistoryList uploads={policyUploadHistory} />
       </Panel>}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
-        <MetricCard label="Policies" value={summary?.policies ?? 0} detail={`${summary?.templates ?? 0} templates`} state={metricState} />
-        <MetricCard label="Documents" value={summary?.policy_documents ?? 0} detail={`${summary?.documents_due_for_review ?? 0} due for review`} intent={(summary?.documents_due_for_review ?? 0) > 0 ? "warning" : "success"} state={metricState} />
-        <MetricCard label="Risks" value={summary?.risk_register_items ?? 0} detail={`${summary?.high_risks ?? 0} high`} intent={(summary?.high_risks ?? 0) > 0 ? "danger" : "success"} state={metricState} />
-        <MetricCard label="Gaps" value={summary?.governance_gaps ?? 0} detail={`${activeGapCount} active / ${summary?.resolved_governance_gaps ?? 0} resolved`} intent={activeGapCount > 0 ? "warning" : "success"} state={metricState} />
-        <MetricCard label="Mappings" value={summary?.mapped_controls ?? 0} detail={`${summary?.evidence_items ?? 0} evidence items`} state={metricState} />
-        <MetricCard label="Pending Approvals" value={summary?.pending_approvals ?? 0} detail={`${summary?.draft_versions ?? 0} drafts`} intent={(summary?.pending_approvals ?? 0) > 0 ? "warning" : "success"} state={metricState} />
-        <MetricCard label="Attestations" value={`${summary?.attestation_coverage_pct ?? 0}%`} detail={`${summary?.overdue_attestations ?? 0} overdue`} intent={(summary?.overdue_attestations ?? 0) > 0 ? "danger" : "success"} state={metricState} />
-        <MetricCard label="Exceptions" value={summary?.open_exceptions ?? 0} detail={`${summary?.expiring_exceptions ?? 0} expiring`} intent={(summary?.expiring_exceptions ?? 0) > 0 ? "warning" : "success"} state={metricState} />
-        <MetricCard label="History" value={summary?.lifecycle_events ?? 0} detail={`${summary?.next_reminders ?? 0} reminders`} state={metricState} />
-      </div>
-
       {error && <ErrorBlock error={error} onRetry={() => void reload()} />}
       {exportError && <ErrorBlock error={exportError} onRetry={() => void exportPolicies()} />}
       {actionError && <ErrorBlock error={actionError} onRetry={() => selectedAction && void submitSelectedAction()} />}
@@ -1148,8 +1156,26 @@ export default function PoliciesPage() {
 
       {data && (
         <>
-          <div className="surface-panel p-2">
-            <div className="grid gap-2 sm:grid-cols-4" role="tablist" aria-label="Policy lifecycle sections">
+          <section className="border-y border-slate-200 py-4" aria-labelledby="policy-status-heading" data-policy-status-summary>
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
+              <div className="xl:w-52 xl:shrink-0">
+                <h2 id="policy-status-heading" className="text-[13px] font-semibold text-slate-900">Policy status</h2>
+                <p className="mt-1 text-[12px] leading-5 text-slate-500">Start with open work, then use the register for full records.</p>
+              </div>
+              <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 xl:grid-cols-5">
+                {policyStatusItems.map((item) => (
+                  <div key={item.label}>
+                    <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{item.label}</dt>
+                    <dd className="mt-1 text-xl font-semibold text-slate-900">{item.value}</dd>
+                    <dd className="mt-0.5 text-[12px] text-slate-500">{item.detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </section>
+
+          <div className="overflow-x-auto border-b border-slate-200" data-policy-sections>
+            <div className="flex min-w-max gap-6" role="tablist" aria-label="Policy lifecycle sections">
               {policySectionTabs.map((tab) => {
                 const selected = policySection === tab.id;
                 return (
@@ -1158,10 +1184,10 @@ export default function PoliciesPage() {
                     type="button"
                     onClick={() => setPolicySection(tab.id)}
                     aria-pressed={selected}
-                    className={`rounded-md px-3 py-2 text-[13px] font-semibold transition ${
+                    className={`border-b-2 px-0 py-2.5 text-[13px] font-semibold transition ${
                       selected
-                        ? "bg-[var(--primary)] text-white"
-                        : "text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+                        ? "border-[var(--primary)] text-[var(--primary)]"
+                        : "border-transparent text-[var(--text-secondary)] hover:border-slate-300 hover:text-[var(--text-primary)]"
                     }`}
                   >
                     {tab.label}
