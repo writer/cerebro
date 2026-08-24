@@ -10,7 +10,9 @@ use crate::source_execution::{
     SourceWorkerPlanRequestV1, SourceWorkerRuntimeMetadataV2, seal_page_program_v2,
 };
 
-use super::{DEFAULT_BASE_URL, PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER};
+use super::{
+    DEFAULT_BASE_URL, PAGERDUTY_SOURCE_EXECUTION_ADAPTERS, PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER,
+};
 
 const OBSERVED_AT_MILLIS: i64 = 1_780_272_000_000;
 
@@ -112,6 +114,99 @@ fn closed_dispatcher_registers_only_pagerduty_user() {
             "{family}"
         );
     }
+}
+
+#[test]
+fn provider_local_catalog_compiles_and_plans_every_pagerduty_family() {
+    let execution_context = context("", 1);
+    assert_eq!(
+        PAGERDUTY_SOURCE_EXECUTION_ADAPTERS.len(),
+        crate::pagerduty::PagerDutyFamily::ALL.len()
+    );
+
+    for adapter in &PAGERDUTY_SOURCE_EXECUTION_ADAPTERS {
+        let family = adapter.family();
+        let plan = adapter.compiled_plan();
+        assert_eq!(plan.source_id, "pagerduty");
+        assert_eq!(plan.family_id, family.as_str());
+        assert_eq!(plan.provider_kernel, family.event_kind());
+        assert_eq!(plan.path, family.path_template());
+        assert_eq!(
+            plan.record_selector,
+            format!("$.{}[*]", family.response_key())
+        );
+        assert_eq!(plan.event_kind, family.event_kind());
+        assert_eq!(plan.schema_ref, family.schema_ref());
+        assert!(
+            plan.required_attributes
+                .contains(&family.identity_attribute().to_owned())
+        );
+
+        let mut metadata = SourceWorkerRuntimeMetadataV2 {
+            public_config: HashMap::from([
+                ("family".to_owned(), family.as_str().to_owned()),
+                ("per_page".to_owned(), "2".to_owned()),
+            ]),
+            prior_terminal_watermark_unix_millis: 0,
+            prior_checkpoint: String::new(),
+        };
+        if family == crate::pagerduty::PagerDutyFamily::Integration {
+            metadata
+                .public_config
+                .insert("service_ids".to_owned(), "PS1, PS2".to_owned());
+            assert!(plan.required_attributes.contains(&"service_id".to_owned()));
+        }
+        let execution = crate::source_execution::SourceExecutionAdapter::plan_v2(
+            adapter,
+            &SourceWorkerPlanEnvelopeV2 {
+                request: Some(SourceWorkerPlanRequestV1 {
+                    plan: Some(plan.clone()),
+                    context: Some(execution_context.clone()),
+                }),
+                metadata: Some(metadata),
+            },
+        )
+        .unwrap();
+        assert_eq!(execution.credential_operation, "pagerduty.token");
+        assert_eq!(execution.allowed_origin, DEFAULT_BASE_URL);
+        let request = execution.request.unwrap();
+        assert_eq!(request.method, "GET");
+        assert!(request.url.starts_with(DEFAULT_BASE_URL));
+        assert!(request.url.ends_with("limit=2"));
+        if family == crate::pagerduty::PagerDutyFamily::Integration {
+            assert!(request.url.contains("/services/PS1/integrations?"));
+        }
+    }
+}
+
+#[test]
+fn integration_adapter_requires_bounded_service_scope() {
+    let adapter = PAGERDUTY_SOURCE_EXECUTION_ADAPTERS
+        .iter()
+        .find(|adapter| adapter.family() == crate::pagerduty::PagerDutyFamily::Integration)
+        .unwrap();
+    let plan = adapter.compiled_plan();
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: HashMap::from([
+            ("family".to_owned(), "integration".to_owned()),
+            ("per_page".to_owned(), "2".to_owned()),
+        ]),
+        prior_terminal_watermark_unix_millis: 0,
+        prior_checkpoint: String::new(),
+    };
+    assert_eq!(
+        crate::source_execution::SourceExecutionAdapter::plan_v2(
+            adapter,
+            &SourceWorkerPlanEnvelopeV2 {
+                request: Some(SourceWorkerPlanRequestV1 {
+                    plan: Some(plan),
+                    context: Some(context("", 1)),
+                }),
+                metadata: Some(metadata),
+            },
+        ),
+        Err(SourceExecutionError::MissingConfiguration)
+    );
 }
 
 #[test]
