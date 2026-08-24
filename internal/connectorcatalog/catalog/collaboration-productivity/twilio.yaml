@@ -1,0 +1,168 @@
+entries:
+  - classifier_output: supported
+    definition:
+      auth:
+        credential_fields:
+          - key: username
+            label: Account SID
+            reference_only: true
+            required: true
+          - key: password
+            label: Auth token
+            reference_only: true
+            required: true
+            secret: true
+        model: basic
+        requires_references: true
+      categories:
+        - saas
+        - collaboration_productivity
+      config_fields:
+        - help: Public Twilio account SID used to scope account-key collection.
+          key: account_sid
+          label: Account SID
+      description: Collects accounts, keys, and audit events from Twilio and projects them into the Cerebro graph as audit events, secrets, and users for inventory, access review, audit, risk, and operational context.
+      display_name: Twilio
+      id: builtin-twilio
+      ingest:
+        mode: pull
+      resource_families:
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - accounts
+              high_value: true
+              id: accounts
+              support: partial
+              title: Accounts
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: twilio.accounts
+            required_attributes:
+              - source_event_id
+              - tenant_id
+              - user_id
+            required_payload_fields:
+              - id
+            schema_ref: twilio/accounts/v1
+            urn_kind: runtime_accounts
+          id: accounts
+          id_field: id
+          label: Accounts
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.pagination.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /2010-04-01/Accounts.json
+          projection:
+            fields:
+              display_name: name
+              id: id
+              user_id: id
+            template: identity_user
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - asset_inventory
+              evidence_types:
+                - source_snapshot
+              families:
+                - keys
+              high_value: true
+              id: keys
+              support: partial
+              title: Keys
+              type: entity_family
+          default_enabled: true
+          event:
+            kind: twilio.keys
+            required_attributes:
+              - secret_id
+              - secret_name
+              - source_event_id
+              - tenant_id
+            required_payload_fields:
+              - id
+            schema_ref: twilio/keys/v1
+            urn_kind: runtime_keys
+          id: keys
+          id_field: id
+          label: Keys
+          method: GET
+          name_field: name
+          pagination:
+            cursor_json_path: $.pagination.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /2010-04-01/Accounts/${config.account_sid}/Keys.json
+          projection:
+            fields:
+              secret_id: id
+              secret_name: name
+              secret_type: type
+            template: secret
+          record_selector: $.data[*]
+        - coverage:
+            - control_domains:
+                - logging_monitoring
+              evidence_types:
+                - logging_configuration
+              families:
+                - audit_events
+              high_value: true
+              id: audit_events
+              support: partial
+              title: Audit events
+              type: audit_event
+          default_enabled: true
+          event:
+            kind: twilio.audit_events
+            required_attributes:
+              - actor_id
+              - event_type
+              - source_event_id
+              - tenant_id
+            required_payload_fields:
+              - id
+            schema_ref: twilio/audit_events/v1
+            urn_kind: runtime_audit_events
+          id: audit_events
+          id_field: id
+          label: Audit events
+          method: GET
+          pagination:
+            cursor_json_path: $.pagination.next_cursor
+            cursor_param: cursor
+            page_size: 100
+            page_size_param: limit
+            type: cursor
+          path: /v1/Events
+          projection:
+            fields:
+              actor_id: actor_id
+              event_type: event_type
+              id: id
+              resource_id: resource_id
+              resource_type: resource_type
+            template: audit_event
+          record_selector: $.data[*]
+      schema_version: cerebro.integration/v1
+      source_id: twilio
+      tenant_id: builtin_catalog
+      transport:
+        base_url: https://api.twilio.com
+        verification:
+          expect_status:
+            - 200
+          method: GET
+          path: /2010-04-01/Accounts.json

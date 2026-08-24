@@ -639,6 +639,138 @@ fn closed_dispatcher_registers_and_executes_the_exact_twilio_accounts_plan() {
 }
 
 #[test]
+fn closed_dispatcher_registers_the_exact_twilio_audit_events_plan() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    let plan = dispatcher
+        .compile_plan(&SourceExecutionSelectionRequestV1 {
+            source_id: "twilio".to_owned(),
+            family_id: "audit_events".to_owned(),
+        })
+        .unwrap();
+    assert_eq!(plan.source_id, "twilio");
+    assert_eq!(plan.family_id, "audit_events");
+    assert_eq!(plan.provider_kernel, "twilio.audit_events");
+    assert_eq!(plan.origin, "https://api.twilio.com");
+    assert_eq!(plan.path, "/v1/Events");
+    assert_eq!(plan.event_kind, "twilio.audit_events");
+    assert_eq!(plan.schema_ref, "twilio/audit_events/v1");
+    assert_eq!(
+        dispatcher.adapter_for(&plan).unwrap().family_id(),
+        "audit_events"
+    );
+    let keys = dispatcher
+        .compile_plan(&SourceExecutionSelectionRequestV1 {
+            source_id: "twilio".to_owned(),
+            family_id: "keys".to_owned(),
+        })
+        .unwrap();
+    assert_eq!(keys.provider_kernel, "twilio.keys");
+    assert_eq!(keys.path, "/2010-04-01/Accounts/{account_sid}/Keys.json");
+}
+
+#[test]
+fn twilio_keys_require_and_bind_public_account_scope_in_v2() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    let plan = dispatcher
+        .compile_plan(&SourceExecutionSelectionRequestV1 {
+            source_id: "twilio".to_owned(),
+            family_id: "keys".to_owned(),
+        })
+        .unwrap();
+    let context = SourceWorkerExecutionContextV1 {
+        tenant_id: "trusted-tenant".to_owned(),
+        runtime_id: "twilio-keys-runtime".to_owned(),
+        logical_page_id: "keys-page-1".to_owned(),
+        prior_cursor: "keys-page-1".to_owned(),
+        runtime_generation: 7,
+        lease_generation: 11,
+        observed_at_unix_millis: 1_780_372_800_000,
+    };
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: HashMap::from([("account_sid".to_owned(), "AC123".to_owned())]),
+        prior_terminal_watermark_unix_millis: 0,
+        prior_checkpoint: String::new(),
+    };
+    assert_eq!(
+        dispatcher.dispatch_plan(&SourceWorkerPlanRequestV1 {
+            plan: Some(plan.clone()),
+            context: Some(context.clone()),
+        }),
+        Err(SourceExecutionError::InvalidPlan)
+    );
+    assert_eq!(
+        dispatcher.dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(context.clone()),
+            }),
+            metadata: Some(SourceWorkerRuntimeMetadataV2::default()),
+        }),
+        Err(SourceExecutionError::InvalidPlan)
+    );
+    let execution = dispatcher
+        .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        })
+        .unwrap();
+    assert_eq!(execution.credential_operation, "twilio.basic");
+    let planned = execution.request.unwrap();
+    assert_eq!(
+        planned.url,
+        "https://api.twilio.com/2010-04-01/Accounts/AC123/Keys.json?limit=100&cursor=keys-page-1"
+    );
+    let body = br#"{
+        "keys":[{
+            "id":"key-1",
+            "name":"Key One",
+            "created_at":"2026-06-01T00:00:00Z"
+        }],
+        "next_cursor":"keys-page-2"
+    }"#;
+    let decode_request = SourceWorkerDecodeRequestV1 {
+        plan: Some(plan),
+        status_code: 200,
+        response_body: body.to_vec(),
+        logical_page_id: context.logical_page_id.clone(),
+        request_intent_digest: planned.request_intent_digest,
+        receipt: None,
+        context: Some(context),
+    };
+    let mut changed_scope = metadata.clone();
+    changed_scope
+        .public_config
+        .insert("account_sid".to_owned(), "AC999".to_owned());
+    assert_eq!(
+        dispatcher.dispatch_decode_v2(&SourceWorkerDecodeEnvelopeV2 {
+            request: Some(decode_request.clone()),
+            metadata: Some(changed_scope),
+            response_headers: HashMap::new(),
+            response_headers_sha256: String::new(),
+            execution_intent_digest_sha256: execution.execution_intent_digest_sha256.clone(),
+        }),
+        Err(SourceExecutionError::InvalidDigest)
+    );
+    let output = dispatcher
+        .dispatch_decode_v2(&SourceWorkerDecodeEnvelopeV2 {
+            request: Some(decode_request),
+            metadata: Some(metadata),
+            response_headers: HashMap::new(),
+            response_headers_sha256: String::new(),
+            execution_intent_digest_sha256: execution.execution_intent_digest_sha256,
+        })
+        .unwrap();
+    let result = output.result.unwrap();
+    assert_eq!(result.next_cursor, "keys-page-2");
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].attributes["secret_id"], "key-1");
+    assert_eq!(result.records[0].attributes["secret_name"], "Key One");
+}
+
+#[test]
 fn rejects_tenant_generation_timestamp_and_intent_mismatches() {
     let context = exact_context("tenant-a");
     let mut tenant = exact_decode_request(&context);
