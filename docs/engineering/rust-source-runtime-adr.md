@@ -182,11 +182,12 @@ process restarts, while tenant-scoped event identity makes a refetched singleton
 idempotent. A stale generation is rejected before append and by the final
 Postgres checkpoint transaction. The closed Rust dispatcher and durable runtime
 authority also own `sentinelone.agent`, `sentinelone.activity`,
-`sentinelone.exclusion`, `sentinelone.group`, and `sentinelone.site`. The trusted
-host still owns SentinelOne credential redemption and origin-constrained HTTP;
-Go still owns durable append, projection, and checkpoint transactions. Threat
-and application inventory remain on compatibility execution until their richer
-normalization and fanout contracts earn the same authority receipts.
+`sentinelone.exclusion`, `sentinelone.group`, `sentinelone.site`, and
+`sentinelone.threat`. The trusted host still owns SentinelOne credential
+redemption and origin-constrained HTTP; Go still owns durable append, projection,
+and checkpoint transactions. Application inventory remains on compatibility
+execution until its multi-request fanout contract earns the same authority
+receipts.
 
 ## Why Rust, and where Rust is not the reason
 
