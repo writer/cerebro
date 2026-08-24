@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { useUserPreferences } from "@/components/providers";
 import { AttentionBanner, DataStateBanner, PageHeader } from "@/components/grc/Primitives";
 import { countLabel } from "@/lib/format";
+import { isControlAuditReady } from "@/lib/framework-readiness";
 import {
   displayDate,
   displayDurationSeconds,
@@ -382,12 +383,10 @@ function HealthRow({
 
 function ProgramHealthPanel({
   coverageSourceCount,
-  dashboardBackedReadiness,
   metrics,
   readinessLabel,
 }: {
   coverageSourceCount: number;
-  dashboardBackedReadiness: boolean;
   metrics: HomeMetrics;
   readinessLabel: string;
 }) {
@@ -405,18 +404,13 @@ function ProgramHealthPanel({
           <div className="mt-0.5 text-[11px] uppercase tracking-wide text-[var(--text-muted)]">{readinessLabel}</div>
         </div>
       </div>
-      {dashboardBackedReadiness && (
-        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900">
-          Readiness API is unavailable; using current control counts.
-        </div>
-      )}
       <div className="mt-4 divide-y divide-[color:var(--border)]">
         <HealthRow
           href="/controls"
           label="Controls"
-          value={metrics.summary.controls_failing}
-          detail={`${metrics.passingControls} of ${metrics.controlTotal} passing`}
-          tone={metrics.summary.controls_failing > 0 ? "warning" : "success"}
+          value={Math.max(0, metrics.controlTotal - metrics.passingControls)}
+          detail={`${metrics.passingControls} of ${metrics.controlTotal} ready`}
+          tone={metrics.passingControls < metrics.controlTotal ? "warning" : "success"}
         />
         <HealthRow
           href="/evidence"
@@ -457,7 +451,6 @@ export default function Home() {
   const priorityFindings = useMemo(() => (data?.findings ?? []).slice().sort(riskSort), [data?.findings]);
 
   const summary = data?.summary;
-  const dashboardBackedReadiness = Boolean(readinessQuery.error && data);
   const coverageBlindSpots = useMemo(
     () => coverageQuery.data?.blind_spots ?? coverageQuery.data?.records ?? readinessQuery.data?.coverage_blind_spots ?? data?.coverage_blind_spots ?? [],
     [coverageQuery.data?.blind_spots, coverageQuery.data?.records, data?.coverage_blind_spots, readinessQuery.data?.coverage_blind_spots],
@@ -470,13 +463,20 @@ export default function Home() {
   const coverageSourceCount = coverageSummaries.filter((source) => source.blind_spots > 0).length;
   const missingEvidenceItems = (data?.controls ?? []).reduce((total, control) => total + (control.missing_evidence_items ?? 0), 0);
   const staleEvidenceItems = (data?.controls ?? []).reduce((total, control) => total + (control.stale_evidence_items ?? 0), 0);
-  const controlTotal = data?.controls?.length ?? 0;
-  const passingControls = Math.max(0, controlTotal - (summary?.controls_failing ?? 0));
-  const controlProgress = controlTotal === 0 ? 100 : (passingControls / controlTotal) * 100;
+  const primaryFrameworkRecord = readinessQuery.data?.frameworks?.[0];
+  const primaryFramework = primaryFrameworkRecord?.framework_name || "Program";
+  const scopedDashboardControls = (data?.controls ?? []).filter((control) =>
+    !primaryFrameworkRecord || control.framework_name === primaryFrameworkRecord.framework_name,
+  );
+  const controlTotal = primaryFrameworkRecord?.controls ?? scopedDashboardControls.length;
+  const passingControls = primaryFrameworkRecord
+    ? Math.max(0, Math.min(primaryFrameworkRecord.passing_controls, controlTotal))
+    : scopedDashboardControls.filter(isControlAuditReady).length;
+  const controlProgress = controlTotal === 0 ? 0 : (passingControls / controlTotal) * 100;
   const criticalOrHighFindings = (summary?.critical_findings ?? 0) + (summary?.high_findings ?? 0);
   const evidenceIssues = missingEvidenceItems + staleEvidenceItems;
   const homeMetrics: HomeMetrics | null = summary ? {
-    auditReadinessScore: readiness?.score ?? controlProgress,
+    auditReadinessScore: controlProgress,
     controlTotal,
     coverageBlindSpotCount,
     criticalOrHighFindings,
@@ -493,8 +493,7 @@ export default function Home() {
     findings: priorityFindings,
     readinessData: readinessQuery.data ?? undefined,
   }), [coverageBlindSpots, data?.connectors, data?.controls, priorityFindings, readinessQuery.data]);
-  const readinessLabel = readiness ? humanize(readiness.status) : "current counts";
-  const primaryFramework = readinessQuery.data?.frameworks?.[0]?.framework_name || "Program";
+  const readinessLabel = "Control readiness";
 
   const reload = () => {
     void dashboard.reload();
@@ -534,7 +533,6 @@ export default function Home() {
               {visibleSections.programHealth && (
                 <ProgramHealthPanel
                   coverageSourceCount={coverageSourceCount}
-                  dashboardBackedReadiness={dashboardBackedReadiness}
                   metrics={homeMetrics}
                   readinessLabel={readinessLabel}
                 />

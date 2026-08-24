@@ -31,9 +31,9 @@ describe("navigation entries", () => {
     expect(hrefs).toContain("/credential-stores");
   });
 
-  it("uses operator labels for issues, Actions, and compliance", () => {
+  it("uses operator labels for work, actions, and compliance", () => {
     expect(operatorNavLinks.find((entry) => entry.href === "/risk-inbox")).toMatchObject({
-      label: "Issues",
+      label: "Work",
     });
     expect(operatorNavLinks.find((entry) => entry.href === "/grc")).toMatchObject({
       label: "Compliance",

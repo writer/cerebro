@@ -9,6 +9,8 @@ describe("dense agent route labels", () => {
     expect(isDenseAgentRouteLabel("Shared snapshot")).toBe(true);
     expect(isDenseAgentRouteLabel("Reports")).toBe(true);
     expect(isDenseAgentRouteLabel("Compliance")).toBe(true);
+    expect(isDenseAgentRouteLabel("Policies")).toBe(true);
+    expect(isDenseAgentRouteLabel("Audit workspace")).toBe(true);
   });
 
   it("uses the full launcher on lighter pages", () => {

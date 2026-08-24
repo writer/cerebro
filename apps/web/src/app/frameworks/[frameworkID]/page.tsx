@@ -9,8 +9,9 @@ import { Badge, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Panel, ResultL
 import TrendsChart from "@/components/grc/LazyTrendsChart";
 import { useApiKey } from "@/components/providers";
 import type { GRCControl, GRCControlEvidencePacketResponse, GRCFinding, GRCFramework, GRCFrameworksResponse, GRCListMeta, GRCTrends } from "@/lib/grc";
-import { displayDate, humanize, riskSort } from "@/lib/grc";
+import { displayDate, riskSort } from "@/lib/grc";
 import { downloadGRCExport, grcPath, useGRCQuery } from "@/lib/grc-client";
+import { deriveFrameworkReadiness, type FrameworkReadiness } from "@/lib/framework-readiness";
 import { frameworkMatchesRouteSegment, frameworkRouteSegment, isUpcomingGRCFramework, staticGRCFrameworkCatalog } from "@/lib/grc-frameworks";
 import { GRC_DETAIL_LIMIT, GRC_WORKLIST_LIMIT, grcBoundedRows } from "@/lib/grc-list";
 import { hasTrendActivity } from "@/lib/trends";
@@ -20,52 +21,40 @@ type FindingsResponse = { findings: GRCFinding[]; meta?: GRCListMeta; generated_
 const FRAMEWORK_CONTROL_LIMIT = GRC_WORKLIST_LIMIT;
 const FRAMEWORK_FINDING_LIMIT = GRC_DETAIL_LIMIT;
 
-const readinessTotal = (framework?: GRCFramework) =>
-  (framework?.readiness?.auditor_ready_controls ?? 0) +
-  (framework?.readiness?.needs_enrichment_controls ?? 0) +
-  (framework?.readiness?.placeholder_controls ?? 0);
-
 const countLabel = (count: number, singular: string, plural = `${singular}s`) =>
   `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
 
 const frameworkNameFromSegment = (segment: string) =>
   decodeURIComponent(segment).replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
-const actionHref = (framework: GRCFramework, code: string) => {
-  const frameworkParam = encodeURIComponent(framework.name);
-  if (code === "plan_framework_scope") return `/controls/builder?framework_name=${frameworkParam}`;
-  if (code === "export_audit_packet") return "";
-  return `/controls?framework=${frameworkParam}`;
-};
+function GapActions({ framework, onExport, readiness, exportState }: { framework: GRCFramework; onExport: () => void; readiness: FrameworkReadiness; exportState: string }) {
+  if (readiness.needsWorkControls > 0) {
+    const reasons = [
+      readiness.failingControls > 0 ? countLabel(readiness.failingControls, "failing control") : "",
+      readiness.evidenceGapControls > 0 ? countLabel(readiness.evidenceGapControls, "control with evidence gaps", "controls with evidence gaps") : "",
+    ].filter(Boolean);
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[color:var(--border)] p-3">
+        <div>
+          <div className="text-[13px] font-semibold text-[var(--text-primary)]">Review {countLabel(readiness.needsWorkControls, "control")}</div>
+          <div className="mt-1 text-[12px] text-[var(--text-muted)]">{reasons.join(" and ") || "Resolve the remaining control checks before export."}</div>
+        </div>
+        <Link href={`/controls?framework=${encodeURIComponent(framework.name)}`} className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-[var(--primary-hover)]">
+          Open controls
+        </Link>
+      </div>
+    );
+  }
 
-function GapActions({ framework, onExport, exportState }: { framework: GRCFramework; onExport: () => void; exportState: string }) {
-  const actions = framework.gap_actions ?? [];
   return (
-    <div className="space-y-3">
-      {actions.map((action) => {
-        const href = actionHref(framework, action.code);
-        return (
-          <div key={action.code} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[color:var(--border)] p-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge value={action.code} />
-                <span className="text-[12px] text-[var(--text-muted)]">Priority {action.priority}</span>
-                {action.count ? <span className="text-[12px] text-[var(--text-muted)]">{countLabel(action.count, "control")}</span> : null}
-              </div>
-              <div className="mt-2 text-[13px] text-[var(--text-primary)]">{action.label}</div>
-            </div>
-            {href ? (
-              <Link href={href} className="rounded-md border border-[color:var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]">
-                Open
-              </Link>
-            ) : (
-              <button type="button" onClick={onExport} disabled={exportState === "working"} className="rounded-md border border-[color:var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)] disabled:opacity-60">
-                {exportState === "working" ? "Exporting..." : "Export"}
-              </button>
-            )}
-          </div>
-        );
-      })}
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-950">
+      <div>
+        <div className="text-[13px] font-semibold">Packet ready for review</div>
+        <div className="mt-1 text-[12px] text-emerald-800">All measured controls are passing with current evidence.</div>
+      </div>
+      <button type="button" onClick={onExport} disabled={exportState === "working"} className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-[12px] font-medium text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-60">
+        {exportState === "working" ? "Exporting..." : "Export packet"}
+      </button>
     </div>
   );
 }
@@ -188,15 +177,14 @@ export default function FrameworkDetailPage() {
   const loadedFindings = boundedFindingRows.rows;
   const findingListMeta = findingsQuery.data ? boundedFindingRows.meta : undefined;
   const findings = useMemo(() => loadedFindings.slice().sort(riskSort), [loadedFindings]);
-  const readinessCount = readinessTotal(framework);
-  const maturityScore = framework?.maturity?.score ?? 0;
-  const evidenceGapCount = (framework?.readiness?.needs_enrichment_controls ?? 0) + (framework?.readiness?.placeholder_controls ?? 0);
   const packetControlTotal = controlListMeta?.total ?? packetQuery.data?.packet?.summary?.total ?? controls.length;
-  const measuredControlCount = packetQuery.data ? packetControlTotal : framework?.coverage?.selected_controls ?? 0;
-  const measuredControlDetail = packetQuery.data
-    ? countLabel(controls.length, "loaded control")
-    : countLabel(framework?.control_count ?? 0, "catalog control");
-  const readinessDetail = countLabel(readinessCount, "readiness-scored control");
+  const verifiedReadiness = useMemo(() => deriveFrameworkReadiness({
+    byStatus: packetQuery.data?.packet?.summary?.by_status,
+    controls,
+    total: packetControlTotal,
+  }), [controls, packetControlTotal, packetQuery.data?.packet?.summary?.by_status]);
+  const openFindingCount = findingListMeta?.total ?? findings.length;
+  const readinessState = packetQuery.loading && !packetQuery.data ? "loading" : packetQuery.data ? "ready" : packetQuery.error ? "unavailable" : "empty";
   const isLoadingFramework = frameworksQuery.loading && !frameworksQuery.data && !framework;
 
   if (!isLoadingFramework && !framework) {
@@ -213,12 +201,12 @@ export default function FrameworkDetailPage() {
       <PageHeader
         contractId="framework-detail"
         title={displayName}
-        description={framework?.description || "Framework posture, maturity, gaps, findings, controls, and audit packet exports."}
+        description={framework?.description || "Control readiness, evidence gaps, open findings, and audit packet work."}
         action={
           <div className="flex flex-wrap items-center gap-2">
             {framework && <Badge value={framework.lifecycle} />}
             <Link href="/frameworks" className="rounded-md border border-[color:var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]">All frameworks</Link>
-            {!isUpcoming && framework && (
+            {!isUpcoming && framework && verifiedReadiness.needsWorkControls === 0 && verifiedReadiness.totalControls > 0 && (
               <button type="button" onClick={exportPacket} disabled={exportState === "working"} className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-[var(--primary-hover)] disabled:opacity-60">
                 {exportState === "working" ? "Exporting..." : "Export packet"}
               </button>
@@ -233,33 +221,37 @@ export default function FrameworkDetailPage() {
       {framework && (
         <>
           <div className="grid gap-4 md:grid-cols-4">
-            <MetricCard label="Maturity" value={isUpcoming ? "N/A" : `${maturityScore}%`} detail={framework.maturity?.summary || "Not measured"} state={isLoadingFramework ? "loading" : "ready"} />
-            <MetricCard label="Measured controls" value={isUpcoming ? "N/A" : measuredControlCount} detail={measuredControlDetail} state={isLoadingFramework ? "loading" : "ready"} />
-            <MetricCard label="Audit-ready" value={isUpcoming ? "N/A" : framework.readiness?.auditor_ready_controls ?? 0} detail={readinessDetail} state={isLoadingFramework ? "loading" : "ready"} />
-            <MetricCard label="Evidence gaps" value={isUpcoming ? "N/A" : evidenceGapCount} detail={isUpcoming ? "Planning only" : "Controls needing enrichment"} intent={evidenceGapCount > 0 ? "warning" : "success"} state={isLoadingFramework ? "loading" : "ready"} />
+            <MetricCard label="Readiness" value={isUpcoming ? "N/A" : `${verifiedReadiness.score}%`} detail={isUpcoming ? "Planning only" : `${verifiedReadiness.readyControls} of ${verifiedReadiness.totalControls} controls ready`} intent={verifiedReadiness.score === 100 ? "success" : "warning"} state={isUpcoming ? "ready" : readinessState} />
+            <MetricCard label="Controls ready" value={isUpcoming ? "N/A" : `${verifiedReadiness.readyControls}/${verifiedReadiness.totalControls}`} detail={isUpcoming ? "Planning only" : countLabel(verifiedReadiness.needsWorkControls, "control needs work", "controls need work")} intent={verifiedReadiness.needsWorkControls > 0 ? "warning" : "success"} state={isUpcoming ? "ready" : readinessState} />
+            <MetricCard label="Open findings" value={isUpcoming ? "N/A" : openFindingCount} detail={isUpcoming ? "Planning only" : "Mapped to this framework"} intent={openFindingCount > 0 ? "danger" : "success"} state={isUpcoming ? "ready" : findingsQuery.loading && !findingsQuery.data ? "loading" : findingsQuery.data ? "ready" : "unavailable"} />
+            <MetricCard label="Evidence gaps" value={isUpcoming ? "N/A" : verifiedReadiness.evidenceGapControls} detail={isUpcoming ? "Planning only" : "Controls missing or using stale evidence"} intent={verifiedReadiness.evidenceGapControls > 0 ? "warning" : "success"} state={isUpcoming ? "ready" : readinessState} />
           </div>
 
           {isUpcoming ? <PlanningMode framework={framework} /> : null}
 
-          <Panel title="Gap-to-action workflow">
-            <GapActions framework={framework} onExport={exportPacket} exportState={exportState} />
-            {exportState === "failed" && <div className="mt-3 text-[12px] text-red-600">Export failed. Check API connectivity and try again.</div>}
-          </Panel>
+          {!isUpcoming && (
+            <Panel title="Next action">
+              {packetQuery.loading && !packetQuery.data ? <LoadingBlock label="Loading control readiness..." /> : null}
+              {packetQuery.error && !packetQuery.data ? <ErrorBlock error={packetQuery.error} onRetry={packetQuery.reload} /> : null}
+              {packetQuery.data ? <GapActions framework={framework} onExport={exportPacket} readiness={verifiedReadiness} exportState={exportState} /> : null}
+              {exportState === "failed" && <div className="mt-3 text-[12px] text-red-600">Export failed. Check API connectivity and try again.</div>}
+            </Panel>
+          )}
 
           {!isUpcoming && (
             <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
               <Panel title={`${displayName} tracking snapshot`}>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-lg bg-[var(--surface-muted)] p-3">
-                    <div className="text-xl font-semibold text-[var(--text-primary)]">{humanize(framework.maturity?.status || "not configured")}</div>
-                    <div className="mt-1 text-[12px] text-[var(--text-muted)]">Maturity stage</div>
+                    <div className="text-xl font-semibold text-[var(--text-primary)]">{verifiedReadiness.needsWorkControls === 0 ? "Ready" : countLabel(verifiedReadiness.needsWorkControls, "control")}</div>
+                    <div className="mt-1 text-[12px] text-[var(--text-muted)]">Needs work</div>
                   </div>
                   <div className="rounded-lg bg-[var(--surface-muted)] p-3">
                     <div className="text-xl font-semibold text-[var(--text-primary)]">{framework.coverage?.mapped_rules ?? 0}</div>
                     <div className="mt-1 text-[12px] text-[var(--text-muted)]">Mapped rules</div>
                   </div>
                   <div className="rounded-lg bg-[var(--surface-muted)] p-3">
-                    <div className="text-xl font-semibold text-[var(--text-primary)]">{findings.length}</div>
+                    <div className="text-xl font-semibold text-[var(--text-primary)]">{openFindingCount}</div>
                     <div className="mt-1 text-[12px] text-[var(--text-muted)]">Open findings</div>
                   </div>
                 </div>

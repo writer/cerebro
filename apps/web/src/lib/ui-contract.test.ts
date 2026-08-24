@@ -237,14 +237,17 @@ describe("product UI contract", () => {
     expect(source).toContain("Page actions are ready. Searching live data...");
   });
 
-  it("keeps overview audit readiness fallbacks dashboard-backed instead of sample-labeled", () => {
+  it("keeps overview readiness scoped to explicit framework control counts", () => {
     const overviewSource = readProjectFile("src/app/page.tsx");
 
     expect(overviewSource).toContain("data?.coverage_blind_spots");
     expect(overviewSource).toContain("data?.coverage_summaries");
     expect(overviewSource).toContain('coverage_view: "page"');
     expect(overviewSource).toContain("coverageSummaries.reduce");
-    expect(overviewSource).toContain("dashboardBackedReadiness");
+    expect(overviewSource).toContain("isControlAuditReady");
+    expect(overviewSource).toContain("primaryFrameworkRecord");
+    expect(overviewSource).toContain("passing_controls");
+    expect(overviewSource).toContain("controlProgress");
     expect(overviewSource).not.toContain("sampled dashboard values");
     expect(overviewSource).not.toContain("sampled total");
   });
