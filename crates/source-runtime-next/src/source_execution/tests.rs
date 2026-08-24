@@ -583,6 +583,24 @@ fn closed_dispatcher_registers_and_executes_the_exact_twilio_accounts_plan() {
         "https://api.twilio.com/2010-04-01/Accounts.json?limit=100&cursor=accounts-page-1"
     );
 
+    assert_eq!(
+        dispatcher.dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(context.clone()),
+            }),
+            metadata: Some(SourceWorkerRuntimeMetadataV2 {
+                public_config: HashMap::from([(
+                    "base_url".to_owned(),
+                    "https://twilio.example.test".to_owned(),
+                )]),
+                prior_terminal_watermark_unix_millis: 0,
+                prior_checkpoint: String::new(),
+            }),
+        }),
+        Err(SourceExecutionError::InvalidPlan)
+    );
+
     let body = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../sources/twilio/testdata/source_worker_accounts_page.json"

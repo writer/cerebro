@@ -145,6 +145,15 @@ impl SourceExecutionAdapter for TwilioAccountsSourceExecutionAdapter {
             .as_ref()
             .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
         validate_runtime_metadata(metadata)?;
+        let configured_origin = metadata
+            .public_config
+            .get("base_url")
+            .map(String::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(TwilioAccountsAdapter::default_origin());
+        if configured_origin != TwilioAccountsAdapter::default_origin() {
+            return Err(SourceExecutionError::InvalidPlan);
+        }
         let planned = self.plan(request)?;
         let mut execution = SourceWorkerHttpExecutionV2 {
             request: Some(planned),
