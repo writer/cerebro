@@ -32,7 +32,7 @@ fn page(family: DigitalOceanFamily, tenant: &str) -> DigitalOceanPage {
 }
 
 #[test]
-fn catalog_and_kernel_close_the_exact_three_legacy_families() {
+fn catalog_and_kernel_close_the_exact_three_families_after_go_runtime_retirement() {
     let catalog = SourceCatalog::load(
         root().join("internal/connectorcatalog/catalog"),
         root().join("sources"),
@@ -66,8 +66,13 @@ fn catalog_and_kernel_close_the_exact_three_legacy_families() {
         DigitalOceanFamily::from_str("unknown"),
         Err(DigitalOceanError::InvalidFamily)
     );
-    assert!(root().join("sources/digitalocean/source.go").exists());
-    assert!(root().join("sources/digitalocean/source_test.go").exists());
+    assert!(!root().join("sources/digitalocean/source.go").exists());
+    assert!(!root().join("sources/digitalocean/source_test.go").exists());
+    assert!(
+        root()
+            .join("crates/source-runtime-next/src/digitalocean/source_execution.rs")
+            .exists()
+    );
 }
 
 #[test]
