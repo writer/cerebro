@@ -11,6 +11,7 @@ mod mappings;
 mod normalize;
 mod request;
 mod response;
+mod source_execution;
 mod types;
 
 pub use error::AnthropicError;
