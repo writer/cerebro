@@ -38,7 +38,7 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		return familyID, true
 	case "sentinelone":
 		switch familyID {
-		case "activity", "agent", "exclusion", "group", "site":
+		case "activity", "agent", "exclusion", "group", "site", "threat":
 			return familyID, true
 		default:
 			return familyID, false

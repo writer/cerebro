@@ -13,6 +13,9 @@ use crate::sentinelone::SentinelOneRecord;
 #[path = "normalization/direct.rs"]
 mod direct;
 pub(super) use direct::normalize_direct_record;
+#[path = "normalization/threat.rs"]
+mod threat;
+pub(super) use threat::normalize_threat_record;
 
 pub(super) fn normalize_agent_record(
     record: SentinelOneRecord,

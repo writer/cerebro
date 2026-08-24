@@ -44,10 +44,10 @@ The production package includes the credential-free `source_worker` binary.
 `CEREBRO_SOURCE_WORKER` selects its absolute path; when unset, Cerebro uses the
 `source_worker` sibling next to the Go executable. Closed production dispatch
 includes `azure` with `family=authorization_policy` and SentinelOne with
-`family=agent`, `activity`, `exclusion`, `group`, or `site`. Those runtimes must
-store an opaque `env:` or `credential:` reference. The trusted host resolves
-and redeems it once; raw credential bytes are never sent to the Rust worker.
-SentinelOne threat and application inventory remain on the Go compatibility
+`family=agent`, `activity`, `exclusion`, `group`, `site`, or `threat`. Those
+runtimes must store an opaque `env:` or `credential:` reference. The trusted
+host resolves and redeems it once; raw credential bytes are never sent to the
+Rust worker. SentinelOne application inventory remains on the Go compatibility
 path. SentinelOne source preview also remains on its compatibility path until
 the preview credential adapter is promoted separately.
 

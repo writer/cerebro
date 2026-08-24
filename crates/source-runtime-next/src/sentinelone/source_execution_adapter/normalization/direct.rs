@@ -8,6 +8,7 @@ use crate::sentinelone::{SentinelOneFamily, SentinelOneRecord};
 use crate::source_execution::{SourceWorkerExecutionContextV1, SourceWorkerRecordV1};
 
 use super::super::{direct::direct_event_id, error::SentinelOneAgentAdapterError};
+use super::normalize_threat_record;
 use super::{
     bool_text, flexible_bool, flexible_string, insert_json_integer, insert_json_object,
     insert_json_string, insert_json_true, insert_nonblank, integer_text,
@@ -47,7 +48,8 @@ pub(crate) fn normalize_direct_record(
             site_payload(&record.payload, &context.tenant_id, provider_id),
             provider_occurred_at_millis_for(&record.payload, &["updatedAt", "createdAt"]),
         ),
-        SentinelOneFamily::Agent | SentinelOneFamily::Application | SentinelOneFamily::Threat => {
+        SentinelOneFamily::Threat => return normalize_threat_record(record, context),
+        SentinelOneFamily::Agent | SentinelOneFamily::Application => {
             return Err(SentinelOneAgentAdapterError::InvalidPlan);
         }
     };

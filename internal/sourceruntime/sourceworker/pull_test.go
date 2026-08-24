@@ -98,7 +98,7 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"SentinelOne group":          {"sentinelone", "group", "group", true},
 		"SentinelOne site":           {"sentinelone", "site", "site", true},
 		"SentinelOne default":        {"sentinelone", "", "", false},
-		"SentinelOne threat":         {"sentinelone", "threat", "threat", false},
+		"SentinelOne threat":         {"sentinelone", "threat", "threat", true},
 		"SentinelOne application":    {"sentinelone", "application", "application", false},
 		"Tailscale default":          {"tailscale", "", "device", true},
 		"unknown Tailscale family":   {"tailscale", "future-family", "future-family", true},
