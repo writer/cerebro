@@ -24,7 +24,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 
 import GraphViewer from "@/components/grc/LazyGraphViewer";
-import { Badge, ErrorBlock, LoadingBlock, MetricCard, Panel, ResultLimitNotice, SeverityDot } from "@/components/grc/Primitives";
+import { Badge, ErrorBlock, LoadingBlock, Panel, ResultLimitNotice, SeverityDot } from "@/components/grc/Primitives";
 import {
   displayDate,
   GRCRiskScoreFactor,
@@ -379,12 +379,12 @@ function QuestionnaireReviewsPanel({ tenantID, vendorURN }: { tenantID: string; 
         <LoadingBlock label="Loading questionnaire queue..." />
       ) : (
         <div className="space-y-5">
-          <div className="grid gap-3 md:grid-cols-5">
-            <MetricCard label="Reviews" value={rollups.total} detail="vendor questionnaires" />
-            <MetricCard label="Blocked" value={rollups.blocked} detail="answers blocked" intent={rollups.blocked > 0 ? "danger" : "success"} />
-            <MetricCard label="Needs review" value={rollups.needsReview} detail="answers queued" intent={rollups.needsReview > 0 ? "warning" : "success"} />
-            <MetricCard label="Ready" value={rollups.ready} detail="answers with citations" intent="success" />
-            <MetricCard label="Stale evidence" value={rollups.stale} detail="answers affected" intent={rollups.stale > 0 ? "warning" : "success"} />
+          <div className="grid gap-x-7 gap-y-4 border-y border-[color:var(--border)] py-4 sm:grid-cols-2 xl:grid-cols-5" data-questionnaire-summary>
+            <VendorMetric label="Reviews" value={rollups.total} detail="vendor questionnaires" />
+            <VendorMetric label="Blocked" value={rollups.blocked} detail="answers blocked" tone={rollups.blocked > 0 ? "danger" : "success"} />
+            <VendorMetric label="Needs review" value={rollups.needsReview} detail="answers queued" tone={rollups.needsReview > 0 ? "warning" : "success"} />
+            <VendorMetric label="Ready" value={rollups.ready} detail="answers with citations" tone="success" />
+            <VendorMetric label="Stale evidence" value={rollups.stale} detail="answers affected" tone={rollups.stale > 0 ? "warning" : "success"} />
           </div>
 
           {mutation.error && <ErrorBlock error={mutation.error} recoveryDetail="The questionnaire action did not save." />}
@@ -525,11 +525,11 @@ function QuestionnaireRunDetail({
         </button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <MetricCard label="Citations" value={citations.length} detail="linked sources" intent={citations.length > 0 ? "success" : "warning"} />
-        <MetricCard label="Missing" value={gaps.length} detail="open gaps" intent={gaps.length > 0 ? "warning" : "success"} />
-        <MetricCard label="Freshness" value={humanize(answer?.freshness?.status || "unknown")} detail={answer?.freshness?.observed_at ? `Observed ${displayDate(answer.freshness.observed_at)}` : "No observed date"} intent={(answer?.freshness?.status || "").toLowerCase() === "stale" ? "warning" : "neutral"} />
-        <MetricCard label="Controls" value={row.mappedControls.length} detail={row.mappedControls.slice(0, 2).join(", ") || "none mapped"} />
+      <div className="grid gap-x-7 gap-y-4 border-y border-[color:var(--border)] py-4 sm:grid-cols-2 lg:grid-cols-4" data-questionnaire-answer-summary>
+        <VendorMetric label="Citations" value={citations.length} detail="linked sources" tone={citations.length > 0 ? "success" : "warning"} />
+        <VendorMetric label="Missing" value={gaps.length} detail="open gaps" tone={gaps.length > 0 ? "warning" : "success"} />
+        <VendorMetric label="Freshness" value={humanize(answer?.freshness?.status || "unknown")} detail={answer?.freshness?.observed_at ? `Observed ${displayDate(answer.freshness.observed_at)}` : "No observed date"} tone={(answer?.freshness?.status || "").toLowerCase() === "stale" ? "warning" : "neutral"} />
+        <VendorMetric label="Controls" value={row.mappedControls.length} detail={row.mappedControls.slice(0, 2).join(", ") || "none mapped"} />
       </div>
 
       <QuestionnaireSection title="Draft answer">
@@ -845,7 +845,7 @@ function InitialBadge({ label }: { label?: string }) {
   );
 }
 
-function ConsoleStatCard({
+function VendorMetric({
   detail,
   label,
   progress,
@@ -855,25 +855,22 @@ function ConsoleStatCard({
   detail: ReactNode;
   label: string;
   progress?: number;
-  tone?: "danger" | "neutral" | "primary" | "warning";
+  tone?: "danger" | "neutral" | "primary" | "success" | "warning";
   value: ReactNode;
 }) {
-  const dotClass = tone === "danger" ? "bg-rose-500" : tone === "warning" ? "bg-amber-500" : tone === "primary" ? "bg-violet-400" : "bg-[var(--text-muted)]";
+  const dotClass = tone === "danger" ? "bg-rose-500" : tone === "warning" ? "bg-amber-500" : tone === "primary" ? "bg-violet-400" : tone === "success" ? "bg-emerald-500" : "bg-[var(--text-muted)]";
 
   return (
-    <div className="surface-panel group min-h-[118px] p-4 transition hover:border-[color:var(--border-strong)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-[13px] text-[var(--text-muted)]">{label}</div>
-        <ChevronRight className="h-4 w-4 text-[var(--text-muted)] transition group-hover:text-[var(--text-primary)]" aria-hidden="true" />
-      </div>
-      <div className={`mt-2 text-[26px] font-semibold leading-none ${tone === "danger" ? "text-rose-400" : "text-[var(--text-primary)]"}`}>{value}</div>
+    <div className="min-w-0">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</div>
+      <div className={`mt-1 text-xl font-semibold leading-tight ${tone === "danger" ? "text-rose-400" : "text-[var(--text-primary)]"}`}>{value}</div>
       {progress == null ? (
-        <div className="mt-3 flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+        <div className="mt-1 flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
           <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
           <span>{detail}</span>
         </div>
       ) : (
-        <div className="mt-4 h-1.5 w-[70%] rounded-full bg-[var(--surface-muted)]">
+        <div className="mt-2 h-1.5 w-full max-w-36 rounded-full bg-[var(--surface-muted)]">
           <div className="h-full rounded-full bg-violet-400" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
         </div>
       )}
@@ -955,11 +952,11 @@ function VendorHero({
         <span>Freshness <span className="ml-1 inline-flex items-center gap-1 font-semibold text-[var(--text-primary)]"><span className={`h-1.5 w-1.5 rounded-full ${vendor.evidence_freshness_state === "stale" ? "bg-amber-400" : "bg-emerald-400"}`} /> {freshnessLabel}</span></span>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <ConsoleStatCard label="Open risks" value={vendor.open_findings ?? 0} detail={`${vendor.high_findings ?? 0} high`} tone={(vendor.open_findings ?? 0) > 0 ? "danger" : "neutral"} />
-        <ConsoleStatCard label="Assessment progress" value={`${assessmentProgress}%`} detail="complete" progress={assessmentProgress} tone="primary" />
-        <ConsoleStatCard label="Pending actions" value={actions.length} detail={actions.length ? "Requires attention" : "No pending actions"} tone={actions.length ? "warning" : "neutral"} />
-        <ConsoleStatCard label="Exposure" value={humanize(exposureLevel)} detail={`${exposureDriverCount} driver${exposureDriverCount === 1 ? "" : "s"}`} tone={["critical", "high"].includes(exposureLevel) ? "danger" : "neutral"} />
+      <div className="grid gap-x-8 gap-y-4 border-y border-[color:var(--border)] py-4 sm:grid-cols-2 lg:grid-cols-4" data-vendor-summary>
+        <VendorMetric label="Open risks" value={vendor.open_findings ?? 0} detail={`${vendor.high_findings ?? 0} high`} tone={(vendor.open_findings ?? 0) > 0 ? "danger" : "neutral"} />
+        <VendorMetric label="Assessment progress" value={`${assessmentProgress}%`} detail="complete" progress={assessmentProgress} tone="primary" />
+        <VendorMetric label="Pending actions" value={actions.length} detail={actions.length ? "Requires attention" : "No pending actions"} tone={actions.length ? "warning" : "neutral"} />
+        <VendorMetric label="Exposure" value={humanize(exposureLevel)} detail={`${exposureDriverCount} driver${exposureDriverCount === 1 ? "" : "s"}`} tone={["critical", "high"].includes(exposureLevel) ? "danger" : "neutral"} />
       </div>
     </div>
   );
