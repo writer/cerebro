@@ -39,7 +39,16 @@ func (s *Service) WithSourceExecutionWorkerPath(path string) *Service {
 }
 
 func rustSourceFamily(sourceID string, config map[string]string) (string, bool) {
-	return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
+	sourceID = strings.TrimSpace(sourceID)
+	// Preview authority is promoted separately from the durable runtime. A new
+	// runtime-authoritative provider must keep its existing sourceops path until
+	// its preview credential adapter and product-surface parity are ready.
+	switch sourceID {
+	case "azure", "tailscale":
+		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
+	default:
+		return "", false
+	}
 }
 
 func (s *Service) executeRustSource(ctx context.Context, sourceID, family string, config map[string]string, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {

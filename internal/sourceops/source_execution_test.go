@@ -13,6 +13,26 @@ import (
 	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
 )
 
+func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
+	for name, test := range map[string]struct {
+		source, family, wantFamily string
+		wantAuthoritative          bool
+	}{
+		"Azure authorization policy": {"azure", "authorization_policy", "authorization_policy", true},
+		"other Azure family":         {"azure", "user", "user", false},
+		"Tailscale default":          {"tailscale", "", "device", true},
+		"JumpCloud runtime only":     {"jumpcloud", "users", "", false},
+		"compatibility source":       {"gcp", "audit", "", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			family, authoritative := rustSourceFamily(test.source, map[string]string{"family": test.family})
+			if family != test.wantFamily || authoritative != test.wantAuthoritative {
+				t.Fatalf("rustSourceFamily() = (%q, %v), want (%q, %v)", family, authoritative, test.wantFamily, test.wantAuthoritative)
+			}
+		})
+	}
+}
+
 func TestTailscaleCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
 	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
 		t.Run(family, func(t *testing.T) {
