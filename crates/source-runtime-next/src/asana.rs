@@ -13,7 +13,10 @@ mod origin;
 mod projection;
 mod request;
 mod response;
+mod source_execution;
 mod types;
+
+pub(crate) use source_execution::ASANA_SOURCE_EXECUTION_ADAPTERS;
 
 pub use catalog::{AsanaEventContract, AsanaRuntimeDefinition};
 pub use error::AsanaError;

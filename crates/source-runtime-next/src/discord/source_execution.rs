@@ -1,37 +1,26 @@
-//! PagerDuty family bridges into the closed source-execution dispatcher.
+//! Discord family bridges for the credential-free source-execution protocol.
 //!
-//! The adapter consumes authenticated tenant context, public configuration, and
-//! bounded provider response bytes. The trusted Go host retains credential
-//! redemption, PagerDuty authentication, network I/O, durable append,
-//! projection, and checkpoint ownership.
-
-use std::collections::HashMap;
-
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+//! These adapters compile public family contracts and consume bounded provider
+//! bytes. The trusted host retains bot-token redemption, authentication,
+//! network I/O, durable append, projection, lease fencing, and checkpoints.
 
 use crate::source_execution::{
-    SourceExecutionAdapter, SourceExecutionError, SourceExecutionPlanV1,
-    SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
-    SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1,
-    SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
-    SourceWorkerRuntimeMetadataV2, canonical_http_execution_digest,
-    canonical_request_intent_digest, canonical_result_digest, validate_and_deduplicate_records,
+    SourceExecutionAdapter, SourceExecutionError, SourceWorkerDecodeEnvelopeV2,
+    SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
+    SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
+    SourceWorkerPlanRequestV1, SourceWorkerRecordV1, SourceWorkerRuntimeMetadataV2,
+    canonical_http_execution_digest, canonical_request_intent_digest, canonical_result_digest,
+    validate_and_deduplicate_records,
 };
-
-use super::PagerDutyFamily;
 
 #[path = "source_execution/catalog.rs"]
 mod catalog;
 
-pub(crate) use catalog::{
-    PAGERDUTY_SOURCE_EXECUTION_ADAPTERS, PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER,
-};
+use catalog::{DiscordSourceExecutionAdapter, map_error, optional, validated_kernel};
 
-use catalog::{DEFAULT_BASE_URL, PagerDutySourceExecutionAdapter, map_error, optional};
-
-impl SourceExecutionAdapter for PagerDutySourceExecutionAdapter {
+impl SourceExecutionAdapter for DiscordSourceExecutionAdapter {
     fn source_id(&self) -> &'static str {
-        "pagerduty"
+        "discord"
     }
 
     fn family_id(&self) -> &'static str {
@@ -39,23 +28,15 @@ impl SourceExecutionAdapter for PagerDutySourceExecutionAdapter {
     }
 
     fn provider_kernel(&self) -> &'static str {
-        self.family().event_kind()
+        self.family().provider_kind()
     }
 
     fn validate_record_identity(
         &self,
-        context: &SourceWorkerExecutionContextV1,
-        record: &SourceWorkerRecordV1,
+        _context: &SourceWorkerExecutionContextV1,
+        _record: &SourceWorkerRecordV1,
     ) -> Result<(), SourceExecutionError> {
-        let metadata = SourceWorkerRuntimeMetadataV2 {
-            public_config: HashMap::from([
-                ("family".to_owned(), self.family().as_str().to_owned()),
-                ("base_url".to_owned(), DEFAULT_BASE_URL.to_owned()),
-            ]),
-            prior_terminal_watermark_unix_millis: 0,
-            prior_checkpoint: String::new(),
-        };
-        self.validate_identity(context, record, &metadata)
+        Err(SourceExecutionError::InvalidPlan)
     }
 
     fn validate_record_identity_v2(
@@ -95,15 +76,15 @@ impl SourceExecutionAdapter for PagerDutySourceExecutionAdapter {
             .as_ref()
             .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
         self.validate_plan(plan)?;
-        let (kernel, allowed_origin) = self.kernel(context, metadata)?;
+        let (kernel, allowed_origin) = validated_kernel(self.family(), context, metadata)?;
         let provider_request = kernel
             .plan(optional(&context.prior_cursor))
             .map_err(map_error)?;
-        if (self.family() != PagerDutyFamily::Integration
-            && provider_request.url().path() != plan.path)
+        let expected_path = format!("/api/v10{}", provider_request.operation_path);
+        if provider_request.url().path() != expected_path
             || provider_request.method() != plan.method
             || provider_request.authorization_header() != "Authorization"
-            || provider_request.authorization_scheme() != "Token token="
+            || provider_request.authorization_scheme() != "Bot"
             || provider_request.contains_credentials()
             || provider_request.allows_redirects()
         {
@@ -123,9 +104,9 @@ impl SourceExecutionAdapter for PagerDutySourceExecutionAdapter {
         let mut execution = SourceWorkerHttpExecutionV2 {
             request: Some(planned),
             body: Vec::new(),
-            declared_headers: HashMap::new(),
+            declared_headers: Default::default(),
             execution_intent_digest_sha256: String::new(),
-            credential_operation: "pagerduty.token".to_owned(),
+            credential_operation: "discord.bot_token".to_owned(),
             allowed_origin,
         };
         execution.execution_intent_digest_sha256 =
@@ -165,38 +146,48 @@ impl SourceExecutionAdapter for PagerDutySourceExecutionAdapter {
             .as_ref()
             .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
         self.validate_plan(plan)?;
-        let (kernel, _) = self.kernel(context, metadata)?;
+        let (kernel, _) = validated_kernel(self.family(), context, metadata)?;
         let provider_request = kernel
             .plan(optional(&context.prior_cursor))
             .map_err(map_error)?;
+        let retry_after_seconds = response_header(&envelope.response_headers, "retry-after")
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| SourceExecutionError::UnexpectedProviderStatus)
+            })
+            .transpose()?;
         let status = u16::try_from(request.status_code)
             .map_err(|_| SourceExecutionError::UnexpectedProviderStatus)?;
-        let observed_at = timestamp(context.observed_at_unix_millis)?;
         let page = kernel
-            .decode(
+            .decode_http(
                 &provider_request,
                 status,
+                retry_after_seconds,
                 &request.response_body,
-                observed_at,
             )
             .map_err(map_error)?;
         let next_cursor = page.next_cursor.unwrap_or_default();
         let records = page
             .records
             .into_iter()
-            .map(|record| {
+            .map(|mut record| {
                 if record.tenant_id != context.tenant_id
-                    || record.family != self.family()
-                    || record.event_kind != plan.event_kind
+                    || record.source_id != plan.source_id
+                    || record.family != plan.family_id
+                    || record.provider_kind != plan.event_kind
                     || record.schema_ref != plan.schema_ref
                 {
                     return Err(SourceExecutionError::TenantMismatch);
                 }
+                record
+                    .fields
+                    .insert("tenant_id".to_owned(), context.tenant_id.clone());
                 Ok(SourceWorkerRecordV1 {
                     provider_id: record.provider_id,
                     event_id: record.event_id,
-                    occurred_at_unix_millis: parse_timestamp(&record.occurred_at)?,
-                    attributes: record.attributes.into_iter().collect(),
+                    occurred_at_unix_millis: record.occurred_at_unix_millis,
+                    attributes: record.fields.into_iter().collect(),
                     payload_json: serde_json::to_vec(&record.payload)
                         .map_err(|_| SourceExecutionError::InternalRuntime)?,
                 })
@@ -221,37 +212,15 @@ impl SourceExecutionAdapter for PagerDutySourceExecutionAdapter {
     }
 }
 
-pub(crate) fn durable_checkpoint_cursor(
-    plan: &SourceExecutionPlanV1,
-    result: &SourceWorkerDecodeResultV1,
-) -> Option<String> {
-    PAGERDUTY_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
-        plan.source_id == adapter.source_id()
-            && plan.family_id == adapter.family_id()
-            && plan.provider_kernel == adapter.provider_kernel()
-    })?;
-    if !result.next_cursor.is_empty() {
-        return Some(result.next_cursor.clone());
-    }
-    Some(
-        result
-            .records
-            .last()
-            .map(|record| record.provider_id.clone())
-            .unwrap_or_default(),
-    )
-}
-
-fn timestamp(unix_millis: i64) -> Result<OffsetDateTime, SourceExecutionError> {
-    OffsetDateTime::from_unix_timestamp_nanos(i128::from(unix_millis) * 1_000_000)
-        .map_err(|_| SourceExecutionError::InvalidExecutionContext)
-}
-
-fn parse_timestamp(value: &str) -> Result<i64, SourceExecutionError> {
-    let nanos = OffsetDateTime::parse(value, &Rfc3339)
-        .map_err(|_| SourceExecutionError::InvalidProviderRecord)?
-        .unix_timestamp_nanos();
-    i64::try_from(nanos / 1_000_000).map_err(|_| SourceExecutionError::InvalidProviderRecord)
+fn response_header<'a>(
+    headers: &'a std::collections::HashMap<String, String>,
+    name: &str,
+) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.trim())
+        .filter(|value| !value.is_empty())
 }
 
 #[cfg(test)]

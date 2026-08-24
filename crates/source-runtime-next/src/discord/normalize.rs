@@ -90,7 +90,7 @@ fn snowflake_unix_millis(value: &str) -> Result<i64, DiscordError> {
     i64::try_from(milliseconds).map_err(|_| DiscordError::InvalidRecord)
 }
 
-fn event_id(
+pub(super) fn event_id(
     tenant_id: &str,
     base_url: &str,
     operation_path: &str,

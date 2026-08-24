@@ -72,9 +72,10 @@ func TestPublicExecutionConfigNeverCarriesCredentialMaterial(t *testing.T) {
 	public := PublicExecutionConfig(map[string]string{
 		"account_sid": " AC123 ", "family": "user", "tailnet": "example.com", "base_url": "https://api.tailscale.com/api/v2",
 		"site_id": "site-1", "agent_id": "agent-1", "since": "2026-01-01T00:00:00Z", "until": "2026-02-01T00:00:00Z", "activity_type": "27",
-		"token": "secret-token", "graph_token": "secret-graph-token", "tenant_id": "tenant-1",
+		"page_size": " 100 ",
+		"token":     "secret-token", "graph_token": "secret-graph-token", "tenant_id": "tenant-1",
 	})
-	if len(public) != 9 || public["account_sid"] != "AC123" || public["site_id"] != "site-1" || public["agent_id"] != "agent-1" || public["since"] == "" || public["until"] == "" || public["activity_type"] != "27" || public["token"] != "" || public["graph_token"] != "" || public["tenant_id"] != "" {
+	if len(public) != 10 || public["account_sid"] != "AC123" || public["site_id"] != "site-1" || public["agent_id"] != "agent-1" || public["since"] == "" || public["until"] == "" || public["activity_type"] != "27" || public["page_size"] != "100" || public["token"] != "" || public["graph_token"] != "" || public["tenant_id"] != "" {
 		t.Fatalf("public config leaked private fields: %#v", public)
 	}
 }
@@ -94,6 +95,10 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"JumpCloud default":           {"jumpcloud", "", "users", true},
 		"JumpCloud family":            {"jumpcloud", "group_members", "group_members", true},
 		"unknown JumpCloud family":    {"jumpcloud", "future-family", "future-family", true},
+		"Linode default":              {" linode ", "", "issue", true},
+		"Linode issue":                {"linode", " issue ", "issue", true},
+		"other Linode family":         {"linode", "event", "event", false},
+		"unknown Linode family":       {"linode", "future-family", "future-family", false},
 		"PagerDuty default":           {" pagerduty ", "", "user", true},
 		"PagerDuty user":              {"pagerduty", " user ", "user", true},
 		"other PagerDuty family":      {"pagerduty", "team", "team", false},

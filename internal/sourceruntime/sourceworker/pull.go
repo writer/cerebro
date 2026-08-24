@@ -38,6 +38,11 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Every public JumpCloud family is closed in the Rust dispatcher. An
 		// unknown future family must fail there instead of restoring Go authority.
 		return familyID, true
+	case "linode":
+		if familyID == "" {
+			familyID = "issue"
+		}
+		return familyID, familyID == "issue"
 	case "pagerduty":
 		if familyID == "" {
 			familyID = "user"
@@ -112,7 +117,7 @@ func PublicExecutionConfig(values map[string]string) map[string]string {
 	public := make(map[string]string)
 	for _, key := range []string{
 		"account_sid", "activity_type", "agent_id", "audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
-		"family", "group_id", "group_ids", "insights_base_url", "org_id", "per_page",
+		"family", "group_id", "group_ids", "insights_base_url", "org_id", "page_size", "per_page",
 		"since", "site_id", "tailnet", "until", "user_group_id", "user_group_ids",
 	} {
 		if value, ok := values[key]; ok {

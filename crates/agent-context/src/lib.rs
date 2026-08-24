@@ -121,9 +121,10 @@ impl ContextEntity {
     /// Projects a domain entity into the bounded agent-facing representation.
     ///
     /// The stable agent key is also inserted as the `entity_urn` property. A
-    /// serialization failure for a domain kind or authority degrades only that
-    /// display projection to `provider` or JSON `null`; it does not change the
-    /// native entity identity.
+    /// validated `entity_type` presentation property preserves provider-specific
+    /// catalog kinds; otherwise the sealed domain kind is used. An authority
+    /// serialization failure degrades only that display projection to JSON
+    /// `null`; it does not change the native entity identity.
     pub fn from_domain(entity: &Entity) -> Self {
         let agent_key = entity.agent_key();
         let mut properties = entity.properties().clone();
@@ -131,10 +132,16 @@ impl ContextEntity {
         Self {
             entity_id: entity.id().clone(),
             agent_key,
-            entity_kind: serde_json::to_value(entity.kind())
-                .ok()
-                .and_then(|value| value.as_str().map(str::to_owned))
-                .unwrap_or_else(|| "provider".to_owned()),
+            entity_kind: entity
+                .properties()
+                .get("entity_type")
+                .filter(|value| {
+                    !value.is_empty()
+                        && value.trim() == value.as_str()
+                        && !value.chars().any(char::is_control)
+                })
+                .cloned()
+                .unwrap_or_else(|| entity.kind().as_str().to_owned()),
             authority: serde_json::to_value(entity.authority()).unwrap_or(serde_json::Value::Null),
             label: entity.label().to_owned(),
             properties,
@@ -1631,6 +1638,28 @@ mod tests {
             resolved.properties.get("entity_urn"),
             Some(&resolved.agent_key)
         );
+    }
+
+    #[test]
+    fn provider_extensions_keep_their_catalog_kind() {
+        let tenant = TenantId::parse("tenant-provider-kind").unwrap();
+        let vendor_kind = ProviderKind::parse("demo.vendor").unwrap();
+        let vendor = Entity::provider(
+            tenant,
+            SourceRuntimeId::parse("vendor-runtime").unwrap(),
+            vendor_kind.clone(),
+            "vendor-1",
+            EntityKind::Provider(vendor_kind),
+            "Vendor One",
+        )
+        .unwrap()
+        .with_property("entity_type", "vendor")
+        .unwrap();
+
+        let projected = ContextEntity::from_domain(&vendor);
+
+        assert_eq!(projected.entity_kind, "vendor");
+        assert_eq!(projected.authority["provider_kind"], "demo.vendor");
     }
 
     #[tokio::test]

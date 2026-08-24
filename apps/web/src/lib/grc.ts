@@ -1425,6 +1425,8 @@ export type GRCVendorsResponse = {
   summary?: GRCVendorSummary;
   meta?: GRCListMeta;
   vendors: GRCVendor[];
+  data_authority?: "rust_graph" | "fixture" | string;
+  graph_revision?: number;
   generated_at: string;
 };
 

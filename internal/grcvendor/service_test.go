@@ -12,12 +12,13 @@ import (
 )
 
 type stubGraphStore struct {
-	requests     []ports.CypherQueryRequest
-	rows         [][]ports.CypherRow
-	neighborhood *ports.EntityNeighborhood
-	rootURN      string
-	limit        int
-	err          error
+	requests      []ports.CypherQueryRequest
+	rows          [][]ports.CypherRow
+	neighborhood  *ports.EntityNeighborhood
+	rootURN       string
+	limit         int
+	graphRevision uint64
+	err           error
 }
 
 func (s *stubGraphStore) Ping(context.Context) error { return s.err }
@@ -40,7 +41,7 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 		return nil, s.err
 	}
 	s.requests = append(s.requests, ports.CypherQueryRequest{Params: map[string]any{"tenant_id": request.Filter.TenantID, "limit": request.Limit}})
-	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID}
+	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, GraphRevision: s.graphRevision}
 	if len(s.rows) == 0 {
 		return page, nil
 	}
@@ -177,6 +178,26 @@ func TestListVendorsDerivesPostureAndAppliesFilters(t *testing.T) {
 	}
 	if summary.OpenFindings != 2 || summary.CriticalFindings != 1 || summary.EvidenceItems != 3 {
 		t.Fatalf("summary finding counts = %#v", summary)
+	}
+}
+
+func TestListVendorsPagePreservesGraphRevision(t *testing.T) {
+	store := &stubGraphStore{
+		graphRevision: 42,
+		rows: [][]ports.CypherRow{{
+			vendorRow("urn:cerebro:writer:vendor:one", "Vendor One", `{"vendor_id":"one","risk_level":"medium"}`, 0, 0, 0, 0),
+		}},
+	}
+
+	page, err := New(store).ListVendorsPage(context.Background(), ListVendorsRequest{
+		TenantID: "writer",
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatalf("ListVendorsPage() error = %v", err)
+	}
+	if page.GraphRevision != 42 || len(page.Vendors) != 1 {
+		t.Fatalf("page = %#v, want one vendor at graph revision 42", page)
 	}
 }
 

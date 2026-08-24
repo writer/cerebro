@@ -110,6 +110,7 @@ fn seal_page_program_inner(
         "pagerduty" => {
             crate::pagerduty::durable_checkpoint_cursor(plan, result).unwrap_or_default()
         }
+        "linode" => crate::linode::durable_checkpoint_cursor(plan, result).unwrap_or_default(),
         _ => result.next_cursor.clone(),
     };
 

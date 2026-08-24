@@ -16,8 +16,14 @@ use serde_json::Value;
 mod error;
 mod materialization;
 mod normalization;
+// Shared dispatcher registration lands separately so this provider slice does
+// not collide with another branch that currently owns the shared registry.
+#[allow(dead_code)]
+mod source_execution;
 mod user_adapter;
 
+#[cfg(test)]
+mod source_execution_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -25,6 +31,10 @@ mod user_adapter_tests;
 
 pub use error::GoogleWorkspaceError;
 use normalization::*;
+#[allow(unused_imports)]
+pub(crate) use source_execution::{
+    GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER, durable_checkpoint_cursor,
+};
 
 const SOURCE_ID: &str = "google_workspace";
 const DEFAULT_CUSTOMER_ID: &str = "my_customer";
