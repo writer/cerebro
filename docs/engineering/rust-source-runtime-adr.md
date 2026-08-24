@@ -188,7 +188,10 @@ authority own all seven SentinelOne families: `sentinelone.agent`,
 between agent discovery and the per-agent inventory request, so interruption
 cannot skip an agent. The trusted host still owns SentinelOne credential
 redemption and origin-constrained HTTP; Go still owns durable append, projection,
-and checkpoint transactions.
+and checkpoint transactions. Source check, discovery, and read previews also
+route all seven families through the same credential-free Rust dispatcher and
+trusted credential adapter. The Go registry retains only the portable catalog
+metadata anchor; direct provider execution from that anchor fails closed.
 
 ## Why Rust, and where Rust is not the reason
 
