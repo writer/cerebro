@@ -1,5 +1,6 @@
-#[path = "../src/linode.rs"]
-mod linode;
+mod linode {
+    pub use cerebro_source_runtime_next::{LinodeError, LinodeKernel};
+}
 
 use time::OffsetDateTime;
 
