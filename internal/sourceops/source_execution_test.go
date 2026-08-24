@@ -21,13 +21,112 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		"Azure authorization policy": {"azure", "authorization_policy", "authorization_policy", true},
 		"other Azure family":         {"azure", "user", "user", false},
 		"Tailscale default":          {"tailscale", "", "device", true},
-		"JumpCloud runtime only":     {"jumpcloud", "users", "", false},
+		"JumpCloud default":          {"jumpcloud", "", "users", true},
+		"JumpCloud family":           {"jumpcloud", "group_members", "group_members", true},
+		"unknown JumpCloud family":   {"jumpcloud", "future-family", "future-family", true},
 		"compatibility source":       {"gcp", "audit", "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			family, authoritative := rustSourceFamily(test.source, map[string]string{"family": test.family})
 			if family != test.wantFamily || authoritative != test.wantAuthoritative {
 				t.Fatalf("rustSourceFamily() = (%q, %v), want (%q, %v)", family, authoritative, test.wantFamily, test.wantAuthoritative)
+			}
+		})
+	}
+}
+
+func TestJumpCloudCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
+	const credentialFixture = "host-only-jumpcloud-secret" // #nosec G101 -- synthetic boundary-test sentinel, not credential material.
+	for _, family := range []string{"users", "groups", "systems", "applications", "system_groups", "group_members", "audit_events"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &authorityProbeSource{sourceID: "jumpcloud"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := New(registry)
+			service.sourceWorker = previewWorkerStub{}
+			calls := 0
+			service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, reference string, credential []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+				calls++
+				if reference != previewCredentialReference || string(credential) != credentialFixture {
+					t.Fatal("JumpCloud credential was not confined to the trusted runner boundary")
+				}
+				encoded, marshalErr := json.Marshal(input)
+				if marshalErr != nil || strings.Contains(string(encoded), credentialFixture) || input.Scope.PublicConfig["api_key"] != "" {
+					t.Fatalf("credential crossed the worker protocol: %s, %v", encoded, marshalErr)
+				}
+				if input.SourceID != "jumpcloud" || input.FamilyID != family {
+					t.Fatalf("Rust selection = %s.%s", input.SourceID, input.FamilyID)
+				}
+				return jumpCloudPreviewOutput(family, input.Scope.PriorTerminalWatermarkUnixMillis), nil
+			}
+			config := map[string]string{"family": family, "tenant_id": "tenant-1", "api_key": credentialFixture}
+			if family == "group_members" {
+				config["group_ids"] = "group-1,group-2"
+			}
+			if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "jumpcloud", Config: config}); err != nil {
+				t.Fatal(err)
+			}
+			discovered, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "jumpcloud", Config: config})
+			if err != nil || len(discovered.GetUrns()) != 1 {
+				t.Fatalf("Discover() = %#v, %v", discovered, err)
+			}
+			providerID := family + "-1"
+			if family == "audit_events" {
+				providerID = sourcecdk.StableExternalID("event-1", "event")
+			}
+			wantURN, urnErr := sourcecdk.URNFor("tenant-1", "jumpcloud_"+family, providerID)
+			if family == "group_members" {
+				wantURN, urnErr = sourcecdk.URNForEscaped("tenant-1", "jumpcloud_group_members", "group-1", family+"-1")
+			}
+			if urnErr != nil || discovered.GetUrns()[0] != wantURN.String() {
+				t.Fatalf("Discover() URN = %q, want %q, %v", discovered.GetUrns()[0], wantURN.String(), urnErr)
+			}
+			read, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "jumpcloud", Config: config})
+			if err != nil || len(read.GetEvents()) != 1 || read.GetEvents()[0].GetSourceId() != "jumpcloud" || read.GetCheckpoint().GetCursorOpaque() == "" {
+				t.Fatalf("Read() = %#v, %v", read, err)
+			}
+			if calls != 3 || legacy.checkCalls != 0 || legacy.discoverCalls != 0 || legacy.readCalls != 0 {
+				t.Fatalf("calls = Rust %d, Go check/discover/read %d/%d/%d", calls, legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
+			}
+		})
+	}
+}
+
+func TestUnknownJumpCloudFamilyFailsClosedWithoutLegacyCalls(t *testing.T) {
+	legacy := &authorityProbeSource{sourceID: "jumpcloud"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(registry)
+	service.sourceWorker = previewWorkerStub{}
+	service.runSourceExecution = func(context.Context, sourceworker.Worker, string, []byte, time.Time, sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+		return nil, sourceworker.ErrWorkerUnsupported
+	}
+	config := map[string]string{"family": "future-family", "tenant_id": "tenant-1", "api_key": "host-only-secret"}
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "jumpcloud", Config: config}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if legacy.checkCalls != 0 {
+		t.Fatalf("legacy check calls = %d", legacy.checkCalls)
+	}
+}
+
+func TestJumpCloudPreviewCredentialAliases(t *testing.T) {
+	for name, test := range map[string]struct {
+		config map[string]string
+		want   string
+	}{
+		"api key":   {map[string]string{"api_key": "api-key", "token": "fallback"}, "api-key"},
+		"api token": {map[string]string{"api_token": "api-token", "token": "fallback"}, "api-token"},
+		"token":     {map[string]string{"token": "token"}, "token"},
+		"missing":   {map[string]string{"graph_token": "wrong-provider"}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := previewCredential("jumpcloud", test.config); got != test.want {
+				t.Fatalf("previewCredential() = %q, want %q", got, test.want)
 			}
 		})
 	}
@@ -384,5 +483,37 @@ func azureAuthorizationPolicyPreviewOutput(priorWatermark int64) *sourceworker.E
 	return &sourceworker.ExecutionOutput{
 		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
 		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: "authorizationPolicy", CheckpointWatermarkUnixMillis: watermark},
+	}
+}
+
+func jumpCloudPreviewOutput(family string, priorWatermark int64) *sourceworker.ExecutionOutput {
+	watermark := max(priorWatermark, 1_725_000_000_000)
+	providerID := family + "-1"
+	if family == "audit_events" {
+		providerID = "event-1"
+	}
+	plan := &cerebrov1.SourceExecutionPlanV1{
+		SourceId: "jumpcloud", FamilyId: family, EventKind: "jumpcloud." + family, SchemaRef: "jumpcloud/" + family + "/v1",
+	}
+	attributes := map[string]string{
+		"family": family, "provider": "jumpcloud", "source_event_id": providerID,
+		"resource_id": providerID, "resource_type": family,
+	}
+	if family == "users" || family == "systems" || family == "applications" {
+		attributes["resource_urn"] = "urn:cerebro:tenant-1:jumpcloud_" + family + ":" + family + "-1"
+	}
+	if family == "group_members" {
+		attributes["group_id"] = "group-1"
+		attributes["member_id"] = family + "-1"
+		attributes["member_user_id"] = family + "-1"
+	}
+	record := &cerebrov1.SourceWorkerRecordV1{
+		ProviderId: providerID, EventId: "jumpcloud-tenant-1-" + providerID, OccurredAtUnixMillis: watermark,
+		Attributes:  attributes,
+		PayloadJson: []byte(`{"id":"` + family + `-1"}`),
+	}
+	return &sourceworker.ExecutionOutput{
+		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
+		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: family + "-1", CheckpointWatermarkUnixMillis: watermark},
 	}
 }
