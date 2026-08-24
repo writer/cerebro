@@ -47,6 +47,14 @@ func rustSourceFamily(sourceID string, config map[string]string) (string, bool) 
 	switch sourceID {
 	case "azure", "tailscale":
 		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
+	case "jumpcloud":
+		family := strings.TrimSpace(config["family"])
+		if family == "" {
+			family = "users"
+		}
+		// The Rust dispatcher owns the closed family catalog. Keeping unknown
+		// names authoritative makes them fail closed instead of reaching Go.
+		return family, true
 	default:
 		return "", false
 	}
@@ -131,10 +139,18 @@ func (s *Service) discoverRustSource(ctx context.Context, sourceID, family strin
 }
 
 func previewCredential(sourceID string, config map[string]string) string {
-	if strings.TrimSpace(sourceID) == "azure" {
+	switch strings.TrimSpace(sourceID) {
+	case "azure":
 		if credential := strings.TrimSpace(config["graph_token"]); credential != "" {
 			return credential
 		}
+	case "jumpcloud":
+		for _, key := range []string{"api_key", "api_token", "token"} {
+			if credential := strings.TrimSpace(config[key]); credential != "" {
+				return credential
+			}
+		}
+		return ""
 	}
 	return strings.TrimSpace(config["token"])
 }
@@ -143,9 +159,31 @@ func discoverURNs(pull sourcecdk.Pull) ([]sourcecdk.URN, error) {
 	seen := make(map[string]struct{}, len(pull.Events))
 	urns := make([]sourcecdk.URN, 0, len(pull.Events))
 	for _, event := range pull.Events {
-		raw := strings.TrimSpace(event.GetAttributes()["resource_urn"])
+		attributes := event.GetAttributes()
+		raw := strings.TrimSpace(attributes["resource_urn"])
+		if raw == "" && strings.TrimSpace(event.GetSourceId()) == "jumpcloud" {
+			family := strings.TrimSpace(attributes["family"])
+			if family == "" {
+				family = strings.TrimPrefix(strings.TrimSpace(event.GetKind()), "jumpcloud.")
+			}
+			stableID := firstNonEmpty(attributes, "source_event_id", "resource_id")
+			var urn sourcecdk.URN
+			var err error
+			if family == "group_members" {
+				memberID := firstNonEmpty(attributes, "member_user_id", "member_id", "resource_id", "source_event_id")
+				urn, err = sourcecdk.URNForEscaped(event.GetTenantId(), "jumpcloud_group_members", strings.TrimSpace(attributes["group_id"]), memberID)
+			} else {
+				if family == "audit_events" {
+					stableID = sourcecdk.StableExternalID(stableID, "event")
+				}
+				urn, err = sourcecdk.URNFor(event.GetTenantId(), "jumpcloud_"+family, stableID)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("%w: JumpCloud discovery identity is invalid", sourceworker.ErrWorkerContract)
+			}
+			raw = urn.String()
+		}
 		if raw == "" {
-			attributes := event.GetAttributes()
 			provider := strings.TrimSpace(attributes["resource_provider"])
 			resourceType := strings.TrimSpace(attributes["resource_type"])
 			resourceID := strings.TrimSpace(attributes["resource_id"])
@@ -164,6 +202,15 @@ func discoverURNs(pull sourcecdk.Pull) ([]sourcecdk.URN, error) {
 		urns = append(urns, urn)
 	}
 	return urns, nil
+}
+
+func firstNonEmpty(values map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(values[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func sourceExecutionError(sourceID, family string, err error) error {
