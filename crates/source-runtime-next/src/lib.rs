@@ -267,7 +267,10 @@ pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,
     resolve_environment_references,
 };
-pub use runtime_health::{RuntimeHealthEvidence, RuntimeReadiness, evaluate_runtime_readiness};
+pub use runtime_health::{
+    RuntimeHealthEvidence, RuntimeNextAction, RuntimeReadiness, RuntimeReadinessDecision,
+    evaluate_runtime_readiness,
+};
 pub use sdk::{
     SdkIntegrationPostureEvent, SdkPushedTelemetry, SdkTelemetryError,
     normalize_sdk_pushed_telemetry,

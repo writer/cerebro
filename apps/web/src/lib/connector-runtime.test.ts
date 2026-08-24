@@ -7,10 +7,10 @@ import {
   formatDuration,
   latestGraphRunsByRuntime,
   normalizeRuntime,
+  normalizeSourceRuntimeSummary,
   runtimeHealth,
   runtimeIsBackfill,
   sourceBreakdown,
-  sourceHealthBreakdown,
   summarizeConnectorRuntime,
 } from "./connector-runtime";
 
@@ -184,54 +184,52 @@ describe("Connector runtime normalization", () => {
     ]);
   });
 
-  it("rolls source readiness up from runtime, cursor, graph, and catalog coverage", () => {
-    const summaries = sourceHealthBreakdown(
-      [
-        normalizeRuntime(
-          {
-            id: "ready-runtime",
-            source_id: "okta",
-            last_synced_at: "2026-06-03T11:30:00Z",
-            cursor_pending: false,
-            latest_graph_run: { id: "ready-graph", status: "completed", finished_at: "2026-06-03T11:35:00Z" },
-          },
-          now,
-          24,
-        ),
-        normalizeRuntime({ id: "stale-runtime", source_id: "aws", last_synced_at: "2026-06-01T00:00:00Z" }, now, 24),
-        normalizeRuntime(
-          {
-            id: "cursor-runtime",
-            source_id: "github",
-            last_synced_at: "2026-06-03T11:30:00Z",
-            cursor_pending: true,
-            latest_graph_run: { id: "cursor-graph", status: "completed", finished_at: "2026-06-03T11:35:00Z" },
-          },
-          now,
-          24,
-        ),
-        normalizeRuntime(
-          {
-            id: "failed-graph-runtime",
-            source_id: "jira",
-            last_synced_at: "2026-06-03T11:30:00Z",
-            latest_graph_run: { id: "failed-graph", status: "failed", finished_at: "2026-06-03T11:35:00Z" },
-          },
-          now,
-          24,
-        ),
-        normalizeRuntime({ id: "missing-graph-runtime", source_id: "slack", last_synced_at: "2026-06-03T11:30:00Z" }, now, 24),
-      ],
-      [{ id: "zendesk", name: "Zendesk", status: "available" }],
-    );
-    const bySource = Object.fromEntries(summaries.map((source) => [source.source_id, source]));
+  it("uses Rust-produced readiness, action, graph, and rollup fields without reclassifying them", () => {
+    const runtime = normalizeRuntime({
+      runtime_id: "aws-finding",
+      source_id: "aws",
+      status: "healthy",
+      readiness: "bad",
+      next_action: "inspect_finding_evaluation",
+      graph_state: "current",
+      cursor_pending: false,
+      schedule_context_configured: true,
+      contract_probe_state: "passing",
+      finding_evaluation_state: "failed",
+      last_synced_at: "2026-06-03T11:50:00Z",
+    }, now, 24);
 
-    expect(bySource.okta).toMatchObject({ performance: "healthy", next_action: "No action", healthy: 1, graph_current: 1 });
-    expect(bySource.aws).toMatchObject({ performance: "needs_refresh", stale: 1, next_action: "Refresh source sync" });
-    expect(bySource.github).toMatchObject({ performance: "needs_refresh", cursor_pending: 1, healthy: 0 });
-    expect(bySource.jira).toMatchObject({ performance: "bad", degraded: 1, graph_failed: 1 });
-    expect(bySource.slack).toMatchObject({ performance: "needs_refresh", graph_not_observed: 1, healthy: 0 });
-    expect(bySource.zendesk).toMatchObject({ performance: "not_configured", total: 0, name: "Zendesk" });
+    expect(runtime).toMatchObject({
+      readiness: "bad",
+      next_action: "inspect_finding_evaluation",
+      health: "degraded",
+      graph_freshness: "current",
+      contract_probe_state: "passing",
+      finding_evaluation_state: "failed",
+    });
+
+    expect(normalizeSourceRuntimeSummary({
+      source_id: "aws",
+      total: 3,
+      healthy: 1,
+      needs_refresh: 1,
+      poor: 0,
+      bad: 1,
+      readiness: "bad",
+      next_action: "inspect_finding_evaluation",
+      cursor_pending: 1,
+      graph_current: 3,
+    })).toMatchObject({
+      source_id: "aws",
+      total: 3,
+      healthy: 1,
+      stale: 1,
+      degraded: 1,
+      performance: "bad",
+      next_action: "Inspect the failed finding evaluation",
+      cursor_pending: 1,
+      graph_current: 3,
+    });
   });
 
   it("classifies graph projection freshness against source sync time", () => {

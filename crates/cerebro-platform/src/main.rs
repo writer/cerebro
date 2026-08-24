@@ -61,7 +61,8 @@ use cerebro_organizational_model::{
     ProviderIdentity, ProviderKind, RelationKind, RelationshipAssertion, SourceRuntimeId, TenantId,
 };
 use cerebro_organizational_store::{
-    DurableGraphStore, Neo4jProjector, PostgresLedger, ProjectionAuthority, StoreError,
+    DurableGraphStore, Neo4jProjector, PostgresLedger, ProjectionAuthority,
+    SourceRuntimeGraphObservation, SourceRuntimeObservation, StoreError,
 };
 use cerebro_platform_engine::ActionCommand;
 use cerebro_platform_sdk::{
@@ -83,9 +84,10 @@ use cerebro_source_runtime_next::{
     AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CollectionRequest,
     CommittedSourceEvent, CredentialLeaseReference, EgressPolicy, EgressRequestContext,
     GraphMapper, GraphSink, HttpProviderAccess, HttpSourceConnector,
-    OperationScopedCredentialLease, ResolvedAuth, SourceRuntime, SourceRuntimeLeaseFence,
-    SourceRuntimeOperation, canonical_digest, contains_aws_secret_references,
-    contains_credential_references, resolve_aws_secret_references, resolve_environment_references,
+    OperationScopedCredentialLease, ResolvedAuth, RuntimeHealthEvidence, RuntimeReadiness,
+    SourceRuntime, SourceRuntimeLeaseFence, SourceRuntimeOperation, canonical_digest,
+    contains_aws_secret_references, contains_credential_references, evaluate_runtime_readiness,
+    resolve_aws_secret_references, resolve_environment_references,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -120,6 +122,7 @@ struct AppState {
     lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
+    runtime_ledger: Option<Arc<PostgresLedger>>,
     metrics: PlatformMetrics,
 }
 
@@ -127,6 +130,12 @@ struct AppState {
 struct ActionBackends {
     actions: Option<Arc<dyn ActionAuthority>>,
     providers: ActionProviders,
+}
+
+#[derive(Clone, Default)]
+struct PlatformStores {
+    projection: Option<Arc<ProjectionRuntime>>,
+    runtime_ledger: Option<Arc<PostgresLedger>>,
 }
 
 #[derive(Clone, Default)]
@@ -613,6 +622,7 @@ async fn authenticate_oidc(
 fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
+        "/v1/source-runtimes/health" => "cerebro:read",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
         "/v1/action-dispatches" => ACTION_EXECUTE_SCOPE,
@@ -1218,6 +1228,66 @@ struct PathsResponse {
 struct ProductNeighborhoodQuery {
     root_urn: String,
     limit: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct SourceRuntimeHealthQuery {
+    source_id: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Clone, Serialize)]
+struct RustSourceRuntimeHealthView {
+    runtime_id: String,
+    source_id: String,
+    enabled_state: String,
+    status: String,
+    readiness: String,
+    next_action: String,
+    last_synced_at: Option<String>,
+    stale_after_seconds: Option<u64>,
+    expected_cadence_seconds: Option<u64>,
+    cursor_pending: bool,
+    checkpoint_cursor_present: bool,
+    schedule_context_configured: bool,
+    contract_probe_state: String,
+    graph_state: String,
+    finding_evaluation_state: String,
+    latest_graph_run: Option<SourceRuntimeGraphObservation>,
+    latest_finding_evaluation: Option<RustFindingEvaluationHealthView>,
+}
+
+#[derive(Clone, Serialize)]
+struct RustFindingEvaluationHealthView {
+    status: String,
+}
+
+#[derive(Serialize)]
+struct RustSourceRuntimeHealthSummary {
+    source_id: String,
+    total: usize,
+    healthy: usize,
+    needs_refresh: usize,
+    poor: usize,
+    bad: usize,
+    cursor_pending: usize,
+    schedule_context_missing: usize,
+    graph_current: usize,
+    graph_behind: usize,
+    graph_running: usize,
+    graph_failed: usize,
+    graph_not_observed: usize,
+    graph_unknown: usize,
+    latest_activity_at: Option<String>,
+    readiness: String,
+    next_action: String,
+}
+
+#[derive(Serialize)]
+struct RustSourceRuntimeHealthResponse {
+    generated_at: String,
+    runtimes: Vec<RustSourceRuntimeHealthView>,
+    source_summaries: Vec<RustSourceRuntimeHealthSummary>,
 }
 
 #[derive(Deserialize)]
@@ -2208,17 +2278,20 @@ async fn serve(
         OidcConfiguration::Disabled => None,
         OidcConfiguration::Configured(authenticator) => Some(authenticator),
     };
-    let (actions, cerebro_device): (
-        Option<Arc<dyn ActionAuthority>>,
-        Option<CerebroDeviceClient>,
-    ) = match env::var("CEREBRO_POSTGRES_DSN") {
+    let (actions, cerebro_device, runtime_ledger) = match env::var("CEREBRO_POSTGRES_DSN") {
         Ok(connection_string) => {
             let ledger = PostgresActionLedger::connect_tls(&connection_string).await?;
             ledger.migrate().await?;
             let device = CerebroDeviceClient::connect_tls(&connection_string).await?;
-            (Some(Arc::new(ledger)), Some(device))
+            let runtime_ledger = PostgresLedger::connect_tls(&connection_string).await?;
+            runtime_ledger.migrate().await?;
+            (
+                Some(Arc::new(ledger) as Arc<dyn ActionAuthority>),
+                Some(device),
+                Some(Arc::new(runtime_ledger)),
+            )
         }
-        Err(env::VarError::NotPresent) => (None, None),
+        Err(env::VarError::NotPresent) => (None, None, None),
         Err(error) => return Err(error.into()),
     };
     let access_approvals = access_approvals_from_env()?;
@@ -2234,7 +2307,10 @@ async fn serve(
             graph,
             lifecycle_projection,
             load_catalog_summary().ok(),
-            projection,
+            PlatformStores {
+                projection,
+                runtime_ledger,
+            },
             ActionBackends {
                 actions,
                 providers: action_providers,
@@ -2253,7 +2329,7 @@ fn router(graph: OrganizationalGraph) -> Router {
         Arc::new(MemoryAgentGraph::new(graph)),
         None,
         None,
-        None,
+        PlatformStores::default(),
         ActionBackends::default(),
         TenantRequestAuth::new("test-organizational-graph-secret-32-bytes".to_owned()).unwrap(),
         None,
@@ -2264,11 +2340,15 @@ fn router_with_backend(
     graph: Arc<dyn AgentGraph>,
     lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
-    projection: Option<Arc<ProjectionRuntime>>,
+    stores: PlatformStores,
     action_backends: ActionBackends,
     tenant_auth: TenantRequestAuth,
     oidc: Option<OidcAuthenticator>,
 ) -> Router {
+    let PlatformStores {
+        projection,
+        runtime_ledger,
+    } = stores;
     let platform_metrics = PlatformMetrics::default();
     let connect = rpc::router(
         graph.clone(),
@@ -2288,6 +2368,7 @@ fn router_with_backend(
         .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/security/lifecycle", get(security_lifecycle))
+        .route("/v1/source-runtimes/health", get(source_runtime_health))
         .route(
             "/v1/projections/legacy-deltas",
             post(record_legacy_projection),
@@ -2355,6 +2436,7 @@ fn router_with_backend(
             lifecycle_projection,
             catalog_summary,
             projection,
+            runtime_ledger,
             metrics: platform_metrics.clone(),
         })
         .layer(middleware::from_fn_with_state(
@@ -2693,6 +2775,274 @@ async fn current_user(
     Extension(identity): Extension<AuthenticatedIdentity>,
 ) -> Json<oidc::CurrentUserResponse> {
     Json(identity.current_user_response())
+}
+
+async fn source_runtime_health(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(query): Query<SourceRuntimeHealthQuery>,
+) -> Result<Json<RustSourceRuntimeHealthResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let limit = query.limit.unwrap_or(500);
+    if limit == 0 || limit > 500 {
+        return Err(bad_request(
+            "invalid_source_runtime_limit",
+            "Source runtime health limit must be between 1 and 500.",
+        ));
+    }
+    let ledger = state.runtime_ledger.as_ref().ok_or_else(|| {
+        service_unavailable(
+            "source_runtime_health_unavailable",
+            "The Rust source-runtime ledger is not configured.",
+        )
+    })?;
+    let graph = state.lifecycle_projection.as_ref().ok_or_else(|| {
+        service_unavailable(
+            "source_runtime_health_unavailable",
+            "The Rust graph projection is not configured.",
+        )
+    })?;
+    let source_id = query.source_id.as_deref().unwrap_or_default().trim();
+    let records = ledger
+        .source_runtime_observations(authenticated.0.as_str(), source_id, limit)
+        .await
+        .map_err(|_| {
+            service_unavailable(
+                "source_runtime_health_unavailable",
+                "Source-runtime evidence is temporarily unavailable.",
+            )
+        })?;
+    let runtime_ids = records
+        .iter()
+        .map(|record| record.runtime_id.clone())
+        .collect::<Vec<_>>();
+    let graph_records = graph
+        .source_runtime_graph_observations(&runtime_ids)
+        .await
+        .map_err(|_| {
+            service_unavailable(
+                "source_runtime_health_unavailable",
+                "Graph-ingest evidence is temporarily unavailable.",
+            )
+        })?
+        .into_iter()
+        .map(|record| (record.runtime_id.clone(), record))
+        .collect::<BTreeMap<_, _>>();
+    let generated_at = OffsetDateTime::now_utc();
+    let runtimes = records
+        .into_iter()
+        .map(|record| {
+            let graph_record = graph_records.get(&record.runtime_id).cloned();
+            rust_source_runtime_health_view(record, graph_record, generated_at)
+        })
+        .collect::<Vec<_>>();
+    let source_summaries = rust_source_runtime_health_summaries(&runtimes);
+    let generated_at = generated_at.format(&Rfc3339).map_err(|_| {
+        service_unavailable(
+            "source_runtime_health_unavailable",
+            "Source-runtime health time is unavailable.",
+        )
+    })?;
+    Ok(Json(RustSourceRuntimeHealthResponse {
+        generated_at,
+        runtimes,
+        source_summaries,
+    }))
+}
+
+fn rust_source_runtime_health_view(
+    record: SourceRuntimeObservation,
+    graph: Option<SourceRuntimeGraphObservation>,
+    now: OffsetDateTime,
+) -> RustSourceRuntimeHealthView {
+    let source_status = rust_source_status(&record, now);
+    let graph_state = rust_graph_state(graph.as_ref(), record.stale_after_seconds, now);
+    let finding_state = rust_finding_state(record.latest_finding_evaluation_status.as_deref());
+    let contract_probe_state = rust_contract_probe_state(&record).to_owned();
+    let schedule_context_configured =
+        record.stale_after_seconds.is_some() || record.expected_cadence_seconds.is_some();
+    let decision = evaluate_runtime_readiness(RuntimeHealthEvidence {
+        enabled_state: &record.enabled_state,
+        source_status,
+        graph_state,
+        cursor_pending: record.cursor_pending,
+        schedule_context_configured,
+        contract_probe_state: &contract_probe_state,
+        finding_evaluation_state: finding_state,
+    });
+    RustSourceRuntimeHealthView {
+        runtime_id: record.runtime_id,
+        source_id: record.source_id,
+        enabled_state: record.enabled_state,
+        status: source_status.to_owned(),
+        readiness: decision.readiness.as_str().to_owned(),
+        next_action: decision.next_action.as_str().to_owned(),
+        last_synced_at: record.last_synced_at,
+        stale_after_seconds: record.stale_after_seconds,
+        expected_cadence_seconds: record.expected_cadence_seconds,
+        cursor_pending: record.cursor_pending,
+        checkpoint_cursor_present: record.checkpoint_cursor_present,
+        schedule_context_configured,
+        contract_probe_state,
+        graph_state: graph_state.to_owned(),
+        finding_evaluation_state: finding_state.to_owned(),
+        latest_graph_run: graph,
+        latest_finding_evaluation: record
+            .latest_finding_evaluation_status
+            .map(|status| RustFindingEvaluationHealthView { status }),
+    }
+}
+
+fn rust_source_status(record: &SourceRuntimeObservation, now: OffsetDateTime) -> &'static str {
+    if record.last_failure_category.is_some() {
+        return "failing";
+    }
+    let Some(last_sync) = record
+        .last_synced_at
+        .as_deref()
+        .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
+    else {
+        return "unknown";
+    };
+    if record.stale_after_seconds.is_some_and(|threshold| {
+        i64::try_from(threshold)
+            .is_ok_and(|threshold| (now - last_sync).whole_seconds().max(0) > threshold)
+    }) {
+        "stale"
+    } else {
+        "healthy"
+    }
+}
+
+fn rust_graph_state(
+    graph: Option<&SourceRuntimeGraphObservation>,
+    stale_after_seconds: Option<u64>,
+    now: OffsetDateTime,
+) -> &'static str {
+    let Some(graph) = graph else {
+        return "not_observed";
+    };
+    let status = graph.status.trim().to_ascii_lowercase();
+    if status.contains("fail") || status.contains("error") || status.contains("cancel") {
+        return "failed";
+    }
+    if status.contains("running") || status.contains("pending") {
+        return "running";
+    }
+    if !graph.checkpoint_cursor.trim().is_empty() || graph.checkpoint_complete == Some(false) {
+        return "behind";
+    }
+    let graph_time = [&graph.finished_at, &graph.started_at]
+        .into_iter()
+        .find_map(|value| OffsetDateTime::parse(value.trim(), &Rfc3339).ok());
+    if stale_after_seconds
+        .zip(graph_time)
+        .is_some_and(|(threshold, observed)| {
+            i64::try_from(threshold)
+                .is_ok_and(|threshold| (now - observed).whole_seconds().max(0) > threshold)
+        })
+    {
+        return "behind";
+    }
+    "current"
+}
+
+fn rust_finding_state(status: Option<&str>) -> &'static str {
+    let Some(status) = status else {
+        return "not_observed";
+    };
+    let status = status.trim().to_ascii_lowercase();
+    if status.contains("fail") || status.contains("error") || status.contains("cancel") {
+        "failed"
+    } else if status.contains("running") || status.contains("pending") {
+        "running"
+    } else {
+        "current"
+    }
+}
+
+fn rust_contract_probe_state(record: &SourceRuntimeObservation) -> &str {
+    let state = record.contract_probe_state.trim();
+    if state != "unknown" {
+        return state;
+    }
+    if record.source_id != "evidence_cas" {
+        "not_configured"
+    } else if record.last_synced_at.is_some() {
+        "passing"
+    } else {
+        "unknown"
+    }
+}
+
+fn rust_source_runtime_health_summaries(
+    runtimes: &[RustSourceRuntimeHealthView],
+) -> Vec<RustSourceRuntimeHealthSummary> {
+    let mut summaries = BTreeMap::<String, RustSourceRuntimeHealthSummary>::new();
+    for runtime in runtimes {
+        let summary = summaries
+            .entry(runtime.source_id.clone())
+            .or_insert_with(|| RustSourceRuntimeHealthSummary {
+                source_id: runtime.source_id.clone(),
+                total: 0,
+                healthy: 0,
+                needs_refresh: 0,
+                poor: 0,
+                bad: 0,
+                cursor_pending: 0,
+                schedule_context_missing: 0,
+                graph_current: 0,
+                graph_behind: 0,
+                graph_running: 0,
+                graph_failed: 0,
+                graph_not_observed: 0,
+                graph_unknown: 0,
+                latest_activity_at: None,
+                readiness: "healthy".to_owned(),
+                next_action: "monitor".to_owned(),
+            });
+        summary.total += 1;
+        summary.cursor_pending += usize::from(runtime.cursor_pending);
+        summary.schedule_context_missing += usize::from(!runtime.schedule_context_configured);
+        match runtime.graph_state.as_str() {
+            "current" => summary.graph_current += 1,
+            "behind" => summary.graph_behind += 1,
+            "running" => summary.graph_running += 1,
+            "failed" => summary.graph_failed += 1,
+            "not_observed" | "missing" => summary.graph_not_observed += 1,
+            _ => summary.graph_unknown += 1,
+        }
+        if runtime.last_synced_at.as_ref().is_some_and(|observed| {
+            summary
+                .latest_activity_at
+                .as_ref()
+                .is_none_or(|current| observed > current)
+        }) {
+            summary.latest_activity_at = runtime.last_synced_at.clone();
+        }
+        match runtime.readiness.as_str() {
+            "bad" => summary.bad += 1,
+            "needs_refresh" => summary.needs_refresh += 1,
+            "poor" => summary.poor += 1,
+            _ => summary.healthy += 1,
+        }
+        let runtime_readiness = match runtime.readiness.as_str() {
+            "bad" => RuntimeReadiness::Bad,
+            "needs_refresh" => RuntimeReadiness::NeedsRefresh,
+            "poor" => RuntimeReadiness::Poor,
+            _ => RuntimeReadiness::Healthy,
+        };
+        let summary_readiness = match summary.readiness.as_str() {
+            "bad" => RuntimeReadiness::Bad,
+            "needs_refresh" => RuntimeReadiness::NeedsRefresh,
+            "poor" => RuntimeReadiness::Poor,
+            _ => RuntimeReadiness::Healthy,
+        };
+        if runtime_readiness < summary_readiness {
+            summary.readiness = runtime.readiness.clone();
+            summary.next_action = runtime.next_action.clone();
+        }
+    }
+    summaries.into_values().collect()
 }
 
 async fn list_action_definitions()
@@ -4231,6 +4581,87 @@ mod tests {
 
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
 
+    fn runtime_health_record(runtime_id: &str) -> SourceRuntimeObservation {
+        SourceRuntimeObservation {
+            runtime_id: runtime_id.to_owned(),
+            source_id: "aws".to_owned(),
+            enabled_state: "enabled".to_owned(),
+            last_failure_category: None,
+            last_synced_at: Some("2026-08-24T11:59:00Z".to_owned()),
+            cursor_pending: false,
+            checkpoint_cursor_present: false,
+            stale_after_seconds: Some(300),
+            expected_cadence_seconds: Some(300),
+            contract_probe_state: "passing".to_owned(),
+            latest_finding_evaluation_status: Some("current".to_owned()),
+            latest_collection: None,
+        }
+    }
+
+    fn current_graph(runtime_id: &str) -> SourceRuntimeGraphObservation {
+        SourceRuntimeGraphObservation {
+            runtime_id: runtime_id.to_owned(),
+            status: "completed".to_owned(),
+            checkpoint_cursor: String::new(),
+            checkpoint_complete: Some(true),
+            started_at: "2026-08-24T11:58:00Z".to_owned(),
+            finished_at: "2026-08-24T11:59:30Z".to_owned(),
+        }
+    }
+
+    #[test]
+    fn rust_runtime_health_view_and_rollup_preserve_original_three_record_parity() {
+        let now = OffsetDateTime::parse("2026-08-24T12:00:00Z", &Rfc3339).unwrap();
+        let healthy = rust_source_runtime_health_view(
+            runtime_health_record("aws-healthy"),
+            Some(current_graph("aws-healthy")),
+            now,
+        );
+        let mut cursor_record = runtime_health_record("aws-cursor");
+        cursor_record.cursor_pending = true;
+        let cursor =
+            rust_source_runtime_health_view(cursor_record, Some(current_graph("aws-cursor")), now);
+        let mut finding_record = runtime_health_record("aws-finding");
+        finding_record.latest_finding_evaluation_status = Some("failed".to_owned());
+        let finding = rust_source_runtime_health_view(
+            finding_record,
+            Some(current_graph("aws-finding")),
+            now,
+        );
+
+        assert_eq!(
+            (healthy.readiness.as_str(), healthy.next_action.as_str()),
+            ("healthy", "monitor")
+        );
+        assert_eq!(
+            (cursor.readiness.as_str(), cursor.next_action.as_str()),
+            ("needs_refresh", "run_sync")
+        );
+        assert_eq!(
+            (finding.readiness.as_str(), finding.next_action.as_str()),
+            ("bad", "inspect_finding_evaluation")
+        );
+
+        let summaries = rust_source_runtime_health_summaries(&[healthy, cursor, finding]);
+        assert_eq!(summaries.len(), 1);
+        let summary = &summaries[0];
+        assert_eq!(
+            (
+                summary.total,
+                summary.healthy,
+                summary.needs_refresh,
+                summary.bad
+            ),
+            (3, 1, 1, 1)
+        );
+        assert_eq!(
+            (summary.readiness.as_str(), summary.next_action.as_str()),
+            ("bad", "inspect_finding_evaluation")
+        );
+        assert_eq!(summary.cursor_pending, 1);
+        assert_eq!(summary.graph_current, 3);
+    }
+
     #[test]
     fn catalog_family_records_cover_every_compiled_family() {
         let catalog = load_catalog().expect("checked-in catalog must load");
@@ -5680,7 +6111,7 @@ mod tests {
             Arc::new(UnavailableGraph),
             None,
             None,
-            None,
+            PlatformStores::default(),
             ActionBackends::default(),
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
             None,
@@ -6023,6 +6454,7 @@ mod tests {
             lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
+            runtime_ledger: None,
             metrics: PlatformMetrics::default(),
         };
         for limit in [0, 101, usize::MAX] {
@@ -6153,6 +6585,7 @@ mod tests {
             lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
+            runtime_ledger: None,
             metrics: PlatformMetrics::default(),
         };
         let mut identity = action_identity("tenant:http:one", "actor:http:one");
@@ -6268,6 +6701,7 @@ mod tests {
             lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
+            runtime_ledger: None,
             metrics: PlatformMetrics::default(),
         };
         let mut identity = action_identity("tenant:http:one", "actor:http:one");
@@ -6310,6 +6744,7 @@ mod tests {
             lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
+            runtime_ledger: None,
             metrics: PlatformMetrics::default(),
         };
         let identity = action_identity("tenant:http:one", "actor:http:one");
@@ -6340,6 +6775,7 @@ mod tests {
             lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
+            runtime_ledger: None,
             metrics: PlatformMetrics::default(),
         };
         let identity = action_identity("tenant:http:one", "actor:http:one");
@@ -6400,6 +6836,7 @@ mod tests {
             lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
+            runtime_ledger: None,
             metrics: PlatformMetrics::default(),
         };
         let identity = action_identity("tenant:http:one", "validator:http:one");
@@ -6435,6 +6872,7 @@ mod tests {
             lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
+            runtime_ledger: None,
             metrics: PlatformMetrics::default(),
         };
         let identity = action_identity("tenant:http:one", "validator:http:one");
@@ -6720,7 +7158,7 @@ mod tests {
             Arc::new(UnavailableGraph),
             None,
             None,
-            None,
+            PlatformStores::default(),
             ActionBackends::default(),
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
             None,

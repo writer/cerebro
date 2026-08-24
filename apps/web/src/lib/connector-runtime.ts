@@ -45,6 +45,8 @@ export type ConnectorRuntime = {
   source_id: string;
   tenant_id: string;
   family: string;
+  readiness: Exclude<SourceReadiness, "not_configured">;
+  next_action: string;
   health: RuntimeHealth;
   status: string;
   last_activity_at?: string;
@@ -66,6 +68,8 @@ export type ConnectorRuntime = {
   latest_finding_evaluation?: ConnectorRuntimeFindingEvaluation;
   finding_evaluation_status?: string;
   finding_evaluation_duration_seconds?: number;
+  finding_evaluation_state?: string;
+  contract_probe_state?: string;
   expected_cadence_seconds?: number;
   stale_after_seconds?: number;
   schedule_context_configured?: boolean;
@@ -113,6 +117,43 @@ export type SourceCoverageSummary = {
   backfills: number;
   schedule_context_missing: number;
   latest_activity_at?: string;
+};
+
+const runtimeReadinessValues = new Set<SourceReadiness>(["healthy", "needs_refresh", "poor", "bad", "not_configured"]);
+
+const authoritativeRuntimeReadiness = (
+  runtime: Record<string, unknown>,
+): Exclude<SourceReadiness, "not_configured"> | undefined => {
+  const value = stringField(runtime, ["readiness"]).toLowerCase() as SourceReadiness;
+  return value !== "not_configured" && runtimeReadinessValues.has(value)
+    ? (value as Exclude<SourceReadiness, "not_configured">)
+    : undefined;
+};
+
+const healthForReadiness = (readiness: Exclude<SourceReadiness, "not_configured">): RuntimeHealth => {
+  if (readiness === "healthy") return "healthy";
+  if (readiness === "needs_refresh") return "stale";
+  if (readiness === "bad") return "degraded";
+  return "unknown";
+};
+
+const graphStateField = (runtime: Record<string, unknown>): GraphFreshness => {
+  const value = stringField(runtime, ["graph_state"]).toLowerCase() as GraphFreshness;
+  return new Set<GraphFreshness>(["current", "behind", "running", "failed", "not_observed", "unknown"]).has(value)
+    ? value
+    : "unknown";
+};
+
+export const runtimeNextActionLabel = (value: string) => {
+  const labels: Record<string, string> = {
+    fix_connection: "Repair the failed connection",
+    inspect_finding_evaluation: "Inspect the failed finding evaluation",
+    run_sync: "Run the source sync",
+    run_graph_ingest: "Run the graph ingest",
+    inspect_connection: "Inspect the connection evidence",
+    monitor: "No action",
+  };
+  return labels[value.trim().toLowerCase()] ?? "Inspect the connection evidence";
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -373,10 +414,26 @@ export const normalizeRuntime = (
   staleAfterHours = 24,
 ): ConnectorRuntime => {
   const config = asRecord(runtime.config);
-  const health = runtimeHealth(runtime, now, staleAfterHours);
+  const rustReadiness = authoritativeRuntimeReadiness(runtime);
+  const legacyHealth = rustReadiness ? undefined : runtimeHealth(runtime, now, staleAfterHours);
+  const activity = runtimeLastActivity(runtime);
+  const activityHealth = activity ? activityFields(activity, now) : {};
+  const health = rustReadiness
+    ? { health: healthForReadiness(rustReadiness), ...activityHealth }
+    : legacyHealth ?? { health: "unknown" as RuntimeHealth };
   const latestGraphRun = normalizeGraphRun(runtime.latest_graph_run ?? runtime.latestGraphRun);
   const latestFindingEvaluation = normalizeFindingEvaluation(runtime.latest_finding_evaluation ?? runtime.latestFindingEvaluation);
-  const graphFields = latestGraphRun ? graphFreshnessForRuntime({ last_activity_at: health.lastActivityAt }, latestGraphRun as Record<string, unknown>, now) : { graph_freshness: "not_observed" as GraphFreshness };
+  const graphFields = rustReadiness
+    ? {
+        graph_freshness: graphStateField(runtime),
+        graph_run_id: latestGraphRun?.id,
+        graph_status: latestGraphRun?.status ?? (stringField(runtime, ["graph_state"]) || undefined),
+        graph_finished_at: latestGraphRun?.finished_at,
+        latest_graph_run: latestGraphRun,
+      }
+    : latestGraphRun
+      ? graphFreshnessForRuntime({ last_activity_at: health.lastActivityAt }, latestGraphRun as Record<string, unknown>, now)
+      : { graph_freshness: "not_observed" as GraphFreshness };
   const cursorPending = boolField(runtime, ["cursor_pending", "cursorPending"]);
   const checkpointCursorPresent = boolField(runtime, ["checkpoint_cursor_present", "checkpointCursorPresent"]);
   const watermarkLagSeconds = numberField(runtime, ["watermark_lag_seconds", "watermarkLagSeconds"]);
@@ -387,6 +444,8 @@ export const normalizeRuntime = (
     source_id: stringField(runtime, ["source_id", "sourceId"]),
     tenant_id: stringField(runtime, ["tenant_id", "tenantId"]),
     family: stringField(runtime, ["family"]) || runtimeFamily(runtime),
+    readiness: rustReadiness ?? "poor",
+    next_action: stringField(runtime, ["next_action"]) || "inspect_connection",
     health: health.health,
     status: stringField(runtime, ["status", "state", "sync_status"]) || health.health,
     last_activity_at: health.lastActivityAt,
@@ -404,6 +463,8 @@ export const normalizeRuntime = (
     latest_finding_evaluation: latestFindingEvaluation,
     finding_evaluation_status: latestFindingEvaluation?.status,
     finding_evaluation_duration_seconds: latestFindingEvaluation?.duration_seconds,
+    finding_evaluation_state: stringField(runtime, ["finding_evaluation_state"]) || undefined,
+    contract_probe_state: stringField(runtime, ["contract_probe_state"]) || undefined,
     expected_cadence_seconds: numberField(runtime, ["expected_cadence_seconds", "expectedCadenceSeconds"]),
     stale_after_seconds: scheduleStaleSeconds,
     schedule_context_configured: boolField(runtime, ["schedule_context_configured", "scheduleContextConfigured"]),
@@ -497,64 +558,36 @@ export const summarizeConnectorRuntime = (runtimes: ConnectorRuntime[]): Connect
   return summary;
 };
 
-const emptySourceSummary = (sourceID: string): SourceCoverageSummary => ({
-  source_id: sourceID || "unknown",
-  performance: "not_configured",
-  next_action: "Configure runtime coverage",
-  total: 0,
-  healthy: 0,
-  stale: 0,
-  degraded: 0,
-  unknown: 0,
-  cursor_pending: 0,
-  cursor_unknown: 0,
-  graph_current: 0,
-  graph_behind: 0,
-  graph_running: 0,
-  graph_failed: 0,
-  graph_not_observed: 0,
-  graph_unknown: 0,
-  backfills: 0,
-  schedule_context_missing: 0,
-});
+const countField = (record: Record<string, unknown>, key: string) =>
+  Math.max(0, Math.trunc(numberField(record, [key]) ?? 0));
 
-const sourceCatalogSummary = (source: Record<string, unknown>): SourceCoverageSummary => {
-  const sourceID = stringField(source, ["id", "source_id", "sourceId", "name"]) || "unknown";
+export const normalizeSourceRuntimeSummary = (value: unknown): SourceCoverageSummary => {
+  const summary = asRecord(value);
+  const readiness = stringField(summary, ["readiness"]).toLowerCase() as SourceReadiness;
+  const performance = runtimeReadinessValues.has(readiness) && readiness !== "not_configured"
+    ? readiness
+    : "poor";
   return {
-    ...emptySourceSummary(sourceID),
-    name: stringField(source, ["name", "label", "source_id", "sourceId", "id"]) || undefined,
-    description: stringField(source, ["description", "summary"]) || undefined,
-    status: stringField(source, ["status", "state"]) || undefined,
+    source_id: stringField(summary, ["source_id"]) || "unknown",
+    performance,
+    next_action: runtimeNextActionLabel(stringField(summary, ["next_action"]) || "inspect_connection"),
+    total: countField(summary, "total"),
+    healthy: countField(summary, "healthy"),
+    stale: countField(summary, "needs_refresh"),
+    degraded: countField(summary, "bad"),
+    unknown: countField(summary, "poor"),
+    cursor_pending: countField(summary, "cursor_pending"),
+    cursor_unknown: 0,
+    graph_current: countField(summary, "graph_current"),
+    graph_behind: countField(summary, "graph_behind"),
+    graph_running: countField(summary, "graph_running"),
+    graph_failed: countField(summary, "graph_failed"),
+    graph_not_observed: countField(summary, "graph_not_observed"),
+    graph_unknown: countField(summary, "graph_unknown"),
+    backfills: 0,
+    schedule_context_missing: countField(summary, "schedule_context_missing"),
+    latest_activity_at: stringField(summary, ["latest_activity_at"]) || undefined,
   };
-};
-
-const updateLatestActivity = (summary: SourceCoverageSummary, activity?: string) => {
-  if (!activity) return;
-  const next = parseTime(activity);
-  if (!next) return;
-  const current = summary.latest_activity_at ? parseTime(summary.latest_activity_at) : null;
-  if (!current || next.getTime() > current.getTime()) {
-    summary.latest_activity_at = next.toISOString();
-  }
-};
-
-const sourceReadiness = (summary: SourceCoverageSummary): Pick<SourceCoverageSummary, "performance" | "next_action"> => {
-  if (summary.total === 0) {
-    return { performance: "not_configured", next_action: "Configure runtime coverage" };
-  }
-  if (summary.degraded > 0 || summary.graph_failed > 0) {
-    return { performance: "bad", next_action: summary.graph_failed > 0 ? "Inspect failed graph projection" : "Investigate failed sync" };
-  }
-  if (summary.stale > 0 || summary.cursor_pending > 0 || summary.schedule_context_missing > 0) {
-    return { performance: "needs_refresh", next_action: "Refresh source sync" };
-  }
-  if (summary.graph_behind > 0 || summary.graph_not_observed > 0) {
-    return { performance: "needs_refresh", next_action: "Run graph projection" };
-  }
-  if (summary.unknown > 0 || summary.graph_running > 0 || summary.graph_unknown > 0) {
-    return { performance: "poor", next_action: "Verify runtime and graph telemetry" };
-  }
-  return { performance: "healthy", next_action: "No action" };
 };
 
 export const sourceReadinessRank = (value: SourceReadiness) => {
@@ -566,63 +599,6 @@ export const sourceReadinessRank = (value: SourceReadiness) => {
     healthy: 4,
   };
   return rank[value] ?? 5;
-};
-
-export const sourceHealthBreakdown = (
-  runtimes: ConnectorRuntime[],
-  sourceCatalog: Record<string, unknown>[] = [],
-): SourceCoverageSummary[] => {
-  const counts = new Map<string, SourceCoverageSummary>();
-  for (const source of sourceCatalog) {
-    const summary = sourceCatalogSummary(source);
-    counts.set(summary.source_id, summary);
-  }
-
-  for (const runtime of runtimes) {
-    const sourceID = runtime.source_id || "unknown";
-    const current = counts.get(sourceID) ?? emptySourceSummary(sourceID);
-    current.total += 1;
-    const operationallyHealthy = runtime.health === "healthy" &&
-      runtime.graph_freshness === "current" &&
-      runtime.cursor_state === "caught_up" &&
-      runtime.schedule_context_configured !== false;
-    if (runtime.health !== "healthy" || operationallyHealthy) current[runtime.health] += 1;
-    if (runtime.cursor_state === "pending") current.cursor_pending += 1;
-    if (runtime.cursor_state === "unknown") current.cursor_unknown += 1;
-    if (runtime.backfill) current.backfills += 1;
-    if (runtime.schedule_context_configured === false) current.schedule_context_missing += 1;
-    updateLatestActivity(current, runtime.last_activity_at);
-
-    switch (runtime.graph_freshness) {
-      case "current":
-        current.graph_current += 1;
-        break;
-      case "behind":
-        current.graph_behind += 1;
-        break;
-      case "running":
-        current.graph_running += 1;
-        break;
-      case "failed":
-        current.graph_failed += 1;
-        break;
-      case "not_observed":
-        current.graph_not_observed += 1;
-        break;
-      case "unknown":
-        current.graph_unknown += 1;
-        break;
-    }
-    counts.set(sourceID, current);
-  }
-
-  return Array.from(counts.values())
-    .map((source) => ({ ...source, ...sourceReadiness(source) }))
-    .sort((left, right) =>
-      sourceReadinessRank(left.performance) - sourceReadinessRank(right.performance) ||
-      right.total - left.total ||
-      left.source_id.localeCompare(right.source_id),
-    );
 };
 
 export const sourceBreakdown = (runtimes: ConnectorRuntime[]) => {

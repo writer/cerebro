@@ -189,6 +189,18 @@ describe("product UI contract", () => {
     expect(page.indexOf("ReadinessMix")).toBeGreaterThan(advancedTools);
   });
 
+  it("uses the Rust source-runtime readiness contract for the connector presentation", () => {
+    const page = readProjectFile("src/app/connectors/page.tsx");
+    const runtime = readProjectFile("src/lib/connector-runtime.ts");
+
+    expect(page).toContain('withQuery("/v1/source-runtimes/health"');
+    expect(page).toContain("normalizeSourceRuntimeSummary");
+    expect(page).not.toContain("sourceHealthBreakdown");
+    expect(runtime).toContain('stringField(runtime, ["readiness"])');
+    expect(runtime).toContain('stringField(summary, ["readiness"])');
+    expect(runtime).not.toContain("const sourceReadiness =");
+  });
+
   it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {
     const vendorSource = readProjectFile("src/app/vendors/page.tsx");
     const vendorDetailSource = readProjectFile("src/app/vendors/[urn]/page.tsx");

@@ -65,6 +65,19 @@ CREATE TABLE IF NOT EXISTS source_runtimes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS finding_evaluation_runs (
+  id TEXT PRIMARY KEY,
+  runtime_id TEXT NOT NULL,
+  rule_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  started_at TIMESTAMPTZ NOT NULL,
+  finished_at TIMESTAMPTZ,
+  finding_evaluation_run_json JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS finding_evaluation_runs_runtime_idx
+  ON finding_evaluation_runs (runtime_id, started_at DESC);
 ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_owner TEXT;
 ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
 ALTER TABLE source_runtimes
@@ -822,6 +835,9 @@ pub struct SourceRuntimeObservation {
     pub cursor_pending: bool,
     pub checkpoint_cursor_present: bool,
     pub stale_after_seconds: Option<u64>,
+    pub expected_cadence_seconds: Option<u64>,
+    pub contract_probe_state: String,
+    pub latest_finding_evaluation_status: Option<String>,
     pub latest_collection: Option<SourceRuntimeCollectionObservation>,
 }
 
@@ -1683,7 +1699,7 @@ WHERE id = $1
         query: &str,
         limit: usize,
     ) -> Result<Vec<SourceRuntimeObservation>, StoreError> {
-        if tenant_id.trim().is_empty() || limit == 0 || limit > 100 {
+        if tenant_id.trim().is_empty() || limit == 0 || limit > 500 {
             return Err(StoreError::Conflict(
                 "source runtime observation scope is invalid".to_owned(),
             ));
@@ -1699,7 +1715,11 @@ WHERE id = $1
 SELECT
   runtime.id,
   COALESCE(runtime.runtime_json->>'source_id', ''),
-  COALESCE(runtime.runtime_json->'config'->>'enabled', ''),
+  CASE
+    WHEN LOWER(COALESCE(runtime.runtime_json->'config'->>'enabled', '')) IN ('false', '0', 'disabled')
+    THEN 'disabled'
+    ELSE 'enabled'
+  END,
   NULLIF(runtime.runtime_json->'config'->>'__cerebro_runtime_last_failure_category', ''),
   NULLIF(runtime.runtime_json->>'last_synced_at', ''),
   COALESCE(NULLIF(runtime.runtime_json->'next_cursor'->>'opaque', ''), '') <> '',
@@ -1711,7 +1731,10 @@ SELECT
   latest.pages_read,
   latest.records_scanned,
   latest.records_accepted,
-  latest.records_rejected
+  latest.records_rejected,
+  COALESCE(NULLIF(runtime.runtime_json->'config'->>'__cerebro_runtime_contract_probe_state', ''), 'unknown'),
+  NULLIF(runtime.runtime_json->'config'->>'expected_cadence_seconds', ''),
+  finding.status
 FROM source_runtimes AS runtime
 LEFT JOIN LATERAL (
   SELECT
@@ -1728,6 +1751,13 @@ LEFT JOIN LATERAL (
   ORDER BY completed_at_unix_ms DESC, collection_id DESC
   LIMIT 1
 ) AS latest ON TRUE
+LEFT JOIN LATERAL (
+  SELECT status
+  FROM finding_evaluation_runs
+  WHERE runtime_id = runtime.id
+  ORDER BY started_at DESC, id DESC
+  LIMIT 1
+) AS finding ON TRUE
 WHERE runtime.runtime_json->>'tenant_id' = $1
   AND (
     $2 = ''
@@ -1754,6 +1784,10 @@ LIMIT $3
                     .get::<_, Option<String>>(7)
                     .and_then(|value| value.parse::<u64>().ok())
                     .filter(|value| *value > 0);
+                let expected_cadence_seconds = row
+                    .get::<_, Option<String>>(16)
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .filter(|value| *value > 0);
                 let latest_collection = match row.get::<_, Option<String>>(8) {
                     Some(collection_id) => Some(SourceRuntimeCollectionObservation {
                         collection_id,
@@ -1775,6 +1809,9 @@ LIMIT $3
                     cursor_pending: row.get(5),
                     checkpoint_cursor_present: row.get(6),
                     stale_after_seconds,
+                    expected_cadence_seconds,
+                    contract_probe_state: row.get(15),
+                    latest_finding_evaluation_status: row.get(17),
                     latest_collection,
                 })
             })

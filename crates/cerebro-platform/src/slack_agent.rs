@@ -5180,16 +5180,16 @@ fn source_runtime_view(
     now: OffsetDateTime,
 ) -> (Value, Vec<String>) {
     let mut evidence_gaps = Vec::new();
-    let (enabled, enabled_state) = match record.enabled_state.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" | "enabled" => (Some(true), "enabled"),
-        "false" | "0" | "disabled" => (Some(false), "disabled"),
+    let enabled_state = match record.enabled_state.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "enabled" => "enabled",
+        "false" | "0" | "disabled" => "disabled",
         "" => {
             evidence_gaps.push("enabled_state_not_observed".to_owned());
-            (None, "unknown")
+            "unknown"
         }
         _ => {
             evidence_gaps.push("enabled_state_invalid".to_owned());
-            (None, "unknown")
+            "unknown"
         }
     };
     let parsed_sync = record
@@ -5209,28 +5209,35 @@ fn source_runtime_view(
         .stale_after_seconds
         .zip(sync_lag_seconds)
         .is_some_and(|(threshold, lag)| u64::try_from(lag).is_ok_and(|lag| lag > threshold));
-    let collection_complete = record
-        .latest_collection
-        .as_ref()
-        .map(|collection| collection.status == "complete");
-    let rejected_records = record
-        .latest_collection
-        .as_ref()
-        .map_or(0, |collection| collection.records_rejected);
-    let readiness = evaluate_runtime_readiness(RuntimeHealthEvidence {
-        enabled,
-        failure_observed: record.last_failure_category.is_some(),
-        sync_observed: parsed_sync.is_some(),
-        sync_stale,
+    let source_status = if record.last_failure_category.is_some() {
+        "failing"
+    } else if parsed_sync.is_none() {
+        "unknown"
+    } else if sync_stale {
+        "stale"
+    } else {
+        "healthy"
+    };
+    let finding_evaluation_state = record
+        .latest_finding_evaluation_status
+        .as_deref()
+        .map(source_runtime_finding_state)
+        .unwrap_or("not_observed");
+    let schedule_context_configured =
+        record.stale_after_seconds.is_some() || record.expected_cadence_seconds.is_some();
+    let decision = evaluate_runtime_readiness(RuntimeHealthEvidence {
+        enabled_state,
+        source_status,
+        graph_state: "not_observed",
         cursor_pending: record.cursor_pending,
-        collection_complete,
-        rejected_records,
+        schedule_context_configured,
+        contract_probe_state: &record.contract_probe_state,
+        finding_evaluation_state,
     });
-    let health = match readiness {
-        RuntimeReadiness::Disabled => "disabled",
-        RuntimeReadiness::Unknown => "unknown",
-        RuntimeReadiness::Attention => "failing",
+    let health = match decision.readiness {
+        RuntimeReadiness::Bad => "failing",
         RuntimeReadiness::NeedsRefresh => "stale",
+        RuntimeReadiness::Poor => "unknown",
         RuntimeReadiness::Healthy => "healthy",
     };
     let latest_collection = record.latest_collection.map(|collection| {
@@ -5259,11 +5266,17 @@ fn source_runtime_view(
             "source_id": record.source_id,
             "enabled_state": enabled_state,
             "health": health,
-            "readiness": readiness.as_str(),
+            "readiness": decision.readiness.as_str(),
+            "next_action": decision.next_action.as_str(),
             "last_failure_category": record.last_failure_category,
             "last_synced_at": record.last_synced_at,
             "sync_lag_seconds": sync_lag_seconds,
             "stale_after_seconds": record.stale_after_seconds,
+            "expected_cadence_seconds": record.expected_cadence_seconds,
+            "schedule_context_configured": schedule_context_configured,
+            "contract_probe_state": record.contract_probe_state,
+            "graph_state": "not_observed",
+            "finding_evaluation_state": finding_evaluation_state,
             "cursor_state": if record.cursor_pending { "pending" } else { "clear" },
             "checkpoint_cursor_state": if record.checkpoint_cursor_present { "present" } else { "clear" },
             "latest_collection": latest_collection,
@@ -5271,6 +5284,17 @@ fn source_runtime_view(
         }),
         evidence_gaps,
     )
+}
+
+fn source_runtime_finding_state(status: &str) -> &'static str {
+    let status = status.trim().to_ascii_lowercase();
+    if status.contains("fail") || status.contains("error") || status.contains("cancel") {
+        "failed"
+    } else if status.contains("running") || status.contains("pending") {
+        "running"
+    } else {
+        "current"
+    }
 }
 
 fn unix_millis_rfc3339(value: u64) -> Option<String> {
@@ -7791,6 +7815,9 @@ mod tests {
                 cursor_pending: true,
                 checkpoint_cursor_present: true,
                 stale_after_seconds: Some(3_600),
+                expected_cadence_seconds: Some(3_600),
+                contract_probe_state: "passing".into(),
+                latest_finding_evaluation_status: Some("current".into()),
                 latest_collection: Some(SourceRuntimeCollectionObservation {
                     collection_id: "collection-1".into(),
                     status: "incomplete".into(),
@@ -7803,8 +7830,9 @@ mod tests {
             },
             now,
         );
-        assert_eq!(view["health"], "failing");
-        assert_eq!(view["readiness"], "attention");
+        assert_eq!(view["health"], "stale");
+        assert_eq!(view["readiness"], "needs_refresh");
+        assert_eq!(view["next_action"], "run_graph_ingest");
         assert_eq!(view["cursor_state"], "pending");
         assert!(gaps.iter().any(|gap| gap == "latest_collection_incomplete"));
         assert!(
@@ -7899,6 +7927,9 @@ mod tests {
                 cursor_pending: false,
                 checkpoint_cursor_present: false,
                 stale_after_seconds: None,
+                expected_cadence_seconds: None,
+                contract_probe_state: "unknown".into(),
+                latest_finding_evaluation_status: None,
                 latest_collection: None,
             },
             now,
@@ -7981,6 +8012,9 @@ mod tests {
             cursor_pending: false,
             checkpoint_cursor_present: false,
             stale_after_seconds: None,
+            expected_cadence_seconds: None,
+            contract_probe_state: "unknown".into(),
+            latest_finding_evaluation_status: None,
             latest_collection: None,
         };
         let records = prefer_exact_runtime_matches(
@@ -8012,6 +8046,9 @@ mod tests {
                     cursor_pending: false,
                     checkpoint_cursor_present: false,
                     stale_after_seconds: Some(300),
+                    expected_cadence_seconds: Some(300),
+                    contract_probe_state: "passing".into(),
+                    latest_finding_evaluation_status: Some("current".into()),
                     latest_collection: Some(SourceRuntimeCollectionObservation {
                         collection_id: "collection-1".into(),
                         status: "complete".into(),
@@ -8026,6 +8063,8 @@ mod tests {
             );
             assert_eq!(view["enabled_state"], "unknown");
             assert_eq!(view["health"], "unknown");
+            assert_eq!(view["readiness"], "poor");
+            assert_eq!(view["next_action"], "inspect_connection");
             assert!(gaps.iter().any(|gap| gap == expected_gap));
         }
     }
