@@ -125,8 +125,13 @@ fn every_family_plans_one_origin_restricted_credential_free_request() {
         let request = execution.request.expect("planned request");
         assert_eq!(request.method, "GET");
         assert!(request.url.starts_with(DEFAULT_BASE_URL));
-        assert!(!request.url.contains("api_key"));
-        assert!(!request.url.contains("token"));
+        let url = reqwest::Url::parse(&request.url).expect("planned URL");
+        assert!(url.username().is_empty());
+        assert!(url.password().is_none());
+        assert!(url.query_pairs().all(|(key, _)| !matches!(
+            key.as_ref(),
+            "api_key" | "api_token" | "access_token" | "token"
+        )));
     }
 }
 
