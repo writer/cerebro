@@ -57,11 +57,12 @@ impl SentinelOneDirectSourceExecutionAdapter {
 }
 
 pub(crate) static SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS:
-    [SentinelOneDirectSourceExecutionAdapter; 4] = [
+    [SentinelOneDirectSourceExecutionAdapter; 5] = [
     SentinelOneDirectSourceExecutionAdapter::new(SentinelOneFamily::Activity),
     SentinelOneDirectSourceExecutionAdapter::new(SentinelOneFamily::Exclusion),
     SentinelOneDirectSourceExecutionAdapter::new(SentinelOneFamily::Group),
     SentinelOneDirectSourceExecutionAdapter::new(SentinelOneFamily::Site),
+    SentinelOneDirectSourceExecutionAdapter::new(SentinelOneFamily::Threat),
 ];
 
 impl SourceExecutionAdapter for SentinelOneDirectSourceExecutionAdapter {

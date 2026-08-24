@@ -489,7 +489,7 @@ func TestSentinelOneAgentNeverFallsBackToGoAuthority(t *testing.T) {
 }
 
 func TestPromotedSentinelOneDirectFamiliesNeverFallBackToGoAuthority(t *testing.T) {
-	for _, family := range []string{"activity", "exclusion", "group", "site"} {
+	for _, family := range []string{"activity", "exclusion", "group", "site", "threat"} {
 		t.Run(family, func(t *testing.T) {
 			legacy := &runtimeAuthorityProbe{sourceID: "sentinelone"}
 			worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
@@ -518,8 +518,8 @@ func TestPromotedSentinelOneDirectFamiliesNeverFallBackToGoAuthority(t *testing.
 	}
 }
 
-func TestRemainingSentinelOneFamiliesStayGoCompatible(t *testing.T) {
-	for _, family := range []string{"application", "threat"} {
+func TestSentinelOneApplicationStaysGoCompatible(t *testing.T) {
+	for _, family := range []string{"application"} {
 		t.Run(family, func(t *testing.T) {
 			legacy := &runtimeAuthorityProbe{sourceID: "sentinelone"}
 			service := &Service{sourceWorker: &runtimePlanWorker{}}
