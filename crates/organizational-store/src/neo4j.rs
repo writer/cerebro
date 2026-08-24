@@ -458,6 +458,23 @@ pub struct Neo4jProjector {
     graph: Graph,
 }
 
+/// Latest secret-free graph ingest evidence for one source runtime.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+pub struct SourceRuntimeGraphObservation {
+    /// Runtime whose graph ingest was observed.
+    pub runtime_id: String,
+    /// Running, completed, or failed graph ingest status.
+    pub status: String,
+    /// Continuation retained by the graph run, when present.
+    pub checkpoint_cursor: String,
+    /// Explicit terminal checkpoint state; `None` for legacy records.
+    pub checkpoint_complete: Option<bool>,
+    /// Graph run start time in RFC 3339 form, when observed.
+    pub started_at: String,
+    /// Graph run finish time in RFC 3339 form, when observed.
+    pub finished_at: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A lifecycle finding resolved to its affected resource and source coordinates.
 pub struct ResolvedLifecycleFinding {
@@ -966,6 +983,73 @@ impl Neo4jProjector {
             self.graph.run(query(statement)).await?;
         }
         Ok(())
+    }
+
+    /// Returns the latest graph ingest observation for each requested runtime.
+    pub async fn source_runtime_graph_observations(
+        &self,
+        runtime_ids: &[String],
+    ) -> Result<Vec<SourceRuntimeGraphObservation>, StoreError> {
+        if runtime_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        if runtime_ids.len() > 500 || runtime_ids.iter().any(|value| value.trim().is_empty()) {
+            return Err(StoreError::Conflict(
+                "source runtime graph observation scope is invalid".to_owned(),
+            ));
+        }
+        let mut stream = self
+            .graph
+            .execute(
+                query(
+                    r#"
+MATCH (run:IngestRun)
+WHERE run.runtime_id IN $runtime_ids
+WITH run
+ORDER BY run.started_at DESC, run.id DESC
+WITH run.runtime_id AS runtime_id, collect(run)[0] AS latest
+RETURN runtime_id,
+       coalesce(latest.status, '') AS status,
+       coalesce(latest.checkpoint_cursor, '') AS checkpoint_cursor,
+       latest.checkpoint_complete IS NOT NULL AS checkpoint_complete_known,
+       coalesce(latest.checkpoint_complete, false) AS checkpoint_complete,
+       coalesce(latest.started_at, '') AS started_at,
+       coalesce(latest.finished_at, '') AS finished_at
+ORDER BY runtime_id
+"#,
+                )
+                .param("runtime_ids", string_list(runtime_ids)),
+            )
+            .await?;
+        let mut observations = Vec::new();
+        while let Some(row) = stream.next().await? {
+            let decode = |field: &str| {
+                row.get::<String>(field).map_err(|error| {
+                    StoreError::Conflict(format!(
+                        "decode source runtime graph observation {field}: {error}"
+                    ))
+                })
+            };
+            let checkpoint_complete_known =
+                row.get::<bool>("checkpoint_complete_known")
+                    .map_err(|error| {
+                        StoreError::Conflict(format!(
+                            "decode source runtime graph checkpoint presence: {error}"
+                        ))
+                    })?;
+            let checkpoint_complete = row.get::<bool>("checkpoint_complete").map_err(|error| {
+                StoreError::Conflict(format!("decode source runtime graph checkpoint: {error}"))
+            })?;
+            observations.push(SourceRuntimeGraphObservation {
+                runtime_id: decode("runtime_id")?,
+                status: decode("status")?,
+                checkpoint_cursor: decode("checkpoint_cursor")?,
+                checkpoint_complete: checkpoint_complete_known.then_some(checkpoint_complete),
+                started_at: decode("started_at")?,
+                finished_at: decode("finished_at")?,
+            });
+        }
+        Ok(observations)
     }
 
     /// Compares tenant-scoped legacy graph roots with the Rust organizational projection.

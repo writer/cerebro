@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useApiKey, useConsoleConfig, useCurrentUser } from "@/components/providers";
 import { identityPosture } from "@/lib/identity";
+import { GRC_QUERY_TIMEOUT_MS } from "@/lib/grc-client";
 import { RuntimeState, runtimeStateCopy, runtimeStateForError, runtimeStateLabel } from "@/lib/runtime-state";
 
 type StatusState = {
@@ -25,10 +26,10 @@ type ProbeResult = {
   status: number;
 };
 
-const STATUS_TIMEOUT_MS = 3000;
+const LIVENESS_TIMEOUT_MS = 3000;
 const STATUS_PROBES = [
-  { key: "healthz", label: "API liveness", path: "/api/cerebro/healthz" },
-  { key: "health", label: "API readiness", path: "/api/cerebro/health" },
+  { key: "healthz", label: "API liveness", path: "/api/cerebro/healthz", timeoutMs: LIVENESS_TIMEOUT_MS },
+  { key: "health", label: "API readiness", path: "/api/cerebro/health", timeoutMs: GRC_QUERY_TIMEOUT_MS },
 ];
 
 const parseStatus = async (response: Response): Promise<Record<string, unknown>> => {
@@ -76,7 +77,7 @@ export default function StatusPanel() {
       const controller = new AbortController();
       const abort = () => controller.abort();
       signal?.addEventListener("abort", abort, { once: true });
-      const timer = window.setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
+      const timer = window.setTimeout(() => controller.abort(), probe.timeoutMs);
       try {
         const response = await fetch(probe.path, { headers, cache: "no-store", signal: controller.signal });
         const data = await parseStatus(response);
@@ -90,7 +91,7 @@ export default function StatusPanel() {
         };
       } catch (err) {
         const message = controller.signal.aborted && !signal?.aborted
-          ? `Timed out after ${STATUS_TIMEOUT_MS}ms`
+          ? `Timed out after ${probe.timeoutMs}ms`
           : err instanceof Error ? err.message : "Unable to reach API";
         return {
           ...probe,

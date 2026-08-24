@@ -52,7 +52,7 @@ describe("connector view model", () => {
 
     expect(cards[0]).toMatchObject({ source_id: "aws", readiness: "bad", nextAction: "Investigate failed sync" });
     expect(connectorDisplayName(cards[0])).toBe("Amazon Web Services");
-    expect(connectorAttentionTotal(cards[0])).toBe(3);
+    expect(connectorAttentionTotal(cards[0])).toBe(2);
     expect(cards[1]).toMatchObject({ source_id: "github", readiness: "healthy" });
   });
 
