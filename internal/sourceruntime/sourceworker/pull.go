@@ -28,7 +28,9 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		if familyID == "" {
 			familyID = "droplets"
 		}
-		return familyID, familyID == "droplets" || familyID == "vpcs"
+		// Every public DigitalOcean family is closed in the Rust dispatcher. An
+		// unknown future family must fail there instead of restoring Go authority.
+		return familyID, true
 	case "jumpcloud":
 		if familyID == "" {
 			familyID = "users"
