@@ -205,10 +205,10 @@ fn service_ids(config: &HashMap<String, String>) -> Vec<String> {
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
         .collect::<Vec<_>>();
-    if values.is_empty() {
-        if let Some(value) = public_value(config, "service_id") {
-            values.push(value.to_owned());
-        }
+    if values.is_empty()
+        && let Some(value) = public_value(config, "service_id")
+    {
+        values.push(value.to_owned());
     }
     values
 }
