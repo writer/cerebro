@@ -13,6 +13,47 @@ import (
 
 const rustCheckpointCursorMode = "rust_provider_checkpoint"
 
+// RustAuthoritativeFamily returns the normalized family only when the closed
+// Rust dispatcher owns production execution for that exact source-family
+// pair. Keep this allowlist narrower than the dispatcher's compiled adapters:
+// an adapter contract alone is not an authority decision.
+func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
+	sourceID = strings.TrimSpace(sourceID)
+	familyID = strings.TrimSpace(familyID)
+	switch sourceID {
+	case "azure":
+		return familyID, familyID == "authorization_policy"
+	case "jumpcloud":
+		if familyID == "" {
+			familyID = "users"
+		}
+		// Every public JumpCloud family is closed in the Rust dispatcher. An
+		// unknown future family must fail there instead of restoring Go authority.
+		return familyID, true
+	case "tailscale":
+		return TailscaleFamily(sourceID, familyID)
+	default:
+		return "", false
+	}
+}
+
+// CredentialBinding selects the provider's ordered credential aliases from
+// stored references and trusted-host resolved values. It returns strings only
+// to the Go host; callers must never include the resolved value in worker
+// metadata, receipts, or errors.
+func CredentialBinding(sourceID string, references, resolved map[string]string) (string, string) {
+	keys := []string{"graph_token", "token"}
+	if strings.TrimSpace(sourceID) == "jumpcloud" {
+		keys = []string{"api_key", "api_token", "token"}
+	}
+	for _, key := range keys {
+		if reference := strings.TrimSpace(references[key]); reference != "" {
+			return reference, strings.TrimSpace(resolved[key])
+		}
+	}
+	return "", ""
+}
+
 // TailscaleFamily normalizes the requested Tailscale family, including the
 // public default used when family is omitted. The closed Rust dispatcher owns
 // family membership validation; Go must not restore legacy authority for an
@@ -99,7 +140,7 @@ func PullFromExecutionOutput(output *ExecutionOutput, tenantID string) (sourcecd
 	}
 	checkpointCursor := output.Result.GetResultDigestSha256()
 	nextCursor := strings.TrimSpace(output.Result.GetNextCursor())
-	if _, tailscale := TailscaleFamily(output.Plan.GetSourceId(), output.Plan.GetFamilyId()); tailscale {
+	if _, authoritative := RustAuthoritativeFamily(output.Plan.GetSourceId(), output.Plan.GetFamilyId()); authoritative {
 		envelope := sourcecdk.CursorEnvelope{
 			Version: 1, Source: output.Plan.GetSourceId(), Family: output.Plan.GetFamilyId(),
 			Mode: rustCheckpointCursorMode, ResumableCheckpoint: true, Token: nextCursor,

@@ -13,16 +13,16 @@ import (
 )
 
 func (s *Service) validateRustSourceRuntimePlan(ctx context.Context, runtime *cerebrov1.SourceRuntime, config map[string]string) error {
-	familyID, authoritative := sourceworker.TailscaleFamily(runtime.GetSourceId(), config["family"])
+	familyID, authoritative := sourceworker.RustAuthoritativeFamily(runtime.GetSourceId(), config["family"])
 	if !authoritative {
 		return nil
 	}
 	if s == nil || s.sourceWorker == nil {
-		return fmt.Errorf("%w: the closed Rust worker is required for Tailscale", ErrRuntimeUnavailable)
+		return fmt.Errorf("%w: the closed Rust worker is required for %s.%s", ErrRuntimeUnavailable, runtime.GetSourceId(), familyID)
 	}
 	plan, err := s.sourceWorker.Compile(ctx, sourceworker.SelectionRequest{SourceID: runtime.GetSourceId(), FamilyID: familyID})
 	if err != nil {
-		return fmt.Errorf("%w: compile Tailscale source plan: %w", ErrInvalidRequest, err)
+		return fmt.Errorf("%w: compile Rust source plan: %w", ErrInvalidRequest, err)
 	}
 	now := time.Now().UTC()
 	executionContext, err := s.sourceWorker.Context(ctx, sourceworker.ContextRequest{
@@ -31,40 +31,34 @@ func (s *Service) validateRustSourceRuntimePlan(ctx context.Context, runtime *ce
 		ObservedAtUnixMillis: now.UnixMilli(), PublicConfig: sourceworker.PublicExecutionConfig(config),
 	})
 	if err != nil {
-		return fmt.Errorf("%w: validate Tailscale execution context: %w", ErrInvalidRequest, err)
+		return fmt.Errorf("%w: validate Rust execution context: %w", ErrInvalidRequest, err)
 	}
 	_, err = s.sourceWorker.PlanV2(ctx, &cerebrov1.SourceWorkerPlanEnvelopeV2{
 		Request:  &cerebrov1.SourceWorkerPlanRequestV1{Plan: plan, Context: executionContext},
 		Metadata: &cerebrov1.SourceWorkerRuntimeMetadataV2{PublicConfig: sourceworker.PublicExecutionConfig(config)},
 	})
 	if err != nil {
-		return fmt.Errorf("%w: validate Tailscale source plan: %w", ErrInvalidRequest, err)
+		return fmt.Errorf("%w: validate Rust source plan: %w", ErrInvalidRequest, err)
 	}
 	return nil
 }
 
 func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceRuntime, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, pageNumber uint32) (sourcecdk.Pull, bool, error) {
 	familyID, _ := cfg.Lookup("family")
-	normalizedFamilyID, authoritative := sourceworker.TailscaleFamily(runtime.GetSourceId(), familyID)
+	normalizedFamilyID, authoritative := sourceworker.RustAuthoritativeFamily(runtime.GetSourceId(), familyID)
 	if !authoritative {
 		pull, err := readCompatibilitySourcePull(ctx, source, cfg, cursor, checkpoint)
 		return pull, false, err
 	}
 	familyID = normalizedFamilyID
 	if s == nil || s.sourceWorker == nil {
-		return sourcecdk.Pull{}, false, fmt.Errorf("%w: the closed Rust worker is required for Tailscale", ErrRuntimeUnavailable)
+		return sourcecdk.Pull{}, false, fmt.Errorf("%w: the closed Rust worker is required for %s.%s", ErrRuntimeUnavailable, runtime.GetSourceId(), familyID)
 	}
 	fence, ok := sourceRuntimeLeaseFenceFromContext(ctx)
 	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
 	}
-	reference, resolved := strings.TrimSpace(runtime.GetConfig()["graph_token"]), strings.TrimSpace(cfg.Values()["graph_token"])
-	if reference == "" {
-		reference = strings.TrimSpace(runtime.GetConfig()["token"])
-	}
-	if resolved == "" {
-		resolved = strings.TrimSpace(cfg.Values()["token"])
-	}
+	reference, resolved := sourceworker.CredentialBinding(runtime.GetSourceId(), runtime.GetConfig(), cfg.Values())
 	if reference == "" || resolved == "" || reference == resolved || (!sourceconfig.IsCredentialReference(reference) && !sourceconfig.IsSecretReference(reference)) {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: Rust source execution requires an opaque credential reference", ErrInvalidRequest)
 	}

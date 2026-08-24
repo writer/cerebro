@@ -14,7 +14,7 @@ import (
 )
 
 func TestPutTailscaleRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
-	legacy := &runtimeTailscaleProbe{}
+	legacy := &runtimeAuthorityProbe{sourceID: "tailscale"}
 	registry, err := sourcecdk.NewRegistry(legacy)
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +38,7 @@ func TestPutTailscaleRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T)
 }
 
 func TestTailscaleRuntimeFailsClosedWithoutRustWorker(t *testing.T) {
-	legacy := &runtimeTailscaleProbe{}
+	legacy := &runtimeAuthorityProbe{sourceID: "tailscale"}
 	registry, err := sourcecdk.NewRegistry(legacy)
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestTailscaleRuntimeFailsClosedWithoutRustWorker(t *testing.T) {
 }
 
 func TestUnknownTailscaleFamilyNeverFallsBackToGoAuthority(t *testing.T) {
-	legacy := &runtimeTailscaleProbe{}
+	legacy := &runtimeAuthorityProbe{sourceID: "tailscale"}
 	registry, err := sourcecdk.NewRegistry(legacy)
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +88,7 @@ func TestUnknownTailscaleFamilyNeverFallsBackToGoAuthority(t *testing.T) {
 }
 
 func TestNonTailscaleRuntimeUsesGoCompatibilityBeforeRustCredentialChecks(t *testing.T) {
-	legacy := &runtimeTailscaleProbe{}
+	legacy := &runtimeAuthorityProbe{sourceID: "gcp"}
 	service := &Service{sourceWorker: &runtimePlanWorker{}}
 	runtime := &cerebrov1.SourceRuntime{Id: "gcp-runtime", SourceId: "gcp", TenantId: "tenant-1"}
 
@@ -102,19 +102,141 @@ func TestNonTailscaleRuntimeUsesGoCompatibilityBeforeRustCredentialChecks(t *tes
 	}
 }
 
-type runtimeTailscaleProbe struct{ checkCalls, readCalls int }
-
-func (*runtimeTailscaleProbe) Spec() *cerebrov1.SourceSpec {
-	return &cerebrov1.SourceSpec{Id: "tailscale"}
+func TestAzureAuthorizationPolicyValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "azure"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &runtimePlanWorker{}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+		Id: "azure-authorization-policy-runtime", SourceId: "azure", TenantId: "tenant-1",
+		Config: map[string]string{"family": "authorization_policy", "graph_token": sourceconfig.CredentialReferenceValue("azure", "graph_token")},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.checkCalls != 0 || worker.planCalls != 1 {
+		t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+	}
+	if worker.selection.SourceID != "azure" || worker.selection.FamilyID != "authorization_policy" {
+		t.Fatalf("Rust selection = %#v", worker.selection)
+	}
 }
-func (s *runtimeTailscaleProbe) Check(context.Context, sourcecdk.Config) error {
+
+func TestAzureAuthorizationPolicyNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "azure"}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := &Service{sourceWorker: worker}
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "azure-authorization-policy-runtime", SourceId: "azure", TenantId: "tenant-1",
+		Config: map[string]string{"family": "authorization_policy", "graph_token": sourceconfig.CredentialReferenceValue("azure", "graph_token")},
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{"family": "authorization_policy", "graph_token": "host-only-secret"})
+
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "azure" || worker.selection.FamilyID != "authorization_policy" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+	}
+}
+
+func TestOtherAzureFamilyRemainsGoCompatible(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "azure"}
+	service := &Service{sourceWorker: &runtimePlanWorker{}}
+	runtime := &cerebrov1.SourceRuntime{Id: "azure-user-runtime", SourceId: "azure", TenantId: "tenant-1"}
+	config := sourcecdk.NewConfig(map[string]string{"family": "user"})
+
+	if _, rustPage, err := service.readSourcePull(context.Background(), runtime, legacy, config, nil, nil, 1); err != nil {
+		t.Fatalf("readSourcePull() error = %v", err)
+	} else if rustPage {
+		t.Fatal("readSourcePull() reported a Rust page for a Go-authoritative Azure family")
+	}
+	if legacy.readCalls != 1 {
+		t.Fatalf("Go Read calls = %d, want 1", legacy.readCalls)
+	}
+}
+
+func TestPutJumpCloudFamiliesValidateWithRustWithoutCallingGoCheck(t *testing.T) {
+	families := []string{"users", "groups", "systems", "applications", "system_groups", "group_members", "audit_events"}
+	for _, family := range families {
+		t.Run(family, func(t *testing.T) {
+			legacy := &runtimeAuthorityProbe{sourceID: "jumpcloud"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			worker := &runtimePlanWorker{}
+			service := New(registry, &runtimeStore{}, nil, nil)
+			service.sourceWorker = worker
+			config := map[string]string{
+				"family": family, "api_key": sourceconfig.CredentialReferenceValue("jumpcloud", "api_key"),
+			}
+			if family == "group_members" {
+				config["group_ids"] = "group-1,group-2"
+			}
+			_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+				Id: "jumpcloud-" + family + "-runtime", SourceId: "jumpcloud", TenantId: "tenant-1", Config: config,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if legacy.checkCalls != 0 || worker.planCalls != 1 {
+				t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+			}
+			if worker.selection.SourceID != "jumpcloud" || worker.selection.FamilyID != family {
+				t.Fatalf("Rust selection = %#v", worker.selection)
+			}
+			if worker.publicConfig["api_key"] != "" || worker.publicConfig["family"] != family {
+				t.Fatalf("Rust public config = %#v", worker.publicConfig)
+			}
+		})
+	}
+}
+
+func TestUnknownJumpCloudFamilyNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "jumpcloud"}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := &Service{sourceWorker: worker}
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "jumpcloud-future-runtime", SourceId: "jumpcloud", TenantId: "tenant-1",
+		Config: map[string]string{"family": "future-family", "api_key": sourceconfig.CredentialReferenceValue("jumpcloud", "api_key")},
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{"family": "future-family", "api_key": "host-only-value"})
+
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "jumpcloud" || worker.selection.FamilyID != "future-family" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+	}
+}
+
+type runtimeAuthorityProbe struct {
+	sourceID              string
+	checkCalls, readCalls int
+}
+
+func (s *runtimeAuthorityProbe) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.sourceID}
+}
+func (s *runtimeAuthorityProbe) Check(context.Context, sourcecdk.Config) error {
 	s.checkCalls++
 	return nil
 }
-func (*runtimeTailscaleProbe) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+func (*runtimeAuthorityProbe) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return nil, nil
 }
-func (s *runtimeTailscaleProbe) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+func (s *runtimeAuthorityProbe) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	s.readCalls++
 	return sourcecdk.Pull{}, nil
 }
@@ -123,9 +245,11 @@ type runtimePlanWorker struct {
 	planCalls    int
 	publicConfig map[string]string
 	compileErr   error
+	selection    sourceworker.SelectionRequest
 }
 
 func (w *runtimePlanWorker) Compile(_ context.Context, request sourceworker.SelectionRequest) (*cerebrov1.SourceExecutionPlanV1, error) {
+	w.selection = request
 	if w.compileErr != nil {
 		return nil, w.compileErr
 	}
