@@ -372,6 +372,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"langchain",
 		"openai",
 		"tailscale",
+		"twilio",
 	}
 	static := make(map[string]struct{}, len(builtinSourceLoaders))
 	for _, loader := range builtinSourceLoaders {
@@ -387,6 +388,32 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		}
 		if _, ok := registry.Get(sourceID); !ok {
 			t.Errorf("retired provider %q is not runnable through the catalog runtime", sourceID)
+		}
+	}
+}
+
+func TestTwilioCatalogRuntimeFixturesCoverEveryPortableFamily(t *testing.T) {
+	payload, err := sourcecatalogs.BuiltinCatalog("twilio")
+	if err != nil {
+		t.Fatalf("BuiltinCatalog(twilio) error = %v", err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(payload)
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog(twilio) error = %v", err)
+	}
+	fixtureFS := os.DirFS(filepath.Join("..", "..", "sources", "twilio"))
+	for _, family := range catalog.RuntimeFamilies {
+		urns, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_"+family+".json")
+		if err != nil {
+			t.Errorf("load %s discover fixture: %v", family, err)
+		} else if len(urns) == 0 {
+			t.Errorf("%s discover fixture is empty", family)
+		}
+		events, err := sourcecdk.LoadFixtureEventsWithContracts(fixtureFS, "testdata/read_"+family+".json", catalog.EventContracts)
+		if err != nil {
+			t.Errorf("load %s read fixture: %v", family, err)
+		} else if len(events) == 0 {
+			t.Errorf("%s read fixture is empty", family)
 		}
 	}
 }

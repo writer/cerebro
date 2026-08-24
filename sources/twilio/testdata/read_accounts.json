@@ -1,14 +1,31 @@
-{
-  "items": [
-    {
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/record-1",
+[
+  {
+    "attributes": {
+      "display_name": "Record One",
+      "family": "accounts",
+      "provider": "twilio",
+      "record_class": "identity_user",
+      "resource_id": "record-1",
+      "resource_name": "Record One",
+      "resource_type": "identity_user",
+      "resource_urn": "urn:cerebro:tenant:runtime_accounts:record-1",
+      "schema": "accounts",
+      "source_event_id": "record-1",
+      "source_provider": "twilio",
+      "source_system": "twilio",
+      "tenant_id": "tenant",
+      "user_id": "record-1"
+    },
+    "id": "twilio-tenant-accounts-record-1",
+    "kind": "twilio.accounts",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
       "id": "record-1",
       "name": "Record One",
-      "resource_id": "record-1",
-      "resource_type": "asset",
-      "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1",
-      "updated_at": "2026-06-01T00:00:00Z"
-    }
-  ]
-}
+      "status": "active"
+    },
+    "schema_ref": "twilio/accounts/v1",
+    "source_id": "twilio",
+    "tenant_id": "tenant"
+  }
+]
