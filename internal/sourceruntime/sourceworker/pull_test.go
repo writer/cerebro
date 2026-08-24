@@ -91,6 +91,8 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"unknown JumpCloud family":   {"jumpcloud", "future-family", "future-family", true},
 		"Tailscale default":          {"tailscale", "", "device", true},
 		"unknown Tailscale family":   {"tailscale", "future-family", "future-family", true},
+		"Twilio accounts":            {"twilio", "accounts", "accounts", true},
+		"other Twilio family":        {"twilio", "keys", "keys", false},
 		"compatibility source":       {"gcp", "audit", "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -117,6 +119,11 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "jumpcloud", references: map[string]string{"api_key": "credential:jumpcloud:api-key", "token": "credential:jumpcloud:fallback"},
 			resolved: map[string]string{"api_key": "resolved-api-key", "token": "resolved-fallback"}, wantReference: "credential:jumpcloud:api-key", wantResolved: "resolved-api-key",
+		},
+		"Twilio basic credentials": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "twilio", references: map[string]string{"username": "AC123", "password": "credential:twilio:password"},
+			resolved: map[string]string{"username": "AC123", "password": "synthetic-password"}, wantReference: "credential:twilio:password", wantResolved: "QUMxMjM6c3ludGhldGljLXBhc3N3b3Jk",
 		},
 		"aliases cannot cross": {
 			source: "jumpcloud", references: map[string]string{"api_key": "credential:jumpcloud:api-key"},
