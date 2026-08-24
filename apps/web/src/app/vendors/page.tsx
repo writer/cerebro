@@ -1183,101 +1183,6 @@ function DiscoveryQueue({
   );
 }
 
-function DuplicateQueue({
-  decisionSaving,
-  discoveries,
-  duplicateMatchesByURN,
-  onDecision,
-  onOpenVendor,
-}: {
-  decisionSaving: boolean;
-  discoveries: GRCVendorDiscovery[];
-  duplicateMatchesByURN: Record<string, DuplicateMatch[]>;
-  onDecision: (discovery: GRCVendorDiscovery, decision: DiscoveryDecision, draft?: DiscoveryDecisionDraft) => Promise<void> | void;
-  onOpenVendor: (vendorURN: string) => void;
-}) {
-  const duplicateRows = discoveries
-    .filter(discoveryNeedsReview)
-    .map((discovery) => ({
-      discovery,
-      matches: duplicateMatchesByURN[discovery.urn] ?? [],
-    }))
-    .filter((row) => row.matches.length > 0)
-    .slice(0, 6);
-
-  if (duplicateRows.length === 0) return null;
-
-  return (
-    <section className="surface-panel overflow-hidden">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--border)] px-5 py-3">
-        <div>
-          <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Possible duplicates</h2>
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
-            {countLabel(duplicateRows.length, "candidate")} match a vendor or another discovery.
-          </p>
-        </div>
-        <GitMerge className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-      </div>
-      <div className="divide-y divide-[color:var(--border)]">
-        {duplicateRows.map(({ discovery, matches }) => {
-          const firstVendorMatch = matches.find((match) => match.vendorURN);
-          return (
-            <div key={discovery.urn} className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <div className="min-w-0">
-                <div className="font-semibold text-[var(--text-primary)]">{discovery.name || shortEntity(discovery.urn)}</div>
-                <div className="mt-1 text-[12px] text-[var(--text-muted)]">{discovery.provider || discovery.source_id || "Source not set"} · Confidence {confidenceLabel(discovery.confidence_score)}</div>
-              </div>
-              <div className="space-y-2">
-                {matches.slice(0, 2).map((match) => (
-                  <div key={match.id} className="rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[12px]">
-                    <div className="font-semibold text-[var(--text-primary)]">{match.label}</div>
-                    <div className="text-[var(--text-muted)]">{match.reason}. {match.detail}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-start gap-2 lg:justify-end">
-                {firstVendorMatch?.vendorURN && (
-                  <>
-                    <button type="button" onClick={() => onOpenVendor(firstVendorMatch.vendorURN!)} className="secondary-button px-3 py-1.5 text-[12px]">
-                      Open match
-                    </button>
-                    <button
-                      type="button"
-                      disabled={decisionSaving}
-                      onClick={() => {
-                        void Promise.resolve(onDecision(discovery, "linked", {
-                          linkedVendorURN: firstVendorMatch.vendorURN!,
-                          reason: "Linked from duplicate review.",
-                        })).catch(() => undefined);
-                      }}
-                      className="primary-button px-3 py-1.5 text-[12px] disabled:opacity-50"
-                    >
-                      Link match
-                    </button>
-                  </>
-                )}
-                <button
-                  type="button"
-                  disabled={decisionSaving}
-                  onClick={() => {
-                    void Promise.resolve(onDecision(discovery, "ignored", {
-                      linkedVendorURN: "",
-                      reason: "Dismissed from duplicate review.",
-                    })).catch(() => undefined);
-                  }}
-                  className="secondary-button px-3 py-1.5 text-[12px] disabled:opacity-50"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 function VendorRegisterSection({
   assuranceItems,
   meta,
@@ -2494,25 +2399,6 @@ export default function VendorsPage() {
 
       {activeSection === "discoveries" && (
         <>
-          <DiscoverySourceSummary
-            loading={discoveriesQuery.loading && !discoveriesQuery.data}
-            onRefresh={() => { void discoveriesQuery.reload(); }}
-            onRunSource={(runSourceID) => { void runDiscoverySync(runSourceID).catch(() => undefined); }}
-            onSelectSource={setSourceID}
-            runSaving={syncSaving}
-            selectedSourceID={sourceID}
-            sources={discoverySources}
-            summary={discoverySummary}
-          />
-
-          <DuplicateQueue
-            decisionSaving={decisionSaving}
-            discoveries={discoveries}
-            duplicateMatchesByURN={duplicateMatchesByURN}
-            onDecision={setDiscoveryDecision}
-            onOpenVendor={openVendorDrawer}
-          />
-
           {discoveriesQuery.loading && !discoveriesQuery.data ? (
             <LoadingBlock label="Loading vendor discoveries..." />
           ) : (
@@ -2547,6 +2433,17 @@ export default function VendorsPage() {
               />
             </div>
           )}
+
+          <DiscoverySourceSummary
+            loading={discoveriesQuery.loading && !discoveriesQuery.data}
+            onRefresh={() => { void discoveriesQuery.reload(); }}
+            onRunSource={(runSourceID) => { void runDiscoverySync(runSourceID).catch(() => undefined); }}
+            onSelectSource={setSourceID}
+            runSaving={syncSaving}
+            selectedSourceID={sourceID}
+            sources={discoverySources}
+            summary={discoverySummary}
+          />
         </>
       )}
 

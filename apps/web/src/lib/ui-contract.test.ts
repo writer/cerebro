@@ -187,6 +187,18 @@ describe("product UI contract", () => {
     expect(page.indexOf("ReadinessMix")).toBeGreaterThan(advancedTools);
   });
 
+  it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {
+    const vendorSource = readProjectFile("src/app/vendors/page.tsx");
+    const vendorDetailSource = readProjectFile("src/app/vendors/[urn]/page.tsx");
+    const page = vendorSource.slice(vendorSource.indexOf("export default function VendorsPage"));
+
+    expect(page.indexOf("<DiscoveryQueue")).toBeGreaterThan(0);
+    expect(page.indexOf("<DiscoverySourceSummary")).toBeGreaterThan(page.indexOf("<DiscoveryQueue"));
+    expect(vendorSource).not.toContain("function DuplicateQueue");
+    expect(vendorDetailSource).toContain("Review questionnaire");
+    expect(vendorDetailSource).not.toContain("Open review");
+  });
+
   it("keeps lifecycle details modal and lifecycle records usable at mobile width", () => {
     const lifecycleSource = readProjectFile("src/app/security/lifecycle/page.tsx");
 
