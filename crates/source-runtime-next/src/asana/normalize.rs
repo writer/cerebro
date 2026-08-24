@@ -39,19 +39,9 @@ pub(super) fn normalize(
     {
         return Err(AsanaError::EventContractRejection);
     }
-    let digest = Sha256::digest(format!(
-        "{}\0{}\0{}",
-        kernel.tenant_id,
-        kernel.family.as_str(),
-        provider_id
-    ));
-    let suffix = digest[..10]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
     Ok(AsanaRecord {
         tenant_id: kernel.tenant_id.clone(),
-        event_id: format!("asana-{}-{suffix}", kernel.family.as_str()),
+        event_id: event_id(&kernel.tenant_id, kernel.family, &provider_id),
         provider_id,
         family: kernel.family,
         kind: kernel.family.event_kind().to_owned(),
@@ -60,6 +50,15 @@ pub(super) fn normalize(
         attributes,
         payload,
     })
+}
+
+pub(super) fn event_id(tenant_id: &str, family: AsanaFamily, provider_id: &str) -> String {
+    let digest = Sha256::digest(format!("{tenant_id}\0{}\0{provider_id}", family.as_str()));
+    let suffix = digest[..10]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("asana-{}-{suffix}", family.as_str())
 }
 
 fn normalize_user(
