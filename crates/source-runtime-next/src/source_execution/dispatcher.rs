@@ -2,7 +2,8 @@ use prost::Message;
 
 use crate::digitalocean::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
 use crate::sentinelone::{
-    SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS, SentinelOneAgentSourceExecutionAdapter,
+    SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER, SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS,
+    SentinelOneAgentSourceExecutionAdapter,
 };
 use crate::twilio::adapter::{
     TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER, TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER,
@@ -142,6 +143,11 @@ impl SourceExecutionDispatcher {
         {
             return Ok(adapter.compiled_plan());
         }
+        if request.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
         if request.source_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.family_id()
         {
@@ -201,6 +207,13 @@ impl SourceExecutionDispatcher {
             })
         {
             return Ok(adapter);
+        }
+        if plan.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel
+                == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER);
         }
         if plan.source_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.family_id()
