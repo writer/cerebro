@@ -639,6 +639,35 @@ fn closed_dispatcher_registers_and_executes_the_exact_twilio_accounts_plan() {
 }
 
 #[test]
+fn closed_dispatcher_registers_the_exact_twilio_audit_events_plan() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    let plan = dispatcher
+        .compile_plan(&SourceExecutionSelectionRequestV1 {
+            source_id: "twilio".to_owned(),
+            family_id: "audit_events".to_owned(),
+        })
+        .unwrap();
+    assert_eq!(plan.source_id, "twilio");
+    assert_eq!(plan.family_id, "audit_events");
+    assert_eq!(plan.provider_kernel, "twilio.audit_events");
+    assert_eq!(plan.origin, "https://api.twilio.com");
+    assert_eq!(plan.path, "/v1/Events");
+    assert_eq!(plan.event_kind, "twilio.audit_events");
+    assert_eq!(plan.schema_ref, "twilio/audit_events/v1");
+    assert_eq!(
+        dispatcher.adapter_for(&plan).unwrap().family_id(),
+        "audit_events"
+    );
+    assert_eq!(
+        dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
+            source_id: "twilio".to_owned(),
+            family_id: "keys".to_owned(),
+        }),
+        Err(SourceExecutionError::UnknownAdapter)
+    );
+}
+
+#[test]
 fn rejects_tenant_generation_timestamp_and_intent_mismatches() {
     let context = exact_context("tenant-a");
     let mut tenant = exact_decode_request(&context);
