@@ -1,6 +1,8 @@
 use prost::Message;
 
+use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
 use crate::digitalocean::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
+use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
 use crate::pagerduty::PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER;
 use crate::sentinelone::{
     SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER, SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS,
@@ -126,6 +128,11 @@ impl SourceExecutionDispatcher {
         &self,
         request: &SourceExecutionSelectionRequestV1,
     ) -> Result<SourceExecutionPlanV1, SourceExecutionError> {
+        if let Some(adapter) = ASANA_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return adapter.compiled_plan();
+        }
         if request.source_id == AZURE_AUTHORIZATION_POLICY.source_id()
             && request.family_id == AZURE_AUTHORIZATION_POLICY.family_id()
         {
@@ -158,6 +165,11 @@ impl SourceExecutionDispatcher {
             && request.family_id == PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.family_id()
         {
             return Ok(PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
+        if request.source_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.compiled_plan());
         }
         if request.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
@@ -192,6 +204,13 @@ impl SourceExecutionDispatcher {
         &self,
         plan: &SourceExecutionPlanV1,
     ) -> Result<&'static dyn SourceExecutionAdapter, SourceExecutionError> {
+        if let Some(adapter) = ASANA_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
+        }
         if plan.source_id == AZURE_AUTHORIZATION_POLICY.source_id()
             && plan.family_id == AZURE_AUTHORIZATION_POLICY.family_id()
             && plan.provider_kernel == AZURE_AUTHORIZATION_POLICY.provider_kernel()
@@ -233,6 +252,12 @@ impl SourceExecutionDispatcher {
             && plan.provider_kernel == PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.provider_kernel()
         {
             return Ok(&PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER);
+        }
+        if plan.source_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER);
         }
         if plan.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()

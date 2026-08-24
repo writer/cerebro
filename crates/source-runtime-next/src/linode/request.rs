@@ -23,9 +23,19 @@ pub struct LinodeRequest {
 }
 
 impl LinodeRequest {
+    /// Exact provider method.
+    pub const fn method(&self) -> &'static str {
+        "GET"
+    }
+
     /// Return the exact provider URL. The caller must authorize it before I/O.
     pub fn url(&self) -> &Url {
         &self.url
+    }
+
+    /// Authentication header applied only by the trusted host.
+    pub const fn authorization_header(&self) -> &'static str {
+        "Authorization"
     }
 
     /// Return the provider authorization scheme without credential material.
@@ -36,6 +46,21 @@ impl LinodeRequest {
     /// Return the required response media type.
     pub const fn accept(&self) -> &'static str {
         "application/json"
+    }
+
+    /// Requests never carry credential material across the kernel boundary.
+    pub const fn contains_credentials(&self) -> bool {
+        false
+    }
+
+    /// Redirects are outside the closed request contract.
+    pub const fn allows_redirects(&self) -> bool {
+        false
+    }
+
+    /// Maximum response bytes accepted by the decoder.
+    pub const fn max_response_bytes(&self) -> usize {
+        8 << 20
     }
 }
 
