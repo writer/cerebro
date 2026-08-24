@@ -1,7 +1,9 @@
 use prost::Message;
 
 use crate::sentinelone::SentinelOneAgentSourceExecutionAdapter;
-use crate::twilio::adapter::TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER;
+use crate::twilio::adapter::{
+    TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER, TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER,
+};
 
 use super::{
     azure_authorization_policy::AzureAuthorizationPolicyAdapter,
@@ -124,6 +126,11 @@ impl SourceExecutionDispatcher {
         {
             return Ok(TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
         }
+        if request.source_id == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
         if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
             request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
         }) {
@@ -159,6 +166,13 @@ impl SourceExecutionDispatcher {
             && plan.provider_kernel == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
         {
             return Ok(&TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER);
+        }
+        if plan.source_id == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel
+                == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER);
         }
         if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
             plan.source_id == adapter.source_id()
