@@ -17,6 +17,8 @@ const DROPLETS_FIXTURE: &[u8] =
     include_bytes!("../../../../sources/digitalocean/testdata/read_droplets.json");
 const VPCS_FIXTURE: &[u8] =
     include_bytes!("../../../../sources/digitalocean/testdata/read_vpcs.json");
+const FIREWALLS_FIXTURE: &[u8] =
+    include_bytes!("../../../../sources/digitalocean/testdata/read_firewalls.json");
 
 fn context(cursor: &str, page: u32) -> SourceWorkerExecutionContextV1 {
     SourceWorkerExecutionContextV1 {
@@ -92,7 +94,7 @@ fn decode_page(
 }
 
 #[test]
-fn closed_dispatcher_registers_only_digitalocean_droplets_and_vpcs() {
+fn closed_dispatcher_registers_all_cataloged_digitalocean_families() {
     let dispatcher = SourceExecutionDispatcher;
     let droplets = plan(dispatcher, "droplets");
     assert_eq!(droplets.plan_id, "source-plan-v1:digitalocean:droplets");
@@ -112,7 +114,15 @@ fn closed_dispatcher_registers_only_digitalocean_droplets_and_vpcs() {
     assert_eq!(vpcs.event_kind, "digitalocean.vpcs");
     assert_eq!(vpcs.schema_ref, "digitalocean/vpcs/v1");
 
-    for family in ["firewalls", "", "future"] {
+    let firewalls = plan(dispatcher, "firewalls");
+    assert_eq!(firewalls.plan_id, "source-plan-v1:digitalocean:firewalls");
+    assert_eq!(firewalls.provider_kernel, "digitalocean.firewalls");
+    assert_eq!(firewalls.path, "/v2/firewalls");
+    assert_eq!(firewalls.record_selector, "$.firewalls[*]");
+    assert_eq!(firewalls.event_kind, "digitalocean.firewalls");
+    assert_eq!(firewalls.schema_ref, "digitalocean/firewalls/v1");
+
+    for family in ["", "future"] {
         assert_eq!(
             dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
                 source_id: "digitalocean".to_owned(),
@@ -243,6 +253,58 @@ fn vpcs_plan_and_decode_use_the_shared_credential_free_execution_contract() {
 
     crate::source_execution::SourceExecutionAdapter::validate_record_identity(
         &DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS[1],
+        &execution_context,
+        record,
+    )
+    .unwrap();
+}
+
+#[test]
+fn firewalls_plan_and_decode_preserve_security_projection_fields() {
+    let dispatcher = SourceExecutionDispatcher;
+    let plan = plan(dispatcher, "firewalls");
+    let execution_context = context("", 1);
+    let metadata = metadata();
+    let execution = plan_page(dispatcher, &plan, &execution_context, &metadata);
+    assert_eq!(execution.credential_operation, "source.bearer");
+    assert_eq!(execution.allowed_origin, DEFAULT_BASE_URL);
+    assert!(execution.body.is_empty());
+    assert!(execution.declared_headers.is_empty());
+    assert_eq!(
+        execution.request.as_ref().unwrap().url,
+        "https://api.digitalocean.com/v2/firewalls?page=1&per_page=2"
+    );
+
+    let output = decode_page(
+        dispatcher,
+        &plan,
+        &execution_context,
+        &metadata,
+        &execution,
+        200,
+        FIREWALLS_FIXTURE,
+    )
+    .unwrap();
+    let result = output.result.as_ref().unwrap();
+    assert_eq!(result.records.len(), 1);
+    assert!(result.next_cursor.is_empty());
+    let record = &result.records[0];
+    assert_eq!(record.provider_id, "fw-2222");
+    assert_eq!(record.attributes["tenant_id"], "tenant");
+    assert_eq!(record.attributes["resource_type"], "firewall");
+    assert_eq!(record.attributes["public_ingress"], "true");
+    assert_eq!(record.attributes["droplet_ids"], "3164444,3164445");
+    assert_eq!(
+        record.attributes["resource_urn"],
+        "urn:cerebro:tenant:digitalocean_firewalls:fw-2222"
+    );
+    let payload: Value = serde_json::from_slice(&record.payload_json).unwrap();
+    assert_eq!(payload["id"], "fw-2222");
+    assert_eq!(payload["public"], true);
+    assert_eq!(payload["droplet_ids"], json!([3_164_444, 3_164_445]));
+
+    crate::source_execution::SourceExecutionAdapter::validate_record_identity(
+        &DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS[2],
         &execution_context,
         record,
     )
