@@ -23,11 +23,35 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 	switch sourceID {
 	case "azure":
 		return familyID, familyID == "authorization_policy"
+	case "jumpcloud":
+		if familyID == "" {
+			familyID = "users"
+		}
+		// Every public JumpCloud family is closed in the Rust dispatcher. An
+		// unknown future family must fail there instead of restoring Go authority.
+		return familyID, true
 	case "tailscale":
 		return TailscaleFamily(sourceID, familyID)
 	default:
 		return "", false
 	}
+}
+
+// CredentialBinding selects the provider's ordered credential aliases from
+// stored references and trusted-host resolved values. It returns strings only
+// to the Go host; callers must never include the resolved value in worker
+// metadata, receipts, or errors.
+func CredentialBinding(sourceID string, references, resolved map[string]string) (string, string) {
+	keys := []string{"graph_token", "token"}
+	if strings.TrimSpace(sourceID) == "jumpcloud" {
+		keys = []string{"api_key", "api_token", "token"}
+	}
+	for _, key := range keys {
+		if reference := strings.TrimSpace(references[key]); reference != "" {
+			return reference, strings.TrimSpace(resolved[key])
+		}
+	}
+	return "", ""
 }
 
 // TailscaleFamily normalizes the requested Tailscale family, including the

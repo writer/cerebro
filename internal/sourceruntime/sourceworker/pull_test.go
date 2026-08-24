@@ -85,6 +85,9 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 	}{
 		"Azure authorization policy": {" azure ", " authorization_policy ", "authorization_policy", true},
 		"other Azure family":         {"azure", "user", "user", false},
+		"JumpCloud default":          {"jumpcloud", "", "users", true},
+		"JumpCloud family":           {"jumpcloud", "group_members", "group_members", true},
+		"unknown JumpCloud family":   {"jumpcloud", "future-family", "future-family", true},
 		"Tailscale default":          {"tailscale", "", "device", true},
 		"unknown Tailscale family":   {"tailscale", "future-family", "future-family", true},
 		"compatibility source":       {"gcp", "audit", "", false},
@@ -93,6 +96,36 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 			family, authoritative := RustAuthoritativeFamily(test.source, test.family)
 			if family != test.wantFamily || authoritative != test.wantAuthoritative {
 				t.Fatalf("RustAuthoritativeFamily() = (%q, %v), want (%q, %v)", family, authoritative, test.wantFamily, test.wantAuthoritative)
+			}
+		})
+	}
+}
+
+func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
+	for name, test := range map[string]struct {
+		source                      string
+		references, resolved        map[string]string
+		wantReference, wantResolved string
+	}{
+		"Azure graph token": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "azure", references: map[string]string{"graph_token": "credential:azure:graph", "token": "credential:azure:fallback"},
+			resolved: map[string]string{"graph_token": "resolved-graph", "token": "resolved-fallback"}, wantReference: "credential:azure:graph", wantResolved: "resolved-graph",
+		},
+		"JumpCloud api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "jumpcloud", references: map[string]string{"api_key": "credential:jumpcloud:api-key", "token": "credential:jumpcloud:fallback"},
+			resolved: map[string]string{"api_key": "resolved-api-key", "token": "resolved-fallback"}, wantReference: "credential:jumpcloud:api-key", wantResolved: "resolved-api-key",
+		},
+		"aliases cannot cross": {
+			source: "jumpcloud", references: map[string]string{"api_key": "credential:jumpcloud:api-key"},
+			resolved: map[string]string{"token": "resolved-different-alias"}, wantReference: "credential:jumpcloud:api-key", wantResolved: "",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reference, resolved := CredentialBinding(test.source, test.references, test.resolved)
+			if reference != test.wantReference || resolved != test.wantResolved {
+				t.Fatalf("CredentialBinding() = (%q, %q), want (%q, %q)", reference, resolved, test.wantReference, test.wantResolved)
 			}
 		})
 	}
