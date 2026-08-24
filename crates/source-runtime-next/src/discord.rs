@@ -10,6 +10,10 @@ mod family;
 mod normalize;
 mod request;
 mod response;
+// Provider-local adapters remain intentionally unreachable from the shared
+// dispatcher until a later authority change qualifies each family.
+#[cfg_attr(not(test), allow(dead_code))]
+mod source_execution;
 mod types;
 mod wire;
 
