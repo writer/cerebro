@@ -1,7 +1,9 @@
 use prost::Message;
 
 use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
-use crate::sentinelone::SentinelOneAgentSourceExecutionAdapter;
+use crate::sentinelone::{
+    SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS, SentinelOneAgentSourceExecutionAdapter,
+};
 use crate::twilio::adapter::{
     TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER, TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER,
     TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER,
@@ -132,6 +134,14 @@ impl SourceExecutionDispatcher {
         {
             return Ok(SENTINELONE_AGENT.compiled_plan());
         }
+        if let Some(adapter) = SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS
+            .iter()
+            .find(|adapter| {
+                request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+            })
+        {
+            return Ok(adapter.compiled_plan());
+        }
         if let Some(adapter) = DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS
             .iter()
             .find(|adapter| {
@@ -184,6 +194,16 @@ impl SourceExecutionDispatcher {
             && plan.provider_kernel == SENTINELONE_AGENT.provider_kernel()
         {
             return Ok(&SENTINELONE_AGENT);
+        }
+        if let Some(adapter) = SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS
+            .iter()
+            .find(|adapter| {
+                plan.source_id == adapter.source_id()
+                    && plan.family_id == adapter.family_id()
+                    && plan.provider_kernel == adapter.provider_kernel()
+            })
+        {
+            return Ok(adapter);
         }
         if let Some(adapter) = DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS
             .iter()

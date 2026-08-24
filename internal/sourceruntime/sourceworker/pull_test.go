@@ -71,10 +71,10 @@ func TestProviderResumeFailsClosedForMalformedAndCrossFamilyCheckpoints(t *testi
 func TestPublicExecutionConfigNeverCarriesCredentialMaterial(t *testing.T) {
 	public := PublicExecutionConfig(map[string]string{
 		"account_sid": " AC123 ", "family": "user", "tailnet": "example.com", "base_url": "https://api.tailscale.com/api/v2",
-		"site_id": "site-1",
-		"token":   "secret-token", "graph_token": "secret-graph-token", "tenant_id": "tenant-1",
+		"site_id": "site-1", "since": "2026-01-01T00:00:00Z", "until": "2026-02-01T00:00:00Z", "activity_type": "27",
+		"token": "secret-token", "graph_token": "secret-graph-token", "tenant_id": "tenant-1",
 	})
-	if len(public) != 5 || public["account_sid"] != "AC123" || public["site_id"] != "site-1" || public["token"] != "" || public["graph_token"] != "" || public["tenant_id"] != "" {
+	if len(public) != 8 || public["account_sid"] != "AC123" || public["site_id"] != "site-1" || public["since"] == "" || public["until"] == "" || public["activity_type"] != "27" || public["token"] != "" || public["graph_token"] != "" || public["tenant_id"] != "" {
 		t.Fatalf("public config leaked private fields: %#v", public)
 	}
 }
@@ -95,8 +95,13 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"JumpCloud family":            {"jumpcloud", "group_members", "group_members", true},
 		"unknown JumpCloud family":    {"jumpcloud", "future-family", "future-family", true},
 		"SentinelOne agent":           {" sentinelone ", " agent ", "agent", true},
+		"SentinelOne activity":        {"sentinelone", "activity", "activity", true},
+		"SentinelOne exclusion":       {"sentinelone", "exclusion", "exclusion", true},
+		"SentinelOne group":           {"sentinelone", "group", "group", true},
+		"SentinelOne site":            {"sentinelone", "site", "site", true},
 		"SentinelOne default":         {"sentinelone", "", "", false},
-		"other SentinelOne family":    {"sentinelone", "threat", "threat", false},
+		"SentinelOne threat":          {"sentinelone", "threat", "threat", false},
+		"SentinelOne application":     {"sentinelone", "application", "application", false},
 		"Tailscale default":           {"tailscale", "", "device", true},
 		"unknown Tailscale family":    {"tailscale", "future-family", "future-family", true},
 		"Twilio accounts":             {"twilio", "accounts", "accounts", true},
