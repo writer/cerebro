@@ -4552,6 +4552,62 @@ fn demo_graph() -> Result<(OrganizationalGraph, TenantId, EntityId), Box<dyn Err
 
     let mut graph = OrganizationalGraph::new();
     graph.apply(builder.build())?;
+
+    let vendor_runtime = SourceRuntimeId::parse("vendor-demo")?;
+    let vendor_collection = CompleteCollection::new(
+        tenant.clone(),
+        vendor_runtime.clone(),
+        CollectionId::parse("vendor-collection-demo")?,
+        "vendor.records",
+        1,
+    )?;
+    let vendor_kind = ProviderKind::parse("demo.vendor")?;
+    let identity_vendor = Entity::provider(
+        tenant.clone(),
+        vendor_runtime.clone(),
+        vendor_kind.clone(),
+        "identity-platform",
+        EntityKind::Provider(vendor_kind.clone()),
+        "Identity Platform",
+    )?
+    .with_property("entity_type", "vendor")?
+    .with_property(
+        "entity_urn",
+        "urn:cerebro:tenant-demo:vendor:identity-platform",
+    )?
+    .with_property("source_id", "rust-demo")?
+    .with_property("vendor_id", "identity-platform")?
+    .with_property("category", "identity")?
+    .with_property("services_provided", "Workforce identity and access")?
+    .with_property("security_owner_user_id", "identity-security")?
+    .with_property("lifecycle_state", "approved")?
+    .with_property("risk_level", "high")?
+    .with_property("security_review_status", "approved")?;
+    let collaboration_vendor = Entity::provider(
+        tenant.clone(),
+        vendor_runtime,
+        vendor_kind.clone(),
+        "collaboration-suite",
+        EntityKind::Provider(vendor_kind),
+        "Collaboration Suite",
+    )?
+    .with_property("entity_type", "vendor")?
+    .with_property(
+        "entity_urn",
+        "urn:cerebro:tenant-demo:vendor:collaboration-suite",
+    )?
+    .with_property("source_id", "rust-demo")?
+    .with_property("vendor_id", "collaboration-suite")?
+    .with_property("category", "productivity")?
+    .with_property("services_provided", "Documents and team collaboration")?
+    .with_property("security_owner_user_id", "security-operations")?
+    .with_property("lifecycle_state", "active")?
+    .with_property("risk_level", "medium")?
+    .with_property("security_review_status", "approved")?;
+    let mut vendor_builder = vendor_collection.begin_delta();
+    vendor_builder.add_entity(identity_vendor)?;
+    vendor_builder.add_entity(collaboration_vendor)?;
+    graph.apply(vendor_builder.build())?;
     Ok((graph, tenant, root_id))
 }
 
@@ -6969,8 +7025,8 @@ mod tests {
             .await
             .unwrap();
         let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
-        assert_eq!(response["graphRevision"], "1");
-        assert_eq!(response["entities"].as_array().unwrap().len(), 4);
+        assert_eq!(response["graphRevision"], "2");
+        assert_eq!(response["entities"].as_array().unwrap().len(), 6);
         assert!(
             response["entities"]
                 .as_array()
@@ -7045,7 +7101,7 @@ mod tests {
             .unwrap();
         let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
         assert_eq!(response["tenantId"], "tenant-demo");
-        assert_eq!(response["graphRevision"], "1");
+        assert_eq!(response["graphRevision"], "2");
         assert_eq!(response["matches"].as_array().unwrap().len(), 1);
         assert_eq!(
             response["matches"][0]["edges"][0]["edge"]["relation"],

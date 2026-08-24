@@ -1185,11 +1185,15 @@ function DiscoveryQueue({
 
 function VendorRegisterSection({
   assuranceItems,
+  dataAuthority,
+  graphRevision,
   meta,
   onOpenVendor,
   vendors,
 }: {
   assuranceItems: number;
+  dataAuthority?: GRCVendorsResponse["data_authority"];
+  graphRevision?: number;
   meta?: GRCVendorsResponse["meta"];
   onOpenVendor: (vendorURN: string) => void;
   vendors: GRCVendor[];
@@ -1274,10 +1278,15 @@ function VendorRegisterSection({
       ),
     },
   ], [onOpenVendor]);
+  const authorityLabel = dataAuthority === "rust_graph"
+    ? `Rust graph revision ${graphRevision?.toLocaleString() ?? "unknown"}`
+    : dataAuthority === "fixture"
+      ? "Local fixture data"
+      : "Data authority not reported";
   return (
     <WorklistTable
       title="Vendor status"
-      description={`${countLabel(vendors.length, "vendor")} in this view. ${assuranceItems.toLocaleString()} linked records.`}
+      description={`${countLabel(vendors.length, "vendor")} in this view. ${assuranceItems.toLocaleString()} linked records. ${authorityLabel}.`}
       rows={vendors}
       columns={vendorColumns}
       emptyMessage="No vendors match these filters."
@@ -2450,7 +2459,14 @@ export default function VendorsPage() {
       {activeSection === "register" && (vendorsQuery.loading && !vendorsQuery.data ? (
         <LoadingBlock label="Loading vendors..." />
       ) : (
-        <VendorRegisterSection assuranceItems={assuranceItems} meta={vendorMeta} onOpenVendor={openVendorDrawer} vendors={vendors} />
+        <VendorRegisterSection
+          assuranceItems={assuranceItems}
+          dataAuthority={vendorsQuery.data?.data_authority}
+          graphRevision={vendorsQuery.data?.graph_revision}
+          meta={vendorMeta}
+          onOpenVendor={openVendorDrawer}
+          vendors={vendors}
+        />
       ))}
     </main>
   );

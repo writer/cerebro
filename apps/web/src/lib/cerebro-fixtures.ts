@@ -4496,7 +4496,13 @@ export const cerebroFixtureResponseFor = ({
 
   if (normalizedPath === "grc/vendors") {
     const filteredVendors = filterVendors(searchParams);
-    return jsonFixture({ vendors: filteredVendors, summary: vendorSummary(filteredVendors), generated_at: generatedAt });
+    return jsonFixture({
+      vendors: filteredVendors,
+      summary: vendorSummary(filteredVendors),
+      data_authority: "fixture",
+      graph_revision: 0,
+      generated_at: generatedAt,
+    });
   }
 
   if (normalizedPath === "grc/questionnaire-runs") {
