@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
+import { createHash, createHmac } from "crypto";
 
 import { headersWithTrace, startWebSpan } from "./observability";
 import { normalizeProxyPath } from "./identity-write-stamp";
@@ -8,6 +8,13 @@ const API_BASE =
   process.env.CEREBRO_API_BASE ??
   process.env.NEXT_PUBLIC_CEREBRO_API_BASE ??
   "http://localhost:8080";
+
+const RUST_RUNTIME_HEALTH_PATH = "v1/source-runtimes/health";
+const RUST_TENANT_AUTH_CONTEXT = Buffer.from(
+  "cerebro-organizational-graph/tenant/v1\0",
+  "utf8",
+);
+const MIN_RUST_SHARED_SECRET_BYTES = 32;
 
 const firstConfiguredApiKey = (value?: string) =>
   value
@@ -56,6 +63,45 @@ export const configuredOrganizationalGraphTenant = (
   }
   return tenantID;
 };
+
+export const configuredRustPlatformApiBase = (
+  value = process.env.CEREBRO_RUST_PLATFORM_API_BASE,
+) => {
+  const configured = value?.trim();
+  if (!configured) return undefined;
+  const base = new URL(configured);
+  if (!["http:", "https:"].includes(base.protocol) || base.username || base.password || base.search || base.hash) {
+    throw new Error("CEREBRO_RUST_PLATFORM_API_BASE must be an HTTP(S) origin without credentials, query, or fragment");
+  }
+  return base.toString();
+};
+
+export const rustTenantAuthHeaders = (tenantID: string, sharedSecret: string): HeadersInit => {
+  const tenant = configuredOrganizationalGraphTenant(tenantID);
+  if (!tenant) {
+    throw new Error("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID is required for Rust runtime health");
+  }
+  if (Buffer.byteLength(sharedSecret, "utf8") < MIN_RUST_SHARED_SECRET_BYTES) {
+    throw new Error(
+      `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET must be at least ${MIN_RUST_SHARED_SECRET_BYTES} bytes for Rust runtime health`,
+    );
+  }
+  const tenantBytes = Buffer.from(tenant, "utf8");
+  const tenantLength = Buffer.alloc(8);
+  tenantLength.writeBigUInt64BE(BigInt(tenantBytes.length));
+  const token = createHmac("sha256", sharedSecret)
+    .update(RUST_TENANT_AUTH_CONTEXT)
+    .update(tenantLength)
+    .update(tenantBytes)
+    .digest("hex");
+  return {
+    Authorization: `Bearer ${token}`,
+    "X-Cerebro-Tenant": tenant,
+  };
+};
+
+const isRustRuntimeHealthPath = (path: string) =>
+  normalizeProxyPath(path) === RUST_RUNTIME_HEALTH_PATH;
 
 const forwardRequestAuth =
   parseBooleanEnv(process.env.CEREBRO_FORWARD_AUTH_HEADERS) ??
@@ -112,9 +158,14 @@ export const rustOwnsWebAuthority = () =>
   process.env.CEREBRO_AUTHORITY_MODE?.trim().toLowerCase() === "rust";
 
 export const buildCerebroUrl = (path: string, search = "") => {
-  const base = new URL(API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`);
+  const normalizedPath = normalizeProxyPath(path);
+  const rustPlatformBase = configuredRustPlatformApiBase();
+  const apiBase = rustPlatformBase && normalizedPath === RUST_RUNTIME_HEALTH_PATH
+    ? rustPlatformBase
+    : API_BASE;
+  const base = new URL(apiBase.endsWith("/") ? apiBase : `${apiBase}/`);
   const basePath = base.pathname.endsWith("/") ? base.pathname.slice(0, -1) : base.pathname;
-  const pathSegments = normalizeProxyPath(path)
+  const pathSegments = normalizedPath
     .split("/")
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment));
@@ -125,6 +176,15 @@ export const buildCerebroUrl = (path: string, search = "") => {
 
 export const authHeadersFor = (request: NextRequest, upstreamPath = ""): HeadersInit => {
   const headers: Record<string, string> = { Accept: "application/json, text/plain;q=0.9, */*;q=0.8" };
+  if (configuredRustPlatformApiBase() && isRustRuntimeHealthPath(upstreamPath)) {
+    return {
+      ...headers,
+      ...rustTenantAuthHeaders(
+        process.env.CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID ?? "",
+        process.env.CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET ?? "",
+      ),
+    };
+  }
   const requestApiKey =
     request.headers.get("x-cerebro-api-key") ?? request.headers.get("x-api-key");
   const requestAuthorization = request.headers.get("authorization");

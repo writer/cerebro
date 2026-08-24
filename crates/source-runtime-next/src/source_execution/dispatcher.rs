@@ -1,5 +1,6 @@
 use prost::Message;
 
+use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
 use crate::digitalocean::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
 use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
 use crate::pagerduty::PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER;
@@ -127,6 +128,11 @@ impl SourceExecutionDispatcher {
         &self,
         request: &SourceExecutionSelectionRequestV1,
     ) -> Result<SourceExecutionPlanV1, SourceExecutionError> {
+        if let Some(adapter) = ASANA_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return adapter.compiled_plan();
+        }
         if request.source_id == AZURE_AUTHORIZATION_POLICY.source_id()
             && request.family_id == AZURE_AUTHORIZATION_POLICY.family_id()
         {
@@ -198,6 +204,13 @@ impl SourceExecutionDispatcher {
         &self,
         plan: &SourceExecutionPlanV1,
     ) -> Result<&'static dyn SourceExecutionAdapter, SourceExecutionError> {
+        if let Some(adapter) = ASANA_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
+        }
         if plan.source_id == AZURE_AUTHORIZATION_POLICY.source_id()
             && plan.family_id == AZURE_AUTHORIZATION_POLICY.family_id()
             && plan.provider_kernel == AZURE_AUTHORIZATION_POLICY.provider_kernel()

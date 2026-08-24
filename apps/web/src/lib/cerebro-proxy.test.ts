@@ -7,10 +7,12 @@ import {
   cachedResponseHeaders,
   cerebroProxyCacheKey,
   configuredOrganizationalGraphTenant,
+  configuredRustPlatformApiBase,
   fetchCerebro,
   getCerebroPublicConfig,
   isCacheableCerebroPath,
   responseHeadersFor,
+  rustTenantAuthHeaders,
   rustOwnsWebAuthority,
   shouldRetryUpstreamResponse,
   shouldBypassCerebroProxyCache,
@@ -59,11 +61,53 @@ describe("cerebro proxy cache headers", () => {
     expect(new Headers(authHeadersFor(request, "user/preferences")).get("x-cerebro-tenant")).toBeNull();
   });
 
+  it("routes only runtime health to the configured Rust platform origin", () => {
+    vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
+
+    expect(buildCerebroUrl("/v1/source-runtimes/health", "?limit=500").toString()).toBe(
+      "http://rust-platform.internal:8080/v1/source-runtimes/health?limit=500",
+    );
+    expect(buildCerebroUrl("/grc/dashboard").origin).not.toBe("http://rust-platform.internal:8080");
+  });
+
+  it("matches the shared Go and Rust tenant-auth test vector", () => {
+    const headers = new Headers(rustTenantAuthHeaders(
+      "tenant-a",
+      "test-organizational-graph-secret-32-bytes",
+    ));
+
+    expect(headers.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(headers.get("authorization")).toBe(
+      "Bearer 34b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d6",
+    );
+  });
+
+  it("uses only server-owned Rust tenant auth for runtime health", () => {
+    vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
+    vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", "tenant-a");
+    vi.stubEnv(
+      "CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET",
+      "test-organizational-graph-secret-32-bytes",
+    );
+    const headers = new Headers(authHeadersFor(new NextRequest("http://localhost"), "v1/source-runtimes/health"));
+
+    expect(headers.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(headers.get("authorization")).toMatch(/^Bearer [0-9a-f]{64}$/);
+    expect(headers.get("x-cerebro-api-key")).toBeNull();
+  });
+
   it("rejects an invalid server-owned tenant header", () => {
     expect(() => configuredOrganizationalGraphTenant("tenant-demo\nforged")).toThrow(
       "is not a valid header value",
     );
     expect(configuredOrganizationalGraphTenant("   ")).toBeUndefined();
+  });
+
+  it("rejects credential-bearing Rust platform origins and short shared secrets", () => {
+    expect(() => configuredRustPlatformApiBase("https://user:pass@rust.example.com")).toThrow(
+      "without credentials",
+    );
+    expect(() => rustTenantAuthHeaders("tenant-a", "too-short")).toThrow("at least 32 bytes");
   });
 
   it("enables Rust authority only through an explicit deployment mode", () => {
