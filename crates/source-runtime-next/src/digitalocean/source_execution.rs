@@ -37,9 +37,10 @@ pub(crate) struct DigitalOceanSourceExecutionAdapter {
 
 /// Shared closed-registry instances for DigitalOcean families with production
 /// source-execution contracts. Keep this narrower than the kernel family set.
-pub(crate) static DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS: [DigitalOceanSourceExecutionAdapter; 2] = [
+pub(crate) static DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS: [DigitalOceanSourceExecutionAdapter; 3] = [
     DigitalOceanSourceExecutionAdapter::new(DigitalOceanFamily::Droplets),
     DigitalOceanSourceExecutionAdapter::new(DigitalOceanFamily::Vpcs),
+    DigitalOceanSourceExecutionAdapter::new(DigitalOceanFamily::Firewalls),
 ];
 
 impl DigitalOceanSourceExecutionAdapter {
