@@ -16,14 +16,20 @@ use serde_json::Value;
 mod error;
 mod materialization;
 mod normalization;
+mod source_execution;
 mod user_adapter;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod user_adapter_tests;
+#[cfg(test)]
+mod source_execution_tests;
 
 pub use error::GoogleWorkspaceError;
+pub(crate) use source_execution::{
+    GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER, durable_checkpoint_cursor,
+};
 use normalization::*;
 
 const SOURCE_ID: &str = "google_workspace";
