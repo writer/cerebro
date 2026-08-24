@@ -32,7 +32,12 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// unknown future family must fail there instead of restoring Go authority.
 		return familyID, true
 	case "sentinelone":
-		return familyID, familyID == "agent"
+		switch familyID {
+		case "activity", "agent", "exclusion", "group", "site":
+			return familyID, true
+		default:
+			return familyID, false
+		}
 	case "tailscale":
 		return TailscaleFamily(sourceID, familyID)
 	case "twilio":
@@ -94,9 +99,9 @@ func TailscaleFamily(sourceID, familyID string) (string, bool) {
 func PublicExecutionConfig(values map[string]string) map[string]string {
 	public := make(map[string]string)
 	for _, key := range []string{
-		"audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
+		"activity_type", "audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
 		"family", "group_id", "group_ids", "insights_base_url", "org_id", "per_page",
-		"site_id", "tailnet", "user_group_id", "user_group_ids",
+		"since", "site_id", "tailnet", "until", "user_group_id", "user_group_ids",
 	} {
 		if value, ok := values[key]; ok {
 			public[key] = strings.TrimSpace(value)

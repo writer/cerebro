@@ -291,19 +291,53 @@ func TestSentinelOneAgentNeverFallsBackToGoAuthority(t *testing.T) {
 	}
 }
 
-func TestOtherSentinelOneFamilyRemainsGoCompatible(t *testing.T) {
-	legacy := &runtimeAuthorityProbe{sourceID: "sentinelone"}
-	service := &Service{sourceWorker: &runtimePlanWorker{}}
-	runtime := &cerebrov1.SourceRuntime{Id: "sentinelone-threat-runtime", SourceId: "sentinelone", TenantId: "tenant-1"}
-	config := sourcecdk.NewConfig(map[string]string{"family": "threat"})
+func TestPromotedSentinelOneDirectFamiliesNeverFallBackToGoAuthority(t *testing.T) {
+	for _, family := range []string{"activity", "exclusion", "group", "site"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &runtimeAuthorityProbe{sourceID: "sentinelone"}
+			worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+			service := &Service{sourceWorker: worker}
+			runtime := &cerebrov1.SourceRuntime{
+				Id: "sentinelone-" + family + "-runtime", SourceId: "sentinelone", TenantId: "tenant-1",
+				Config: map[string]string{
+					"family": family, "base_url": "https://sentinelone.example.test",
+					"token": sourceconfig.CredentialReferenceValue("sentinelone", "token"),
+				},
+			}
+			ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+				Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+			}})
+			resolved := sourcecdk.NewConfig(map[string]string{
+				"family": family, "base_url": "https://sentinelone.example.test", "token": "host-only-secret",
+			})
 
-	if _, rustPage, err := service.readSourcePull(context.Background(), runtime, legacy, config, nil, nil, 1); err != nil {
-		t.Fatalf("readSourcePull() error = %v", err)
-	} else if rustPage {
-		t.Fatal("readSourcePull() reported a Rust page for a Go-authoritative SentinelOne family")
+			if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+				t.Fatalf("readSourcePull() error = %v", err)
+			}
+			if legacy.readCalls != 0 || worker.selection.SourceID != "sentinelone" || worker.selection.FamilyID != family {
+				t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+			}
+		})
 	}
-	if legacy.readCalls != 1 {
-		t.Fatalf("Go Read calls = %d, want 1", legacy.readCalls)
+}
+
+func TestRemainingSentinelOneFamiliesStayGoCompatible(t *testing.T) {
+	for _, family := range []string{"application", "threat"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &runtimeAuthorityProbe{sourceID: "sentinelone"}
+			service := &Service{sourceWorker: &runtimePlanWorker{}}
+			runtime := &cerebrov1.SourceRuntime{Id: "sentinelone-" + family + "-runtime", SourceId: "sentinelone", TenantId: "tenant-1"}
+			config := sourcecdk.NewConfig(map[string]string{"family": family})
+
+			if _, rustPage, err := service.readSourcePull(context.Background(), runtime, legacy, config, nil, nil, 1); err != nil {
+				t.Fatalf("readSourcePull() error = %v", err)
+			} else if rustPage {
+				t.Fatal("readSourcePull() reported a Rust page for a Go-authoritative SentinelOne family")
+			}
+			if legacy.readCalls != 1 {
+				t.Fatalf("Go Read calls = %d, want 1", legacy.readCalls)
+			}
+		})
 	}
 }
 

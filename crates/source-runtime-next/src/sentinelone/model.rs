@@ -50,6 +50,30 @@ impl SentinelOneFamily {
         }
     }
 
+    pub(crate) const fn schema_ref(self) -> &'static str {
+        match self {
+            Self::Application => "sentinelone/application_inventory/v1",
+            Self::Activity => "sentinelone/activity/v1",
+            Self::Agent => "sentinelone/agent/v1",
+            Self::Exclusion => "sentinelone/exclusion/v1",
+            Self::Group => "sentinelone/group/v1",
+            Self::Site => "sentinelone/site/v1",
+            Self::Threat => "sentinelone/threat/v1",
+        }
+    }
+
+    pub(crate) const fn event_id_family(self) -> &'static str {
+        match self {
+            Self::Application => "application",
+            Self::Activity => "activity",
+            Self::Agent => "agent",
+            Self::Exclusion => "exclusion",
+            Self::Group => "group",
+            Self::Site => "site",
+            Self::Threat => "threat",
+        }
+    }
+
     pub(super) const fn path(self) -> &'static str {
         match self {
             Self::Activity => "/web/api/v2.1/activities",
