@@ -279,8 +279,8 @@ export default function AuditPackagesPage() {
     <div className="space-y-6">
       <PageHeader
         contractId="audit-packages"
-        title="Audit packets"
-        description="Resolve evidence and source blockers before exporting or sharing a packet."
+        title="Audit workspace"
+        description="Resolve control, evidence, review, and source blockers before sharing an audit packet."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Link href="/reports" className={buttonClass}>Packet builder</Link>

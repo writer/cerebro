@@ -28,12 +28,12 @@ type EvidenceStat = {
 type EvidenceSection = "register" | "package";
 
 const evidenceSections: Array<{ id: EvidenceSection; label: string }> = [
-  { id: "register", label: "Evidence register" },
-  { id: "package", label: "Package workflow" },
+  { id: "package", label: "Evidence work" },
+  { id: "register", label: "Raw evidence" },
 ];
 
 const evidenceSectionFromParam = (value: string): EvidenceSection =>
-  evidenceSections.some((section) => section.id === value) ? value as EvidenceSection : "register";
+  evidenceSections.some((section) => section.id === value) ? value as EvidenceSection : "package";
 
 const inputClass = "mt-1 w-full rounded-md border border-[color:var(--border)] bg-[var(--surface)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[color:var(--ring)] focus:outline-none focus:ring-1 focus:ring-[color:var(--ring)]";
 const labelClass = "text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]";
@@ -71,7 +71,7 @@ export default function EvidencePage() {
   const activeSection = evidenceSectionFromParam(sectionParam);
   const shouldLoadPackaged = activeSection === "package";
   const setActiveSection = useCallback((section: EvidenceSection) => {
-    setSectionParam(section === "register" ? "" : section);
+    setSectionParam(section === "package" ? "" : section);
   }, [setSectionParam]);
   const path = useMemo(
     () => grcPath("/grc/evidence", {
@@ -229,17 +229,8 @@ export default function EvidencePage() {
   const workflowStats: EvidenceStat[] = [
     { label: "Program", value: evidencePacketReadinessLabel(packagedData?.program?.status), detail: `${packagedData?.program?.readiness_score ?? 0}% readiness`, state: packagedMetricState },
     { label: "Requests", value: packagedMetrics.requests, detail: `${packagedMetrics.missingRequests} missing, ${packagedMetrics.staleRequests} stale`, state: packagedMetricState },
-    { label: "Packets", value: packagedMetrics.packets, detail: `${packagedMetrics.readyPackets} ready`, state: packagedMetricState },
     { label: "Reviews", value: packagedMetrics.openReviews, detail: "open review records", intent: packagedMetrics.openReviews > 0 ? "warning" : "success", state: packagedMetricState },
-    { label: "Answers", value: packagedMetrics.questionnaireAnswers, detail: "questionnaire records", state: packagedMetricState },
     { label: "Sources", value: packagedMetrics.sources, detail: `${packagedMetrics.collectedSources} collected`, state: packagedMetricState },
-    { label: "Evidence items", value: packagedMetrics.evidenceItems, detail: "raw proof records", state: packagedMetricState },
-    { label: "Lineage", value: packagedMetrics.lineage, detail: `${packagedMetrics.linkedLineage} fully linked`, state: packagedMetricState },
-    { label: "Resources", value: packagedMetrics.resources, detail: "graph subjects", state: packagedMetricState },
-    { label: "Claims", value: packagedMetrics.claims, detail: "assertion records", state: packagedMetricState },
-    { label: "Runs", value: packagedMetrics.runs, detail: "evaluation runs", state: packagedMetricState },
-    { label: "Graph paths", value: packagedMetrics.graphPaths, detail: "relationship records", state: packagedMetricState },
-    { label: "Exports", value: packagedData?.export_artifacts?.length ?? 0, detail: "hashed artifacts", state: packagedMetricState },
   ];
   const activeFilterCount = Object.values(filterState.trimmedValues).filter(Boolean).length;
   const scopeLabel = activeFilterCount === 0
@@ -247,7 +238,7 @@ export default function EvidencePage() {
     : `${activeFilterCount} active ${activeFilterCount === 1 ? "filter" : "filters"}`;
   const scopeDescription = shouldLoadPackaged
     ? "Filter package requests, control posture, collection sources, evidence, and lineage by tenant or graph context."
-    : "Narrow the register by tenant, finding, run, rule, or graph root.";
+    : "Narrow the register by tenant, finding, run, rule, or affected asset.";
   const refreshCurrentView = () => {
     void reload();
     if (shouldLoadPackaged) void reloadPackaged();
@@ -258,7 +249,7 @@ export default function EvidencePage() {
       <PageHeader
         contractId="evidence"
         title="Evidence"
-        description={shouldLoadPackaged ? "Package requests, review state, exports, lineage, and evidence completeness." : "Evidence linked to findings, rules, runs, claims, events, and graph roots."}
+        description={shouldLoadPackaged ? "Collect, review, and approve the proof required by your controls." : "Inspect raw proof linked to findings, runs, rules, and affected assets."}
         action={
           <button type="button" onClick={refreshCurrentView} className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--primary)] bg-[var(--primary)] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--primary-hover)]">
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -267,7 +258,15 @@ export default function EvidencePage() {
         }
       />
 
-      <section className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[var(--surface)]">
+      <EvidenceSectionSwitcher
+        activeSection={activeSection}
+        evidenceCount={evidence.length}
+        onChange={setActiveSection}
+        packageCount={packagedMetrics.requests}
+        packageLoaded={Boolean(packagedData)}
+      />
+
+      {activeSection === "register" ? <section className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[var(--surface)]">
         <div className="grid xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -292,7 +291,7 @@ export default function EvidencePage() {
               <label className={labelClass}>Finding<input value={findingID} onChange={(e) => setFindingID(e.target.value)} placeholder="All" className={inputClass} /></label>
               <label className={labelClass}>Run<input value={runID} onChange={(e) => setRunID(e.target.value)} placeholder="All" className={inputClass} /></label>
               <label className={labelClass}>Rule<input value={ruleID} onChange={(e) => setRuleID(e.target.value)} placeholder="All" className={inputClass} /></label>
-              <label className={labelClass}>Graph Root<input value={graphRoot} onChange={(e) => setGraphRoot(e.target.value)} placeholder="urn:cerebro:..." className={inputClass} /></label>
+              <label className={labelClass}>Affected asset<input value={graphRoot} onChange={(e) => setGraphRoot(e.target.value)} placeholder="Asset ID or URN" className={inputClass} /></label>
             </div>
             <AppliedFilterChips filters={filterState.chips} onClearAll={filterState.clearAll} />
           </div>
@@ -311,15 +310,15 @@ export default function EvidencePage() {
             />
           </div>
         </div>
-      </section>
-
-      <EvidenceSectionSwitcher
-        activeSection={activeSection}
-        evidenceCount={evidence.length}
-        onChange={setActiveSection}
-        packageCount={packagedMetrics.requests}
-        packageLoaded={Boolean(packagedData)}
-      />
+      </section> : (
+        <section className="flex flex-wrap items-end justify-between gap-4 rounded-lg border border-[color:var(--border)] bg-[var(--surface)] px-5 py-4">
+          <label className={`${labelClass} w-full max-w-xs`}>Tenant<input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="All tenants" className={inputClass} /></label>
+          <div className="text-[12px] text-[var(--text-muted)]">
+            {packagedData?.generated_at ? <>Evidence work updated <span className="font-medium text-[var(--text-secondary)]">{displayDate(packagedData.generated_at)}</span></> : "Evidence work is loading."}
+          </div>
+          <AppliedFilterChips filters={filterState.chips.filter((filter) => filter.label === "Tenant")} onClearAll={() => setTenantID("")} />
+        </section>
+      )}
 
       {activeSection === "register" && (
         <EvidenceMetricStrip blockedLabel="Evidence totals did not load." stats={evidenceStats} pendingLabel="Loading evidence totals..." />
@@ -331,10 +330,10 @@ export default function EvidencePage() {
             <div>
               <div className="flex items-center gap-2">
                 <PackageCheck className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-                <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Package workflow</h2>
+                <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Evidence work</h2>
               </div>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                Request, packet, review, export, and lineage records assembled from the evidence register.
+                Proof requests and reviews that block control readiness or packet export.
               </p>
             </div>
             <button type="button" onClick={() => void reloadPackaged()} className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--border)] px-3 py-1.5 text-[13px] font-medium text-[var(--text-secondary)] transition hover:border-[color:var(--ring)] hover:text-[var(--primary)]">
@@ -353,7 +352,8 @@ export default function EvidencePage() {
           />
           {packagedError && <p className="text-[13px] text-[var(--text-muted)]">{packagedData ? "Showing the last loaded packaged evidence records; refresh will update when the endpoint is reachable." : "Packaged evidence records will appear when this endpoint is available."}</p>}
           {packagedData && (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-4">
+              <div className="grid gap-4 xl:grid-cols-2">
               <WorklistTable
                 title="Evidence requests"
                 description="Requested proof units with quality, freshness, and review posture."
@@ -365,20 +365,6 @@ export default function EvidencePage() {
                 pageSize={25}
                 resultLimit={GRC_WORKLIST_LIMIT}
                 resultNoun="requests"
-                getRowKey={(item) => item.id}
-                refreshing={packagedLoading}
-              />
-              <WorklistTable
-                title="Questionnaire answers"
-                description="Answer records linked to packets, controls, citations, and evidence gaps."
-                rows={packagedData.questionnaire_answers ?? []}
-                columns={questionnaireAnswerColumns}
-                emptyMessage="No questionnaire answer records are available."
-                searchPlaceholder="Filter loaded answers"
-                filterKeys={["id", "question_id", "question", "answer", "answer_state", "review_state"]}
-                pageSize={25}
-                resultLimit={GRC_WORKLIST_LIMIT}
-                resultNoun="answers"
                 getRowKey={(item) => item.id}
                 refreshing={packagedLoading}
               />
@@ -396,48 +382,71 @@ export default function EvidencePage() {
                 getRowKey={(item) => item.id}
                 refreshing={packagedLoading}
               />
-              <WorklistTable
-                title="Collection sources"
-                description="Runtime collection status, sync freshness, and evidence coverage."
-                rows={packagedData.collection_sources ?? []}
-                columns={sourceColumns}
-                emptyMessage="No collection source records are available."
-                searchPlaceholder="Filter loaded sources"
-                filterKeys={["id", "runtime_id", "source_id", "tenant_id", "status"]}
-                pageSize={25}
-                resultLimit={GRC_WORKLIST_LIMIT}
-                resultNoun="sources"
-                getRowKey={(item) => item.id}
-                refreshing={packagedLoading}
-              />
-              <WorklistTable
-                title="Evidence items"
-                description="Raw proof records linked to findings, requests, packets, and graph anchors."
-                rows={packagedData.evidence_items ?? []}
-                columns={itemColumns}
-                emptyMessage="No evidence item records are available."
-                searchPlaceholder="Filter loaded evidence items"
-                filterKeys={["id", "finding_id", "rule_id", "run_id", "source_id", "runtime_id", "graph_root_urns"]}
-                pageSize={25}
-                resultLimit={GRC_WORKLIST_LIMIT}
-                resultNoun="evidence items"
-                getRowKey={(item) => item.id}
-                refreshing={packagedLoading}
-              />
-              <WorklistTable
-                title="Evidence lineage"
-                description="End-to-end links from raw proof through packets, controls, claims, events, and graph roots."
-                rows={packagedData.evidence_lineage ?? []}
-                columns={lineageColumns}
-                emptyMessage="No evidence lineage records are available."
-                searchPlaceholder="Filter loaded lineage"
-                filterKeys={["id", "evidence_id", "finding_id", "rule_id", "source_id", "runtime_id", "graph_root_urns"]}
-                pageSize={25}
-                resultLimit={GRC_WORKLIST_LIMIT}
-                resultNoun="lineage records"
-                getRowKey={(item) => item.id}
-                refreshing={packagedLoading}
-              />
+              </div>
+              <details className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[var(--surface)]">
+                <summary className="cursor-pointer px-5 py-4 text-[13px] font-semibold text-[var(--text-primary)] hover:bg-[var(--surface-muted)]">
+                  Supporting records
+                  <span className="ml-2 font-normal text-[var(--text-muted)]">Questionnaire answers, collection sources, raw items, and lineage</span>
+                </summary>
+                <div className="grid gap-4 border-t border-[color:var(--border)] p-4 xl:grid-cols-2">
+                  <WorklistTable
+                    title="Questionnaire answers"
+                    description="Answer records linked to packets, controls, citations, and evidence gaps."
+                    rows={packagedData.questionnaire_answers ?? []}
+                    columns={questionnaireAnswerColumns}
+                    emptyMessage="No questionnaire answer records are available."
+                    searchPlaceholder="Filter loaded answers"
+                    filterKeys={["id", "question_id", "question", "answer", "answer_state", "review_state"]}
+                    pageSize={25}
+                    resultLimit={GRC_WORKLIST_LIMIT}
+                    resultNoun="answers"
+                    getRowKey={(item) => item.id}
+                    refreshing={packagedLoading}
+                  />
+                  <WorklistTable
+                    title="Collection sources"
+                    description="Runtime collection status, sync freshness, and evidence coverage."
+                    rows={packagedData.collection_sources ?? []}
+                    columns={sourceColumns}
+                    emptyMessage="No collection source records are available."
+                    searchPlaceholder="Filter loaded sources"
+                    filterKeys={["id", "runtime_id", "source_id", "tenant_id", "status"]}
+                    pageSize={25}
+                    resultLimit={GRC_WORKLIST_LIMIT}
+                    resultNoun="sources"
+                    getRowKey={(item) => item.id}
+                    refreshing={packagedLoading}
+                  />
+                  <WorklistTable
+                    title="Evidence items"
+                    description="Raw proof records linked to findings, requests, packets, and graph anchors."
+                    rows={packagedData.evidence_items ?? []}
+                    columns={itemColumns}
+                    emptyMessage="No evidence item records are available."
+                    searchPlaceholder="Filter loaded evidence items"
+                    filterKeys={["id", "finding_id", "rule_id", "run_id", "source_id", "runtime_id", "graph_root_urns"]}
+                    pageSize={25}
+                    resultLimit={GRC_WORKLIST_LIMIT}
+                    resultNoun="evidence items"
+                    getRowKey={(item) => item.id}
+                    refreshing={packagedLoading}
+                  />
+                  <WorklistTable
+                    title="Evidence lineage"
+                    description="End-to-end links from raw proof through packets, controls, claims, events, and graph roots."
+                    rows={packagedData.evidence_lineage ?? []}
+                    columns={lineageColumns}
+                    emptyMessage="No evidence lineage records are available."
+                    searchPlaceholder="Filter loaded lineage"
+                    filterKeys={["id", "evidence_id", "finding_id", "rule_id", "source_id", "runtime_id", "graph_root_urns"]}
+                    pageSize={25}
+                    resultLimit={GRC_WORKLIST_LIMIT}
+                    resultNoun="lineage records"
+                    getRowKey={(item) => item.id}
+                    refreshing={packagedLoading}
+                  />
+                </div>
+              </details>
             </div>
           )}
         </section>

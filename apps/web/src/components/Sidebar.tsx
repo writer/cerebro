@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { useSidebar } from "@/components/providers";
-import { appVersionLabel } from "@/lib/app-version";
 import { operatorNavLinks, utilityLinks, type NavigationEntry } from "@/lib/navigation";
 
 const icons: Record<string, ReactNode> = {
@@ -52,23 +51,27 @@ const linksFor = (hrefs: string[]) =>
 
 export const sidebarPrimaryLinks = linksFor([
   "/",
+  "/risk-inbox",
   "/frameworks",
-  "/evidence",
-  "/controls",
   "/policies",
   "/vendors",
-  "/questionnaires",
-  "/reports/audit-packages",
   "/connectors",
+  "/reports/audit-packages",
 ]);
 export const sidebarSupportLinks: NavigationEntry[] = [];
 
 export const sidebarNavGroups: SidebarNavGroup[] = [
   {
+    id: "compliance",
+    label: "Compliance",
+    iconHref: "/controls",
+    links: linksFor(["/controls", "/evidence", "/questionnaires"]),
+  },
+  {
     id: "advanced",
     label: "Advanced",
     iconHref: "/explore",
-    links: linksFor(["/risk-inbox", "/actions", "/inventory", "/impact", "/explore", "/ask", "/security/lifecycle", "/credential-stores"]),
+    links: linksFor(["/actions", "/inventory", "/impact", "/explore", "/ask", "/security/lifecycle", "/credential-stores"]),
   },
 ];
 
@@ -236,8 +239,7 @@ export default function Sidebar() {
         {utilityLinks.map((link) => renderLink(link))}
       </nav>
 
-      <div className="flex items-center justify-between border-t border-[color:var(--border)] px-3 py-2.5">
-        {!collapsed && <div className="text-[11px] text-[var(--sidebar-muted)] max-md:hidden">{appVersionLabel}</div>}
+      <div className="flex items-center justify-end border-t border-[color:var(--border)] px-3 py-2.5">
         <button
           type="button"
           onClick={toggleSidebar}

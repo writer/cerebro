@@ -17,9 +17,9 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["dashboard", "overview", "metrics", "home"],
   },
   {
-    label: "Issues",
+    label: "Work",
     href: "/risk-inbox",
-    description: "Findings and control issues by severity, owner, entity, SLA, and evidence.",
+    description: "Prioritized findings and control work by owner, due date, and evidence state.",
     section: "Operator",
     keywords: ["issues", "findings", "risk", "sla", "triage", "owner", "framework", ...supportedGRCFrameworkNames],
   },
@@ -136,9 +136,9 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["audit packet", "export", "report", "evidence"],
   },
   {
-    label: "Audit packets",
+    label: "Audit workspace",
     href: "/reports/audit-packages",
-    description: "Review packet blockers, evidence gaps, source freshness, and shared snapshots.",
+    description: "Review packet blockers, evidence, source freshness, reviewer questions, and shared snapshots.",
     section: "Operator",
     keywords: ["audit package", "packet review", "evidence review", "control owners", "snapshot", "scope", "exceptions"],
   },

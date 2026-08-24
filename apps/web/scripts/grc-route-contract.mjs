@@ -12,6 +12,6 @@ export function grcBrowserRouteContracts({ adminURN }) {
     { route: "/connectors", pageId: "connectors", heading: "Integrations" },
     { route: `/impact?root_urn=${encodeURIComponent(adminURN)}`, pageId: "impact-map", heading: "Affected assets" },
     { route: "/reports", pageId: "reports", heading: "Reports" },
-    { route: "/reports/audit-packages", pageId: "audit-packages", heading: "Audit packets" },
+    { route: "/reports/audit-packages", pageId: "audit-packages", heading: "Audit workspace" },
   ];
 }

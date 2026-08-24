@@ -449,6 +449,7 @@ export default function PoliciesPage() {
   const [query, setQuery] = useQueryParamState("q");
   const [selectedPolicyID, setSelectedPolicyID] = useState<string | null>(null);
   const [policySection, setPolicySection] = useState<PolicySection>("queues");
+  const [showUpload, setShowUpload] = useState(false);
   const [selectedAction, setSelectedAction] = useState<GRCPolicyLifecycleAction | null>(null);
   const [actionReason, setActionReason] = useState("");
   const [actionDate, setActionDate] = useState("");
@@ -966,11 +967,15 @@ export default function PoliciesPage() {
         description="Policy documents, risk-register records, versions, approvals, attestations, exceptions, reminders, and control mappings."
         action={
           <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setShowUpload((current) => !current)} aria-expanded={showUpload} className="inline-flex items-center gap-1.5 rounded-md border border-indigo-500 bg-indigo-500 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-indigo-600">
+              <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+              {showUpload ? "Close upload" : "Upload policy"}
+            </button>
             <button type="button" onClick={() => void exportPolicies()} disabled={exporting} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 disabled:opacity-60">
               <Download className="h-3.5 w-3.5" aria-hidden="true" />
               {exporting ? "Exporting" : "Export"}
             </button>
-            <button type="button" onClick={() => void reload()} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-indigo-500 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-indigo-600">
+            <button type="button" onClick={() => void reload()} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700">
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               Refresh
             </button>
@@ -1015,7 +1020,7 @@ export default function PoliciesPage() {
         <AppliedFilterChips filters={filterState.chips} onClearAll={filterState.clearAll} />
       </div>
 
-      <Panel
+      {showUpload && <Panel
         title="Upload policy document"
         action={<Upload className="h-4 w-4 text-slate-400" aria-hidden="true" />}
       >
@@ -1117,7 +1122,7 @@ export default function PoliciesPage() {
           </div>
         )}
         <GRCUploadHistoryList uploads={policyUploadHistory} />
-      </Panel>
+      </Panel>}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
         <MetricCard label="Policies" value={summary?.policies ?? 0} detail={`${summary?.templates ?? 0} templates`} state={metricState} />

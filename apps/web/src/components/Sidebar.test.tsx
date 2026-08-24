@@ -40,7 +40,6 @@ describe("isSidebarLinkActive", () => {
     expect(advancedGroup?.label).toBe("Advanced");
     expect(advancedGroup?.href).toBeUndefined();
     expect(hrefs).toEqual([
-      "/risk-inbox",
       "/actions",
       "/inventory",
       "/impact",
@@ -51,17 +50,26 @@ describe("isSidebarLinkActive", () => {
     ]);
   });
 
+  it("keeps specialist compliance records available without leading with them", () => {
+    const complianceGroup = sidebarNavGroups.find((group) => group.id === "compliance");
+
+    expect(complianceGroup?.label).toBe("Compliance");
+    expect(complianceGroup?.links.map((link) => link.href)).toEqual([
+      "/controls",
+      "/evidence",
+      "/questionnaires",
+    ]);
+  });
+
   it("leads with the compliance jobs customers use every week", () => {
     expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual([
       "/",
+      "/risk-inbox",
       "/frameworks",
-      "/evidence",
-      "/controls",
       "/policies",
       "/vendors",
-      "/questionnaires",
-      "/reports/audit-packages",
       "/connectors",
+      "/reports/audit-packages",
     ]);
     expect(sidebarSupportLinks).toEqual([]);
   });
