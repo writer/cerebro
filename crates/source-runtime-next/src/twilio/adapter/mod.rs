@@ -65,13 +65,17 @@ impl TwilioFamilyAdapter {
         tenant_id: &str,
         family: TwilioFamily,
     ) -> Result<Self, TwilioFamilyAdapterError> {
-        let kernel = TwilioKernel::new(
-            Some(origin),
-            tenant_id,
-            family,
-            TwilioFilters::default(),
-            Some(PAGE_SIZE),
-        )?;
+        Self::new_with_filters(origin, tenant_id, family, TwilioFilters::default())
+    }
+
+    /// Build a scoped family adapter from public, non-secret provider filters.
+    pub(crate) fn new_with_filters(
+        origin: &str,
+        tenant_id: &str,
+        family: TwilioFamily,
+        filters: TwilioFilters,
+    ) -> Result<Self, TwilioFamilyAdapterError> {
+        let kernel = TwilioKernel::new(Some(origin), tenant_id, family, filters, Some(PAGE_SIZE))?;
         Ok(Self { kernel, family })
     }
 
@@ -215,4 +219,5 @@ mod source_execution;
 #[allow(unused_imports)]
 pub(crate) use source_execution::{
     TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER, TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER,
+    TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER,
 };
