@@ -1,4 +1,4 @@
-//! Accounts-first Twilio source-execution adapter core.
+//! Provider-local Twilio source-execution adapter core.
 
 use std::{error::Error, fmt};
 
@@ -6,35 +6,39 @@ use time::OffsetDateTime;
 
 use super::{TwilioError, TwilioFamily, TwilioFilters, TwilioKernel, TwilioPage, TwilioRequest};
 
-const ACCOUNTS_PATH: &str = "/2010-04-01/Accounts.json";
 const DEFAULT_ORIGIN: &str = "https://api.twilio.com";
 const MAX_RESPONSE_BYTES: u64 = 8 << 20;
 const PAGE_SIZE: usize = 100;
 
-/// Provider-local accounts adapter used by the canonical source-execution edge.
+/// Provider-local family adapter used by the canonical source-execution edge.
 ///
 /// The authenticated tenant and provider origin are supplied by the trusted
 /// host. This type accepts no credential value and performs no network I/O.
 #[derive(Clone, Debug)]
-pub(crate) struct TwilioAccountsAdapter {
+pub(crate) struct TwilioFamilyAdapter {
     kernel: TwilioKernel,
+    family: TwilioFamily,
 }
 
-impl TwilioAccountsAdapter {
+impl TwilioFamilyAdapter {
     pub(crate) const fn source_id() -> &'static str {
         "twilio"
     }
 
-    pub(crate) const fn family_id() -> &'static str {
-        "accounts"
+    pub(crate) const fn family_id(&self) -> &'static str {
+        self.family.as_str()
     }
 
-    pub(crate) const fn provider_kernel() -> &'static str {
-        "twilio.accounts"
+    pub(crate) const fn provider_kernel(&self) -> &'static str {
+        self.family.provider_kind()
     }
 
-    pub(crate) const fn path() -> &'static str {
-        ACCOUNTS_PATH
+    pub(crate) const fn path(&self) -> &'static str {
+        match self.family {
+            TwilioFamily::Accounts => "/2010-04-01/Accounts.json",
+            TwilioFamily::Keys => "/2010-04-01/Accounts/{account_sid}/Keys.json",
+            TwilioFamily::AuditEvents => "/v1/Events",
+        }
     }
 
     pub(crate) const fn default_origin() -> &'static str {
@@ -55,23 +59,27 @@ impl TwilioAccountsAdapter {
         "Basic"
     }
 
-    /// Build an accounts adapter for authenticated execution scope.
-    pub(crate) fn new(origin: &str, tenant_id: &str) -> Result<Self, TwilioAccountsAdapterError> {
+    /// Build a family adapter for authenticated execution scope.
+    pub(crate) fn new(
+        origin: &str,
+        tenant_id: &str,
+        family: TwilioFamily,
+    ) -> Result<Self, TwilioFamilyAdapterError> {
         let kernel = TwilioKernel::new(
             Some(origin),
             tenant_id,
-            TwilioFamily::Accounts,
+            family,
             TwilioFilters::default(),
             Some(PAGE_SIZE),
         )?;
-        Ok(Self { kernel })
+        Ok(Self { kernel, family })
     }
 
     /// Produce one deterministic credential-free provider request.
     pub(crate) fn plan(
         &self,
         prior_cursor: Option<&str>,
-    ) -> Result<TwilioRequest, TwilioAccountsAdapterError> {
+    ) -> Result<TwilioRequest, TwilioFamilyAdapterError> {
         self.kernel
             .plan(canonical_prior_cursor(prior_cursor)?)
             .map_err(Into::into)
@@ -84,10 +92,10 @@ impl TwilioAccountsAdapter {
         status_code: u32,
         response_body: &[u8],
         observed_at: OffsetDateTime,
-    ) -> Result<TwilioPage, TwilioAccountsAdapterError> {
+    ) -> Result<TwilioPage, TwilioFamilyAdapterError> {
         validate_status(status_code)?;
         if response_body.len() as u64 > MAX_RESPONSE_BYTES {
-            return Err(TwilioAccountsAdapterError::Kernel(
+            return Err(TwilioFamilyAdapterError::Kernel(
                 TwilioError::ResponseTooLarge,
             ));
         }
@@ -100,7 +108,7 @@ impl TwilioAccountsAdapter {
 
 /// Stable, provider-local execution failures mapped closed at the shared edge.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TwilioAccountsAdapterError {
+pub(crate) enum TwilioFamilyAdapterError {
     AuthenticationRejected,
     RequiredScopeMissing,
     ProviderTimeout,
@@ -110,7 +118,7 @@ pub(crate) enum TwilioAccountsAdapterError {
     Kernel(TwilioError),
 }
 
-impl TwilioAccountsAdapterError {
+impl TwilioFamilyAdapterError {
     pub(crate) const fn code(self) -> &'static str {
         match self {
             Self::AuthenticationRejected => "twilio.authentication_rejected",
@@ -147,13 +155,13 @@ impl TwilioAccountsAdapterError {
     }
 }
 
-impl From<TwilioError> for TwilioAccountsAdapterError {
+impl From<TwilioError> for TwilioFamilyAdapterError {
     fn from(value: TwilioError) -> Self {
         Self::Kernel(value)
     }
 }
 
-impl fmt::Display for TwilioAccountsAdapterError {
+impl fmt::Display for TwilioFamilyAdapterError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnexpectedStatus(status) => {
@@ -169,7 +177,7 @@ impl fmt::Display for TwilioAccountsAdapterError {
     }
 }
 
-impl Error for TwilioAccountsAdapterError {
+impl Error for TwilioFamilyAdapterError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Kernel(error) => Some(error),
@@ -178,21 +186,21 @@ impl Error for TwilioAccountsAdapterError {
     }
 }
 
-fn validate_status(status_code: u32) -> Result<(), TwilioAccountsAdapterError> {
+fn validate_status(status_code: u32) -> Result<(), TwilioFamilyAdapterError> {
     match status_code {
         200 => Ok(()),
-        401 => Err(TwilioAccountsAdapterError::AuthenticationRejected),
-        403 => Err(TwilioAccountsAdapterError::RequiredScopeMissing),
-        408 => Err(TwilioAccountsAdapterError::ProviderTimeout),
-        429 => Err(TwilioAccountsAdapterError::RateLimited),
-        500..=599 => Err(TwilioAccountsAdapterError::ProviderUnavailable),
-        status => Err(TwilioAccountsAdapterError::UnexpectedStatus(status)),
+        401 => Err(TwilioFamilyAdapterError::AuthenticationRejected),
+        403 => Err(TwilioFamilyAdapterError::RequiredScopeMissing),
+        408 => Err(TwilioFamilyAdapterError::ProviderTimeout),
+        429 => Err(TwilioFamilyAdapterError::RateLimited),
+        500..=599 => Err(TwilioFamilyAdapterError::ProviderUnavailable),
+        status => Err(TwilioFamilyAdapterError::UnexpectedStatus(status)),
     }
 }
 
 fn canonical_prior_cursor(
     prior_cursor: Option<&str>,
-) -> Result<Option<&str>, TwilioAccountsAdapterError> {
+) -> Result<Option<&str>, TwilioFamilyAdapterError> {
     match prior_cursor {
         None | Some("") => Ok(None),
         Some(cursor) if cursor.trim() != cursor => Err(TwilioError::InvalidCursor.into()),
@@ -205,4 +213,6 @@ mod source_execution;
 // The closed shared dispatcher consumes this export without exposing provider
 // implementation details outside the crate.
 #[allow(unused_imports)]
-pub(crate) use source_execution::TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER;
+pub(crate) use source_execution::{
+    TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER, TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER,
+};
