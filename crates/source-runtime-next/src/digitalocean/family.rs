@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use super::DigitalOceanError;
 
-/// Closed legacy DigitalOcean family set.
+/// Closed DigitalOcean source-family set.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DigitalOceanFamily {
     /// Compute droplets.
@@ -14,7 +14,7 @@ pub enum DigitalOceanFamily {
 }
 
 impl DigitalOceanFamily {
-    /// Every family implemented by the legacy Go source.
+    /// Every family admitted by the DigitalOcean source catalog.
     pub const ALL: [Self; 3] = [Self::Droplets, Self::Vpcs, Self::Firewalls];
 
     /// Source catalog identifier.

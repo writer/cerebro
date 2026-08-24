@@ -1,6 +1,6 @@
 id: digitalocean
 name: "DigitalOcean"
-description: "Collects droplets, VPCs, and firewalls from DigitalOcean through the official godo SDK and projects them into the Cerebro graph as cloud compute, network, and security assets with droplet-to-VPC and firewall-to-droplet reachability edges."
+description: "Collects droplets, VPCs, and firewalls through the credential-free Rust source runtime and projects them into the Cerebro graph as cloud compute, network, and security assets with droplet-to-VPC and firewall-to-droplet reachability edges."
 emitted_kinds:
   - digitalocean.droplets
   - digitalocean.firewalls
@@ -60,7 +60,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Reads Droplets from /v2/droplets via godo and carries vpc_uuid for droplet-to-VPC edges.
+        - Reads Droplets from /v2/droplets and carries vpc_uuid for droplet-to-VPC edges.
     - id: vpcs
       type: entity_family
       title: "VPCs"
@@ -70,7 +70,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Reads VPCs from /v2/vpcs via godo as network assets.
+        - Reads VPCs from /v2/vpcs as network assets.
     - id: firewalls
       type: entity_family
       title: "Firewalls"
@@ -80,7 +80,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Reads Firewalls from /v2/firewalls via godo and derives firewall-to-droplet reachability from inbound rules.
+        - Reads Firewalls from /v2/firewalls and derives firewall-to-droplet reachability from inbound rules.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync

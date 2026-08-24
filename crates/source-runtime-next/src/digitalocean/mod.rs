@@ -1,9 +1,9 @@
 //! Credential-free DigitalOcean request, normalization, and parity kernel.
 //!
 //! The trusted host owns credential-reference resolution, Bearer authentication,
-//! redirects, deadlines, and bounded network I/O. The existing Go source and
-//! projector remain authoritative until shared registration and production
-//! qualification land separately.
+//! redirects, deadlines, and bounded network I/O. The closed dispatcher owns
+//! the three cataloged families; production qualification remains a separate
+//! release and deployment decision.
 
 mod error;
 mod family;

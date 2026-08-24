@@ -32,7 +32,7 @@ fn page(family: DigitalOceanFamily, tenant: &str) -> DigitalOceanPage {
 }
 
 #[test]
-fn catalog_and_kernel_close_the_exact_three_legacy_families() {
+fn catalog_and_kernel_close_the_exact_three_authoritative_families() {
     let catalog = SourceCatalog::load(
         root().join("internal/connectorcatalog/catalog"),
         root().join("sources"),
@@ -66,8 +66,8 @@ fn catalog_and_kernel_close_the_exact_three_legacy_families() {
         DigitalOceanFamily::from_str("unknown"),
         Err(DigitalOceanError::InvalidFamily)
     );
-    assert!(root().join("sources/digitalocean/source.go").exists());
-    assert!(root().join("sources/digitalocean/source_test.go").exists());
+    assert!(!root().join("sources/digitalocean/source.go").exists());
+    assert!(!root().join("sources/digitalocean/source_test.go").exists());
 }
 
 #[test]
@@ -244,7 +244,7 @@ fn checked_provider_fixtures_match_go_event_and_projection_semantics() {
 }
 
 #[test]
-fn godo_links_terminal_behavior_and_restart_checkpoint_round_trip() {
+fn provider_links_do_not_override_bounded_restart_checkpoint_round_trip() {
     let family = DigitalOceanFamily::Droplets;
     let kernel = kernel("tenant", family);
     let first_request = kernel.plan(DigitalOceanOperation::Read, None).unwrap();
