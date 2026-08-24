@@ -244,7 +244,7 @@ fn checked_provider_fixtures_match_go_event_and_projection_semantics() {
 }
 
 #[test]
-fn godo_links_terminal_behavior_and_restart_checkpoint_round_trip() {
+fn provider_links_terminal_behavior_and_restart_checkpoint_round_trip() {
     let family = DigitalOceanFamily::Droplets;
     let kernel = kernel("tenant", family);
     let first_request = kernel.plan(DigitalOceanOperation::Read, None).unwrap();

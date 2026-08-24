@@ -11,7 +11,10 @@ import (
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcefixture"
+	"github.com/writer/cerebro/internal/sourceruntime/sourceworker"
+	sourcecatalogs "github.com/writer/cerebro/sources"
 )
 
 var retiredStaticLoaderFixtureSources = []string{
@@ -114,7 +117,23 @@ func TestCatalogRuntimeRetainsRetiredProviderFixtureCorpus(t *testing.T) {
 			return err
 		}
 		if !found {
-			return fmt.Errorf("fixture source %q is missing from the connector catalog", bundle.Manifest.SourceID)
+			familyID, authoritative := sourceworker.RustAuthoritativeFamily(bundle.Manifest.SourceID, bundle.Manifest.Family)
+			if !authoritative || familyID != bundle.Manifest.Family {
+				return fmt.Errorf("fixture source %q is missing from the connector catalog and worker authority", bundle.Manifest.SourceID)
+			}
+			payload, err := sourcecatalogs.BuiltinCatalog(bundle.Manifest.SourceID)
+			if err != nil {
+				return fmt.Errorf("load worker source catalog for %s: %w", bundle.ManifestPath, err)
+			}
+			catalog, err := sourcecdk.LoadSourceCatalog(payload)
+			if err != nil {
+				return fmt.Errorf("decode worker source catalog for %s: %w", bundle.ManifestPath, err)
+			}
+			if catalog.Spec == nil || !slices.Contains(catalog.RuntimeFamilies, familyID) || len(catalog.EventContracts) == 0 {
+				return fmt.Errorf("worker source catalog for %s does not retain family %q contracts", bundle.ManifestPath, familyID)
+			}
+			validated++
+			return nil
 		}
 		family, found := definitionFamily(entry.Definition, bundle.Manifest.Family)
 		if !found {

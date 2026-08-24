@@ -17,7 +17,6 @@ import (
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
-	digitaloceansource "github.com/writer/cerebro/sources/digitalocean"
 	discordsource "github.com/writer/cerebro/sources/discord"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
@@ -52,6 +51,8 @@ type builtinSourceLoader struct {
 	name string
 	load func() (sourcecdk.Source, error)
 }
+
+var workerCatalogSourceIDs = []string{"digitalocean"}
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
@@ -106,12 +107,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "cosmo",
 		load: func() (sourcecdk.Source, error) {
 			return cosmosource.New()
-		},
-	},
-	{
-		name: "digitalocean",
-		load: func() (sourcecdk.Source, error) {
-			return digitaloceansource.New()
 		},
 	},
 	{
@@ -318,17 +313,27 @@ func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Regist
 		}
 		sources = append(sources, source)
 	}
+	for _, sourceID := range workerCatalogSourceIDs {
+		source, err := newWorkerCatalogSource(sourceID)
+		if err != nil {
+			return nil, fmt.Errorf("load %s worker source: %w", sourceID, err)
+		}
+		registered[sourceID] = struct{}{}
+		sources = append(sources, source)
+	}
 	catalog, err := connectorcatalog.BuiltinRuntime()
 	if err != nil {
 		return nil, fmt.Errorf("load connector definition catalog: %w", err)
 	}
 	for _, entry := range catalog.Entries {
 		sourceID := entry.Definition.SourceID
-		if _, ok := registered[sourceID]; ok || entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
+		if _, ok := registered[sourceID]; ok {
 			continue
 		}
 		var source sourcecdk.Source
-		if catalogBytes := overrides[sourceID]; len(catalogBytes) != 0 {
+		if entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
+			continue
+		} else if catalogBytes := overrides[sourceID]; len(catalogBytes) != 0 {
 			source, err = catalogruntimesource.NewWithCatalog(entry, catalogBytes)
 		} else {
 			source, err = catalogruntimesource.New(entry)
