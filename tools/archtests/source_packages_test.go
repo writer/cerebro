@@ -52,6 +52,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"langchain":       {},
 	"deepseek":        {},
 	"openai":          {},
+	"sentinelone":     {},
 	"slack":           {},
 	"tailscale":       {},
 	"twilio":          {},
@@ -134,7 +135,6 @@ var grandfatheredSourcePackageLOCBudgets = map[string]int{
 	"grc":             1195,
 	"okta":            2239,
 	"panopticon":      763,
-	"sentinelone":     2096,
 	"vulnview":        1002,
 }
 

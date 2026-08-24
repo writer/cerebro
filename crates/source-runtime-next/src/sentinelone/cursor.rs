@@ -4,7 +4,7 @@ use super::model::{ApplicationCursor, SentinelOneError};
 
 pub(super) const APPLICATION_CURSOR_PREFIX: &str = "cerebro-sentinelone-application-v1:";
 pub(super) const MAX_PROVIDER_CURSOR_BYTES: usize = 4_096;
-pub(super) const MAX_APPLICATION_CURSOR_BYTES: usize = 17_000;
+pub(super) const MAX_APPLICATION_CURSOR_BYTES: usize = 4_096;
 const MAX_CURSOR_COMPONENT_BYTES: usize = 4_096;
 
 pub(super) fn bounded_provider_cursor(

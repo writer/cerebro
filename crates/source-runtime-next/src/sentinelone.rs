@@ -3,8 +3,8 @@
 //! SentinelOne exposes six directly paginated collection endpoints and one
 //! application inventory endpoint that must first enumerate agents. This
 //! module owns that credential-free provider state machine. Its normalized
-//! records still require the shared source-execution adapter, compiler mapping,
-//! event admission, and projection path before they can reach the graph.
+//! records pass through the shared source-execution contract, event admission,
+//! and projection path before they reach the graph.
 
 mod cursor;
 mod kernel;
@@ -13,8 +13,8 @@ mod response;
 mod source_execution_adapter;
 
 pub(crate) use source_execution_adapter::{
-    SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS, SentinelOneAgentSourceExecutionAdapter,
-    durable_checkpoint_cursor,
+    SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER, SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS,
+    SentinelOneAgentSourceExecutionAdapter, durable_checkpoint_cursor,
 };
 
 pub use kernel::SentinelOneKernel;

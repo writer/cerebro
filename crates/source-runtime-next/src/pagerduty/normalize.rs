@@ -270,7 +270,7 @@ fn provider_time(
     })
 }
 
-fn event_id(
+pub(super) fn event_id(
     tenant_id: &str,
     origin: &str,
     path: &str,

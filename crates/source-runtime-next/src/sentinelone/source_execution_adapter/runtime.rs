@@ -9,6 +9,10 @@ use crate::source_execution::{
     validate_runtime_metadata,
 };
 
+use super::application::{
+    SentinelOneApplicationSourceExecutionAdapter, decode_application_response_with_kernel,
+    validate_application_plan,
+};
 use super::direct::{
     SentinelOneDirectSourceExecutionAdapter, decode_direct_response_with_kernel,
     validate_direct_plan,
@@ -149,6 +153,69 @@ pub(super) fn decode_direct_v2(
     )
 }
 
+pub(super) fn plan_application_v2(
+    envelope: &SourceWorkerPlanEnvelopeV2,
+) -> Result<SourceWorkerHttpExecutionV2, SourceExecutionError> {
+    let request = envelope
+        .request
+        .as_ref()
+        .ok_or(SourceExecutionError::InvalidPlan)?;
+    let plan = request
+        .plan
+        .as_ref()
+        .ok_or(SourceExecutionError::InvalidPlan)?;
+    let context = request
+        .context
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    let metadata = envelope
+        .metadata
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    validate_application_plan(plan).map_err(SourceExecutionError::from)?;
+    let (kernel, allowed_origin) =
+        kernel_for_family(context, metadata, SentinelOneFamily::Application)?;
+    let planned = plan_with_kernel(plan, context, &kernel, &allowed_origin)?;
+    let mut execution = SourceWorkerHttpExecutionV2 {
+        request: Some(planned),
+        body: Vec::new(),
+        declared_headers: HashMap::new(),
+        execution_intent_digest_sha256: String::new(),
+        credential_operation: CREDENTIAL_OPERATION.to_owned(),
+        allowed_origin,
+    };
+    execution.execution_intent_digest_sha256 =
+        canonical_http_execution_digest(plan, context, metadata, &execution);
+    Ok(execution)
+}
+
+pub(super) fn decode_application_v2(
+    envelope: &SourceWorkerDecodeEnvelopeV2,
+    adapter: &SentinelOneApplicationSourceExecutionAdapter,
+) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
+    let request = envelope
+        .request
+        .as_ref()
+        .ok_or(SourceExecutionError::InvalidPlan)?;
+    let plan = request
+        .plan
+        .as_ref()
+        .ok_or(SourceExecutionError::InvalidPlan)?;
+    let context = request
+        .context
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    let metadata = envelope
+        .metadata
+        .as_ref()
+        .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+    validate_application_plan(plan).map_err(SourceExecutionError::from)?;
+    let (kernel, allowed_origin) =
+        kernel_for_family(context, metadata, SentinelOneFamily::Application)?;
+    let expected = plan_with_kernel(plan, context, &kernel, &allowed_origin)?;
+    decode_application_response_with_kernel(request, adapter, &kernel, &allowed_origin, &expected)
+}
+
 fn kernel(
     context: &SourceWorkerExecutionContextV1,
     metadata: &SourceWorkerRuntimeMetadataV2,
@@ -179,7 +246,7 @@ fn kernel_for_family(
         since: public_owned(&metadata.public_config, "since"),
         until: public_owned(&metadata.public_config, "until"),
         activity_type: public_owned(&metadata.public_config, "activity_type"),
-        ..SentinelOneFilters::default()
+        agent_id: public_owned(&metadata.public_config, "agent_id"),
     };
     let kernel = SentinelOneKernel::new(base_url, family, filters, page_size)
         .map_err(map_kernel_error)
