@@ -932,7 +932,7 @@ function VendorHero({
             Refresh
           </button>
           <button type="button" onClick={onOpenReview} className="primary-button inline-flex items-center gap-2 px-4 py-2 text-[13px]">
-            Open review
+            Review questionnaire
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </button>
           <button type="button" className="secondary-button p-2" aria-label="More vendor actions">
