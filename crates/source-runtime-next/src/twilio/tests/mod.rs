@@ -7,7 +7,7 @@ const ACCOUNT_SID: &str = "AC123";
 const OBSERVED_AT: &str = "2026-06-02T03:04:05.123456789+01:00";
 const ACCOUNTS_FIXTURE: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../sources/twilio/testdata/read_accounts.json"
+    "/../../sources/twilio/testdata/provider_accounts.json"
 ));
 
 fn observed_at() -> OffsetDateTime {

@@ -5,6 +5,10 @@ emitted_kinds:
   - twilio.accounts
   - twilio.keys
   - twilio.audit_events
+runtime_families:
+  - accounts
+  - audit_events
+  - keys
 kind_lifecycle:
   - kind: twilio.accounts
     status: active

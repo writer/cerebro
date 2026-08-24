@@ -1,9 +1,13 @@
 use prost::Message;
 
+use crate::digitalocean::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
 use crate::sentinelone::{
     SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS, SentinelOneAgentSourceExecutionAdapter,
 };
-use crate::twilio::adapter::TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER;
+use crate::twilio::adapter::{
+    TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER, TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER,
+    TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER,
+};
 
 use super::{
     azure_authorization_policy::AzureAuthorizationPolicyAdapter,
@@ -20,7 +24,7 @@ use super::{
         SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
         SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1,
         SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
-        SourceWorkerSafeReceiptV1,
+        SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1,
     },
 };
 
@@ -38,6 +42,15 @@ pub trait SourceExecutionAdapter: Send + Sync {
         context: &SourceWorkerExecutionContextV1,
         record: &SourceWorkerRecordV1,
     ) -> Result<(), SourceExecutionError>;
+    /// Validates identity for adapters whose public v2 scope affects provider identity.
+    fn validate_record_identity_v2(
+        &self,
+        context: &SourceWorkerExecutionContextV1,
+        record: &SourceWorkerRecordV1,
+        _metadata: &SourceWorkerRuntimeMetadataV2,
+    ) -> Result<(), SourceExecutionError> {
+        self.validate_record_identity(context, record)
+    }
     /// Builds a bounded, credential-free request description.
     fn plan(
         &self,
@@ -129,10 +142,25 @@ impl SourceExecutionDispatcher {
         {
             return Ok(adapter.compiled_plan());
         }
+        if request.source_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
         if request.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
         {
             return Ok(TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
+        if request.source_id == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
+        if request.source_id == TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
         }
         if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
             request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
@@ -174,11 +202,31 @@ impl SourceExecutionDispatcher {
         {
             return Ok(adapter);
         }
+        if plan.source_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel
+                == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER);
+        }
         if plan.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
             && plan.provider_kernel == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
         {
             return Ok(&TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER);
+        }
+        if plan.source_id == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel
+                == TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER);
+        }
+        if plan.source_id == TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel == TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER);
         }
         if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
             plan.source_id == adapter.source_id()
@@ -367,7 +415,7 @@ impl SourceExecutionDispatcher {
         let result = adapter.decode_v2(&bound_envelope)?;
         validate_decode_result(&bound_request, &result)?;
         for record in &result.records {
-            adapter.validate_record_identity(context, record)?;
+            adapter.validate_record_identity_v2(context, record, metadata)?;
         }
         Ok(SourceWorkerDecodeOutputV2 {
             receipt: Some(receipt),

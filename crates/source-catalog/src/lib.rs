@@ -2970,8 +2970,8 @@ mod tests {
         )
         .unwrap();
         let summary = catalog.summary();
-        assert_eq!(summary.sources, 799);
-        assert_eq!(summary.families, 4_016);
+        assert_eq!(summary.sources, 800);
+        assert_eq!(summary.families, 4_019);
         assert_eq!(summary.push_sources, 1);
         assert_eq!(summary.push_families, 10);
         assert_eq!(
@@ -3941,8 +3941,8 @@ mod tests {
         )
         .unwrap();
         let report = catalog.unsupported_feature_report();
-        assert_eq!(report.total_sources, 799);
-        assert_eq!(report.total_families, 4_016);
+        assert_eq!(report.total_sources, 800);
+        assert_eq!(report.total_families, 4_019);
         assert_eq!(report.families.len(), report.total_families);
         assert!(report.missing_family_reports.is_empty());
         assert_eq!(
@@ -3991,7 +3991,7 @@ mod tests {
         )
         .unwrap();
         let report = catalog.authority_readiness_report();
-        assert_eq!(report.total_families, 4_016);
+        assert_eq!(report.total_families, 4_019);
         assert_eq!(report.rust_authoritative_families, 0);
         assert_eq!(report.shadow_or_go_families, report.total_families);
         let aws_bedrock = report

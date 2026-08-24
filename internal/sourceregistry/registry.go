@@ -42,7 +42,6 @@ import (
 	snyksource "github.com/writer/cerebro/sources/snyk"
 	trivysource "github.com/writer/cerebro/sources/trivy"
 	trustedendpointsource "github.com/writer/cerebro/sources/trustedendpoint"
-	twiliosource "github.com/writer/cerebro/sources/twilio"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	writersource "github.com/writer/cerebro/sources/writer"
 )
@@ -257,12 +256,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "trustedendpoint",
 		load: func() (sourcecdk.Source, error) {
 			return trustedendpointsource.New()
-		},
-	},
-	{
-		name: "twilio",
-		load: func() (sourcecdk.Source, error) {
-			return twiliosource.New()
 		},
 	},
 	{

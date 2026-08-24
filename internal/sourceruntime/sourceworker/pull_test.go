@@ -70,11 +70,11 @@ func TestProviderResumeFailsClosedForMalformedAndCrossFamilyCheckpoints(t *testi
 
 func TestPublicExecutionConfigNeverCarriesCredentialMaterial(t *testing.T) {
 	public := PublicExecutionConfig(map[string]string{
-		"family": "user", "tailnet": "example.com", "base_url": "https://api.tailscale.com/api/v2",
+		"account_sid": " AC123 ", "family": "user", "tailnet": "example.com", "base_url": "https://api.tailscale.com/api/v2",
 		"site_id": "site-1", "since": "2026-01-01T00:00:00Z", "until": "2026-02-01T00:00:00Z", "activity_type": "27",
-		"token":   "secret-token", "graph_token": "secret-graph-token", "tenant_id": "tenant-1",
+		"token": "secret-token", "graph_token": "secret-graph-token", "tenant_id": "tenant-1",
 	})
-	if len(public) != 7 || public["site_id"] != "site-1" || public["since"] == "" || public["until"] == "" || public["activity_type"] != "27" || public["token"] != "" || public["graph_token"] != "" || public["tenant_id"] != "" {
+	if len(public) != 8 || public["account_sid"] != "AC123" || public["site_id"] != "site-1" || public["since"] == "" || public["until"] == "" || public["activity_type"] != "27" || public["token"] != "" || public["graph_token"] != "" || public["tenant_id"] != "" {
 		t.Fatalf("public config leaked private fields: %#v", public)
 	}
 }
@@ -86,6 +86,9 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 	}{
 		"Azure authorization policy": {" azure ", " authorization_policy ", "authorization_policy", true},
 		"other Azure family":         {"azure", "user", "user", false},
+		"DigitalOcean default":       {" digitalocean ", "", "droplets", true},
+		"DigitalOcean droplets":      {"digitalocean", " droplets ", "droplets", true},
+		"other DigitalOcean family":  {"digitalocean", "vpcs", "vpcs", false},
 		"JumpCloud default":          {"jumpcloud", "", "users", true},
 		"JumpCloud family":           {"jumpcloud", "group_members", "group_members", true},
 		"unknown JumpCloud family":   {"jumpcloud", "future-family", "future-family", true},
@@ -100,7 +103,9 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"Tailscale default":          {"tailscale", "", "device", true},
 		"unknown Tailscale family":   {"tailscale", "future-family", "future-family", true},
 		"Twilio accounts":            {"twilio", "accounts", "accounts", true},
-		"other Twilio family":        {"twilio", "keys", "keys", false},
+		"Twilio audit events":        {"twilio", "audit_events", "audit_events", true},
+		"Twilio keys":                {"twilio", "keys", "keys", true},
+		"unknown Twilio family":      {"twilio", "future-family", "future-family", false},
 		"compatibility source":       {"gcp", "audit", "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
