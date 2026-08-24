@@ -10,16 +10,16 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::source_execution::{
     SourceExecutionAdapter, SourceExecutionError, SourceExecutionPlanV1,
-    SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
-    SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
-    SourceWorkerPlanRequestV1, SourceWorkerRecordV1, canonical_http_execution_digest,
-    canonical_plan_digest, canonical_request_intent_digest, canonical_result_digest,
-    validate_and_deduplicate_records, validate_cursor, validate_execution_context,
-    validate_runtime_metadata, validate_safe_receipt,
+    SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
+    SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1,
+    SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+    canonical_http_execution_digest, canonical_plan_digest, canonical_request_intent_digest,
+    canonical_result_digest, validate_and_deduplicate_records, validate_cursor,
+    validate_execution_context, validate_runtime_metadata, validate_safe_receipt,
 };
 
 use super::{TwilioFamilyAdapter, TwilioFamilyAdapterError};
-use crate::twilio::{TwilioError, TwilioFamily, normalize::event_id};
+use crate::twilio::{TwilioError, TwilioFamily, TwilioFilters, normalize::event_id};
 
 const RECORD_SELECTOR: &str = "data";
 const ID_FIELD: &str = "id";
@@ -30,6 +30,8 @@ pub(crate) static TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER: TwilioSourceExecutio
     TwilioSourceExecutionAdapter::new(TwilioFamily::Accounts);
 pub(crate) static TWILIO_AUDIT_EVENTS_SOURCE_EXECUTION_ADAPTER: TwilioSourceExecutionAdapter =
     TwilioSourceExecutionAdapter::new(TwilioFamily::AuditEvents);
+pub(crate) static TWILIO_KEYS_SOURCE_EXECUTION_ADAPTER: TwilioSourceExecutionAdapter =
+    TwilioSourceExecutionAdapter::new(TwilioFamily::Keys);
 
 /// Stateless canonical edge. Trusted execution scope arrives on every call.
 #[derive(Clone, Copy, Debug)]
@@ -67,51 +69,43 @@ impl TwilioSourceExecutionAdapter {
         plan.plan_digest_sha256 = canonical_plan_digest(&plan);
         plan
     }
-}
 
-impl SourceExecutionAdapter for TwilioSourceExecutionAdapter {
-    fn source_id(&self) -> &'static str {
-        TwilioFamilyAdapter::source_id()
-    }
-
-    fn family_id(&self) -> &'static str {
-        self.family.as_str()
-    }
-
-    fn provider_kernel(&self) -> &'static str {
-        self.family.provider_kind()
-    }
-
-    fn validate_record_identity(
+    fn public_filters(
         &self,
-        context: &SourceWorkerExecutionContextV1,
-        record: &SourceWorkerRecordV1,
-    ) -> Result<(), SourceExecutionError> {
-        let expected = event_id(
-            &context.tenant_id,
-            TwilioFamilyAdapter::default_origin(),
-            family_path(self.family),
-            self.family,
-            &record.provider_id,
-        );
-        if record.event_id != expected {
-            return Err(SourceExecutionError::TenantMismatch);
+        metadata: &crate::source_execution::SourceWorkerRuntimeMetadataV2,
+    ) -> Result<TwilioFilters, SourceExecutionError> {
+        if self.family != TwilioFamily::Keys {
+            return Ok(TwilioFilters::default());
         }
-        Ok(())
+        let account_sid = metadata
+            .public_config
+            .get("account_sid")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        Ok(TwilioFilters {
+            account_sid: Some(account_sid.to_owned()),
+        })
     }
 
-    fn plan(
+    fn plan_with_filters(
         &self,
         request: &SourceWorkerPlanRequestV1,
+        filters: TwilioFilters,
     ) -> Result<SourceWorkerHttpRequestV1, SourceExecutionError> {
         let (plan, context) =
             self.validated_plan_context(request.plan.as_ref(), request.context.as_ref())?;
-        let adapter = TwilioFamilyAdapter::new(&plan.origin, &context.tenant_id, self.family)
-            .map_err(map_provider_error)?;
+        let adapter = TwilioFamilyAdapter::new_with_filters(
+            &plan.origin,
+            &context.tenant_id,
+            self.family,
+            filters,
+        )
+        .map_err(map_provider_error)?;
         let provider_request = adapter
             .plan(optional_cursor(&context.prior_cursor))
             .map_err(map_provider_error)?;
-        if provider_request.url().path() != plan.path
+        if (self.family != TwilioFamily::Keys && provider_request.url().path() != plan.path)
             || provider_request.url().origin().unicode_serialization() != plan.origin
             || provider_request.authorization_scheme() != TwilioFamilyAdapter::credential_scheme()
         {
@@ -131,53 +125,10 @@ impl SourceExecutionAdapter for TwilioSourceExecutionAdapter {
         Ok(output)
     }
 
-    fn plan_v2(
-        &self,
-        envelope: &SourceWorkerPlanEnvelopeV2,
-    ) -> Result<SourceWorkerHttpExecutionV2, SourceExecutionError> {
-        let request = envelope
-            .request
-            .as_ref()
-            .ok_or(SourceExecutionError::InvalidPlan)?;
-        let plan = request
-            .plan
-            .as_ref()
-            .ok_or(SourceExecutionError::InvalidPlan)?;
-        let context = request
-            .context
-            .as_ref()
-            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
-        let metadata = envelope
-            .metadata
-            .as_ref()
-            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
-        validate_runtime_metadata(metadata)?;
-        let configured_origin = metadata
-            .public_config
-            .get("base_url")
-            .map(String::as_str)
-            .filter(|value| !value.is_empty())
-            .unwrap_or(TwilioFamilyAdapter::default_origin());
-        if configured_origin != TwilioFamilyAdapter::default_origin() {
-            return Err(SourceExecutionError::InvalidPlan);
-        }
-        let planned = self.plan(request)?;
-        let mut execution = SourceWorkerHttpExecutionV2 {
-            request: Some(planned),
-            body: Vec::new(),
-            declared_headers: Default::default(),
-            execution_intent_digest_sha256: String::new(),
-            credential_operation: TwilioFamilyAdapter::credential_operation().to_owned(),
-            allowed_origin: plan.origin.clone(),
-        };
-        execution.execution_intent_digest_sha256 =
-            canonical_http_execution_digest(plan, context, metadata, &execution);
-        Ok(execution)
-    }
-
-    fn decode(
+    fn decode_with_filters(
         &self,
         request: &SourceWorkerDecodeRequestV1,
+        filters: TwilioFilters,
     ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
         let (plan, context) =
             self.validated_plan_context(request.plan.as_ref(), request.context.as_ref())?;
@@ -186,12 +137,12 @@ impl SourceExecutionAdapter for TwilioSourceExecutionAdapter {
         {
             return Err(SourceExecutionError::MissingExecutionIdentity);
         }
-        let planned = <Self as SourceExecutionAdapter>::plan(
-            self,
+        let planned = self.plan_with_filters(
             &SourceWorkerPlanRequestV1 {
                 plan: Some(plan.clone()),
                 context: Some(context.clone()),
             },
+            filters.clone(),
         )?;
         if planned.request_intent_digest != request.request_intent_digest {
             return Err(SourceExecutionError::InvalidDigest);
@@ -216,8 +167,13 @@ impl SourceExecutionAdapter for TwilioSourceExecutionAdapter {
         )?;
 
         let observed_at = observed_at(context)?;
-        let adapter = TwilioFamilyAdapter::new(&plan.origin, &context.tenant_id, self.family)
-            .map_err(map_provider_error)?;
+        let adapter = TwilioFamilyAdapter::new_with_filters(
+            &plan.origin,
+            &context.tenant_id,
+            self.family,
+            filters,
+        )
+        .map_err(map_provider_error)?;
         let page = adapter
             .decode(
                 optional_cursor(&context.prior_cursor),
@@ -265,6 +221,149 @@ impl SourceExecutionAdapter for TwilioSourceExecutionAdapter {
             lease_generation: context.lease_generation,
             observed_at_unix_millis: context.observed_at_unix_millis,
         })
+    }
+}
+
+impl SourceExecutionAdapter for TwilioSourceExecutionAdapter {
+    fn source_id(&self) -> &'static str {
+        TwilioFamilyAdapter::source_id()
+    }
+
+    fn family_id(&self) -> &'static str {
+        self.family.as_str()
+    }
+
+    fn provider_kernel(&self) -> &'static str {
+        self.family.provider_kind()
+    }
+
+    fn validate_record_identity(
+        &self,
+        context: &SourceWorkerExecutionContextV1,
+        record: &SourceWorkerRecordV1,
+    ) -> Result<(), SourceExecutionError> {
+        let expected = event_id(
+            &context.tenant_id,
+            TwilioFamilyAdapter::default_origin(),
+            family_path(self.family),
+            self.family,
+            &record.provider_id,
+        );
+        if record.event_id != expected {
+            return Err(SourceExecutionError::TenantMismatch);
+        }
+        Ok(())
+    }
+
+    fn validate_record_identity_v2(
+        &self,
+        context: &SourceWorkerExecutionContextV1,
+        record: &SourceWorkerRecordV1,
+        metadata: &crate::source_execution::SourceWorkerRuntimeMetadataV2,
+    ) -> Result<(), SourceExecutionError> {
+        if self.family != TwilioFamily::Keys {
+            return self.validate_record_identity(context, record);
+        }
+        let adapter = TwilioFamilyAdapter::new_with_filters(
+            TwilioFamilyAdapter::default_origin(),
+            &context.tenant_id,
+            self.family,
+            self.public_filters(metadata)?,
+        )
+        .map_err(map_provider_error)?;
+        let request = adapter.plan(None).map_err(map_provider_error)?;
+        let expected = event_id(
+            &context.tenant_id,
+            TwilioFamilyAdapter::default_origin(),
+            request.url().path(),
+            self.family,
+            &record.provider_id,
+        );
+        if record.event_id != expected {
+            return Err(SourceExecutionError::TenantMismatch);
+        }
+        Ok(())
+    }
+
+    fn plan(
+        &self,
+        request: &SourceWorkerPlanRequestV1,
+    ) -> Result<SourceWorkerHttpRequestV1, SourceExecutionError> {
+        if self.family == TwilioFamily::Keys {
+            return Err(SourceExecutionError::InvalidPlan);
+        }
+        self.plan_with_filters(request, TwilioFilters::default())
+    }
+
+    fn plan_v2(
+        &self,
+        envelope: &SourceWorkerPlanEnvelopeV2,
+    ) -> Result<SourceWorkerHttpExecutionV2, SourceExecutionError> {
+        let request = envelope
+            .request
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let plan = request
+            .plan
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let context = request
+            .context
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        let metadata = envelope
+            .metadata
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        validate_runtime_metadata(metadata)?;
+        let configured_origin = metadata
+            .public_config
+            .get("base_url")
+            .map(String::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(TwilioFamilyAdapter::default_origin());
+        if configured_origin != TwilioFamilyAdapter::default_origin() {
+            return Err(SourceExecutionError::InvalidPlan);
+        }
+        let filters = self.public_filters(metadata)?;
+        let planned = self.plan_with_filters(request, filters)?;
+        let mut execution = SourceWorkerHttpExecutionV2 {
+            request: Some(planned),
+            body: Vec::new(),
+            declared_headers: Default::default(),
+            execution_intent_digest_sha256: String::new(),
+            credential_operation: TwilioFamilyAdapter::credential_operation().to_owned(),
+            allowed_origin: plan.origin.clone(),
+        };
+        execution.execution_intent_digest_sha256 =
+            canonical_http_execution_digest(plan, context, metadata, &execution);
+        Ok(execution)
+    }
+
+    fn decode(
+        &self,
+        request: &SourceWorkerDecodeRequestV1,
+    ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
+        if self.family == TwilioFamily::Keys {
+            return Err(SourceExecutionError::InvalidPlan);
+        }
+        self.decode_with_filters(request, TwilioFilters::default())
+    }
+
+    fn decode_v2(
+        &self,
+        envelope: &SourceWorkerDecodeEnvelopeV2,
+    ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
+        let request = envelope
+            .request
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let metadata = envelope
+            .metadata
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        validate_runtime_metadata(metadata)?;
+        self.decode_with_filters(request, self.public_filters(metadata)?)
     }
 }
 
