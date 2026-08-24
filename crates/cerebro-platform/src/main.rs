@@ -7026,7 +7026,7 @@ mod tests {
             .unwrap();
         let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
         assert_eq!(response["graphRevision"], "2");
-        assert_eq!(response["entities"].as_array().unwrap().len(), 4);
+        assert_eq!(response["entities"].as_array().unwrap().len(), 6);
         assert!(
             response["entities"]
                 .as_array()
@@ -7101,7 +7101,7 @@ mod tests {
             .unwrap();
         let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
         assert_eq!(response["tenantId"], "tenant-demo");
-        assert_eq!(response["graphRevision"], "1");
+        assert_eq!(response["graphRevision"], "2");
         assert_eq!(response["matches"].as_array().unwrap().len(), 1);
         assert_eq!(
             response["matches"][0]["edges"][0]["edge"]["relation"],
