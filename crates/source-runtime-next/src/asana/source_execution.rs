@@ -59,7 +59,8 @@ impl AsanaSourceExecutionAdapter {
             record_selector: RECORD_SELECTOR.to_owned(),
             id_field: ID_FIELD.to_owned(),
             singleton_fallback_id: String::new(),
-            max_response_bytes: MAX_RESPONSE_BYTES as u64,
+            max_response_bytes: u64::try_from(MAX_RESPONSE_BYTES)
+                .map_err(|_| SourceExecutionError::InvalidPlan)?,
             event_kind: contract.kind.to_owned(),
             schema_ref: contract.schema_ref.to_owned(),
             required_attributes: contract
