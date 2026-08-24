@@ -24,6 +24,11 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 	switch sourceID {
 	case "azure":
 		return familyID, familyID == "authorization_policy"
+	case "digitalocean":
+		if familyID == "" {
+			familyID = "droplets"
+		}
+		return familyID, familyID == "droplets"
 	case "jumpcloud":
 		if familyID == "" {
 			familyID = "users"
