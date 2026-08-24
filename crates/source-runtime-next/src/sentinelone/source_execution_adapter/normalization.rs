@@ -1,4 +1,4 @@
-//! SentinelOne agent-to-canonical-record normalization.
+//! Shared SentinelOne normalization helpers and the agent event contract.
 
 use std::collections::BTreeMap;
 
@@ -9,6 +9,13 @@ use crate::source_execution::{SourceWorkerExecutionContextV1, SourceWorkerRecord
 
 use super::{FAMILY_ID, agent_event_id, error::SentinelOneAgentAdapterError};
 use crate::sentinelone::SentinelOneRecord;
+
+#[path = "normalization/direct.rs"]
+mod direct;
+pub(super) use direct::normalize_direct_record;
+#[path = "normalization/threat.rs"]
+mod threat;
+pub(super) use threat::normalize_threat_record;
 
 pub(super) fn normalize_agent_record(
     record: SentinelOneRecord,
@@ -226,13 +233,31 @@ fn agent_payload(raw: &Value, tenant_id: &str, provider_id: &str) -> Value {
     Value::Object(payload)
 }
 
-fn remove_untrusted_tenant_fields(value: &mut Value) {
+pub(super) fn remove_untrusted_tenant_fields(value: &mut Value) {
     match value {
         Value::Object(object) => {
             object.retain(|name, _| {
                 !matches!(
                     name.as_str(),
-                    "tenantId" | "tenant_id" | "tenantHost" | "tenant_host"
+                    "Authorization"
+                        | "authorization"
+                        | "apiToken"
+                        | "api_token"
+                        | "clientSecret"
+                        | "client_secret"
+                        | "licenseKey"
+                        | "password"
+                        | "privateKey"
+                        | "private_key"
+                        | "registrationToken"
+                        | "secret"
+                        | "sessionCookie"
+                        | "session_cookie"
+                        | "tenantId"
+                        | "tenant_id"
+                        | "tenantHost"
+                        | "tenant_host"
+                        | "token"
                 )
             });
             for value in object.values_mut() {
@@ -249,7 +274,14 @@ fn remove_untrusted_tenant_fields(value: &mut Value) {
 }
 
 fn provider_occurred_at_millis(raw: &Value) -> Option<i64> {
-    for field in ["updatedAt", "lastActiveDate", "createdAt", "registeredAt"] {
+    provider_occurred_at_millis_for(
+        raw,
+        &["updatedAt", "lastActiveDate", "createdAt", "registeredAt"],
+    )
+}
+
+pub(super) fn provider_occurred_at_millis_for(raw: &Value, fields: &[&str]) -> Option<i64> {
+    for field in fields {
         let value = string_at(raw, field);
         if value.is_empty() {
             continue;
@@ -261,7 +293,7 @@ fn provider_occurred_at_millis(raw: &Value) -> Option<i64> {
     None
 }
 
-fn string_at(raw: &Value, name: &str) -> String {
+pub(super) fn string_at(raw: &Value, name: &str) -> String {
     raw.get(name)
         .and_then(Value::as_str)
         .map(str::trim)
@@ -269,14 +301,14 @@ fn string_at(raw: &Value, name: &str) -> String {
         .to_owned()
 }
 
-fn bool_text(raw: &Value, name: &str) -> String {
+pub(super) fn bool_text(raw: &Value, name: &str) -> String {
     raw.get(name)
         .and_then(Value::as_bool)
         .unwrap_or(false)
         .to_string()
 }
 
-fn integer_text(raw: &Value, name: &str) -> String {
+pub(super) fn integer_text(raw: &Value, name: &str) -> String {
     raw.get(name)
         .and_then(Value::as_i64)
         .unwrap_or(0)
@@ -295,17 +327,95 @@ fn flexible_bool_text(value: Option<&Value>) -> Option<String> {
     }
 }
 
-fn insert_nonblank(fields: &mut BTreeMap<String, String>, name: &str, value: String) {
+pub(super) fn flexible_bool(value: Option<&Value>) -> bool {
+    match value {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::String(value)) => {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "y" | "yes"
+            )
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn flexible_string(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(value)) => value.trim().to_owned(),
+        Some(Value::Bool(value)) => value.to_string(),
+        Some(Value::Number(value)) => value.to_string(),
+        Some(Value::Array(_) | Value::Object(_)) => {
+            serde_json::to_string(value.unwrap_or(&Value::Null)).unwrap_or_default()
+        }
+        Some(Value::Null) | None => String::new(),
+    }
+}
+
+pub(super) fn string_array(value: Option<&Value>) -> Option<Vec<String>> {
+    let values = value?.as_array()?;
+    Some(
+        values
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .collect(),
+    )
+}
+
+pub(super) fn insert_nonblank(fields: &mut BTreeMap<String, String>, name: &str, value: String) {
     let value = value.trim();
     if !value.is_empty() {
         fields.insert(name.to_owned(), value.to_owned());
     }
 }
 
-fn insert_json_string(object: &mut Map<String, Value>, name: &str, value: String) {
+pub(super) fn insert_json_string(object: &mut Map<String, Value>, name: &str, value: String) {
     let value = value.trim();
     if !value.is_empty() {
         object.insert(name.to_owned(), Value::String(value.to_owned()));
+    }
+}
+
+pub(super) fn insert_json_true(
+    object: &mut Map<String, Value>,
+    name: &str,
+    raw: &Value,
+    provider_name: &str,
+) {
+    if raw
+        .get(provider_name)
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        object.insert(name.to_owned(), Value::Bool(true));
+    }
+}
+
+pub(super) fn insert_json_integer(
+    object: &mut Map<String, Value>,
+    name: &str,
+    raw: &Value,
+    provider_name: &str,
+) {
+    if let Some(value) = raw.get(provider_name).and_then(Value::as_i64)
+        && value != 0
+    {
+        object.insert(name.to_owned(), Value::Number(value.into()));
+    }
+}
+
+pub(super) fn insert_json_object(
+    object: &mut Map<String, Value>,
+    name: &str,
+    value: Option<&Value>,
+) {
+    if let Some(value @ Value::Object(fields)) = value
+        && !fields.is_empty()
+    {
+        object.insert(name.to_owned(), value.clone());
     }
 }
 
