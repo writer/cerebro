@@ -9,7 +9,7 @@ use crate::source_execution::{
     SourceWorkerRuntimeMetadataV2, SourceWorkerSafeReceiptV1, response_digest,
 };
 
-use super::{ANTHROPIC_SOURCE_EXECUTION_ADAPTERS, DEFAULT_BASE_URL};
+use super::catalog::{ANTHROPIC_SOURCE_EXECUTION_ADAPTERS, DEFAULT_BASE_URL};
 use crate::anthropic::{AnthropicAuthentication, AnthropicFamily};
 
 const OBSERVED_AT_MILLIS: i64 = 1_780_272_000_000;
