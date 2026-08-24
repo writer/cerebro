@@ -11,6 +11,14 @@ use super::*;
 
 const AGENT_PAGE: &[u8] = include_bytes!("fixtures/agent_page.json");
 const GO_PARITY: &str = include_str!("fixtures/agent_go_parity.json");
+const APPLICATION_RESPONSE: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../sources/sentinelone/testdata/api/application/list_applications/response.json"
+));
+const APPLICATION_GO_PARITY: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../sources/sentinelone/testdata/read_application.json"
+));
 
 fn context(cursor: &str) -> SourceWorkerExecutionContextV1 {
     SourceWorkerExecutionContextV1 {
@@ -778,6 +786,241 @@ fn threat_runtime_preserves_go_event_shape_and_strips_nested_secret_fields() {
             .payload_json
             .windows(b"provider-secret-shape".len())
             .any(|window| window == b"provider-secret-shape")
+    );
+}
+
+#[test]
+fn application_runtime_resumes_between_agent_discovery_and_inventory_fetch() {
+    let dispatcher = crate::source_execution::SourceExecutionDispatcher;
+    let plan = dispatcher
+        .compile_plan(
+            &crate::source_execution::SourceExecutionSelectionRequestV1 {
+                source_id: SOURCE_ID.to_owned(),
+                family_id: "application".to_owned(),
+            },
+        )
+        .unwrap();
+    assert_eq!(plan.path, "/web/api/v2.1/agents");
+    assert_eq!(plan.event_kind, "sentinelone.application_inventory");
+    assert_eq!(plan.required_payload_fields, ["agent_id"]);
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: HashMap::from([
+            (
+                "base_url".to_owned(),
+                "https://sentinelone.example.test".to_owned(),
+            ),
+            ("per_page".to_owned(), "10".to_owned()),
+        ]),
+        prior_terminal_watermark_unix_millis: 0,
+        prior_checkpoint: String::new(),
+    };
+
+    let discovery_context = SourceWorkerExecutionContextV1 {
+        tenant_id: "sentinelone.example.test".to_owned(),
+        runtime_id: "sentinelone-application-runtime".to_owned(),
+        logical_page_id: "application-discovery-page".to_owned(),
+        prior_cursor: String::new(),
+        runtime_generation: 7,
+        lease_generation: 11,
+        observed_at_unix_millis: 1_776_906_123_456,
+    };
+    let discovery = dispatcher
+        .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(discovery_context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        })
+        .unwrap();
+    assert_eq!(
+        discovery.request.as_ref().unwrap().url,
+        "https://sentinelone.example.test/web/api/v2.1/agents?limit=1"
+    );
+    let discovery_result = dispatcher
+        .dispatch_decode_v2(&SourceWorkerDecodeEnvelopeV2 {
+            request: Some(SourceWorkerDecodeRequestV1 {
+                plan: Some(plan.clone()),
+                status_code: 200,
+                response_body: br#"{"data":[{"id":"agent-fixture-1"}],"pagination":{"nextCursor":"agent-next"}}"#.to_vec(),
+                logical_page_id: discovery_context.logical_page_id.clone(),
+                request_intent_digest: discovery
+                    .request
+                    .as_ref()
+                    .unwrap()
+                    .request_intent_digest
+                    .clone(),
+                receipt: None,
+                context: Some(discovery_context),
+            }),
+            metadata: Some(metadata.clone()),
+            response_headers: HashMap::new(),
+            execution_intent_digest_sha256: discovery.execution_intent_digest_sha256,
+            response_headers_sha256: String::new(),
+        })
+        .unwrap()
+        .result
+        .unwrap();
+    assert!(discovery_result.records.is_empty());
+    assert!(
+        discovery_result
+            .next_cursor
+            .starts_with("cerebro-sentinelone-application-v1:")
+    );
+    assert_eq!(
+        durable_checkpoint_cursor(&plan, &discovery_result),
+        Some(discovery_result.next_cursor.clone())
+    );
+
+    let inventory_context = SourceWorkerExecutionContextV1 {
+        logical_page_id: "application-inventory-page".to_owned(),
+        prior_cursor: discovery_result.next_cursor,
+        ..context("")
+    };
+    let inventory = dispatcher
+        .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(inventory_context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        })
+        .unwrap();
+    assert_eq!(
+        inventory.request.as_ref().unwrap().url,
+        "https://sentinelone.example.test/web/api/v2.1/agents/applications?ids=agent-fixture-1"
+    );
+    let inventory_result = dispatcher
+        .dispatch_decode_v2(&SourceWorkerDecodeEnvelopeV2 {
+            request: Some(SourceWorkerDecodeRequestV1 {
+                plan: Some(plan.clone()),
+                status_code: 200,
+                response_body: APPLICATION_RESPONSE.to_vec(),
+                logical_page_id: inventory_context.logical_page_id.clone(),
+                request_intent_digest: inventory
+                    .request
+                    .as_ref()
+                    .unwrap()
+                    .request_intent_digest
+                    .clone(),
+                receipt: None,
+                context: Some(inventory_context),
+            }),
+            metadata: Some(metadata.clone()),
+            response_headers: HashMap::new(),
+            execution_intent_digest_sha256: inventory.execution_intent_digest_sha256,
+            response_headers_sha256: String::new(),
+        })
+        .unwrap()
+        .result
+        .unwrap();
+    assert_eq!(inventory_result.next_cursor, "agent-next");
+    assert_eq!(inventory_result.records.len(), 1);
+    let record = &inventory_result.records[0];
+    assert_eq!(
+        record.event_id,
+        "sentinelone-application-sentinelone.example.test-agent-fixture-1-Example_Inc::Example_App::1.0.0"
+    );
+    assert_eq!(record.occurred_at_unix_millis, 1_776_643_200_000);
+    let expected: Value = serde_json::from_str(APPLICATION_GO_PARITY).unwrap();
+    assert_eq!(
+        serde_json::to_value(&record.attributes).unwrap(),
+        expected[0]["attributes"]
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&record.payload_json).unwrap(),
+        expected[0]["payload"]
+    );
+
+    let resumed_context = SourceWorkerExecutionContextV1 {
+        logical_page_id: "application-next-agent-page".to_owned(),
+        prior_cursor: inventory_result.next_cursor,
+        ..context("")
+    };
+    let resumed = dispatcher
+        .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan),
+                context: Some(resumed_context),
+            }),
+            metadata: Some(metadata),
+        })
+        .unwrap();
+    assert_eq!(
+        resumed.request.unwrap().url,
+        "https://sentinelone.example.test/web/api/v2.1/agents?limit=1&cursor=agent-next"
+    );
+}
+
+#[test]
+fn configured_application_identity_preserves_the_bounded_go_compatibility_tail() {
+    let dispatcher = crate::source_execution::SourceExecutionDispatcher;
+    let plan = dispatcher
+        .compile_plan(
+            &crate::source_execution::SourceExecutionSelectionRequestV1 {
+                source_id: SOURCE_ID.to_owned(),
+                family_id: "application".to_owned(),
+            },
+        )
+        .unwrap();
+    let execution_context = context("");
+    let metadata = SourceWorkerRuntimeMetadataV2 {
+        public_config: HashMap::from([
+            (
+                "base_url".to_owned(),
+                "https://sentinelone.example.test".to_owned(),
+            ),
+            ("agent_id".to_owned(), "agent-fixture-1".to_owned()),
+        ]),
+        prior_terminal_watermark_unix_millis: 0,
+        prior_checkpoint: String::new(),
+    };
+    let planned = dispatcher
+        .dispatch_plan_v2(&SourceWorkerPlanEnvelopeV2 {
+            request: Some(SourceWorkerPlanRequestV1 {
+                plan: Some(plan.clone()),
+                context: Some(execution_context.clone()),
+            }),
+            metadata: Some(metadata.clone()),
+        })
+        .unwrap();
+    assert!(
+        planned
+            .request
+            .as_ref()
+            .unwrap()
+            .url
+            .ends_with("/web/api/v2.1/agents/applications?ids=agent-fixture-1")
+    );
+    let body = br#"{"data":[{"name":"(Example App)"}]}"#;
+    let decoded = dispatcher
+        .dispatch_decode_v2(&SourceWorkerDecodeEnvelopeV2 {
+            request: Some(SourceWorkerDecodeRequestV1 {
+                plan: Some(plan),
+                status_code: 200,
+                response_body: body.to_vec(),
+                logical_page_id: execution_context.logical_page_id.clone(),
+                request_intent_digest: planned
+                    .request
+                    .as_ref()
+                    .unwrap()
+                    .request_intent_digest
+                    .clone(),
+                receipt: None,
+                context: Some(execution_context),
+            }),
+            metadata: Some(metadata),
+            response_headers: HashMap::new(),
+            execution_intent_digest_sha256: planned.execution_intent_digest_sha256,
+            response_headers_sha256: String::new(),
+        })
+        .unwrap()
+        .result
+        .unwrap();
+    assert_eq!(decoded.records.len(), 1);
+    assert_eq!(
+        decoded.records[0].event_id,
+        "sentinelone-application-sentinelone.example.test-agent-fixture-1-(Example_App)"
     );
 }
 
