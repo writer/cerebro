@@ -192,6 +192,8 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 		return "Authorization", append([]byte("Bearer "), credential...), nil
 	case "jumpcloud.x_api_key":
 		return "X-Api-Key", append([]byte(nil), credential...), nil
+	case "sentinelone.api_token":
+		return "Authorization", append([]byte("ApiToken "), credential...), nil
 	default:
 		return "", nil, fmt.Errorf("%w: credential operation is not registered", ErrWorkerContract)
 	}

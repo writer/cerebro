@@ -12,7 +12,9 @@ mod model;
 mod response;
 mod source_execution_adapter;
 
-pub(crate) use source_execution_adapter::SentinelOneAgentSourceExecutionAdapter;
+pub(crate) use source_execution_adapter::{
+    SentinelOneAgentSourceExecutionAdapter, durable_checkpoint_cursor,
+};
 
 pub use kernel::SentinelOneKernel;
 pub use model::{

@@ -71,9 +71,10 @@ func TestProviderResumeFailsClosedForMalformedAndCrossFamilyCheckpoints(t *testi
 func TestPublicExecutionConfigNeverCarriesCredentialMaterial(t *testing.T) {
 	public := PublicExecutionConfig(map[string]string{
 		"family": "user", "tailnet": "example.com", "base_url": "https://api.tailscale.com/api/v2",
-		"token": "secret-token", "graph_token": "secret-graph-token", "tenant_id": "tenant-1",
+		"site_id": "site-1",
+		"token":   "secret-token", "graph_token": "secret-graph-token", "tenant_id": "tenant-1",
 	})
-	if len(public) != 3 || public["token"] != "" || public["graph_token"] != "" || public["tenant_id"] != "" {
+	if len(public) != 4 || public["site_id"] != "site-1" || public["token"] != "" || public["graph_token"] != "" || public["tenant_id"] != "" {
 		t.Fatalf("public config leaked private fields: %#v", public)
 	}
 }

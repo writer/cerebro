@@ -114,6 +114,11 @@ impl SourceExecutionDispatcher {
         {
             return Ok(AZURE_AUTHORIZATION_POLICY.compiled_plan());
         }
+        if request.source_id == SENTINELONE_AGENT.source_id()
+            && request.family_id == SENTINELONE_AGENT.family_id()
+        {
+            return Ok(SENTINELONE_AGENT.compiled_plan());
+        }
         if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
             request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
         }) {
