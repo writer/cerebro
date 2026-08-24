@@ -13,16 +13,18 @@ func TestPublicSourceExecutionConfigCarriesTailscaleScopeWithoutSecrets(t *testi
 	got := sourceworker.PublicExecutionConfig(map[string]string{
 		"base_url":    " https://api.tailscale.com/api/v2 ",
 		"family":      " user ",
+		"page_size":   " 100 ",
 		"per_page":    " 100 ",
 		"tailnet":     " example.test ",
 		"token":       "must-not-cross",
 		"graph_token": "must-not-cross-either",
 	})
 	want := map[string]string{
-		"base_url": "https://api.tailscale.com/api/v2",
-		"family":   "user",
-		"per_page": "100",
-		"tailnet":  "example.test",
+		"base_url":  "https://api.tailscale.com/api/v2",
+		"family":    "user",
+		"page_size": "100",
+		"per_page":  "100",
+		"tailnet":   "example.test",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("PublicExecutionConfig() = %#v, want %#v", got, want)
