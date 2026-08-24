@@ -54,6 +54,7 @@ mod panopticon;
 mod protocol;
 mod provider_failure;
 mod runtime_config;
+mod runtime_health;
 mod sdk;
 mod security_tooling_map;
 mod sentinelone;
@@ -272,6 +273,10 @@ pub use provider_failure::{
 pub use runtime_config::{
     RuntimeConfigError, contains_credential_references, parse_credential_reference,
     resolve_environment_references,
+};
+pub use runtime_health::{
+    RuntimeHealthEvidence, RuntimeNextAction, RuntimeReadiness, RuntimeReadinessDecision,
+    evaluate_runtime_readiness,
 };
 pub use sdk::{
     SdkIntegrationPostureEvent, SdkPushedTelemetry, SdkTelemetryError,

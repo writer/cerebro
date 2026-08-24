@@ -218,6 +218,20 @@ func TestCredentialHeaderAppliesOnlyTheClosedSentinelOneScheme(t *testing.T) {
 	}
 }
 
+func TestCredentialHeaderAppliesOnlyTheClosedTwilioScheme(t *testing.T) {
+	header, value, err := credentialHeader("twilio.basic", []byte("synthetic-basic-value"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "Authorization" || string(value) != "Basic synthetic-basic-value" {
+		t.Fatal("Twilio credential operation did not produce the exact provider scheme")
+	}
+	if _, _, err := credentialHeader("twilio.bearer", []byte("synthetic-basic-value")); !errors.Is(err, ErrWorkerContract) {
+		t.Fatalf("unregistered credential operation error = %v, want ErrWorkerContract", err)
+	}
+}
+
 func TestSafeResponseHeadersRedactsAndBounds(t *testing.T) {
 	headers := http.Header{
 		"X-Result-Count": {"2"}, "X-Limit": {"2"}, "X-Search_after": {`{"id":"event-2"}`}, "Retry-After": {"30"},

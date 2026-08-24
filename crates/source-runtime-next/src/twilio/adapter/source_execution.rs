@@ -1,8 +1,7 @@
 //! Canonical source-execution edge for Twilio accounts.
 //!
 //! This file intentionally defines no wire messages. It compiles against the
-//! shared `source_execution` API and remains unregistered until the shared
-//! runtime adds it to the closed dispatcher.
+//! shared `source_execution` API and is selected only by the closed dispatcher.
 
 use std::convert::TryFrom;
 
@@ -12,10 +11,11 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::source_execution::{
     SourceExecutionAdapter, SourceExecutionError, SourceExecutionPlanV1,
     SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1, SourceWorkerExecutionContextV1,
-    SourceWorkerHttpRequestV1, SourceWorkerPlanRequestV1, SourceWorkerRecordV1,
+    SourceWorkerHttpExecutionV2, SourceWorkerHttpRequestV1, SourceWorkerPlanEnvelopeV2,
+    SourceWorkerPlanRequestV1, SourceWorkerRecordV1, canonical_http_execution_digest,
     canonical_plan_digest, canonical_request_intent_digest, canonical_result_digest,
     validate_and_deduplicate_records, validate_cursor, validate_execution_context,
-    validate_safe_receipt,
+    validate_runtime_metadata, validate_safe_receipt,
 };
 
 use super::{TwilioAccountsAdapter, TwilioAccountsAdapterError};
@@ -36,6 +36,31 @@ pub(crate) static TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER: TwilioAccountsSource
 /// Stateless canonical edge. Trusted execution scope arrives on every call.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct TwilioAccountsSourceExecutionAdapter;
+
+impl TwilioAccountsSourceExecutionAdapter {
+    pub(crate) fn compiled_plan(&self) -> SourceExecutionPlanV1 {
+        let mut plan = SourceExecutionPlanV1 {
+            plan_id: PLAN_ID.to_owned(),
+            source_id: TwilioAccountsAdapter::source_id().to_owned(),
+            family_id: TwilioAccountsAdapter::family_id().to_owned(),
+            provider_kernel: TwilioAccountsAdapter::provider_kernel().to_owned(),
+            method: "GET".to_owned(),
+            origin: TwilioAccountsAdapter::default_origin().to_owned(),
+            path: TwilioAccountsAdapter::path().to_owned(),
+            record_selector: RECORD_SELECTOR.to_owned(),
+            id_field: ID_FIELD.to_owned(),
+            singleton_fallback_id: String::new(),
+            max_response_bytes: TwilioAccountsAdapter::max_response_bytes(),
+            event_kind: EVENT_KIND.to_owned(),
+            schema_ref: SCHEMA_REF.to_owned(),
+            required_attributes: REQUIRED_ATTRIBUTES.map(str::to_owned).to_vec(),
+            required_payload_fields: REQUIRED_PAYLOAD_FIELDS.map(str::to_owned).to_vec(),
+            plan_digest_sha256: String::new(),
+        };
+        plan.plan_digest_sha256 = canonical_plan_digest(&plan);
+        plan
+    }
+}
 
 impl SourceExecutionAdapter for TwilioAccountsSourceExecutionAdapter {
     fn source_id(&self) -> &'static str {
@@ -97,6 +122,50 @@ impl SourceExecutionAdapter for TwilioAccountsSourceExecutionAdapter {
         };
         output.request_intent_digest = canonical_request_intent_digest(plan, context, &output);
         Ok(output)
+    }
+
+    fn plan_v2(
+        &self,
+        envelope: &SourceWorkerPlanEnvelopeV2,
+    ) -> Result<SourceWorkerHttpExecutionV2, SourceExecutionError> {
+        let request = envelope
+            .request
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let plan = request
+            .plan
+            .as_ref()
+            .ok_or(SourceExecutionError::InvalidPlan)?;
+        let context = request
+            .context
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        let metadata = envelope
+            .metadata
+            .as_ref()
+            .ok_or(SourceExecutionError::MissingExecutionIdentity)?;
+        validate_runtime_metadata(metadata)?;
+        let configured_origin = metadata
+            .public_config
+            .get("base_url")
+            .map(String::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(TwilioAccountsAdapter::default_origin());
+        if configured_origin != TwilioAccountsAdapter::default_origin() {
+            return Err(SourceExecutionError::InvalidPlan);
+        }
+        let planned = self.plan(request)?;
+        let mut execution = SourceWorkerHttpExecutionV2 {
+            request: Some(planned),
+            body: Vec::new(),
+            declared_headers: Default::default(),
+            execution_intent_digest_sha256: String::new(),
+            credential_operation: TwilioAccountsAdapter::credential_operation().to_owned(),
+            allowed_origin: plan.origin.clone(),
+        };
+        execution.execution_intent_digest_sha256 =
+            canonical_http_execution_digest(plan, context, metadata, &execution);
+        Ok(execution)
     }
 
     fn decode(
@@ -210,22 +279,7 @@ fn validated_plan_context<'a>(
 }
 
 fn validate_accounts_plan(plan: &SourceExecutionPlanV1) -> Result<(), SourceExecutionError> {
-    let exact = plan.plan_id == PLAN_ID
-        && plan.source_id == TwilioAccountsAdapter::source_id()
-        && plan.family_id == TwilioAccountsAdapter::family_id()
-        && plan.provider_kernel == TwilioAccountsAdapter::provider_kernel()
-        && plan.method == "GET"
-        && plan.origin == TwilioAccountsAdapter::default_origin()
-        && plan.path == TwilioAccountsAdapter::path()
-        && plan.record_selector == RECORD_SELECTOR
-        && plan.id_field == ID_FIELD
-        && plan.singleton_fallback_id.is_empty()
-        && plan.max_response_bytes == TwilioAccountsAdapter::max_response_bytes()
-        && plan.event_kind == EVENT_KIND
-        && plan.schema_ref == SCHEMA_REF
-        && plan.required_attributes == REQUIRED_ATTRIBUTES
-        && plan.required_payload_fields == REQUIRED_PAYLOAD_FIELDS
-        && canonical_plan_digest(plan) == plan.plan_digest_sha256;
+    let exact = plan == &TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.compiled_plan();
     if exact {
         Ok(())
     } else {
@@ -345,26 +399,7 @@ mod tests {
     }
 
     fn exact_plan() -> SourceExecutionPlanV1 {
-        let mut plan = SourceExecutionPlanV1 {
-            plan_id: PLAN_ID.to_owned(),
-            source_id: TwilioAccountsAdapter::source_id().to_owned(),
-            family_id: TwilioAccountsAdapter::family_id().to_owned(),
-            provider_kernel: TwilioAccountsAdapter::provider_kernel().to_owned(),
-            method: "GET".to_owned(),
-            origin: TwilioAccountsAdapter::default_origin().to_owned(),
-            path: TwilioAccountsAdapter::path().to_owned(),
-            record_selector: RECORD_SELECTOR.to_owned(),
-            id_field: ID_FIELD.to_owned(),
-            singleton_fallback_id: String::new(),
-            max_response_bytes: TwilioAccountsAdapter::max_response_bytes(),
-            event_kind: EVENT_KIND.to_owned(),
-            schema_ref: SCHEMA_REF.to_owned(),
-            required_attributes: REQUIRED_ATTRIBUTES.map(str::to_owned).to_vec(),
-            required_payload_fields: REQUIRED_PAYLOAD_FIELDS.map(str::to_owned).to_vec(),
-            plan_digest_sha256: String::new(),
-        };
-        plan.plan_digest_sha256 = canonical_plan_digest(&plan);
-        plan
+        TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.compiled_plan()
     }
 
     fn decode_request(status_code: u32) -> SourceWorkerDecodeRequestV1 {

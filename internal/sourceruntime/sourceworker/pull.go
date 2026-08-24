@@ -1,6 +1,7 @@
 package sourceworker
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
@@ -39,6 +40,8 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		return familyID, familyID == "agent"
 	case "tailscale":
 		return TailscaleFamily(sourceID, familyID)
+	case "twilio":
+		return familyID, familyID == "accounts"
 	default:
 		return "", false
 	}
@@ -49,6 +52,21 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 // to the Go host; callers must never include the resolved value in worker
 // metadata, receipts, or errors.
 func CredentialBinding(sourceID string, references, resolved map[string]string) (string, string) {
+	if strings.TrimSpace(sourceID) == "twilio" {
+		username := strings.TrimSpace(resolved["username"])
+		passwordReference := strings.TrimSpace(references["password"])
+		password := strings.TrimSpace(resolved["password"])
+		if username == "" || passwordReference == "" || password == "" {
+			return "", ""
+		}
+		basic := make([]byte, 0, len(username)+1+len(password))
+		basic = append(basic, username...)
+		basic = append(basic, ':')
+		basic = append(basic, password...)
+		encoded := base64.StdEncoding.EncodeToString(basic)
+		clear(basic)
+		return passwordReference, encoded
+	}
 	keys := []string{"graph_token", "token"}
 	if strings.TrimSpace(sourceID) == "jumpcloud" {
 		keys = []string{"api_key", "api_token", "token"}

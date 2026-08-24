@@ -62,13 +62,19 @@ import {
 import {
   formatDuration,
   normalizeRuntime,
-  sourceHealthBreakdown,
+  normalizeSourceRuntimeSummary,
+  runtimeNextActionLabel,
   type ConnectorRuntime,
   type SourceReadiness,
 } from "@/lib/connector-runtime";
 import { useQueryParamState } from "@/lib/query-params";
 
 type LibraryTab = "all" | "attention" | "connected" | "available" | "backlog";
+
+type ConnectorRuntimeHealthResponse = {
+  runtimes?: unknown[];
+  source_summaries?: unknown[];
+};
 
 const inputClass = "control-input mt-1 w-full px-3 py-2 text-[13px]";
 const labelClass = "text-[11px] font-semibold text-[var(--text-muted)]";
@@ -260,21 +266,11 @@ function ConnectorLibraryRow({
 }
 
 function runtimeNeedsAction(runtime: ConnectorRuntime) {
-  return runtime.health !== "healthy" ||
-    runtime.graph_freshness !== "current" ||
-    runtime.cursor_state === "pending" ||
-    runtime.schedule_context_configured === false;
+  return runtime.readiness !== "healthy";
 }
 
 function runtimeIssueTitle(runtime: ConnectorRuntime) {
-  if (runtime.graph_freshness === "failed") return "Graph projection failed";
-  if (runtime.health === "degraded") return "Sync degraded";
-  if (runtime.health === "stale") return "Sync is stale";
-  if (runtime.cursor_state === "pending") return "Cursor is pending";
-  if (runtime.graph_freshness === "behind") return "Graph projection is behind";
-  if (runtime.graph_freshness === "not_observed" || runtime.graph_freshness === "unknown") return "Graph telemetry is missing";
-  if (runtime.schedule_context_configured === false) return "Schedule context missing";
-  return "Runtime needs review";
+  return runtimeNextActionLabel(runtime.next_action);
 }
 
 function RuntimeIssueQueue({
@@ -706,25 +702,31 @@ export default function ConnectorsPage() {
   const debouncedSourceID = useDebouncedValue(sourceID.trim());
 
   const libraryQuery = useConnectorLibraryQuery({ tenantID: debouncedTenantID, view: "summary" });
+  const runtimeHealthQuery = useGRCQuery<ConnectorRuntimeHealthResponse>(withQuery("/v1/source-runtimes/health", {
+    limit: CONNECTOR_RUNTIME_LIMIT,
+  }));
   const definitionsQuery = useGRCQuery<ConnectorDefinitionListResponse>(withQuery("/connector-definitions", { tenant_id: debouncedTenantID }));
 
   const boundedSourceRuntimeRows = useMemo(
     () => grcBoundedRows({
-      rows: extractRecords(libraryQuery.data, ["runtimes", "source_runtimes"])
+      rows: extractRecords(runtimeHealthQuery.data, ["runtimes"])
         .map((runtime) => normalizeRuntime(runtime))
         .filter((runtime) => runtime.runtime_id && runtime.source_id),
       limit: CONNECTOR_RUNTIME_LIMIT,
     }),
-    [libraryQuery.data],
+    [runtimeHealthQuery.data],
   );
   const sourceRuntimes = boundedSourceRuntimeRows.rows;
+  const sourceSummaries = useMemo(
+    () => extractRecords(runtimeHealthQuery.data, ["source_summaries"]).map(normalizeSourceRuntimeSummary),
+    [runtimeHealthQuery.data],
+  );
 
   const connectorView = useMemo(() => {
     const library = libraryQuery.data?.connectors ?? [];
-    const sources = sourceRuntimes.length > 0 ? sourceHealthBreakdown(sourceRuntimes) : [];
-    const cards = buildConnectorCards(library, sources);
+    const cards = buildConnectorCards(library, sourceSummaries);
     return { cards };
-  }, [libraryQuery.data, sourceRuntimes]);
+  }, [libraryQuery.data, sourceSummaries]);
 
   const { cards } = connectorView;
   const libraryTab = (libraryTabs.some((tab) => tab.id === libraryTabValue) ? libraryTabValue : "all") as LibraryTab;
@@ -772,9 +774,10 @@ export default function ConnectorsPage() {
     const status = compactConnectorStatus(card);
     return status !== "healthy" && status !== "not_configured";
   });
-  const libraryLoading = libraryQuery.loading && !libraryQuery.data;
-  const runtimeState = runtimeStateForError(libraryQuery.error);
-  const metricState: RuntimeState = libraryQuery.error ? runtimeState : libraryLoading ? "loading" : "ready";
+  const libraryLoading = (libraryQuery.loading && !libraryQuery.data) || (runtimeHealthQuery.loading && !runtimeHealthQuery.data);
+  const connectorError = libraryQuery.error || runtimeHealthQuery.error;
+  const runtimeState = runtimeStateForError(connectorError);
+  const metricState: RuntimeState = connectorError ? runtimeState : libraryLoading ? "loading" : "ready";
   const totalConnections = cards.reduce((sum, card) => sum + connectorRuntimeTotal(card), 0);
   const actionConnections = cards.reduce((sum, card) => sum + connectorAttentionTotal(card), 0);
   const apiProofMetrics = useMemo(() => providerAPIProofMetrics(cards), [cards]);
@@ -820,7 +823,7 @@ export default function ConnectorsPage() {
               <Plus className="h-4 w-4" />
               Add integration
             </button>
-            <button type="button" onClick={() => { void libraryQuery.reload(); void definitionsQuery.reload(); }} className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">
+            <button type="button" onClick={() => { void libraryQuery.reload(); void runtimeHealthQuery.reload(); void definitionsQuery.reload(); }} className="secondary-button inline-flex items-center gap-2 px-3 py-2 text-[13px]">
               <RefreshCw className="h-4 w-4" />
               Refresh
             </button>
@@ -861,6 +864,7 @@ export default function ConnectorsPage() {
 
       {libraryLoading && <LoadingBlock label="Loading connectors..." />}
       {libraryQuery.error && <ErrorBlock error={libraryQuery.error} onRetry={() => void libraryQuery.reload()} recoveryDetail="Connector data will appear when the API is reachable." />}
+      {runtimeHealthQuery.error && <ErrorBlock error={runtimeHealthQuery.error} onRetry={() => void runtimeHealthQuery.reload()} recoveryDetail="Connection health will appear when runtime evidence is reachable." />}
 
       <div className="space-y-5">
         <Panel
