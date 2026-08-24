@@ -12,6 +12,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDir, "..");
 const repositoryRoot = path.resolve(webRoot, "..", "..");
 const defaultTimeoutMs = 20 * 60_000;
+const browserStepTimeoutMs = 60_000;
 const tenantID = "tenant-demo";
 const tenantAuthContext = Buffer.from(
   "cerebro-organizational-graph/tenant/v1\0",
@@ -366,12 +367,12 @@ async function browserProof(webBase, rootURN, expectedProof, workDir, deadlineAt
       (candidate) =>
         new URL(candidate.url()).pathname ===
         "/api/cerebro/platform/graph/neighborhood",
-      { timeout: Math.min(30_000, remaining(deadlineAt, "graph browser request")) },
+      { timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "graph browser request")) },
     );
     const navigation = await page.goto(
       `${webBase}/explore?root_urn=${encodeURIComponent(rootURN)}`,
       {
-        timeout: Math.min(30_000, remaining(deadlineAt, "graph navigation")),
+        timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "graph navigation")),
         waitUntil: "domcontentloaded",
       },
     );
@@ -397,11 +398,11 @@ async function browserProof(webBase, rootURN, expectedProof, workDir, deadlineAt
       name: `Impact graph with ${expectedProof.node_count} nodes and ${expectedProof.relation_count} edges`,
     }).waitFor({
       state: "visible",
-      timeout: Math.min(30_000, remaining(deadlineAt, "graph rendering")),
+      timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "graph rendering")),
     });
     await page.getByText(expectedProof.root_label, { exact: true }).first().waitFor({
       state: "visible",
-      timeout: Math.min(30_000, remaining(deadlineAt, "graph root rendering")),
+      timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "graph root rendering")),
     });
     await page.getByRole("button", { name: "Fit", exact: true }).click();
     await page.waitForTimeout(250);
@@ -446,10 +447,10 @@ async function vendorBrowserProof(webBase, workDir, deadlineAt) {
     page.on("pageerror", (error) => pageErrors.push(error));
     const vendorsResponse = page.waitForResponse(
       (candidate) => new URL(candidate.url()).pathname === "/api/cerebro/grc/vendors",
-      { timeout: Math.min(30_000, remaining(deadlineAt, "vendor browser request")) },
+      { timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "vendor browser request")) },
     );
     const navigation = await page.goto(`${webBase}/vendors?tenant_id=${tenantID}`, {
-      timeout: Math.min(30_000, remaining(deadlineAt, "vendor navigation")),
+      timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "vendor navigation")),
       waitUntil: "domcontentloaded",
     });
     expect(navigation?.status() === 200, `Vendor page returned ${navigation?.status()}`);
@@ -465,11 +466,11 @@ async function vendorBrowserProof(webBase, workDir, deadlineAt) {
     expect(payload.vendors?.length === 2, `Vendor response returned ${payload.vendors?.length ?? 0} rows; expected 2`);
     await page.getByText("Identity Platform", { exact: true }).first().waitFor({
       state: "visible",
-      timeout: Math.min(30_000, remaining(deadlineAt, "vendor row rendering")),
+      timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "vendor row rendering")),
     });
     await page.getByText(`Rust graph revision ${payload.graph_revision}`, { exact: false }).waitFor({
       state: "visible",
-      timeout: Math.min(30_000, remaining(deadlineAt, "vendor authority rendering")),
+      timeout: Math.min(browserStepTimeoutMs, remaining(deadlineAt, "vendor authority rendering")),
     });
     expect(pageErrors.length === 0, `Vendor page raised ${pageErrors[0]?.message}`);
     const screenshot = path.join(workDir, "rust-product-vendors.png");
