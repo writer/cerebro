@@ -26,7 +26,6 @@ import (
 	googledrivesource "github.com/writer/cerebro/sources/google_drive"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	grcsource "github.com/writer/cerebro/sources/grc"
-	jumpcloudsource "github.com/writer/cerebro/sources/jumpcloud"
 	kandjisource "github.com/writer/cerebro/sources/kandji"
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	kubernetessource "github.com/writer/cerebro/sources/kubernetes"
@@ -162,12 +161,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "grc",
 		load: func() (sourcecdk.Source, error) {
 			return grcsource.New()
-		},
-	},
-	{
-		name: "jumpcloud",
-		load: func() (sourcecdk.Source, error) {
-			return jumpcloudsource.New()
 		},
 	},
 	{
