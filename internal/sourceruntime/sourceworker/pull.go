@@ -41,6 +41,11 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 			familyID = "issue"
 		}
 		return familyID, familyID == "issue"
+	case "pagerduty":
+		if familyID == "" {
+			familyID = "user"
+		}
+		return familyID, familyID == "user"
 	case "sentinelone":
 		switch familyID {
 		case "activity", "agent", "application", "exclusion", "group", "site", "threat":

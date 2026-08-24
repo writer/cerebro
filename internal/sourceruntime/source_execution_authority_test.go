@@ -163,6 +163,78 @@ func TestOtherAzureFamilyRemainsGoCompatible(t *testing.T) {
 	}
 }
 
+func TestPutPagerDutyUserRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "pagerduty"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &runtimePlanWorker{}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+		Id: "pagerduty-user-runtime", SourceId: "pagerduty", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "user", "per_page": "100",
+			"token": sourceconfig.CredentialReferenceValue("pagerduty", "token"),
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.checkCalls != 0 || worker.planCalls != 1 {
+		t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+	}
+	if worker.selection.SourceID != "pagerduty" || worker.selection.FamilyID != "user" {
+		t.Fatalf("Rust selection = %#v", worker.selection)
+	}
+	if worker.publicConfig["family"] != "user" || worker.publicConfig["per_page"] != "100" || worker.publicConfig["token"] != "" {
+		t.Fatalf("Rust public config = %#v", worker.publicConfig)
+	}
+}
+
+func TestPagerDutyUserNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "pagerduty"}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := &Service{sourceWorker: worker}
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "pagerduty-user-runtime", SourceId: "pagerduty", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "user", "per_page": "100",
+			"token": sourceconfig.CredentialReferenceValue("pagerduty", "token"),
+		},
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{
+		"family": "user", "per_page": "100", "token": "host-only-secret",
+	})
+
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "pagerduty" || worker.selection.FamilyID != "user" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+	}
+}
+
+func TestOtherPagerDutyFamilyRemainsGoCompatible(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "pagerduty"}
+	service := &Service{sourceWorker: &runtimePlanWorker{}}
+	runtime := &cerebrov1.SourceRuntime{Id: "pagerduty-team-runtime", SourceId: "pagerduty", TenantId: "tenant-1"}
+	config := sourcecdk.NewConfig(map[string]string{"family": "team"})
+
+	if _, rustPage, err := service.readSourcePull(context.Background(), runtime, legacy, config, nil, nil, 1); err != nil {
+		t.Fatalf("readSourcePull() error = %v", err)
+	} else if rustPage {
+		t.Fatal("readSourcePull() reported a Rust page for a Go-authoritative PagerDuty family")
+	}
+	if legacy.readCalls != 1 {
+		t.Fatalf("Go Read calls = %d, want 1", legacy.readCalls)
+	}
+}
+
 func TestPutDigitalOceanDropletsRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
 	legacy := &runtimeAuthorityProbe{sourceID: "digitalocean"}
 	registry, err := sourcecdk.NewRegistry(legacy)
