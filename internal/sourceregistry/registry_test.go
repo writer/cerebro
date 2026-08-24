@@ -371,6 +371,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"jumpcloud",
 		"langchain",
 		"openai",
+		"sentinelone",
 		"tailscale",
 		"twilio",
 	}
@@ -387,7 +388,23 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 			t.Errorf("retired provider %q still has a static Go loader", sourceID)
 		}
 		if _, ok := registry.Get(sourceID); !ok {
-			t.Errorf("retired provider %q is not runnable through the catalog runtime", sourceID)
+			t.Errorf("retired provider %q is not registered through its current runtime", sourceID)
+		}
+	}
+}
+
+func TestWorkerCatalogSourcesKeepMetadataAndFailClosedWithoutWorkerRouting(t *testing.T) {
+	registry, err := Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sourceID := range workerCatalogSourceIDs {
+		source, ok := registry.Get(sourceID)
+		if !ok || source.Spec().GetId() != sourceID {
+			t.Fatalf("worker source %q is missing its portable catalog metadata", sourceID)
+		}
+		if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"family": "threat"})); !errors.Is(err, errWorkerCatalogExecutionRequired) {
+			t.Fatalf("worker source %q direct Check() error = %v, want fail-closed worker requirement", sourceID, err)
 		}
 	}
 }

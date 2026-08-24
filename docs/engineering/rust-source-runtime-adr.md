@@ -181,13 +181,17 @@ owner and generation remain current. The logical page identity is stable across
 process restarts, while tenant-scoped event identity makes a refetched singleton
 idempotent. A stale generation is rejected before append and by the final
 Postgres checkpoint transaction. The closed Rust dispatcher and durable runtime
-authority also own `sentinelone.agent`, `sentinelone.activity`,
+authority own all seven SentinelOne families: `sentinelone.agent`,
+`sentinelone.activity`, `sentinelone.application_inventory`,
 `sentinelone.exclusion`, `sentinelone.group`, `sentinelone.site`, and
-`sentinelone.threat`. The trusted host still owns SentinelOne credential
+`sentinelone.threat`. Application inventory persists a bounded continuation
+between agent discovery and the per-agent inventory request, so interruption
+cannot skip an agent. The trusted host still owns SentinelOne credential
 redemption and origin-constrained HTTP; Go still owns durable append, projection,
-and checkpoint transactions. Application inventory remains on compatibility
-execution until its multi-request fanout contract earns the same authority
-receipts.
+and checkpoint transactions. Source check, discovery, and read previews also
+route all seven families through the same credential-free Rust dispatcher and
+trusted credential adapter. The Go registry retains only the portable catalog
+metadata anchor; direct provider execution from that anchor fails closed.
 
 ## Why Rust, and where Rust is not the reason
 

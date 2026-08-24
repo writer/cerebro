@@ -146,6 +146,13 @@ impl SentinelOneRequest {
     pub const fn accept(&self) -> &'static str {
         "application/json"
     }
+
+    pub(crate) fn continuation_cursor(&self) -> Result<Option<String>, SentinelOneError> {
+        self.application_state
+            .as_ref()
+            .map(super::cursor::encode_application_cursor)
+            .transpose()
+    }
 }
 
 /// One normalized provider record produced by the SentinelOne kernel.

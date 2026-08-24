@@ -1,8 +1,8 @@
 //! SentinelOne adapters for the canonical source-execution protocol.
 //!
-//! The agent adapter remains the representative compatibility oracle. Direct
-//! family adapters live in a focused sibling module and reuse this module's
-//! request, receipt, status, identity, and checkpoint invariants.
+//! The agent adapter remains the representative event-contract oracle. Direct
+//! and application-fanout adapters live in focused sibling modules and reuse
+//! this module's request, receipt, status, identity, and checkpoint invariants.
 
 use crate::source_execution::{
     SourceExecutionAdapter, SourceExecutionError, SourceExecutionPlanV1,
@@ -18,6 +18,8 @@ use super::{
     SentinelOneError, SentinelOneFamily, SentinelOneFilters, SentinelOneKernel, SentinelOneOutcome,
 };
 
+#[path = "source_execution_adapter/application.rs"]
+mod application;
 #[path = "source_execution_adapter/direct.rs"]
 mod direct;
 #[path = "source_execution_adapter/error.rs"]
@@ -30,6 +32,7 @@ mod runtime;
 use error::SentinelOneAgentAdapterError;
 use normalization::normalize_agent_record;
 
+pub(crate) use application::SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER;
 pub(crate) use direct::SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS;
 
 const SOURCE_ID: &str = "sentinelone";
@@ -288,8 +291,10 @@ fn validate_provider_request(
     allowed_origin: &str,
     request: &super::SentinelOneRequest,
 ) -> Result<(), SentinelOneAgentAdapterError> {
+    let application_path = plan.family_id == SentinelOneFamily::Application.as_str()
+        && request.url().path() == SentinelOneFamily::Application.path();
     if request.url().origin().ascii_serialization() != allowed_origin
-        || request.url().path() != plan.path
+        || (request.url().path() != plan.path && !application_path)
         || request.authorization_scheme() != "ApiToken"
         || request.accept() != "application/json"
     {
@@ -360,7 +365,15 @@ pub(crate) fn durable_checkpoint_cursor(
                 && plan.family_id == adapter.family_id()
                 && plan.provider_kernel == adapter.provider_kernel()
         });
-    if !direct_family && (plan.source_id != SOURCE_ID || plan.family_id != FAMILY_ID) {
+    let application_family = plan.source_id
+        == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
+        && plan.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
+        && plan.provider_kernel
+            == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.provider_kernel();
+    if !direct_family
+        && !application_family
+        && (plan.source_id != SOURCE_ID || plan.family_id != FAMILY_ID)
+    {
         return None;
     }
     if !result.next_cursor.is_empty() {
