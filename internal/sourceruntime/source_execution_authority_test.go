@@ -163,67 +163,75 @@ func TestOtherAzureFamilyRemainsGoCompatible(t *testing.T) {
 	}
 }
 
-func TestPutDigitalOceanDropletsRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
-	legacy := &runtimeAuthorityProbe{sourceID: "digitalocean"}
-	registry, err := sourcecdk.NewRegistry(legacy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	worker := &runtimePlanWorker{}
-	service := New(registry, &runtimeStore{}, nil, nil)
-	service.sourceWorker = worker
-	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
-		Id: "digitalocean-droplets-runtime", SourceId: "digitalocean", TenantId: "tenant-1",
-		Config: map[string]string{
-			"family": "droplets", "per_page": "100",
-			"token": sourceconfig.CredentialReferenceValue("digitalocean", "token"),
-		},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if legacy.checkCalls != 0 || worker.planCalls != 1 {
-		t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
-	}
-	if worker.selection.SourceID != "digitalocean" || worker.selection.FamilyID != "droplets" {
-		t.Fatalf("Rust selection = %#v", worker.selection)
-	}
-	if worker.publicConfig["family"] != "droplets" || worker.publicConfig["per_page"] != "100" || worker.publicConfig["token"] != "" {
-		t.Fatalf("Rust public config = %#v", worker.publicConfig)
-	}
-}
-
-func TestDigitalOceanDropletsNeverFallsBackToGoAuthority(t *testing.T) {
-	legacy := &runtimeAuthorityProbe{sourceID: "digitalocean"}
-	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
-	service := &Service{sourceWorker: worker}
-	runtime := &cerebrov1.SourceRuntime{
-		Id: "digitalocean-droplets-runtime", SourceId: "digitalocean", TenantId: "tenant-1",
-		Config: map[string]string{
-			"family": "droplets", "per_page": "100",
-			"token": sourceconfig.CredentialReferenceValue("digitalocean", "token"),
-		},
-	}
-	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
-		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
-	}})
-	resolved := sourcecdk.NewConfig(map[string]string{
-		"family": "droplets", "per_page": "100", "token": "host-only-secret",
-	})
-
-	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
-		t.Fatalf("readSourcePull() error = %v", err)
-	}
-	if legacy.readCalls != 0 || worker.selection.SourceID != "digitalocean" || worker.selection.FamilyID != "droplets" {
-		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+func TestPutDigitalOceanAuthoritativeFamiliesValidateWithRustWithoutCallingGoCheck(t *testing.T) {
+	for _, family := range []string{"droplets", "vpcs"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &runtimeAuthorityProbe{sourceID: "digitalocean"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			worker := &runtimePlanWorker{}
+			service := New(registry, &runtimeStore{}, nil, nil)
+			service.sourceWorker = worker
+			_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+				Id: "digitalocean-" + family + "-runtime", SourceId: "digitalocean", TenantId: "tenant-1",
+				Config: map[string]string{
+					"family": family, "per_page": "100",
+					"token": sourceconfig.CredentialReferenceValue("digitalocean", "token"),
+				},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if legacy.checkCalls != 0 || worker.planCalls != 1 {
+				t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+			}
+			if worker.selection.SourceID != "digitalocean" || worker.selection.FamilyID != family {
+				t.Fatalf("Rust selection = %#v", worker.selection)
+			}
+			if worker.publicConfig["family"] != family || worker.publicConfig["per_page"] != "100" || worker.publicConfig["token"] != "" {
+				t.Fatalf("Rust public config = %#v", worker.publicConfig)
+			}
+		})
 	}
 }
 
-func TestOtherDigitalOceanFamilyRemainsGoCompatible(t *testing.T) {
+func TestDigitalOceanAuthoritativeFamiliesNeverFallBackToGo(t *testing.T) {
+	for _, family := range []string{"droplets", "vpcs"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &runtimeAuthorityProbe{sourceID: "digitalocean"}
+			worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+			service := &Service{sourceWorker: worker}
+			runtime := &cerebrov1.SourceRuntime{
+				Id: "digitalocean-" + family + "-runtime", SourceId: "digitalocean", TenantId: "tenant-1",
+				Config: map[string]string{
+					"family": family, "per_page": "100",
+					"token": sourceconfig.CredentialReferenceValue("digitalocean", "token"),
+				},
+			}
+			ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+				Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+			}})
+			resolved := sourcecdk.NewConfig(map[string]string{
+				"family": family, "per_page": "100", "token": "host-only-secret",
+			})
+
+			if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+				t.Fatalf("readSourcePull() error = %v", err)
+			}
+			if legacy.readCalls != 0 || worker.selection.SourceID != "digitalocean" || worker.selection.FamilyID != family {
+				t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+			}
+		})
+	}
+}
+
+func TestDigitalOceanFirewallsRemainGoCompatible(t *testing.T) {
 	legacy := &runtimeAuthorityProbe{sourceID: "digitalocean"}
 	service := &Service{sourceWorker: &runtimePlanWorker{}}
-	runtime := &cerebrov1.SourceRuntime{Id: "digitalocean-vpcs-runtime", SourceId: "digitalocean", TenantId: "tenant-1"}
-	config := sourcecdk.NewConfig(map[string]string{"family": "vpcs"})
+	runtime := &cerebrov1.SourceRuntime{Id: "digitalocean-firewalls-runtime", SourceId: "digitalocean", TenantId: "tenant-1"}
+	config := sourcecdk.NewConfig(map[string]string{"family": "firewalls"})
 
 	if _, rustPage, err := service.readSourcePull(context.Background(), runtime, legacy, config, nil, nil, 1); err != nil {
 		t.Fatalf("readSourcePull() error = %v", err)

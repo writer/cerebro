@@ -28,7 +28,7 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		if familyID == "" {
 			familyID = "droplets"
 		}
-		return familyID, familyID == "droplets"
+		return familyID, familyID == "droplets" || familyID == "vpcs"
 	case "jumpcloud":
 		if familyID == "" {
 			familyID = "users"
