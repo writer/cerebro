@@ -119,6 +119,11 @@ impl SourceExecutionDispatcher {
         {
             return Ok(SENTINELONE_AGENT.compiled_plan());
         }
+        if request.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
         if let Some(adapter) = JUMPCLOUD_ADAPTERS.iter().find(|adapter| {
             request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
         }) {
