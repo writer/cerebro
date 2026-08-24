@@ -7025,7 +7025,7 @@ mod tests {
             .await
             .unwrap();
         let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
-        assert_eq!(response["graphRevision"], "1");
+        assert_eq!(response["graphRevision"], "2");
         assert_eq!(response["entities"].as_array().unwrap().len(), 4);
         assert!(
             response["entities"]
