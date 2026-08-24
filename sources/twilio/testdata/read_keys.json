@@ -1,0 +1,33 @@
+[
+  {
+    "attributes": {
+      "family": "keys",
+      "provider": "twilio",
+      "record_class": "secret",
+      "resource_id": "key-1",
+      "resource_name": "Primary API key",
+      "resource_type": "secret",
+      "resource_urn": "urn:cerebro:tenant:runtime_keys:key-1",
+      "schema": "keys",
+      "secret_id": "key-1",
+      "secret_name": "Primary API key",
+      "secret_type": "api_key",
+      "source_event_id": "key-1",
+      "source_provider": "twilio",
+      "source_system": "twilio",
+      "tenant_id": "tenant"
+    },
+    "id": "twilio-tenant-keys-key-1",
+    "kind": "twilio.keys",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "id": "key-1",
+      "name": "Primary API key",
+      "status": "active",
+      "type": "api_key"
+    },
+    "schema_ref": "twilio/keys/v1",
+    "source_id": "twilio",
+    "tenant_id": "tenant"
+  }
+]

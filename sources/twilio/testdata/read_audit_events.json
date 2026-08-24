@@ -1,0 +1,32 @@
+[
+  {
+    "attributes": {
+      "actor_id": "user-1",
+      "event_type": "account.updated",
+      "family": "audit_events",
+      "provider": "twilio",
+      "record_class": "audit_event",
+      "resource_id": "record-1",
+      "resource_type": "account",
+      "resource_urn": "urn:cerebro:tenant:runtime_audit_events:event-1",
+      "schema": "audit_events",
+      "source_event_id": "event-1",
+      "source_provider": "twilio",
+      "source_system": "twilio",
+      "tenant_id": "tenant"
+    },
+    "id": "twilio-tenant-audit-events-event-1",
+    "kind": "twilio.audit_events",
+    "occurred_at": "2026-06-01T00:00:00Z",
+    "payload": {
+      "actor_id": "user-1",
+      "event_type": "account.updated",
+      "id": "event-1",
+      "resource_id": "record-1",
+      "resource_type": "account"
+    },
+    "schema_ref": "twilio/audit_events/v1",
+    "source_id": "twilio",
+    "tenant_id": "tenant"
+  }
+]

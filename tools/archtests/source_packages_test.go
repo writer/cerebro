@@ -54,6 +54,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"openai":          {},
 	"slack":           {},
 	"tailscale":       {},
+	"twilio":          {},
 }
 
 //go:embed testdata/catalog_runtime_go_retirement_v1.txt
