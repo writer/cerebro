@@ -58,13 +58,7 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
 	}
-	reference, resolved := strings.TrimSpace(runtime.GetConfig()["graph_token"]), strings.TrimSpace(cfg.Values()["graph_token"])
-	if reference == "" {
-		reference = strings.TrimSpace(runtime.GetConfig()["token"])
-	}
-	if resolved == "" {
-		resolved = strings.TrimSpace(cfg.Values()["token"])
-	}
+	reference, resolved := sourceworker.CredentialBinding(runtime.GetSourceId(), runtime.GetConfig(), cfg.Values())
 	if reference == "" || resolved == "" || reference == resolved || (!sourceconfig.IsCredentialReference(reference) && !sourceconfig.IsSecretReference(reference)) {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: Rust source execution requires an opaque credential reference", ErrInvalidRequest)
 	}
