@@ -72,6 +72,11 @@ def supported_catalog_source_ids(catalog_root: Path) -> set[str]:
 def builtin_source_ids() -> list[str]:
     registry = read(ROOT / "internal" / "sourceregistry" / "registry.go")
     source_ids = set(re.findall(r'name:\s+"([^"]+)"', registry))
+    worker_catalog_sources = re.search(
+        r"var workerCatalogSourceIDs = \[\]string\{(.*?)\}", registry, re.S
+    )
+    if worker_catalog_sources:
+        source_ids.update(re.findall(r'"([^"]+)"', worker_catalog_sources.group(1)))
     source_ids.update(supported_catalog_source_ids(ROOT / "internal" / "connectorcatalog" / "catalog"))
     return sorted(source_ids)
 
