@@ -41,6 +41,9 @@ use cerebro_agent_runtime::{
 use cerebro_organizational_model::TenantId;
 use cerebro_organizational_store::{Neo4jProjector, PostgresLedger, SourceRuntimeObservation};
 use cerebro_source_catalog::{AuthModel, CollectionAuthority, SourceCatalog};
+use cerebro_source_runtime_next::{
+    RuntimeHealthEvidence, RuntimeReadiness, evaluate_runtime_readiness,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -5177,16 +5180,16 @@ fn source_runtime_view(
     now: OffsetDateTime,
 ) -> (Value, Vec<String>) {
     let mut evidence_gaps = Vec::new();
-    let enabled_state = match record.enabled_state.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" | "enabled" => "enabled",
-        "false" | "0" | "disabled" => "disabled",
+    let (enabled, enabled_state) = match record.enabled_state.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "enabled" => (Some(true), "enabled"),
+        "false" | "0" | "disabled" => (Some(false), "disabled"),
         "" => {
             evidence_gaps.push("enabled_state_not_observed".to_owned());
-            "unknown"
+            (None, "unknown")
         }
         _ => {
             evidence_gaps.push("enabled_state_invalid".to_owned());
-            "unknown"
+            (None, "unknown")
         }
     };
     let parsed_sync = record
@@ -5202,20 +5205,33 @@ fn source_runtime_view(
         evidence_gaps.push("freshness_threshold_not_configured".to_owned());
     }
     let sync_lag_seconds = parsed_sync.map(|synced_at| (now - synced_at).whole_seconds().max(0));
-    let health = if enabled_state != "enabled" {
-        enabled_state
-    } else if record.last_failure_category.is_some() {
-        "failing"
-    } else if parsed_sync.is_none() {
-        "unknown"
-    } else if record
+    let sync_stale = record
         .stale_after_seconds
         .zip(sync_lag_seconds)
-        .is_some_and(|(threshold, lag)| u64::try_from(lag).is_ok_and(|lag| lag > threshold))
-    {
-        "stale"
-    } else {
-        "healthy"
+        .is_some_and(|(threshold, lag)| u64::try_from(lag).is_ok_and(|lag| lag > threshold));
+    let collection_complete = record
+        .latest_collection
+        .as_ref()
+        .map(|collection| collection.status == "complete");
+    let rejected_records = record
+        .latest_collection
+        .as_ref()
+        .map_or(0, |collection| collection.records_rejected);
+    let readiness = evaluate_runtime_readiness(RuntimeHealthEvidence {
+        enabled,
+        failure_observed: record.last_failure_category.is_some(),
+        sync_observed: parsed_sync.is_some(),
+        sync_stale,
+        cursor_pending: record.cursor_pending,
+        collection_complete,
+        rejected_records,
+    });
+    let health = match readiness {
+        RuntimeReadiness::Disabled => "disabled",
+        RuntimeReadiness::Unknown => "unknown",
+        RuntimeReadiness::Attention => "failing",
+        RuntimeReadiness::NeedsRefresh => "stale",
+        RuntimeReadiness::Healthy => "healthy",
     };
     let latest_collection = record.latest_collection.map(|collection| {
         if collection.status != "complete" {
@@ -5243,6 +5259,7 @@ fn source_runtime_view(
             "source_id": record.source_id,
             "enabled_state": enabled_state,
             "health": health,
+            "readiness": readiness.as_str(),
             "last_failure_category": record.last_failure_category,
             "last_synced_at": record.last_synced_at,
             "sync_lag_seconds": sync_lag_seconds,
@@ -7786,7 +7803,8 @@ mod tests {
             },
             now,
         );
-        assert_eq!(view["health"], "stale");
+        assert_eq!(view["health"], "failing");
+        assert_eq!(view["readiness"], "attention");
         assert_eq!(view["cursor_state"], "pending");
         assert!(gaps.iter().any(|gap| gap == "latest_collection_incomplete"));
         assert!(

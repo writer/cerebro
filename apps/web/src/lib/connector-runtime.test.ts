@@ -228,9 +228,9 @@ describe("Connector runtime normalization", () => {
 
     expect(bySource.okta).toMatchObject({ performance: "healthy", next_action: "No action", healthy: 1, graph_current: 1 });
     expect(bySource.aws).toMatchObject({ performance: "needs_refresh", stale: 1, next_action: "Refresh source sync" });
-    expect(bySource.github).toMatchObject({ performance: "needs_refresh", cursor_pending: 1 });
+    expect(bySource.github).toMatchObject({ performance: "needs_refresh", cursor_pending: 1, healthy: 0 });
     expect(bySource.jira).toMatchObject({ performance: "bad", degraded: 1, graph_failed: 1 });
-    expect(bySource.slack).toMatchObject({ performance: "poor", graph_not_observed: 1 });
+    expect(bySource.slack).toMatchObject({ performance: "needs_refresh", graph_not_observed: 1, healthy: 0 });
     expect(bySource.zendesk).toMatchObject({ performance: "not_configured", total: 0, name: "Zendesk" });
   });
 

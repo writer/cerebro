@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { fetchCerebro } from "@/lib/cerebro-client";
-import { currentUserActor } from "@/lib/identity";
+import { currentUserActor, currentUserRefreshDelayMs } from "@/lib/identity";
 import type { CurrentUser, CurrentUserResponse } from "@/lib/identity";
 import {
   defaultUserPreferences,
@@ -251,29 +251,56 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    const loadUser = async () => {
-      try {
-        const response = await fetch("/api/me", { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`Current user unavailable (${response.status})`);
-        }
-        const payload = (await response.json()) as CurrentUserResponse;
-        if (!mounted) return;
-        setUser(payload.user);
-        setError(null);
-      } catch (nextError) {
-        if (!mounted) return;
-        setUser(null);
-        setError(nextError instanceof Error ? nextError.message : "Current user unavailable");
-      } finally {
-        if (mounted) setLoading(false);
+  const loadUser = useCallback(async (signal: AbortSignal) => {
+    try {
+      const response = await fetch("/api/me", { cache: "no-store", signal });
+      if (!response.ok) {
+        throw new Error(`Current user unavailable (${response.status})`);
       }
-    };
-    void loadUser();
-    return () => { mounted = false; };
+      const payload = (await response.json()) as CurrentUserResponse;
+      if (signal.aborted) return;
+      setUser(payload.user);
+      setError(null);
+    } catch (nextError) {
+      if (signal.aborted) return;
+      setUser(null);
+      setError(nextError instanceof Error ? nextError.message : "Current user unavailable");
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => void loadUser(controller.signal), 0);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [loadUser]);
+
+  useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
+    let refreshing = false;
+    const refresh = () => {
+      if (refreshing || controller.signal.aborted) return;
+      refreshing = true;
+      void loadUser(controller.signal).finally(() => { refreshing = false; });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setTimeout(refresh, currentUserRefreshDelayMs(user));
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [loadUser, user]);
 
   const contextValue = useMemo(
     () => ({

@@ -548,7 +548,10 @@ const sourceReadiness = (summary: SourceCoverageSummary): Pick<SourceCoverageSum
   if (summary.stale > 0 || summary.cursor_pending > 0 || summary.schedule_context_missing > 0) {
     return { performance: "needs_refresh", next_action: "Refresh source sync" };
   }
-  if (summary.unknown > 0 || summary.graph_behind > 0 || summary.graph_not_observed > 0 || summary.graph_unknown > 0) {
+  if (summary.graph_behind > 0 || summary.graph_not_observed > 0) {
+    return { performance: "needs_refresh", next_action: "Run graph projection" };
+  }
+  if (summary.unknown > 0 || summary.graph_running > 0 || summary.graph_unknown > 0) {
     return { performance: "poor", next_action: "Verify runtime and graph telemetry" };
   }
   return { performance: "healthy", next_action: "No action" };
@@ -579,7 +582,11 @@ export const sourceHealthBreakdown = (
     const sourceID = runtime.source_id || "unknown";
     const current = counts.get(sourceID) ?? emptySourceSummary(sourceID);
     current.total += 1;
-    current[runtime.health] += 1;
+    const operationallyHealthy = runtime.health === "healthy" &&
+      runtime.graph_freshness === "current" &&
+      runtime.cursor_state === "caught_up" &&
+      runtime.schedule_context_configured !== false;
+    if (runtime.health !== "healthy" || operationallyHealthy) current[runtime.health] += 1;
     if (runtime.cursor_state === "pending") current.cursor_pending += 1;
     if (runtime.cursor_state === "unknown") current.cursor_unknown += 1;
     if (runtime.backfill) current.backfills += 1;
