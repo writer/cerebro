@@ -251,7 +251,7 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	if err != nil {
 		return nil, err
 	}
-	if _, authoritative := sourceworker.TailscaleFamily(runtime.GetSourceId(), resolvedConfig["family"]); authoritative {
+	if _, authoritative := sourceworker.RustAuthoritativeFamily(runtime.GetSourceId(), resolvedConfig["family"]); authoritative {
 		if err := s.validateRustSourceRuntimePlan(ctx, runtime, resolvedConfig); err != nil {
 			return nil, err
 		}

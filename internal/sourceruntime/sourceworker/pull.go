@@ -13,6 +13,23 @@ import (
 
 const rustCheckpointCursorMode = "rust_provider_checkpoint"
 
+// RustAuthoritativeFamily returns the normalized family only when the closed
+// Rust dispatcher owns production execution for that exact source-family
+// pair. Keep this allowlist narrower than the dispatcher's compiled adapters:
+// an adapter contract alone is not an authority decision.
+func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
+	sourceID = strings.TrimSpace(sourceID)
+	familyID = strings.TrimSpace(familyID)
+	switch sourceID {
+	case "azure":
+		return familyID, familyID == "authorization_policy"
+	case "tailscale":
+		return TailscaleFamily(sourceID, familyID)
+	default:
+		return "", false
+	}
+}
+
 // TailscaleFamily normalizes the requested Tailscale family, including the
 // public default used when family is omitted. The closed Rust dispatcher owns
 // family membership validation; Go must not restore legacy authority for an
@@ -99,7 +116,7 @@ func PullFromExecutionOutput(output *ExecutionOutput, tenantID string) (sourcecd
 	}
 	checkpointCursor := output.Result.GetResultDigestSha256()
 	nextCursor := strings.TrimSpace(output.Result.GetNextCursor())
-	if _, tailscale := TailscaleFamily(output.Plan.GetSourceId(), output.Plan.GetFamilyId()); tailscale {
+	if _, authoritative := RustAuthoritativeFamily(output.Plan.GetSourceId(), output.Plan.GetFamilyId()); authoritative {
 		envelope := sourcecdk.CursorEnvelope{
 			Version: 1, Source: output.Plan.GetSourceId(), Family: output.Plan.GetFamilyId(),
 			Mode: rustCheckpointCursorMode, ResumableCheckpoint: true, Token: nextCursor,

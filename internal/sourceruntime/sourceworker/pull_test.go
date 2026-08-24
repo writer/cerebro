@@ -78,6 +78,45 @@ func TestPublicExecutionConfigNeverCarriesCredentialMaterial(t *testing.T) {
 	}
 }
 
+func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
+	for name, test := range map[string]struct {
+		source, family, wantFamily string
+		wantAuthoritative          bool
+	}{
+		"Azure authorization policy": {" azure ", " authorization_policy ", "authorization_policy", true},
+		"other Azure family":         {"azure", "user", "user", false},
+		"Tailscale default":          {"tailscale", "", "device", true},
+		"unknown Tailscale family":   {"tailscale", "future-family", "future-family", true},
+		"compatibility source":       {"gcp", "audit", "", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			family, authoritative := RustAuthoritativeFamily(test.source, test.family)
+			if family != test.wantFamily || authoritative != test.wantAuthoritative {
+				t.Fatalf("RustAuthoritativeFamily() = (%q, %v), want (%q, %v)", family, authoritative, test.wantFamily, test.wantAuthoritative)
+			}
+		})
+	}
+}
+
+func TestAzureAuthorizationPolicyPersistsARestartableRustCheckpoint(t *testing.T) {
+	output := tailscaleOutput("", "authorizationPolicy", 1_725_000_000_000)
+	output.Plan.SourceId = "azure"
+	output.Plan.FamilyId = "authorization_policy"
+	pull, err := PullFromExecutionOutput(output, "tenant-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerCursor, watermark, err := ProviderResume(
+		&cerebrov1.SourceCursor{Opaque: pull.Checkpoint.GetCursorOpaque()}, "azure", "authorization_policy",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if providerCursor != "" || watermark != 1_725_000_000_000 {
+		t.Fatalf("restart = (%q, %d), want no provider cursor and terminal watermark", providerCursor, watermark)
+	}
+}
+
 func tailscaleOutput(nextCursor, checkpointCursor string, watermark int64) *ExecutionOutput {
 	plan := &cerebrov1.SourceExecutionPlanV1{SourceId: "tailscale", FamilyId: "user", EventKind: "tailscale.user", SchemaRef: "tailscale/user/v1"}
 	record := &cerebrov1.SourceWorkerRecordV1{
