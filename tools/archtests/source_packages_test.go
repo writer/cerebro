@@ -48,6 +48,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"hashicorp_vault": {},
 	"increase":        {},
 	"jira":            {},
+	"jumpcloud":       {},
 	"langchain":       {},
 	"deepseek":        {},
 	"openai":          {},
