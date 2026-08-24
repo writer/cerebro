@@ -21,8 +21,7 @@ entries:
         - help: Public Twilio account SID used to scope account-key collection.
           key: account_sid
           label: Account SID
-          required: false
-      description: Collects Twilio accounts, account keys, and audit events through the credential-free Rust source runtime.
+      description: Collects accounts, keys, and audit events from Twilio and projects them into the Cerebro graph as audit events, secrets, and users for inventory, access review, audit, risk, and operational context.
       display_name: Twilio
       id: builtin-twilio
       ingest:
