@@ -231,7 +231,7 @@ fn decode_envelope(
     metadata: &SourceWorkerRuntimeMetadataV2,
     request_intent_digest: String,
     execution_intent_digest_sha256: String,
-    status_code: i32,
+    status_code: u32,
     body: &[u8],
     response_headers: HashMap<String, String>,
 ) -> SourceWorkerDecodeEnvelopeV2 {
