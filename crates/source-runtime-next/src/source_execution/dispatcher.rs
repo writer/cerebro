@@ -1,6 +1,7 @@
 use prost::Message;
 
 use crate::digitalocean::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
+use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
 use crate::pagerduty::PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER;
 use crate::sentinelone::{
     SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS, SentinelOneAgentSourceExecutionAdapter,
@@ -153,6 +154,11 @@ impl SourceExecutionDispatcher {
         {
             return Ok(PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.compiled_plan());
         }
+        if request.source_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
         if request.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
         {
@@ -220,6 +226,12 @@ impl SourceExecutionDispatcher {
             && plan.provider_kernel == PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.provider_kernel()
         {
             return Ok(&PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER);
+        }
+        if plan.source_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER);
         }
         if plan.source_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == TWILIO_ACCOUNTS_SOURCE_EXECUTION_ADAPTER.family_id()
