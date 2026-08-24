@@ -723,6 +723,16 @@ export const currentUserActor = (user: CurrentUser | null | undefined) =>
 export const currentUserActorLabel = (user: CurrentUser | null | undefined) =>
   firstNonEmpty(user?.actorLabel, user?.email, user?.username, user?.displayName, user?.subject);
 
+const CURRENT_USER_REFRESH_FALLBACK_MS = 5 * 60_000;
+const CURRENT_USER_REFRESH_MIN_MS = 5_000;
+const CURRENT_USER_REFRESH_SKEW_MS = 60_000;
+
+export const currentUserRefreshDelayMs = (user: CurrentUser | null | undefined, nowMs = Date.now()) => {
+  const expiresAt = Date.parse(user?.evidence?.jwt?.expiresAt ?? "");
+  if (!Number.isFinite(expiresAt)) return CURRENT_USER_REFRESH_FALLBACK_MS;
+  return Math.max(CURRENT_USER_REFRESH_MIN_MS, expiresAt - nowMs - CURRENT_USER_REFRESH_SKEW_MS);
+};
+
 export const localCurrentUserFallback = (): CurrentUser => ({
   actorId: "local-developer",
   actorLabel: "local-developer",
@@ -875,12 +885,17 @@ export const identityPosture = ({
   const actor = currentUserActor(user);
   const sourceLabel = currentUserSourceLabel(user.source);
   const warning = Boolean(user.conflicts?.length || user.warnings?.length || user.confidence === "unverified");
+  const label = user.source === "local-fallback"
+    ? "Local identity"
+    : warning || user.confidence !== "signature-verified"
+      ? currentUserConfidenceLabel(user.confidence)
+      : "Identity verified";
   return {
     actor,
     detail: currentUserConfidenceDetail(user),
     displayName: user.displayName,
     initials: user.initials,
-    label: user.source === "local-fallback" ? "Local identity" : warning ? currentUserConfidenceLabel(user.confidence) : "Identity verified",
+    label,
     sourceLabel,
     state: user.source === "local-fallback" ? "fallback" : "resolved",
     tone: user.source === "local-fallback" || warning ? "warning" : "success",

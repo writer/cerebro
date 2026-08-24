@@ -9,6 +9,7 @@ import {
   currentUserAuditFields,
   currentUserFromHeaders as currentUserFromHeadersRaw,
   currentUserFromHeadersWithFallback,
+  currentUserRefreshDelayMs,
   currentUserSourceLabel,
   identityHealthFromHeaders,
   identityPosture,
@@ -651,6 +652,44 @@ describe("current user identity", () => {
       label: "Identity unavailable",
       state: "unavailable",
     });
+
+    expect(identityPosture({
+      user: {
+        actorId: "subject-2",
+        actorLabel: "person@example.com",
+        confidence: "trusted-proxy",
+        displayName: "Person Example",
+        initials: "PE",
+        source: "headers",
+      },
+    })).toMatchObject({
+      label: "Trusted proxy",
+      state: "resolved",
+      tone: "success",
+    });
+  });
+
+  it("refreshes current-user evidence before JWT expiry", () => {
+    const now = Date.parse("2026-08-24T15:00:00Z");
+    expect(currentUserRefreshDelayMs({
+      actorId: "subject-1",
+      actorLabel: "person@example.com",
+      confidence: "trusted-proxy",
+      displayName: "Person Example",
+      evidence: { jwt: { expiresAt: "2026-08-24T15:05:00Z" } },
+      initials: "PE",
+      source: "headers",
+    }, now)).toBe(240_000);
+    expect(currentUserRefreshDelayMs(null, now)).toBe(300_000);
+    expect(currentUserRefreshDelayMs({
+      actorId: "subject-1",
+      actorLabel: "person@example.com",
+      confidence: "trusted-proxy",
+      displayName: "Person Example",
+      evidence: { jwt: { expiresAt: "2026-08-24T14:59:00Z" } },
+      initials: "PE",
+      source: "headers",
+    }, now)).toBe(5_000);
   });
 
   it("summarizes identity telemetry without raw actor values", () => {

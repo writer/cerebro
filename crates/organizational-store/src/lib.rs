@@ -44,7 +44,7 @@ pub use neo4j::{
     ExposureCoverageEntity, ExposureCoverageKindCount, ExposureCoverageOverlap,
     ExposureCoveragePair, ExposureCoverageProfile, ExposureCoverageQuery, ExposureCoverageResult,
     LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector, PersonAccessPath,
-    PersonAccessPathPage, ResolvedLifecycleFinding,
+    PersonAccessPathPage, ResolvedLifecycleFinding, SourceRuntimeGraphObservation,
 };
 pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,

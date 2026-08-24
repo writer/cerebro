@@ -102,7 +102,7 @@ const providerAPITierScore: Record<string, number> = {
 };
 
 const runtimeAttentionCount = (source: SourceCoverageSummary) =>
-  source.degraded + source.stale + source.unknown + source.graph_failed + source.graph_behind + source.cursor_pending;
+  Math.max(source.total - source.healthy, 0);
 
 const normalizedStrings = (items?: string[]) =>
   (items ?? []).map((item) => item.trim()).filter(Boolean);

@@ -100,6 +100,8 @@ describe("product UI contract", () => {
     expect(statusSource).toContain("Runtime Health");
     expect(statusSource).toContain("API liveness");
     expect(statusSource).toContain("API readiness");
+    expect(statusSource).toContain("LIVENESS_TIMEOUT_MS");
+    expect(statusSource).toContain("GRC_QUERY_TIMEOUT_MS");
     expect(statusSource).not.toContain("/api/cerebro/grc/dashboard");
     expect(primitivesSource).toContain("DataStateBanner");
     expect(primitivesSource).toContain("data-grc-data-state");
@@ -185,6 +187,18 @@ describe("product UI contract", () => {
     expect(page.indexOf("ProviderAPIProofPanel")).toBeGreaterThan(advancedTools);
     expect(page.indexOf("CustomConnectorPanel")).toBeGreaterThan(advancedTools);
     expect(page.indexOf("ReadinessMix")).toBeGreaterThan(advancedTools);
+  });
+
+  it("uses the Rust source-runtime readiness contract for the connector presentation", () => {
+    const page = readProjectFile("src/app/connectors/page.tsx");
+    const runtime = readProjectFile("src/lib/connector-runtime.ts");
+
+    expect(page).toContain('withQuery("/v1/source-runtimes/health"');
+    expect(page).toContain("normalizeSourceRuntimeSummary");
+    expect(page).not.toContain("sourceHealthBreakdown");
+    expect(runtime).toContain('stringField(runtime, ["readiness"])');
+    expect(runtime).toContain('stringField(summary, ["readiness"])');
+    expect(runtime).not.toContain("const sourceReadiness =");
   });
 
   it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {
