@@ -13,6 +13,9 @@ use crate::sentinelone::SentinelOneRecord;
 #[path = "normalization/direct.rs"]
 mod direct;
 pub(super) use direct::normalize_direct_record;
+#[path = "normalization/application.rs"]
+mod application;
+pub(crate) use application::{application_event_id, normalize_application_record};
 #[path = "normalization/threat.rs"]
 mod threat;
 pub(super) use threat::normalize_threat_record;
