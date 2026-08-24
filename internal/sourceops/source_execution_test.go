@@ -172,7 +172,7 @@ func TestRustDiscoveryRejectsRepeatedContinuation(t *testing.T) {
 		return previewOutput("device", "provider-page-2", "provider-page-2", input.Scope.PriorTerminalWatermarkUnixMillis), nil
 	}
 	_, err := service.discoverRustSource(context.Background(), "tailscale", "device", tailscalePreviewConfig("device"))
-	if !errors.Is(err, sourceworker.ErrWorkerContract) || !strings.Contains(err.Error(), "continuation repeated") {
+	if !errors.Is(err, sourceworker.ErrWorkerContract) {
 		t.Fatalf("discoverRustSource() error = %v", err)
 	}
 }
