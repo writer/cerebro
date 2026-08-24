@@ -95,7 +95,8 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"Tailscale default":          {"tailscale", "", "device", true},
 		"unknown Tailscale family":   {"tailscale", "future-family", "future-family", true},
 		"Twilio accounts":            {"twilio", "accounts", "accounts", true},
-		"other Twilio family":        {"twilio", "keys", "keys", false},
+		"Twilio audit events":        {"twilio", "audit_events", "audit_events", true},
+		"Twilio keys":                {"twilio", "keys", "keys", false},
 		"compatibility source":       {"gcp", "audit", "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
