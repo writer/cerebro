@@ -36,7 +36,7 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 	case "tailscale":
 		return TailscaleFamily(sourceID, familyID)
 	case "twilio":
-		return familyID, familyID == "accounts" || familyID == "audit_events"
+		return familyID, familyID == "accounts" || familyID == "audit_events" || familyID == "keys"
 	default:
 		return "", false
 	}
