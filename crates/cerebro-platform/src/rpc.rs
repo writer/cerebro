@@ -366,13 +366,13 @@ impl GraphRpc {
                             "The in-memory catalog relation omitted its neighbor.",
                         ));
                     };
-                    if !in_memory_catalog_workspace_matches(neighbor, application_workspace_id) {
-                        continue;
-                    }
-                    if !filter.directions.contains(&direction)
-                        || !filter.relations.contains(&edge.relation)
-                        || !filter.neighbor_kinds.contains(&neighbor.entity_kind)
-                    {
+                    if !in_memory_catalog_relation_matches(
+                        edge,
+                        neighbor,
+                        application_workspace_id,
+                        direction,
+                        filter,
+                    ) {
                         continue;
                     }
                     let direction_key = match direction {
@@ -1610,16 +1610,32 @@ fn in_memory_catalog_workspace_matches(
     entity: &ContextEntity,
     application_workspace_id: &str,
 ) -> bool {
-    // ContextEdge has no workspace metadata. The Go projection invariant test
-    // TestFinalizeProjectedRecordsStampsTrustedApplicationWorkspace and the
-    // graph-store duplicate-workspace tests ensure admitted links inherit one
-    // trusted workspace; roots and neighbors are filtered here.
     application_workspace_id.is_empty()
         || entity
             .properties
             .get("application_workspace_id")
             .map(String::as_str)
             == Some(application_workspace_id)
+}
+
+fn in_memory_catalog_relation_matches(
+    edge: &ContextEdge,
+    neighbor: &ContextEntity,
+    application_workspace_id: &str,
+    direction: StoreCatalogDirection,
+    filter: &StoreCatalogRelationCountFilter,
+) -> bool {
+    // A blank edge scope is a pre-workspace projection. The root was selected
+    // from the trusted application_workspace_id stamp and the neighbor match
+    // above requires the same trusted stamp, so legacy edges remain readable
+    // without accepting a conflicting workspace-stamped edge.
+    in_memory_catalog_workspace_matches(neighbor, application_workspace_id)
+        && (application_workspace_id.is_empty()
+            || edge.application_workspace_id == application_workspace_id
+            || edge.application_workspace_id.is_empty())
+        && filter.directions.contains(&direction)
+        && filter.relations.contains(&edge.relation)
+        && filter.neighbor_kinds.contains(&neighbor.entity_kind)
 }
 
 fn in_memory_catalog_entity_matches(entity: &ContextEntity, filter: &StoreCatalogFilter) -> bool {
@@ -2480,6 +2496,7 @@ mod tests {
             relation: "owns".to_owned(),
             to: EntityId::parse("entity-b").unwrap(),
             source_runtime_id: "runtime-a".to_owned(),
+            application_workspace_id: String::new(),
             identity_binding: false,
         }
     }
@@ -2580,12 +2597,55 @@ mod tests {
         assert!(!in_memory_catalog_entity_matches(&entity, &filter));
         filter.application_workspace_id = " workspace-a".to_owned();
         assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_err());
+        filter.application_workspace_id = "w".repeat(128);
+        assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_ok());
+        filter.application_workspace_id = "w".repeat(129);
+        assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_err());
 
         assert!(in_memory_catalog_workspace_matches(&entity, "workspace-a"));
         assert!(!in_memory_catalog_workspace_matches(&entity, "workspace-b"));
         assert!(in_memory_catalog_workspace_matches(&entity, ""));
         entity.properties.remove("application_workspace_id");
         assert!(!in_memory_catalog_workspace_matches(&entity, "workspace-a"));
+    }
+
+    #[test]
+    fn in_memory_catalog_relation_counts_reject_mismatched_edge_workspace() {
+        let mut neighbor = context_entity("entity-b", "contract");
+        neighbor.properties.insert(
+            "application_workspace_id".to_owned(),
+            "workspace-a".to_owned(),
+        );
+        let filter = StoreCatalogRelationCountFilter {
+            directions: vec![StoreCatalogDirection::Outgoing],
+            relations: vec!["owns".to_owned()],
+            neighbor_kinds: vec!["contract".to_owned()],
+        };
+        let mut edge = context_edge("assertion-a");
+        edge.application_workspace_id = "workspace-b".to_owned();
+        assert!(!in_memory_catalog_relation_matches(
+            &edge,
+            &neighbor,
+            "workspace-a",
+            StoreCatalogDirection::Outgoing,
+            &filter,
+        ));
+        edge.application_workspace_id.clear();
+        assert!(in_memory_catalog_relation_matches(
+            &edge,
+            &neighbor,
+            "workspace-a",
+            StoreCatalogDirection::Outgoing,
+            &filter,
+        ));
+        edge.application_workspace_id = "workspace-a".to_owned();
+        assert!(in_memory_catalog_relation_matches(
+            &edge,
+            &neighbor,
+            "workspace-a",
+            StoreCatalogDirection::Outgoing,
+            &filter,
+        ));
     }
 
     #[test]

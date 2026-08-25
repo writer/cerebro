@@ -5831,6 +5831,7 @@ mod tests {
             relation: "can_access".to_owned(),
             to: neighbor.entity_id.clone(),
             source_runtime_id: "github-prod".to_owned(),
+            application_workspace_id: String::new(),
             identity_binding: false,
         };
         (

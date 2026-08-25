@@ -358,7 +358,7 @@ func copyHeaders(dst http.Header, src http.Header) {
 
 func setGRCQueryCacheHeaders(header http.Header, cacheState string, policy grcCachePolicy) {
 	header.Set("X-Cerebro-Cache", cacheState)
-	header.Set("Vary", appendVary(header.Get("Vary"), "Accept-Encoding", "Authorization", "X-Cerebro-API-Key", "X-Cerebro-Tenant"))
+	header.Set("Vary", appendVary(header.Get("Vary"), "Accept-Encoding", "Authorization", "X-Cerebro-API-Key", "X-Cerebro-Tenant", applicationworkspace.Header))
 	if (cacheState == "hit" || cacheState == "miss" || cacheState == "stale") && policy.TTL > 0 {
 		maxAge := int(policy.TTL / time.Second)
 		if maxAge < 1 {

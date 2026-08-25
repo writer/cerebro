@@ -14,7 +14,7 @@ import (
 
 const (
 	Header             = "X-Cerebro-Workspace"
-	maxSelectorIDBytes = 256
+	maxSelectorIDBytes = 128
 )
 
 var ErrInvalidSelector = errors.New("invalid application workspace selector")
