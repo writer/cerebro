@@ -21,9 +21,7 @@ const newSourcePackageLOCBudget = 300
 // "Sources are tiered" and docs/engineering/source-cdk-extraction.md "Deep Source
 // Tier". Adding a source here without it meeting the Depth Contract fails
 // TestDeepTierSourcesMeetDepthContract.
-var deepTierSourcePackages = map[string]struct{}{
-	"digitalocean": {},
-}
+var deepTierSourcePackages = map[string]struct{}{}
 
 // catalogRuntimeOnlySourcePackages have retired their provider-local Go
 // runtime. Their portable catalog and Rust catalog-runtime coverage remain the
@@ -35,6 +33,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"aircall":         {},
 	"airfocus":        {},
 	"akeyless":        {},
+	"asana":           {},
 	"backstage":       {},
 	"beezup":          {},
 	"bitwarden":       {},
@@ -51,7 +50,9 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"jumpcloud":       {},
 	"langchain":       {},
 	"deepseek":        {},
+	"digitalocean":    {},
 	"openai":          {},
+	"pagerduty":       {},
 	"sentinelone":     {},
 	"slack":           {},
 	"tailscale":       {},

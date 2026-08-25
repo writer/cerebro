@@ -119,7 +119,7 @@ fn canonical_timestamp(value: &str) -> Option<String> {
         .ok()
 }
 
-fn event_id(
+pub(super) fn event_id(
     tenant_id: &str,
     base_url: &str,
     operation_path: &str,

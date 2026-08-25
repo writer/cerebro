@@ -9,7 +9,6 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
-	asanasource "github.com/writer/cerebro/sources/asana"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
 	auth0source "github.com/writer/cerebro/sources/auth0"
 	awssource "github.com/writer/cerebro/sources/aws"
@@ -17,7 +16,6 @@ import (
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
-	digitaloceansource "github.com/writer/cerebro/sources/digitalocean"
 	discordsource "github.com/writer/cerebro/sources/discord"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
@@ -33,7 +31,6 @@ import (
 	linodesource "github.com/writer/cerebro/sources/linode"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	oneloginsource "github.com/writer/cerebro/sources/onelogin"
-	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
 	panopticonsource "github.com/writer/cerebro/sources/panopticon"
 	sailpointidentitynowsource "github.com/writer/cerebro/sources/sailpoint_identitynow"
 	sdksource "github.com/writer/cerebro/sources/sdk"
@@ -52,7 +49,7 @@ type builtinSourceLoader struct {
 	load func() (sourcecdk.Source, error)
 }
 
-var workerCatalogSourceIDs = []string{"sentinelone"}
+var workerCatalogSourceIDs = []string{"asana", "digitalocean", "pagerduty", "sentinelone"}
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
@@ -65,12 +62,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "archetype",
 		load: func() (sourcecdk.Source, error) {
 			return archetypesource.New()
-		},
-	},
-	{
-		name: "asana",
-		load: func() (sourcecdk.Source, error) {
-			return asanasource.New()
 		},
 	},
 	{
@@ -107,12 +98,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "cosmo",
 		load: func() (sourcecdk.Source, error) {
 			return cosmosource.New()
-		},
-	},
-	{
-		name: "digitalocean",
-		load: func() (sourcecdk.Source, error) {
-			return digitaloceansource.New()
 		},
 	},
 	{
@@ -203,12 +188,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "onelogin",
 		load: func() (sourcecdk.Source, error) {
 			return oneloginsource.New()
-		},
-	},
-	{
-		name: "pagerduty",
-		load: func() (sourcecdk.Source, error) {
-			return pagerdutysource.New()
 		},
 	},
 	{

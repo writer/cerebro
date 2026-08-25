@@ -1,4 +1,4 @@
-//! DigitalOcean `droplets` bridge into the closed source-execution dispatcher.
+//! DigitalOcean family bridge into the closed source-execution dispatcher.
 //!
 //! This adapter consumes only authenticated execution context, public runtime
 //! configuration, and bounded provider response bytes. The trusted Go host
@@ -25,41 +25,45 @@ use super::{
 };
 
 const SOURCE_ID: &str = "digitalocean";
-const FAMILY_ID: &str = "droplets";
-const PROVIDER_KERNEL: &str = "digitalocean.droplets";
-const PLAN_ID: &str = "source-plan-v1:digitalocean:droplets";
 const METHOD: &str = "GET";
-const PATH: &str = "/v2/droplets";
-const RECORD_SELECTOR: &str = "$.droplets[*]";
 const ID_FIELD: &str = "id";
 const MAX_RESPONSE_BYTES: u64 = 8 << 20;
-const EVENT_KIND: &str = "digitalocean.droplets";
-const SCHEMA_REF: &str = "digitalocean/droplets/v1";
 
-/// Credential-free adapter for the DigitalOcean droplets family.
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct DigitalOceanDropletsSourceExecutionAdapter;
+/// Credential-free adapter for one closed DigitalOcean family.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DigitalOceanSourceExecutionAdapter {
+    family: DigitalOceanFamily,
+}
 
-/// Shared closed-registry instance for DigitalOcean droplets.
-pub(crate) static DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER:
-    DigitalOceanDropletsSourceExecutionAdapter = DigitalOceanDropletsSourceExecutionAdapter;
+/// Shared closed-registry instances for DigitalOcean families with production
+/// source-execution contracts. Keep this narrower than the kernel family set.
+pub(crate) static DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS: [DigitalOceanSourceExecutionAdapter; 3] = [
+    DigitalOceanSourceExecutionAdapter::new(DigitalOceanFamily::Droplets),
+    DigitalOceanSourceExecutionAdapter::new(DigitalOceanFamily::Vpcs),
+    DigitalOceanSourceExecutionAdapter::new(DigitalOceanFamily::Firewalls),
+];
 
-impl DigitalOceanDropletsSourceExecutionAdapter {
+impl DigitalOceanSourceExecutionAdapter {
+    const fn new(family: DigitalOceanFamily) -> Self {
+        Self { family }
+    }
+
     pub(crate) fn compiled_plan(&self) -> SourceExecutionPlanV1 {
+        let family_id = self.family.as_str();
         let mut plan = SourceExecutionPlanV1 {
-            plan_id: PLAN_ID.to_owned(),
+            plan_id: format!("source-plan-v1:digitalocean:{family_id}"),
             source_id: SOURCE_ID.to_owned(),
-            family_id: FAMILY_ID.to_owned(),
-            provider_kernel: PROVIDER_KERNEL.to_owned(),
+            family_id: family_id.to_owned(),
+            provider_kernel: self.family.event_kind().to_owned(),
             method: METHOD.to_owned(),
             origin: DEFAULT_BASE_URL.to_owned(),
-            path: PATH.to_owned(),
-            record_selector: RECORD_SELECTOR.to_owned(),
+            path: self.family.path().to_owned(),
+            record_selector: record_selector(self.family).to_owned(),
             id_field: ID_FIELD.to_owned(),
             singleton_fallback_id: String::new(),
             max_response_bytes: MAX_RESPONSE_BYTES,
-            event_kind: EVENT_KIND.to_owned(),
-            schema_ref: SCHEMA_REF.to_owned(),
+            event_kind: self.family.event_kind().to_owned(),
+            schema_ref: self.family.schema_ref().to_owned(),
             required_attributes: [
                 "tenant_id",
                 "source_event_id",
@@ -108,7 +112,7 @@ impl DigitalOceanDropletsSourceExecutionAdapter {
         let kernel = DigitalOceanKernel::new(
             base_url,
             &context.tenant_id,
-            DigitalOceanFamily::Droplets,
+            self.family,
             page_size,
             &observed_at,
         )
@@ -117,17 +121,17 @@ impl DigitalOceanDropletsSourceExecutionAdapter {
     }
 }
 
-impl SourceExecutionAdapter for DigitalOceanDropletsSourceExecutionAdapter {
+impl SourceExecutionAdapter for DigitalOceanSourceExecutionAdapter {
     fn source_id(&self) -> &'static str {
         SOURCE_ID
     }
 
     fn family_id(&self) -> &'static str {
-        FAMILY_ID
+        self.family.as_str()
     }
 
     fn provider_kernel(&self) -> &'static str {
-        PROVIDER_KERNEL
+        self.family.event_kind()
     }
 
     fn validate_record_identity(
@@ -135,14 +139,12 @@ impl SourceExecutionAdapter for DigitalOceanDropletsSourceExecutionAdapter {
         context: &SourceWorkerExecutionContextV1,
         record: &SourceWorkerRecordV1,
     ) -> Result<(), SourceExecutionError> {
-        let expected_event_id = event_id(
-            &context.tenant_id,
-            DigitalOceanFamily::Droplets,
-            &record.provider_id,
-        );
+        let expected_event_id = event_id(&context.tenant_id, self.family, &record.provider_id);
         let expected_urn = format!(
-            "urn:cerebro:{}:digitalocean_droplets:{}",
-            context.tenant_id, record.provider_id
+            "urn:cerebro:{}:{}:{}",
+            context.tenant_id,
+            self.family.urn_kind(),
+            record.provider_id
         );
         if record.event_id != expected_event_id
             || record.attributes.get("tenant_id") != Some(&context.tenant_id)
@@ -286,7 +288,7 @@ impl SourceExecutionAdapter for DigitalOceanDropletsSourceExecutionAdapter {
             .into_iter()
             .map(|record| {
                 if record.tenant_id != context.tenant_id
-                    || record.family != DigitalOceanFamily::Droplets
+                    || record.family != self.family
                     || record.kind != plan.event_kind
                     || record.schema_ref != plan.schema_ref
                 {
@@ -318,6 +320,14 @@ impl SourceExecutionAdapter for DigitalOceanDropletsSourceExecutionAdapter {
             lease_generation: context.lease_generation,
             observed_at_unix_millis: context.observed_at_unix_millis,
         })
+    }
+}
+
+const fn record_selector(family: DigitalOceanFamily) -> &'static str {
+    match family {
+        DigitalOceanFamily::Droplets => "$.droplets[*]",
+        DigitalOceanFamily::Vpcs => "$.vpcs[*]",
+        DigitalOceanFamily::Firewalls => "$.firewalls[*]",
     }
 }
 

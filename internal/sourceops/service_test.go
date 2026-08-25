@@ -19,7 +19,6 @@ import (
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
-	pagerdutysource "github.com/writer/cerebro/sources/pagerduty"
 )
 
 func TestList(t *testing.T) {
@@ -559,7 +558,7 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	pagerDuty, err := pagerdutysource.NewFixture()
+	pagerDuty, err := newCatalogFixtureSource("pagerduty")
 	if err != nil {
 		return nil, err
 	}

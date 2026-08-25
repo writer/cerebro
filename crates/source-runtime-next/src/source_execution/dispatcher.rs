@@ -1,9 +1,9 @@
 use prost::Message;
 
 use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
-use crate::digitalocean::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
+use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
 use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
-use crate::pagerduty::PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER;
+use crate::pagerduty::PAGERDUTY_SOURCE_EXECUTION_ADAPTERS;
 use crate::sentinelone::{
     SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER, SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS,
     SentinelOneAgentSourceExecutionAdapter,
@@ -151,20 +151,23 @@ impl SourceExecutionDispatcher {
         {
             return Ok(adapter.compiled_plan());
         }
+        if let Some(adapter) = DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS
+            .iter()
+            .find(|adapter| {
+                request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+            })
+        {
+            return Ok(adapter.compiled_plan());
+        }
         if request.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
         {
             return Ok(SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.compiled_plan());
         }
-        if request.source_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.source_id()
-            && request.family_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.family_id()
-        {
-            return Ok(DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.compiled_plan());
-        }
-        if request.source_id == PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.source_id()
-            && request.family_id == PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.family_id()
-        {
-            return Ok(PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        if let Some(adapter) = PAGERDUTY_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return Ok(adapter.compiled_plan());
         }
         if request.source_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.family_id()
@@ -233,6 +236,16 @@ impl SourceExecutionDispatcher {
         {
             return Ok(adapter);
         }
+        if let Some(adapter) = DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS
+            .iter()
+            .find(|adapter| {
+                plan.source_id == adapter.source_id()
+                    && plan.family_id == adapter.family_id()
+                    && plan.provider_kernel == adapter.provider_kernel()
+            })
+        {
+            return Ok(adapter);
+        }
         if plan.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
             && plan.provider_kernel
@@ -240,18 +253,12 @@ impl SourceExecutionDispatcher {
         {
             return Ok(&SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER);
         }
-        if plan.source_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.source_id()
-            && plan.family_id == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.family_id()
-            && plan.provider_kernel
-                == DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER.provider_kernel()
-        {
-            return Ok(&DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER);
-        }
-        if plan.source_id == PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.source_id()
-            && plan.family_id == PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.family_id()
-            && plan.provider_kernel == PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER.provider_kernel()
-        {
-            return Ok(&PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER);
+        if let Some(adapter) = PAGERDUTY_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
         }
         if plan.source_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER.family_id()

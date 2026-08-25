@@ -1,6 +1,6 @@
 id: pagerduty
 name: PagerDuty
-description: PagerDuty incident-response topology source covering users, teams, services, schedules, escalation policies, service integrations, and vendors. Emits responder identity, escalation coverage, and service-to-integration context for graph projection and review.
+description: Credential-free Rust PagerDuty incident-response topology source covering users, teams, services, schedules, escalation policies, service integrations, and vendors. Emits responder identity, escalation coverage, and service-to-integration context for graph projection and review.
 emitted_kinds:
   - pagerduty.user
   - pagerduty.team
@@ -175,7 +175,7 @@ coverage_contract:
         - framework_name: SOC 2
           control_id: CC7.2
       notes:
-        - PagerDuty limit/offset responses are preserved through Source CDK cursors and use the provider more flag when total counts are omitted.
+        - PagerDuty limit/offset responses are preserved through durable provider cursors and use the provider more flag when total counts are omitted.
 event_contracts:
   - kind: pagerduty.user
     schema_ref: pagerduty/user/v1
