@@ -99,7 +99,17 @@ describe("Home review links", () => {
   it("starts secondary Home queries after dashboard data arrives", async () => {
     const dashboardPath = grcDashboardPath({ limit: 12 });
     const dashboardData = {
-      summary: {},
+      summary: {
+        open_findings: 0,
+        critical_findings: 0,
+        high_findings: 0,
+        overdue_findings: 0,
+        unassigned: 0,
+        controls_failing: 0,
+        evidence_items: 0,
+        connectors: 0,
+        stale_connectors: 0,
+      },
       findings: [],
       controls: [],
       evidence: [],
