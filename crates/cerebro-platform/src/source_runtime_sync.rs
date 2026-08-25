@@ -9,7 +9,7 @@ use cerebro_organizational_store::{DurableGraphStore, Neo4jProjector, PostgresLe
 use cerebro_source_runtime_next::{
     CatalogGraphMapper, CollectionRequest, CredentialLeaseReference, EgressPolicy,
     EgressRequestContext, HttpProviderAccess, HttpSourceConnector, OperationScopedCredentialLease,
-    RuntimeError, SourceRuntime, SourceRuntimeOperation, canonical_digest,
+    RuntimeError, SourceRuntime, SourceRuntimeLeaseFence, SourceRuntimeOperation, canonical_digest,
     contains_aws_secret_references, contains_credential_references, resolve_aws_secret_references,
     resolve_environment_references,
 };
@@ -66,6 +66,80 @@ pub(crate) struct SourceRuntimeSyncReceipt {
     pub(crate) source_id: String,
     pub(crate) family_id: String,
     pub(crate) graph: GraphWriteReceipt,
+}
+
+#[derive(Debug)]
+struct SourceRuntimeProviderPlan {
+    access_context: EgressRequestContext,
+    egress_policy: EgressPolicy,
+    credential_lease: OperationScopedCredentialLease,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn plan_provider_access(
+    tenant_id: &TenantId,
+    runtime_id: &SourceRuntimeId,
+    source_id: &str,
+    family_id: &str,
+    cursor: Option<&str>,
+    fence: &SourceRuntimeLeaseFence,
+    lease_ttl_millis: u64,
+    issued_at_millis: i64,
+    base_url: &str,
+    oauth_token_url: Option<&str>,
+) -> Result<SourceRuntimeProviderPlan, SourceRuntimeSyncFailure> {
+    let request_intent_digest = canonical_digest(&serde_json::json!({
+        "operation": "ReadPage",
+        "tenant_id": tenant_id.as_str(),
+        "runtime_id": runtime_id.as_str(),
+        "source_id": source_id,
+        "family_id": family_id,
+        "cursor": cursor,
+        "lease_generation": fence.generation(),
+    }));
+    let access_context = EgressRequestContext {
+        tenant_id: tenant_id.as_str().to_owned(),
+        runtime_id: runtime_id.as_str().to_owned(),
+        source_id: source_id.to_owned(),
+        family_id: family_id.to_owned(),
+        operation: SourceRuntimeOperation::ReadPage,
+        request_intent_digest: request_intent_digest.clone(),
+        logical_page_id: format!(
+            "page:{}:{}:{}",
+            runtime_id.as_str(),
+            family_id,
+            fence.generation()
+        ),
+        source_generation: fence.generation(),
+        authority_epoch: 1,
+    };
+    let lease_scope = access_context.lease_scope().map_err(invalid_request)?;
+    let credential_lease_ttl_millis = i64::try_from(lease_ttl_millis).map_err(invalid_request)?;
+    let credential_lease = OperationScopedCredentialLease::new(
+        CredentialLeaseReference::new(
+            format!("lease:{}", &request_intent_digest[..16]),
+            lease_scope,
+            issued_at_millis,
+            credential_lease_ttl_millis,
+        )
+        .map_err(invalid_request)?,
+    );
+    let mut allowed_origins = vec![base_url.to_owned()];
+    if let Some(token_url) = oauth_token_url {
+        allowed_origins.push(token_url.to_owned());
+    }
+    let egress_policy = EgressPolicy::live(
+        tenant_id.as_str(),
+        family_id,
+        &request_intent_digest,
+        allowed_origins,
+    )
+    .map_err(invalid_request)?;
+    Ok(SourceRuntimeProviderPlan {
+        access_context,
+        egress_policy,
+        credential_lease,
+    })
 }
 
 #[async_trait]
@@ -192,64 +266,28 @@ async fn sync_stored_runtime(
     let mut renewal_failure = renewal_failure;
     let outcome = {
         let execution = async {
-            let request_intent_digest = canonical_digest(&serde_json::json!({
-                "operation": "ReadPage",
-                "tenant_id": tenant_id.as_str(),
-                "runtime_id": runtime_id.as_str(),
-                "source_id": source_id,
-                "family_id": family_id,
-                "cursor": cursor,
-                "lease_generation": fence.generation(),
-            }));
-            let access_context = EgressRequestContext {
-                tenant_id: tenant_id.as_str().to_owned(),
-                runtime_id: runtime_id.as_str().to_owned(),
-                source_id: source_id.clone(),
-                family_id: family_id.clone(),
-                operation: SourceRuntimeOperation::ReadPage,
-                request_intent_digest: request_intent_digest.clone(),
-                logical_page_id: format!(
-                    "page:{}:{}:{}",
-                    runtime_id.as_str(),
-                    family_id,
-                    fence.generation()
-                ),
-                source_generation: fence.generation(),
-                authority_epoch: 1,
-            };
-            let lease_scope = access_context.lease_scope().map_err(invalid_request)?;
             let issued_at_millis =
                 i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)
                     .map_err(invalid_request)?;
-            let credential_lease_ttl_millis =
-                i64::try_from(lease_ttl_millis).map_err(invalid_request)?;
-            let credential_lease = OperationScopedCredentialLease::new(
-                CredentialLeaseReference::new(
-                    format!("lease:{}", &request_intent_digest[..16]),
-                    lease_scope,
-                    issued_at_millis,
-                    credential_lease_ttl_millis,
-                )
-                .map_err(invalid_request)?,
-            );
-            let mut allowed_origins = vec![base_url.clone()];
-            if let Some(token_url) = auth.oauth_token_url() {
-                allowed_origins.push(token_url.to_owned());
-            }
-            let egress_policy = EgressPolicy::live(
-                tenant_id.as_str(),
+            let provider_plan = plan_provider_access(
+                &tenant_id,
+                &runtime_id,
+                &source_id,
                 &family_id,
-                &request_intent_digest,
-                allowed_origins,
-            )
-            .map_err(invalid_request)?;
+                cursor.as_deref(),
+                &fence,
+                lease_ttl_millis,
+                issued_at_millis,
+                &base_url,
+                auth.oauth_token_url(),
+            )?;
             let connector =
                 HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)
                     .map_err(invalid_request)?
                     .with_provider_access(HttpProviderAccess::new(
-                        access_context,
-                        egress_policy,
-                        credential_lease,
+                        provider_plan.access_context,
+                        provider_plan.egress_policy,
+                        provider_plan.credential_lease,
                     ));
 
             let ledger = PostgresLedger::connect_tls(&postgres_dsn)
@@ -282,24 +320,7 @@ async fn sync_stored_runtime(
             runtime
                 .sync_fenced(request, &fence)
                 .await
-                .map_err(|error| match error {
-                    RuntimeError::Collect(error) => SourceRuntimeSyncFailure::new(
-                        SourceRuntimeSyncFailureKind::ProviderUnavailable,
-                        error.to_string(),
-                    ),
-                    RuntimeError::ScopeMismatch => SourceRuntimeSyncFailure::new(
-                        SourceRuntimeSyncFailureKind::InvalidRequest,
-                        "source runtime scope does not match the collected batch",
-                    ),
-                    RuntimeError::Map(error) => SourceRuntimeSyncFailure::new(
-                        SourceRuntimeSyncFailureKind::InvalidRequest,
-                        error.to_string(),
-                    ),
-                    RuntimeError::Store(error) => SourceRuntimeSyncFailure::new(
-                        SourceRuntimeSyncFailureKind::RuntimeUnavailable,
-                        error.to_string(),
-                    ),
-                })
+                .map_err(classify_runtime_error)
         };
         tokio::pin!(execution);
         tokio::select! {
@@ -335,6 +356,34 @@ async fn sync_stored_runtime(
     })
 }
 
+fn classify_runtime_error<CollectError, MapError, StoreError>(
+    error: RuntimeError<CollectError, MapError, StoreError>,
+) -> SourceRuntimeSyncFailure
+where
+    CollectError: fmt::Display,
+    MapError: fmt::Display,
+    StoreError: fmt::Display,
+{
+    match error {
+        RuntimeError::Collect(error) => SourceRuntimeSyncFailure::new(
+            SourceRuntimeSyncFailureKind::ProviderUnavailable,
+            error.to_string(),
+        ),
+        RuntimeError::ScopeMismatch => SourceRuntimeSyncFailure::new(
+            SourceRuntimeSyncFailureKind::InvalidRequest,
+            "source runtime scope does not match the collected batch",
+        ),
+        RuntimeError::Map(error) => SourceRuntimeSyncFailure::new(
+            SourceRuntimeSyncFailureKind::InvalidRequest,
+            error.to_string(),
+        ),
+        RuntimeError::Store(error) => SourceRuntimeSyncFailure::new(
+            SourceRuntimeSyncFailureKind::RuntimeUnavailable,
+            error.to_string(),
+        ),
+    }
+}
+
 fn invalid_request(error: impl fmt::Display) -> SourceRuntimeSyncFailure {
     SourceRuntimeSyncFailure::new(
         SourceRuntimeSyncFailureKind::InvalidRequest,
@@ -354,4 +403,199 @@ fn source_runtime_not_found() -> SourceRuntimeSyncFailure {
         SourceRuntimeSyncFailureKind::NotFound,
         "source runtime is not stored",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cerebro_source_runtime_next::{EgressDecisionKind, SourceRuntimeLeaseFence};
+
+    fn tenant() -> TenantId {
+        TenantId::parse("tenant-sync-test").unwrap()
+    }
+
+    fn runtime_id() -> SourceRuntimeId {
+        SourceRuntimeId::parse("runtime-sync-test").unwrap()
+    }
+
+    fn make_fence(generation: u64) -> SourceRuntimeLeaseFence {
+        SourceRuntimeLeaseFence::new(tenant(), runtime_id(), "worker-sync-test", generation)
+            .unwrap()
+    }
+
+    #[test]
+    fn provider_plan_binds_tenant_runtime_family_cursor_and_generation() {
+        let tenant = tenant();
+        let runtime_id = runtime_id();
+        let fence = make_fence(7);
+        let issued_at = 1_000_000;
+        let plan = plan_provider_access(
+            &tenant,
+            &runtime_id,
+            "github",
+            "users",
+            Some("cursor-one"),
+            &fence,
+            30_000,
+            issued_at,
+            "https://api.example.test/v1",
+            Some("https://auth.example.test/oauth/token"),
+        )
+        .unwrap();
+
+        assert_eq!(plan.access_context.tenant_id, tenant.as_str());
+        assert_eq!(plan.access_context.runtime_id, runtime_id.as_str());
+        assert_eq!(plan.access_context.source_id, "github");
+        assert_eq!(plan.access_context.family_id, "users");
+        assert_eq!(plan.access_context.source_generation, 7);
+        assert_eq!(plan.access_context.authority_epoch, 1);
+        assert_eq!(
+            plan.access_context.logical_page_id,
+            "page:runtime-sync-test:users:7"
+        );
+        assert_eq!(
+            plan.access_context.request_intent_digest,
+            plan.access_context.request_intent_digest
+        );
+        assert_eq!(
+            plan.credential_lease.reference().scope,
+            plan.access_context.lease_scope().unwrap()
+        );
+        assert_eq!(
+            plan.credential_lease.reference().issued_at_millis,
+            issued_at
+        );
+        assert_eq!(
+            plan.credential_lease.reference().expires_at_millis,
+            1_030_000
+        );
+
+        let provider = plan.egress_policy.decide(
+            "https://api.example.test/v1/users",
+            &plan.access_context,
+            plan.credential_lease.reference(),
+            &issued_at,
+        );
+        assert_eq!(provider.kind, EgressDecisionKind::Allowed);
+        let token = plan.egress_policy.decide(
+            "https://auth.example.test/oauth/token",
+            &plan.access_context,
+            plan.credential_lease.reference(),
+            &issued_at,
+        );
+        assert_eq!(token.kind, EgressDecisionKind::Allowed);
+        let escaped = plan.egress_policy.decide(
+            "https://attacker.example.test/v1/users",
+            &plan.access_context,
+            plan.credential_lease.reference(),
+            &issued_at,
+        );
+        assert_eq!(escaped.kind, EgressDecisionKind::Denied);
+
+        let next_generation = plan_provider_access(
+            &tenant,
+            &runtime_id,
+            "github",
+            "users",
+            Some("cursor-one"),
+            &make_fence(8),
+            30_000,
+            issued_at,
+            "https://api.example.test/v1",
+            None,
+        )
+        .unwrap();
+        assert_ne!(
+            next_generation.access_context.request_intent_digest,
+            plan.access_context.request_intent_digest
+        );
+        assert_ne!(
+            next_generation.credential_lease.reference().scope,
+            plan.credential_lease.reference().scope
+        );
+    }
+
+    #[test]
+    fn provider_plan_rejects_invalid_origins_and_unrepresentable_lease_lifetimes() {
+        let tenant = tenant();
+        let runtime_id = runtime_id();
+        let fence = make_fence(1);
+        let invalid_origin = plan_provider_access(
+            &tenant,
+            &runtime_id,
+            "github",
+            "users",
+            None,
+            &fence,
+            1_000,
+            10,
+            "http://provider.example.test",
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            invalid_origin.kind(),
+            SourceRuntimeSyncFailureKind::InvalidRequest
+        );
+
+        let invalid_ttl = plan_provider_access(
+            &tenant,
+            &runtime_id,
+            "github",
+            "users",
+            None,
+            &fence,
+            u64::MAX,
+            10,
+            "https://provider.example.test",
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            invalid_ttl.kind(),
+            SourceRuntimeSyncFailureKind::InvalidRequest
+        );
+    }
+
+    #[test]
+    fn runtime_failures_preserve_distinct_operator_actions() {
+        for (failure, expected_kind) in [
+            (
+                classify_runtime_error::<_, &str, &str>(RuntimeError::Collect("provider")),
+                SourceRuntimeSyncFailureKind::ProviderUnavailable,
+            ),
+            (
+                classify_runtime_error::<&str, &str, &str>(RuntimeError::ScopeMismatch),
+                SourceRuntimeSyncFailureKind::InvalidRequest,
+            ),
+            (
+                classify_runtime_error::<&str, _, &str>(RuntimeError::Map("mapping")),
+                SourceRuntimeSyncFailureKind::InvalidRequest,
+            ),
+            (
+                classify_runtime_error::<&str, &str, _>(RuntimeError::Store("storage")),
+                SourceRuntimeSyncFailureKind::RuntimeUnavailable,
+            ),
+        ] {
+            assert_eq!(failure.kind(), expected_kind);
+            assert!(!failure.to_string().is_empty());
+        }
+        assert_eq!(
+            source_runtime_not_found().kind(),
+            SourceRuntimeSyncFailureKind::NotFound
+        );
+        assert_eq!(
+            runtime_unavailable("offline").kind(),
+            SourceRuntimeSyncFailureKind::RuntimeUnavailable
+        );
+    }
+
+    #[tokio::test]
+    async fn environment_authority_rejects_invalid_runtime_identity_before_storage() {
+        let error = EnvironmentSourceRuntimeSync
+            .sync(&tenant(), "")
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind(), SourceRuntimeSyncFailureKind::InvalidRequest);
+    }
 }
