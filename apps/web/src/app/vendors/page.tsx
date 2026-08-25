@@ -1003,6 +1003,9 @@ function DiscoveryQueue({
   onUpdateDraft,
   selectedDiscoveryURNs,
   sourceCount,
+  dataAuthority,
+  decisionAuthority,
+  graphRevision,
 }: {
   bulkDraft: BulkDiscoveryDraft;
   bulkSaving: boolean;
@@ -1024,6 +1027,9 @@ function DiscoveryQueue({
   onUpdateDraft: (urn: string, patch: Partial<DiscoveryDecisionDraft>) => void;
   selectedDiscoveryURNs: Set<string>;
   sourceCount: number;
+  dataAuthority?: string;
+  decisionAuthority?: string;
+  graphRevision?: number;
 }) {
   const signalCount = discoveries.reduce((sum, discovery) => sum + (discovery.signals?.length ?? 0), 0);
   const reviewableDiscoveries = discoveries.filter(discoveryNeedsReview);
@@ -1104,6 +1110,11 @@ function DiscoveryQueue({
           <p className="mt-1 text-[12px] text-[var(--text-muted)]">
             {countLabel(discoveries.length, "candidate")} in this view. {countLabel(signalCount, "source signal")}.
           </p>
+          {dataAuthority === "rust_graph" && graphRevision ? (
+            <p className="mt-1 font-mono text-[10px] text-[var(--text-muted)]">
+              Rust graph revision {graphRevision}{decisionAuthority ? ` · Decisions ${humanize(decisionAuthority)}` : ""}
+            </p>
+          ) : null}
         </div>
         {reviewableDiscoveries.length > 0 && (
           <label className="inline-flex items-center gap-2 text-[12px] font-semibold text-[var(--text-secondary)]">
@@ -2439,6 +2450,9 @@ export default function VendorsPage() {
                 onUpdateDraft={updateDecisionDraft}
                 selectedDiscoveryURNs={selectedDiscoveryURNs}
                 sourceCount={discoverySummary?.source_count ?? discoverySources.length}
+                dataAuthority={discoveriesQuery.data?.data_authority}
+                decisionAuthority={discoveriesQuery.data?.decision_authority}
+                graphRevision={discoveriesQuery.data?.graph_revision}
               />
             </div>
           )}

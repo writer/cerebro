@@ -1839,6 +1839,27 @@ func (s *stubGraphStore) ListVendorRegister(ctx context.Context, filter ports.Ve
 	return result, nil
 }
 
+func (s *stubGraphStore) ListVendorDiscoveries(ctx context.Context, filter ports.VendorDiscoveryFilter) (*ports.VendorDiscoveryPage, error) {
+	page, err := s.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: filter.TenantID, SourceID: filter.SourceID, RuntimeIDs: filter.RuntimeIDs, IncludeKinds: []string{"vendor.discovery"}, Query: filter.Query, QueryAttributes: true}, Limit: filter.Limit})
+	if err != nil {
+		return nil, err
+	}
+	result := &ports.VendorDiscoveryPage{TenantID: filter.TenantID, GraphRevision: page.GraphRevision, DataAuthority: "rust_graph", GeneratedAt: "2026-08-24T00:00:00Z"}
+	for _, entity := range page.Entities {
+		status := strings.TrimSpace(entity.Attributes["status"])
+		if status == "" {
+			status = "discovered"
+		}
+		if filter.SourceStatus != "" && filter.SourceStatus != "all" && filter.SourceStatus != status {
+			continue
+		}
+		result.Discoveries = append(result.Discoveries, ports.VendorDiscoveryRow{URN: entity.URN, DiscoveryID: entity.Attributes["discovered_vendor_id"], Name: entity.Label, NormalizedName: entity.Attributes["normalized_name"], SourceID: entity.SourceID, SourceIDs: []string{entity.SourceID}, RuntimeID: entity.RuntimeID, Provider: entity.Attributes["source_system"], SourceStatus: status, DecisionState: status, Category: entity.Attributes["category"], WebsiteURL: entity.Attributes["website_url"], Attributes: entity.Attributes})
+	}
+	result.Summary.TotalDiscoveries = uint64(len(result.Discoveries))
+	result.Summary.Discovered = result.Summary.TotalDiscoveries
+	return result, nil
+}
+
 func (s *stubGraphStore) CountEntityKinds(_ context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
 	s.entityKindRequests = append(s.entityKindRequests, request)
 	return &ports.EntityKindCountPage{
