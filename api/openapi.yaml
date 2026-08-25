@@ -1639,6 +1639,15 @@ paths:
             type: string
         - $ref: '#/components/parameters/responseViewQuery'
         - $ref: '#/components/parameters/coverageScopeQuery'
+        - name: enrichments
+          in: query
+          schema:
+            type: string
+            enum:
+              - inline
+              - deferred
+            default: inline
+          description: Use deferred to return findings, controls, evidence, and connectors without waiting for source health and coverage enrichment.
         - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
