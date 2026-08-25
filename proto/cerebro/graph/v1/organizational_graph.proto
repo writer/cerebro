@@ -459,8 +459,8 @@ message ListVendorRegisterRequest {
   uint32 limit = 2;
 }
 
-// VendorRegisterRow is the Rust-owned product view rendered by the vendor register.
-message VendorRegisterRow {
+// VendorRegisterIdentity contains the stable identity and descriptive fields for one vendor.
+message VendorRegisterIdentity {
   string urn = 1;
   string vendor_id = 2;
   string name = 3;
@@ -471,29 +471,48 @@ message VendorRegisterRow {
   string category = 8;
   string website_url = 9;
   string services_provided = 10;
-  string lifecycle_state = 11;
-  string owner = 12;
-  string owner_state = 13;
-  string risk_level = 14;
-  int32 risk_score = 15;
-  string risk_score_level = 16;
-  string review_state = 17;
-  string review_due_at = 18;
-  string evidence_freshness_state = 19;
-  string packet_state = 20;
-  uint64 contract_count = 21;
-  uint64 security_review_count = 22;
-  uint64 questionnaire_count = 23;
-  uint64 assurance_document_count = 24;
-  uint64 open_findings = 25;
-  uint64 critical_findings = 26;
-  uint64 high_findings = 27;
-  uint64 evidence_items = 28;
-  int32 risk_queue_rank = 29;
-  repeated string queue_reasons = 30;
-  string next_action_id = 31;
-  string next_action_label = 32;
-  map<string, string> attributes = 33;
+}
+
+// VendorRegisterPosture contains the operator-owned lifecycle, risk, and review states.
+message VendorRegisterPosture {
+  string lifecycle_state = 1;
+  string owner = 2;
+  string owner_state = 3;
+  string risk_level = 4;
+  int32 risk_score = 5;
+  string risk_score_level = 6;
+  string review_state = 7;
+  string review_due_at = 8;
+  string evidence_freshness_state = 9;
+  string packet_state = 10;
+}
+
+// VendorRegisterCounts contains the bounded rollups displayed for one vendor.
+message VendorRegisterCounts {
+  uint64 contract_count = 1;
+  uint64 security_review_count = 2;
+  uint64 questionnaire_count = 3;
+  uint64 assurance_document_count = 4;
+  uint64 open_findings = 5;
+  uint64 critical_findings = 6;
+  uint64 high_findings = 7;
+  uint64 evidence_items = 8;
+}
+
+message VendorRegisterAction {
+  string id = 1;
+  string label = 2;
+}
+
+// VendorRegisterRow is the Rust-owned product view rendered by the vendor register.
+message VendorRegisterRow {
+  VendorRegisterIdentity identity = 1;
+  VendorRegisterPosture posture = 2;
+  VendorRegisterCounts counts = 3;
+  int32 risk_queue_rank = 4;
+  repeated string queue_reasons = 5;
+  VendorRegisterAction next_action = 6;
+  map<string, string> attributes = 7;
 }
 
 message VendorRegisterSummary {

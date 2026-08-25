@@ -1656,38 +1656,54 @@ fn vendor_register_response(register: vendor_register::Register) -> ListVendorRe
             .vendors
             .into_iter()
             .map(|row| VendorRegisterRow {
-                urn: row.urn,
-                vendor_id: row.vendor_id,
-                name: row.name,
-                source_id: row.source_id,
-                runtime_id: row.runtime_id,
-                provider: row.provider,
-                status: row.status,
-                category: row.category,
-                website_url: row.website_url,
-                services_provided: row.services_provided,
-                lifecycle_state: row.lifecycle_state,
-                owner: row.owner,
-                owner_state: row.owner_state,
-                risk_level: row.risk_level,
-                risk_score: row.risk_score,
-                risk_score_level: row.risk_score_level,
-                review_state: row.review_state,
-                review_due_at: row.review_due_at,
-                evidence_freshness_state: row.evidence_freshness_state,
-                packet_state: row.packet_state,
-                contract_count: row.contract_count,
-                security_review_count: row.security_review_count,
-                questionnaire_count: row.questionnaire_count,
-                assurance_document_count: row.assurance_document_count,
-                open_findings: row.open_findings,
-                critical_findings: row.critical_findings,
-                high_findings: row.high_findings,
-                evidence_items: row.evidence_items,
+                identity: Some(VendorRegisterIdentity {
+                    urn: row.urn,
+                    vendor_id: row.vendor_id,
+                    name: row.name,
+                    source_id: row.source_id,
+                    runtime_id: row.runtime_id,
+                    provider: row.provider,
+                    status: row.status,
+                    category: row.category,
+                    website_url: row.website_url,
+                    services_provided: row.services_provided,
+                    ..Default::default()
+                })
+                .into(),
+                posture: Some(VendorRegisterPosture {
+                    lifecycle_state: row.lifecycle_state,
+                    owner: row.owner,
+                    owner_state: row.owner_state,
+                    risk_level: row.risk_level,
+                    risk_score: row.risk_score,
+                    risk_score_level: row.risk_score_level,
+                    review_state: row.review_state,
+                    review_due_at: row.review_due_at,
+                    evidence_freshness_state: row.evidence_freshness_state,
+                    packet_state: row.packet_state,
+                    ..Default::default()
+                })
+                .into(),
+                counts: Some(VendorRegisterCounts {
+                    contract_count: row.contract_count,
+                    security_review_count: row.security_review_count,
+                    questionnaire_count: row.questionnaire_count,
+                    assurance_document_count: row.assurance_document_count,
+                    open_findings: row.open_findings,
+                    critical_findings: row.critical_findings,
+                    high_findings: row.high_findings,
+                    evidence_items: row.evidence_items,
+                    ..Default::default()
+                })
+                .into(),
                 risk_queue_rank: row.risk_queue_rank,
                 queue_reasons: row.queue_reasons,
-                next_action_id: row.next_action_id,
-                next_action_label: row.next_action_label,
+                next_action: Some(VendorRegisterAction {
+                    id: row.next_action_id,
+                    label: row.next_action_label,
+                    ..Default::default()
+                })
+                .into(),
                 attributes: row.attributes.into_iter().collect(),
                 ..Default::default()
             })

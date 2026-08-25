@@ -548,18 +548,19 @@ func (s *QueryStore) ListVendorRegister(ctx context.Context, filter ports.Vendor
 	}
 	seen := make(map[string]struct{}, len(message.GetVendors()))
 	for _, vendor := range message.GetVendors() {
-		if vendor == nil || strings.TrimSpace(vendor.GetUrn()) == "" || !cerebrourn.SameTenant(vendor.GetUrn(), tenantID) {
+		identity, posture, counts := vendor.GetIdentity(), vendor.GetPosture(), vendor.GetCounts()
+		if vendor == nil || identity == nil || posture == nil || counts == nil || strings.TrimSpace(identity.GetUrn()) == "" || !cerebrourn.SameTenant(identity.GetUrn(), tenantID) {
 			return nil, errors.New("rust vendor register returned an invalid vendor")
 		}
-		if _, exists := seen[vendor.GetUrn()]; exists {
+		if _, exists := seen[identity.GetUrn()]; exists {
 			return nil, errors.New("rust vendor register returned duplicate vendors")
 		}
-		seen[vendor.GetUrn()] = struct{}{}
+		seen[identity.GetUrn()] = struct{}{}
 		row := ports.VendorRegisterRow{
-			URN: vendor.GetUrn(), VendorID: vendor.GetVendorId(), Name: vendor.GetName(), SourceID: vendor.GetSourceId(), RuntimeID: vendor.GetRuntimeId(), Provider: vendor.GetProvider(), Status: vendor.GetStatus(), Category: vendor.GetCategory(), WebsiteURL: vendor.GetWebsiteUrl(), ServicesProvided: vendor.GetServicesProvided(), LifecycleState: vendor.GetLifecycleState(), Owner: vendor.GetOwner(), OwnerState: vendor.GetOwnerState(), RiskLevel: vendor.GetRiskLevel(), RiskScore: vendor.GetRiskScore(), RiskScoreLevel: vendor.GetRiskScoreLevel(), ReviewState: vendor.GetReviewState(), ReviewDueAt: vendor.GetReviewDueAt(), EvidenceFreshnessState: vendor.GetEvidenceFreshnessState(), PacketState: vendor.GetPacketState(), ContractCount: vendor.GetContractCount(), SecurityReviewCount: vendor.GetSecurityReviewCount(), QuestionnaireCount: vendor.GetQuestionnaireCount(), AssuranceDocumentCount: vendor.GetAssuranceDocumentCount(), OpenFindings: vendor.GetOpenFindings(), CriticalFindings: vendor.GetCriticalFindings(), HighFindings: vendor.GetHighFindings(), EvidenceItems: vendor.GetEvidenceItems(), RiskQueueRank: vendor.GetRiskQueueRank(), QueueReasons: append([]string{}, vendor.GetQueueReasons()...), Attributes: maps.Clone(vendor.GetAttributes()),
+			URN: identity.GetUrn(), VendorID: identity.GetVendorId(), Name: identity.GetName(), SourceID: identity.GetSourceId(), RuntimeID: identity.GetRuntimeId(), Provider: identity.GetProvider(), Status: identity.GetStatus(), Category: identity.GetCategory(), WebsiteURL: identity.GetWebsiteUrl(), ServicesProvided: identity.GetServicesProvided(), LifecycleState: posture.GetLifecycleState(), Owner: posture.GetOwner(), OwnerState: posture.GetOwnerState(), RiskLevel: posture.GetRiskLevel(), RiskScore: posture.GetRiskScore(), RiskScoreLevel: posture.GetRiskScoreLevel(), ReviewState: posture.GetReviewState(), ReviewDueAt: posture.GetReviewDueAt(), EvidenceFreshnessState: posture.GetEvidenceFreshnessState(), PacketState: posture.GetPacketState(), ContractCount: counts.GetContractCount(), SecurityReviewCount: counts.GetSecurityReviewCount(), QuestionnaireCount: counts.GetQuestionnaireCount(), AssuranceDocumentCount: counts.GetAssuranceDocumentCount(), OpenFindings: counts.GetOpenFindings(), CriticalFindings: counts.GetCriticalFindings(), HighFindings: counts.GetHighFindings(), EvidenceItems: counts.GetEvidenceItems(), RiskQueueRank: vendor.GetRiskQueueRank(), QueueReasons: append([]string{}, vendor.GetQueueReasons()...), Attributes: maps.Clone(vendor.GetAttributes()),
 		}
-		if vendor.GetNextActionId() != "" && vendor.GetNextActionLabel() != "" {
-			row.NextActions = []ports.VendorRegisterAction{{ID: vendor.GetNextActionId(), Label: vendor.GetNextActionLabel()}}
+		if action := vendor.GetNextAction(); action != nil && action.GetId() != "" && action.GetLabel() != "" {
+			row.NextActions = []ports.VendorRegisterAction{{ID: action.GetId(), Label: action.GetLabel()}}
 		}
 		page.Vendors = append(page.Vendors, row)
 	}
