@@ -906,6 +906,9 @@ pub struct StoredSourceRuntime {
     tenant_id: TenantId,
     source_id: String,
     config: BTreeMap<String, String>,
+    checkpoint: Option<Value>,
+    next_cursor: Option<Value>,
+    last_synced_at: Option<String>,
     cursor: Option<String>,
 }
 
@@ -920,6 +923,61 @@ fn sequence_i64(sequence: u64) -> Result<i64, StoreError> {
 }
 
 impl StoredSourceRuntime {
+    pub fn new(
+        runtime_id: SourceRuntimeId,
+        tenant_id: TenantId,
+        source_id: String,
+        config: BTreeMap<String, String>,
+        checkpoint: Option<Value>,
+        next_cursor: Option<Value>,
+        last_synced_at: Option<String>,
+    ) -> Result<Self, StoreError> {
+        validate_source_runtime_source_id(&source_id)?;
+        validate_source_runtime_config(&config)?;
+        validate_source_runtime_json_field("checkpoint", checkpoint.as_ref())?;
+        validate_source_runtime_json_field("next cursor", next_cursor.as_ref())?;
+        if last_synced_at.as_ref().is_some_and(|value| {
+            value.is_empty() || value.len() > 128 || value.chars().any(char::is_control)
+        }) {
+            return Err(StoreError::Conflict(
+                "source runtime last-synced timestamp is invalid".to_owned(),
+            ));
+        }
+        let cursor = next_cursor
+            .as_ref()
+            .and_then(|value| value.get("opaque"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .or_else(|| {
+                checkpoint
+                    .as_ref()
+                    .and_then(|value| value.get("cursor_opaque"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| resumable_checkpoint_cursor(value))
+                    .map(str::to_owned)
+            });
+        if cursor
+            .as_ref()
+            .is_some_and(|cursor| cursor.len() > 64 * 1024)
+        {
+            return Err(StoreError::Conflict(
+                "stored source runtime cursor is too large".to_owned(),
+            ));
+        }
+        Ok(Self {
+            runtime_id,
+            tenant_id,
+            source_id,
+            config,
+            checkpoint,
+            next_cursor,
+            last_synced_at,
+            cursor,
+        })
+    }
+
     pub fn runtime_id(&self) -> &SourceRuntimeId {
         &self.runtime_id
     }
@@ -936,30 +994,33 @@ impl StoredSourceRuntime {
         &self.config
     }
 
+    pub fn checkpoint(&self) -> Option<&Value> {
+        self.checkpoint.as_ref()
+    }
+
+    pub fn next_cursor(&self) -> Option<&Value> {
+        self.next_cursor.as_ref()
+    }
+
+    pub fn last_synced_at(&self) -> Option<&str> {
+        self.last_synced_at.as_deref()
+    }
+
     pub fn cursor(&self) -> Option<&str> {
         self.cursor.as_deref()
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct StoredSourceRuntimeWire {
     id: String,
     source_id: String,
     tenant_id: String,
     #[serde(default)]
     config: BTreeMap<String, String>,
-    next_cursor: Option<StoredSourceCursorWire>,
-    checkpoint: Option<StoredSourceCheckpointWire>,
-}
-
-#[derive(Deserialize)]
-struct StoredSourceCursorWire {
-    opaque: String,
-}
-
-#[derive(Deserialize)]
-struct StoredSourceCheckpointWire {
-    cursor_opaque: String,
+    checkpoint: Option<Value>,
+    next_cursor: Option<Value>,
+    last_synced_at: Option<String>,
 }
 
 pub struct PostgresLedger {
@@ -1331,6 +1392,106 @@ impl PostgresLedger {
             return Ok(None);
         };
         decode_stored_source_runtime(source_runtime_id, row.get(0)).map(Some)
+    }
+
+    /// Upsert one already-admitted, unresolved source-runtime definition.
+    /// Credential resolution remains outside storage, and lease columns are
+    /// deliberately preserved across definition updates.
+    pub async fn put_source_runtime(
+        &self,
+        runtime: &StoredSourceRuntime,
+        expected: Option<&StoredSourceRuntime>,
+    ) -> Result<bool, StoreError> {
+        let runtime_json = stored_source_runtime_json(runtime)?;
+        let client = self.client.lock().await;
+        let changed = if let Some(expected) = expected {
+            let expected_json = stored_source_runtime_json(expected)?;
+            client
+                .execute(
+                    r#"
+UPDATE source_runtimes
+SET runtime_json = $2, updated_at = NOW()
+WHERE id = $1
+  AND runtime_json->>'tenant_id' = $3
+  AND runtime_json = $4
+  AND (lease_expires_at IS NULL OR lease_expires_at <= NOW())
+"#,
+                    &[
+                        &runtime.runtime_id.as_str(),
+                        &runtime_json,
+                        &runtime.tenant_id.as_str(),
+                        &expected_json,
+                    ],
+                )
+                .await?
+        } else {
+            client
+                .execute(
+                    r#"
+INSERT INTO source_runtimes (id, runtime_json)
+VALUES ($1, $2)
+ON CONFLICT (id) DO NOTHING
+"#,
+                    &[&runtime.runtime_id.as_str(), &runtime_json],
+                )
+                .await?
+        };
+        Ok(changed == 1)
+    }
+
+    /// List source-runtime definitions within one authenticated tenant. All
+    /// predicates are applied in PostgreSQL so cross-tenant rows never enter
+    /// the application response path.
+    pub async fn list_source_runtimes(
+        &self,
+        tenant_id: &TenantId,
+        source_id: Option<&str>,
+        runtime_ids: &[SourceRuntimeId],
+        limit: u16,
+    ) -> Result<Vec<StoredSourceRuntime>, StoreError> {
+        if limit == 0 || limit > 500 {
+            return Err(StoreError::Conflict(
+                "source runtime list limit must be between 1 and 500".to_owned(),
+            ));
+        }
+        let source_id = source_id.filter(|value| !value.is_empty());
+        if let Some(source_id) = source_id {
+            validate_source_runtime_source_id(source_id)?;
+        }
+        let runtime_ids = runtime_ids
+            .iter()
+            .map(|runtime_id| runtime_id.as_str().to_owned())
+            .collect::<Vec<_>>();
+        let rows = self
+            .client
+            .lock()
+            .await
+            .query(
+                r#"
+SELECT id, runtime_json
+FROM source_runtimes
+WHERE runtime_json->>'tenant_id' = $1
+  AND ($2::TEXT IS NULL OR runtime_json->>'source_id' = $2)
+  AND (cardinality($3::TEXT[]) = 0 OR id = ANY($3::TEXT[]))
+ORDER BY updated_at ASC, id ASC
+LIMIT $4
+"#,
+                &[
+                    &tenant_id.as_str(),
+                    &source_id,
+                    &runtime_ids,
+                    &i64::from(limit),
+                ],
+            )
+            .await?;
+        rows.into_iter()
+            .map(|row| {
+                let runtime_id = SourceRuntimeId::parse(row.get::<_, String>(0)).map_err(|_| {
+                    StoreError::Conflict("stored source runtime id is invalid".to_owned())
+                })?;
+                decode_stored_source_runtime(&runtime_id, row.get(1))
+            })
+            .collect()
     }
 
     /// Resolve connector-vault references against the exact durable runtime
@@ -2977,7 +3138,30 @@ fn decode_stored_source_runtime(
     }
     let tenant_id = TenantId::parse(wire.tenant_id)
         .map_err(|_| StoreError::Conflict("stored source runtime tenant is invalid".to_owned()))?;
-    let source_id = wire.source_id;
+    StoredSourceRuntime::new(
+        runtime_id,
+        tenant_id,
+        wire.source_id,
+        wire.config,
+        wire.checkpoint,
+        wire.next_cursor,
+        wire.last_synced_at,
+    )
+}
+
+fn stored_source_runtime_json(runtime: &StoredSourceRuntime) -> Result<Value, StoreError> {
+    Ok(serde_json::to_value(StoredSourceRuntimeWire {
+        id: runtime.runtime_id.as_str().to_owned(),
+        source_id: runtime.source_id.clone(),
+        tenant_id: runtime.tenant_id.as_str().to_owned(),
+        config: runtime.config.clone(),
+        checkpoint: runtime.checkpoint.clone(),
+        next_cursor: runtime.next_cursor.clone(),
+        last_synced_at: runtime.last_synced_at.clone(),
+    })?)
+}
+
+fn validate_source_runtime_source_id(source_id: &str) -> Result<(), StoreError> {
     if source_id.is_empty()
         || source_id.trim() != source_id
         || source_id.len() > 128
@@ -2987,31 +3171,45 @@ fn decode_stored_source_runtime(
             "stored source runtime source is invalid".to_owned(),
         ));
     }
-    let cursor = wire
-        .next_cursor
-        .map(|cursor| cursor.opaque)
-        .filter(|cursor| !cursor.is_empty())
-        .or_else(|| {
-            wire.checkpoint
-                .map(|checkpoint| checkpoint.cursor_opaque)
-                .map(|cursor| cursor.trim().to_owned())
-                .filter(|cursor| resumable_checkpoint_cursor(cursor))
-        });
-    if cursor
-        .as_ref()
-        .is_some_and(|cursor| cursor.len() > 64 * 1024)
-    {
+    Ok(())
+}
+
+fn validate_source_runtime_config(config: &BTreeMap<String, String>) -> Result<(), StoreError> {
+    if config.len() > 256 {
         return Err(StoreError::Conflict(
-            "stored source runtime cursor is too large".to_owned(),
+            "source runtime config has too many entries".to_owned(),
         ));
     }
-    Ok(StoredSourceRuntime {
-        runtime_id,
-        tenant_id,
-        source_id,
-        config: wire.config,
-        cursor,
-    })
+    for (key, value) in config {
+        if key.is_empty()
+            || key.trim() != key
+            || key.len() > 256
+            || key.chars().any(char::is_control)
+            || value.len() > 64 * 1024
+            || value.chars().any(|character| character == '\0')
+        {
+            return Err(StoreError::Conflict(
+                "source runtime config is invalid".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_source_runtime_json_field(
+    field: &str,
+    value: Option<&Value>,
+) -> Result<(), StoreError> {
+    if value.is_some_and(|value| {
+        serde_json::to_vec(value)
+            .map(|encoded| encoded.len() > 64 * 1024)
+            .unwrap_or(true)
+    }) {
+        return Err(StoreError::Conflict(format!(
+            "source runtime {field} is invalid"
+        )));
+    }
+    Ok(())
 }
 
 async fn track_connector_credential_use(

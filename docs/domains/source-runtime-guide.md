@@ -123,6 +123,31 @@ curl -fsS -H "Authorization: Bearer ${CEREBRO_API_KEY}" \
 
 Responses redact sensitive runtime config where the implementation marks config as sensitive.
 
+The Rust platform also serves tenant-bound registry operations from the same
+Postgres table:
+
+```bash
+curl -fsS -X PUT \
+  -H "X-Cerebro-Tenant: <tenant-id>" \
+  -H "Authorization: Bearer ${CEREBRO_RUST_TENANT_TOKEN}" \
+  -H "Content-Type: application/json" \
+  "https://cerebro.example.com/v1/source-runtimes/<runtime-id>" \
+  -d '{"runtime":{"source_id":"<source-id>","config":{"family":"<family>","token":"credential:<credential-id>:token"}}}'
+
+curl -fsS \
+  -H "X-Cerebro-Tenant: <tenant-id>" \
+  -H "Authorization: Bearer ${CEREBRO_RUST_TENANT_TOKEN}" \
+  "https://cerebro.example.com/v1/source-runtimes?source_id=<source-id>&limit=20"
+```
+
+The authenticated identity supplies the tenant; a body tenant must match it.
+Rust filters GET and LIST in Postgres before constructing a response, so a
+missing runtime and a runtime owned by another tenant are indistinguishable.
+Sensitive config accepts only `env:`, `credential:`, or `aws-sm:` references
+and is always returned as `[redacted]`. Registry writes cannot supply a cursor,
+checkpoint, or last-sync time. Unchanged definitions keep durable progress;
+configuration changes clear it so only a fenced sync can advance it again.
+
 ## Sync a runtime
 
 CLI:
