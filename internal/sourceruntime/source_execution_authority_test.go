@@ -3,6 +3,7 @@ package sourceruntime
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -1119,9 +1120,46 @@ func TestUnknownJumpCloudFamilyNeverFallsBackToGoAuthority(t *testing.T) {
 	}
 }
 
+func TestSourceExecutionHostCredentialKeepsGoogleWorkspaceSecretsInTrustedHost(t *testing.T) {
+	source := &runtimeCredentialProviderProbe{
+		runtimeAuthorityProbe: &runtimeAuthorityProbe{sourceID: "google_workspace"},
+		credential:            []byte("short-lived-access-token"),
+	}
+	references := map[string]string{ // #nosec G101 -- synthetic opaque-reference fixtures.
+		"client_id":     "writer-client-id",
+		"client_secret": "env:GOOGLE_WORKSPACE_CLIENT_SECRET",
+		"refresh_token": sourceconfig.CredentialReferenceValue("google_workspace", "refresh_token"),
+	}
+	config := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- synthetic resolved credential fixtures.
+		"client_id": "writer-client-id", "client_secret": "host-client-secret", "refresh_token": "host-refresh-token",
+	})
+	reference, credential, err := sourceExecutionHostCredential(context.Background(), "google_workspace", source, references, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(credential)
+	if reference != references["refresh_token"] || string(credential) != "short-lived-access-token" {
+		t.Fatalf("host credential = (%q, %q), want refresh reference and short-lived token", reference, credential)
+	}
+	for _, secret := range []string{"host-client-secret", "host-refresh-token"} {
+		if strings.Contains(reference, secret) || strings.Contains(string(credential), secret) {
+			t.Fatalf("host credential exposed long-lived secret %q", secret)
+		}
+	}
+}
+
 type runtimeAuthorityProbe struct {
 	sourceID              string
 	checkCalls, readCalls int
+}
+
+type runtimeCredentialProviderProbe struct {
+	*runtimeAuthorityProbe
+	credential []byte
+}
+
+func (s *runtimeCredentialProviderProbe) SourceExecutionCredential(context.Context, sourcecdk.Config) ([]byte, error) {
+	return append([]byte(nil), s.credential...), nil
 }
 
 func (s *runtimeAuthorityProbe) Spec() *cerebrov1.SourceSpec {

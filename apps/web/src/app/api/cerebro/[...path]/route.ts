@@ -105,6 +105,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   const inflight = cacheKey ? readCerebroProxyInflight(cacheKey) : null;
   if (inflight) {
+    const stale = cacheKey ? readCerebroProxyCache(cacheKey, true) : null;
+    if (stale) {
+      span.increment("proxy.cache.stale.count");
+      span.end("completed", {
+        cache_state: "stale",
+        "http.response.status_code": stale.status,
+        ...responseSpanAttributes(stale.status, stale.headers, stale.body),
+      });
+      return new NextResponse(stale.body, {
+        status: stale.status,
+        headers: responseHeadersWithTrace(cachedResponseHeaders(stale, "stale"), span),
+      });
+    }
     let payload: ProxyResponsePayload;
     try {
       payload = await inflight;
@@ -123,19 +136,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
   }
 
-  const load = async (): Promise<ProxyResponsePayload> => {
+  const load = async (background = false): Promise<ProxyResponsePayload> => {
     let response: Response;
     try {
       response = await fetchCerebro(target, {
         method: "GET",
         headers: upstreamHeaders,
         cache: "no-store",
-        signal: request.signal,
+        signal: background ? undefined : request.signal,
       });
     } catch (error) {
       const stale = cacheKey ? readCerebroProxyCache(cacheKey, true) : null;
       if (stale) {
-        span.increment("proxy.cache.stale.count");
+        if (!background) span.increment("proxy.cache.stale.count");
         return {
           body: stale.body,
           headers: cachedResponseHeaders(stale, "stale"),
@@ -149,7 +162,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (cacheKey && [502, 503, 504].includes(response.status)) {
       const stale = readCerebroProxyCache(cacheKey, true);
       if (stale) {
-        span.increment("proxy.cache.stale.count");
+        if (!background) span.increment("proxy.cache.stale.count");
         return {
           body: stale.body,
           headers: cachedResponseHeaders(stale, "stale"),
@@ -166,7 +179,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     if (cacheKey) {
       writeCerebroProxyCache(cacheKey, response, body, headers);
-      span.increment("proxy.cache.write.count");
+      if (!background) span.increment("proxy.cache.write.count");
     }
     return {
       body,
@@ -175,6 +188,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
       status: response.status,
     };
   };
+
+  const stale = cacheKey ? readCerebroProxyCache(cacheKey, true) : null;
+  if (cacheKey && stale) {
+    void trackCerebroProxyInflight(cacheKey, load(true)).catch(() => undefined);
+    span.increment("proxy.cache.stale.count");
+    span.end("completed", {
+      cache_state: "stale",
+      "http.response.status_code": stale.status,
+      ...responseSpanAttributes(stale.status, stale.headers, stale.body),
+    });
+    return new NextResponse(stale.body, {
+      status: stale.status,
+      headers: responseHeadersWithTrace(cachedResponseHeaders(stale, "stale"), span),
+    });
+  }
 
   let payload: Awaited<ReturnType<typeof load>>;
   try {

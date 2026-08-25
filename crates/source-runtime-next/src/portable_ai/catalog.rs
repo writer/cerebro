@@ -8,6 +8,11 @@ pub(super) enum AuthOperation {
     ApiKeyHeader,
     Basic,
     AwsSigV4,
+    ElevenLabsApiKey,
+    LangSmith,
+    MicrosoftFoundryApiKey,
+    PineconeApiKey,
+    QdrantApiKey,
 }
 
 impl AuthOperation {
@@ -17,6 +22,11 @@ impl AuthOperation {
             Self::ApiKeyHeader => "google.api_key_header",
             Self::Basic => "langfuse.basic",
             Self::AwsSigV4 => "aws.sigv4",
+            Self::ElevenLabsApiKey => "elevenlabs.xi_api_key",
+            Self::LangSmith => "langsmith.x_api_key",
+            Self::MicrosoftFoundryApiKey => "microsoft_foundry.api_key",
+            Self::PineconeApiKey => "pinecone.api_key",
+            Self::QdrantApiKey => "qdrant.api_key",
         }
     }
 }
@@ -29,6 +39,7 @@ pub(super) enum Pagination {
         json_path: String,
         page_size_parameter: Option<String>,
         page_size: usize,
+        in_json_body: bool,
     },
     NextUrl {
         json_path: String,
@@ -43,6 +54,13 @@ pub(super) enum Pagination {
         start_page: usize,
         page_size_parameter: Option<String>,
         page_size: usize,
+    },
+    Offset {
+        parameter: String,
+        start: usize,
+        page_size_parameter: String,
+        page_size: usize,
+        inject_first: bool,
     },
 }
 
@@ -63,6 +81,10 @@ pub(super) struct Family {
     pub(super) projection_fields: BTreeMap<String, Vec<String>>,
     pub(super) static_attributes: BTreeMap<String, String>,
     pub(super) config_attributes: BTreeMap<String, String>,
+    pub(super) static_headers: BTreeMap<String, String>,
+    pub(super) config_headers: BTreeMap<String, String>,
+    pub(super) static_json_body: BTreeMap<String, serde_json::Value>,
+    pub(super) config_json_body: BTreeMap<String, String>,
     pub(super) config_query: BTreeMap<String, String>,
     pub(super) static_query: BTreeMap<String, String>,
     pub(super) pagination: Pagination,
@@ -75,6 +97,7 @@ pub(super) struct Source {
     pub(super) auth: AuthOperation,
     pub(super) required_config: Vec<String>,
     pub(super) allowed_config: Vec<String>,
+    pub(super) static_headers: BTreeMap<String, String>,
     pub(super) families: Vec<&'static Family>,
 }
 
@@ -113,6 +136,8 @@ struct ConfigFieldWire {
 #[derive(Deserialize)]
 struct TransportWire {
     base_url: String,
+    #[serde(default)]
+    headers: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -120,12 +145,17 @@ struct FamilyWire {
     id: String,
     method: String,
     path: String,
+    #[serde(default)]
     record_selector: String,
     id_field: String,
     #[serde(default)]
     name_field: String,
     event: EventWire,
     projection: ProjectionWire,
+    #[serde(default)]
+    static_headers: BTreeMap<String, String>,
+    #[serde(default)]
+    read: ReadWire,
     #[serde(default)]
     config: FamilyConfigWire,
     #[serde(default)]
@@ -159,6 +189,16 @@ struct FamilyConfigWire {
     config_query: BTreeMap<String, String>,
     #[serde(default)]
     config_attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    config_headers: BTreeMap<String, String>,
+}
+
+#[derive(Default, Deserialize)]
+struct ReadWire {
+    #[serde(default)]
+    static_json_body: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    config_json_body: BTreeMap<String, String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -181,6 +221,14 @@ struct PaginationWire {
     page_param: String,
     #[serde(default)]
     start_page: usize,
+    #[serde(default)]
+    offset_param: String,
+    #[serde(default)]
+    limit_param: String,
+    #[serde(default)]
+    inject_first_page: bool,
+    #[serde(default)]
+    cursor_in_json_body: bool,
 }
 
 #[derive(Deserialize)]
@@ -203,67 +251,45 @@ struct EmbeddedSource {
     catalog: &'static [u8],
 }
 
-const EMBEDDED: [EmbeddedSource; 10] = [
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/aws_bedrock.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/aws_bedrock/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/azure_openai.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/azure_openai/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/cohere.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/cohere/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/google_gemini.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/google_gemini/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/google_vertex_ai.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/google_vertex_ai/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/groq.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/groq/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/huggingface.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/huggingface/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/langfuse.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/langfuse/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/mistral.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/mistral/catalog.yaml"),
-    },
-    EmbeddedSource {
-        definition: include_bytes!(
-            "../../../../internal/connectorcatalog/catalog/ai-governance/perplexity.yaml"
-        ),
-        catalog: include_bytes!("../../../../sources/perplexity/catalog.yaml"),
-    },
+macro_rules! embedded_source {
+    ($id:literal) => {
+        EmbeddedSource {
+            definition: include_bytes!(concat!(
+                "../../../../internal/connectorcatalog/catalog/ai-governance/",
+                $id,
+                ".yaml"
+            )),
+            catalog: include_bytes!(concat!("../../../../sources/", $id, "/catalog.yaml")),
+        }
+    };
+}
+
+const EMBEDDED: [EmbeddedSource; 25] = [
+    embedded_source!("aws_bedrock"),
+    embedded_source!("azure_openai"),
+    embedded_source!("cerebras"),
+    embedded_source!("cloudflare_workers_ai"),
+    embedded_source!("cohere"),
+    embedded_source!("elevenlabs"),
+    embedded_source!("fireworks_ai"),
+    embedded_source!("google_gemini"),
+    embedded_source!("google_vertex_ai"),
+    embedded_source!("groq"),
+    embedded_source!("huggingface"),
+    embedded_source!("ibm_watsonx_ai"),
+    embedded_source!("langchain"),
+    embedded_source!("langfuse"),
+    embedded_source!("microsoft_foundry"),
+    embedded_source!("mistral"),
+    embedded_source!("openrouter"),
+    embedded_source!("perplexity"),
+    embedded_source!("pinecone"),
+    embedded_source!("qdrant_cloud"),
+    embedded_source!("replicate"),
+    embedded_source!("stability_ai"),
+    embedded_source!("together_ai"),
+    embedded_source!("writer"),
+    embedded_source!("xai"),
 ];
 
 pub(super) static SOURCES: LazyLock<Vec<&'static Source>> = LazyLock::new(|| {
@@ -288,19 +314,30 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
         .into_iter()
         .map(|contract| (contract.kind.clone(), contract))
         .collect::<BTreeMap<_, _>>();
-    let auth = match definition.auth.model.as_str() {
-        "bearer_token" => AuthOperation::Bearer,
-        "api_key" if definition.source_id == "google_gemini" => AuthOperation::ApiKeyHeader,
-        "basic" if definition.source_id == "langfuse" => AuthOperation::Basic,
-        "aws_sigv4" if definition.source_id == "aws_bedrock" => AuthOperation::AwsSigV4,
-        other => return Err(format!("unsupported {} auth {other}", definition.source_id)),
+    let auth = match (
+        definition.source_id.as_str(),
+        definition.auth.model.as_str(),
+    ) {
+        (_, "bearer_token") => AuthOperation::Bearer,
+        ("google_gemini", "api_key") => AuthOperation::ApiKeyHeader,
+        ("elevenlabs", "api_key") => AuthOperation::ElevenLabsApiKey,
+        ("langchain", "api_key") => AuthOperation::LangSmith,
+        ("langfuse", "basic") => AuthOperation::Basic,
+        ("microsoft_foundry", "api_key") => AuthOperation::MicrosoftFoundryApiKey,
+        ("pinecone", "api_key") => AuthOperation::PineconeApiKey,
+        ("qdrant_cloud", "api_key") => AuthOperation::QdrantApiKey,
+        ("aws_bedrock", "aws_sigv4") => AuthOperation::AwsSigV4,
+        (_, other) => return Err(format!("unsupported {} auth {other}", definition.source_id)),
     };
     let families = definition
         .resource_families
         .into_iter()
         .map(|family| {
-            if family.method != "GET" {
-                return Err(format!("{}.{} is not GET", definition.source_id, family.id));
+            if family.method != "GET" && family.method != "POST" {
+                return Err(format!(
+                    "{}.{} uses unsupported method {}",
+                    definition.source_id, family.id, family.method
+                ));
             }
             let contract = contracts
                 .get(&family.event.kind)
@@ -340,7 +377,11 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
                 id: family.id,
                 method: family.method,
                 path: family.path,
-                record_selector: family.record_selector,
+                record_selector: if family.record_selector.is_empty() {
+                    "$".to_owned()
+                } else {
+                    family.record_selector
+                },
                 id_paths: split_paths(&family.id_field),
                 name_paths: split_paths(&family.name_field),
                 kind: family.event.kind,
@@ -351,6 +392,10 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
                 projection_fields,
                 static_attributes: family.projection.static_fields,
                 config_attributes: family.config.config_attributes,
+                static_headers: family.static_headers,
+                config_headers: family.config.config_headers,
+                static_json_body: family.read.static_json_body,
+                config_json_body: family.read.config_json_body,
                 config_query,
                 static_query: family.static_query,
                 pagination: compile_pagination(family.pagination)?,
@@ -378,6 +423,7 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
         auth,
         required_config,
         allowed_config,
+        static_headers: definition.transport.headers,
         families,
     })))
 }
@@ -392,6 +438,7 @@ fn compile_pagination(wire: PaginationWire) -> Result<Pagination, String> {
                 page_size_parameter: (!wire.page_size_param.is_empty())
                     .then_some(wire.page_size_param),
                 page_size: wire.page_size,
+                in_json_body: wire.cursor_in_json_body,
             })
         }
         "next_url" if !wire.next_url_json_path.is_empty() => Ok(Pagination::NextUrl {
@@ -412,6 +459,15 @@ fn compile_pagination(wire: PaginationWire) -> Result<Pagination, String> {
             page_size_parameter: (!wire.page_size_param.is_empty()).then_some(wire.page_size_param),
             page_size: wire.page_size,
         }),
+        "offset" if !wire.offset_param.is_empty() && !wire.limit_param.is_empty() => {
+            Ok(Pagination::Offset {
+                parameter: wire.offset_param,
+                start: wire.start_page,
+                page_size_parameter: wire.limit_param,
+                page_size: wire.page_size,
+                inject_first: wire.inject_first_page,
+            })
+        }
         other => Err(format!("unsupported pagination {other}")),
     }
 }

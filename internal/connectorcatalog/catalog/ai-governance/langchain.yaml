@@ -71,7 +71,7 @@ entries:
             config_attributes: {organization_id: organization_id}
           projection:
             template: asset
-            fields: {resource_id: "id|tenant_id|workspace_id", resource_name: "display_name|name", resource_type: "type|kind"}
+            fields: {resource_id: "id|tenant_id|workspace_id", resource_name: "display_name|name", resource_type: "type|kind", workspace_id: "id|tenant_id|workspace_id"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: workspaces, type: entity_family, title: LangSmith workspaces, families: [workspace], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
@@ -125,7 +125,7 @@ entries:
             config_attributes: {organization_id: organization_id}
           projection:
             template: policy
-            fields: {policy_id: "id|role_id|display_name|name", policy_name: "display_name|name", description: description}
+            fields: {policy_id: "id|role_id|display_name|name", policy_name: "display_name|name", description: description, role_id: "id|role_id|display_name|name"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: roles, type: app_entitlement, title: LangSmith roles, families: [role], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
@@ -143,7 +143,7 @@ entries:
             config_attributes: {organization_id: organization_id}
           projection:
             template: secret
-            fields: {secret_id: "id|api_key_id|key_id", secret_name: "name|display_name", secret_status: status, secret_type: credential_type}
+            fields: {secret_id: "id|api_key_id|key_id", secret_name: "name|display_name", secret_status: status, secret_type: credential_type, api_key_id: "id|api_key_id|key_id"}
             static_fields: {source_product: langchain, product: langsmith, credential_type: langchain_service_key}
           coverage:
             - {id: service_keys, type: app_entitlement, title: LangSmith service keys, families: [api_key], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
@@ -161,7 +161,7 @@ entries:
             config_attributes: {organization_id: organization_id}
           projection:
             template: identity_application
-            fields: {app_id: "id|service_account_id", app_name: "display_name|name", status: status}
+            fields: {app_id: "id|service_account_id", app_name: "display_name|name", status: status, service_account_id: "id|service_account_id"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: service_accounts, type: app_entitlement, title: LangSmith service accounts, families: [service_account], support: supported, high_value: true, evidence_types: [identity_configuration], control_domains: [identity_access]}
@@ -180,7 +180,7 @@ entries:
             config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
           projection:
             template: asset
-            fields: {resource_id: "id|session_id", resource_name: name, resource_type: type}
+            fields: {resource_id: "id|session_id", resource_name: name, resource_type: type, project_id: "id|session_id"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: tracing_projects, type: entity_family, title: LangSmith tracing projects, families: [project], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
@@ -209,7 +209,7 @@ entries:
             config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
           projection:
             template: audit_event
-            fields: {event_id: "id|run_id", event_type: run_type, actor_id: "user_id|metadata.user_id", resource_id: "session_id|project_id", resource_type: run, created_at: "start_time|created_at"}
+            fields: {event_id: "id|run_id", event_type: run_type, actor_id: "user_id|metadata.user_id", resource_id: "session_id|project_id", resource_type: run, created_at: "start_time|created_at", run_id: "id|run_id"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: runs, type: audit_event, title: LangSmith runs, families: [run], support: supported, high_value: true, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}
@@ -228,7 +228,7 @@ entries:
             config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
           projection:
             template: audit_event
-            fields: {event_id: "id|feedback_id", event_type: key, resource_id: "run_id|session_id|project_id", resource_type: feedback, created_at: "created_at|modified_at|updated_at"}
+            fields: {event_id: "id|feedback_id", event_type: key, resource_id: "run_id|session_id|project_id", resource_type: feedback, created_at: "created_at|modified_at|updated_at", feedback_id: "id|feedback_id"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: feedback, type: audit_event, title: LangSmith feedback, families: [feedback], support: supported, high_value: true, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}
@@ -247,7 +247,7 @@ entries:
             config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
           projection:
             template: asset
-            fields: {resource_id: "id|dataset_id|name", resource_name: name, resource_type: type}
+            fields: {resource_id: "id|dataset_id|name", resource_name: name, resource_type: type, dataset_id: "id|dataset_id|name"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: datasets, type: entity_family, title: LangSmith datasets, families: [dataset], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
@@ -265,7 +265,7 @@ entries:
             config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
           projection:
             template: policy
-            fields: {policy_id: "id|usage_limit_id|name", policy_name: name, description: description}
+            fields: {policy_id: "id|usage_limit_id|name", policy_name: name, description: description, usage_limit_id: "id|usage_limit_id|name"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: usage_limits, type: configuration_state, title: LangSmith usage limits, families: [usage_limit], support: supported, high_value: true, evidence_types: [configuration_state], control_domains: [security_operations]}
@@ -284,7 +284,7 @@ entries:
             config_attributes: {organization_id: organization_id, workspace_id: workspace_id}
           projection:
             template: audit_event
-            fields: {event_id: "id|audit_log_id|metadata.uid", event_type: "activity_name|event_type|action", actor_id: "actor.user.uid|actor.id|actor_id|user_id", resource_id: "resources[0].uid|resource.id|resource_id|target_id", resource_type: "resources[0].type|resource.type|resource_type|target_type", created_at: "time|created_at|timestamp"}
+            fields: {event_id: "id|audit_log_id|metadata.uid", event_type: "activity_name|event_type|action", actor_id: "actor.user.uid|actor.id|actor_id|user_id", resource_id: "resources[0].uid|resource.id|resource_id|target_id", resource_type: "resources[0].type|resource.type|resource_type|target_type", created_at: "time|created_at|timestamp", audit_log_id: "id|audit_log_id|metadata.uid"}
             static_fields: {source_product: langchain, product: langsmith}
           coverage:
             - {id: audit_logs, type: audit_event, title: LangSmith audit logs, families: [audit_log], support: supported, evidence_types: [logging_configuration], control_domains: [logging_monitoring]}

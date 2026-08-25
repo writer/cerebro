@@ -38,12 +38,15 @@ const (
 )
 
 type Source struct {
+	googleworkspaceauth.SourceExecutionCredentialProvider
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
 	families             *sourcecdk.FamilyEngine[settings]
 	allowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
+
+var _ sourcecdk.SourceExecutionCredentialProvider = (*Source)(nil)
 
 type userRecord struct {
 	ID               string     `json:"id"`

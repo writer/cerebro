@@ -13,8 +13,8 @@ use super::{
     decode, decode_v2,
     error::SourceExecutionError,
     plan, plan_v2, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
-    validate_cursor, validate_declared_headers, validate_http_request, validate_response_headers,
-    validate_runtime_metadata,
+    validate_cursor, validate_declared_headers, validate_http_request, validate_public_config,
+    validate_response_headers, validate_runtime_metadata,
     wire::{
         SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
         SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
@@ -475,6 +475,17 @@ fn rejects_invalid_cursor_tampered_plan_and_unsafe_response() {
     assert_eq!(
         decode(&oversize.encode_to_vec()),
         Err(SourceExecutionError::ResponseTooLarge)
+    );
+}
+
+#[test]
+fn public_config_allows_one_bounded_metrics_query_but_rejects_total_overflow() {
+    let within_limit = HashMap::from([("metrics_query".to_owned(), "x".repeat(8 * 1024))]);
+    assert_eq!(validate_public_config(&within_limit), Ok(()));
+    let over_limit = HashMap::from([("metrics_query".to_owned(), "x".repeat(16 * 1024 + 1))]);
+    assert_eq!(
+        validate_public_config(&over_limit),
+        Err(SourceExecutionError::InvalidExecutionContext)
     );
 }
 

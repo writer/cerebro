@@ -15,6 +15,7 @@ mod slack_mrkdwn;
 mod source_page_publisher;
 mod threat_insight_projection;
 mod trusted_endpoint_projection;
+mod vendor_discoveries;
 mod vendor_register;
 
 use std::{

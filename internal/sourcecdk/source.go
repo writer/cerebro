@@ -139,6 +139,34 @@ type Source interface {
 	Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error)
 }
 
+// SourceExecutionCredentialProvider lets the trusted Go runtime host derive
+// the host-only credential bytes applied to a closed Rust source request.
+// Implementations must not expose those bytes through source-worker inputs,
+// public configuration, events, receipts, logs, or errors.
+type SourceExecutionCredentialProvider interface {
+	SourceExecutionCredential(context.Context, Config) ([]byte, error)
+}
+
+type wrappedSource interface {
+	wrappedSource() Source
+}
+
+// SourceExecutionCredentialProviderFrom resolves an optional trusted-host
+// credential adapter through the registry's catalog contract wrappers.
+func SourceExecutionCredentialProviderFrom(source Source) (SourceExecutionCredentialProvider, bool) {
+	for !sourceIsNil(source) {
+		if provider, ok := source.(SourceExecutionCredentialProvider); ok {
+			return provider, true
+		}
+		wrapper, ok := source.(wrappedSource)
+		if !ok {
+			return nil, false
+		}
+		source = wrapper.wrappedSource()
+	}
+	return nil, false
+}
+
 // CheckpointAwareSource can use the last durable checkpoint while deciding how
 // much remote data to fetch. Source runtimes still pass the normal page cursor
 // for continuation, and provide checkpoint separately so legacy cursor formats
@@ -220,6 +248,13 @@ type catalogContractSource struct {
 	contracts []EventContract
 }
 
+func (s *catalogContractSource) wrappedSource() Source {
+	if s == nil {
+		return nil
+	}
+	return s.Source
+}
+
 func (s *catalogContractSource) EventContracts() []EventContract {
 	if s == nil {
 		return nil
@@ -295,6 +330,13 @@ type catalogCoverageSource struct {
 	coverage CoverageContract
 }
 
+func (s *catalogCoverageSource) wrappedSource() Source {
+	if s == nil {
+		return nil
+	}
+	return s.Source
+}
+
 func (s *catalogCoverageSource) CoverageContract() CoverageContract {
 	if s == nil {
 		return CoverageContract{}
@@ -345,6 +387,13 @@ func sourceWithCatalogCoverageContract(source Source, sourceID string) Source {
 type catalogLifecycleSource struct {
 	Source
 	lifecycle LifecycleContract
+}
+
+func (s *catalogLifecycleSource) wrappedSource() Source {
+	if s == nil {
+		return nil
+	}
+	return s.Source
 }
 
 func (s *catalogLifecycleSource) LifecycleContract() LifecycleContract {

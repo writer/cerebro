@@ -46,7 +46,7 @@ func rustSourceFamily(sourceID string, config map[string]string) (string, bool) 
 	// runtime-authoritative provider must keep its existing sourceops path until
 	// its preview credential adapter and product-surface parity are ready.
 	switch sourceID {
-	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cohere", "deepseek", "digitalocean", "discord", "google_gemini", "google_vertex_ai", "groq", "huggingface", "langfuse", "linode", "mistral", "openai", "pagerduty", "perplexity", "sentinelone", "tailscale":
+	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
 		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
 	case "jumpcloud":
 		family := strings.TrimSpace(config["family"])
@@ -67,7 +67,11 @@ func (s *Service) executeRustSource(ctx context.Context, sourceID, family string
 	}
 	sourceID, family = strings.TrimSpace(sourceID), strings.TrimSpace(family)
 	tenantID := strings.TrimSpace(config["tenant_id"])
-	credential := []byte(previewCredential(sourceID, config))
+	credential, err := s.previewSourceExecutionCredential(ctx, sourceID, config)
+	if err != nil {
+		clear(credential)
+		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
+	}
 	if tenantID == "" || len(credential) == 0 {
 		clear(credential)
 		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, sourceworker.ErrSourceConfiguration)
@@ -100,6 +104,17 @@ func (s *Service) executeRustSource(ctx context.Context, sourceID, family string
 		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
 	}
 	return pull, nil
+}
+
+func (s *Service) previewSourceExecutionCredential(ctx context.Context, sourceID string, config map[string]string) ([]byte, error) {
+	source, err := s.lookup(sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if provider, ok := sourcecdk.SourceExecutionCredentialProviderFrom(source); ok {
+		return provider.SourceExecutionCredential(ctx, sourcecdk.NewConfig(config))
+	}
+	return []byte(previewCredential(sourceID, config)), nil
 }
 
 func (s *Service) discoverRustSource(ctx context.Context, sourceID, family string, config map[string]string) ([]sourcecdk.URN, error) {
@@ -193,7 +208,7 @@ func previewCredential(sourceID string, config map[string]string) string {
 			}
 		}
 		return ""
-	case "azure_openai", "cohere", "google_gemini", "google_vertex_ai", "groq", "huggingface", "mistral", "perplexity":
+	case "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "langchain", "microsoft_foundry", "mistral", "openrouter", "perplexity", "pinecone", "qdrant_cloud", "replicate", "stability_ai", "together_ai", "writer", "xai":
 		for _, key := range []string{"token", "api_token", "api_key", "access_token"} {
 			if credential := strings.TrimSpace(config[key]); credential != "" {
 				return credential

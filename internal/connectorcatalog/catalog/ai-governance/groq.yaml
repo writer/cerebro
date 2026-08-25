@@ -112,6 +112,7 @@ entries:
             fields:
               deployment_environment: environment|env|stage|target
               deployment_id: id
+              deployment_name: name|id
               deployment_status: status|state|ready
               deployment_url: url|deployment_url|endpoint|domain
             template: deployment
@@ -146,6 +147,7 @@ entries:
             fields:
               deployment_environment: environment|env|stage|target
               deployment_id: id
+              deployment_name: name|id
               deployment_status: status|state|ready
               deployment_url: url|deployment_url|endpoint|domain
             template: deployment

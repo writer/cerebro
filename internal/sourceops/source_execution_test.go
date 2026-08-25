@@ -18,64 +18,79 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		source, family, wantFamily string
 		wantAuthoritative          bool
 	}{
-		"Azure authorization policy":  {"azure", "authorization_policy", "authorization_policy", true},
-		"other Azure family":          {"azure", "user", "user", false},
-		"Anthropic default":           {"anthropic", "", "user", true},
-		"Anthropic user":              {"anthropic", "user", "user", true},
-		"Anthropic compliance":        {"anthropic", "compliance_activity", "compliance_activity", true},
-		"unknown Anthropic family":    {"anthropic", "future-family", "future-family", true},
-		"OpenAI default":              {"openai", "", "user", true},
-		"OpenAI user":                 {"openai", "user", "user", true},
-		"OpenAI project API key":      {"openai", "project_api_key", "project_api_key", true},
-		"unknown OpenAI family":       {"openai", "future-family", "future-family", true},
-		"DeepSeek default":            {"deepseek", "", "model_catalog", true},
-		"DeepSeek model catalog":      {"deepseek", "model_catalog", "model_catalog", true},
-		"DeepSeek account balances":   {"deepseek", "account_balances", "account_balances", true},
-		"unknown DeepSeek family":     {"deepseek", "future-family", "future-family", true},
-		"Azure OpenAI default":        {"azure_openai", "", "deployments", true},
-		"Cohere default":              {"cohere", "", "model_catalog", true},
-		"Gemini default":              {"google_gemini", "", "model_catalog", true},
-		"Vertex default":              {"google_vertex_ai", "", "models", true},
-		"Groq default":                {"groq", "", "model_catalog", true},
-		"Hugging Face default":        {"huggingface", "", "organization_members", true},
-		"Mistral default":             {"mistral", "", "workspaces", true},
-		"Perplexity default":          {"perplexity", "", "api_groups", true},
-		"AWS Bedrock default":         {"aws_bedrock", "", "foundation_models", true},
-		"Langfuse default":            {"langfuse", "", "project", true},
-		"unknown portable AI family":  {"mistral", "future-family", "future-family", true},
-		"Asana default":               {"asana", "", "users", true},
-		"Asana users":                 {"asana", "users", "users", true},
-		"Asana projects":              {"asana", "projects", "projects", true},
-		"Asana audit events":          {"asana", "audit_events", "audit_events", true},
-		"unknown Asana family":        {"asana", "future-family", "future-family", true},
-		"DigitalOcean default":        {"digitalocean", "", "droplets", true},
-		"DigitalOcean droplets":       {"digitalocean", "droplets", "droplets", true},
-		"DigitalOcean VPCs":           {"digitalocean", "vpcs", "vpcs", true},
-		"DigitalOcean firewalls":      {"digitalocean", "firewalls", "firewalls", true},
-		"unknown DigitalOcean family": {"digitalocean", "future-family", "future-family", true},
-		"Discord default":             {"discord", "", "audit_log", true},
-		"Discord audit log":           {"discord", "audit_log", "audit_log", true},
-		"Discord member":              {"discord", "member", "member", true},
-		"Discord role":                {"discord", "role", "role", true},
-		"Discord permission":          {"discord", "permission", "permission", true},
-		"unknown Discord family":      {"discord", "future-family", "future-family", true},
-		"Tailscale default":           {"tailscale", "", "device", true},
-		"JumpCloud default":           {"jumpcloud", "", "users", true},
-		"JumpCloud family":            {"jumpcloud", "group_members", "group_members", true},
-		"unknown JumpCloud family":    {"jumpcloud", "future-family", "future-family", true},
-		"Linode default":              {"linode", "", "issue", true},
-		"Linode issue":                {"linode", "issue", "issue", true},
-		"other Linode family":         {"linode", "event", "event", false},
-		"unknown Linode family":       {"linode", "future-family", "future-family", false},
-		"PagerDuty default":           {"pagerduty", "", "user", true},
-		"PagerDuty user":              {"pagerduty", "user", "user", true},
-		"PagerDuty team":              {"pagerduty", "team", "team", true},
-		"PagerDuty integration":       {"pagerduty", "integration", "integration", true},
-		"unknown PagerDuty family":    {"pagerduty", "future-family", "future-family", true},
-		"SentinelOne threat":          {"sentinelone", "threat", "threat", true},
-		"SentinelOne application":     {"sentinelone", "application", "application", true},
-		"unknown SentinelOne family":  {"sentinelone", "future-family", "future-family", false},
-		"compatibility source":        {"gcp", "audit", "", false},
+		"Azure authorization policy":    {"azure", "authorization_policy", "authorization_policy", true},
+		"other Azure family":            {"azure", "user", "user", false},
+		"Anthropic default":             {"anthropic", "", "user", true},
+		"Anthropic user":                {"anthropic", "user", "user", true},
+		"Anthropic compliance":          {"anthropic", "compliance_activity", "compliance_activity", true},
+		"unknown Anthropic family":      {"anthropic", "future-family", "future-family", true},
+		"OpenAI default":                {"openai", "", "user", true},
+		"OpenAI user":                   {"openai", "user", "user", true},
+		"OpenAI project API key":        {"openai", "project_api_key", "project_api_key", true},
+		"unknown OpenAI family":         {"openai", "future-family", "future-family", true},
+		"DeepSeek default":              {"deepseek", "", "model_catalog", true},
+		"DeepSeek model catalog":        {"deepseek", "model_catalog", "model_catalog", true},
+		"DeepSeek account balances":     {"deepseek", "account_balances", "account_balances", true},
+		"unknown DeepSeek family":       {"deepseek", "future-family", "future-family", true},
+		"Azure OpenAI default":          {"azure_openai", "", "deployments", true},
+		"Cohere default":                {"cohere", "", "model_catalog", true},
+		"Gemini default":                {"google_gemini", "", "model_catalog", true},
+		"Vertex default":                {"google_vertex_ai", "", "models", true},
+		"Groq default":                  {"groq", "", "model_catalog", true},
+		"Hugging Face default":          {"huggingface", "", "organization_members", true},
+		"Mistral default":               {"mistral", "", "workspaces", true},
+		"Perplexity default":            {"perplexity", "", "api_groups", true},
+		"AWS Bedrock default":           {"aws_bedrock", "", "foundation_models", true},
+		"Langfuse default":              {"langfuse", "", "project", true},
+		"Cerebras default":              {"cerebras", "", "projects", true},
+		"Cloudflare Workers AI default": {"cloudflare_workers_ai", "", "model_catalog", true},
+		"ElevenLabs default":            {"elevenlabs", "", "model_catalog", true},
+		"Fireworks AI default":          {"fireworks_ai", "", "model_deployments", true},
+		"IBM watsonx.ai default":        {"ibm_watsonx_ai", "", "foundation_model_specs", true},
+		"LangChain default":             {"langchain", "", "organization", true},
+		"Microsoft Foundry default":     {"microsoft_foundry", "", "agents", true},
+		"OpenRouter default":            {"openrouter", "", "organization_members", true},
+		"Pinecone default":              {"pinecone", "", "indexes", true},
+		"Qdrant Cloud default":          {"qdrant_cloud", "", "accounts", true},
+		"Replicate default":             {"replicate", "", "models", true},
+		"Stability AI default":          {"stability_ai", "", "engines", true},
+		"Together AI default":           {"together_ai", "", "projects", true},
+		"Writer default":                {"writer", "", "application", true},
+		"xAI default":                   {"xai", "", "api_keys", true},
+		"unknown portable AI family":    {"mistral", "future-family", "future-family", true},
+		"Asana default":                 {"asana", "", "users", true},
+		"Asana users":                   {"asana", "users", "users", true},
+		"Asana projects":                {"asana", "projects", "projects", true},
+		"Asana audit events":            {"asana", "audit_events", "audit_events", true},
+		"unknown Asana family":          {"asana", "future-family", "future-family", true},
+		"DigitalOcean default":          {"digitalocean", "", "droplets", true},
+		"DigitalOcean droplets":         {"digitalocean", "droplets", "droplets", true},
+		"DigitalOcean VPCs":             {"digitalocean", "vpcs", "vpcs", true},
+		"DigitalOcean firewalls":        {"digitalocean", "firewalls", "firewalls", true},
+		"unknown DigitalOcean family":   {"digitalocean", "future-family", "future-family", true},
+		"Discord default":               {"discord", "", "audit_log", true},
+		"Discord audit log":             {"discord", "audit_log", "audit_log", true},
+		"Discord member":                {"discord", "member", "member", true},
+		"Discord role":                  {"discord", "role", "role", true},
+		"Discord permission":            {"discord", "permission", "permission", true},
+		"unknown Discord family":        {"discord", "future-family", "future-family", true},
+		"Tailscale default":             {"tailscale", "", "device", true},
+		"JumpCloud default":             {"jumpcloud", "", "users", true},
+		"JumpCloud family":              {"jumpcloud", "group_members", "group_members", true},
+		"unknown JumpCloud family":      {"jumpcloud", "future-family", "future-family", true},
+		"Linode default":                {"linode", "", "issue", true},
+		"Linode issue":                  {"linode", "issue", "issue", true},
+		"other Linode family":           {"linode", "event", "event", false},
+		"unknown Linode family":         {"linode", "future-family", "future-family", false},
+		"PagerDuty default":             {"pagerduty", "", "user", true},
+		"PagerDuty user":                {"pagerduty", "user", "user", true},
+		"PagerDuty team":                {"pagerduty", "team", "team", true},
+		"PagerDuty integration":         {"pagerduty", "integration", "integration", true},
+		"unknown PagerDuty family":      {"pagerduty", "future-family", "future-family", true},
+		"SentinelOne threat":            {"sentinelone", "threat", "threat", true},
+		"SentinelOne application":       {"sentinelone", "application", "application", true},
+		"unknown SentinelOne family":    {"sentinelone", "future-family", "future-family", false},
+		"compatibility source":          {"gcp", "audit", "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			family, authoritative := rustSourceFamily(test.source, map[string]string{"family": test.family})
@@ -1028,9 +1043,44 @@ func TestOtherAzureFamilyRemainsOnGoPreview(t *testing.T) {
 	}
 }
 
+func TestPreviewSourceExecutionCredentialUsesTrustedHostProvider(t *testing.T) {
+	source := &previewCredentialProviderProbe{
+		authorityProbeSource: &authorityProbeSource{sourceID: "google_workspace"},
+		credential:           []byte("short-lived-access-token"),
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := New(registry).previewSourceExecutionCredential(context.Background(), "google_workspace", map[string]string{ // #nosec G101 -- synthetic host-only credential fixtures.
+		"client_secret": "host-client-secret", "refresh_token": "host-refresh-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(credential)
+	if string(credential) != "short-lived-access-token" {
+		t.Fatalf("preview credential = %q, want short-lived token", credential)
+	}
+	for _, secret := range []string{"host-client-secret", "host-refresh-token"} {
+		if strings.Contains(string(credential), secret) {
+			t.Fatalf("preview credential exposed long-lived secret %q", secret)
+		}
+	}
+}
+
 type authorityProbeSource struct {
 	sourceID                             string
 	checkCalls, discoverCalls, readCalls int
+}
+
+type previewCredentialProviderProbe struct {
+	*authorityProbeSource
+	credential []byte
+}
+
+func (s *previewCredentialProviderProbe) SourceExecutionCredential(context.Context, sourcecdk.Config) ([]byte, error) {
+	return append([]byte(nil), s.credential...), nil
 }
 
 func (s *authorityProbeSource) Spec() *cerebrov1.SourceSpec {
