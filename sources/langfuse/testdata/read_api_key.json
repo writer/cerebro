@@ -1,0 +1,29 @@
+[
+  {
+    "id": "langfuse-writer-api_key-1470bfd40fd536f4",
+    "tenant_id": "writer",
+    "source_id": "langfuse",
+    "kind": "langfuse.api_key",
+    "occurred_at": "2026-06-24T12:00:00Z",
+    "schema_ref": "langfuse/api_key/v1",
+    "payload": {
+      "createdAt": "2026-06-24T12:00:00Z",
+      "id": "key_123",
+      "project_id": "project_123",
+      "publicKey": "pk-lf-key"
+    },
+    "attributes": {
+      "api_key_id": "key_123",
+      "created_at": "2026-06-24T12:00:00Z",
+      "credential_id": "key_123",
+      "credential_type": "langfuse_project_api_key",
+      "external_id": "key_123",
+      "family": "api_key",
+      "project_id": "project_123",
+      "provider": "langfuse",
+      "public_key": "pk-lf-key",
+      "source_product": "langfuse",
+      "source_provider": "langfuse"
+    }
+  }
+]

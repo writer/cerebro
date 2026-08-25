@@ -341,14 +341,15 @@ func TestReadProjectAPIKeysUsesBasicAuthAndProjectScope(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.inner.AllowLoopbackBaseURL = true
-	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
+	cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
 		"base_url":   server.URL,
 		"family":     "api_key",
 		"project_id": "project_123",
 		"public_key": "pk-lf",
 		"secret_key": "test-secret",
 		"tenant_id":  "writer",
-	}), nil)
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
@@ -369,6 +370,7 @@ func TestReadProjectAPIKeysUsesBasicAuthAndProjectScope(t *testing.T) {
 			t.Fatalf("%s = %q, want %q", key, got, want)
 		}
 	}
+	compareSyntheticProviderOutputs(t, source, cfg, "api_key", pull)
 }
 
 func TestReadProjectMemberEmitsStaticPrincipalType(t *testing.T) {
@@ -396,14 +398,15 @@ func TestReadProjectMemberEmitsStaticPrincipalType(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	source.inner.AllowLoopbackBaseURL = true
-	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
+	cfg := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- test-only placeholder secret.
 		"base_url":   server.URL,
 		"family":     "project_member",
 		"project_id": "project_123",
 		"public_key": "pk-lf",
 		"secret_key": "test-secret",
 		"tenant_id":  "writer",
-	}), nil)
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
@@ -416,6 +419,26 @@ func TestReadProjectMemberEmitsStaticPrincipalType(t *testing.T) {
 	}
 	if got := event.Attributes["principal_type"]; got != "user" {
 		t.Fatalf("principal_type = %q, want user", got)
+	}
+	compareSyntheticProviderOutputs(t, source, cfg, "project_member", pull)
+}
+
+func compareSyntheticProviderOutputs(t *testing.T, source *Source, cfg sourcecdk.Config, family string, pull sourcecdk.Pull) {
+	t.Helper()
+	stableFixture := sourcefixture.Bundle{Manifest: sourcefixture.Manifest{
+		SourceID: "langfuse",
+		Family:   family,
+		Response: sourcefixture.Response{CapturedAt: "2026-06-24T12:00:00Z"},
+	}}
+	if err := sourcefixture.StabilizeEvents(stableFixture, pull.Events, false); err != nil {
+		t.Fatalf("StabilizeEvents(%s) error = %v", family, err)
+	}
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(%s) error = %v", family, err)
+	}
+	if err := sourcefixture.CompareOrUpdateSourceOutputs(".", family, pull.Events, urns, strings.TrimSpace(os.Getenv("CEREBRO_UPDATE_SOURCE_FIXTURES")) == "1"); err != nil {
+		t.Fatal(err)
 	}
 }
 
