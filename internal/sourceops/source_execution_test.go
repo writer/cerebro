@@ -28,6 +28,10 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		"OpenAI user":                 {"openai", "user", "user", true},
 		"OpenAI project API key":      {"openai", "project_api_key", "project_api_key", true},
 		"unknown OpenAI family":       {"openai", "future-family", "future-family", true},
+		"DeepSeek default":            {"deepseek", "", "model_catalog", true},
+		"DeepSeek model catalog":      {"deepseek", "model_catalog", "model_catalog", true},
+		"DeepSeek account balances":   {"deepseek", "account_balances", "account_balances", true},
+		"unknown DeepSeek family":     {"deepseek", "future-family", "future-family", true},
 		"Asana default":               {"asana", "", "users", true},
 		"Asana users":                 {"asana", "users", "users", true},
 		"Asana projects":              {"asana", "projects", "projects", true},
@@ -207,6 +211,51 @@ func TestOpenAICheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
 	}
 	if calls != 3 || legacy.checkCalls != 0 || legacy.discoverCalls != 0 || legacy.readCalls != 0 {
 		t.Fatalf("calls = Rust %d, Go check/discover/read %d/%d/%d", calls, legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
+	}
+}
+
+func TestDeepSeekCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
+	const credentialFixture = "host-only-deepseek-secret" // #nosec G101 -- synthetic boundary-test sentinel, not credential material.
+	for _, family := range []string{"model_catalog", "account_balances"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &authorityProbeSource{sourceID: "deepseek"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := New(registry)
+			service.sourceWorker = previewWorkerStub{}
+			calls := 0
+			service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, reference string, credential []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+				calls++
+				if reference != previewCredentialReference || string(credential) != credentialFixture {
+					t.Fatal("DeepSeek credential was not confined to the trusted runner boundary")
+				}
+				encoded, marshalErr := json.Marshal(input)
+				if marshalErr != nil || strings.Contains(string(encoded), credentialFixture) || input.Scope.PublicConfig["api_key"] != "" {
+					t.Fatalf("credential crossed the worker protocol: %s, %v", encoded, marshalErr)
+				}
+				if input.SourceID != "deepseek" || input.FamilyID != family {
+					t.Fatalf("Rust selection = %s.%s", input.SourceID, input.FamilyID)
+				}
+				return deepSeekPreviewOutput(family, input.Scope.PriorTerminalWatermarkUnixMillis), nil
+			}
+			config := map[string]string{"family": family, "tenant_id": "tenant-1", "api_key": credentialFixture}
+			if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "deepseek", Config: config}); err != nil {
+				t.Fatal(err)
+			}
+			discovered, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "deepseek", Config: config})
+			if err != nil || len(discovered.GetUrns()) != 1 || !strings.Contains(discovered.GetUrns()[0], ":deepseek_"+family+":") {
+				t.Fatalf("Discover() = %#v, %v", discovered, err)
+			}
+			read, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "deepseek", Config: config})
+			if err != nil || len(read.GetEvents()) != 1 || read.GetEvents()[0].GetSourceId() != "deepseek" || read.GetCheckpoint().GetCursorOpaque() == "" {
+				t.Fatalf("Read() = %#v, %v", read, err)
+			}
+			if calls != 3 || legacy.checkCalls != 0 || legacy.discoverCalls != 0 || legacy.readCalls != 0 {
+				t.Fatalf("calls = Rust %d, Go check/discover/read %d/%d/%d", calls, legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
+			}
+		})
 	}
 }
 
@@ -658,6 +707,25 @@ func TestOpenAIPreviewCredentialAliases(t *testing.T) {
 	}
 }
 
+func TestDeepSeekPreviewCredentialAliases(t *testing.T) {
+	for name, test := range map[string]struct {
+		config map[string]string
+		want   string
+	}{
+		"token precedence": {map[string]string{"token": "token", "api_key": "fallback"}, "token"},
+		"api token":        {map[string]string{"api_token": "api-token", "api_key": "fallback"}, "api-token"},
+		"api key":          {map[string]string{"api_key": "api-key"}, "api-key"},
+		"access token":     {map[string]string{"access_token": "access-token"}, "access-token"},
+		"missing":          {map[string]string{"graph_token": "wrong-provider"}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := previewCredential("deepseek", test.config); got != test.want {
+				t.Fatalf("previewCredential() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestTailscaleCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
 	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
 		t.Run(family, func(t *testing.T) {
@@ -1067,6 +1135,27 @@ func openAIPreviewOutput(priorWatermark int64) *sourceworker.ExecutionOutput {
 	return &sourceworker.ExecutionOutput{
 		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
 		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: "user-1", CheckpointWatermarkUnixMillis: watermark},
+	}
+}
+
+func deepSeekPreviewOutput(family string, priorWatermark int64) *sourceworker.ExecutionOutput {
+	watermark := max(priorWatermark, 1_725_000_000_000)
+	providerID := family + "-1"
+	plan := &cerebrov1.SourceExecutionPlanV1{
+		SourceId: "deepseek", FamilyId: family, EventKind: "deepseek." + family, SchemaRef: "deepseek/" + family + "/v1",
+	}
+	record := &cerebrov1.SourceWorkerRecordV1{
+		ProviderId: providerID, EventId: "deepseek-tenant-1-" + providerID, OccurredAtUnixMillis: watermark,
+		Attributes: map[string]string{
+			"tenant_id": "tenant-1", "external_id": providerID, "family": family,
+			"provider": "deepseek", "source_provider": "deepseek", "resource_id": providerID,
+			"resource_type": family, "resource_urn": "urn:cerebro:tenant-1:deepseek_" + family + ":" + providerID,
+		},
+		PayloadJson: []byte(`{"id":"` + providerID + `"}`),
+	}
+	return &sourceworker.ExecutionOutput{
+		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
+		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointWatermarkUnixMillis: watermark},
 	}
 }
 

@@ -2,6 +2,7 @@ use prost::Message;
 
 use crate::anthropic::ANTHROPIC_SOURCE_EXECUTION_ADAPTERS;
 use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
+use crate::deepseek::DEEPSEEK_SOURCE_EXECUTION_ADAPTERS;
 use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
 use crate::discord::DISCORD_SOURCE_EXECUTION_ADAPTERS;
 use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
@@ -141,6 +142,11 @@ impl SourceExecutionDispatcher {
         }) {
             return adapter.compiled_plan();
         }
+        if let Some(adapter) = DEEPSEEK_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return Ok(adapter.compiled_plan());
+        }
         if let Some(adapter) = OPENAI_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
             request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
         }) {
@@ -233,6 +239,13 @@ impl SourceExecutionDispatcher {
             return Ok(adapter);
         }
         if let Some(adapter) = ASANA_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
+            return Ok(adapter);
+        }
+        if let Some(adapter) = DEEPSEEK_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
             plan.source_id == adapter.source_id()
                 && plan.family_id == adapter.family_id()
                 && plan.provider_kernel == adapter.provider_kernel()

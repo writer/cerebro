@@ -14,6 +14,8 @@ mod projection;
 mod request;
 #[path = "deepseek/response.rs"]
 mod response;
+#[path = "deepseek/source_execution.rs"]
+mod source_execution;
 #[cfg(test)]
 #[path = "deepseek/tests.rs"]
 mod tests;
@@ -26,6 +28,7 @@ pub use family::DeepSeekFamily;
 pub use projection::{
     DeepSeekEntityFact, DeepSeekProjectionFacts, DeepSeekRelationFact, project_deepseek_records,
 };
+pub(crate) use source_execution::DEEPSEEK_SOURCE_EXECUTION_ADAPTERS;
 pub use types::{
     DeepSeekCheckpointCandidate, DeepSeekKernel, DeepSeekPage, DeepSeekRecord, DeepSeekRequest,
 };

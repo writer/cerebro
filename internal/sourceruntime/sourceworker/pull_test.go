@@ -125,6 +125,10 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"OpenAI user":                 {"openai", " user ", "user", true},
 		"OpenAI project API key":      {"openai", "project_api_key", "project_api_key", true},
 		"unknown OpenAI family":       {"openai", "future-family", "future-family", true},
+		"DeepSeek default":            {" deepseek ", "", "model_catalog", true},
+		"DeepSeek model catalog":      {"deepseek", " model_catalog ", "model_catalog", true},
+		"DeepSeek account balances":   {"deepseek", "account_balances", "account_balances", true},
+		"unknown DeepSeek family":     {"deepseek", "future-family", "future-family", true},
 		"Asana default":               {" asana ", "", "users", true},
 		"Asana users":                 {"asana", " users ", "users", true},
 		"Asana projects":              {"asana", "projects", "projects", true},
@@ -219,6 +223,11 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "openai", references: map[string]string{"api_key": "credential:openai:api-key"},
 			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:openai:api-key", wantResolved: "resolved-api-key",
+		},
+		"DeepSeek api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "deepseek", references: map[string]string{"api_key": "credential:deepseek:api-key"},
+			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:deepseek:api-key", wantResolved: "resolved-api-key",
 		},
 		"Twilio basic credentials": {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.

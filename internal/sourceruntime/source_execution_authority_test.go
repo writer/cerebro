@@ -146,6 +146,60 @@ func TestOpenAIRuntimeNeverFallsBackToGoAuthority(t *testing.T) {
 	}
 }
 
+func TestPutDeepSeekRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "deepseek"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &runtimePlanWorker{}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+		Id: "deepseek-model-runtime", SourceId: "deepseek", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family":  "model_catalog",
+			"api_key": sourceconfig.CredentialReferenceValue("deepseek", "api_key"),
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.checkCalls != 0 || worker.planCalls != 1 {
+		t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+	}
+	if worker.selection.SourceID != "deepseek" || worker.selection.FamilyID != "model_catalog" {
+		t.Fatalf("Rust selection = %#v", worker.selection)
+	}
+	if worker.publicConfig["family"] != "model_catalog" || worker.publicConfig["api_key"] != "" {
+		t.Fatalf("Rust public config = %#v", worker.publicConfig)
+	}
+}
+
+func TestDeepSeekRuntimeNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "deepseek"}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := &Service{sourceWorker: worker}
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "deepseek-model-runtime", SourceId: "deepseek", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family":  "model_catalog",
+			"api_key": sourceconfig.CredentialReferenceValue("deepseek", "api_key"),
+		},
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{"family": "model_catalog", "api_key": "host-only-secret"})
+
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "deepseek" || worker.selection.FamilyID != "model_catalog" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+	}
+}
+
 func TestTailscaleRuntimeFailsClosedWithoutRustWorker(t *testing.T) {
 	legacy := &runtimeAuthorityProbe{sourceID: "tailscale"}
 	registry, err := sourcecdk.NewRegistry(legacy)
