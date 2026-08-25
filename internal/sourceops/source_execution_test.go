@@ -40,6 +40,8 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		"Hugging Face default":        {"huggingface", "", "organization_members", true},
 		"Mistral default":             {"mistral", "", "workspaces", true},
 		"Perplexity default":          {"perplexity", "", "api_groups", true},
+		"AWS Bedrock default":         {"aws_bedrock", "", "foundation_models", true},
+		"Langfuse default":            {"langfuse", "", "project", true},
 		"unknown portable AI family":  {"mistral", "future-family", "future-family", true},
 		"Asana default":               {"asana", "", "users", true},
 		"Asana users":                 {"asana", "users", "users", true},
@@ -745,6 +747,20 @@ func TestPortableAIPreviewCredentialAliasesStayInsideTheTrustedRunner(t *testing
 				t.Fatalf("previewCredential() = %q, want api-key compatibility", got)
 			}
 		})
+	}
+}
+
+func TestSpecialAIPreviewCredentialsStayInsideTheTrustedRunner(t *testing.T) {
+	aws := previewCredential("aws_bedrock", map[string]string{"access_key": "AKIDEXAMPLE", "secret_key": "synthetic-secret"}) // #nosec G101 -- synthetic fixture.
+	if aws != sourceworker.EncodeAWSHostCredential("AKIDEXAMPLE", "synthetic-secret") {
+		t.Fatal("AWS preview credential was not encoded for the trusted host")
+	}
+	langfuse := previewCredential("langfuse", map[string]string{"public_key": "pk-example", "secret_key": "synthetic-secret"}) // #nosec G101 -- synthetic fixture.
+	if langfuse != "cGstZXhhbXBsZTpzeW50aGV0aWMtc2VjcmV0" {
+		t.Fatal("Langfuse preview credential was not encoded for Basic auth inside the trusted host")
+	}
+	if previewCredential("aws_bedrock", map[string]string{"access_key": "AKIDEXAMPLE"}) != "" || previewCredential("langfuse", map[string]string{"public_key": "pk-example"}) != "" {
+		t.Fatal("incomplete compound credentials must fail closed")
 	}
 }
 

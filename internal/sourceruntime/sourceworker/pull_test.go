@@ -159,6 +159,8 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"Hugging Face default":        {"huggingface", "", "organization_members", true},
 		"Mistral default":             {"mistral", "", "workspaces", true},
 		"Perplexity default":          {"perplexity", "", "api_groups", true},
+		"AWS Bedrock default":         {"aws_bedrock", "", "foundation_models", true},
+		"Langfuse default":            {"langfuse", "", "project", true},
 		"unknown portable AI family":  {"google_gemini", "future-family", "future-family", true},
 		"Asana default":               {" asana ", "", "users", true},
 		"Asana users":                 {"asana", " users ", "users", true},
@@ -264,6 +266,16 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "google_gemini", references: map[string]string{"api_key": "credential:gemini:api-key"},
 			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:gemini:api-key", wantResolved: "resolved-api-key",
+		},
+		"AWS Bedrock compound host credential": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "aws_bedrock", references: map[string]string{"access_key": "credential:aws:access", "secret_key": "credential:aws:secret"},
+			resolved: map[string]string{"access_key": "AKIDEXAMPLE", "secret_key": "synthetic-secret"}, wantReference: "credential:aws:secret", wantResolved: EncodeAWSHostCredential("AKIDEXAMPLE", "synthetic-secret"),
+		},
+		"Langfuse basic host credential": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "langfuse", references: map[string]string{"public_key": "credential:langfuse:public", "secret_key": "credential:langfuse:secret"},
+			resolved: map[string]string{"public_key": "pk-example", "secret_key": "synthetic-secret"}, wantReference: "credential:langfuse:secret", wantResolved: "cGstZXhhbXBsZTpzeW50aGV0aWMtc2VjcmV0",
 		},
 		"Twilio basic credentials": {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.

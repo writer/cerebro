@@ -36,6 +36,10 @@ fn context(cursor: &str) -> SourceWorkerExecutionContextV1 {
 fn metadata(source: &str, family: &str) -> SourceWorkerRuntimeMetadataV2 {
     let mut public_config = HashMap::from([("family".to_owned(), family.to_owned())]);
     match source {
+        "aws_bedrock" => {
+            public_config.insert("region".to_owned(), "us-east-1".to_owned());
+            public_config.insert("service".to_owned(), "bedrock".to_owned());
+        }
         "azure_openai" => {
             public_config.insert("subscription_id".to_owned(), "sub-1".to_owned());
             public_config.insert("resource_group".to_owned(), "rg-ai".to_owned());
@@ -48,6 +52,19 @@ fn metadata(source: &str, family: &str) -> SourceWorkerRuntimeMetadataV2 {
         }
         "huggingface" => {
             public_config.insert("organization".to_owned(), "writer".to_owned());
+        }
+        "langfuse" => {
+            public_config.insert(
+                "base_url".to_owned(),
+                "https://cloud.langfuse.com".to_owned(),
+            );
+            public_config.insert("project_id".to_owned(), "project-1".to_owned());
+            if family == "metric" {
+                public_config.insert(
+                    "metrics_query".to_owned(),
+                    r#"{"view":"observations","dimensions":[{"field":"name"}],"metrics":[{"measure":"count","aggregation":"count"}],"fromTimestamp":"2026-08-01T00:00:00Z","toTimestamp":"2026-08-02T00:00:00Z"}"#.to_owned(),
+                );
+            }
         }
         _ => {}
     }
@@ -75,9 +92,9 @@ fn execution(
 }
 
 #[test]
-fn embedded_catalog_compiles_all_eight_sources_and_thirty_six_families() {
-    assert_eq!(SOURCES.len(), 8);
-    assert_eq!(PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS.len(), 36);
+fn embedded_catalog_compiles_all_ten_sources_and_fifty_one_families() {
+    assert_eq!(SOURCES.len(), 10);
+    assert_eq!(PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS.len(), 51);
     for adapter in PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS.iter() {
         let plan = adapter.compiled_plan();
         assert_eq!(plan.source_id, adapter.source_id());
@@ -119,10 +136,11 @@ fn every_family_plans_an_origin_restricted_request_without_credentials() {
             key.as_ref(),
             "api_key" | "apikey" | "access_token" | "client_secret" | "token"
         )));
-        let expected_operation = if adapter.source_id() == "google_gemini" {
-            "google.api_key_header"
-        } else {
-            "source.bearer"
+        let expected_operation = match adapter.source_id() {
+            "google_gemini" => "google.api_key_header",
+            "langfuse" => "langfuse.basic",
+            "aws_bedrock" => "aws.sigv4",
+            _ => "source.bearer",
         };
         assert_eq!(execution.credential_operation, expected_operation);
     }
@@ -252,6 +270,7 @@ fn provider_payloads_cannot_supply_tenant_or_credential_material() {
             "tenant",
             body,
             OBSERVED_AT_MILLIS,
+            &HashMap::new(),
         )
         .unwrap_err();
         assert!(matches!(
@@ -259,4 +278,116 @@ fn provider_payloads_cannot_supply_tenant_or_credential_material() {
             SourceExecutionError::TenantMismatch | SourceExecutionError::InvalidProviderRecord
         ));
     }
+}
+
+#[test]
+fn aws_bedrock_and_langfuse_preserve_provider_specific_request_contracts() {
+    let aws = execution(
+        adapter("aws_bedrock", "foundation_models"),
+        context(""),
+        metadata("aws_bedrock", "foundation_models"),
+    );
+    assert_eq!(aws.credential_operation, "aws.sigv4");
+    assert_eq!(
+        aws.request.unwrap().url,
+        "https://bedrock.us-east-1.amazonaws.com/foundation-models"
+    );
+
+    let member = execution(
+        adapter("langfuse", "project_member"),
+        context(""),
+        metadata("langfuse", "project_member"),
+    );
+    assert_eq!(member.credential_operation, "langfuse.basic");
+    assert_eq!(
+        member.request.unwrap().url,
+        "https://cloud.langfuse.com/api/public/projects/project-1/members"
+    );
+}
+
+#[test]
+fn langfuse_page_cursor_is_bounded_and_preserves_public_filters() {
+    let adapter = adapter("langfuse", "trace");
+    let runtime_metadata = metadata("langfuse", "trace");
+    let first = execution(adapter, context(""), runtime_metadata.clone());
+    let first_url = reqwest::Url::parse(&first.request.unwrap().url).unwrap();
+    assert_eq!(
+        first_url
+            .query_pairs()
+            .find(|(key, _)| key == "page")
+            .map(|(_, value)| value.into_owned()),
+        Some("1".to_owned())
+    );
+    assert_eq!(
+        adapter
+            .next_cursor(
+                br#"{"meta":{"page":1,"totalPages":2}}"#,
+                &HashMap::new(),
+                "https://cloud.langfuse.com",
+            )
+            .unwrap(),
+        "2"
+    );
+    let second = execution(adapter, context("2"), runtime_metadata);
+    let second_url = reqwest::Url::parse(&second.request.unwrap().url).unwrap();
+    assert_eq!(
+        second_url
+            .query_pairs()
+            .find(|(key, _)| key == "page")
+            .map(|(_, value)| value.into_owned()),
+        Some("2".to_owned())
+    );
+    assert_eq!(
+        adapter
+            .plan_v2(&SourceWorkerPlanEnvelopeV2 {
+                request: Some(SourceWorkerPlanRequestV1 {
+                    plan: Some(adapter.compiled_plan()),
+                    context: Some(context("10000001")),
+                }),
+                metadata: Some(metadata("langfuse", "trace")),
+            })
+            .unwrap_err(),
+        SourceExecutionError::InvalidCursor
+    );
+}
+
+#[test]
+fn langfuse_metric_query_fails_closed_before_request_planning() {
+    let adapter = adapter("langfuse", "metric");
+    let mut metadata = metadata("langfuse", "metric");
+    metadata.public_config.insert(
+        "metrics_query".to_owned(),
+        r#"{"view":"unknown"}"#.to_owned(),
+    );
+    assert_eq!(
+        adapter
+            .plan_v2(&SourceWorkerPlanEnvelopeV2 {
+                request: Some(SourceWorkerPlanRequestV1 {
+                    plan: Some(adapter.compiled_plan()),
+                    context: Some(context("")),
+                }),
+                metadata: Some(metadata),
+            })
+            .unwrap_err(),
+        SourceExecutionError::MissingConfiguration
+    );
+}
+
+#[test]
+fn langfuse_alternative_identity_and_public_project_context_normalize_deterministically() {
+    let adapter = adapter("langfuse", "project_member");
+    let metadata = metadata("langfuse", "project_member");
+    let records = super::normalize::normalize_records(
+        adapter.source,
+        adapter.family,
+        "tenant",
+        br#"{"memberships":[{"email":"operator@example.com","status":"active"}]}"#,
+        OBSERVED_AT_MILLIS,
+        &metadata.public_config,
+    )
+    .unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].provider_id, "operator@example.com");
+    assert_eq!(records[0].attributes["project_id"], "project-1");
+    assert_eq!(records[0].attributes["tenant_id"], "tenant");
 }

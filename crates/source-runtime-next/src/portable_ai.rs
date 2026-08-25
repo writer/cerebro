@@ -2,6 +2,7 @@
 
 mod adapter;
 mod catalog;
+mod langfuse;
 mod normalize;
 
 pub(crate) use adapter::PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS;

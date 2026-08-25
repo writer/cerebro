@@ -17,6 +17,7 @@ pub(super) fn normalize_records(
     tenant_id: &str,
     body: &[u8],
     observed_at_unix_millis: i64,
+    public_config: &HashMap<String, String>,
 ) -> Result<Vec<SourceWorkerRecordV1>, SourceExecutionError> {
     let document: Value =
         serde_json::from_slice(body).map_err(|_| SourceExecutionError::MalformedResponse)?;
@@ -30,7 +31,7 @@ pub(super) fn normalize_records(
             .map_err(|_| SourceExecutionError::InvalidExecutionContext)?;
     selected
         .into_iter()
-        .map(|raw| normalize_record(source, family, tenant_id, raw, observed_at))
+        .map(|raw| normalize_record(source, family, tenant_id, raw, observed_at, public_config))
         .collect()
 }
 
@@ -79,6 +80,7 @@ fn normalize_record(
     tenant_id: &str,
     raw: Value,
     observed_at: OffsetDateTime,
+    public_config: &HashMap<String, String>,
 ) -> Result<SourceWorkerRecordV1, SourceExecutionError> {
     let values = raw
         .as_object()
@@ -116,19 +118,25 @@ fn normalize_record(
         ("source_system".to_owned(), source.id.clone()),
         ("tenant_id".to_owned(), tenant_id.to_owned()),
     ]);
+    for (attribute, value) in &family.static_attributes {
+        if !protected_attribute(attribute) {
+            attributes.insert(attribute.clone(), value.clone());
+        }
+    }
+    for (attribute, config_key) in &family.config_attributes {
+        if !protected_attribute(attribute) {
+            if let Some(value) = public_config
+                .get(config_key)
+                .map(String::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                attributes.insert(attribute.clone(), value.to_owned());
+            }
+        }
+    }
     for (attribute, paths) in &family.projection_fields {
-        if matches!(
-            attribute.as_str(),
-            "external_id"
-                | "family"
-                | "provider"
-                | "resource_urn"
-                | "source_event_id"
-                | "source_product"
-                | "source_provider"
-                | "source_system"
-                | "tenant_id"
-        ) {
+        if protected_attribute(attribute) {
             continue;
         }
         if let Some(value) = scalar_at(&raw, paths) {
@@ -141,7 +149,11 @@ fn normalize_record(
         }
     }
     for required in &family.required_payload_fields {
-        if value_at(&raw, required).is_none_or(Value::is_null) {
+        if !required
+            .split('|')
+            .map(str::trim)
+            .any(|path| value_at(&raw, path).is_some_and(|value| !value.is_null()))
+        {
             return Err(SourceExecutionError::EventContractRejected);
         }
     }
@@ -153,6 +165,21 @@ fn normalize_record(
         payload_json: serde_json::to_vec(&raw)
             .map_err(|_| SourceExecutionError::InternalRuntime)?,
     })
+}
+
+fn protected_attribute(attribute: &str) -> bool {
+    matches!(
+        attribute,
+        "external_id"
+            | "family"
+            | "provider"
+            | "resource_urn"
+            | "source_event_id"
+            | "source_product"
+            | "source_provider"
+            | "source_system"
+            | "tenant_id"
+    )
 }
 
 fn select_records(document: &Value, selector: &str) -> Result<Vec<Value>, SourceExecutionError> {

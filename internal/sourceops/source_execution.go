@@ -2,6 +2,7 @@ package sourceops
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -45,7 +46,7 @@ func rustSourceFamily(sourceID string, config map[string]string) (string, bool) 
 	// runtime-authoritative provider must keep its existing sourceops path until
 	// its preview credential adapter and product-surface parity are ready.
 	switch sourceID {
-	case "anthropic", "asana", "azure", "azure_openai", "cohere", "deepseek", "digitalocean", "discord", "google_gemini", "google_vertex_ai", "groq", "huggingface", "linode", "mistral", "openai", "pagerduty", "perplexity", "sentinelone", "tailscale":
+	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cohere", "deepseek", "digitalocean", "discord", "google_gemini", "google_vertex_ai", "groq", "huggingface", "langfuse", "linode", "mistral", "openai", "pagerduty", "perplexity", "sentinelone", "tailscale":
 		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
 	case "jumpcloud":
 		family := strings.TrimSpace(config["family"])
@@ -140,6 +141,26 @@ func (s *Service) discoverRustSource(ctx context.Context, sourceID, family strin
 
 func previewCredential(sourceID string, config map[string]string) string {
 	switch strings.TrimSpace(sourceID) {
+	case "aws_bedrock":
+		accessKey := firstNonEmpty(config, "access_key", "access_key_id")
+		secretKey := firstNonEmpty(config, "secret_key", "secret_access_key")
+		if accessKey == "" || secretKey == "" {
+			return ""
+		}
+		return sourceworker.EncodeAWSHostCredential(accessKey, secretKey)
+	case "langfuse":
+		publicKey := strings.TrimSpace(config["public_key"])
+		secretKey := strings.TrimSpace(config["secret_key"])
+		if publicKey == "" || secretKey == "" {
+			return ""
+		}
+		basic := make([]byte, 0, len(publicKey)+1+len(secretKey))
+		basic = append(basic, publicKey...)
+		basic = append(basic, ':')
+		basic = append(basic, secretKey...)
+		encoded := base64.StdEncoding.EncodeToString(basic)
+		clear(basic)
+		return encoded
 	case "azure":
 		if credential := strings.TrimSpace(config["graph_token"]); credential != "" {
 			return credential

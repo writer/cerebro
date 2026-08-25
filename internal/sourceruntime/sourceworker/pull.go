@@ -83,6 +83,16 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 			familyID = "api_groups"
 		}
 		return familyID, true
+	case "aws_bedrock":
+		if familyID == "" {
+			familyID = "foundation_models"
+		}
+		return familyID, true
+	case "langfuse":
+		if familyID == "" {
+			familyID = "project"
+		}
+		return familyID, true
 	case "asana":
 		if familyID == "" {
 			familyID = "users"
@@ -146,6 +156,32 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 // to the Go host; callers must never include the resolved value in worker
 // metadata, receipts, or errors.
 func CredentialBinding(sourceID string, references, resolved map[string]string) (string, string) {
+	if strings.TrimSpace(sourceID) == "aws_bedrock" {
+		accessReference := firstCredentialValue(references, "access_key", "access_key_id")
+		secretReference := firstCredentialValue(references, "secret_key", "secret_access_key")
+		accessKey := firstCredentialValue(resolved, "access_key", "access_key_id")
+		secretKey := firstCredentialValue(resolved, "secret_key", "secret_access_key")
+		if accessReference == "" || secretReference == "" || accessKey == "" || secretKey == "" {
+			return "", ""
+		}
+		return secretReference, EncodeAWSHostCredential(accessKey, secretKey)
+	}
+	if strings.TrimSpace(sourceID) == "langfuse" {
+		publicReference := strings.TrimSpace(references["public_key"])
+		secretReference := strings.TrimSpace(references["secret_key"])
+		publicKey := strings.TrimSpace(resolved["public_key"])
+		secretKey := strings.TrimSpace(resolved["secret_key"])
+		if publicReference == "" || secretReference == "" || publicKey == "" || secretKey == "" {
+			return "", ""
+		}
+		basic := make([]byte, 0, len(publicKey)+1+len(secretKey))
+		basic = append(basic, publicKey...)
+		basic = append(basic, ':')
+		basic = append(basic, secretKey...)
+		encoded := base64.StdEncoding.EncodeToString(basic)
+		clear(basic)
+		return secretReference, encoded
+	}
 	if strings.TrimSpace(sourceID) == "twilio" {
 		username := strings.TrimSpace(resolved["username"])
 		passwordReference := strings.TrimSpace(references["password"])
@@ -259,10 +295,37 @@ func PublicExecutionConfigForSource(sourceID string, values map[string]string) m
 		copyPublicValue(public, values, "organization")
 	case "cohere", "google_gemini", "groq", "mistral", "perplexity":
 		// These catalog-defined families need no public provider selectors.
+	case "aws_bedrock":
+		for _, key := range []string{"region", "service"} {
+			copyPublicValue(public, values, key)
+		}
+	case "langfuse":
+		for _, key := range []string{
+			"project_id", "from_timestamp", "to_timestamp", "from_start_time", "to_start_time",
+			"trace_id", "user_id", "session_id", "name", "type", "release", "version", "tags",
+			"fields", "filter", "label", "tag", "metrics_query",
+		} {
+			copyPublicValue(public, values, key)
+		}
 	default:
 		return public
 	}
 	return public
+}
+
+func firstCredentialValue(values map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(values[key]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+// EncodeAWSHostCredential binds an AWS access-key pair for one trusted-host
+// redemption. The opaque value must never enter worker metadata or receipts.
+func EncodeAWSHostCredential(accessKey, secretKey string) string {
+	return base64.RawStdEncoding.EncodeToString([]byte(accessKey)) + "." + base64.RawStdEncoding.EncodeToString([]byte(secretKey))
 }
 
 func copyPublicValue(public, values map[string]string, key string) {

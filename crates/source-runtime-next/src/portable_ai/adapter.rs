@@ -66,7 +66,14 @@ impl PortableAiSourceExecutionAdapter {
         &self,
         metadata: &SourceWorkerRuntimeMetadataV2,
     ) -> Result<String, SourceExecutionError> {
-        let mut origin = self.source.origin_template.clone();
+        let mut origin = if self.source.id == "langfuse" {
+            public_value(&metadata.public_config, "base_url")
+                .ok_or(SourceExecutionError::MissingConfiguration)?
+                .trim_end_matches('/')
+                .to_owned()
+        } else {
+            self.source.origin_template.clone()
+        };
         for key in &self.source.required_config {
             let value = public_value(&metadata.public_config, key)
                 .ok_or(SourceExecutionError::MissingConfiguration)?;
@@ -99,8 +106,17 @@ impl PortableAiSourceExecutionAdapter {
         {
             return Err(SourceExecutionError::EgressDenied);
         }
-        if public_value(&metadata.public_config, "base_url")
-            .is_some_and(|base_url| base_url.trim_end_matches('/') != origin.trim_end_matches('/'))
+        if self.source.id == "aws_bedrock"
+            && (!parsed.host_str().is_some_and(|host| {
+                host.starts_with("bedrock.") && host.ends_with(".amazonaws.com")
+            }) || public_value(&metadata.public_config, "service") != Some("bedrock"))
+        {
+            return Err(SourceExecutionError::EgressDenied);
+        }
+        if self.source.id != "langfuse"
+            && public_value(&metadata.public_config, "base_url").is_some_and(|base_url| {
+                base_url.trim_end_matches('/') != origin.trim_end_matches('/')
+            })
         {
             return Err(SourceExecutionError::MissingConfiguration);
         }
@@ -120,7 +136,15 @@ impl PortableAiSourceExecutionAdapter {
                 path = path.replace(&placeholder, &path_component(value)?);
             }
         }
-        if !path.starts_with('/') || path.contains("${config.") {
+        for key in &self.source.allowed_config {
+            let placeholder = format!("{{{key}}}");
+            if path.contains(&placeholder) {
+                let value = public_value(&metadata.public_config, key)
+                    .ok_or(SourceExecutionError::MissingConfiguration)?;
+                path = path.replace(&placeholder, &path_component(value)?);
+            }
+        }
+        if !path.starts_with('/') || path.contains("${config.") || path.contains('{') {
             return Err(SourceExecutionError::MissingConfiguration);
         }
         Ok(path)
@@ -138,11 +162,21 @@ impl PortableAiSourceExecutionAdapter {
         {
             return Err(SourceExecutionError::MissingConfiguration);
         }
+        if self.source.id == "langfuse" && self.family.id == "metric" {
+            super::langfuse::validate_metrics_query(
+                public_value(&metadata.public_config, "metrics_query")
+                    .ok_or(SourceExecutionError::MissingConfiguration)?,
+            )?;
+        }
         for key in &self.source.required_config {
             public_value(&metadata.public_config, key)
                 .ok_or(SourceExecutionError::MissingConfiguration)?;
         }
         let origin = self.rendered_origin(metadata)?;
+        let continuation_url = matches!(
+            &self.family.pagination,
+            Pagination::NextUrl { .. } | Pagination::Link { .. }
+        ) && !context.prior_cursor.is_empty();
         let mut url = match &self.family.pagination {
             Pagination::NextUrl { .. } | Pagination::Link { .. }
                 if !context.prior_cursor.is_empty() =>
@@ -157,15 +191,15 @@ impl PortableAiSourceExecutionAdapter {
             ))
             .map_err(|_| SourceExecutionError::InvalidPlan)?,
         };
-        if context.prior_cursor.is_empty() {
+        if !continuation_url {
             let mut query = url.query_pairs_mut();
             for (key, value) in &self.family.static_query {
                 query.append_pair(key, value);
             }
             for (parameter, config_key) in &self.family.config_query {
-                let value = public_value(&metadata.public_config, config_key)
-                    .ok_or(SourceExecutionError::MissingConfiguration)?;
-                query.append_pair(parameter, value);
+                if let Some(value) = public_value(&metadata.public_config, config_key) {
+                    query.append_pair(parameter, value);
+                }
             }
             match &self.family.pagination {
                 Pagination::Cursor {
@@ -174,6 +208,15 @@ impl PortableAiSourceExecutionAdapter {
                     ..
                 }
                 | Pagination::Link {
+                    page_size_parameter,
+                    page_size,
+                    ..
+                } => {
+                    if let Some(parameter) = page_size_parameter {
+                        query.append_pair(parameter, &page_size.to_string());
+                    }
+                }
+                Pagination::Page {
                     page_size_parameter,
                     page_size,
                     ..
@@ -191,6 +234,24 @@ impl PortableAiSourceExecutionAdapter {
                 url.query_pairs_mut()
                     .append_pair(parameter, &context.prior_cursor);
             }
+        } else if let Pagination::Page {
+            parameter,
+            start_page,
+            ..
+        } = &self.family.pagination
+        {
+            let page = if context.prior_cursor.is_empty() {
+                *start_page
+            } else {
+                context
+                    .prior_cursor
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|page| *page >= *start_page && *page <= 10_000_000)
+                    .ok_or(SourceExecutionError::InvalidCursor)?
+            };
+            url.query_pairs_mut()
+                .append_pair(parameter, &page.to_string());
         } else if matches!(&self.family.pagination, Pagination::None)
             && !context.prior_cursor.is_empty()
         {
@@ -199,7 +260,7 @@ impl PortableAiSourceExecutionAdapter {
         Ok((origin, url.to_string()))
     }
 
-    fn next_cursor(
+    pub(super) fn next_cursor(
         &self,
         body: &[u8],
         headers: &HashMap<String, String>,
@@ -212,6 +273,7 @@ impl PortableAiSourceExecutionAdapter {
             Pagination::Cursor { json_path, .. } => scalar_at(&document, &[json_path.clone()]),
             Pagination::NextUrl { json_path } => scalar_at(&document, &[json_path.clone()]),
             Pagination::Link { header, .. } => response_header(headers, header).and_then(link_next),
+            Pagination::Page { .. } => next_page(&document)?,
         };
         let Some(cursor) = cursor else {
             return Ok(String::new());
@@ -369,6 +431,7 @@ impl SourceExecutionAdapter for PortableAiSourceExecutionAdapter {
             &context.tenant_id,
             &request.response_body,
             context.observed_at_unix_millis,
+            &metadata.public_config,
         )?;
         let records = validate_and_deduplicate_records(records)?;
         let next_cursor =
@@ -481,4 +544,19 @@ fn link_next(value: &str) -> Option<String> {
             .map(str::to_owned)
             .filter(|target| !target.is_empty())
     })
+}
+
+fn next_page(document: &Value) -> Result<Option<String>, SourceExecutionError> {
+    let current = scalar_at(document, &["$.meta.page".to_owned()])
+        .ok_or(SourceExecutionError::MalformedResponse)?
+        .parse::<usize>()
+        .map_err(|_| SourceExecutionError::MalformedResponse)?;
+    let total = scalar_at(document, &["$.meta.totalPages".to_owned()])
+        .ok_or(SourceExecutionError::MalformedResponse)?
+        .parse::<usize>()
+        .map_err(|_| SourceExecutionError::MalformedResponse)?;
+    if current == 0 || total > 10_000_000 {
+        return Err(SourceExecutionError::InvalidCursor);
+    }
+    Ok((current < total).then(|| (current + 1).to_string()))
 }

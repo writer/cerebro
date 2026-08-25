@@ -6,6 +6,8 @@ use serde::Deserialize;
 pub(super) enum AuthOperation {
     Bearer,
     ApiKeyHeader,
+    Basic,
+    AwsSigV4,
 }
 
 impl AuthOperation {
@@ -13,6 +15,8 @@ impl AuthOperation {
         match self {
             Self::Bearer => "source.bearer",
             Self::ApiKeyHeader => "google.api_key_header",
+            Self::Basic => "langfuse.basic",
+            Self::AwsSigV4 => "aws.sigv4",
         }
     }
 }
@@ -34,6 +38,12 @@ pub(super) enum Pagination {
         page_size_parameter: Option<String>,
         page_size: usize,
     },
+    Page {
+        parameter: String,
+        start_page: usize,
+        page_size_parameter: Option<String>,
+        page_size: usize,
+    },
 }
 
 #[derive(Debug)]
@@ -51,6 +61,8 @@ pub(super) struct Family {
     pub(super) required_attributes: Vec<String>,
     pub(super) required_payload_fields: Vec<String>,
     pub(super) projection_fields: BTreeMap<String, Vec<String>>,
+    pub(super) static_attributes: BTreeMap<String, String>,
+    pub(super) config_attributes: BTreeMap<String, String>,
     pub(super) config_query: BTreeMap<String, String>,
     pub(super) static_query: BTreeMap<String, String>,
     pub(super) pagination: Pagination,
@@ -62,6 +74,7 @@ pub(super) struct Source {
     pub(super) origin_template: String,
     pub(super) auth: AuthOperation,
     pub(super) required_config: Vec<String>,
+    pub(super) allowed_config: Vec<String>,
     pub(super) families: Vec<&'static Family>,
 }
 
@@ -114,6 +127,8 @@ struct FamilyWire {
     event: EventWire,
     projection: ProjectionWire,
     #[serde(default)]
+    config: FamilyConfigWire,
+    #[serde(default)]
     config_query: BTreeMap<String, String>,
     #[serde(default)]
     static_query: BTreeMap<String, String>,
@@ -134,6 +149,16 @@ struct EventWire {
 struct ProjectionWire {
     #[serde(default)]
     fields: BTreeMap<String, String>,
+    #[serde(default)]
+    static_fields: BTreeMap<String, String>,
+}
+
+#[derive(Default, Deserialize)]
+struct FamilyConfigWire {
+    #[serde(default)]
+    config_query: BTreeMap<String, String>,
+    #[serde(default)]
+    config_attributes: BTreeMap<String, String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -152,6 +177,10 @@ struct PaginationWire {
     page_size_param: String,
     #[serde(default)]
     page_size: usize,
+    #[serde(default)]
+    page_param: String,
+    #[serde(default)]
+    start_page: usize,
 }
 
 #[derive(Deserialize)]
@@ -174,7 +203,13 @@ struct EmbeddedSource {
     catalog: &'static [u8],
 }
 
-const EMBEDDED: [EmbeddedSource; 8] = [
+const EMBEDDED: [EmbeddedSource; 10] = [
+    EmbeddedSource {
+        definition: include_bytes!(
+            "../../../../internal/connectorcatalog/catalog/ai-governance/aws_bedrock.yaml"
+        ),
+        catalog: include_bytes!("../../../../sources/aws_bedrock/catalog.yaml"),
+    },
     EmbeddedSource {
         definition: include_bytes!(
             "../../../../internal/connectorcatalog/catalog/ai-governance/azure_openai.yaml"
@@ -210,6 +245,12 @@ const EMBEDDED: [EmbeddedSource; 8] = [
             "../../../../internal/connectorcatalog/catalog/ai-governance/huggingface.yaml"
         ),
         catalog: include_bytes!("../../../../sources/huggingface/catalog.yaml"),
+    },
+    EmbeddedSource {
+        definition: include_bytes!(
+            "../../../../internal/connectorcatalog/catalog/ai-governance/langfuse.yaml"
+        ),
+        catalog: include_bytes!("../../../../sources/langfuse/catalog.yaml"),
     },
     EmbeddedSource {
         definition: include_bytes!(
@@ -250,6 +291,8 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
     let auth = match definition.auth.model.as_str() {
         "bearer_token" => AuthOperation::Bearer,
         "api_key" if definition.source_id == "google_gemini" => AuthOperation::ApiKeyHeader,
+        "basic" if definition.source_id == "langfuse" => AuthOperation::Basic,
+        "aws_sigv4" if definition.source_id == "aws_bedrock" => AuthOperation::AwsSigV4,
         other => return Err(format!("unsupported {} auth {other}", definition.source_id)),
     };
     let families = definition
@@ -263,7 +306,14 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
                 .get(&family.event.kind)
                 .ok_or_else(|| format!("{} contract is missing", family.event.kind))?;
             if contract.schema_ref != family.event.schema_ref
-                || contract.required_payload_fields != family.event.required_payload_fields
+                || contract.required_payload_fields.iter().any(|required| {
+                    !family.event.required_payload_fields.iter().any(|declared| {
+                        declared
+                            .split('|')
+                            .map(str::trim)
+                            .any(|candidate| candidate == required)
+                    })
+                })
             {
                 return Err(format!("{} event contracts drifted", family.event.kind));
             }
@@ -283,6 +333,8 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
                     )
                 })
                 .collect();
+            let mut config_query = family.config_query;
+            config_query.extend(family.config.config_query);
             let compiled = Family {
                 kernel: format!("{}.{}", definition.source_id, family.id),
                 id: family.id,
@@ -295,9 +347,11 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
                 schema_ref: family.event.schema_ref,
                 urn_kind: family.event.urn_kind,
                 required_attributes: contract.required_attributes.clone(),
-                required_payload_fields: contract.required_payload_fields.clone(),
+                required_payload_fields: family.event.required_payload_fields,
                 projection_fields,
-                config_query: family.config_query,
+                static_attributes: family.projection.static_fields,
+                config_attributes: family.config.config_attributes,
+                config_query,
                 static_query: family.static_query,
                 pagination: compile_pagination(family.pagination)?,
             };
@@ -307,16 +361,23 @@ fn compile_source(embedded: &EmbeddedSource) -> Result<&'static Source, String> 
     if families.is_empty() {
         return Err(format!("{} has no runtime families", definition.source_id));
     }
+    let required_config = definition
+        .config_fields
+        .iter()
+        .filter(|field| field.required)
+        .map(|field| field.key.clone())
+        .collect();
+    let allowed_config = definition
+        .config_fields
+        .iter()
+        .map(|field| field.key.clone())
+        .collect();
     Ok(&*Box::leak(Box::new(Source {
         id: definition.source_id,
         origin_template: definition.transport.base_url,
         auth,
-        required_config: definition
-            .config_fields
-            .into_iter()
-            .filter(|field| field.required)
-            .map(|field| field.key)
-            .collect(),
+        required_config,
+        allowed_config,
         families,
     })))
 }
@@ -342,6 +403,12 @@ fn compile_pagination(wire: PaginationWire) -> Result<Pagination, String> {
             } else {
                 wire.link_header
             },
+            page_size_parameter: (!wire.page_size_param.is_empty()).then_some(wire.page_size_param),
+            page_size: wire.page_size,
+        }),
+        "page" if !wire.page_param.is_empty() => Ok(Pagination::Page {
+            parameter: wire.page_param,
+            start_page: wire.start_page.max(1),
             page_size_parameter: (!wire.page_size_param.is_empty()).then_some(wire.page_size_param),
             page_size: wire.page_size,
         }),
