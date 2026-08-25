@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/applicationworkspace"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/mcpoauth"
 )
@@ -68,7 +69,7 @@ func (app *App) exchangeAPIClientCredentialsToken(_ context.Context, r *http.Req
 		Resource:                   resource,
 		TenantID:                   credential.TenantID,
 		AllowedTenants:             cloneAuthValues(credential.AllowedTenants),
-		ApplicationWorkspaceGrants: cloneApplicationWorkspaceGrants(credential.ApplicationWorkspaceGrants),
+		ApplicationWorkspaceGrants: applicationworkspace.CloneGrants(credential.ApplicationWorkspaceGrants),
 		Scopes:                     scopes,
 		Roles:                      roles,
 		Groups:                     []string{"security"},
