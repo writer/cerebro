@@ -14,6 +14,9 @@ mod origin;
 mod projection;
 mod request;
 mod response;
+#[allow(dead_code)]
+#[path = "activtrak/source_execution.rs"]
+mod source_execution;
 mod types;
 
 pub use catalog::{ActivTrakEventContract, ActivTrakRuntimeDefinition};
@@ -23,6 +26,13 @@ pub use projection::{ActivTrakEntityFact, ActivTrakProjectionFacts, project_acti
 pub use types::{
     ActivTrakCheckpointCandidate, ActivTrakKernel, ActivTrakPage, ActivTrakRecord, ActivTrakRequest,
 };
+
+#[allow(unused_imports)]
+pub(crate) use source_execution::ACTIVTRAK_SOURCE_EXECUTION_ADAPTERS;
+
+#[cfg(test)]
+#[path = "activtrak/source_execution_tests.rs"]
+mod source_execution_tests;
 
 #[cfg(test)]
 mod tests;
