@@ -14,6 +14,7 @@ use reqwest::Url;
 use serde_json::Value;
 
 mod error;
+#[allow(dead_code)]
 mod group_source_execution;
 mod materialization;
 mod normalization;
