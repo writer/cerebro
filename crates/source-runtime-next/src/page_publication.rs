@@ -259,6 +259,11 @@ impl PagePublication {
         &self.append_receipts
     }
 
+    /// Returns the current fenced publisher claim, when publication has begun.
+    pub fn publish_claim(&self) -> Option<&PublishClaim> {
+        self.publish_claim.as_ref()
+    }
+
     /// Grants a publisher the first monotonic claim on a prepared page.
     pub fn begin_publishing(&mut self, claim: PublishClaim) -> Result<(), PagePublicationError> {
         match self.state {
