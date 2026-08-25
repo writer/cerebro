@@ -160,6 +160,11 @@ pub fn validate_http_execution(
                 | "google.api_key_header"
                 | "langfuse.basic"
                 | "aws.sigv4"
+                | "elevenlabs.xi_api_key"
+                | "langsmith.x_api_key"
+                | "microsoft_foundry.api_key"
+                | "pinecone.api_key"
+                | "qdrant.api_key"
                 | "jumpcloud.x_api_key"
                 | "sentinelone.api_token"
                 | "twilio.basic"
@@ -673,7 +678,15 @@ fn validate_header_map(
 }
 
 fn safe_declared_header_name(name: &str) -> bool {
-    matches!(name, "content-type" | "x-org-id")
+    matches!(
+        name,
+        "anthropic-version"
+            | "content-type"
+            | "x-org-id"
+            | "x-organization-id"
+            | "x-tenant-id"
+            | "x-pinecone-api-version"
+    )
 }
 
 fn sensitive_config_key(key: &str) -> bool {

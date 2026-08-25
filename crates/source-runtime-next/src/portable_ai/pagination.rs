@@ -5,7 +5,9 @@ use serde_json::Value;
 
 use crate::source_execution::SourceExecutionError;
 
-use super::normalize::scalar_at;
+use super::normalize::{scalar_at, value_at};
+
+const MAX_OFFSET: usize = 10_000_000;
 
 pub(super) fn validated_continuation(
     origin: &str,
@@ -71,4 +73,41 @@ pub(super) fn next_page(document: &Value) -> Result<Option<String>, SourceExecut
         return Err(SourceExecutionError::InvalidCursor);
     }
     Ok((current < total).then(|| (current + 1).to_string()))
+}
+
+pub(super) fn next_offset(
+    document: &Value,
+    selector: &str,
+    prior_cursor: &str,
+    start: usize,
+    page_size: usize,
+) -> Result<Option<String>, SourceExecutionError> {
+    if page_size == 0 || page_size > 1_000 || start > MAX_OFFSET {
+        return Err(SourceExecutionError::InvalidPlan);
+    }
+    let current = if prior_cursor.is_empty() {
+        start
+    } else {
+        prior_cursor
+            .parse::<usize>()
+            .ok()
+            .filter(|offset| *offset >= start && *offset <= MAX_OFFSET)
+            .ok_or(SourceExecutionError::InvalidCursor)?
+    };
+    let path = selector.trim().trim_end_matches("[*]");
+    let count = value_at(document, path)
+        .and_then(Value::as_array)
+        .ok_or(SourceExecutionError::MalformedResponse)?
+        .len();
+    if count > page_size {
+        return Err(SourceExecutionError::MalformedResponse);
+    }
+    if count < page_size {
+        return Ok(None);
+    }
+    let next = current
+        .checked_add(page_size)
+        .filter(|offset| *offset <= MAX_OFFSET)
+        .ok_or(SourceExecutionError::InvalidCursor)?;
+    Ok(Some(next.to_string()))
 }

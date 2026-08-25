@@ -327,6 +327,36 @@ func TestCredentialHeaderAppliesLangfuseBasicOnlyInsideTheTrustedHost(t *testing
 	}
 }
 
+func TestCredentialHeaderAppliesPortableAIProviderSchemesOnlyInsideTheTrustedHost(t *testing.T) {
+	for name, test := range map[string]struct {
+		operation, header, value string
+	}{
+		"ElevenLabs":        {"elevenlabs.xi_api_key", "Xi-Api-Key", "synthetic-secret"},
+		"LangSmith":         {"langsmith.x_api_key", "X-Api-Key", "synthetic-secret"},
+		"Microsoft Foundry": {"microsoft_foundry.api_key", "Api-Key", "synthetic-secret"},
+		"Pinecone":          {"pinecone.api_key", "Api-Key", "synthetic-secret"},
+		"Qdrant":            {"qdrant.api_key", "Authorization", "apikey synthetic-secret"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			header, value, err := credentialHeader(test.operation, []byte("synthetic-secret"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer clear(value)
+			if header != test.header || string(value) != test.value {
+				t.Fatalf("credential header = (%q, %q), want (%q, %q)", header, value, test.header, test.value)
+			}
+		})
+	}
+	if err := validateDeclaredHeaders(map[string]string{
+		"x-organization-id":      "org-1",
+		"x-pinecone-api-version": "2025-10",
+		"x-tenant-id":            "workspace-1",
+	}); err != nil {
+		t.Fatalf("portable AI public headers were rejected: %v", err)
+	}
+}
+
 func TestAWSBedrockSigningStaysInsideTheTrustedHostAndBindsTheOrigin(t *testing.T) {
 	credential := []byte(base64.RawStdEncoding.EncodeToString([]byte("AKIDEXAMPLE")) + "." + base64.RawStdEncoding.EncodeToString([]byte("synthetic-secret"))) // #nosec G101 -- synthetic signer fixture.
 	request, err := http.NewRequest(http.MethodGet, "https://bedrock.us-east-1.amazonaws.com/foundation-models", nil)

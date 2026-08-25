@@ -46,12 +46,37 @@ fn metadata(source: &str, family: &str) -> SourceWorkerRuntimeMetadataV2 {
             public_config.insert("account_name".to_owned(), "acct-openai".to_owned());
             public_config.insert("location".to_owned(), "westus".to_owned());
         }
+        "cloudflare_workers_ai" => {
+            public_config.insert("account_id".to_owned(), "account-1".to_owned());
+            public_config.insert("gateway_id".to_owned(), "gateway-1".to_owned());
+        }
+        "elevenlabs" => {
+            public_config.insert(
+                "service_account_user_id".to_owned(),
+                "service-user-1".to_owned(),
+            );
+        }
+        "fireworks_ai" => {
+            public_config.insert("account_id".to_owned(), "account-1".to_owned());
+        }
         "google_vertex_ai" => {
             public_config.insert("project_id".to_owned(), "project-1".to_owned());
             public_config.insert("location".to_owned(), "us-central1".to_owned());
         }
         "huggingface" => {
             public_config.insert("organization".to_owned(), "writer".to_owned());
+        }
+        "ibm_watsonx_ai" => {
+            public_config.insert("project_id".to_owned(), "project-1".to_owned());
+            public_config.insert("region".to_owned(), "us-south".to_owned());
+        }
+        "langchain" => {
+            public_config.insert(
+                "base_url".to_owned(),
+                "https://api.smith.langchain.com".to_owned(),
+            );
+            public_config.insert("organization_id".to_owned(), "org-1".to_owned());
+            public_config.insert("workspace_id".to_owned(), "workspace-1".to_owned());
         }
         "langfuse" => {
             public_config.insert(
@@ -64,6 +89,22 @@ fn metadata(source: &str, family: &str) -> SourceWorkerRuntimeMetadataV2 {
                     "metrics_query".to_owned(),
                     r#"{"view":"observations","dimensions":[{"field":"name"}],"metrics":[{"measure":"count","aggregation":"count"}],"fromTimestamp":"2026-08-01T00:00:00Z","toTimestamp":"2026-08-02T00:00:00Z"}"#.to_owned(),
                 );
+            }
+        }
+        "microsoft_foundry" => {
+            public_config.insert(
+                "endpoint".to_owned(),
+                "project.services.ai.azure.com".to_owned(),
+            );
+            public_config.insert("project_name".to_owned(), "project-1".to_owned());
+        }
+        "qdrant_cloud" => {
+            public_config.insert("account_id".to_owned(), "account-1".to_owned());
+        }
+        "writer" => {
+            public_config.insert("base_url".to_owned(), "https://api.writer.com".to_owned());
+            if matches!(family, "application_graph" | "application_job") {
+                public_config.insert("application_id".to_owned(), "application-1".to_owned());
             }
         }
         _ => {}
@@ -92,9 +133,9 @@ fn execution(
 }
 
 #[test]
-fn embedded_catalog_compiles_all_ten_sources_and_fifty_one_families() {
-    assert_eq!(SOURCES.len(), 10);
-    assert_eq!(PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS.len(), 51);
+fn embedded_catalog_compiles_all_twenty_five_sources_and_131_families() {
+    assert_eq!(SOURCES.len(), 25);
+    assert_eq!(PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS.len(), 131);
     for adapter in PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS.iter() {
         let plan = adapter.compiled_plan();
         assert_eq!(plan.source_id, adapter.source_id());
@@ -129,16 +170,22 @@ fn every_family_plans_an_origin_restricted_request_without_credentials() {
         assert_eq!(url.host_str(), origin.host_str());
         assert!(url.username().is_empty());
         assert!(url.password().is_none());
-        assert!(request.url.find("${config.").is_none());
-        assert!(execution.body.is_empty());
-        assert!(execution.declared_headers.is_empty());
+        assert!(!request.url.contains("${config."));
+        if request.method == "GET" {
+            assert!(execution.body.is_empty());
+        }
         assert!(url.query_pairs().all(|(key, _)| !matches!(
             key.as_ref(),
             "api_key" | "apikey" | "access_token" | "client_secret" | "token"
         )));
         let expected_operation = match adapter.source_id() {
             "google_gemini" => "google.api_key_header",
+            "elevenlabs" => "elevenlabs.xi_api_key",
+            "langchain" => "langsmith.x_api_key",
             "langfuse" => "langfuse.basic",
+            "microsoft_foundry" => "microsoft_foundry.api_key",
+            "pinecone" => "pinecone.api_key",
+            "qdrant_cloud" => "qdrant.api_key",
             "aws_bedrock" => "aws.sigv4",
             _ => "source.bearer",
         };
@@ -187,6 +234,130 @@ fn provider_specific_public_request_contracts_are_preserved() {
         Some("writer")
     );
     assert_eq!(query.get("limit").map(|value| value.as_ref()), Some("100"));
+}
+
+#[test]
+fn langchain_post_headers_body_auth_and_offset_are_deterministic() {
+    let run_adapter = adapter("langchain", "run");
+    let run_metadata = metadata("langchain", "run");
+    let first = execution(run_adapter, context(""), run_metadata.clone());
+    assert_eq!(first.credential_operation, "langsmith.x_api_key");
+    assert_eq!(
+        first
+            .declared_headers
+            .get("x-organization-id")
+            .map(String::as_str),
+        Some("org-1")
+    );
+    assert_eq!(
+        first
+            .declared_headers
+            .get("x-tenant-id")
+            .map(String::as_str),
+        Some("workspace-1")
+    );
+    let first_body: serde_json::Value = serde_json::from_slice(&first.body).unwrap();
+    assert_eq!(first_body["limit"], 100);
+    assert!(first_body.get("cursor").is_none());
+
+    let second = execution(run_adapter, context("cursor-2"), run_metadata.clone());
+    let second_body: serde_json::Value = serde_json::from_slice(&second.body).unwrap();
+    assert_eq!(second_body["cursor"], "cursor-2");
+    let mut bearer_metadata = run_metadata;
+    bearer_metadata
+        .public_config
+        .insert("auth_model".to_owned(), "bearer_token".to_owned());
+    assert_eq!(
+        execution(run_adapter, context(""), bearer_metadata).credential_operation,
+        "source.bearer"
+    );
+
+    let project_adapter = adapter("langchain", "project");
+    let project = execution(
+        project_adapter,
+        context(""),
+        metadata("langchain", "project"),
+    );
+    let project_url = reqwest::Url::parse(&project.request.unwrap().url).unwrap();
+    let query = project_url.query_pairs().collect::<HashMap<_, _>>();
+    assert_eq!(query.get("offset").map(|value| value.as_ref()), Some("0"));
+    assert_eq!(query.get("limit").map(|value| value.as_ref()), Some("100"));
+    let records = (0..100)
+        .map(|index| serde_json::json!({"id": format!("project-{index}")}))
+        .collect::<Vec<_>>();
+    let body = serde_json::to_vec(&records).unwrap();
+    assert_eq!(
+        project_adapter
+            .next_cursor(
+                &body,
+                &HashMap::new(),
+                "https://api.smith.langchain.com",
+                "",
+            )
+            .unwrap(),
+        "100"
+    );
+}
+
+#[test]
+fn provider_specific_origins_and_safe_headers_remain_closed() {
+    let foundry = execution(
+        adapter("microsoft_foundry", "agents"),
+        context(""),
+        metadata("microsoft_foundry", "agents"),
+    );
+    assert_eq!(
+        foundry.allowed_origin,
+        "https://project.services.ai.azure.com/api/projects/project-1"
+    );
+    assert!(
+        foundry
+            .request
+            .unwrap()
+            .url
+            .starts_with("https://project.services.ai.azure.com/api/projects/project-1/agents?")
+    );
+
+    let pinecone = execution(
+        adapter("pinecone", "indexes"),
+        context(""),
+        metadata("pinecone", "indexes"),
+    );
+    assert_eq!(
+        pinecone
+            .declared_headers
+            .get("x-pinecone-api-version")
+            .map(String::as_str),
+        Some("2025-10")
+    );
+    assert_eq!(pinecone.credential_operation, "pinecone.api_key");
+
+    assert_eq!(
+        adapter("stability_ai", "account")
+            .compiled_plan()
+            .record_selector,
+        "$"
+    );
+}
+
+#[test]
+fn writer_path_context_supplies_stable_identity_without_trusting_provider_tenant_data() {
+    let graph_adapter = adapter("writer", "application_graph");
+    let runtime_metadata = metadata("writer", "application_graph");
+    let records = super::normalize::normalize_records(
+        graph_adapter.source,
+        graph_adapter.family,
+        "tenant",
+        br#"{"graph_ids":["graph-1","graph-2"]}"#,
+        OBSERVED_AT_MILLIS,
+        &runtime_metadata.public_config,
+    )
+    .unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].provider_id, "application-1");
+    assert_eq!(records[0].attributes["application_id"], "application-1");
+    let payload: serde_json::Value = serde_json::from_slice(&records[0].payload_json).unwrap();
+    assert_eq!(payload["application_id"], "application-1");
 }
 
 #[test]
@@ -324,6 +495,7 @@ fn langfuse_page_cursor_is_bounded_and_preserves_public_filters() {
                 br#"{"meta":{"page":1,"totalPages":2}}"#,
                 &HashMap::new(),
                 "https://cloud.langfuse.com",
+                "",
             )
             .unwrap(),
         "2"

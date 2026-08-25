@@ -93,6 +93,81 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 			familyID = "project"
 		}
 		return familyID, true
+	case "cerebras":
+		if familyID == "" {
+			familyID = "projects"
+		}
+		return familyID, true
+	case "cloudflare_workers_ai":
+		if familyID == "" {
+			familyID = "model_catalog"
+		}
+		return familyID, true
+	case "elevenlabs":
+		if familyID == "" {
+			familyID = "model_catalog"
+		}
+		return familyID, true
+	case "fireworks_ai":
+		if familyID == "" {
+			familyID = "model_deployments"
+		}
+		return familyID, true
+	case "ibm_watsonx_ai":
+		if familyID == "" {
+			familyID = "foundation_model_specs"
+		}
+		return familyID, true
+	case "langchain":
+		if familyID == "" {
+			familyID = "organization"
+		}
+		return familyID, true
+	case "microsoft_foundry":
+		if familyID == "" {
+			familyID = "agents"
+		}
+		return familyID, true
+	case "openrouter":
+		if familyID == "" {
+			familyID = "organization_members"
+		}
+		return familyID, true
+	case "pinecone":
+		if familyID == "" {
+			familyID = "indexes"
+		}
+		return familyID, true
+	case "qdrant_cloud":
+		if familyID == "" {
+			familyID = "accounts"
+		}
+		return familyID, true
+	case "replicate":
+		if familyID == "" {
+			familyID = "models"
+		}
+		return familyID, true
+	case "stability_ai":
+		if familyID == "" {
+			familyID = "engines"
+		}
+		return familyID, true
+	case "together_ai":
+		if familyID == "" {
+			familyID = "projects"
+		}
+		return familyID, true
+	case "writer":
+		if familyID == "" {
+			familyID = "application"
+		}
+		return familyID, true
+	case "xai":
+		if familyID == "" {
+			familyID = "api_keys"
+		}
+		return familyID, true
 	case "asana":
 		if familyID == "" {
 			familyID = "users"
@@ -208,7 +283,7 @@ func CredentialBinding(sourceID string, references, resolved map[string]string) 
 		keys = []string{"token", "api_token", "api_key", "access_token"}
 	}
 	switch strings.TrimSpace(sourceID) {
-	case "azure_openai", "cohere", "google_gemini", "google_vertex_ai", "groq", "huggingface", "mistral", "perplexity":
+	case "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "langchain", "microsoft_foundry", "mistral", "openrouter", "perplexity", "pinecone", "qdrant_cloud", "replicate", "stability_ai", "together_ai", "writer", "xai":
 		keys = []string{"token", "api_token", "api_key", "access_token"}
 	}
 	if strings.TrimSpace(sourceID) == "discord" {
@@ -307,6 +382,40 @@ func PublicExecutionConfigForSource(sourceID string, values map[string]string) m
 		} {
 			copyPublicValue(public, values, key)
 		}
+	case "cloudflare_workers_ai":
+		for _, key := range []string{"account_id", "gateway_id"} {
+			copyPublicValue(public, values, key)
+		}
+	case "elevenlabs":
+		copyPublicValue(public, values, "service_account_user_id")
+	case "fireworks_ai":
+		copyPublicValue(public, values, "account_id")
+	case "ibm_watsonx_ai":
+		for _, key := range []string{"project_id", "region"} {
+			copyPublicValue(public, values, key)
+		}
+	case "langchain":
+		for _, key := range []string{
+			"auth_model", "data_plane_id", "end_time", "event_type", "feedback_source",
+			"filter", "include_deleted", "include_stats", "key", "name", "name_contains",
+			"organization_id", "project", "run_id", "run_type", "session", "start_time", "workspace_id",
+		} {
+			copyPublicValue(public, values, key)
+		}
+	case "microsoft_foundry":
+		for _, key := range []string{"endpoint", "project_name"} {
+			copyPublicValue(public, values, key)
+		}
+	case "qdrant_cloud":
+		for _, key := range []string{"account_id", "cluster_id"} {
+			copyPublicValue(public, values, key)
+		}
+	case "writer":
+		for _, key := range []string{"file_types", "graph_id", "order", "status", "type"} {
+			copyPublicValue(public, values, key)
+		}
+	case "cerebras", "openrouter", "pinecone", "replicate", "stability_ai", "together_ai", "xai":
+		// These catalog-defined families need no additional public selectors.
 	default:
 		return public
 	}
