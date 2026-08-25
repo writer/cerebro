@@ -253,7 +253,7 @@ fn admit(record: &AddigyRecord) -> Result<(), AddigyError> {
     Ok(())
 }
 
-fn event_id(kernel: &AddigyKernel, provider_id: &str) -> String {
+pub(super) fn event_id(kernel: &AddigyKernel, provider_id: &str) -> String {
     let scope = Sha256::digest(format!(
         "{}\0{}\0{}",
         kernel.base_url.as_str(),
@@ -351,9 +351,12 @@ fn normalize_id(value: &str) -> String {
     }
     value
         .chars()
-        .map(|character| match character {
-            ' ' | '/' | ':' | '\t' | '\n' => '-',
-            other => other,
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '-'
+            }
         })
         .collect()
 }
@@ -369,7 +372,10 @@ fn reject_protected(value: &Value, depth: usize) -> Result<(), AddigyError> {
             }
             for (key, value) in values {
                 let key = key.trim().to_ascii_lowercase().replace('-', "_");
-                if key == "tenant_id" {
+                if matches!(
+                    key.as_str(),
+                    "tenant_id" | "runtime_id" | "source_runtime_id"
+                ) {
                     return Err(AddigyError::TenantMismatch);
                 }
                 if matches!(
@@ -377,13 +383,18 @@ fn reject_protected(value: &Value, depth: usize) -> Result<(), AddigyError> {
                     "token"
                         | "access_token"
                         | "refresh_token"
+                        | "session_token"
                         | "api_key"
                         | "api_token"
                         | "x_api_key"
-                        | "password"
-                        | "private_key"
                         | "authorization"
+                        | "cookie"
+                        | "set_cookie"
+                        | "password"
+                        | "passcode"
+                        | "secret"
                         | "client_secret"
+                        | "private_key"
                 ) {
                     return Err(AddigyError::CredentialMaterial);
                 }
