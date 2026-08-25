@@ -123,6 +123,31 @@ curl -fsS -H "Authorization: Bearer ${CEREBRO_API_KEY}" \
 
 Responses redact sensitive runtime config where the implementation marks config as sensitive.
 
+The Rust platform also serves tenant-bound registry operations from the same
+Postgres table:
+
+```bash
+curl -fsS -X PUT \
+  -H "X-Cerebro-Tenant: <tenant-id>" \
+  -H "Authorization: Bearer ${CEREBRO_RUST_TENANT_TOKEN}" \
+  -H "Content-Type: application/json" \
+  "https://cerebro.example.com/v1/source-runtimes/<runtime-id>" \
+  -d '{"runtime":{"source_id":"<source-id>","config":{"family":"<family>","token":"credential:<credential-id>:token"}}}'
+
+curl -fsS \
+  -H "X-Cerebro-Tenant: <tenant-id>" \
+  -H "Authorization: Bearer ${CEREBRO_RUST_TENANT_TOKEN}" \
+  "https://cerebro.example.com/v1/source-runtimes?source_id=<source-id>&limit=20"
+```
+
+The authenticated identity supplies the tenant; a body tenant must match it.
+Rust filters GET and LIST in Postgres before constructing a response, so a
+missing runtime and a runtime owned by another tenant are indistinguishable.
+Sensitive config accepts only `env:`, `credential:`, or `aws-sm:` references
+and is always returned as `[redacted]`. Registry writes cannot supply a cursor,
+checkpoint, or last-sync time. Unchanged definitions keep durable progress;
+configuration changes clear it so only a fenced sync can advance it again.
+
 ## Sync a runtime
 
 CLI:
@@ -138,6 +163,27 @@ curl -fsS -X POST \
   -H "Authorization: Bearer ${CEREBRO_API_KEY}" \
   "https://cerebro.example.com/source-runtimes/<runtime-id>/sync?page_limit=100"
 ```
+
+Rust-authoritative catalog families can also sync through the write-capable
+`serve-neo4j` or `serve-neo4j-consumer` Rust platform route:
+
+```bash
+curl -fsS -X POST \
+  -H "Authorization: Bearer ${CEREBRO_RUST_TENANT_TOKEN}" \
+  -H "X-Cerebro-Tenant: <tenant-id>" \
+  "https://cerebro.example.com/v1/source-runtimes/<runtime-id>/sync"
+```
+
+That route accepts only the runtime ID. Rust loads the tenant, source, family,
+configuration, and cursor from the durable runtime record, verifies the
+authenticated tenant before resolving credentials, and holds the renewable
+Postgres lease through provider collection and the fenced graph commit. A
+concurrent holder returns a conflict; provider, configuration, and durable-store
+failures remain distinct and do not fall back to the Go writer.
+
+The example uses the Rust platform's tenant-HMAC mode. In OIDC mode, the signed
+identity supplies the tenant and must carry the `cerebro:write` scope; do not
+send a tenant selected independently from that identity.
 
 Operational guidance:
 

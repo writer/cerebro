@@ -5,6 +5,9 @@ use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
 use crate::deepseek::DEEPSEEK_SOURCE_EXECUTION_ADAPTERS;
 use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
 use crate::discord::DISCORD_SOURCE_EXECUTION_ADAPTERS;
+use crate::google_workspace::{
+    GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER, GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER,
+};
 use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
 use crate::openai::OPENAI_SOURCE_EXECUTION_ADAPTERS;
 use crate::pagerduty::PAGERDUTY_SOURCE_EXECUTION_ADAPTERS;
@@ -128,7 +131,8 @@ static SENTINELONE_AGENT: SentinelOneAgentSourceExecutionAdapter =
     SentinelOneAgentSourceExecutionAdapter;
 
 impl SourceExecutionDispatcher {
-    /// Compiles a plan only for a Rust-authoritative source-family selection.
+    /// Compiles a plan only for a registered credential-free source-family selection.
+    /// Production authority is decided independently by the trusted runtime host.
     pub fn compile_plan(
         &self,
         request: &SourceExecutionSelectionRequestV1,
@@ -191,6 +195,16 @@ impl SourceExecutionDispatcher {
             request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
         }) {
             return Ok(adapter.compiled_plan());
+        }
+        if request.source_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
+        if request.source_id == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.compiled_plan());
         }
         if request.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
@@ -316,6 +330,20 @@ impl SourceExecutionDispatcher {
                 && plan.provider_kernel == adapter.provider_kernel()
         }) {
             return Ok(adapter);
+        }
+        if plan.source_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel
+                == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER);
+        }
+        if plan.source_id == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel
+                == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER);
         }
         if plan.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()

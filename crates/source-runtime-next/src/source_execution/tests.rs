@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use prost::Message;
 
 use super::{
-    canonical_plan_digest, canonical_response_headers_digest,
+    canonical_http_execution_digest, canonical_plan_digest, canonical_response_headers_digest,
     contract::{
         AUTHORIZATION_POLICY_FALLBACK_ID, AUTHORIZATION_POLICY_FAMILY, AUTHORIZATION_POLICY_KERNEL,
         AUTHORIZATION_POLICY_KIND, AUTHORIZATION_POLICY_PATH, AUTHORIZATION_POLICY_SCHEMA,
@@ -13,8 +13,8 @@ use super::{
     decode, decode_v2,
     error::SourceExecutionError,
     plan, plan_v2, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
-    validate_cursor, validate_declared_headers, validate_http_request, validate_public_config,
-    validate_response_headers, validate_runtime_metadata,
+    validate_cursor, validate_declared_headers, validate_http_execution, validate_http_request,
+    validate_public_config, validate_response_headers, validate_runtime_metadata,
     wire::{
         SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
         SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
@@ -296,6 +296,32 @@ fn v2_header_contract_rejects_credentials_and_bounds_metadata() {
     assert_eq!(
         canonical_response_headers_digest(&first).unwrap(),
         canonical_response_headers_digest(&second).unwrap()
+    );
+}
+
+#[test]
+fn generic_x_api_key_operation_is_closed_and_digest_bound() {
+    let plan = exact_plan();
+    let context = exact_context("tenant-a");
+    let metadata = SourceWorkerRuntimeMetadataV2::default();
+    let mut execution = SourceWorkerHttpExecutionV2 {
+        request: Some(planned_request(&context)),
+        body: Vec::new(),
+        declared_headers: HashMap::new(),
+        execution_intent_digest_sha256: String::new(),
+        credential_operation: "source.x_api_key".to_owned(),
+        allowed_origin: plan.origin.clone(),
+    };
+    execution.execution_intent_digest_sha256 =
+        canonical_http_execution_digest(&plan, &context, &metadata, &execution);
+    assert!(validate_http_execution(&plan, &context, &execution, &metadata).is_ok());
+
+    execution.credential_operation = "source.api_key".to_owned();
+    execution.execution_intent_digest_sha256 =
+        canonical_http_execution_digest(&plan, &context, &metadata, &execution);
+    assert_eq!(
+        validate_http_execution(&plan, &context, &execution, &metadata),
+        Err(SourceExecutionError::InvalidPlan)
     );
 }
 
@@ -677,6 +703,50 @@ fn closed_dispatcher_registers_the_exact_twilio_audit_events_plan() {
         .unwrap();
     assert_eq!(keys.provider_kernel, "twilio.keys");
     assert_eq!(keys.path, "/2010-04-01/Accounts/{account_sid}/Keys.json");
+}
+
+#[test]
+fn closed_dispatcher_registers_only_the_ready_google_workspace_plans() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    for (family, kernel, path, kind, schema) in [
+        (
+            "user",
+            "google_workspace.user",
+            "/admin/directory/v1/users",
+            "google_workspace.user",
+            "google_workspace/user/v1",
+        ),
+        (
+            "group",
+            "google_workspace.group",
+            "/admin/directory/v1/groups",
+            "google_workspace.group",
+            "google_workspace/group/v1",
+        ),
+    ] {
+        let plan = dispatcher
+            .compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "google_workspace".to_owned(),
+                family_id: family.to_owned(),
+            })
+            .unwrap();
+        assert_eq!(plan.provider_kernel, kernel);
+        assert_eq!(plan.origin, "https://admin.googleapis.com");
+        assert_eq!(plan.path, path);
+        assert_eq!(plan.event_kind, kind);
+        assert_eq!(plan.schema_ref, schema);
+        assert_eq!(dispatcher.adapter_for(&plan).unwrap().family_id(), family);
+    }
+
+    for family in ["audit", "group_member", "role_assignment", "future-family"] {
+        assert_eq!(
+            dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "google_workspace".to_owned(),
+                family_id: family.to_owned(),
+            }),
+            Err(SourceExecutionError::UnknownAdapter)
+        );
+    }
 }
 
 #[test]

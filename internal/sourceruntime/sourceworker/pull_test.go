@@ -110,6 +110,23 @@ func TestOpenAIPublicExecutionConfigCarriesSelectorsWithoutCredentialMaterial(t 
 	}
 }
 
+func TestGoogleWorkspacePublicExecutionConfigCarriesScopeWithoutCredentialMaterial(t *testing.T) {
+	public := PublicExecutionConfigForSource("google_workspace", map[string]string{
+		"family": " user ", "domain": " writer.com ", "customer_id": " customer-1 ",
+		"base_url": " https://admin.googleapis.com ", "per_page": " 100 ",
+		"token": "must-not-cross", "private_key": "must-not-cross-either",
+		"client_secret": "must-not-cross-either",
+	})
+	if public["family"] != "user" || public["domain"] != "writer.com" || public["customer_id"] != "customer-1" || public["base_url"] != "https://admin.googleapis.com" || public["per_page"] != "100" {
+		t.Fatalf("Google Workspace public config lost declared scope: %#v", public)
+	}
+	for _, key := range []string{"token", "private_key", "client_secret"} {
+		if public[key] != "" {
+			t.Fatalf("Google Workspace public config leaked %s: %#v", key, public)
+		}
+	}
+}
+
 func TestPortableAIPublicExecutionConfigCarriesOnlyProviderSelectors(t *testing.T) {
 	azure := PublicExecutionConfigForSource("azure_openai", map[string]string{
 		"family": " deployments ", "subscription_id": " sub-1 ", "resource_group": " rg-ai ",
@@ -238,7 +255,13 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"Twilio audit events":           {"twilio", "audit_events", "audit_events", true},
 		"Twilio keys":                   {"twilio", "keys", "keys", true},
 		"unknown Twilio family":         {"twilio", "future-family", "future-family", false},
-		"compatibility source":          {"gcp", "audit", "", false},
+		"Google Workspace user compatibility": {
+			"google_workspace", "user", "", false,
+		},
+		"Google Workspace group compatibility": {
+			"google_workspace", "group", "", false,
+		},
+		"compatibility source": {"gcp", "audit", "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			family, authoritative := RustAuthoritativeFamily(test.source, test.family)

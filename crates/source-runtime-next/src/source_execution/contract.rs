@@ -157,6 +157,7 @@ pub fn validate_http_execution(
         || !matches!(
             execution.credential_operation.as_str(),
             "source.bearer"
+                | "source.x_api_key"
                 | "google.api_key_header"
                 | "langfuse.basic"
                 | "aws.sigv4"
