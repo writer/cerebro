@@ -15,6 +15,7 @@ RUN apk add --no-cache build-base musl-dev openssl-dev openssl-libs-static pkgco
 
 COPY --from=source /src/Cargo.toml /src/Cargo.lock ./
 COPY --from=source /src/crates ./crates
+COPY --from=source /src/internal/connectorcatalog/catalog ./internal/connectorcatalog/catalog
 COPY --from=source /src/internal/graphagent/staticvalidator ./internal/graphagent/staticvalidator
 COPY --from=source /src/internal/mitre/evaluator ./internal/mitre/evaluator
 COPY --from=source /src/internal/sourcecoverage/evaluator ./internal/sourcecoverage/evaluator
@@ -22,6 +23,7 @@ COPY --from=source /src/internal/sourceprojection/panopticonresources ./internal
 COPY --from=source /src/internal/sourceruntime/eventadmission ./internal/sourceruntime/eventadmission
 COPY --from=source /src/internal/sourceruntime/recordkernel ./internal/sourceruntime/recordkernel
 COPY --from=source /src/internal/wasmguest ./internal/wasmguest
+COPY --from=source /src/sources ./sources
 COPY --from=source /src/tools/graphactiongen ./tools/graphactiongen
 COPY --from=source /src/tools/policycataloggen ./tools/policycataloggen
 COPY --from=source /src/tools/slack-agent-blackbox ./tools/slack-agent-blackbox

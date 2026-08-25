@@ -15,6 +15,7 @@ RUN apk add --no-cache build-base musl-dev openssl-dev openssl-libs-static pkgco
 COPY --from=source /src/Cargo.toml /src/Cargo.lock ./
 COPY --from=source /src/crates ./crates
 COPY --from=source /src/internal ./internal
+COPY --from=source /src/sources ./sources
 COPY --from=source /src/tools ./tools
 
 RUN --mount=type=cache,id=cerebro-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
