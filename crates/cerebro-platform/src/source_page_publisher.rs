@@ -2,7 +2,7 @@
 
 use std::{env, error::Error, fmt, sync::Arc};
 
-use async_nats::jetstream::{self, context::Publish};
+use async_nats::jetstream::{self, message::PublishMessage};
 use async_trait::async_trait;
 use cerebro_organizational_model::TenantId;
 use cerebro_organizational_store::{PagePublicationOutbox, PostgresLedger, StoreError};
@@ -92,11 +92,11 @@ impl PageEventPublisher for JetStreamPublisher {
         let acknowledgement = self
             .context
             .send_publish(
-                subject,
-                Publish::build()
+                subject.to_owned(),
+                PublishMessage::build()
                     .payload(envelope.to_vec().into())
-                    .message_id(message_id)
-                    .expected_stream(&self.stream),
+                    .message_id(message_id.to_owned())
+                    .expected_stream(self.stream.clone()),
             )
             .await
             .map_err(|error| error.to_string())?
@@ -231,14 +231,12 @@ where
             "source page outbox is incomplete".to_owned(),
         ));
     }
-    let mut page_advanced = false;
     let claim = match page.state() {
         PagePublicationState::Prepared => {
             let claim = PublishClaim::new(owner, 1)?;
             let expected_revision = page.revision();
             page.begin_publishing(claim.clone())?;
             store.persist(expected_revision, &page).await?;
-            page_advanced = true;
             claim
         }
         PagePublicationState::Publishing => {
@@ -259,7 +257,6 @@ where
             let expected_revision = page.revision();
             page.transfer_claim(&current, successor.clone())?;
             store.persist(expected_revision, &page).await?;
-            page_advanced = true;
             successor
         }
         PagePublicationState::Published | PagePublicationState::Projected => {
@@ -298,7 +295,7 @@ where
         published += 1;
     }
     Ok(PublicationOutcome {
-        page_advanced,
+        page_advanced: true,
         events_published: published,
     })
 }
