@@ -30,6 +30,12 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		"DigitalOcean VPCs":           {"digitalocean", "vpcs", "vpcs", true},
 		"DigitalOcean firewalls":      {"digitalocean", "firewalls", "firewalls", true},
 		"unknown DigitalOcean family": {"digitalocean", "future-family", "future-family", true},
+		"Discord default":             {"discord", "", "audit_log", true},
+		"Discord audit log":           {"discord", "audit_log", "audit_log", true},
+		"Discord member":              {"discord", "member", "member", true},
+		"Discord role":                {"discord", "role", "role", true},
+		"Discord permission":          {"discord", "permission", "permission", true},
+		"unknown Discord family":      {"discord", "future-family", "future-family", true},
 		"Tailscale default":           {"tailscale", "", "device", true},
 		"JumpCloud default":           {"jumpcloud", "", "users", true},
 		"JumpCloud family":            {"jumpcloud", "group_members", "group_members", true},
@@ -118,6 +124,77 @@ func TestUnknownAsanaFamilyFailsClosedWithoutLegacyCalls(t *testing.T) {
 	}
 	config := map[string]string{"family": "future-family", "tenant_id": "tenant-1", "token": "host-only-secret", "workspace_gid": "workspace-1"}
 	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "asana", Config: config}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if legacy.checkCalls != 0 {
+		t.Fatalf("legacy check calls = %d", legacy.checkCalls)
+	}
+}
+
+func TestDiscordCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
+	const credentialFixture = "host-only-discord-secret" // #nosec G101 -- synthetic boundary-test sentinel, not credential material.
+	for _, family := range []string{"audit_log", "member", "role", "permission"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &authorityProbeSource{sourceID: "discord"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := New(registry)
+			service.sourceWorker = previewWorkerStub{}
+			calls := 0
+			service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, reference string, credential []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+				calls++
+				if reference != previewCredentialReference || string(credential) != credentialFixture {
+					t.Fatal("Discord credential was not confined to the trusted runner boundary")
+				}
+				encoded, marshalErr := json.Marshal(input)
+				if marshalErr != nil || strings.Contains(string(encoded), credentialFixture) || input.Scope.PublicConfig["api_token"] != "" {
+					t.Fatalf("credential crossed the worker protocol: %s, %v", encoded, marshalErr)
+				}
+				if input.SourceID != "discord" || input.FamilyID != family || input.Scope.PublicConfig["guild_id"] != "100000000000000000" || input.Scope.PublicConfig["application_id"] != "200000000000000000" || input.Scope.PublicConfig["per_page"] != "100" {
+					t.Fatalf("Rust selection = %s.%s, public config = %#v", input.SourceID, input.FamilyID, input.Scope.PublicConfig)
+				}
+				return discordPreviewOutput(family, input.Scope.PriorTerminalWatermarkUnixMillis), nil
+			}
+			config := map[string]string{
+				"family": family, "tenant_id": "tenant-1", "api_token": credentialFixture,
+				"guild_id": "100000000000000000", "application_id": "200000000000000000", "per_page": "100",
+			}
+			if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "discord", Config: config}); err != nil {
+				t.Fatal(err)
+			}
+			discovered, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "discord", Config: config})
+			if err != nil || len(discovered.GetUrns()) != 1 {
+				t.Fatalf("Discover() = %#v, %v", discovered, err)
+			}
+			read, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "discord", Config: config})
+			if err != nil || len(read.GetEvents()) != 1 || read.GetEvents()[0].GetSourceId() != "discord" || read.GetCheckpoint().GetCursorOpaque() == "" {
+				t.Fatalf("Read() = %#v, %v", read, err)
+			}
+			if calls != 3 || legacy.checkCalls != 0 || legacy.discoverCalls != 0 || legacy.readCalls != 0 {
+				t.Fatalf("calls = Rust %d, Go check/discover/read %d/%d/%d", calls, legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
+			}
+		})
+	}
+}
+
+func TestUnknownDiscordFamilyFailsClosedWithoutLegacyCalls(t *testing.T) {
+	legacy := &authorityProbeSource{sourceID: "discord"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(registry)
+	service.sourceWorker = previewWorkerStub{}
+	service.runSourceExecution = func(context.Context, sourceworker.Worker, string, []byte, time.Time, sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+		return nil, sourceworker.ErrWorkerUnsupported
+	}
+	config := map[string]string{
+		"family": "future-family", "tenant_id": "tenant-1", "api_token": "host-only-secret",
+		"guild_id": "100000000000000000", "application_id": "200000000000000000",
+	}
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "discord", Config: config}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
 		t.Fatalf("Check() error = %v", err)
 	}
 	if legacy.checkCalls != 0 {
@@ -865,6 +942,38 @@ func digitalOceanPreviewOutput(family string, priorWatermark int64) *sourceworke
 			"resource_urn":  "urn:cerebro:tenant-1:digitalocean_" + family + ":" + providerID,
 		},
 		PayloadJson: []byte(`{"id":"` + providerID + `"}`),
+	}
+	return &sourceworker.ExecutionOutput{
+		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
+		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: providerID, CheckpointWatermarkUnixMillis: watermark},
+	}
+}
+
+func discordPreviewOutput(family string, priorWatermark int64) *sourceworker.ExecutionOutput {
+	watermark := max(priorWatermark, 1_725_000_000_000)
+	providerID := map[string]string{
+		"audit_log": "100000000000000001", "member": "100000000000000002",
+		"role": "100000000000000003", "permission": "100000000000000004",
+	}[family]
+	plan := &cerebrov1.SourceExecutionPlanV1{
+		SourceId: "discord", FamilyId: family, EventKind: "discord." + family, SchemaRef: "discord/" + family + "/v1",
+	}
+	attributes := map[string]string{
+		"tenant_id": "tenant-1", "source_event_id": providerID,
+		"resource_id": providerID, "resource_type": family,
+		"resource_urn": "urn:cerebro:tenant-1:discord_" + family + ":" + providerID,
+	}
+	switch family {
+	case "audit_log":
+		attributes["event_type"] = "10"
+	case "member":
+		attributes["user_id"] = providerID
+	case "role":
+		attributes["group_id"] = providerID
+	}
+	record := &cerebrov1.SourceWorkerRecordV1{
+		ProviderId: providerID, EventId: "discord-tenant-1-" + providerID, OccurredAtUnixMillis: watermark,
+		Attributes: attributes, PayloadJson: []byte(`{"id":"` + providerID + `","avatar":""}`),
 	}
 	return &sourceworker.ExecutionOutput{
 		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},

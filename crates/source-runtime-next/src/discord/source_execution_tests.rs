@@ -56,7 +56,7 @@ fn metadata(family: DiscordFamily) -> SourceWorkerRuntimeMetadataV2 {
 }
 
 #[test]
-fn provider_local_catalog_compiles_all_families_without_shared_authority() {
+fn shared_dispatcher_compiles_all_discord_families() {
     assert_eq!(DISCORD_SOURCE_EXECUTION_ADAPTERS.len(), families().len());
     for family in families() {
         let plan = adapter(family).compiled_plan();
@@ -72,11 +72,13 @@ fn provider_local_catalog_compiles_all_families_without_shared_authority() {
                 .contains(&"source_event_id".to_owned())
         );
         assert_eq!(
-            SourceExecutionDispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
-                source_id: "discord".to_owned(),
-                family_id: family.as_str().to_owned(),
-            }),
-            Err(SourceExecutionError::UnknownAdapter)
+            SourceExecutionDispatcher
+                .compile_plan(&SourceExecutionSelectionRequestV1 {
+                    source_id: "discord".to_owned(),
+                    family_id: family.as_str().to_owned(),
+                })
+                .unwrap(),
+            plan
         );
     }
 }
