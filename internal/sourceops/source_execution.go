@@ -45,7 +45,7 @@ func rustSourceFamily(sourceID string, config map[string]string) (string, bool) 
 	// runtime-authoritative provider must keep its existing sourceops path until
 	// its preview credential adapter and product-surface parity are ready.
 	switch sourceID {
-	case "asana", "azure", "digitalocean", "discord", "linode", "pagerduty", "sentinelone", "tailscale":
+	case "anthropic", "asana", "azure", "digitalocean", "discord", "linode", "pagerduty", "sentinelone", "tailscale":
 		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
 	case "jumpcloud":
 		family := strings.TrimSpace(config["family"])
@@ -76,7 +76,7 @@ func (s *Service) executeRustSource(ctx context.Context, sourceID, family string
 		clear(credential)
 		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
 	}
-	publicConfig := sourceworker.PublicExecutionConfig(config)
+	publicConfig := sourceworker.PublicExecutionConfigForSource(sourceID, config)
 	publicConfig["family"] = family
 	now := time.Now().UTC()
 	input := sourceworker.ExecutionInput{
@@ -151,6 +151,13 @@ func previewCredential(sourceID string, config map[string]string) string {
 			}
 		}
 		return ""
+	case "anthropic":
+		for _, key := range []string{"token", "api_token", "api_key", "access_token"} {
+			if credential := strings.TrimSpace(config[key]); credential != "" {
+				return credential
+			}
+		}
+		return ""
 	case "discord":
 		for _, key := range []string{"api_token", "api_key", "token"} {
 			if credential := strings.TrimSpace(config[key]); credential != "" {
@@ -168,6 +175,15 @@ func discoverURNs(pull sourcecdk.Pull) ([]sourcecdk.URN, error) {
 	for _, event := range pull.Events {
 		attributes := event.GetAttributes()
 		raw := strings.TrimSpace(attributes["resource_urn"])
+		if raw == "" && strings.TrimSpace(event.GetSourceId()) == "anthropic" {
+			family := strings.TrimSpace(attributes["family"])
+			stableID := strings.TrimSpace(attributes["external_id"])
+			urn, err := sourcecdk.URNFor(event.GetTenantId(), "anthropic_"+family, stableID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: Anthropic discovery identity is invalid", sourceworker.ErrWorkerContract)
+			}
+			raw = urn.String()
+		}
 		if raw == "" && strings.TrimSpace(event.GetSourceId()) == "jumpcloud" {
 			family := strings.TrimSpace(attributes["family"])
 			if family == "" {

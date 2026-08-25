@@ -19,6 +19,7 @@ mod types;
 
 pub use error::AnthropicError;
 pub use family::{AnthropicAuthentication, AnthropicFamily};
+pub(crate) use source_execution::ANTHROPIC_SOURCE_EXECUTION_ADAPTERS;
 pub use types::{
     AnthropicKernel, AnthropicPage, AnthropicRecord, AnthropicRequest, AnthropicScope,
 };
