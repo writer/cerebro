@@ -109,10 +109,11 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 }
 
 func (a *App) refreshGRCJSONInBackground(key string, policy grcCachePolicy, next http.HandlerFunc, r *http.Request) {
+	request := r.Clone(context.WithoutCancel(r.Context()))
 	a.queryCacheGroup.Start(key, func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), grcCacheRefreshTimeout)
+		ctx, cancel := context.WithTimeout(request.Context(), grcCacheRefreshTimeout)
 		defer cancel()
-		response := captureCacheResponse(next, r.Clone(ctx))
+		response := captureCacheResponse(next, request.Clone(ctx))
 		if response == nil || !response.cacheableJSON() {
 			telemetry.IncrementMain(ctx, "query_cache.refresh_error.count", 1)
 			return
