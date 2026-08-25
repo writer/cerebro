@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/grcaudit"
 	"github.com/writer/cerebro/internal/grcauditpacket"
+	"github.com/writer/cerebro/internal/grcdashboard"
 	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -746,20 +747,20 @@ func TestGRCDashboardCapsPreviewWorkToRenderedLimit(t *testing.T) {
 	if len(payload.Evidence) != 25 {
 		t.Fatalf("evidence len = %d, want capped preview 25", len(payload.Evidence))
 	}
-	if store.findingListRequest.Limit != grcDashboardPreviewLimit {
-		t.Fatalf("finding list limit = %d, want dashboard preview limit %d", store.findingListRequest.Limit, grcDashboardPreviewLimit)
+	if store.findingListRequest.Limit != grcdashboard.PreviewLimit {
+		t.Fatalf("finding list limit = %d, want dashboard preview limit %d", store.findingListRequest.Limit, grcdashboard.PreviewLimit)
 	}
-	if store.findingEvidenceListRequest.Limit != grcDashboardPreviewLimit {
-		t.Fatalf("evidence list limit = %d, want dashboard preview limit %d", store.findingEvidenceListRequest.Limit, grcDashboardPreviewLimit)
+	if store.findingEvidenceListRequest.Limit != grcdashboard.PreviewLimit {
+		t.Fatalf("evidence list limit = %d, want dashboard preview limit %d", store.findingEvidenceListRequest.Limit, grcdashboard.PreviewLimit)
 	}
-	if got := len(store.findingEvidenceListRequest.FindingIDs); got != int(grcDashboardPreviewLimit) {
-		t.Fatalf("evidence finding id count = %d, want dashboard preview limit %d", got, grcDashboardPreviewLimit)
+	if got := len(store.findingEvidenceListRequest.FindingIDs); got != int(grcdashboard.PreviewLimit) {
+		t.Fatalf("evidence finding id count = %d, want dashboard preview limit %d", got, grcdashboard.PreviewLimit)
 	}
 	if payload.Summary.OpenFindings != 40 {
 		t.Fatalf("summary open findings = %d, want unpaginated total 40", payload.Summary.OpenFindings)
 	}
 	if payload.Summary.EvidenceItems != 40 {
-		t.Fatalf("summary evidence items = %d, want unpaginated total 40 (not the %d-row preview)", payload.Summary.EvidenceItems, grcDashboardPreviewLimit)
+		t.Fatalf("summary evidence items = %d, want unpaginated total 40 (not the %d-row preview)", payload.Summary.EvidenceItems, grcdashboard.PreviewLimit)
 	}
 	if store.aggregateCalls != 1 {
 		t.Fatalf("aggregate calls = %d, want 1", store.aggregateCalls)
