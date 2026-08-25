@@ -515,15 +515,16 @@ func (s *QueryStore) ListVendorRegister(ctx context.Context, filter ports.Vendor
 	}
 	request := connect.NewRequest(&cerebrographv1.ListVendorRegisterRequest{
 		Filter: &cerebrographv1.VendorRegisterFilter{
-			TenantId:       tenantID,
-			SourceId:       strings.TrimSpace(filter.SourceID),
-			RuntimeIds:     runtimeIDs,
-			Query:          strings.TrimSpace(filter.Query),
-			RiskLevel:      strings.TrimSpace(filter.RiskLevel),
-			ReviewState:    strings.TrimSpace(filter.ReviewState),
-			OwnerState:     strings.TrimSpace(filter.OwnerState),
-			LifecycleState: strings.TrimSpace(filter.LifecycleState),
-			QueueOnly:      filter.QueueOnly,
+			TenantId:               tenantID,
+			ApplicationWorkspaceId: strings.TrimSpace(filter.ApplicationWorkspaceID),
+			SourceId:               strings.TrimSpace(filter.SourceID),
+			RuntimeIds:             runtimeIDs,
+			Query:                  strings.TrimSpace(filter.Query),
+			RiskLevel:              strings.TrimSpace(filter.RiskLevel),
+			ReviewState:            strings.TrimSpace(filter.ReviewState),
+			OwnerState:             strings.TrimSpace(filter.OwnerState),
+			LifecycleState:         strings.TrimSpace(filter.LifecycleState),
+			QueueOnly:              filter.QueueOnly,
 		},
 		Limit: uint32(filter.Limit), // #nosec G115 -- validated above.
 	})
@@ -1003,7 +1004,7 @@ func entityCatalogFilter(filter ports.EntityCatalogFilter) (*cerebrographv1.Enti
 	if tenantID == "" {
 		return nil, "", errors.New("entity catalog tenant_id is required")
 	}
-	message := &cerebrographv1.EntityCatalogFilter{TenantId: tenantID, SourceId: strings.TrimSpace(filter.SourceID), RuntimeIds: append([]string(nil), filter.RuntimeIDs...), ExactAgentKey: strings.TrimSpace(filter.ExactAgentKey), IncludeKinds: append([]string(nil), filter.IncludeKinds...), IncludeKindPrefixes: append([]string(nil), filter.IncludeKindPrefixes...), ExcludeKinds: append([]string(nil), filter.ExcludeKinds...), ExcludeKindPrefixes: append([]string(nil), filter.ExcludeKindPrefixes...), Query: strings.TrimSpace(filter.Query), ExpectedGraphRevision: filter.ExpectedRevision, QueryAttributes: filter.QueryAttributes}
+	message := &cerebrographv1.EntityCatalogFilter{TenantId: tenantID, ApplicationWorkspaceId: strings.TrimSpace(filter.ApplicationWorkspaceID), SourceId: strings.TrimSpace(filter.SourceID), RuntimeIds: append([]string(nil), filter.RuntimeIDs...), ExactAgentKey: strings.TrimSpace(filter.ExactAgentKey), IncludeKinds: append([]string(nil), filter.IncludeKinds...), IncludeKindPrefixes: append([]string(nil), filter.IncludeKindPrefixes...), ExcludeKinds: append([]string(nil), filter.ExcludeKinds...), ExcludeKindPrefixes: append([]string(nil), filter.ExcludeKindPrefixes...), Query: strings.TrimSpace(filter.Query), ExpectedGraphRevision: filter.ExpectedRevision, QueryAttributes: filter.QueryAttributes}
 	if filter.RelationCounts != nil {
 		directions := make([]cerebrographv1.EntityRelationDirection, 0, len(filter.RelationCounts.Directions))
 		for _, direction := range filter.RelationCounts.Directions {

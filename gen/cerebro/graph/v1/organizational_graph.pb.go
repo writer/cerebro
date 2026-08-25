@@ -1609,8 +1609,11 @@ type EntityCatalogFilter struct {
 	// stable key and label. Callers must select this explicitly.
 	QueryAttributes bool                       `protobuf:"varint,11,opt,name=query_attributes,json=queryAttributes,proto3" json:"query_attributes,omitempty"`
 	RelationCounts  *EntityRelationCountFilter `protobuf:"bytes,12,opt,name=relation_counts,json=relationCounts,proto3" json:"relation_counts,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// application_workspace_id scopes the read to a Cerebro application
+	// workspace. It is distinct from provider-owned workspace identifiers.
+	ApplicationWorkspaceId string `protobuf:"bytes,13,opt,name=application_workspace_id,json=applicationWorkspaceId,proto3" json:"application_workspace_id,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *EntityCatalogFilter) Reset() {
@@ -1725,6 +1728,13 @@ func (x *EntityCatalogFilter) GetRelationCounts() *EntityRelationCountFilter {
 		return x.RelationCounts
 	}
 	return nil
+}
+
+func (x *EntityCatalogFilter) GetApplicationWorkspaceId() string {
+	if x != nil {
+		return x.ApplicationWorkspaceId
+	}
+	return ""
 }
 
 // EntityRelationCountFilter requests complete grouped counts for the bounded
@@ -3627,8 +3637,11 @@ type VendorRegisterFilter struct {
 	OwnerState     string                 `protobuf:"bytes,7,opt,name=owner_state,json=ownerState,proto3" json:"owner_state,omitempty"`
 	LifecycleState string                 `protobuf:"bytes,8,opt,name=lifecycle_state,json=lifecycleState,proto3" json:"lifecycle_state,omitempty"`
 	QueueOnly      bool                   `protobuf:"varint,9,opt,name=queue_only,json=queueOnly,proto3" json:"queue_only,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// application_workspace_id scopes the read to a Cerebro application
+	// workspace. It is distinct from provider-owned workspace identifiers.
+	ApplicationWorkspaceId string `protobuf:"bytes,10,opt,name=application_workspace_id,json=applicationWorkspaceId,proto3" json:"application_workspace_id,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *VendorRegisterFilter) Reset() {
@@ -3722,6 +3735,13 @@ func (x *VendorRegisterFilter) GetQueueOnly() bool {
 		return x.QueueOnly
 	}
 	return false
+}
+
+func (x *VendorRegisterFilter) GetApplicationWorkspaceId() string {
+	if x != nil {
+		return x.ApplicationWorkspaceId
+	}
+	return ""
 }
 
 type ListVendorRegisterRequest struct {
@@ -5975,7 +5995,7 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
 	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12:\n" +
 	"\amatches\x18\x03 \x03(\v2 .cerebro.graph.v1.QueryFactMatchR\amatches\x12\x1c\n" +
-	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"\x99\x04\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"\xd3\x04\n" +
 	"\x13EntityCatalogFilter\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x1f\n" +
@@ -5990,7 +6010,8 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x17expected_graph_revision\x18\n" +
 	" \x01(\x04R\x15expectedGraphRevision\x12)\n" +
 	"\x10query_attributes\x18\v \x01(\bR\x0fqueryAttributes\x12T\n" +
-	"\x0frelation_counts\x18\f \x01(\v2+.cerebro.graph.v1.EntityRelationCountFilterR\x0erelationCounts\"\xab\x01\n" +
+	"\x0frelation_counts\x18\f \x01(\v2+.cerebro.graph.v1.EntityRelationCountFilterR\x0erelationCounts\x128\n" +
+	"\x18application_workspace_id\x18\r \x01(\tR\x16applicationWorkspaceId\"\xab\x01\n" +
 	"\x19EntityRelationCountFilter\x12I\n" +
 	"\n" +
 	"directions\x18\x01 \x03(\x0e2).cerebro.graph.v1.EntityRelationDirectionR\n" +
@@ -6156,7 +6177,7 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x12projection_classes\x18\x06 \x03(\v2A.cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntryR\x11projectionClasses\x1aD\n" +
 	"\x16ProjectionClassesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\"\xb2\x02\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\"\xec\x02\n" +
 	"\x14VendorRegisterFilter\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x1f\n" +
@@ -6170,7 +6191,9 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"ownerState\x12'\n" +
 	"\x0flifecycle_state\x18\b \x01(\tR\x0elifecycleState\x12\x1d\n" +
 	"\n" +
-	"queue_only\x18\t \x01(\bR\tqueueOnly\"q\n" +
+	"queue_only\x18\t \x01(\bR\tqueueOnly\x128\n" +
+	"\x18application_workspace_id\x18\n" +
+	" \x01(\tR\x16applicationWorkspaceId\"q\n" +
 	"\x19ListVendorRegisterRequest\x12>\n" +
 	"\x06filter\x18\x01 \x01(\v2&.cerebro.graph.v1.VendorRegisterFilterR\x06filter\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\rR\x05limit\"\xb3\n" +

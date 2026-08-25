@@ -437,6 +437,7 @@ const NEO4J_SCHEMA: &[&str] = &[
     "CREATE CONSTRAINT organizational_entity_identity IF NOT EXISTS FOR (entity:OrganizationalEntity) REQUIRE (entity.tenant_id, entity.entity_id) IS UNIQUE",
     "CREATE CONSTRAINT organizational_revision_tenant IF NOT EXISTS FOR (revision:OrganizationalGraphRevision) REQUIRE revision.tenant_id IS UNIQUE",
     "CREATE INDEX organizational_entity_external_id IF NOT EXISTS FOR (entity:OrganizationalEntity) ON (entity.tenant_id, entity.external_id)",
+    "CREATE INDEX cerebro_entity_tenant_application_workspace_type IF NOT EXISTS FOR (entity:Entity) ON (entity.tenant_id, entity.application_workspace_id, entity.entity_type)",
     "CREATE INDEX organizational_relation_identity IF NOT EXISTS FOR ()-[assertion:ORGANIZATIONAL_RELATION]-() ON (assertion.tenant_id, assertion.assertion_id)",
     "CREATE INDEX organizational_relation_kind IF NOT EXISTS FOR ()-[assertion:ORGANIZATIONAL_RELATION]-() ON (assertion.tenant_id, assertion.relation)",
     "CREATE CONSTRAINT security_lifecycle_subject_identity IF NOT EXISTS FOR (entity:SecurityLifecycleSubject) REQUIRE (entity.tenant_id, entity.lifecycle_subject_urn) IS UNIQUE",
@@ -519,6 +520,9 @@ pub struct LegacyRootCoverage {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 /// Closed filters shared by typed legacy entity-catalog reads.
 pub struct EntityCatalogFilter {
+    /// Optional Cerebro application workspace identifier. This is distinct
+    /// from provider-owned workspace identifiers.
+    pub application_workspace_id: String,
     /// Optional source identifier.
     pub source_id: String,
     /// Optional closed runtime identifiers.
@@ -3383,6 +3387,9 @@ fn catalog_entity_match(filter: &EntityCatalogFilter, cursor: CatalogCursor<'_>)
         && filter.include_kinds.len() == 1
         && !filter.include_kinds[0].is_empty();
     let mut properties = vec!["tenant_id: $tenant_id"];
+    if !filter.application_workspace_id.is_empty() {
+        properties.push("application_workspace_id: $application_workspace_id");
+    }
     if !filter.exact_agent_key.is_empty() {
         properties.push("urn: $exact_key");
     }
@@ -3431,6 +3438,10 @@ fn catalog_entity_match(filter: &EntityCatalogFilter, cursor: CatalogCursor<'_>)
 fn catalog_query(statement: &str, tenant_id: &TenantId, filter: &EntityCatalogFilter) -> Query {
     query(statement)
         .param("tenant_id", tenant_id.as_str())
+        .param(
+            "application_workspace_id",
+            filter.application_workspace_id.as_str(),
+        )
         .param("source_id", filter.source_id.as_str())
         .param("runtime_ids", string_list(&filter.runtime_ids))
         .param("exact_key", filter.exact_agent_key.as_str())
@@ -3553,6 +3564,12 @@ fn validate_catalog_request(
         ));
     }
     validate_catalog_text("source_id", &filter.source_id, 128, false)?;
+    validate_catalog_text(
+        "application_workspace_id",
+        &filter.application_workspace_id,
+        128,
+        false,
+    )?;
     validate_catalog_text("query", &filter.search, 512, false)?;
     validate_catalog_list("runtime_ids", &filter.runtime_ids, 100)?;
     validate_catalog_list("include_kinds", &filter.include_kinds, 500)?;
@@ -5116,6 +5133,14 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_catalog_request(&tenant, &filter, 100, "").is_ok());
+
+        filter.application_workspace_id = "workspace-a".to_owned();
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_ok());
+        filter.application_workspace_id = " workspace-a".to_owned();
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_err());
+        filter.application_workspace_id = "w".repeat(129);
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_err());
+        filter.application_workspace_id.clear();
         assert!(validate_catalog_request(&tenant, &filter, 0, "").is_err());
         assert!(
             validate_catalog_request(&tenant, &filter, 100, "urn:cerebro:other:vendor:example")
@@ -5154,6 +5179,10 @@ mod tests {
 
     #[test]
     fn entity_catalog_queries_only_compile_active_filters() {
+        assert!(NEO4J_SCHEMA.iter().any(|statement| {
+            statement
+                .contains("(entity.tenant_id, entity.application_workspace_id, entity.entity_type)")
+        }));
         let default_filter = EntityCatalogFilter::default();
         assert_eq!(
             catalog_entity_match(&default_filter, CatalogCursor::AgentKey("")),
@@ -5165,6 +5194,7 @@ mod tests {
         );
 
         let vendor_filter = EntityCatalogFilter {
+            application_workspace_id: "workspace-a".to_owned(),
             source_id: "servicenow".to_owned(),
             include_kinds: vec!["vendor".to_owned()],
             ..Default::default()
@@ -5172,7 +5202,7 @@ mod tests {
         let vendor_statement = catalog_entity_match(&vendor_filter, CatalogCursor::AgentKey(""));
         assert_eq!(
             vendor_statement,
-            "MATCH (entity:Entity {tenant_id: $tenant_id, source_id: $source_id, entity_type: $single_include_kind})"
+            "MATCH (entity:Entity {tenant_id: $tenant_id, application_workspace_id: $application_workspace_id, source_id: $source_id, entity_type: $single_include_kind})"
         );
         assert!(!vendor_statement.contains("size("));
         assert!(!vendor_statement.contains(" OR "));

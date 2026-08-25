@@ -135,6 +135,14 @@ func TestNeo4jSchemaIndexesIngestRunLookupShape(t *testing.T) {
 	}
 }
 
+func TestNeo4jSchemaIndexesApplicationWorkspaceCatalogShape(t *testing.T) {
+	statements := strings.Join(neo4jSchemaStatements(), "\n")
+	want := "cerebro_entity_tenant_application_workspace_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.application_workspace_id, e.entity_type)"
+	if !strings.Contains(statements, want) {
+		t.Fatalf("neo4jSchemaStatements() missing %q:\n%s", want, statements)
+	}
+}
+
 func TestUpsertProjectedEntityRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
 	store := &Store{}
 	err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{

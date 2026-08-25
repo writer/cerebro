@@ -811,6 +811,7 @@ impl OrganizationalGraphService for GraphRpc {
             || !query.lifecycle_state.trim().is_empty();
         let scan_limit = if requires_derived_filter { 500 } else { limit };
         let catalog_filter = StoreCatalogFilter {
+            application_workspace_id: filter.application_workspace_id.to_owned(),
             source_id: filter.source_id.to_owned(),
             runtime_ids: filter
                 .runtime_ids
@@ -1523,6 +1524,7 @@ fn catalog_filter(filter: &__buffa::view::EntityCatalogFilterView<'_>) -> StoreC
                     .collect(),
             });
     StoreCatalogFilter {
+        application_workspace_id: filter.application_workspace_id.to_owned(),
         source_id: filter.source_id.to_owned(),
         runtime_ids: filter
             .runtime_ids
@@ -1570,6 +1572,12 @@ fn validate_in_memory_catalog_request(
         || !catalog_values_are_closed(&filter.include_kind_prefixes)
         || !catalog_values_are_closed(&filter.exclude_kinds)
         || !catalog_values_are_closed(&filter.exclude_kind_prefixes)
+        || filter.application_workspace_id.trim() != filter.application_workspace_id
+        || filter.application_workspace_id.len() > 128
+        || filter
+            .application_workspace_id
+            .chars()
+            .any(char::is_control)
         || filter.search.trim() != filter.search
     {
         return Err(ConnectError::invalid_argument(
@@ -1604,6 +1612,12 @@ fn in_memory_catalog_entity_matches(entity: &ContextEntity, filter: &StoreCatalo
         return false;
     }
     if !filter.source_id.is_empty() && entity.properties.get("source_id") != Some(&filter.source_id)
+    {
+        return false;
+    }
+    if !filter.application_workspace_id.is_empty()
+        && entity.properties.get("application_workspace_id")
+            != Some(&filter.application_workspace_id)
     {
         return false;
     }
@@ -2515,9 +2529,31 @@ mod tests {
     }
 
     #[test]
+    fn in_memory_catalog_application_workspace_filter_is_closed_and_exact() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let mut entity = context_entity("entity-a", "service");
+        entity.properties.insert(
+            "application_workspace_id".to_owned(),
+            "workspace-a".to_owned(),
+        );
+        let mut filter = StoreCatalogFilter {
+            application_workspace_id: "workspace-a".to_owned(),
+            ..Default::default()
+        };
+        assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_ok());
+        assert!(in_memory_catalog_entity_matches(&entity, &filter));
+
+        filter.application_workspace_id = "workspace-b".to_owned();
+        assert!(!in_memory_catalog_entity_matches(&entity, &filter));
+        filter.application_workspace_id = " workspace-a".to_owned();
+        assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_err());
+    }
+
+    #[test]
     fn catalog_filter_and_pages_preserve_closed_fields_and_cursor_direction() {
         let filter = EntityCatalogFilter {
             tenant_id: "tenant-a".to_owned(),
+            application_workspace_id: "workspace-a".to_owned(),
             source_id: "source-a".to_owned(),
             runtime_ids: vec!["runtime-a".to_owned()],
             exact_agent_key: "urn:cerebro:tenant-a:service:one".to_owned(),
@@ -2543,6 +2579,7 @@ mod tests {
         let encoded = filter.encode_to_vec();
         let view = EntityCatalogFilter::decode_view(&encoded).unwrap();
         let mapped = catalog_filter(&view);
+        assert_eq!(mapped.application_workspace_id, "workspace-a");
         assert_eq!(mapped.source_id, "source-a");
         assert_eq!(mapped.runtime_ids, ["runtime-a"]);
         assert_eq!(mapped.include_kind_prefixes, ["service."]);

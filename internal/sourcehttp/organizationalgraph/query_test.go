@@ -41,6 +41,7 @@ type graphServiceStub struct {
 	listEntities      func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
 	countRelations    func(context.Context, *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error)
 	personAccess      func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
+	vendorRegister    func(context.Context, *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error)
 	vendorDiscoveries func(context.Context, *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error)
 }
 
@@ -66,6 +67,10 @@ func (s graphServiceStub) ListPersonAccessPaths(ctx context.Context, request *co
 
 func (s graphServiceStub) ListVendorDiscoveries(ctx context.Context, request *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error) {
 	return s.vendorDiscoveries(ctx, request)
+}
+
+func (s graphServiceStub) ListVendorRegister(ctx context.Context, request *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error) {
+	return s.vendorRegister(ctx, request)
 }
 
 func newGraphTestServer(t *testing.T, service graphServiceStub) *httptest.Server {
@@ -180,7 +185,7 @@ func TestQueryStoreVendorDiscoveriesPreservesRustAuthorityAndVisibleFields(t *te
 func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t *testing.T) {
 	server := newGraphTestServer(t, graphServiceStub{
 		listEntities: func(_ context.Context, request *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error) {
-			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetFilter().GetTenantId() != "tenant-a" {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetFilter().GetTenantId() != "tenant-a" || request.Msg.GetFilter().GetApplicationWorkspaceId() != "workspace-a" {
 				t.Fatalf("tenant authority missing: headers=%v request=%#v", request.Header(), request.Msg)
 			}
 			if request.Msg.GetFilter().GetQueryAttributes() {
@@ -223,7 +228,7 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
-	page, err := store.ListEntities(context.Background(), ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: "tenant-a", IncludeKinds: []string{"vendor"}, Query: "one", RelationCounts: &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract"}}}, Limit: 10})
+	page, err := store.ListEntities(context.Background(), ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: "tenant-a", ApplicationWorkspaceID: " workspace-a ", IncludeKinds: []string{"vendor"}, Query: "one", RelationCounts: &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract"}}}, Limit: 10})
 	if err != nil {
 		t.Fatalf("ListEntities() error = %v", err)
 	}
@@ -243,6 +248,32 @@ func TestQueryStoreEntityCatalogPreservesTenantSearchAndRelationCountContract(t 
 	}
 	if access.GraphRevision != 9 || len(access.Paths) != 1 || access.Paths[0].AccessTarget.EntityType != "aws.role" {
 		t.Fatalf("access = %#v", access)
+	}
+}
+
+func TestQueryStoreVendorRegisterForwardsApplicationWorkspace(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		vendorRegister: func(_ context.Context, request *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error) {
+			filter := request.Msg.GetFilter()
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || filter.GetTenantId() != "tenant-a" || filter.GetApplicationWorkspaceId() != "workspace-a" || request.Msg.GetLimit() != 25 {
+				t.Fatalf("vendor register scope or bounds missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.ListVendorRegisterResponse{
+				TenantId: "tenant-a", DataAuthority: "rust_graph", Summary: &cerebrographv1.VendorRegisterSummary{},
+			}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	page, err := store.ListVendorRegister(context.Background(), ports.VendorRegisterFilter{TenantID: "tenant-a", ApplicationWorkspaceID: " workspace-a ", Limit: 25})
+	if err != nil {
+		t.Fatalf("ListVendorRegister() error = %v", err)
+	}
+	if page.TenantID != "tenant-a" || page.DataAuthority != "rust_graph" {
+		t.Fatalf("page = %#v", page)
 	}
 }
 
