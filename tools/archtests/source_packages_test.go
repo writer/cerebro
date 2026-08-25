@@ -33,6 +33,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"aircall":         {},
 	"airfocus":        {},
 	"akeyless":        {},
+	"asana":           {},
 	"backstage":       {},
 	"beezup":          {},
 	"bitwarden":       {},

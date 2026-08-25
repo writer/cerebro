@@ -9,7 +9,6 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	anthropicsource "github.com/writer/cerebro/sources/anthropic"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
-	asanasource "github.com/writer/cerebro/sources/asana"
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
 	auth0source "github.com/writer/cerebro/sources/auth0"
 	awssource "github.com/writer/cerebro/sources/aws"
@@ -51,7 +50,7 @@ type builtinSourceLoader struct {
 	load func() (sourcecdk.Source, error)
 }
 
-var workerCatalogSourceIDs = []string{"digitalocean", "sentinelone"}
+var workerCatalogSourceIDs = []string{"asana", "digitalocean", "sentinelone"}
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
@@ -64,12 +63,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "archetype",
 		load: func() (sourcecdk.Source, error) {
 			return archetypesource.New()
-		},
-	},
-	{
-		name: "asana",
-		load: func() (sourcecdk.Source, error) {
-			return asanasource.New()
 		},
 	},
 	{

@@ -1,7 +1,7 @@
 //! Asana family bridges into the closed source-execution dispatcher.
 //!
 //! The adapters consume authenticated tenant context, public configuration,
-//! and bounded provider response bytes. The trusted Go host retains credential
+//! and bounded provider response bytes. The trusted runtime host retains credential
 //! redemption, Bearer authentication, network I/O, durable append, projection,
 //! and checkpoint ownership.
 

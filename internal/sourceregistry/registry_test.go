@@ -228,6 +228,10 @@ func TestBuiltinCatalogSourcesPreservePortableSourceContracts(t *testing.T) {
 	for _, loader := range builtinSourceLoaders {
 		static[loader.name] = struct{}{}
 	}
+	workerCatalog := make(map[string]struct{}, len(workerCatalogSourceIDs))
+	for _, sourceID := range workerCatalogSourceIDs {
+		workerCatalog[sourceID] = struct{}{}
+	}
 	var dynamicIDs []string
 	for _, entry := range analysis.Entries {
 		if entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
@@ -257,7 +261,7 @@ func TestBuiltinCatalogSourcesPreservePortableSourceContracts(t *testing.T) {
 			t.Errorf("%s source spec differs from portable catalog", sourceID)
 		}
 		portableFamilyIDs := portableCatalogFamilyIDs(catalog)
-		if !slices.Equal(entry.ResourceFamilyIDs, portableFamilyIDs) {
+		if _, workerOwned := workerCatalog[sourceID]; !workerOwned && !slices.Equal(entry.ResourceFamilyIDs, portableFamilyIDs) {
 			t.Errorf("%s portable families = %#v, want %#v", sourceID, entry.ResourceFamilyIDs, portableFamilyIDs)
 		}
 		coverageProvider, ok := source.(sourcecdk.CoverageContractProvider)
@@ -305,7 +309,6 @@ func portableCatalogFamilyIDs(catalog *sourcecdk.SourceCatalog) []string {
 func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testing.T) {
 	compatibilityExceptions := map[string]bool{
 		"anthropic":             true,
-		"asana":                 true,
 		"azure":                 true,
 		"github":                true,
 		"google_drive":          true,
@@ -356,6 +359,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"aircall",
 		"airfocus",
 		"akeyless",
+		"asana",
 		"backstage",
 		"beezup",
 		"bitwarden",
@@ -403,7 +407,7 @@ func TestWorkerCatalogSourcesKeepMetadataAndFailClosedWithoutWorkerRouting(t *te
 		if !ok || source.Spec().GetId() != sourceID {
 			t.Fatalf("worker source %q is missing its portable catalog metadata", sourceID)
 		}
-		family := map[string]string{"digitalocean": "droplets", "sentinelone": "threat"}[sourceID]
+		family := map[string]string{"asana": "users", "digitalocean": "droplets", "sentinelone": "threat"}[sourceID]
 		if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"family": family})); !errors.Is(err, errWorkerCatalogExecutionRequired) {
 			t.Fatalf("worker source %q direct Check() error = %v, want fail-closed worker requirement", sourceID, err)
 		}
