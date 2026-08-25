@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"golang.org/x/oauth2/google"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,6 +20,60 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 	if source.Spec().Id != "google_workspace" {
 		t.Fatalf("Spec().Id = %q, want google_workspace", source.Spec().Id)
+	}
+}
+
+func TestSourceExecutionCredentialUsesStaticBearerWithoutChangingIt(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := source.SourceExecutionCredential(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"domain": "writer.com",
+		"token":  "static-host-token",
+	}))
+	if err != nil {
+		t.Fatalf("SourceExecutionCredential() error = %v", err)
+	}
+	defer clear(credential)
+	if string(credential) != "static-host-token" {
+		t.Fatalf("SourceExecutionCredential() = %q, want static token", credential)
+	}
+}
+
+func TestSourceExecutionCredentialExchangesOAuthRefreshDataInsideTrustedHost(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse token request: %v", err)
+		}
+		if r.Form.Get("refresh_token") != "host-refresh-token" {
+			t.Fatalf("refresh_token = %q", r.Form.Get("refresh_token"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"short-lived-access-token","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer server.Close()
+
+	previousEndpoint := google.Endpoint
+	google.Endpoint.TokenURL = server.URL
+	t.Cleanup(func() { google.Endpoint = previousEndpoint })
+
+	source, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := source.SourceExecutionCredential(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"domain":        "writer.com",
+		"client_id":     "host-client-id",
+		"client_secret": "host-client-secret",
+		"refresh_token": "host-refresh-token",
+	}))
+	if err != nil {
+		t.Fatalf("SourceExecutionCredential() error = %v", err)
+	}
+	defer clear(credential)
+	if string(credential) != "short-lived-access-token" {
+		t.Fatalf("SourceExecutionCredential() = %q, want exchanged access token", credential)
 	}
 }
 

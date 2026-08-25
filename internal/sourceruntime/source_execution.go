@@ -43,6 +43,26 @@ func (s *Service) validateRustSourceRuntimePlan(ctx context.Context, runtime *ce
 	return nil
 }
 
+func sourceExecutionHostCredential(ctx context.Context, sourceID string, source sourcecdk.Source, references map[string]string, cfg sourcecdk.Config) (string, []byte, error) {
+	reference, resolved := sourceworker.CredentialBinding(sourceID, references, cfg.Values())
+	credential := []byte(resolved)
+	provider, ok := sourcecdk.SourceExecutionCredentialProviderFrom(source)
+	if !ok {
+		return reference, credential, nil
+	}
+	reference = sourceworker.TrustedHostCredentialReference(sourceID, references, cfg.Values())
+	clear(credential)
+	if reference == "" || (!sourceconfig.IsCredentialReference(reference) && !sourceconfig.IsSecretReference(reference)) {
+		return "", nil, fmt.Errorf("%w: Rust source execution requires an opaque credential reference", ErrInvalidRequest)
+	}
+	credential, err := provider.SourceExecutionCredential(ctx, cfg)
+	if err != nil {
+		clear(credential)
+		return "", nil, err
+	}
+	return reference, credential, nil
+}
+
 func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceRuntime, source sourcecdk.Source, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint, pageNumber uint32) (sourcecdk.Pull, bool, error) {
 	familyID, _ := cfg.Lookup("family")
 	normalizedFamilyID, authoritative := sourceworker.RustAuthoritativeFamily(runtime.GetSourceId(), familyID)
@@ -58,11 +78,14 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	if !ok || !fence.ExpiresAt.After(time.Now().UTC()) {
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: source worker requires a current durable lease fence", ErrRuntimeUnavailable)
 	}
-	reference, resolved := sourceworker.CredentialBinding(runtime.GetSourceId(), runtime.GetConfig(), cfg.Values())
-	if reference == "" || resolved == "" || reference == resolved || (!sourceconfig.IsCredentialReference(reference) && !sourceconfig.IsSecretReference(reference)) {
+	reference, credential, err := sourceExecutionHostCredential(ctx, runtime.GetSourceId(), source, runtime.GetConfig(), cfg)
+	if err != nil {
+		return sourcecdk.Pull{}, false, err
+	}
+	if reference == "" || len(credential) == 0 || (!sourceconfig.IsCredentialReference(reference) && !sourceconfig.IsSecretReference(reference)) {
+		clear(credential)
 		return sourcecdk.Pull{}, false, fmt.Errorf("%w: Rust source execution requires an opaque credential reference", ErrInvalidRequest)
 	}
-	credential := []byte(resolved)
 	host := sourceworker.NewHost(s.sourceWorker, reference, credential, fence.ExpiresAt)
 	clear(credential)
 	providerCursor, cursorWatermark, err := sourceworker.ProviderResume(cursor, runtime.GetSourceId(), familyID)

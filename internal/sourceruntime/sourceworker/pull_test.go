@@ -296,6 +296,63 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 	}
 }
 
+func TestTrustedHostCredentialReferenceMatchesGoogleWorkspaceAuthMode(t *testing.T) {
+	for name, test := range map[string]struct {
+		references map[string]string
+		resolved   map[string]string
+		want       string
+	}{
+		"static token": {
+			references: map[string]string{"token": "credential:google-workspace:token"},
+			resolved:   map[string]string{"token": "static-token"},
+			want:       "credential:google-workspace:token",
+		},
+		"delegated service account private key": {
+			references: map[string]string{"private_key": "env:GOOGLE_WORKSPACE_PRIVATE_KEY"},
+			resolved: map[string]string{
+				"service_account_email": "service-account@example.com",
+				"private_key":           "private-key-material",
+				"delegated_admin_email": "admin@example.com",
+			},
+			want: "env:GOOGLE_WORKSPACE_PRIVATE_KEY",
+		},
+		"service account alias": {
+			references: map[string]string{"service_account_private_key": "env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY"},
+			resolved: map[string]string{
+				"service_account_email":       "service-account@example.com",
+				"service_account_private_key": "private-key-material",
+				"subject_email":               "admin@example.com",
+			},
+			want: "env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY",
+		},
+		"OAuth refresh token": {
+			references: map[string]string{"refresh_token": "credential:google-workspace:refresh-token"},
+			resolved: map[string]string{
+				"client_id": "client-id", "client_secret": "client-secret", "refresh_token": "refresh-token",
+			},
+			want: "credential:google-workspace:refresh-token",
+		},
+		"incomplete mode fails closed": {
+			references: map[string]string{"private_key": "env:GOOGLE_WORKSPACE_PRIVATE_KEY"},
+			resolved:   map[string]string{"private_key": "private-key-material"},
+		},
+		"other providers cannot use adapter": {
+			references: map[string]string{"token": "credential:other:token"},
+			resolved:   map[string]string{"token": "token"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			sourceID := "google_workspace"
+			if name == "other providers cannot use adapter" {
+				sourceID = "other"
+			}
+			if got := TrustedHostCredentialReference(sourceID, test.references, test.resolved); got != test.want {
+				t.Fatalf("TrustedHostCredentialReference() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestAzureAuthorizationPolicyPersistsARestartableRustCheckpoint(t *testing.T) {
 	output := tailscaleOutput("", "authorizationPolicy", 1_725_000_000_000)
 	output.Plan.SourceId = "azure"
