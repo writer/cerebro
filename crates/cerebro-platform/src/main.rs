@@ -13,6 +13,7 @@ mod slack_agent_session;
 mod slack_authority;
 mod slack_mrkdwn;
 mod source_page_publisher;
+mod source_runtime_registry;
 mod source_runtime_sync;
 mod threat_insight_projection;
 mod trusted_endpoint_projection;
@@ -625,6 +626,7 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
         "/v1/source-runtimes/health" => "cerebro:read",
+        _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
@@ -681,9 +683,14 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
         "/v1/security/lifecycle" => "security_lifecycle",
+        "/v1/source-runtimes" => "list_source_runtimes",
+        _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => {
+            "put_source_runtime"
+        }
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => {
             "sync_source_runtime"
         }
+        _ if path.starts_with("/v1/source-runtimes/") => "get_source_runtime",
         "/v1/actions" if method == Method::GET => "list_actions",
         "/v1/actions" => "propose_action",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
@@ -2234,7 +2241,12 @@ fn router_with_backend(
         .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/security/lifecycle", get(security_lifecycle))
+        .route("/v1/source-runtimes", get(list_source_runtimes))
         .route("/v1/source-runtimes/health", get(source_runtime_health))
+        .route(
+            "/v1/source-runtimes/{runtime_id}",
+            get(get_source_runtime).put(put_source_runtime),
+        )
         .route(
             "/v1/source-runtimes/{runtime_id}/sync",
             post(sync_source_runtime),
@@ -2646,6 +2658,110 @@ async fn current_user(
     Extension(identity): Extension<AuthenticatedIdentity>,
 ) -> Json<oidc::CurrentUserResponse> {
     Json(identity.current_user_response())
+}
+
+async fn put_source_runtime(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Path(runtime_id): Path<String>,
+    Json(request): Json<source_runtime_registry::PutSourceRuntimeRequest>,
+) -> Result<Json<source_runtime_registry::SourceRuntimeResponse>, (StatusCode, Json<ErrorResponse>)>
+{
+    use source_runtime_registry::SourceRuntimeRegistryAuthority;
+
+    let ledger = state
+        .runtime_ledger
+        .ok_or_else(source_runtime_registry_unavailable)?;
+    source_runtime_registry::PostgresSourceRuntimeRegistry::new(ledger)
+        .put(&authenticated.0, &runtime_id, request)
+        .await
+        .map(Json)
+        .map_err(source_runtime_registry_error)
+}
+
+async fn get_source_runtime(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Path(runtime_id): Path<String>,
+) -> Result<Json<source_runtime_registry::SourceRuntimeResponse>, (StatusCode, Json<ErrorResponse>)>
+{
+    use source_runtime_registry::SourceRuntimeRegistryAuthority;
+
+    let ledger = state
+        .runtime_ledger
+        .ok_or_else(source_runtime_registry_unavailable)?;
+    source_runtime_registry::PostgresSourceRuntimeRegistry::new(ledger)
+        .get(&authenticated.0, &runtime_id)
+        .await
+        .map(Json)
+        .map_err(source_runtime_registry_error)
+}
+
+async fn list_source_runtimes(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(query): Query<source_runtime_registry::SourceRuntimeListQuery>,
+) -> Result<
+    Json<source_runtime_registry::SourceRuntimeListResponse>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    use source_runtime_registry::SourceRuntimeRegistryAuthority;
+
+    let ledger = state
+        .runtime_ledger
+        .ok_or_else(source_runtime_registry_unavailable)?;
+    source_runtime_registry::PostgresSourceRuntimeRegistry::new(ledger)
+        .list(&authenticated.0, query)
+        .await
+        .map(Json)
+        .map_err(source_runtime_registry_error)
+}
+
+fn source_runtime_registry_unavailable() -> (StatusCode, Json<ErrorResponse>) {
+    service_unavailable(
+        "source_runtime_registry_unavailable",
+        "The Rust source-runtime registry is not configured.",
+    )
+}
+
+fn source_runtime_registry_error(
+    error: source_runtime_registry::SourceRuntimeRegistryFailure,
+) -> (StatusCode, Json<ErrorResponse>) {
+    use source_runtime_registry::SourceRuntimeRegistryFailureKind;
+
+    eprintln!("Rust source-runtime registry request failed: {error}");
+    match error.kind() {
+        SourceRuntimeRegistryFailureKind::InvalidRequest => bad_request(
+            "invalid_source_runtime",
+            "The source runtime definition or list filter is invalid.",
+        ),
+        SourceRuntimeRegistryFailureKind::TenantMismatch => (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: "source_runtime_tenant_mismatch",
+                message: "The source runtime tenant does not match the authenticated tenant."
+                    .to_owned(),
+            }),
+        ),
+        SourceRuntimeRegistryFailureKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: "source_runtime_not_found",
+                message: "The source runtime was not found for this tenant.".to_owned(),
+            }),
+        ),
+        SourceRuntimeRegistryFailureKind::Conflict => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: "source_runtime_registry_conflict",
+                message: "The source runtime changed or started syncing. Retry the update."
+                    .to_owned(),
+            }),
+        ),
+        SourceRuntimeRegistryFailureKind::RuntimeUnavailable => {
+            source_runtime_registry_unavailable()
+        }
+    }
 }
 
 async fn sync_source_runtime(
@@ -6240,6 +6356,22 @@ mod tests {
 
     #[tokio::test]
     async fn source_runtime_sync_route_is_tenant_bound_and_served_by_rust() {
+        assert_eq!(
+            oidc_scope_for_route(&Method::PUT, "/v1/source-runtimes/runtime-demo"),
+            "cerebro:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/source-runtimes/runtime-demo"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            bounded_operation(&Method::PUT, "/v1/source-runtimes/runtime-demo"),
+            "put_source_runtime"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/source-runtimes/runtime-demo"),
+            "get_source_runtime"
+        );
         assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/source-runtimes/runtime-demo/sync"),
             "cerebro:write"
