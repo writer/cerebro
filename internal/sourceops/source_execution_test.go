@@ -1028,9 +1028,44 @@ func TestOtherAzureFamilyRemainsOnGoPreview(t *testing.T) {
 	}
 }
 
+func TestPreviewSourceExecutionCredentialUsesTrustedHostProvider(t *testing.T) {
+	source := &previewCredentialProviderProbe{
+		authorityProbeSource: &authorityProbeSource{sourceID: "google_workspace"},
+		credential:           []byte("short-lived-access-token"),
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := New(registry).previewSourceExecutionCredential(context.Background(), "google_workspace", map[string]string{ // #nosec G101 -- synthetic host-only credential fixtures.
+		"client_secret": "host-client-secret", "refresh_token": "host-refresh-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(credential)
+	if string(credential) != "short-lived-access-token" {
+		t.Fatalf("preview credential = %q, want short-lived token", credential)
+	}
+	for _, secret := range []string{"host-client-secret", "host-refresh-token"} {
+		if strings.Contains(string(credential), secret) {
+			t.Fatalf("preview credential exposed long-lived secret %q", secret)
+		}
+	}
+}
+
 type authorityProbeSource struct {
 	sourceID                             string
 	checkCalls, discoverCalls, readCalls int
+}
+
+type previewCredentialProviderProbe struct {
+	*authorityProbeSource
+	credential []byte
+}
+
+func (s *previewCredentialProviderProbe) SourceExecutionCredential(context.Context, sourcecdk.Config) ([]byte, error) {
+	return append([]byte(nil), s.credential...), nil
 }
 
 func (s *authorityProbeSource) Spec() *cerebrov1.SourceSpec {

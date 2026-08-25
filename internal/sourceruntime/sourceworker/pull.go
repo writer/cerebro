@@ -225,6 +225,30 @@ func CredentialBinding(sourceID string, references, resolved map[string]string) 
 	return "", ""
 }
 
+// TrustedHostCredentialReference selects the opaque stored reference that
+// fences a provider credential derived by a SourceExecutionCredentialProvider.
+// It never accepts a resolved secret value.
+func TrustedHostCredentialReference(sourceID string, references, resolved map[string]string) string {
+	if strings.TrimSpace(sourceID) != "google_workspace" {
+		return ""
+	}
+	if strings.TrimSpace(resolved["token"]) != "" {
+		return strings.TrimSpace(references["token"])
+	}
+	if firstCredentialValue(resolved, "service_account_email") != "" &&
+		firstCredentialValue(resolved, "delegated_admin_email", "subject_email") != "" {
+		for _, key := range []string{"private_key", "service_account_private_key"} {
+			if strings.TrimSpace(resolved[key]) != "" {
+				return strings.TrimSpace(references[key])
+			}
+		}
+	}
+	if strings.TrimSpace(resolved["client_id"]) != "" && strings.TrimSpace(resolved["client_secret"]) != "" && strings.TrimSpace(resolved["refresh_token"]) != "" {
+		return strings.TrimSpace(references["refresh_token"])
+	}
+	return ""
+}
+
 // TailscaleFamily normalizes the requested Tailscale family, including the
 // public default used when family is omitted. The closed Rust dispatcher owns
 // family membership validation; Go must not restore legacy authority for an

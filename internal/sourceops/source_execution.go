@@ -67,7 +67,11 @@ func (s *Service) executeRustSource(ctx context.Context, sourceID, family string
 	}
 	sourceID, family = strings.TrimSpace(sourceID), strings.TrimSpace(family)
 	tenantID := strings.TrimSpace(config["tenant_id"])
-	credential := []byte(previewCredential(sourceID, config))
+	credential, err := s.previewSourceExecutionCredential(ctx, sourceID, config)
+	if err != nil {
+		clear(credential)
+		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
+	}
 	if tenantID == "" || len(credential) == 0 {
 		clear(credential)
 		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, sourceworker.ErrSourceConfiguration)
@@ -100,6 +104,17 @@ func (s *Service) executeRustSource(ctx context.Context, sourceID, family string
 		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
 	}
 	return pull, nil
+}
+
+func (s *Service) previewSourceExecutionCredential(ctx context.Context, sourceID string, config map[string]string) ([]byte, error) {
+	source, err := s.lookup(sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if provider, ok := sourcecdk.SourceExecutionCredentialProviderFrom(source); ok {
+		return provider.SourceExecutionCredential(ctx, sourcecdk.NewConfig(config))
+	}
+	return []byte(previewCredential(sourceID, config)), nil
 }
 
 func (s *Service) discoverRustSource(ctx context.Context, sourceID, family string, config map[string]string) ([]sourcecdk.URN, error) {
