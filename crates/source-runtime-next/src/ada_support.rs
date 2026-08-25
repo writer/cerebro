@@ -13,6 +13,8 @@ mod origin;
 mod projection;
 mod request;
 mod response;
+#[allow(dead_code)]
+mod source_execution;
 mod types;
 
 pub use catalog::{AdaSupportEventContract, AdaSupportRuntimeDefinition};
@@ -25,6 +27,12 @@ pub use types::{
     AdaSupportCheckpointCandidate, AdaSupportKernel, AdaSupportPage, AdaSupportRecord,
     AdaSupportRequest,
 };
+
+#[allow(unused_imports)]
+pub(crate) use source_execution::ADA_SUPPORT_SOURCE_EXECUTION_ADAPTERS;
+
+#[cfg(test)]
+mod source_execution_tests;
 
 #[cfg(test)]
 mod tests;

@@ -13,6 +13,10 @@ mod origin;
 mod projection;
 mod request;
 mod response;
+#[allow(dead_code)]
+mod source_execution;
+#[cfg(test)]
+mod source_execution_tests;
 mod types;
 
 pub use catalog::{AddigyEventContract, AddigyRuntimeDefinition};
@@ -20,6 +24,9 @@ pub use error::AddigyError;
 pub use family::AddigyFamily;
 pub use projection::{AddigyEntityFact, AddigyProjectionFacts, project_addigy_records};
 pub use types::{AddigyCheckpointCandidate, AddigyKernel, AddigyPage, AddigyRecord, AddigyRequest};
+
+#[allow(unused_imports)]
+pub(crate) use source_execution::ADDIGY_SOURCE_EXECUTION_ADAPTERS;
 
 #[cfg(test)]
 mod tests;

@@ -219,6 +219,17 @@ func TestCredentialHeaderAppliesOnlyTheClosedSentinelOneScheme(t *testing.T) {
 	}
 }
 
+func TestCredentialHeaderAppliesGenericXAPIKeyOnlyInsideTheTrustedHost(t *testing.T) {
+	header, value, err := credentialHeader("source.x_api_key", []byte("synthetic-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "X-Api-Key" || string(value) != "synthetic-secret" {
+		t.Fatal("generic x-api-key operation did not produce the exact host-owned header")
+	}
+}
+
 func TestCredentialHeaderAppliesOnlyClosedAnthropicSchemes(t *testing.T) {
 	for _, operation := range []string{"anthropic.admin_x_api_key", "anthropic.compliance_x_api_key"} {
 		header, value, err := credentialHeader(operation, []byte("synthetic-secret"))
