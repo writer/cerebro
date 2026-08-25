@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -922,6 +923,70 @@ func (s *Service) vendorFromRow(row ports.CypherRow) Vendor {
 	vendor.VendorAssessmentPosture = vendorAssessmentPosture(vendor, now)
 	vendor.VendorCommercialPosture = vendorCommercialPosture(attrs, now)
 	return RefreshVendorQueuePosture(vendor, now)
+}
+
+// VendorFromRegisterRow adapts the Rust-owned vendor register contract to the
+// existing HTTP product shape without re-reading or re-deriving its canonical
+// identity, posture, counts, or queue state in Go.
+func VendorFromRegisterRow(row ports.VendorRegisterRow, now time.Time) Vendor {
+	attributes, _ := json.Marshal(row.Attributes)
+	service := &Service{now: func() time.Time { return now }}
+	vendor := service.vendorFromRow(ports.CypherRow{Values: map[string]any{
+		"urn":                      row.URN,
+		"label":                    row.Name,
+		"source_id":                row.SourceID,
+		"runtime_id":               row.RuntimeID,
+		"attributes_json":          string(attributes),
+		"contract_count":           int64(registerCount(row.ContractCount)),
+		"security_review_count":    int64(registerCount(row.SecurityReviewCount)),
+		"questionnaire_count":      int64(registerCount(row.QuestionnaireCount)),
+		"assurance_document_count": int64(registerCount(row.AssuranceDocumentCount)),
+	}})
+	vendor.VendorIdentity = VendorIdentity{
+		URN: row.URN, VendorID: row.VendorID, Name: row.Name, SourceID: row.SourceID,
+		RuntimeID: row.RuntimeID, Provider: row.Provider, Status: row.Status,
+		Category: row.Category, WebsiteURL: row.WebsiteURL, ServicesProvided: row.ServicesProvided,
+	}
+	vendor.LifecycleState = row.LifecycleState
+	vendor.Owner = row.Owner
+	vendor.OwnerState = row.OwnerState
+	vendor.RiskLevel = row.RiskLevel
+	vendor.RiskScore = int(row.RiskScore)
+	vendor.RiskScoreLevel = row.RiskScoreLevel
+	vendor.ReviewState = row.ReviewState
+	vendor.ReviewDueAt = parseDateAttribute(map[string]string{"review_due_at": row.ReviewDueAt}, "review_due_at")
+	vendor.EvidenceFreshnessState = row.EvidenceFreshnessState
+	vendor.PacketState = row.PacketState
+	vendor.VendorRecordCounts = VendorRecordCounts{
+		ContractCount:          registerCount(row.ContractCount),
+		SecurityReviewCount:    registerCount(row.SecurityReviewCount),
+		QuestionnaireCount:     registerCount(row.QuestionnaireCount),
+		AssuranceDocumentCount: registerCount(row.AssuranceDocumentCount),
+	}
+	vendor.VendorFindingCounts = VendorFindingCounts{
+		OpenFindings: registerCount(row.OpenFindings), CriticalFindings: registerCount(row.CriticalFindings),
+		HighFindings: registerCount(row.HighFindings), EvidenceItems: registerCount(row.EvidenceItems),
+	}
+	vendor.RiskQueueRank = int(row.RiskQueueRank)
+	vendor.QueueReasons = append([]string{}, row.QueueReasons...)
+	vendor.NextActions = make([]VendorAction, 0, len(row.NextActions))
+	for index, action := range row.NextActions {
+		reason := ""
+		if index < len(row.QueueReasons) {
+			reason = row.QueueReasons[index]
+		}
+		vendor.NextActions = append(vendor.NextActions, VendorAction{ID: action.ID, Label: action.Label, Reason: reason})
+	}
+	vendor.Attributes = maps.Clone(row.Attributes)
+	return vendor
+}
+
+func registerCount(value uint64) int {
+	maximum := int(^uint(0) >> 1)
+	if value > uint64(maximum) {
+		return maximum
+	}
+	return int(value) // #nosec G115 -- bounded to the native int maximum above.
 }
 
 func discoveryFromRow(row ports.CypherRow) VendorDiscovery {
