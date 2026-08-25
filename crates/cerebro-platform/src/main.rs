@@ -2622,7 +2622,7 @@ fn validate_legacy_projection(
 fn valid_legacy_application_workspace_id(value: &str) -> bool {
     value.is_empty()
         || (value.trim() == value
-            && value.len() <= 256
+            && value.len() <= 128
             && value != "*"
             && !value.contains(',')
             && !value.chars().any(char::is_control))
@@ -5943,6 +5943,11 @@ mod tests {
             },
         };
         assert!(validate_legacy_projection(&tenant_id, &request).is_ok());
+        request.delta.entities[0].application_workspace_id = "w".repeat(128);
+        assert!(validate_legacy_projection(&tenant_id, &request).is_ok());
+        request.delta.entities[0].application_workspace_id = "w".repeat(129);
+        assert!(validate_legacy_projection(&tenant_id, &request).is_err());
+        request.delta.entities[0].application_workspace_id = "workspace-a".to_owned();
         request.delta.entities[0].tenant_id = "tenant-other".to_owned();
         assert!(validate_legacy_projection(&tenant_id, &request).is_err());
     }

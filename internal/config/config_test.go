@@ -1104,6 +1104,7 @@ func TestLoadRejectsInvalidApplicationWorkspaceGrants(t *testing.T) {
 		{name: "foreign tenant", grants: `[{"tenant_id":"other","application_workspace_ids":["workspace-a"]}]`},
 		{name: "wildcard workspace", grants: `[{"tenant_id":"writer","application_workspace_ids":["*"]}]`},
 		{name: "ambiguous workspace list", grants: `[{"tenant_id":"writer","application_workspace_ids":["workspace-a,workspace-b"]}]`},
+		{name: "overlong workspace", grants: `[{"tenant_id":"writer","application_workspace_ids":["` + strings.Repeat("w", 129) + `"]}]`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			clearDependencyEnv(t)

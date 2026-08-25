@@ -31,6 +31,8 @@ pub enum CatalogMapperError {
     },
     /// The catalog selected a template without a generic Rust mapper.
     UnsupportedTemplate(String),
+    /// Provider-owned fields attempted to set trusted runtime scope.
+    ReservedField(String),
     /// The projected value violates an organizational-model invariant.
     Domain(ModelError),
     /// One verified claim points at two different canonical identities.
@@ -54,6 +56,9 @@ impl fmt::Display for CatalogMapperError {
                     formatter,
                     "projection template {template} requires a bespoke Rust mapper"
                 )
+            }
+            Self::ReservedField(field) => {
+                write!(formatter, "provider record contains reserved field {field}")
             }
             Self::Domain(error) => write!(formatter, "catalog projection is invalid: {error}"),
             Self::IdentityConflict(claim) => {
@@ -733,6 +738,9 @@ fn add_properties(
     projected: BTreeMap<String, String>,
 ) -> Result<Entity, CatalogMapperError> {
     for (key, value) in projected {
+        if key == "application_workspace_id" {
+            return Err(CatalogMapperError::ReservedField(key));
+        }
         entity = entity.with_property(key, value)?;
     }
     Ok(entity)
@@ -755,6 +763,29 @@ mod tests {
             .join("../..")
             .canonicalize()
             .unwrap()
+    }
+
+    #[test]
+    fn provider_fields_cannot_assign_application_workspace_scope() {
+        let entity = Entity::canonical(
+            TenantId::parse("tenant-a").unwrap(),
+            cerebro_organizational_model::EntityId::parse("entity-a").unwrap(),
+            EntityKind::Application,
+            "Application",
+        )
+        .unwrap();
+        let result = add_properties(
+            entity,
+            BTreeMap::from([(
+                "application_workspace_id".to_owned(),
+                "workspace-provider".to_owned(),
+            )]),
+        );
+        assert!(matches!(
+            result,
+            Err(CatalogMapperError::ReservedField(field))
+                if field == "application_workspace_id"
+        ));
     }
 
     #[test]

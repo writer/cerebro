@@ -374,6 +374,7 @@ CALL {
   WITH root, neighbor, relation.relation AS relation_kind,
        collect(DISTINCT coalesce(relation.tenant_id, '')) AS relation_tenant_ids,
        collect(DISTINCT coalesce(relation.runtime_id, '')) AS typed_runtime_ids,
+       collect(DISTINCT coalesce(relation.application_workspace_id, '')) AS typed_application_workspace_ids,
        collect(DISTINCT coalesce(relation.attributes_json, '{}')) AS relation_properties_values
   RETURN neighbor.urn AS neighbor_urn,
          coalesce(neighbor.entity_type, 'unknown') AS neighbor_kind,
@@ -386,13 +387,14 @@ CALL {
          neighbor.urn AS to_urn,
          relation_tenant_ids,
          typed_runtime_ids,
+         typed_application_workspace_ids,
          relation_properties_values
   ORDER BY neighbor.urn, relation_kind, neighbor.entity_type, neighbor.label
   LIMIT $row_limit
 }
 RETURN root_urn, neighbor_urn, neighbor_kind, neighbor_label, neighbor_properties,
        neighbor_source_id, neighbor_runtime_id,
-       from_urn, relation_kind, to_urn, relation_tenant_ids, typed_runtime_ids, relation_properties_values
+       from_urn, relation_kind, to_urn, relation_tenant_ids, typed_runtime_ids, typed_application_workspace_ids, relation_properties_values
 ORDER BY root_urn, neighbor_urn, relation_kind
 "#;
 
@@ -406,6 +408,7 @@ CALL {
   WITH root, neighbor, relation.relation AS relation_kind,
        collect(DISTINCT coalesce(relation.tenant_id, '')) AS relation_tenant_ids,
        collect(DISTINCT coalesce(relation.runtime_id, '')) AS typed_runtime_ids,
+       collect(DISTINCT coalesce(relation.application_workspace_id, '')) AS typed_application_workspace_ids,
        collect(DISTINCT coalesce(relation.attributes_json, '{}')) AS relation_properties_values
   RETURN neighbor.urn AS neighbor_urn,
          coalesce(neighbor.entity_type, 'unknown') AS neighbor_kind,
@@ -418,13 +421,14 @@ CALL {
          root.urn AS to_urn,
          relation_tenant_ids,
          typed_runtime_ids,
+         typed_application_workspace_ids,
          relation_properties_values
   ORDER BY neighbor.urn, relation_kind, neighbor.entity_type, neighbor.label
   LIMIT $row_limit
 }
 RETURN root_urn, neighbor_urn, neighbor_kind, neighbor_label, neighbor_properties,
        neighbor_source_id, neighbor_runtime_id,
-       from_urn, relation_kind, to_urn, relation_tenant_ids, typed_runtime_ids, relation_properties_values
+       from_urn, relation_kind, to_urn, relation_tenant_ids, typed_runtime_ids, typed_application_workspace_ids, relation_properties_values
 ORDER BY root_urn, neighbor_urn, relation_kind
 "#;
 
@@ -1966,10 +1970,16 @@ ORDER BY runtime_id
                     from,
                     relation,
                     to,
-                    row.get("relation_tenant_ids").map_err(context_decode)?,
-                    row.get("typed_runtime_ids").map_err(context_decode)?,
-                    row.get("relation_properties_values")
-                        .map_err(context_decode)?,
+                    LegacyEdgeMetadata {
+                        tenant_ids: row.get("relation_tenant_ids").map_err(context_decode)?,
+                        runtime_ids: row.get("typed_runtime_ids").map_err(context_decode)?,
+                        application_workspace_ids: row
+                            .get("typed_application_workspace_ids")
+                            .map_err(context_decode)?,
+                        properties_values: row
+                            .get("relation_properties_values")
+                            .map_err(context_decode)?,
+                    },
                 )?);
             }
         }
@@ -4609,14 +4619,19 @@ fn legacy_context_entity_from_row_prefix(
     .map_err(|error| StoreError::Conflict(error.to_string()))
 }
 
+struct LegacyEdgeMetadata {
+    tenant_ids: Vec<String>,
+    runtime_ids: Vec<String>,
+    application_workspace_ids: Vec<String>,
+    properties_values: Vec<String>,
+}
+
 fn legacy_context_edge(
     tenant_id: &TenantId,
     from: String,
     relation: String,
     to: String,
-    relation_tenant_ids: Vec<String>,
-    typed_runtime_ids: Vec<String>,
-    properties_values: Vec<String>,
+    metadata: LegacyEdgeMetadata,
 ) -> Result<ContextEdge, ContextError> {
     let expected_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
     if !from.starts_with(&expected_prefix) || !to.starts_with(&expected_prefix) {
@@ -4624,7 +4639,8 @@ fn legacy_context_edge(
             "legacy graph returned a cross-tenant relation".to_owned(),
         ));
     }
-    if relation_tenant_ids
+    if metadata
+        .tenant_ids
         .iter()
         .any(|value| !value.is_empty() && value != tenant_id.as_str())
     {
@@ -4632,21 +4648,41 @@ fn legacy_context_edge(
             "legacy graph returned a cross-tenant relation".to_owned(),
         ));
     }
-    if typed_runtime_ids.len() > 1 || properties_values.len() > 1 {
+    if metadata.runtime_ids.len() > 1
+        || metadata.application_workspace_ids.len() > 1
+        || metadata.properties_values.len() > 1
+    {
         return Err(ContextError::BackendUnavailable(
             "legacy relation metadata conflicts".to_owned(),
         ));
     }
     let properties: BTreeMap<String, String> = parse_json(
-        properties_values
+        metadata
+            .properties_values
             .first()
             .map(String::as_str)
             .unwrap_or("{}"),
     )?;
-    let typed_runtime_id = typed_runtime_ids
+    let typed_runtime_id = metadata
+        .runtime_ids
         .first()
         .map(String::as_str)
         .unwrap_or_default();
+    let application_workspace_id = metadata
+        .application_workspace_ids
+        .first()
+        .map(String::as_str)
+        .unwrap_or_default();
+    if application_workspace_id.len() > 128
+        || application_workspace_id.trim() != application_workspace_id
+        || application_workspace_id == "*"
+        || application_workspace_id.contains(',')
+        || application_workspace_id.chars().any(char::is_control)
+    {
+        return Err(ContextError::BackendUnavailable(
+            "legacy relation application workspace is invalid".to_owned(),
+        ));
+    }
     let attributes_runtime_id = properties
         .get("source_runtime_id")
         .or_else(|| properties.get("runtime_id"))
@@ -4676,10 +4712,7 @@ fn legacy_context_edge(
         relation,
         to: legacy_entity_id(tenant_id, &to),
         source_runtime_id,
-        application_workspace_id: properties
-            .get("application_workspace_id")
-            .cloned()
-            .unwrap_or_default(),
+        application_workspace_id: application_workspace_id.to_owned(),
         identity_binding,
     })
 }
@@ -5474,12 +5507,18 @@ mod tests {
             from.to_owned(),
             "represents".to_owned(),
             to.to_owned(),
-            vec![String::new()],
-            vec!["runtime-a".to_owned()],
-            vec![r#"{"source_runtime_id":"runtime-a","identity_binding":"true"}"#.to_owned()],
+            LegacyEdgeMetadata {
+                tenant_ids: vec![String::new()],
+                runtime_ids: vec!["runtime-a".to_owned()],
+                application_workspace_ids: vec!["workspace-a".to_owned()],
+                properties_values: vec![
+                    r#"{"source_runtime_id":"runtime-a","identity_binding":"true"}"#.to_owned(),
+                ],
+            },
         )
         .expect("legacy edge");
         assert_eq!(edge.source_runtime_id, "runtime-a");
+        assert_eq!(edge.application_workspace_id, "workspace-a");
         assert!(edge.identity_binding);
         assert_eq!(
             edge.assertion_id,
@@ -5492,9 +5531,12 @@ mod tests {
                 from.to_owned(),
                 "owns".to_owned(),
                 to.to_owned(),
-                vec!["writer".to_owned()],
-                vec!["runtime-a".to_owned(), "runtime-b".to_owned()],
-                vec!["{}".to_owned()],
+                LegacyEdgeMetadata {
+                    tenant_ids: vec!["writer".to_owned()],
+                    runtime_ids: vec!["runtime-a".to_owned(), "runtime-b".to_owned()],
+                    application_workspace_ids: vec![String::new()],
+                    properties_values: vec!["{}".to_owned()],
+                },
             )
             .is_err()
         );
@@ -5504,9 +5546,15 @@ mod tests {
                 from.to_owned(),
                 "owns".to_owned(),
                 to.to_owned(),
-                vec!["writer".to_owned()],
-                vec!["runtime-a".to_owned()],
-                vec![r#"{"source_runtime_id":"runtime-b"}"#.to_owned()],
+                LegacyEdgeMetadata {
+                    tenant_ids: vec!["writer".to_owned()],
+                    runtime_ids: vec!["runtime-a".to_owned()],
+                    application_workspace_ids: vec![
+                        "workspace-a".to_owned(),
+                        "workspace-b".to_owned(),
+                    ],
+                    properties_values: vec!["{}".to_owned()],
+                },
             )
             .is_err()
         );
@@ -5516,9 +5564,42 @@ mod tests {
                 from.to_owned(),
                 "owns".to_owned(),
                 to.to_owned(),
-                vec!["other".to_owned()],
-                vec!["runtime-a".to_owned()],
-                vec!["{}".to_owned()],
+                LegacyEdgeMetadata {
+                    tenant_ids: vec!["writer".to_owned()],
+                    runtime_ids: vec!["runtime-a".to_owned()],
+                    application_workspace_ids: vec!["w".repeat(129)],
+                    properties_values: vec!["{}".to_owned()],
+                },
+            )
+            .is_err()
+        );
+        assert!(
+            legacy_context_edge(
+                &tenant_id,
+                from.to_owned(),
+                "owns".to_owned(),
+                to.to_owned(),
+                LegacyEdgeMetadata {
+                    tenant_ids: vec!["writer".to_owned()],
+                    runtime_ids: vec!["runtime-a".to_owned()],
+                    application_workspace_ids: vec![String::new()],
+                    properties_values: vec![r#"{"source_runtime_id":"runtime-b"}"#.to_owned()],
+                },
+            )
+            .is_err()
+        );
+        assert!(
+            legacy_context_edge(
+                &tenant_id,
+                from.to_owned(),
+                "owns".to_owned(),
+                to.to_owned(),
+                LegacyEdgeMetadata {
+                    tenant_ids: vec!["other".to_owned()],
+                    runtime_ids: vec!["runtime-a".to_owned()],
+                    application_workspace_ids: vec![String::new()],
+                    properties_values: vec!["{}".to_owned()],
+                },
             )
             .is_err()
         );
@@ -5528,9 +5609,12 @@ mod tests {
                 from.to_owned(),
                 "owns".to_owned(),
                 "urn:cerebro:other:finding:two".to_owned(),
-                vec![String::new()],
-                vec!["runtime-a".to_owned()],
-                vec!["{}".to_owned()],
+                LegacyEdgeMetadata {
+                    tenant_ids: vec![String::new()],
+                    runtime_ids: vec!["runtime-a".to_owned()],
+                    application_workspace_ids: vec![String::new()],
+                    properties_values: vec!["{}".to_owned()],
+                },
             )
             .is_err()
         );
@@ -5544,6 +5628,7 @@ mod tests {
             assert!(statement.contains("[relation:RELATION]"));
             assert!(statement.contains("coalesce(relation.tenant_id, '') IN ['', $tenant_id]"));
             assert!(statement.contains("relation_tenant_ids"));
+            assert!(statement.contains("typed_application_workspace_ids"));
             assert!(statement.contains("LIMIT $row_limit"));
             assert!(statement.contains("ORDER BY neighbor.urn, relation_kind"));
         }
