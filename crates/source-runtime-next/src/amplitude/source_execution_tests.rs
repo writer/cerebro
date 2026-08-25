@@ -224,13 +224,22 @@ fn amplitude_decodes_fixtures_with_tenant_scoped_identity_and_seals() {
 fn amplitude_pagination_and_typed_provider_failures_fail_closed() {
     let adapter = adapter("users");
     let plan = adapter.compiled_plan();
-    let context = context("", 1);
+    let execution_context = context("", 1);
     let metadata = metadata("users");
-    let execution = plan_page(adapter, &plan, &context, &metadata);
+    let execution = plan_page(adapter, &plan, &execution_context, &metadata);
     let mut page: Value = serde_json::from_slice(USERS_FIXTURE).unwrap();
     page["totalResults"] = Value::from(200);
     let body = serde_json::to_vec(&page).unwrap();
-    let result = decode_page(adapter, &plan, &context, &metadata, &execution, 200, &body).unwrap();
+    let result = decode_page(
+        adapter,
+        &plan,
+        &execution_context,
+        &metadata,
+        &execution,
+        200,
+        &body,
+    )
+    .unwrap();
     assert_eq!(result.next_cursor, "101");
 
     for (status, expected) in [
@@ -241,7 +250,13 @@ fn amplitude_pagination_and_typed_provider_failures_fail_closed() {
     ] {
         assert_eq!(
             decode_page(
-                adapter, &plan, &context, &metadata, &execution, status, b"{}",
+                adapter,
+                &plan,
+                &execution_context,
+                &metadata,
+                &execution,
+                status,
+                b"{}",
             ),
             Err(expected)
         );
@@ -267,7 +282,7 @@ fn amplitude_pagination_and_typed_provider_failures_fail_closed() {
         adapter.plan_v2(&SourceWorkerPlanEnvelopeV2 {
             request: Some(SourceWorkerPlanRequestV1 {
                 plan: Some(plan),
-                context: Some(context),
+                context: Some(execution_context),
             }),
             metadata: Some(wrong_family),
         }),
