@@ -14,9 +14,11 @@ import (
 const maxGRCVendorDiscoveryDecisionBodyBytes = 32 << 10
 
 type grcVendorsResponse struct {
-	grcvendor.VendorPage
-	Summary     grcvendor.Summary `json:"summary"`
-	GeneratedAt time.Time         `json:"generated_at"`
+	GraphRevision uint64                      `json:"graph_revision"`
+	DataAuthority string                      `json:"data_authority"`
+	Vendors       []ports.VendorRegisterRow   `json:"vendors"`
+	Summary       ports.VendorRegisterSummary `json:"summary"`
+	GeneratedAt   string                      `json:"generated_at"`
 }
 
 type grcVendorDetailResponse struct {
@@ -70,39 +72,28 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	page, err := grcvendor.NewWithCapabilities(a.deps.GraphReads.Catalog, a.deps.GraphReads.Neighborhoods).ListVendorsPage(r.Context(), grcvendor.ListVendorsRequest{
-		TenantID:    scope.TenantID,
-		RuntimeID:   scope.RuntimeID,
-		RuntimeIDs:  scope.RuntimeIDs,
-		SourceID:    scope.SourceID,
-		Query:       strings.TrimSpace(r.URL.Query().Get("q")),
-		RiskLevel:   strings.TrimSpace(r.URL.Query().Get("risk_level")),
-		ReviewState: strings.TrimSpace(r.URL.Query().Get("review_state")),
-		OwnerState:  strings.TrimSpace(r.URL.Query().Get("owner_state")),
-		Lifecycle:   strings.TrimSpace(r.URL.Query().Get("lifecycle_state")),
-		QueueOnly:   queueOnly,
-		DeferLimit:  queueOnly,
-		Limit:       scope.Limit,
+	if a.deps.GraphReads.VendorRegister == nil {
+		writeGRCError(w, grcvendor.ErrRuntimeUnavailable)
+		return
+	}
+	runtimeIDs := append([]string{}, scope.RuntimeIDs...)
+	if scope.RuntimeID != "" {
+		runtimeIDs = []string{scope.RuntimeID}
+	}
+	page, err := a.deps.GraphReads.VendorRegister.ListVendorRegister(r.Context(), ports.VendorRegisterFilter{
+		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
+		Query: strings.TrimSpace(r.URL.Query().Get("q")), RiskLevel: strings.TrimSpace(r.URL.Query().Get("risk_level")), ReviewState: strings.TrimSpace(r.URL.Query().Get("review_state")), OwnerState: strings.TrimSpace(r.URL.Query().Get("owner_state")), LifecycleState: strings.TrimSpace(r.URL.Query().Get("lifecycle_state")), QueueOnly: queueOnly, Limit: int(scope.Limit),
 	})
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	vendors := page.Vendors
-	vendors, err = a.enrichGRCVendors(r, scope, vendors)
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	if queueOnly {
-		vendors = grcvendor.FilterVendorsByQueue(vendors)
-	}
-	page.Vendors = grcvendor.SortAndLimitVendors(vendors, scope.Limit)
-	page.DataAuthority = "rust_graph"
 	writeJSON(w, http.StatusOK, grcVendorsResponse{
-		VendorPage:  page,
-		Summary:     grcvendor.Summarize(page.Vendors),
-		GeneratedAt: time.Now().UTC(),
+		GraphRevision: page.GraphRevision,
+		DataAuthority: page.DataAuthority,
+		Vendors:       page.Vendors,
+		Summary:       page.Summary,
+		GeneratedAt:   page.GeneratedAt,
 	})
 }
 
@@ -326,62 +317,6 @@ func (a *App) handleUpdateGRCVendorDiscoveryDecision(w http.ResponseWriter, r *h
 	writeJSON(w, http.StatusOK, grcVendorDiscoveryDecisionResponse{Decision: record, GeneratedAt: time.Now().UTC()})
 }
 
-func (a *App) enrichGRCVendors(r *http.Request, scope grcScope, vendors []grcvendor.Vendor) ([]grcvendor.Vendor, error) {
-	if len(vendors) == 0 || findingStore(a.deps.StateStore) == nil {
-		rollups, err := grcvendor.QuestionnaireVendorRollups(r.Context(), grcQuestionnaireRunStore(a.deps.StateStore), scope.TenantID, grcVendorURNs(vendors), time.Now().UTC())
-		if err != nil {
-			return nil, err
-		}
-		for index := range vendors {
-			vendors[index] = grcvendor.ApplyQuestionnaireVendorRollup(vendors[index], rollups[vendors[index].URN])
-		}
-		return vendors, nil
-	}
-	questionnaireRollups, err := grcvendor.QuestionnaireVendorRollups(r.Context(), grcQuestionnaireRunStore(a.deps.StateStore), scope.TenantID, grcVendorURNs(vendors), time.Now().UTC())
-	if err != nil {
-		return nil, err
-	}
-	runtimes, err := a.grcListRuntimes(r, scope)
-	if err != nil {
-		return nil, err
-	}
-	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{
-		ResourceURNs: grcVendorURNs(vendors),
-		Status:       "open",
-		Limit:        grcVendorFindingLimit(len(vendors), scope.Limit),
-	})
-	if err != nil {
-		return nil, err
-	}
-	evidenceCounts := map[string]int{}
-	if findingEvidenceStore(a.deps.StateStore) != nil {
-		var counted bool
-		evidenceCounts, counted, err = a.grcEvidenceCountsByFindingID(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings)})
-		if err != nil {
-			return nil, err
-		}
-		if !counted {
-			evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: grcVendorFindingLimit(len(vendors), scope.Limit)})
-			if err != nil {
-				return nil, err
-			}
-			evidenceCounts = grcEvidenceCounts(evidence)
-		}
-	}
-	findingItems := grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), evidenceCounts)
-	metrics := vendorFindingMetrics(findingItems)
-	for index := range vendors {
-		item := metrics[vendors[index].URN]
-		vendors[index].OpenFindings = item.OpenFindings
-		vendors[index].CriticalFindings = item.CriticalFindings
-		vendors[index].HighFindings = item.HighFindings
-		vendors[index].EvidenceItems = item.EvidenceItems
-		vendors[index] = grcvendor.ApplyQuestionnaireVendorRollup(vendors[index], questionnaireRollups[vendors[index].URN])
-		vendors[index] = grcvendor.RefreshVendorQueuePosture(vendors[index])
-	}
-	return vendors, nil
-}
-
 func grcQuestionnaireRunStore(store ports.StateStore) ports.QuestionnaireRunStore {
 	runStore, ok := store.(ports.QuestionnaireRunStore)
 	if !ok || isNilInterface(runStore) {
@@ -411,23 +346,6 @@ func vendorFindingMetrics(findings []grcFindingItem) map[string]grcVendorFinding
 		}
 	}
 	return metrics
-}
-
-func grcVendorURNs(vendors []grcvendor.Vendor) []string {
-	urns := make([]string, 0, len(vendors))
-	seen := map[string]struct{}{}
-	for _, vendor := range vendors {
-		urn := strings.TrimSpace(vendor.URN)
-		if urn == "" {
-			continue
-		}
-		if _, ok := seen[urn]; ok {
-			continue
-		}
-		seen[urn] = struct{}{}
-		urns = append(urns, urn)
-	}
-	return urns
 }
 
 func grcDiscoveryURNs(discoveries []grcvendor.VendorDiscovery) []string {
@@ -491,20 +409,6 @@ func filterGRCVendorDiscoveryDecisions(records []*ports.GRCVendorDiscoveryDecisi
 		}
 	}
 	return filtered
-}
-
-func grcVendorFindingLimit(vendorCount int, scopeLimit uint32) uint32 {
-	limit := boundedUint32(vendorCount * 10)
-	if limit < scopeLimit {
-		limit = scopeLimit
-	}
-	if limit == 0 {
-		limit = grcDefaultLimit
-	}
-	if limit > grcMaxLimit {
-		return grcMaxLimit
-	}
-	return limit
 }
 
 func validateGRCVendorURN(vendorURN string) error {

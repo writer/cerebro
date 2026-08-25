@@ -191,7 +191,12 @@ pub(super) fn validated_kernel(
         .query_parameters()
         .iter()
         .filter_map(|(_, name)| {
-            public_value(&metadata.public_config, name)
+            let public_name = if *name == "api_key_ids" {
+                "admin_key_ids"
+            } else {
+                *name
+            };
+            public_value(&metadata.public_config, public_name)
                 .map(|value| ((*name).to_owned(), value.to_owned()))
         })
         .collect::<BTreeMap<_, _>>();

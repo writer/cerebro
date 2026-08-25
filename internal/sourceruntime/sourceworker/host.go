@@ -190,6 +190,10 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 	switch operation {
 	case "source.bearer":
 		return "Authorization", append([]byte("Bearer "), credential...), nil
+	case "anthropic.admin_x_api_key", "anthropic.compliance_x_api_key":
+		return "X-Api-Key", append([]byte(nil), credential...), nil
+	case "anthropic.org_admin_bearer":
+		return "Authorization", append([]byte("Bearer "), credential...), nil
 	case "jumpcloud.x_api_key":
 		return "X-Api-Key", append([]byte(nil), credential...), nil
 	case "sentinelone.api_token":

@@ -36,7 +36,7 @@ use cerebro_source_catalog::CatalogSummary;
 use connectrpc::{ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::{AUTHORIZATION, TENANT_AUTH_HEADER, TenantRequestAuth};
+use crate::{AUTHORIZATION, TENANT_AUTH_HEADER, TenantRequestAuth, vendor_register};
 
 pub mod proto {
     pub mod cerebro {
@@ -775,6 +775,78 @@ impl OrganizationalGraphService for GraphRpc {
                 .await?
         };
         Response::ok(catalog_page_response(result))
+    }
+
+    async fn list_vendor_register(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListVendorRegisterRequest>,
+    ) -> ServiceResult<ListVendorRegisterResponse> {
+        let filter = request
+            .filter
+            .as_option()
+            .ok_or_else(|| ConnectError::invalid_argument("vendor register filter is required"))?;
+        let tenant = self.authorized_tenant(&context, filter.tenant_id)?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        if !(1..=500).contains(&limit) {
+            return Err(ConnectError::invalid_argument(
+                "vendor register limit must be between 1 and 500",
+            ));
+        }
+        let query = vendor_register::Query {
+            risk_level: filter.risk_level.to_owned(),
+            review_state: filter.review_state.to_owned(),
+            owner_state: filter.owner_state.to_owned(),
+            lifecycle_state: filter.lifecycle_state.to_owned(),
+            queue_only: filter.queue_only,
+            limit,
+        };
+        let requires_derived_filter = query.queue_only
+            || !query.risk_level.trim().is_empty()
+            || !query.review_state.trim().is_empty()
+            || !query.owner_state.trim().is_empty()
+            || !query.lifecycle_state.trim().is_empty();
+        let scan_limit = if requires_derived_filter { 500 } else { limit };
+        let catalog_filter = StoreCatalogFilter {
+            source_id: filter.source_id.to_owned(),
+            runtime_ids: filter
+                .runtime_ids
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            include_kinds: vec!["vendor".to_owned()],
+            search: filter.query.to_owned(),
+            search_attributes: true,
+            relation_counts: Some(StoreCatalogRelationCountFilter {
+                directions: vec![StoreCatalogDirection::Incoming],
+                relations: vec!["associated_with".to_owned()],
+                neighbor_kinds: vec![
+                    "contract".to_owned(),
+                    "security.review".to_owned(),
+                    "security.questionnaire".to_owned(),
+                    "assurance.document".to_owned(),
+                ],
+            }),
+            ..StoreCatalogFilter::default()
+        };
+        let page = if let Some(projection) = self.lifecycle_projection.as_ref() {
+            tokio::time::timeout(
+                GRAPH_RPC_TIMEOUT,
+                projection.list_catalog_entities(&tenant, &catalog_filter, scan_limit, ""),
+            )
+            .await
+            .map_err(|_| ConnectError::unavailable("Vendor register read exceeded 2 seconds."))?
+            .map_err(catalog_store_error)?
+        } else {
+            self.in_memory_catalog_page(&tenant, &catalog_filter, scan_limit, "")
+                .await?
+        };
+        Response::ok(vendor_register_response(vendor_register::build(
+            page,
+            &query,
+            OffsetDateTime::now_utc(),
+        )))
     }
 
     async fn count_entity_kinds(
@@ -1569,6 +1641,74 @@ fn catalog_page_response(page: StoreCatalogPage) -> ListEntitiesResponse {
                 ..Default::default()
             })
             .collect(),
+        ..Default::default()
+    }
+}
+
+fn vendor_register_response(register: vendor_register::Register) -> ListVendorRegisterResponse {
+    let summary = register.summary;
+    ListVendorRegisterResponse {
+        tenant_id: register.tenant_id,
+        graph_revision: register.graph_revision,
+        data_authority: "rust_graph".to_owned(),
+        generated_at: register.generated_at,
+        vendors: register
+            .vendors
+            .into_iter()
+            .map(|row| VendorRegisterRow {
+                urn: row.urn,
+                vendor_id: row.vendor_id,
+                name: row.name,
+                source_id: row.source_id,
+                runtime_id: row.runtime_id,
+                provider: row.provider,
+                status: row.status,
+                category: row.category,
+                website_url: row.website_url,
+                services_provided: row.services_provided,
+                lifecycle_state: row.lifecycle_state,
+                owner: row.owner,
+                owner_state: row.owner_state,
+                risk_level: row.risk_level,
+                risk_score: row.risk_score,
+                risk_score_level: row.risk_score_level,
+                review_state: row.review_state,
+                review_due_at: row.review_due_at,
+                evidence_freshness_state: row.evidence_freshness_state,
+                packet_state: row.packet_state,
+                contract_count: row.contract_count,
+                security_review_count: row.security_review_count,
+                questionnaire_count: row.questionnaire_count,
+                assurance_document_count: row.assurance_document_count,
+                open_findings: row.open_findings,
+                critical_findings: row.critical_findings,
+                high_findings: row.high_findings,
+                evidence_items: row.evidence_items,
+                risk_queue_rank: row.risk_queue_rank,
+                queue_reasons: row.queue_reasons,
+                next_action_id: row.next_action_id,
+                next_action_label: row.next_action_label,
+                attributes: row.attributes.into_iter().collect(),
+                ..Default::default()
+            })
+            .collect(),
+        summary: Some(VendorRegisterSummary {
+            total_vendors: summary.total_vendors,
+            active_vendors: summary.active_vendors,
+            high_risk_vendors: summary.high_risk_vendors,
+            owner_missing_vendors: summary.owner_missing_vendors,
+            review_overdue_vendors: summary.review_overdue_vendors,
+            review_due_soon_vendors: summary.review_due_soon_vendors,
+            review_not_scheduled: summary.review_not_scheduled,
+            risk_queue_vendors: summary.risk_queue_vendors,
+            stale_evidence_vendors: summary.stale_evidence_vendors,
+            open_findings: summary.open_findings,
+            critical_findings: summary.critical_findings,
+            high_findings: summary.high_findings,
+            evidence_items: summary.evidence_items,
+            ..Default::default()
+        })
+        .into(),
         ..Default::default()
     }
 }

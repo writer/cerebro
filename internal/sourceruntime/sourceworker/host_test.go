@@ -218,6 +218,33 @@ func TestCredentialHeaderAppliesOnlyTheClosedSentinelOneScheme(t *testing.T) {
 	}
 }
 
+func TestCredentialHeaderAppliesOnlyClosedAnthropicSchemes(t *testing.T) {
+	for _, operation := range []string{"anthropic.admin_x_api_key", "anthropic.compliance_x_api_key"} {
+		header, value, err := credentialHeader(operation, []byte("synthetic-secret"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if header != "X-Api-Key" || string(value) != "synthetic-secret" {
+			t.Fatalf("%s header = %q, value = %q", operation, header, value)
+		}
+		clear(value)
+	}
+	header, value, err := credentialHeader("anthropic.org_admin_bearer", []byte("synthetic-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "Authorization" || string(value) != "Bearer synthetic-secret" {
+		t.Fatalf("Anthropic bearer header = %q, value = %q", header, value)
+	}
+	if err := validateDeclaredHeaders(map[string]string{"anthropic-version": "2023-06-01"}); err != nil {
+		t.Fatalf("Anthropic public version header was rejected: %v", err)
+	}
+	if _, _, err := credentialHeader("anthropic.api_key", []byte("synthetic-secret")); !errors.Is(err, ErrWorkerContract) {
+		t.Fatalf("unregistered Anthropic credential operation error = %v", err)
+	}
+}
+
 func TestCredentialHeaderAppliesOnlyTheClosedDiscordScheme(t *testing.T) {
 	header, value, err := credentialHeader("discord.bot_token", []byte("synthetic-secret"))
 	if err != nil {
