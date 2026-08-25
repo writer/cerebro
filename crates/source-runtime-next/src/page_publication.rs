@@ -8,7 +8,8 @@
 use std::{collections::BTreeSet, error::Error, fmt};
 
 use cerebro_organizational_model::{ObservationId, SourceRuntimeId, TenantId};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 const MAX_PAGE_EVENTS: usize = 100_000;
@@ -160,6 +161,7 @@ pub enum PagePublicationState {
 /// Credential-free state required to resume or finish one logical page.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PagePublication {
+    revision: u64,
     logical_page_id: String,
     tenant_id: TenantId,
     source_runtime_id: SourceRuntimeId,
@@ -177,6 +179,57 @@ pub struct PagePublication {
     projection_receipt: Option<PageProjectionReceipt>,
     state: PagePublicationState,
     quarantine_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PagePublicationSnapshot {
+    revision: u64,
+    logical_page_id: String,
+    tenant_id: String,
+    source_runtime_id: String,
+    source_id: String,
+    family_id: String,
+    lease_generation: u64,
+    authority_epoch: u64,
+    request_intent_sha256: String,
+    input_progress_sha256: String,
+    target_progress_sha256: String,
+    result_sha256: String,
+    events: Vec<PageEventIntentSnapshot>,
+    append_receipts: Vec<PageAppendReceiptSnapshot>,
+    publish_claim: Option<PublishClaimSnapshot>,
+    projection_receipt: Option<PageProjectionReceiptSnapshot>,
+    state: String,
+    quarantine_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PageEventIntentSnapshot {
+    ordinal: u32,
+    event_id: String,
+    envelope_sha256: String,
+    message_id: String,
+}
+
+#[derive(Deserialize)]
+struct PageAppendReceiptSnapshot {
+    ordinal: u32,
+    event_id: String,
+    message_id: String,
+    stream: String,
+    stream_sequence: u64,
+}
+
+#[derive(Deserialize)]
+struct PublishClaimSnapshot {
+    owner: String,
+    generation: u64,
+}
+
+#[derive(Deserialize)]
+struct PageProjectionReceiptSnapshot {
+    delta_sha256: String,
+    graph_revision: u64,
 }
 
 impl PagePublication {
@@ -219,6 +272,7 @@ impl PagePublication {
             });
         }
         Ok(Self {
+            revision: 1,
             logical_page_id,
             tenant_id: input.tenant_id,
             source_runtime_id: input.source_runtime_id,
@@ -244,6 +298,31 @@ impl PagePublication {
         &self.logical_page_id
     }
 
+    /// Returns the tenant that owns the page and every durable transition.
+    pub fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
+    }
+
+    /// Returns the stored runtime that collected the page.
+    pub fn source_runtime_id(&self) -> &SourceRuntimeId {
+        &self.source_runtime_id
+    }
+
+    /// Returns the catalog source identifier.
+    pub fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    /// Returns the catalog family identifier.
+    pub fn family_id(&self) -> &str {
+        &self.family_id
+    }
+
+    /// Returns the monotonic persistence revision.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     /// Returns the current terminal or recovery state.
     pub fn state(&self) -> PagePublicationState {
         self.state
@@ -259,10 +338,142 @@ impl PagePublication {
         &self.append_receipts
     }
 
+    /// Restores a persisted snapshot through the same constructors and
+    /// transitions used for live execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invariant error when stored JSON is malformed, internally
+    /// inconsistent, or could not have been produced by the state machine.
+    pub fn restore_snapshot(value: Value) -> Result<Self, PagePublicationError> {
+        let snapshot: PagePublicationSnapshot = serde_json::from_value(value)
+            .map_err(|_| PagePublicationError::Invalid("page publication snapshot"))?;
+        let tenant_id = TenantId::parse(snapshot.tenant_id)
+            .map_err(|_| PagePublicationError::Invalid("page publication tenant"))?;
+        let source_runtime_id = SourceRuntimeId::parse(snapshot.source_runtime_id)
+            .map_err(|_| PagePublicationError::Invalid("page publication runtime"))?;
+        let event_inputs = snapshot
+            .events
+            .iter()
+            .map(|event| {
+                Ok(PageEventInput {
+                    event_id: ObservationId::parse(event.event_id.clone())
+                        .map_err(|_| PagePublicationError::Invalid("page event id"))?,
+                    envelope_sha256: event.envelope_sha256.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, PagePublicationError>>()?;
+        let mut page = Self::prepare(
+            PagePublicationInput {
+                logical_page_id: snapshot.logical_page_id,
+                tenant_id,
+                source_runtime_id,
+                source_id: snapshot.source_id,
+                family_id: snapshot.family_id,
+                lease_generation: snapshot.lease_generation,
+                authority_epoch: snapshot.authority_epoch,
+                request_intent_sha256: snapshot.request_intent_sha256,
+                input_progress_sha256: snapshot.input_progress_sha256,
+                target_progress_sha256: snapshot.target_progress_sha256,
+                result_sha256: snapshot.result_sha256,
+            },
+            event_inputs,
+        )?;
+        if page.events.len() != snapshot.events.len()
+            || page
+                .events
+                .iter()
+                .zip(&snapshot.events)
+                .any(|(actual, stored)| {
+                    actual.ordinal != stored.ordinal
+                        || actual.event_id.as_str() != stored.event_id
+                        || actual.envelope_sha256 != stored.envelope_sha256
+                        || actual.message_id != stored.message_id
+                })
+        {
+            return Err(PagePublicationError::ReceiptMismatch);
+        }
+        let claim = snapshot
+            .publish_claim
+            .map(|claim| PublishClaim::new(claim.owner, claim.generation))
+            .transpose()?;
+        if let Some(claim) = &claim {
+            page.begin_publishing(claim.clone())?;
+        }
+        for receipt in snapshot.append_receipts {
+            let claim = claim.as_ref().ok_or(PagePublicationError::StaleClaim)?;
+            page.record_append(
+                claim,
+                PageAppendReceipt {
+                    ordinal: receipt.ordinal,
+                    event_id: ObservationId::parse(receipt.event_id)
+                        .map_err(|_| PagePublicationError::Invalid("append event id"))?,
+                    message_id: receipt.message_id,
+                    stream: receipt.stream,
+                    stream_sequence: receipt.stream_sequence,
+                },
+            )?;
+        }
+        let projection = snapshot
+            .projection_receipt
+            .map(|receipt| PageProjectionReceipt {
+                delta_sha256: receipt.delta_sha256,
+                graph_revision: receipt.graph_revision,
+            });
+        let stored_state = parse_state(&snapshot.state)?;
+        match stored_state {
+            PagePublicationState::Prepared
+            | PagePublicationState::Publishing
+            | PagePublicationState::Published => {}
+            PagePublicationState::Projected | PagePublicationState::Committed => {
+                let claim = claim.as_ref().ok_or(PagePublicationError::StaleClaim)?;
+                page.record_projection(
+                    claim,
+                    projection
+                        .clone()
+                        .ok_or(PagePublicationError::Invalid("projection receipt"))?,
+                )?;
+                if stored_state == PagePublicationState::Committed {
+                    page.commit(claim)?;
+                }
+            }
+            PagePublicationState::Superseded => page.supersede()?,
+            PagePublicationState::Quarantined => {
+                if let Some(receipt) = projection.clone() {
+                    let claim = claim.as_ref().ok_or(PagePublicationError::StaleClaim)?;
+                    page.record_projection(claim, receipt)?;
+                }
+                page.quarantine(
+                    snapshot
+                        .quarantine_reason
+                        .clone()
+                        .ok_or(PagePublicationError::Invalid("quarantine reason"))?,
+                )?;
+            }
+        }
+        if page.state != stored_state
+            || (stored_state == PagePublicationState::Prepared && snapshot.revision != 1)
+            || (stored_state != PagePublicationState::Quarantined
+                && snapshot.quarantine_reason.is_some())
+            || (stored_state != PagePublicationState::Projected
+                && stored_state != PagePublicationState::Committed
+                && stored_state != PagePublicationState::Quarantined
+                && projection.is_some())
+            || snapshot.revision < page.revision
+        {
+            return Err(PagePublicationError::Invalid(
+                "page publication snapshot state",
+            ));
+        }
+        page.revision = snapshot.revision;
+        Ok(page)
+    }
+
     /// Grants a publisher the first monotonic claim on a prepared page.
     pub fn begin_publishing(&mut self, claim: PublishClaim) -> Result<(), PagePublicationError> {
         match self.state {
             PagePublicationState::Prepared => {
+                self.bump_revision()?;
                 self.publish_claim = Some(claim);
                 self.state = if self.events.is_empty() {
                     PagePublicationState::Published
@@ -300,6 +511,7 @@ impl PagePublication {
                 operation: "transfer publish claim",
             });
         }
+        self.bump_revision()?;
         self.publish_claim = Some(successor);
         Ok(())
     }
@@ -353,6 +565,7 @@ impl PagePublication {
                 "append acknowledgements must be recorded in page order",
             ));
         }
+        self.bump_revision()?;
         self.append_receipts.push(receipt);
         if self.append_receipts.len() == self.events.len() {
             self.state = PagePublicationState::Published;
@@ -387,6 +600,7 @@ impl PagePublication {
                 operation: "record projection",
             });
         }
+        self.bump_revision()?;
         self.projection_receipt = Some(receipt);
         self.state = PagePublicationState::Projected;
         Ok(())
@@ -404,6 +618,7 @@ impl PagePublication {
                 operation: "commit runtime progress",
             });
         }
+        self.bump_revision()?;
         self.state = PagePublicationState::Committed;
         Ok(())
     }
@@ -423,6 +638,7 @@ impl PagePublication {
                 operation: "supersede page",
             });
         }
+        self.bump_revision()?;
         self.state = PagePublicationState::Superseded;
         Ok(())
     }
@@ -438,12 +654,23 @@ impl PagePublication {
                 operation: "quarantine page",
             });
         }
-        self.quarantine_reason = Some(bounded_text(
-            reason.into(),
-            "quarantine reason",
-            MAX_REASON_BYTES,
-        )?);
+        let reason = bounded_text(reason.into(), "quarantine reason", MAX_REASON_BYTES)?;
+        if self.state == PagePublicationState::Quarantined
+            && self.quarantine_reason.as_ref() == Some(&reason)
+        {
+            return Ok(());
+        }
+        self.bump_revision()?;
+        self.quarantine_reason = Some(reason);
         self.state = PagePublicationState::Quarantined;
+        Ok(())
+    }
+
+    fn bump_revision(&mut self) -> Result<(), PagePublicationError> {
+        self.revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(PagePublicationError::Invalid("page revision overflow"))?;
         Ok(())
     }
 
@@ -453,6 +680,19 @@ impl PagePublication {
         } else {
             Err(PagePublicationError::StaleClaim)
         }
+    }
+}
+
+fn parse_state(value: &str) -> Result<PagePublicationState, PagePublicationError> {
+    match value {
+        "prepared" => Ok(PagePublicationState::Prepared),
+        "publishing" => Ok(PagePublicationState::Publishing),
+        "published" => Ok(PagePublicationState::Published),
+        "projected" => Ok(PagePublicationState::Projected),
+        "committed" => Ok(PagePublicationState::Committed),
+        "superseded" => Ok(PagePublicationState::Superseded),
+        "quarantined" => Ok(PagePublicationState::Quarantined),
+        _ => Err(PagePublicationError::Invalid("page publication state")),
     }
 }
 
@@ -728,6 +968,33 @@ mod tests {
         assert_eq!(
             first.events()[0].message_id(),
             second.events()[0].message_id()
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_replays_validated_transitions_and_revision() {
+        let mut page = prepared(&["event-a", "event-b"]);
+        let first = PublishClaim::new("worker-a", 1).unwrap();
+        page.begin_publishing(first.clone()).unwrap();
+        let append = receipt(&page, 0, 10);
+        page.record_append(&first, append).unwrap();
+        let successor = PublishClaim::new("worker-b", 2).unwrap();
+        page.transfer_claim(&first, successor).unwrap();
+
+        let snapshot = serde_json::to_value(&page).unwrap();
+        let restored = PagePublication::restore_snapshot(snapshot).unwrap();
+        assert_eq!(restored, page);
+        assert_eq!(restored.revision(), 4);
+    }
+
+    #[test]
+    fn persisted_snapshot_rejects_tampered_message_identity() {
+        let page = prepared(&["event-a"]);
+        let mut snapshot = serde_json::to_value(&page).unwrap();
+        snapshot["events"][0]["message_id"] = Value::String("tampered".to_owned());
+        assert_eq!(
+            PagePublication::restore_snapshot(snapshot),
+            Err(PagePublicationError::ReceiptMismatch)
         );
     }
 }
