@@ -3,12 +3,14 @@
 import { execFile, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { parse as parseYAML } from "yaml";
 
 import { grcBrowserRouteContracts } from "./grc-route-contract.mjs";
 
@@ -324,6 +326,7 @@ async function main(options) {
 
   step("validating backend GRC endpoints");
   assertChildHealthy(backendProcess, "Cerebro API");
+  await validateRegisteredOpenAPIRoutes();
   await validateBackend();
   assertChildHealthy(backendProcess, "Cerebro API");
 
@@ -848,6 +851,48 @@ async function validateBackend() {
 
   const invalidLimit = await request(`${apiBase}/grc/dashboard?tenant_id=${tenantID}&limit=1000`);
   expect(invalidLimit.status === 400, `invalid limit status ${invalidLimit.status}`);
+}
+
+export function openAPIRouteProbePaths(document) {
+  const paths = document?.paths;
+  if (!paths || typeof paths !== "object" || Array.isArray(paths)) {
+    throw new Error("OpenAPI document has no paths object");
+  }
+  return Object.keys(paths).sort().map((template) => {
+    if (!template.startsWith("/")) throw new Error(`OpenAPI path is not absolute: ${template}`);
+    const concrete = template.replace(/\{[^{}]+\}/g, "route-probe");
+    if (concrete.includes("{") || concrete.includes("}")) throw new Error(`OpenAPI path has an invalid template: ${template}`);
+    return { concrete, template };
+  });
+}
+
+export function assertRegisteredOpenAPIRouteResponses(results) {
+  for (const { status, template } of results) {
+    expect(status !== 404, `OpenAPI route ${template} is not registered`);
+  }
+}
+
+async function validateRegisteredOpenAPIRoutes() {
+  const spec = parseYAML(await readFile(path.join(backendRoot, "api", "openapi.yaml"), "utf8"));
+  const probes = openAPIRouteProbePaths(spec);
+  const concurrency = 16;
+  for (let offset = 0; offset < probes.length; offset += concurrency) {
+    const batch = probes.slice(offset, offset + concurrency);
+    const responses = await Promise.all(batch.map(async ({ concrete, template }) => ({
+      response: await request(`${apiBase}${concrete}`, {
+        headers: {
+          "X-Cerebro-Tenant": tenantID,
+          "X-Cerebro-Workspace": "e2e-workspace",
+        },
+        method: "OPTIONS",
+      }),
+      template,
+    })));
+    assertRegisteredOpenAPIRouteResponses(responses.map(({ response, template }) => ({
+      status: response.status,
+      template,
+    })));
+  }
 }
 
 async function validateProxyCache() {

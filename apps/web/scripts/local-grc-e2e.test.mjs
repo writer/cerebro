@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   acquireAbortableResource,
+  assertRegisteredOpenAPIRouteResponses,
   assertChildHealthy,
   assertConcurrentProxyResponses,
   browserDataContract,
@@ -15,6 +16,7 @@ import {
   handoffLoopbackReservation,
   internalLoopbackPort,
   localRelayPath,
+  openAPIRouteProbePaths,
   parseArgs,
   parseDockerLoopbackPort,
   portableChildEnvironment,
@@ -168,6 +170,29 @@ describe("real-service E2E isolation", () => {
 });
 
 describe("real-service E2E contracts", () => {
+  it("materializes every OpenAPI path for runtime 404 probing", () => {
+    expect(openAPIRouteProbePaths({ paths: {
+      "/health": { get: {} },
+      "/grc/entities/{entityID}/impact": { get: {} },
+    } })).toEqual([
+      { concrete: "/grc/entities/route-probe/impact", template: "/grc/entities/{entityID}/impact" },
+      { concrete: "/health", template: "/health" },
+    ]);
+    expect(() => openAPIRouteProbePaths({})).toThrow("no paths object");
+    expect(() => openAPIRouteProbePaths({ paths: { relative: {} } })).toThrow("not absolute");
+    expect(() => openAPIRouteProbePaths({ paths: { "/broken/{id": {} } })).toThrow("invalid template");
+  });
+
+  it("fails only when a documented runtime path resolves as unregistered", () => {
+    expect(() => assertRegisteredOpenAPIRouteResponses([
+      { status: 200, template: "/health" },
+      { status: 405, template: "/grc/entities/{entityID}/impact" },
+    ])).not.toThrow();
+    expect(() => assertRegisteredOpenAPIRouteResponses([
+      { status: 404, template: "/ghost" },
+    ])).toThrow("OpenAPI route /ghost is not registered");
+  });
+
   it("requires every declared health component to report ready", () => {
     expect(componentReady({ components: [{ name: "state_store", status: "ready" }] }, "state_store")).toBe(true);
     expect(componentReady({ components: [{ name: "state_store", status: "degraded" }] }, "state_store")).toBe(false);

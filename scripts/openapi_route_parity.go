@@ -37,20 +37,12 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	var missing []route
-	for _, route := range routes {
-		if !paths[route.Path] {
-			missing = append(missing, route)
-			continue
-		}
-		if route.Method != "" && !methods[route] {
-			missing = append(missing, route)
-		}
-	}
-	if len(missing) == 0 {
+	missing := missingOpenAPIRoutes(routes, paths, methods)
+	unregistered := unregisteredOpenAPIRoutes(routes, methods)
+	if len(missing) == 0 && len(unregistered) == 0 {
 		return
 	}
-	if *write {
+	if *write && len(unregistered) == 0 {
 		if err := appendPlaceholders(missing); err != nil {
 			fail(err)
 		}
@@ -63,7 +55,46 @@ func main() {
 		}
 		fmt.Fprintf(os.Stderr, "OpenAPI missing route: %s %s\n", method, route.Path)
 	}
+	for _, route := range unregistered {
+		fmt.Fprintf(os.Stderr, "OpenAPI route is not registered: %s %s\n", strings.ToUpper(route.Method), route.Path)
+	}
 	os.Exit(1)
+}
+
+func missingOpenAPIRoutes(routes []route, paths map[string]bool, methods map[route]bool) []route {
+	var missing []route
+	for _, route := range routes {
+		if !paths[route.Path] || (route.Method != "" && !methods[route]) {
+			missing = append(missing, route)
+		}
+	}
+	return missing
+}
+
+func unregisteredOpenAPIRoutes(routes []route, methods map[route]bool) []route {
+	registered := make(map[route]bool, len(routes))
+	wildcardPaths := make(map[string]bool)
+	for _, route := range routes {
+		if route.Method == "" {
+			wildcardPaths[route.Path] = true
+			continue
+		}
+		registered[route] = true
+	}
+
+	var unregistered []route
+	for route := range methods {
+		if !registered[route] && !wildcardPaths[route.Path] {
+			unregistered = append(unregistered, route)
+		}
+	}
+	sort.Slice(unregistered, func(i, j int) bool {
+		if unregistered[i].Path == unregistered[j].Path {
+			return unregistered[i].Method < unregistered[j].Method
+		}
+		return unregistered[i].Path < unregistered[j].Path
+	})
+	return unregistered
 }
 
 func registeredRoutes(paths ...string) ([]route, error) {
