@@ -27,6 +27,19 @@ func TestCoverageEvaluatorReportsCanceledDiagnostic(t *testing.T) {
 	}
 }
 
+func TestWarmCoverageEvaluatorPreparesEvaluation(t *testing.T) {
+	if err := WarmEvaluator(context.Background()); err != nil {
+		t.Fatalf("WarmEvaluator() error = %v", err)
+	}
+	records, err := Evaluate(context.Background(), nil, nil, Options{})
+	if err != nil {
+		t.Fatalf("Evaluate() after WarmEvaluator() error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate() after WarmEvaluator() records = %#v, want empty", records)
+	}
+}
+
 //go:embed testdata/wasmjson/*.json
 var coverageEvaluatorCorpus embed.FS
 
@@ -98,6 +111,21 @@ func BenchmarkCoverageEvaluator(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		if _, err := runCoverageEvaluator(ctx, payload); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkCoverageEvaluatorColdRequest(b *testing.B) {
+	ctx := context.Background()
+	payload := []byte(`{"contracts":[{"source_id":"aws","dimensions":[{"id":"users","type":"entity_family","title":"Users","families":["user"],"support":"supported"}]}],"observations":[{"runtime_id":"runtime-a","source_id":"aws","family":"user","status":"healthy"}],"options":{}}`)
+	b.ReportAllocs()
+	for b.Loop() {
+		evaluator := newCoverageEvaluator()
+		if _, err := evaluator.Evaluate(ctx, payload); err != nil {
+			b.Fatal(err)
+		}
+		if err := evaluator.Close(ctx); err != nil {
 			b.Fatal(err)
 		}
 	}

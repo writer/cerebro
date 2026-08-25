@@ -61,6 +61,21 @@ func New(config Config) *Runtime {
 	return &Runtime{config: config}
 }
 
+// Warm compiles and validates the embedded module without instantiating a call module.
+// Subsequent Run calls reuse the compiled module and only pay per-call instantiation cost.
+func (r *Runtime) Warm(ctx context.Context) error {
+	if r == nil {
+		return Diagnose(DiagnosticInvalidInput, fmt.Errorf("%w: runtime is required", ErrInvalidConfig))
+	}
+	if ctx == nil {
+		return Diagnose(DiagnosticInvalidInput, r.errorfWith(ErrInvalidConfig, "context is required"))
+	}
+	r.once.Do(func() {
+		r.initialize(ctx)
+	})
+	return r.err
+}
+
 // Run invokes call with a fresh module instance governed by the configured timeout.
 func (r *Runtime) Run(ctx context.Context, call func(context.Context, api.Module) error) error {
 	if r == nil {
@@ -72,11 +87,8 @@ func (r *Runtime) Run(ctx context.Context, call func(context.Context, api.Module
 	if call == nil {
 		return Diagnose(DiagnosticInvalidInput, r.errorfWith(ErrInvalidConfig, "call function is required"))
 	}
-	r.once.Do(func() {
-		r.initialize(ctx)
-	})
-	if r.err != nil {
-		return r.err
+	if err := r.Warm(ctx); err != nil {
+		return err
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, r.config.CallTimeout)

@@ -23,6 +23,17 @@ func TestEvaluatorRejectsInvalidConfiguration(t *testing.T) {
 	}
 }
 
+func TestEvaluatorWarmRejectsInvalidConfiguration(t *testing.T) {
+	evaluator := New(Config{})
+	err := evaluator.Warm(context.Background())
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("Warm() error = %v, want %v", err, ErrInvalidConfig)
+	}
+	if !errors.Is(err, wasmhost.ErrInvalidInput) {
+		t.Fatalf("Warm() error = %v, want typed invalid input", err)
+	}
+}
+
 func TestEvaluatorBoundsInputWithoutExposingPayload(t *testing.T) {
 	t.Parallel()
 	config := testConfig()

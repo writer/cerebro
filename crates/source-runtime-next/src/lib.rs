@@ -52,6 +52,7 @@ mod okta;
 mod openai;
 mod page_publication;
 mod pagerduty;
+mod portable_ai;
 mod panopticon;
 mod protocol;
 mod provider_failure;

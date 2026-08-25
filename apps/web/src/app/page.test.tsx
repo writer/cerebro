@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { GRCProgramReadiness } from "@/lib/grc";
+import type { GRCDashboard, GRCProgramReadiness } from "@/lib/grc";
 import { defaultUserPreferences } from "@/lib/user-preferences";
 
 const mocks = vi.hoisted(() => ({
@@ -84,13 +84,54 @@ describe("Home review links", () => {
     expect(links.map((link) => link.getAttribute("href"))).toContain("/controls?framework=SOC%202&control=CC6.6");
   });
 
-  it("starts independent Home queries on the initial render", async () => {
+  it("starts the dashboard before secondary Home queries", async () => {
     await act(async () => {
       root.render(<Home />);
     });
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
       grcDashboardPath({ limit: 12 }),
+      null,
+      null,
+    ]);
+  });
+
+  it("starts secondary Home queries after dashboard data arrives", async () => {
+    const dashboardPath = grcDashboardPath({ limit: 12 });
+    const dashboardData = {
+      summary: {
+        open_findings: 0,
+        critical_findings: 0,
+        high_findings: 0,
+        overdue_findings: 0,
+        unassigned: 0,
+        controls_failing: 0,
+        evidence_items: 0,
+        connectors: 0,
+        stale_connectors: 0,
+      },
+      findings: [],
+      controls: [],
+      evidence: [],
+      connectors: [],
+      generated_at: "2026-08-25T00:00:00Z",
+    } as GRCDashboard;
+    mocks.useGRCQuery.mockImplementation((path: string | null) => ({
+      data: path === dashboardPath ? dashboardData : null,
+      durationMs: null,
+      error: null,
+      lastSuccessfulAt: null,
+      loading: Boolean(path),
+      reload: mocks.reload,
+      state: path ? "loading" : "empty",
+    }));
+
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
+      dashboardPath,
       grcProgramReadinessPath(),
       grcPath("/connectors/coverage", {
         coverage_scope: "configured",

@@ -63,6 +63,7 @@ import (
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourcecoverage"
 	httpcompression "github.com/writer/cerebro/internal/sourcehttp/compression"
 	"github.com/writer/cerebro/internal/sourcehttp/organizationalgraph"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -199,6 +200,11 @@ func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Reg
 	app := &App{cfg: cfg, deps: deps, sources: sources}
 	if err := grcfindings.ValidateBuiltinFindingProfileIndex(); err != nil {
 		return nil, fmt.Errorf("GRC finding profile bootstrap failed: %w", err)
+	}
+	if options.eventAdmissionContext != nil {
+		if err := sourcecoverage.WarmEvaluator(options.eventAdmissionContext); err != nil {
+			return nil, fmt.Errorf("source coverage evaluator bootstrap failed: %w", err)
+		}
 	}
 	transitKey, err := connectorTransitKeyFromConfig(cfg.ConnectorCredentials)
 	if err != nil {

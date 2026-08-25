@@ -110,6 +110,28 @@ func TestOpenAIPublicExecutionConfigCarriesSelectorsWithoutCredentialMaterial(t 
 	}
 }
 
+func TestPortableAIPublicExecutionConfigCarriesOnlyProviderSelectors(t *testing.T) {
+	azure := PublicExecutionConfigForSource("azure_openai", map[string]string{
+		"family": " deployments ", "subscription_id": " sub-1 ", "resource_group": " rg-ai ",
+		"account_name": " acct-openai ", "location": " westus ", "api_key": "must-not-cross",
+	})
+	if azure["subscription_id"] != "sub-1" || azure["resource_group"] != "rg-ai" || azure["account_name"] != "acct-openai" || azure["location"] != "westus" || azure["api_key"] != "" {
+		t.Fatalf("Azure OpenAI public config = %#v", azure)
+	}
+	vertex := PublicExecutionConfigForSource("google_vertex_ai", map[string]string{
+		"project_id": " project-1 ", "location": " us-central1 ", "token": "must-not-cross",
+	})
+	if vertex["project_id"] != "project-1" || vertex["location"] != "us-central1" || vertex["token"] != "" {
+		t.Fatalf("Vertex public config = %#v", vertex)
+	}
+	huggingface := PublicExecutionConfigForSource("huggingface", map[string]string{
+		"organization": " writer ", "token": "must-not-cross",
+	})
+	if huggingface["organization"] != "writer" || huggingface["token"] != "" {
+		t.Fatalf("Hugging Face public config = %#v", huggingface)
+	}
+}
+
 func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 	for name, test := range map[string]struct {
 		source, family, wantFamily string
@@ -129,6 +151,17 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"DeepSeek model catalog":      {"deepseek", " model_catalog ", "model_catalog", true},
 		"DeepSeek account balances":   {"deepseek", "account_balances", "account_balances", true},
 		"unknown DeepSeek family":     {"deepseek", "future-family", "future-family", true},
+		"Azure OpenAI default":        {"azure_openai", "", "deployments", true},
+		"Cohere default":              {"cohere", "", "model_catalog", true},
+		"Gemini default":              {"google_gemini", "", "model_catalog", true},
+		"Vertex default":              {"google_vertex_ai", "", "models", true},
+		"Groq default":                {"groq", "", "model_catalog", true},
+		"Hugging Face default":        {"huggingface", "", "organization_members", true},
+		"Mistral default":             {"mistral", "", "workspaces", true},
+		"Perplexity default":          {"perplexity", "", "api_groups", true},
+		"AWS Bedrock default":         {"aws_bedrock", "", "foundation_models", true},
+		"Langfuse default":            {"langfuse", "", "project", true},
+		"unknown portable AI family":  {"google_gemini", "future-family", "future-family", true},
 		"Asana default":               {" asana ", "", "users", true},
 		"Asana users":                 {"asana", " users ", "users", true},
 		"Asana projects":              {"asana", "projects", "projects", true},
@@ -228,6 +261,21 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "deepseek", references: map[string]string{"api_key": "credential:deepseek:api-key"},
 			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:deepseek:api-key", wantResolved: "resolved-api-key",
+		},
+		"Gemini api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "google_gemini", references: map[string]string{"api_key": "credential:gemini:api-key"},
+			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:gemini:api-key", wantResolved: "resolved-api-key",
+		},
+		"AWS Bedrock compound host credential": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "aws_bedrock", references: map[string]string{"access_key": "credential:aws:access", "secret_key": "credential:aws:secret"},
+			resolved: map[string]string{"access_key": "AKIDEXAMPLE", "secret_key": "synthetic-secret"}, wantReference: "credential:aws:secret", wantResolved: EncodeAWSHostCredential("AKIDEXAMPLE", "synthetic-secret"),
+		},
+		"Langfuse basic host credential": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "langfuse", references: map[string]string{"public_key": "credential:langfuse:public", "secret_key": "credential:langfuse:secret"},
+			resolved: map[string]string{"public_key": "pk-example", "secret_key": "synthetic-secret"}, wantReference: "credential:langfuse:secret", wantResolved: "cGstZXhhbXBsZTpzeW50aGV0aWMtc2VjcmV0",
 		},
 		"Twilio basic credentials": {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
