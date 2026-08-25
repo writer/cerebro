@@ -5,6 +5,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 vi.mock("@/components/providers", () => ({
   useApiKey: () => ({ apiKey: "" }),
   useConsoleConfig: () => ({ config: { apiBase: "/api/cerebro", serverAuthConfigured: true } }),
@@ -15,7 +19,7 @@ vi.mock("@/lib/identity", () => ({
   identityPosture: () => ({ label: "Trusted proxy", sourceLabel: "Auth proxy headers" }),
 }));
 
-import StatusPanel from "./StatusPanel";
+import StatusPanel, { statusProbes } from "./StatusPanel";
 
 const reactActEnvironment = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
@@ -66,6 +70,18 @@ describe("StatusPanel cache behavior", () => {
     for (const [, init] of fetchMock.mock.calls.slice(6)) {
       expect((init as RequestInit | undefined)?.cache).toBe("no-store");
     }
+  });
+
+  it("scopes product probes without changing liveness and readiness paths", () => {
+    const probes = statusProbes({ tenantID: "tenant-a", workspaceID: "workspace-a" });
+    expect(probes.find((probe) => probe.key === "healthz")?.path).toBe("/api/cerebro/healthz");
+    expect(probes.find((probe) => probe.key === "health")?.path).toBe("/api/cerebro/health");
+    expect(probes.find((probe) => probe.key === "inventory")?.path)
+      .toBe("/api/cerebro/grc/inventory/categories?limit=1&tenant_id=tenant-a&workspace_id=workspace-a");
+    expect(probes.find((probe) => probe.key === "vendors")?.path)
+      .toContain("workspace_id=workspace-a");
+    expect(probes.find((probe) => probe.key === "policies")?.path)
+      .toContain("tenant_id=tenant-a");
   });
 
   it("publishes probe results without waiting for the slowest request", async () => {

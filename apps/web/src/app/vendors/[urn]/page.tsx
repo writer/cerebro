@@ -48,6 +48,7 @@ import {
   shortEntity,
 } from "@/lib/grc";
 import { grcPath, useGRCMutation, useGRCQuery } from "@/lib/grc-client";
+import { grcScopeQuery, withGRCScope } from "@/lib/grc-scope";
 import { GRC_DETAIL_LIMIT, grcBoundedRows } from "@/lib/grc-list";
 import { primaryAnswerForRun, questionnaireDirectionLabel, questionnaireQueueRows, questionnaireRollups, questionnaireStateIntent, type QuestionnaireQueueRow } from "@/lib/questionnaires";
 
@@ -69,7 +70,7 @@ const ownerLabel = (vendor?: GRCVendor) => {
   return vendor.owner || vendor.security_owner_user_id || vendor.business_owner_user_id || "Owner missing";
 };
 
-function RelationshipList({ items }: { items: GRCVendorRelatedRecord[] }) {
+function RelationshipList({ items, tenantID, workspaceID }: { items: GRCVendorRelatedRecord[]; tenantID: string; workspaceID: string }) {
   if (items.length === 0) {
     return <div className="rounded-md border border-dashed border-[color:var(--border-strong)] p-4 text-[13px] text-[var(--text-muted)]">No linked records.</div>;
   }
@@ -89,7 +90,7 @@ function RelationshipList({ items }: { items: GRCVendorRelatedRecord[] }) {
                   {item.source_id && <span>{item.source_id}</span>}
                 </div>
               </div>
-              <Link href={`/inventory/${encodeURIComponent(item.urn)}`} className="text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">
+              <Link href={withGRCScope(`/inventory/${encodeURIComponent(item.urn)}`, { tenantID, workspaceID })} className="text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">
                 Open
               </Link>
             </div>
@@ -253,7 +254,7 @@ function BadgeList({ items, emptyLabel }: { items: string[]; emptyLabel: string 
   );
 }
 
-function QuestionnaireReviewsPanel({ tenantID, vendorURN }: { tenantID: string; vendorURN: string }) {
+function QuestionnaireReviewsPanel({ tenantID, vendorURN, workspaceID }: { tenantID: string; vendorURN: string; workspaceID: string }) {
   const [selectedRowID, setSelectedRowID] = useState<string | null>(null);
   const [assignmentOwner, setAssignmentOwner] = useState("");
   const [assignmentTeam, setAssignmentTeam] = useState("");
@@ -263,7 +264,7 @@ function QuestionnaireReviewsPanel({ tenantID, vendorURN }: { tenantID: string; 
   const [decisionReason, setDecisionReason] = useState("");
   const runsQuery = useGRCQuery<GRCQuestionnaireRunsResponse>(
     grcPath("/grc/questionnaire-runs", {
-      tenant_id: tenantID,
+      ...grcScopeQuery({ tenantID, workspaceID }),
       direction: "vendor_review",
       vendor_urn: vendorURN,
       limit: 50,
@@ -282,8 +283,9 @@ function QuestionnaireReviewsPanel({ tenantID, vendorURN }: { tenantID: string; 
   const queueHref = useMemo(() => {
     const params = new URLSearchParams({ direction: "vendor_review", vendor_urn: vendorURN });
     if (tenantID) params.set("tenant_id", tenantID);
+    if (workspaceID) params.set("workspace_id", workspaceID);
     return `/questionnaires?${params.toString()}`;
-  }, [tenantID, vendorURN]);
+  }, [tenantID, vendorURN, workspaceID]);
 
   const resetRowActionForms = () => {
     setAssignmentOwner("");
@@ -304,7 +306,7 @@ function QuestionnaireReviewsPanel({ tenantID, vendorURN }: { tenantID: string; 
   const processRun = async () => {
     if (!selectedRun) return;
     try {
-      await mutation.mutate(`/grc/questionnaire-runs/${encodeURIComponent(selectedRun.run_id)}/process`, { tenant_id: tenantID || undefined });
+      await mutation.mutate(grcPath(`/grc/questionnaire-runs/${encodeURIComponent(selectedRun.run_id)}/process`, grcScopeQuery({ tenantID, workspaceID })), grcScopeQuery({ tenantID, workspaceID }));
     } catch {
       return;
     }
@@ -315,8 +317,8 @@ function QuestionnaireReviewsPanel({ tenantID, vendorURN }: { tenantID: string; 
     event.preventDefault();
     if (!selectedRun) return;
     try {
-      await mutation.mutate(`/grc/questionnaire-runs/${encodeURIComponent(selectedRun.run_id)}/assignments`, {
-        tenant_id: tenantID || undefined,
+      await mutation.mutate(grcPath(`/grc/questionnaire-runs/${encodeURIComponent(selectedRun.run_id)}/assignments`, grcScopeQuery({ tenantID, workspaceID })), {
+        ...grcScopeQuery({ tenantID, workspaceID }),
         question_id: selectedQuestionID || undefined,
         gap_id: selectedGap?.id || undefined,
         slot_id: selectedSlotID || undefined,
@@ -334,8 +336,8 @@ function QuestionnaireReviewsPanel({ tenantID, vendorURN }: { tenantID: string; 
     event.preventDefault();
     if (!selectedRun) return;
     try {
-      await mutation.mutate(`/grc/questionnaire-runs/${encodeURIComponent(selectedRun.run_id)}/decisions`, {
-        tenant_id: tenantID || undefined,
+      await mutation.mutate(grcPath(`/grc/questionnaire-runs/${encodeURIComponent(selectedRun.run_id)}/decisions`, grcScopeQuery({ tenantID, workspaceID })), {
+        ...grcScopeQuery({ tenantID, workspaceID }),
         question_id: selectedQuestionID || undefined,
         state: decisionState,
         reason: decisionReason,
@@ -350,8 +352,8 @@ function QuestionnaireReviewsPanel({ tenantID, vendorURN }: { tenantID: string; 
     event.preventDefault();
     if (!selectedRun || !commentBody.trim()) return;
     try {
-      await mutation.mutate(`/grc/questionnaire-runs/${encodeURIComponent(selectedRun.run_id)}/comments`, {
-        tenant_id: tenantID || undefined,
+      await mutation.mutate(grcPath(`/grc/questionnaire-runs/${encodeURIComponent(selectedRun.run_id)}/comments`, grcScopeQuery({ tenantID, workspaceID })), {
+        ...grcScopeQuery({ tenantID, workspaceID }),
         question_id: selectedQuestionID || undefined,
         body: commentBody,
       });
@@ -1228,8 +1230,9 @@ export default function VendorDetailPage() {
   const [activeTab, setActiveTab] = useState<VendorTab>("overview");
   const vendorID = decodeURIComponent(String(params.urn ?? ""));
   const tenantID = searchParams.get("tenant_id") ?? "";
+  const workspaceID = searchParams.get("workspace_id") ?? "";
   const detailQuery = useGRCQuery<GRCVendorDetailResponse>(
-    vendorID ? grcPath(`/grc/vendors/${encodeURIComponent(vendorID)}`, { tenant_id: tenantID, limit: 100 }) : null,
+    vendorID ? grcPath(`/grc/vendors/${encodeURIComponent(vendorID)}`, { ...grcScopeQuery({ tenantID, workspaceID }), limit: 100 }) : null,
   );
   const data = detailQuery.data;
   const vendor = data?.vendor;
@@ -1346,7 +1349,7 @@ export default function VendorDetailPage() {
           )}
 
           {activeTab === "questionnaire" && (
-            <QuestionnaireReviewsPanel tenantID={tenantID} vendorURN={vendor.urn} />
+            <QuestionnaireReviewsPanel tenantID={tenantID} vendorURN={vendor.urn} workspaceID={workspaceID} />
           )}
 
           {activeTab === "evidence" && (
@@ -1432,11 +1435,11 @@ export default function VendorDetailPage() {
                   <div className="grid gap-6 lg:grid-cols-2">
                     <div>
                       <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Contracts</h3>
-                      <RelationshipList items={relationships.contracts ?? []} />
+                      <RelationshipList items={relationships.contracts ?? []} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                     <div>
                       <h3 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Reviews and assurance</h3>
-                      <RelationshipList items={reviews} />
+                      <RelationshipList items={reviews} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                   </div>
                 </Panel>
@@ -1486,23 +1489,23 @@ export default function VendorDetailPage() {
                   <div className="space-y-4">
                     <div>
                       <div className="mb-2 text-[12px] font-semibold text-[var(--text-muted)]">Owners</div>
-                      <RelationshipList items={relationships.owners ?? []} />
+                      <RelationshipList items={relationships.owners ?? []} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                     <div>
                       <div className="mb-2 text-[12px] font-semibold text-[var(--text-muted)]">Hosts</div>
-                      <RelationshipList items={relationships.hosts ?? []} />
+                      <RelationshipList items={relationships.hosts ?? []} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                     <div>
                       <div className="mb-2 text-[12px] font-semibold text-[var(--text-muted)]">Aliases</div>
-                      <RelationshipList items={relationships.aliases ?? []} />
+                      <RelationshipList items={relationships.aliases ?? []} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                     <div>
                       <div className="mb-2 text-[12px] font-semibold text-[var(--text-muted)]">Contacts</div>
-                      <RelationshipList items={relationships.contacts ?? []} />
+                      <RelationshipList items={relationships.contacts ?? []} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                     <div>
                       <div className="mb-2 text-[12px] font-semibold text-[var(--text-muted)]">Fourth parties</div>
-                      <RelationshipList items={relationships.fourth_parties ?? []} />
+                      <RelationshipList items={relationships.fourth_parties ?? []} tenantID={tenantID} workspaceID={workspaceID} />
                     </div>
                   </div>
                 </Panel>

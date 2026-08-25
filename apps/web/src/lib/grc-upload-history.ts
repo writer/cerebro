@@ -2,8 +2,8 @@ import type { GRCUploadResponse } from "@/lib/grc";
 
 export const GRC_UPLOAD_HISTORY_LIMIT = 5;
 
-export const grcUploadHistoryKey = (target: string, tenantID: string) =>
-  `cerebro.grc.uploads.${target}.${tenantID.trim() || "default"}`;
+export const grcUploadHistoryKey = (target: string, tenantID: string, workspaceID = "") =>
+  `cerebro.grc.uploads.${target}.${tenantID.trim() || "default"}.${workspaceID.trim() || "all-workspaces"}`;
 
 export const grcUploadHistoryWith = (
   current: GRCUploadResponse[],

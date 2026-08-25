@@ -43,6 +43,7 @@ import type {
 import { displayDate, humanize, shortEntity } from "@/lib/grc";
 import { downloadGRCExport, grcExportFilename, grcPath, useDebouncedValue, useGRCFormMutation, useGRCMutation, useGRCQuery } from "@/lib/grc-client";
 import { useGRCFilterState } from "@/lib/grc-filters";
+import { grcScopeQuery, useDebouncedGRCScope, useGRCScopeQueryState, withGRCScope } from "@/lib/grc-scope";
 import { grcUploadFileError } from "@/lib/grc-upload-limits";
 import { grcUploadHistoryKey, grcUploadHistoryWith, readGRCUploadHistory, writeGRCUploadHistory } from "@/lib/grc-upload-history";
 import { useQueryParamState } from "@/lib/query-params";
@@ -441,7 +442,7 @@ const selectedPolicyFallback = (
 
 export default function PoliciesPage() {
   const { apiKey } = useApiKey();
-  const [tenantID, setTenantID] = useQueryParamState("tenant_id");
+  const { tenantID, workspaceID, setTenantID, setWorkspaceID } = useGRCScopeQueryState();
   const [owner, setOwner] = useQueryParamState("owner");
   const [state, setState] = useQueryParamState("state");
   const [ruleProfile, setRuleProfile] = useQueryParamState("rule_profile");
@@ -449,7 +450,7 @@ export default function PoliciesPage() {
   const [selectedPolicyID, setSelectedPolicyID] = useState<string | null>(null);
   const [policySection, setPolicySection] = useState<PolicySection>("queues");
   const [showUpload, setShowUpload] = useState(false);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(Boolean(tenantID || ruleProfile));
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(Boolean(tenantID || workspaceID || ruleProfile));
   const [selectedAction, setSelectedAction] = useState<GRCPolicyLifecycleAction | null>(null);
   const [actionReason, setActionReason] = useState("");
   const [actionDate, setActionDate] = useState("");
@@ -469,7 +470,7 @@ export default function PoliciesPage() {
   const actionIdempotencyCounterRef = useRef(0);
   const policyUploadFormRef = useRef<HTMLFormElement>(null);
   const policyUploadInputRef = useRef<HTMLInputElement>(null);
-  const debouncedTenantID = useDebouncedValue(tenantID.trim());
+  const debouncedScope = useDebouncedGRCScope({ tenantID, workspaceID });
   const debouncedOwner = useDebouncedValue(owner.trim());
   const debouncedQuery = useDebouncedValue(query.trim());
   const activeRuleProfile = normalized(ruleProfile) === "strict" ? "strict" : "baseline";
@@ -480,7 +481,7 @@ export default function PoliciesPage() {
   const { mutate: replayPolicyUploadEvents, saving: policyReplaySaving, error: policyReplayError, setError: setPolicyReplayError } =
     useGRCMutation<GRCUploadReplayResponse>();
   const { data, error, loading, reload } = useGRCQuery<GRCPolicyLifecycleResponse>(
-    grcPath("/grc/policy-lifecycle", { tenant_id: debouncedTenantID, rule_profile: activeRuleProfile, limit: POLICY_LIFECYCLE_LIMIT }),
+    grcPath("/grc/policy-lifecycle", { ...grcScopeQuery(debouncedScope), rule_profile: activeRuleProfile, limit: POLICY_LIFECYCLE_LIMIT }),
   );
   const isInitialLoading = loading && !data;
   const isRefreshing = loading && Boolean(data);
@@ -558,6 +559,7 @@ export default function PoliciesPage() {
   );
   const filterState = useGRCFilterState([
     { key: "tenant_id", label: "Tenant", value: tenantID, setValue: setTenantID },
+    { key: "workspace_id", label: "Workspace", value: workspaceID, setValue: setWorkspaceID },
     { key: "owner", label: "Owner", value: owner, setValue: setOwner },
     { key: "state", label: "State", value: state, setValue: setState },
     { key: "rule_profile", label: "Rules", value: ruleProfile, setValue: setRuleProfile },
@@ -574,7 +576,7 @@ export default function PoliciesPage() {
     { label: "High risks", value: summary?.high_risks ?? 0, detail: `${summary?.risk_register_items ?? 0} risks tracked` },
     { label: "Active gaps", value: activeGapCount, detail: `${summary?.resolved_governance_gaps ?? 0} resolved` },
   ];
-  const policyUploadStorageKey = useMemo(() => grcUploadHistoryKey("policy", tenantID), [tenantID]);
+  const policyUploadStorageKey = useMemo(() => grcUploadHistoryKey("policy", tenantID, workspaceID), [tenantID, workspaceID]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -596,7 +598,7 @@ export default function PoliciesPage() {
     setPolicyReplayError(null);
     try {
       const response = await replayPolicyUploadEvents(
-        grcPath(`/grc/policy-lifecycle/uploads/${encodeURIComponent(upload.upload_id)}/replay`, { tenant_id: tenantID.trim() }),
+        grcPath(`/grc/policy-lifecycle/uploads/${encodeURIComponent(upload.upload_id)}/replay`, grcScopeQuery({ tenantID, workspaceID })),
         {},
       );
       setPolicyReplayMessage(`${countLabel(response.events_projected ?? 0, "event")} replayed. ${countLabel((response.entities_projected ?? 0) + (response.links_projected ?? 0), "graph update")} projected.`);
@@ -630,7 +632,7 @@ export default function PoliciesPage() {
     const value = actionValue.trim();
     const body: GRCPolicyLifecycleActionRequest = {
       action: selectedAction.action,
-      tenant_id: tenantID.trim() || undefined,
+      ...grcScopeQuery({ tenantID, workspaceID }),
       policy_id: selectedAction.policy_id,
       policy_version_id: selectedAction.policy_version_id,
       gap_id: selectedAction.gap_id,
@@ -657,7 +659,7 @@ export default function PoliciesPage() {
       else if (valueField) body.attributes = { ...(body.attributes ?? {}), [valueField]: value };
     }
     try {
-      const response = await recordAction(grcPath("/grc/policy-lifecycle/actions", { tenant_id: tenantID.trim() }), body);
+      const response = await recordAction(grcPath("/grc/policy-lifecycle/actions", grcScopeQuery({ tenantID, workspaceID })), body);
       setLastActionStatus(`${humanize(response.action)} ${humanize(response.status)}`);
       setSelectedAction(null);
       setActionValue("");
@@ -692,12 +694,13 @@ export default function PoliciesPage() {
     body.set("document_class", "policy");
     body.set("status", "uploaded");
     if (tenantID.trim()) body.set("tenant_id", tenantID.trim());
+    if (workspaceID.trim()) body.set("workspace_id", workspaceID.trim());
     if (policyUploadID.trim()) body.set("policy_id", policyUploadID.trim());
     if (policyUploadOwner.trim()) body.set("owner_id", policyUploadOwner.trim());
     if (policyUploadReviewDue.trim()) body.set("next_review_due_at", policyUploadReviewDue.trim());
     try {
       const response = await uploadPolicyDocument(
-        grcPath("/grc/policy-lifecycle/uploads", { tenant_id: tenantID.trim() }),
+        grcPath("/grc/policy-lifecycle/uploads", grcScopeQuery({ tenantID, workspaceID })),
         body,
       );
       setLastPolicyUpload(response);
@@ -721,7 +724,7 @@ export default function PoliciesPage() {
     setExportError(null);
     try {
       const result = await downloadGRCExport(
-        grcPath("/grc/policy-lifecycle/export", { tenant_id: debouncedTenantID, rule_profile: activeRuleProfile }),
+        grcPath("/grc/policy-lifecycle/export", { ...grcScopeQuery(debouncedScope), rule_profile: activeRuleProfile }),
         apiKey,
         grcExportFilename("policy-lifecycle"),
       );
@@ -1023,8 +1026,9 @@ export default function PoliciesPage() {
           </button>
         </div>
         {showAdvancedFilters && (
-          <div id="policy-advanced-filters" className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 lg:max-w-2xl">
-            <label className={labelClass}>Tenant<input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="All tenants" className={inputClass} /></label>
+          <div id="policy-advanced-filters" className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3 lg:max-w-4xl">
+            <label className={labelClass}>Tenant ID<input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="All authorized tenants" className={inputClass} /></label>
+            <label className={labelClass}>Workspace ID<input value={workspaceID} onChange={(event) => setWorkspaceID(event.target.value)} placeholder="All authorized workspaces" className={inputClass} /></label>
             <label className={labelClass}>
               Rules
               <select
@@ -1361,6 +1365,8 @@ export default function PoliciesPage() {
               generatedAt={generatedAt}
               onAction={openAction}
               savingActionID={actionSaving ? selectedAction?.id : undefined}
+              tenantID={tenantID}
+              workspaceID={workspaceID}
             />
             </div>
           )}
@@ -1583,11 +1589,15 @@ function PolicyDetail({
   generatedAt,
   onAction,
   savingActionID,
+  tenantID,
+  workspaceID,
 }: {
   policy: GRCPolicyLifecyclePolicy | null;
   generatedAt?: string;
   onAction: (action: GRCPolicyLifecycleAction) => void;
   savingActionID?: string;
+  tenantID: string;
+  workspaceID: string;
 }) {
   if (!policy) {
     return (
@@ -1628,7 +1638,7 @@ function PolicyDetail({
                 <Badge value={policy.review_cadence || "no cadence"} />
               </div>
             </div>
-            <Link href={`/reports?policy=${encodeURIComponent(policy.id)}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-[12px] font-medium text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-50">
+            <Link href={withGRCScope(`/reports?policy=${encodeURIComponent(policy.id)}`, { tenantID, workspaceID })} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-[12px] font-medium text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-50">
               Report
               <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>

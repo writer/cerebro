@@ -13,8 +13,9 @@ const upload = (uploadID: string, fileName = `${uploadID}.pdf`): GRCUploadRespon
 
 describe("GRC upload history", () => {
   it("uses tenant-scoped storage keys", () => {
-    expect(grcUploadHistoryKey("policy", "tenant-1")).toBe("cerebro.grc.uploads.policy.tenant-1");
-    expect(grcUploadHistoryKey("policy", "")).toBe("cerebro.grc.uploads.policy.default");
+    expect(grcUploadHistoryKey("policy", "tenant-1", "workspace-1")).toBe("cerebro.grc.uploads.policy.tenant-1.workspace-1");
+    expect(grcUploadHistoryKey("policy", "tenant-1")).toBe("cerebro.grc.uploads.policy.tenant-1.all-workspaces");
+    expect(grcUploadHistoryKey("policy", "")).toBe("cerebro.grc.uploads.policy.default.all-workspaces");
   });
 
   it("deduplicates uploads by ID and keeps newest first", () => {

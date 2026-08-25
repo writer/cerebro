@@ -21,6 +21,7 @@ import {
   shortEntity,
 } from "@/lib/grc";
 import { grcPath, useGRCQuery } from "@/lib/grc-client";
+import { grcScopeQuery } from "@/lib/grc-scope";
 import { controlMatchesFrameworkSegment, frameworkOptionLabel, supportedGRCFrameworkNames } from "@/lib/grc-frameworks";
 import { inventoryAccountability, inventoryReviewDetail, inventoryReviewLabel, inventoryReviewState } from "@/lib/inventory-review";
 import { inventoryAssetSurface } from "@/lib/inventory-surface";
@@ -373,6 +374,10 @@ export default function InventoryAssetPage() {
   const { apiKey } = useApiKey();
   const { actor } = useCurrentUser();
   const urn = useMemo(() => decodeURIComponent(params.urn ?? ""), [params.urn]);
+  const scope = {
+    tenantID: searchParams.get("tenant_id") ?? "",
+    workspaceID: searchParams.get("workspace_id") ?? "",
+  };
   const initialTab = (searchParams.get("tab") as Tab | null) ?? "overview";
   const [tab, setTab] = useState<Tab>(["overview", "vulnerabilities", "tests", "framework", "reports", "timeline"].includes(initialTab) ? initialTab : "overview");
   const [scopeSaving, setScopeSaving] = useState(false);
@@ -383,7 +388,7 @@ export default function InventoryAssetPage() {
   const [triageSavingID, setTriageSavingID] = useState<string | null>(null);
   const [triageError, setTriageError] = useState<string | null>(null);
   const { data, error, loading, reload } = useGRCQuery<GRCInventoryAssetDetail>(
-    urn ? grcPath("/grc/inventory/assets/detail", { urn, limit: 100 }) : null,
+    urn ? grcPath("/grc/inventory/assets/detail", { ...grcScopeQuery(scope), urn, limit: 100 }) : null,
   );
   const asset = data?.asset;
   const externalURL = attr(asset, "html_url", "url", "web_url", "console_url");
@@ -397,6 +402,7 @@ export default function InventoryAssetPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...grcScopeQuery(scope),
         asset_urn: asset.urn,
         source_id: asset.source_id,
         runtime_id: asset.runtime_id,
@@ -419,6 +425,7 @@ export default function InventoryAssetPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...grcScopeQuery(scope),
         asset_urn: asset.urn,
         source_id: asset.source_id,
         reason,
@@ -445,6 +452,7 @@ export default function InventoryAssetPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...grcScopeQuery(scope),
         triage_status: status,
         triage_reason: `Marked ${humanize(status)} from inventory detail`,
         triaged_by: actor || undefined,
