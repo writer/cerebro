@@ -14,6 +14,7 @@ use reqwest::Url;
 use serde_json::Value;
 
 mod error;
+mod group_source_execution;
 mod materialization;
 mod normalization;
 // Shared dispatcher registration lands separately so this provider slice does
@@ -23,6 +24,8 @@ mod source_execution;
 mod user_adapter;
 
 #[cfg(test)]
+mod group_source_execution_tests;
+#[cfg(test)]
 mod source_execution_tests;
 #[cfg(test)]
 mod tests;
@@ -30,6 +33,8 @@ mod tests;
 mod user_adapter_tests;
 
 pub use error::GoogleWorkspaceError;
+#[allow(unused_imports)]
+pub(crate) use group_source_execution::GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER;
 use normalization::*;
 #[allow(unused_imports)]
 pub(crate) use source_execution::{
