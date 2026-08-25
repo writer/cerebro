@@ -102,6 +102,12 @@ Shape:
     "principal": "<principal>",
     "tenant_id": "<tenant-id>",
     "allowed_tenants": ["<tenant-id>"],
+    "application_workspace_grants": [
+      {
+        "tenant_id": "<tenant-id>",
+        "application_workspace_ids": ["<application-workspace-id>"]
+      }
+    ],
     "scopes": ["<scope>"],
     "roles": ["<role>"]
   }
@@ -153,6 +159,30 @@ Use `CEREBRO_ALLOWED_TENANTS` to restrict unscoped credentials:
 ```bash
 CEREBRO_ALLOWED_TENANTS=<tenant-id>,<another-tenant-id>
 ```
+
+## Application workspace selection
+
+GRC requests can select one Cerebro application workspace with either form:
+
+```text
+?tenant_id=<tenant-id>&workspace_id=<application-workspace-id>
+```
+
+```http
+X-Cerebro-Tenant: <tenant-id>
+X-Cerebro-Workspace: <application-workspace-id>
+```
+
+If both workspace selectors are present, they must match exactly. A workspace
+selector always requires an explicit tenant selector; Cerebro does not infer the
+tenant from the credential for this request. Workspace grants are tenant-qualified,
+so the same workspace identifier in another tenant does not confer access.
+
+When `application_workspace_grants` is omitted from a structured credential or
+capability token, existing tenant-wide behavior is preserved. Once grants are
+configured, the selected `(tenant_id, workspace_id)` pair must appear in the
+principal's grants. Provider record attributes never grant application-workspace
+access.
 
 ## Scopes
 

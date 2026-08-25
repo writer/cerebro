@@ -13,8 +13,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
@@ -32,8 +35,10 @@ import (
 )
 
 const (
-	authMessageTenantForbidden = "tenant forbidden"
-	authMessageScopeForbidden  = "scope forbidden"
+	authMessageTenantForbidden           = "tenant forbidden"
+	authMessageScopeForbidden            = "scope forbidden"
+	applicationWorkspaceHeader           = "X-Cerebro-Workspace"
+	maxApplicationWorkspaceSelectorBytes = 256
 )
 
 var errTenantForbidden = errors.New(authMessageTenantForbidden)
@@ -48,19 +53,20 @@ type accessAuditResult struct {
 }
 
 type authPrincipal struct {
-	Name           string
-	TenantID       string
-	CredentialID   string
-	ClientID       string
-	AuthMode       string
-	TokenResource  string
-	AllowedTenants []string
-	Scopes         []string
-	Roles          []string
-	Groups         []string
-	Capability     bool
-	DeviceID       string
-	HardwareUUID   string
+	Name                       string
+	TenantID                   string
+	CredentialID               string
+	ClientID                   string
+	AuthMode                   string
+	TokenResource              string
+	AllowedTenants             []string
+	ApplicationWorkspaceGrants []config.ApplicationWorkspaceGrant
+	Scopes                     []string
+	Roles                      []string
+	Groups                     []string
+	Capability                 bool
+	DeviceID                   string
+	HardwareUUID               string
 	// AssuranceLevel is "hardware" or "software" for device principals.
 	AssuranceLevel string
 	// RiskScore / RiskLevel are populated by the risk pipeline during
@@ -275,8 +281,11 @@ func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVe
 				ClientID:       credential.ClientID,
 				AuthMode:       "api_credential",
 				AllowedTenants: credential.AllowedTenants,
-				Scopes:         credential.Scopes,
-				Roles:          credential.Roles,
+				ApplicationWorkspaceGrants: cloneApplicationWorkspaceGrants(
+					credential.ApplicationWorkspaceGrants,
+				),
+				Scopes: credential.Scopes,
+				Roles:  credential.Roles,
 			}, "", token, true
 		}
 	}
@@ -398,6 +407,10 @@ func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.T
 	roles := normalizeAuthList(claims.Roles)
 	allowedTenants := normalizeAuthList(claims.AllowedTenants)
 	tenantID := strings.TrimSpace(claims.TenantID)
+	applicationWorkspaceGrants, ok := normalizeApplicationWorkspaceGrants(claims.ApplicationWorkspaceGrants)
+	if !ok || !applicationWorkspaceGrantTenantsAllowed(tenantID, allowedTenants, applicationWorkspaceGrants) {
+		return authPrincipal{}, false
+	}
 	if len(scopes) == 0 && len(roles) == 0 {
 		return authPrincipal{}, false
 	}
@@ -405,34 +418,36 @@ func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.T
 		return authPrincipal{}, false
 	}
 	return authPrincipal{
-		Name:           strings.TrimSpace(claims.Subject),
-		TenantID:       tenantID,
-		CredentialID:   strings.TrimSpace(claims.CredentialID),
-		ClientID:       strings.TrimSpace(claims.ClientID),
-		AuthMode:       "capability_token",
-		TokenResource:  strings.TrimSpace(claims.Resource),
-		AllowedTenants: allowedTenants,
-		Scopes:         scopes,
-		Roles:          roles,
-		Groups:         normalizeAuthList(claims.Groups),
-		Capability:     true,
+		Name:                       strings.TrimSpace(claims.Subject),
+		TenantID:                   tenantID,
+		CredentialID:               strings.TrimSpace(claims.CredentialID),
+		ClientID:                   strings.TrimSpace(claims.ClientID),
+		AuthMode:                   "capability_token",
+		TokenResource:              strings.TrimSpace(claims.Resource),
+		AllowedTenants:             allowedTenants,
+		ApplicationWorkspaceGrants: applicationWorkspaceGrants,
+		Scopes:                     scopes,
+		Roles:                      roles,
+		Groups:                     normalizeAuthList(claims.Groups),
+		Capability:                 true,
 	}, true
 }
 
 type capabilityClaims struct {
-	Audience       string   `json:"aud"`
-	Subject        string   `json:"sub"`
-	ExpiresAt      int64    `json:"exp"`
-	IssuedAt       int64    `json:"iat,omitempty"`
-	CredentialID   string   `json:"credential_id,omitempty"`
-	ClientID       string   `json:"client_id,omitempty"`
-	Resource       string   `json:"resource,omitempty"`
-	TenantID       string   `json:"tenant_id,omitempty"`
-	AllowedTenants []string `json:"allowed_tenants,omitempty"`
-	Scopes         []string `json:"scopes,omitempty"`
-	Roles          []string `json:"roles,omitempty"`
-	Groups         []string `json:"groups,omitempty"`
-	JWTID          string   `json:"jti,omitempty"`
+	Audience                   string                             `json:"aud"`
+	Subject                    string                             `json:"sub"`
+	ExpiresAt                  int64                              `json:"exp"`
+	IssuedAt                   int64                              `json:"iat,omitempty"`
+	CredentialID               string                             `json:"credential_id,omitempty"`
+	ClientID                   string                             `json:"client_id,omitempty"`
+	Resource                   string                             `json:"resource,omitempty"`
+	TenantID                   string                             `json:"tenant_id,omitempty"`
+	AllowedTenants             []string                           `json:"allowed_tenants,omitempty"`
+	ApplicationWorkspaceGrants []config.ApplicationWorkspaceGrant `json:"application_workspace_grants,omitempty"`
+	Scopes                     []string                           `json:"scopes,omitempty"`
+	Roles                      []string                           `json:"roles,omitempty"`
+	Groups                     []string                           `json:"groups,omitempty"`
+	JWTID                      string                             `json:"jti,omitempty"`
 }
 
 func validCapabilitySignature(signingInput []byte, signature []byte, secrets []string) bool {
@@ -476,6 +491,11 @@ func issueCapabilityToken(cfg config.AuthConfig, claims capabilityClaims, ttl ti
 		}
 		claims.JWTID = jti
 	}
+	applicationWorkspaceGrants, ok := normalizeApplicationWorkspaceGrants(claims.ApplicationWorkspaceGrants)
+	if !ok || !applicationWorkspaceGrantTenantsAllowed(strings.TrimSpace(claims.TenantID), normalizeAuthList(claims.AllowedTenants), applicationWorkspaceGrants) {
+		return "", fmt.Errorf("capability token application workspace grants are invalid")
+	}
+	claims.ApplicationWorkspaceGrants = applicationWorkspaceGrants
 	headerBytes, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT", "kid": "0"})
 	if err != nil {
 		return "", fmt.Errorf("marshal capability token header: %w", err)
@@ -509,6 +529,130 @@ func requestTenantHint(r *http.Request) string {
 		return tenantID
 	}
 	return ""
+}
+
+func requestApplicationWorkspaceSelector(r *http.Request) (string, error) {
+	if r == nil || r.URL == nil {
+		return "", nil
+	}
+	headerValue := strings.TrimSpace(r.Header.Get(applicationWorkspaceHeader))
+	queryValue := strings.TrimSpace(r.URL.Query().Get("workspace_id"))
+	if headerValue != "" && queryValue != "" && headerValue != queryValue {
+		return "", fmt.Errorf("%w: workspace_id and %s disagree", errInvalidHTTPRequest, applicationWorkspaceHeader)
+	}
+	workspaceID := firstNonEmpty(queryValue, headerValue)
+	if workspaceID != "" && !validApplicationWorkspaceSelector(workspaceID) {
+		return "", fmt.Errorf("%w: workspace_id is invalid", errInvalidHTTPRequest)
+	}
+	return workspaceID, nil
+}
+
+func validApplicationWorkspaceSelector(value string) bool {
+	if value == "" || len(value) > maxApplicationWorkspaceSelectorBytes || !utf8.ValidString(value) || value == "*" || strings.Contains(value, ",") {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
+}
+
+func authorizeApplicationWorkspaceID(ctx context.Context, tenantID string, applicationWorkspaceID string) error {
+	applicationWorkspaceID = strings.TrimSpace(applicationWorkspaceID)
+	if applicationWorkspaceID == "" {
+		return nil
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return fmt.Errorf("%w: tenant_id is required with workspace_id", errInvalidHTTPRequest)
+	}
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok || applicationWorkspaceAllowed(auth.principal, tenantID, applicationWorkspaceID) {
+		return nil
+	}
+	return errTenantForbidden
+}
+
+func applicationWorkspaceAllowed(principal authPrincipal, tenantID string, applicationWorkspaceID string) bool {
+	if applicationWorkspaceID == "" || len(principal.ApplicationWorkspaceGrants) == 0 {
+		return true
+	}
+	for _, grant := range principal.ApplicationWorkspaceGrants {
+		if strings.TrimSpace(grant.TenantID) != tenantID {
+			continue
+		}
+		if containsAuthValue(grant.ApplicationWorkspaceIDs, applicationWorkspaceID) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeApplicationWorkspaceGrants(grants []config.ApplicationWorkspaceGrant) ([]config.ApplicationWorkspaceGrant, bool) {
+	if len(grants) == 0 {
+		return nil, true
+	}
+	byTenant := make(map[string][]string, len(grants))
+	for _, grant := range grants {
+		tenantID := strings.TrimSpace(grant.TenantID)
+		if tenantID == "" {
+			return nil, false
+		}
+		for _, candidate := range grant.ApplicationWorkspaceIDs {
+			workspaceID := strings.TrimSpace(candidate)
+			if !validApplicationWorkspaceSelector(workspaceID) {
+				return nil, false
+			}
+			byTenant[tenantID] = append(byTenant[tenantID], workspaceID)
+		}
+		if len(grant.ApplicationWorkspaceIDs) == 0 {
+			return nil, false
+		}
+	}
+	tenants := make([]string, 0, len(byTenant))
+	for tenantID := range byTenant {
+		tenants = append(tenants, tenantID)
+	}
+	sort.Strings(tenants)
+	normalized := make([]config.ApplicationWorkspaceGrant, 0, len(tenants))
+	for _, tenantID := range tenants {
+		workspaceIDs := normalizeAuthList(byTenant[tenantID])
+		if len(workspaceIDs) == 0 {
+			return nil, false
+		}
+		sort.Strings(workspaceIDs)
+		normalized = append(normalized, config.ApplicationWorkspaceGrant{
+			TenantID:                tenantID,
+			ApplicationWorkspaceIDs: workspaceIDs,
+		})
+	}
+	return normalized, true
+}
+
+func applicationWorkspaceGrantTenantsAllowed(tenantID string, allowedTenants []string, grants []config.ApplicationWorkspaceGrant) bool {
+	for _, grant := range grants {
+		if tenantID != "" && grant.TenantID == tenantID {
+			continue
+		}
+		if containsAuthValue(allowedTenants, grant.TenantID) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func cloneApplicationWorkspaceGrants(grants []config.ApplicationWorkspaceGrant) []config.ApplicationWorkspaceGrant {
+	cloned := make([]config.ApplicationWorkspaceGrant, 0, len(grants))
+	for _, grant := range grants {
+		cloned = append(cloned, config.ApplicationWorkspaceGrant{
+			TenantID:                grant.TenantID,
+			ApplicationWorkspaceIDs: append([]string(nil), grant.ApplicationWorkspaceIDs...),
+		})
+	}
+	return cloned
 }
 
 func authorizeProtoTenant(ctx context.Context, cfg config.AuthConfig, message any) error {

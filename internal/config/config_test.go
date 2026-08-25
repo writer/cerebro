@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -1045,6 +1046,10 @@ func TestLoadParsesStructuredAPICredentials(t *testing.T) {
 			"key_sha256": "`+hex.EncodeToString(sum[:])+`",
 			"principal": "cosmo-security",
 			"allowed_tenants": ["writer", "writer"],
+			"application_workspace_grants": [
+				{"tenant_id":"writer","application_workspace_ids":["workspace-b","workspace-a","workspace-a"]},
+				{"tenant_id":"writer","application_workspace_ids":["workspace-c"]}
+			],
 			"scopes": ["cerebro.cosmo.security.read", "cerebro.cosmo.security.read"],
 			"roles": ["cerebro.viewer", "cerebro.viewer"]
 		}
@@ -1064,11 +1069,50 @@ func TestLoadParsesStructuredAPICredentials(t *testing.T) {
 	if got := credential.AllowedTenants; len(got) != 1 || got[0] != "writer" {
 		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
 	}
+	if got := credential.ApplicationWorkspaceGrants; len(got) != 1 || got[0].TenantID != "writer" || strings.Join(got[0].ApplicationWorkspaceIDs, ",") != "workspace-a,workspace-b,workspace-c" {
+		t.Fatalf("ApplicationWorkspaceGrants = %#v, want one normalized writer grant", got)
+	}
 	if got := credential.Scopes; len(got) != 1 || got[0] != "cerebro.cosmo.security.read" {
 		t.Fatalf("Scopes = %#v, want [cerebro.cosmo.security.read]", got)
 	}
 	if got := credential.Roles; len(got) != 1 || got[0] != "cerebro.viewer" {
 		t.Fatalf("Roles = %#v, want [cerebro.viewer]", got)
+	}
+}
+
+func TestLoadStructuredAPICredentialsKeepOmittedApplicationWorkspaceGrantsBackwardCompatible(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `[{"key":"test-key","tenant_id":"writer","scopes":["cerebro.cosmo.security.read"]}]`)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.Auth.APICredentials[0].ApplicationWorkspaceGrants; got != nil {
+		t.Fatalf("ApplicationWorkspaceGrants = %#v, want nil for omitted grant", got)
+	}
+}
+
+func TestLoadRejectsInvalidApplicationWorkspaceGrants(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		grants string
+	}{
+		{name: "missing tenant", grants: `[{"application_workspace_ids":["workspace-a"]}]`},
+		{name: "missing workspaces", grants: `[{"tenant_id":"writer","application_workspace_ids":[]}]`},
+		{name: "foreign tenant", grants: `[{"tenant_id":"other","application_workspace_ids":["workspace-a"]}]`},
+		{name: "wildcard workspace", grants: `[{"tenant_id":"writer","application_workspace_ids":["*"]}]`},
+		{name: "ambiguous workspace list", grants: `[{"tenant_id":"writer","application_workspace_ids":["workspace-a,workspace-b"]}]`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			clearDependencyEnv(t)
+			t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+			t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `[{"key":"test-key","tenant_id":"writer","application_workspace_grants":`+test.grants+`}]`)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want invalid application workspace grant")
+			}
+		})
 	}
 }
 

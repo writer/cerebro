@@ -97,3 +97,73 @@ func TestCapabilityTokenCanAuthorizeWithRoleOnlyGrant(t *testing.T) {
 		t.Fatalf("role-only capability token rejected for read route: %v", err)
 	}
 }
+
+func TestApplicationWorkspaceAuthorizationIsTenantQualifiedAndBackwardCompatible(t *testing.T) {
+	legacy := authPrincipal{TenantID: "tenant-a"}
+	if !applicationWorkspaceAllowed(legacy, "tenant-a", "workspace-any") {
+		t.Fatal("principal with omitted application workspace grants lost legacy access")
+	}
+
+	restricted := authPrincipal{
+		AllowedTenants: []string{"tenant-a", "tenant-b"},
+		ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{
+			{TenantID: "tenant-a", ApplicationWorkspaceIDs: []string{"workspace-shared"}},
+			{TenantID: "tenant-b", ApplicationWorkspaceIDs: []string{"workspace-b"}},
+		},
+	}
+	if !applicationWorkspaceAllowed(restricted, "tenant-a", "workspace-shared") {
+		t.Fatal("tenant-a workspace grant was rejected")
+	}
+	if applicationWorkspaceAllowed(restricted, "tenant-b", "workspace-shared") {
+		t.Fatal("workspace authority crossed tenants")
+	}
+	if applicationWorkspaceAllowed(restricted, "tenant-a", "workspace-other") {
+		t.Fatal("ungranted application workspace was authorized")
+	}
+}
+
+func TestCapabilityTokenPreservesApplicationWorkspaceGrants(t *testing.T) {
+	cfg := config.AuthConfig{
+		CapabilityTokenSecrets:  []string{"capability-secret"},
+		CapabilityTokenAudience: "cerebro-api",
+	}
+	token, err := issueCapabilityToken(cfg, capabilityClaims{
+		Audience: cfg.CapabilityTokenAudience,
+		Subject:  "service:workspace-reader",
+		TenantID: "tenant-a",
+		Scopes:   []string{scopeCosmoSecurityRead},
+		ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{
+			{TenantID: "tenant-a", ApplicationWorkspaceIDs: []string{"workspace-b", "workspace-a", "workspace-a"}},
+		},
+	}, time.Minute, time.Now())
+	if err != nil {
+		t.Fatalf("issueCapabilityToken() error = %v", err)
+	}
+	principal, ok := authenticateCapabilityToken(cfg, token, time.Now())
+	if !ok {
+		t.Fatal("authenticateCapabilityToken() rejected application workspace grant")
+	}
+	grants := principal.ApplicationWorkspaceGrants
+	if len(grants) != 1 || grants[0].TenantID != "tenant-a" || len(grants[0].ApplicationWorkspaceIDs) != 2 || grants[0].ApplicationWorkspaceIDs[0] != "workspace-a" || grants[0].ApplicationWorkspaceIDs[1] != "workspace-b" {
+		t.Fatalf("application workspace grants = %#v, want normalized tenant-a grant", grants)
+	}
+}
+
+func TestCapabilityTokenRejectsApplicationWorkspaceGrantOutsideTenantAuthority(t *testing.T) {
+	cfg := config.AuthConfig{
+		CapabilityTokenSecrets:  []string{"capability-secret"},
+		CapabilityTokenAudience: "cerebro-api",
+	}
+	_, err := issueCapabilityToken(cfg, capabilityClaims{
+		Audience: cfg.CapabilityTokenAudience,
+		Subject:  "service:workspace-reader",
+		TenantID: "tenant-a",
+		Scopes:   []string{scopeCosmoSecurityRead},
+		ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{
+			{TenantID: "tenant-b", ApplicationWorkspaceIDs: []string{"workspace-b"}},
+		},
+	}, time.Minute, time.Now())
+	if err == nil {
+		t.Fatal("issueCapabilityToken() error = nil, want cross-tenant workspace grant rejection")
+	}
+}

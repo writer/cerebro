@@ -13,12 +13,14 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 const defaultHTTPAddr = ":8080"
 const defaultShutdownTimeout = 10 * time.Second
 const defaultJetStreamSubjectPrefix = "events"
 const defaultSourceEventAdmissionWorkers = 4
+const maxApplicationWorkspaceIDBytes = 256
 
 const (
 	defaultPostgresMaxOpenConns        = 25
@@ -262,19 +264,28 @@ type APIKey struct {
 	TenantID  string
 }
 
+// ApplicationWorkspaceGrant restricts application-workspace selection within
+// one tenant. Workspace identifiers are opaque deployment-owned values; they
+// are never derived from provider records.
+type ApplicationWorkspaceGrant struct {
+	TenantID                string   `json:"tenant_id"`
+	ApplicationWorkspaceIDs []string `json:"application_workspace_ids"`
+}
+
 // APICredential grants scoped bearer access with stable attribution metadata.
 type APICredential struct {
-	ID             string
-	ClientID       string
-	Name           string
-	Kind           string
-	Key            string
-	KeySHA256      string
-	Principal      string
-	TenantID       string
-	AllowedTenants []string
-	Scopes         []string
-	Roles          []string
+	ID                         string
+	ClientID                   string
+	Name                       string
+	Kind                       string
+	Key                        string
+	KeySHA256                  string
+	Principal                  string
+	TenantID                   string
+	AllowedTenants             []string
+	ApplicationWorkspaceGrants []ApplicationWorkspaceGrant
+	Scopes                     []string
+	Roles                      []string
 }
 
 // AuthConfig controls optional API authentication and tenant scoping.
@@ -1370,18 +1381,19 @@ func parseAPICredentials(raw string) ([]APICredential, error) {
 		return nil, nil
 	}
 	type credentialJSON struct {
-		ID             string   `json:"id"`
-		CredentialID   string   `json:"credential_id"`
-		ClientID       string   `json:"client_id"`
-		Name           string   `json:"name"`
-		Kind           string   `json:"kind"`
-		Key            string   `json:"key"`
-		KeySHA256      string   `json:"key_sha256"`
-		Principal      string   `json:"principal"`
-		TenantID       string   `json:"tenant_id"`
-		AllowedTenants []string `json:"allowed_tenants"`
-		Scopes         []string `json:"scopes"`
-		Roles          []string `json:"roles"`
+		ID                         string                      `json:"id"`
+		CredentialID               string                      `json:"credential_id"`
+		ClientID                   string                      `json:"client_id"`
+		Name                       string                      `json:"name"`
+		Kind                       string                      `json:"kind"`
+		Key                        string                      `json:"key"`
+		KeySHA256                  string                      `json:"key_sha256"`
+		Principal                  string                      `json:"principal"`
+		TenantID                   string                      `json:"tenant_id"`
+		AllowedTenants             []string                    `json:"allowed_tenants"`
+		ApplicationWorkspaceGrants []ApplicationWorkspaceGrant `json:"application_workspace_grants"`
+		Scopes                     []string                    `json:"scopes"`
+		Roles                      []string                    `json:"roles"`
 	}
 	var entries []credentialJSON
 	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
@@ -1389,24 +1401,32 @@ func parseAPICredentials(raw string) ([]APICredential, error) {
 	}
 	credentials := make([]APICredential, 0, len(entries))
 	for index, entry := range entries {
+		applicationWorkspaceGrants, err := normalizeApplicationWorkspaceGrants(entry.ApplicationWorkspaceGrants)
+		if err != nil {
+			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d].application_workspace_grants: %w", index, err)
+		}
 		credential := APICredential{
-			ID:             strings.TrimSpace(firstNonEmpty(entry.CredentialID, entry.ID)),
-			ClientID:       strings.TrimSpace(entry.ClientID),
-			Name:           strings.TrimSpace(entry.Name),
-			Kind:           strings.TrimSpace(entry.Kind),
-			Key:            strings.TrimSpace(entry.Key),
-			KeySHA256:      strings.ToLower(strings.TrimSpace(entry.KeySHA256)),
-			Principal:      strings.TrimSpace(entry.Principal),
-			TenantID:       strings.TrimSpace(entry.TenantID),
-			AllowedTenants: normalizeStringSlice(entry.AllowedTenants),
-			Scopes:         normalizeStringSlice(entry.Scopes),
-			Roles:          normalizeStringSlice(entry.Roles),
+			ID:                         strings.TrimSpace(firstNonEmpty(entry.CredentialID, entry.ID)),
+			ClientID:                   strings.TrimSpace(entry.ClientID),
+			Name:                       strings.TrimSpace(entry.Name),
+			Kind:                       strings.TrimSpace(entry.Kind),
+			Key:                        strings.TrimSpace(entry.Key),
+			KeySHA256:                  strings.ToLower(strings.TrimSpace(entry.KeySHA256)),
+			Principal:                  strings.TrimSpace(entry.Principal),
+			TenantID:                   strings.TrimSpace(entry.TenantID),
+			AllowedTenants:             normalizeStringSlice(entry.AllowedTenants),
+			ApplicationWorkspaceGrants: applicationWorkspaceGrants,
+			Scopes:                     normalizeStringSlice(entry.Scopes),
+			Roles:                      normalizeStringSlice(entry.Roles),
 		}
 		if credential.Key == "" && credential.KeySHA256 == "" {
 			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d] must set key or key_sha256", index)
 		}
 		if (len(credential.Scopes) > 0 || len(credential.Roles) > 0) && credential.TenantID == "" && len(credential.AllowedTenants) == 0 {
 			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d] scoped credentials must set tenant_id or allowed_tenants", index)
+		}
+		if err := validateApplicationWorkspaceGrantTenants(credential); err != nil {
+			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d]: %w", index, err)
 		}
 		if err := validateKnownRBACRoles(fmt.Sprintf("CEREBRO_API_CREDENTIALS_JSON[%d].roles", index), credential.Roles); err != nil {
 			return nil, err
@@ -1417,6 +1437,90 @@ func parseAPICredentials(raw string) ([]APICredential, error) {
 		credentials = append(credentials, credential)
 	}
 	return credentials, nil
+}
+
+func normalizeApplicationWorkspaceGrants(grants []ApplicationWorkspaceGrant) ([]ApplicationWorkspaceGrant, error) {
+	if len(grants) == 0 {
+		return nil, nil
+	}
+	byTenant := make(map[string][]string, len(grants))
+	for index, grant := range grants {
+		tenantID := strings.TrimSpace(grant.TenantID)
+		workspaceIDs, err := normalizeApplicationWorkspaceIDs(grant.ApplicationWorkspaceIDs)
+		if err != nil {
+			return nil, fmt.Errorf("entry %d: %w", index, err)
+		}
+		if tenantID == "" {
+			return nil, fmt.Errorf("entry %d requires tenant_id", index)
+		}
+		if len(workspaceIDs) == 0 {
+			return nil, fmt.Errorf("entry %d requires application_workspace_ids", index)
+		}
+		byTenant[tenantID] = append(byTenant[tenantID], workspaceIDs...)
+	}
+	tenants := make([]string, 0, len(byTenant))
+	for tenantID := range byTenant {
+		tenants = append(tenants, tenantID)
+	}
+	sort.Strings(tenants)
+	normalized := make([]ApplicationWorkspaceGrant, 0, len(tenants))
+	for _, tenantID := range tenants {
+		workspaceIDs, err := normalizeApplicationWorkspaceIDs(byTenant[tenantID])
+		if err != nil {
+			return nil, err
+		}
+		normalized = append(normalized, ApplicationWorkspaceGrant{
+			TenantID:                tenantID,
+			ApplicationWorkspaceIDs: workspaceIDs,
+		})
+	}
+	return normalized, nil
+}
+
+func normalizeApplicationWorkspaceIDs(values []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		workspaceID := strings.TrimSpace(value)
+		if workspaceID == "" {
+			continue
+		}
+		if !validApplicationWorkspaceID(workspaceID) {
+			return nil, fmt.Errorf("application workspace id %q is invalid", workspaceID)
+		}
+		if _, exists := seen[workspaceID]; exists {
+			continue
+		}
+		seen[workspaceID] = struct{}{}
+		normalized = append(normalized, workspaceID)
+	}
+	sort.Strings(normalized)
+	return normalized, nil
+}
+
+func validApplicationWorkspaceID(value string) bool {
+	if value == "" || len(value) > maxApplicationWorkspaceIDBytes || !utf8.ValidString(value) || value == "*" || strings.Contains(value, ",") {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
+}
+
+func validateApplicationWorkspaceGrantTenants(credential APICredential) error {
+	for _, grant := range credential.ApplicationWorkspaceGrants {
+		allowed := credential.TenantID != "" && grant.TenantID == credential.TenantID
+		if !allowed {
+			allowed = containsString(credential.AllowedTenants, grant.TenantID)
+		}
+		if !allowed {
+			return fmt.Errorf("application workspace grant tenant %q is not allowed by the credential", grant.TenantID)
+		}
+	}
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {

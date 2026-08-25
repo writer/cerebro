@@ -42,12 +42,13 @@ const (
 )
 
 type grcScope struct {
-	TenantID   string
-	RuntimeID  string
-	RuntimeIDs []string
-	SourceID   string
-	VendorURN  string
-	Limit      uint32
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuntimeIDs             []string
+	SourceID               string
+	VendorURN              string
+	Limit                  uint32
 }
 
 type grcDashboardResponse struct {
@@ -811,14 +812,21 @@ func grcScopeFromRequest(r *http.Request) (grcScope, error) {
 	if err != nil {
 		return grcScope{}, err
 	}
+	applicationWorkspaceID, err := requestApplicationWorkspaceSelector(r)
+	if err != nil {
+		return grcScope{}, err
+	}
 	tenantID := strings.TrimSpace(r.URL.Query().Get("tenant_id"))
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
+	}
+	if applicationWorkspaceID != "" && tenantID == "" {
+		return grcScope{}, fmt.Errorf("%w: tenant_id is required with workspace_id", errInvalidHTTPRequest)
+	}
 	if tenantID == "" {
 		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok {
 			tenantID = strings.TrimSpace(auth.principal.TenantID)
 		}
-	}
-	if tenantID == "" {
-		tenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
 	}
 	if tenantID == "" && requiresTenantFilter(r.Context()) {
 		return grcScope{}, errTenantForbidden
@@ -826,12 +834,16 @@ func grcScopeFromRequest(r *http.Request) (grcScope, error) {
 	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
 		return grcScope{}, err
 	}
+	if err := authorizeApplicationWorkspaceID(r.Context(), tenantID, applicationWorkspaceID); err != nil {
+		return grcScope{}, err
+	}
 	return grcScope{
-		TenantID:   tenantID,
-		RuntimeID:  strings.TrimSpace(r.URL.Query().Get("runtime_id")),
-		RuntimeIDs: csvQueryValues(r.URL.Query().Get("runtime_ids")),
-		SourceID:   strings.TrimSpace(r.URL.Query().Get("source_id")),
-		Limit:      limit,
+		TenantID:               tenantID,
+		ApplicationWorkspaceID: applicationWorkspaceID,
+		RuntimeID:              strings.TrimSpace(r.URL.Query().Get("runtime_id")),
+		RuntimeIDs:             csvQueryValues(r.URL.Query().Get("runtime_ids")),
+		SourceID:               strings.TrimSpace(r.URL.Query().Get("source_id")),
+		Limit:                  limit,
 	}, nil
 }
 

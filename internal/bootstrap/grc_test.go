@@ -66,6 +66,85 @@ func TestGRCScopeDoesNotReadQuestionnaireVendorURN(t *testing.T) {
 	}
 }
 
+func TestGRCScopeAuthorizesTenantQualifiedApplicationWorkspace(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-a", nil)
+	req.Header.Set(applicationWorkspaceHeader, "workspace-a")
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{
+			AllowedTenants: []string{"tenant-a", "tenant-b"},
+			ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{
+				{TenantID: "tenant-a", ApplicationWorkspaceIDs: []string{"workspace-a"}},
+				{TenantID: "tenant-b", ApplicationWorkspaceIDs: []string{"workspace-b"}},
+			},
+		},
+	}))
+
+	scope, err := grcScopeFromRequest(req)
+	if err != nil {
+		t.Fatalf("grcScopeFromRequest() error = %v", err)
+	}
+	if scope.TenantID != "tenant-a" || scope.ApplicationWorkspaceID != "workspace-a" {
+		t.Fatalf("scope = %#v, want tenant-a/workspace-a", scope)
+	}
+}
+
+func TestGRCScopeRejectsApplicationWorkspaceWithoutExplicitTenant(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/grc/dashboard?workspace_id=workspace-a", nil)
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{
+			TenantID: "tenant-a",
+			ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{
+				{TenantID: "tenant-a", ApplicationWorkspaceIDs: []string{"workspace-a"}},
+			},
+		},
+	}))
+
+	_, err := grcScopeFromRequest(req)
+	if !errors.Is(err, errInvalidHTTPRequest) {
+		t.Fatalf("grcScopeFromRequest() error = %v, want invalid request", err)
+	}
+}
+
+func TestGRCScopeRejectsApplicationWorkspaceOutsidePrincipalGrant(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-b", nil)
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{
+			TenantID: "tenant-a",
+			ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{
+				{TenantID: "tenant-a", ApplicationWorkspaceIDs: []string{"workspace-a"}},
+			},
+		},
+	}))
+
+	_, err := grcScopeFromRequest(req)
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("grcScopeFromRequest() error = %v, want tenant forbidden", err)
+	}
+}
+
+func TestGRCScopeRejectsConflictingOrInvalidApplicationWorkspaceSelectors(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		queryValue  string
+		headerValue string
+	}{
+		{name: "query header mismatch", queryValue: "workspace-a", headerValue: "workspace-b"},
+		{name: "wildcard", queryValue: "*"},
+		{name: "ambiguous list", queryValue: "workspace-a,workspace-b"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/grc/dashboard?tenant_id=tenant-a&workspace_id="+url.QueryEscape(test.queryValue), nil)
+			if test.headerValue != "" {
+				req.Header.Set(applicationWorkspaceHeader, test.headerValue)
+			}
+			_, err := grcScopeFromRequest(req)
+			if !errors.Is(err, errInvalidHTTPRequest) {
+				t.Fatalf("grcScopeFromRequest() error = %v, want invalid request", err)
+			}
+		})
+	}
+}
+
 func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	store := &stubRuntimeStore{
