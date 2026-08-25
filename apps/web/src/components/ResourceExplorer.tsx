@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { buildApiUrl, normalizePath } from "@/lib/api";
+import { normalizePath } from "@/lib/api";
 import type {
   OpenApiOperation,
   OpenApiParameter,
@@ -212,7 +212,6 @@ function EndpointCard({
   ).toString();
   const fullPath = queryString ? `${normalizedPath}?${queryString}` : normalizedPath;
   const proxyUrl = `/api/cerebro${fullPath}`;
-  const externalUrl = buildApiUrl(fullPath);
 
   const handleFetch = async () => {
     if (missingParams.length > 0) {
@@ -281,7 +280,7 @@ function EndpointCard({
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={missingParams.length === 0 ? externalUrl : undefined}
+            href={missingParams.length === 0 ? proxyUrl : undefined}
             target="_blank"
             rel="noreferrer"
             className={`rounded-md border border-stone-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide transition ${
