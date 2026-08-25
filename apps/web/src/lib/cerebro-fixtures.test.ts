@@ -44,6 +44,29 @@ describe("cerebro fixture proxy responses", () => {
     expect(payload).not.toHaveProperty("product_areas");
   });
 
+  it("covers read-only routes exercised by the local whole-app bug bash", () => {
+    withFixtureMode();
+    const paths = [
+      "api/v1/agent-platform/contract",
+      "ask-queries",
+      "connector-definitions/okta",
+      "grc/report-catalog",
+      "identity/orgs",
+      "identity/users",
+      "platform/graph/neighborhood",
+      "v1/actions",
+      "v1/actions/fixture-operation",
+      "v1/actions/fixture-operation/history",
+      "v1/source-runtimes/health",
+    ];
+
+    for (const fixturePath of paths) {
+      expect(cerebroFixtureResponseFor({ method: "GET", path: fixturePath })?.status, fixturePath).toBe(200);
+    }
+    expect(parseFixture(cerebroFixtureResponseFor({ method: "GET", path: "v1/actions" })!))
+      .toMatchObject({ actions: [{ proposal: { operation_id: "fixture-operation" } }] });
+  });
+
   it("uses credential algorithms and store IDs recognized by the connector contract", () => {
     withFixtureMode();
     const libraryResponse = cerebroFixtureResponseFor({ method: "GET", path: "connectors" });

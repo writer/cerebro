@@ -8,6 +8,7 @@ import {
 } from "@/lib/audit-log-reader";
 import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
 import { authHeadersFor, buildCerebroUrl } from "@/lib/cerebro-proxy";
+import { isCerebroFixtureMode } from "@/lib/cerebro-fixtures";
 import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
 import {
   headersWithTrace,
@@ -43,6 +44,30 @@ export async function GET(request: NextRequest) {
   if (!decision.allowed) {
     span.end("failed", { authorization_state: decision.code });
     return authorizationErrorResponse(decision);
+  }
+
+  if (isCerebroFixtureMode()) {
+    span.end("completed", {
+      audit_event_count: 0,
+      audit_event_page_state: "complete",
+    });
+    return NextResponse.json({
+      events: [],
+      nextCursor: "",
+      status: "complete",
+      summary: {
+        actions: [],
+        averageDurationMs: null,
+        denied: 0,
+        failures: 0,
+        p95DurationMs: null,
+        services: [],
+        total: 0,
+      },
+      window: null,
+    }, {
+      headers: responseHeadersWithTrace({ "cache-control": "private, no-store" }, span),
+    });
   }
 
   const query = auditLogQueryFromSearchParams(request.nextUrl.searchParams);

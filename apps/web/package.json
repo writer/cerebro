@@ -30,6 +30,7 @@
     "benchmark:grc-scale": "node scripts/grc-scale-benchmark.mjs",
     "demo:compliance": "node scripts/dev-fixtures.mjs --port 3000",
     "demo:compliance:check": "node scripts/portable-web-fixture-e2e.mjs --browser",
+    "bugbash:routes": "node scripts/portable-web-fixture-e2e.mjs --browser --all-routes",
     "demo:rust": "node scripts/rust-product-demo.mjs",
     "demo:rust:check": "node scripts/rust-product-demo.mjs --check",
     "e2e:grc:local": "node scripts/local-grc-e2e.mjs",

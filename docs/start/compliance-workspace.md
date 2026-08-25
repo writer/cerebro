@@ -32,6 +32,14 @@ make compliance-demo-check
 
 The check starts an isolated fixture server, opens the product routes in Chromium, and fails on route errors, browser errors, or missing page contracts.
 
+For a full local route bug bash, including dynamic page samples and tenant plus application-workspace scope, run:
+
+```bash
+make web-route-bugbash
+```
+
+The route harness enumerates every Next.js page, follows same-origin product links, and fails on document or backend 404s, framework overlays, page errors, or console errors. It keeps logs in a temporary directory only when a run fails; it does not write screenshots or reports into the checkout.
+
 ## Continue With Real Data
 
 Use [Integration readiness](integration-readiness.md) before selecting a source. Then follow [Getting started](getting-started.md) to run the API and durable stores. Provider configuration belongs outside the credential-free browser workspace.
