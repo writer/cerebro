@@ -102,6 +102,82 @@ pub(crate) struct SourceRuntimeListQuery {
     pub(crate) limit: Option<u16>,
 }
 
+struct SourceRuntimeListPlan {
+    limit: u16,
+    runtime_ids: Vec<SourceRuntimeId>,
+    source_id: Option<String>,
+}
+
+fn plan_list_query(
+    query: &SourceRuntimeListQuery,
+) -> Result<SourceRuntimeListPlan, SourceRuntimeRegistryFailure> {
+    let limit = query.limit.unwrap_or(DEFAULT_LIST_LIMIT);
+    if limit == 0 || limit > MAX_LIST_LIMIT {
+        return Err(invalid_request(
+            "Source runtime list limit must be between 1 and 500.",
+        ));
+    }
+    let runtime_ids = runtime_ids(query)?;
+    let source_id = query
+        .source_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    Ok(SourceRuntimeListPlan {
+        limit,
+        runtime_ids,
+        source_id,
+    })
+}
+
+fn admit_put_identity(
+    tenant_id: &TenantId,
+    runtime_id: &str,
+    request: PutSourceRuntimeRequest,
+) -> Result<(SourceRuntimeId, SourceRuntimeInput), SourceRuntimeRegistryFailure> {
+    let runtime_id = parse_runtime_id(runtime_id)?;
+    let input = request.runtime.ok_or_else(|| {
+        invalid_request("A source runtime definition is required in the runtime field.")
+    })?;
+    if !input.id.is_empty() && input.id.trim() != runtime_id.as_str() {
+        return Err(invalid_request(
+            "The source runtime body ID must match the path ID.",
+        ));
+    }
+    if !input.tenant_id.is_empty() && input.tenant_id.trim() != tenant_id.as_str() {
+        return Err(SourceRuntimeRegistryFailure::new(
+            SourceRuntimeRegistryFailureKind::TenantMismatch,
+            "source runtime tenant does not match authenticated tenant",
+        ));
+    }
+    Ok((runtime_id, input))
+}
+
+fn reject_caller_owned_progress(
+    input: &SourceRuntimeInput,
+) -> Result<(), SourceRuntimeRegistryFailure> {
+    if input.checkpoint.is_some() || input.next_cursor.is_some() || input.last_synced_at.is_some() {
+        return Err(invalid_request(
+            "Source runtime progress is owned by durable sync and cannot be supplied to the registry.",
+        ));
+    }
+    Ok(())
+}
+
+fn preserved_progress(
+    existing: Option<&StoredSourceRuntime>,
+    config: &BTreeMap<String, String>,
+) -> (Option<Value>, Option<Value>, Option<String>) {
+    if existing.is_none_or(|runtime| runtime.config() != config) {
+        return (None, None, None);
+    }
+    let checkpoint = existing.and_then(|runtime| runtime.checkpoint().cloned());
+    let next_cursor = existing.and_then(|runtime| runtime.next_cursor().cloned());
+    let last_synced_at = existing.and_then(|runtime| runtime.last_synced_at().map(str::to_owned));
+    (checkpoint, next_cursor, last_synced_at)
+}
+
 #[async_trait]
 pub(crate) trait SourceRuntimeRegistryAuthority: Send + Sync {
     async fn put(
@@ -142,21 +218,7 @@ impl SourceRuntimeRegistryAuthority for PostgresSourceRuntimeRegistry {
         runtime_id: &str,
         request: PutSourceRuntimeRequest,
     ) -> Result<SourceRuntimeResponse, SourceRuntimeRegistryFailure> {
-        let runtime_id = parse_runtime_id(runtime_id)?;
-        let input = request.runtime.ok_or_else(|| {
-            invalid_request("A source runtime definition is required in the runtime field.")
-        })?;
-        if !input.id.is_empty() && input.id.trim() != runtime_id.as_str() {
-            return Err(invalid_request(
-                "The source runtime body ID must match the path ID.",
-            ));
-        }
-        if !input.tenant_id.is_empty() && input.tenant_id.trim() != tenant_id.as_str() {
-            return Err(SourceRuntimeRegistryFailure::new(
-                SourceRuntimeRegistryFailureKind::TenantMismatch,
-                "source runtime tenant does not match authenticated tenant",
-            ));
-        }
+        let (runtime_id, input) = admit_put_identity(tenant_id, runtime_id, request)?;
         let existing = self
             .ledger
             .find_source_runtime(&runtime_id)
@@ -177,39 +239,10 @@ impl SourceRuntimeRegistryAuthority for PostgresSourceRuntimeRegistry {
                 "An existing source runtime cannot change its source ID.",
             ));
         }
-        if input.checkpoint.is_some()
-            || input.next_cursor.is_some()
-            || input.last_synced_at.is_some()
-        {
-            return Err(invalid_request(
-                "Source runtime progress is owned by durable sync and cannot be supplied to the registry.",
-            ));
-        }
+        reject_caller_owned_progress(&input)?;
         let config = admit_config(input.config, existing.as_ref())?;
-        let progress_is_current = existing
-            .as_ref()
-            .is_some_and(|runtime| runtime.config() == &config);
-        let checkpoint = progress_is_current
-            .then(|| {
-                existing
-                    .as_ref()
-                    .and_then(|runtime| runtime.checkpoint().cloned())
-            })
-            .flatten();
-        let next_cursor = progress_is_current
-            .then(|| {
-                existing
-                    .as_ref()
-                    .and_then(|runtime| runtime.next_cursor().cloned())
-            })
-            .flatten();
-        let last_synced_at = progress_is_current
-            .then(|| {
-                existing
-                    .as_ref()
-                    .and_then(|runtime| runtime.last_synced_at().map(str::to_owned))
-            })
-            .flatten();
+        let (checkpoint, next_cursor, last_synced_at) =
+            preserved_progress(existing.as_ref(), &config);
         let runtime = StoredSourceRuntime::new(
             runtime_id,
             tenant_id.clone(),
@@ -267,21 +300,15 @@ impl SourceRuntimeRegistryAuthority for PostgresSourceRuntimeRegistry {
         tenant_id: &TenantId,
         query: SourceRuntimeListQuery,
     ) -> Result<SourceRuntimeListResponse, SourceRuntimeRegistryFailure> {
-        let limit = query.limit.unwrap_or(DEFAULT_LIST_LIMIT);
-        if limit == 0 || limit > MAX_LIST_LIMIT {
-            return Err(invalid_request(
-                "Source runtime list limit must be between 1 and 500.",
-            ));
-        }
-        let runtime_ids = runtime_ids(&query)?;
-        let source_id = query
-            .source_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
+        let plan = plan_list_query(&query)?;
         let runtimes = self
             .ledger
-            .list_source_runtimes(tenant_id, source_id, &runtime_ids, limit)
+            .list_source_runtimes(
+                tenant_id,
+                plan.source_id.as_deref(),
+                &plan.runtime_ids,
+                plan.limit,
+            )
             .await
             .map_err(runtime_unavailable)?;
         Ok(SourceRuntimeListResponse {
@@ -531,5 +558,339 @@ mod tests {
             registry_conflict().kind(),
             SourceRuntimeRegistryFailureKind::Conflict
         );
+    }
+
+    #[test]
+    fn registry_failure_helpers_preserve_safe_distinct_states() {
+        for (failure, kind, detail) in [
+            (
+                invalid_request("invalid request"),
+                SourceRuntimeRegistryFailureKind::InvalidRequest,
+                "invalid request",
+            ),
+            (
+                runtime_unavailable("runtime offline"),
+                SourceRuntimeRegistryFailureKind::RuntimeUnavailable,
+                "runtime offline",
+            ),
+            (
+                not_found(),
+                SourceRuntimeRegistryFailureKind::NotFound,
+                "source runtime was not found for authenticated tenant",
+            ),
+        ] {
+            assert_eq!(failure.kind(), kind);
+            assert_eq!(failure.to_string(), detail);
+        }
+    }
+
+    #[test]
+    fn runtime_id_filters_reject_invalid_and_oversized_inputs() {
+        assert!(
+            runtime_ids(&SourceRuntimeListQuery {
+                runtime_id: Some(" invalid runtime ".to_owned()),
+                ..SourceRuntimeListQuery::default()
+            })
+            .is_err()
+        );
+
+        let oversized = (0..=MAX_RUNTIME_IDS)
+            .map(|index| format!("runtime-{index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        assert!(
+            runtime_ids(&SourceRuntimeListQuery {
+                runtime_ids: Some(oversized),
+                ..SourceRuntimeListQuery::default()
+            })
+            .is_err()
+        );
+
+        let empty = runtime_ids(&SourceRuntimeListQuery {
+            runtime_id: Some(" ".to_owned()),
+            runtime_ids: Some(",, ".to_owned()),
+            ..SourceRuntimeListQuery::default()
+        })
+        .unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn list_plan_bounds_limit_ids_and_normalizes_source_filter() {
+        for limit in [0, MAX_LIST_LIMIT + 1] {
+            assert!(
+                plan_list_query(&SourceRuntimeListQuery {
+                    limit: Some(limit),
+                    ..SourceRuntimeListQuery::default()
+                })
+                .is_err()
+            );
+        }
+        let plan = plan_list_query(&SourceRuntimeListQuery {
+            runtime_ids: Some("runtime-b,runtime-a".to_owned()),
+            source_id: Some(" github ".to_owned()),
+            ..SourceRuntimeListQuery::default()
+        })
+        .unwrap();
+        assert_eq!(plan.limit, DEFAULT_LIST_LIMIT);
+        assert_eq!(plan.source_id.as_deref(), Some("github"));
+        assert_eq!(
+            plan.runtime_ids
+                .iter()
+                .map(SourceRuntimeId::as_str)
+                .collect::<Vec<_>>(),
+            vec!["runtime-a", "runtime-b"]
+        );
+        let empty_source = plan_list_query(&SourceRuntimeListQuery {
+            source_id: Some(" ".to_owned()),
+            limit: Some(MAX_LIST_LIMIT),
+            ..SourceRuntimeListQuery::default()
+        })
+        .unwrap();
+        assert!(empty_source.source_id.is_none());
+    }
+
+    fn put_input() -> SourceRuntimeInput {
+        SourceRuntimeInput {
+            id: "runtime-a".to_owned(),
+            source_id: "github".to_owned(),
+            tenant_id: "tenant-a".to_owned(),
+            config: BTreeMap::new(),
+            checkpoint: None,
+            next_cursor: None,
+            last_synced_at: None,
+        }
+    }
+
+    #[test]
+    fn put_identity_requires_matching_path_body_and_authenticated_tenant() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let (runtime_id, input) = admit_put_identity(
+            &tenant,
+            "runtime-a",
+            PutSourceRuntimeRequest {
+                runtime: Some(put_input()),
+            },
+        )
+        .unwrap();
+        assert_eq!(runtime_id.as_str(), "runtime-a");
+        assert_eq!(input.source_id, "github");
+
+        assert!(
+            admit_put_identity(
+                &tenant,
+                "",
+                PutSourceRuntimeRequest {
+                    runtime: Some(put_input()),
+                },
+            )
+            .is_err()
+        );
+        assert!(
+            admit_put_identity(
+                &tenant,
+                "runtime-a",
+                PutSourceRuntimeRequest { runtime: None },
+            )
+            .is_err()
+        );
+
+        let mut wrong_id = put_input();
+        wrong_id.id = "runtime-b".to_owned();
+        assert!(
+            admit_put_identity(
+                &tenant,
+                "runtime-a",
+                PutSourceRuntimeRequest {
+                    runtime: Some(wrong_id),
+                },
+            )
+            .is_err()
+        );
+
+        let mut wrong_tenant = put_input();
+        wrong_tenant.tenant_id = "tenant-b".to_owned();
+        let error = admit_put_identity(
+            &tenant,
+            "runtime-a",
+            PutSourceRuntimeRequest {
+                runtime: Some(wrong_tenant),
+            },
+        )
+        .err()
+        .unwrap();
+        assert_eq!(
+            error.kind(),
+            SourceRuntimeRegistryFailureKind::TenantMismatch
+        );
+    }
+
+    #[test]
+    fn put_admission_rejects_every_caller_owned_progress_field() {
+        assert!(reject_caller_owned_progress(&put_input()).is_ok());
+        for input in [
+            SourceRuntimeInput {
+                checkpoint: Some(serde_json::json!({"offset": 1})),
+                ..put_input()
+            },
+            SourceRuntimeInput {
+                next_cursor: Some(serde_json::json!({"cursor": "next"})),
+                ..put_input()
+            },
+            SourceRuntimeInput {
+                last_synced_at: Some("2026-08-25T00:00:00Z".to_owned()),
+                ..put_input()
+            },
+        ] {
+            assert!(reject_caller_owned_progress(&input).is_err());
+        }
+    }
+
+    #[test]
+    fn unchanged_config_preserves_progress_while_config_changes_reset_it() {
+        let config = BTreeMap::from([("family".to_owned(), "users".to_owned())]);
+        let runtime = StoredSourceRuntime::new(
+            SourceRuntimeId::parse("runtime-progress-plan").unwrap(),
+            TenantId::parse("tenant-progress-plan").unwrap(),
+            "github".to_owned(),
+            config.clone(),
+            Some(serde_json::json!({"offset": 7})),
+            Some(serde_json::json!({"cursor": "next"})),
+            Some("2026-08-25T00:00:00Z".to_owned()),
+        )
+        .unwrap();
+        let preserved = preserved_progress(Some(&runtime), &config);
+        assert_eq!(preserved.0, Some(serde_json::json!({"offset": 7})));
+        assert_eq!(preserved.1, Some(serde_json::json!({"cursor": "next"})));
+        assert_eq!(preserved.2.as_deref(), Some("2026-08-25T00:00:00Z"));
+
+        let changed = BTreeMap::from([("family".to_owned(), "groups".to_owned())]);
+        assert_eq!(
+            preserved_progress(Some(&runtime), &changed),
+            (None, None, None)
+        );
+        assert_eq!(preserved_progress(None, &config), (None, None, None));
+    }
+
+    #[test]
+    fn config_admission_rejects_reserved_keys_and_redacted_new_credentials() {
+        for key in [
+            " malformed ",
+            "__cerebro_internal",
+            RESOURCE_SCOPE_CONFIG_KEY,
+        ] {
+            assert!(
+                admit_config(BTreeMap::from([(key.to_owned(), "value".to_owned())]), None).is_err()
+            );
+        }
+        assert!(
+            admit_config(
+                BTreeMap::from([("access_token".to_owned(), REDACTED_VALUE.to_owned())]),
+                None,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn config_admission_accepts_only_supported_secret_reference_forms() {
+        for reference in [
+            "env:PROVIDER_TOKEN",
+            "credential:provider-test:token",
+            "aws-sm://provider-test/token",
+        ] {
+            assert!(
+                admit_config(
+                    BTreeMap::from([("token".to_owned(), reference.to_owned())]),
+                    None,
+                )
+                .is_ok(),
+                "reference {reference}"
+            );
+        }
+        for invalid in [
+            "env:",
+            "env:lowercase",
+            "env:PROVIDER-TOKEN",
+            "env:PROVIDER/TOKEN",
+            "literal",
+        ] {
+            assert!(!supported_secret_reference(invalid), "reference {invalid}");
+        }
+    }
+
+    #[test]
+    fn config_admission_preserves_runtime_owned_internal_state() {
+        let existing = stored(BTreeMap::from([
+            ("__cerebro_runtime_status".to_owned(), "healthy".to_owned()),
+            (RESOURCE_SCOPE_CONFIG_KEY.to_owned(), "tenant".to_owned()),
+            ("family".to_owned(), "users".to_owned()),
+        ]));
+        let admitted = admit_config(
+            BTreeMap::from([("family".to_owned(), "groups".to_owned())]),
+            Some(&existing),
+        )
+        .unwrap();
+        assert_eq!(admitted.get("family").map(String::as_str), Some("groups"));
+        assert_eq!(
+            admitted.get("__cerebro_runtime_status").map(String::as_str),
+            Some("healthy")
+        );
+        assert_eq!(
+            admitted.get(RESOURCE_SCOPE_CONFIG_KEY).map(String::as_str),
+            Some("tenant")
+        );
+    }
+
+    #[test]
+    fn sensitive_key_detection_is_conservative_without_overmatching_plain_keys() {
+        for key in [
+            "token",
+            "client_secret",
+            "password",
+            "api-key",
+            "private.key",
+            "access_key",
+            "signing-key",
+            "key",
+        ] {
+            assert!(sensitive_config_key(key), "key {key}");
+        }
+        for key in ["", "family", "keyboard_layout", "monkey"] {
+            assert!(!sensitive_config_key(key), "key {key}");
+        }
+    }
+
+    #[test]
+    fn runtime_view_preserves_progress_and_redacts_every_sensitive_shape() {
+        let runtime = StoredSourceRuntime::new(
+            SourceRuntimeId::parse("runtime-progress").unwrap(),
+            TenantId::parse("tenant-progress").unwrap(),
+            "github".to_owned(),
+            BTreeMap::from([
+                ("private-key".to_owned(), "env:PRIVATE_KEY".to_owned()),
+                ("family".to_owned(), "users".to_owned()),
+                (RESOURCE_SCOPE_CONFIG_KEY.to_owned(), "tenant".to_owned()),
+            ]),
+            Some(serde_json::json!({"offset": 2})),
+            Some(serde_json::json!({"cursor": "next"})),
+            Some("2026-08-25T00:00:00Z".to_owned()),
+        )
+        .unwrap();
+        let view = runtime_view(&runtime);
+        assert_eq!(view.id, "runtime-progress");
+        assert_eq!(view.source_id, "github");
+        assert_eq!(view.tenant_id, "tenant-progress");
+        assert_eq!(
+            view.config.get("private-key").map(String::as_str),
+            Some(REDACTED_VALUE)
+        );
+        assert!(!view.config.contains_key(RESOURCE_SCOPE_CONFIG_KEY));
+        assert_eq!(view.checkpoint, Some(serde_json::json!({"offset": 2})));
+        assert_eq!(
+            view.next_cursor,
+            Some(serde_json::json!({"cursor": "next"}))
+        );
+        assert_eq!(view.last_synced_at.as_deref(), Some("2026-08-25T00:00:00Z"));
     }
 }
