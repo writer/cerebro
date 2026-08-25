@@ -129,7 +129,7 @@ fn every_family_plans_an_origin_restricted_request_without_credentials() {
         assert_eq!(url.host_str(), origin.host_str());
         assert!(url.username().is_empty());
         assert!(url.password().is_none());
-        assert!(request.url.find("${config.").is_none());
+        assert!(!request.url.contains("${config."));
         assert!(execution.body.is_empty());
         assert!(execution.declared_headers.is_empty());
         assert!(url.query_pairs().all(|(key, _)| !matches!(

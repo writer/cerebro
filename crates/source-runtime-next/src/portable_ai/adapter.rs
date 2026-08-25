@@ -270,8 +270,12 @@ impl PortableAiSourceExecutionAdapter {
             serde_json::from_slice(body).map_err(|_| SourceExecutionError::MalformedResponse)?;
         let cursor = match &self.family.pagination {
             Pagination::None => None,
-            Pagination::Cursor { json_path, .. } => scalar_at(&document, &[json_path.clone()]),
-            Pagination::NextUrl { json_path } => scalar_at(&document, &[json_path.clone()]),
+            Pagination::Cursor { json_path, .. } => {
+                scalar_at(&document, std::slice::from_ref(json_path))
+            }
+            Pagination::NextUrl { json_path } => {
+                scalar_at(&document, std::slice::from_ref(json_path))
+            }
             Pagination::Link { header, .. } => response_header(headers, header).and_then(link_next),
             Pagination::Page { .. } => next_page(&document)?,
         };
