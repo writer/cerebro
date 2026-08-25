@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use prost::Message;
 
 use super::{
-    canonical_plan_digest, canonical_response_headers_digest,
+    canonical_http_execution_digest, canonical_plan_digest, canonical_response_headers_digest,
     contract::{
         AUTHORIZATION_POLICY_FALLBACK_ID, AUTHORIZATION_POLICY_FAMILY, AUTHORIZATION_POLICY_KERNEL,
         AUTHORIZATION_POLICY_KIND, AUTHORIZATION_POLICY_PATH, AUTHORIZATION_POLICY_SCHEMA,
@@ -13,8 +13,8 @@ use super::{
     decode, decode_v2,
     error::SourceExecutionError,
     plan, plan_v2, response_digest, tenant_scoped_event_id, validate_and_deduplicate_records,
-    validate_cursor, validate_declared_headers, validate_http_request, validate_public_config,
-    validate_response_headers, validate_runtime_metadata,
+    validate_cursor, validate_declared_headers, validate_http_execution, validate_http_request,
+    validate_public_config, validate_response_headers, validate_runtime_metadata,
     wire::{
         SourceExecutionPlanV1, SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
         SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerDecodeResultV1,
@@ -296,6 +296,32 @@ fn v2_header_contract_rejects_credentials_and_bounds_metadata() {
     assert_eq!(
         canonical_response_headers_digest(&first).unwrap(),
         canonical_response_headers_digest(&second).unwrap()
+    );
+}
+
+#[test]
+fn generic_x_api_key_operation_is_closed_and_digest_bound() {
+    let plan = exact_plan();
+    let context = exact_context("tenant-a");
+    let metadata = SourceWorkerRuntimeMetadataV2::default();
+    let mut execution = SourceWorkerHttpExecutionV2 {
+        request: Some(planned_request(&context)),
+        body: Vec::new(),
+        declared_headers: HashMap::new(),
+        execution_intent_digest_sha256: String::new(),
+        credential_operation: "source.x_api_key".to_owned(),
+        allowed_origin: plan.origin.clone(),
+    };
+    execution.execution_intent_digest_sha256 =
+        canonical_http_execution_digest(&plan, &context, &metadata, &execution);
+    assert!(validate_http_execution(&plan, &context, &execution, &metadata).is_ok());
+
+    execution.credential_operation = "source.api_key".to_owned();
+    execution.execution_intent_digest_sha256 =
+        canonical_http_execution_digest(&plan, &context, &metadata, &execution);
+    assert_eq!(
+        validate_http_execution(&plan, &context, &execution, &metadata),
+        Err(SourceExecutionError::InvalidPlan)
     );
 }
 
