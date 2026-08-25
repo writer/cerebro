@@ -1,7 +1,12 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { isCerebroFixtureMode } from "@/lib/cerebro-fixtures";
 import { GET } from "./route";
+
+vi.mock("@/lib/cerebro-fixtures", () => ({
+  isCerebroFixtureMode: vi.fn(() => false),
+}));
 
 const originalIdentityProfile = process.env.CEREBRO_IDENTITY_PROFILE;
 const originalTrustedHeaders = process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS;
@@ -10,6 +15,7 @@ describe("audit events API", () => {
   beforeEach(() => {
     delete process.env.CEREBRO_IDENTITY_PROFILE;
     process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = "x-user-email";
+    vi.mocked(isCerebroFixtureMode).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -18,6 +24,7 @@ describe("audit events API", () => {
     if (originalTrustedHeaders === undefined) delete process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS;
     else process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS = originalTrustedHeaders;
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -32,6 +39,34 @@ describe("audit events API", () => {
       code: "identity_missing",
       permission: "cerebro:read",
     });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("still requires a reader identity in fixture mode", async () => {
+    vi.mocked(isCerebroFixtureMode).mockReturnValue(true);
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await GET(new NextRequest("http://localhost/api/audit-log"));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ code: "identity_missing" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("still enforces reader entitlements in fixture mode", async () => {
+    vi.mocked(isCerebroFixtureMode).mockReturnValue(true);
+    vi.stubEnv("CEREBRO_AUTHZ_READ_ROLES", "auditor");
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/audit-log",
+      { headers: { "x-user-email": "reader@example.com" } },
+    ));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "entitlement_missing" });
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -70,6 +105,25 @@ describe("audit events API", () => {
     expect(requested.searchParams.get("limit")).toBe("500");
     expect(requested.searchParams.get("minutes")).toBe("5");
     expect(requested.searchParams.get("service")).toBe("service-a");
+  });
+
+  it("returns an authorized empty page without an upstream request in fixture mode", async () => {
+    vi.mocked(isCerebroFixtureMode).mockReturnValue(true);
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/audit-log",
+      { headers: { "x-user-email": "reader@example.com" } },
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      events: [],
+      status: "complete",
+      summary: { total: 0 },
+    });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("does not expose upstream response details", async () => {

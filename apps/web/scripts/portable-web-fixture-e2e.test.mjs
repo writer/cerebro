@@ -10,9 +10,14 @@ import {
   assertPublicConfig,
   closeLogStream,
   createDeadline,
+  discoverPageRoutes,
+  isExpectedLocal404,
   parseArgs,
   parseFixtureReadyLine,
+  routeBugbashFindings,
+  routeWithScope,
   runPortableWebFixtureE2E,
+  sameOriginApplicationRoute,
   stopProcessTree,
   validateHttpContracts,
   waitForFixtureEndpoint,
@@ -23,12 +28,18 @@ const headers = (values = {}) => new Headers(values);
 
 describe("portable web fixture E2E options", () => {
   it("uses child-owned port allocation, Chromium, and a hard deadline by default", () => {
-    expect(parseArgs([])).toEqual({ browser: true, port: 0, timeoutMs: 180_000 });
+    expect(parseArgs([])).toEqual({ allRoutes: false, browser: true, port: 0, timeoutMs: 180_000 });
   });
 
   it("parses explicit browser, port, and timeout options", () => {
     expect(parseArgs(["--no-browser", "--port=43123", "--timeout-ms", "1200"]))
-      .toEqual({ browser: false, port: 43123, timeoutMs: 1200 });
+      .toEqual({ allRoutes: false, browser: false, port: 43123, timeoutMs: 1200 });
+  });
+
+  it("enables the bounded full-route harness with a longer default deadline", () => {
+    expect(parseArgs(["--all-routes"]))
+      .toEqual({ allRoutes: true, browser: true, port: 0, timeoutMs: 420_000 });
+    expect(parseArgs(["--timeout-ms=1200", "--all-routes"]).timeoutMs).toBe(1200);
   });
 
   it("keeps the former readiness flag as an overall-timeout alias", () => {
@@ -39,6 +50,96 @@ describe("portable web fixture E2E options", () => {
     expect(() => parseArgs(["--keep"])).toThrow("Unknown option");
     expect(() => parseArgs(["--port", "70000"])).toThrow("between 0 and 65535");
     expect(() => parseArgs(["--timeout-ms=0"])).toThrow("between 1");
+  });
+});
+
+describe("portable web fixture route bug bash", () => {
+  it("discovers every app page with safe concrete dynamic route samples", async () => {
+    const webRoot = path.resolve(import.meta.dirname, "..");
+    const routes = await discoverPageRoutes(webRoot);
+    expect(routes).toContain("/actions/fixture-operation");
+    expect(routes).toContain("/connectors/okta/setup");
+    expect(routes).toContain("/findings/demo-finding-critical");
+    expect(routes).toContain("/inventory/urn%3Acerebro%3Ademo-tenant%3Aidentity%3Aplatform-admin");
+    expect(routes).toContain("/vendors/urn%3Acerebro%3Ademo-tenant%3Avendor%3Acore-sso");
+    expect(routes).not.toContain(expect.stringMatching(/\[[^\]]+\]/));
+  });
+
+  it("adds tenant and application workspace scope without dropping route state", () => {
+    expect(routeWithScope("/inventory?owner=unassigned#table", "tenant-a", "workspace-a"))
+      .toBe("/inventory?owner=unassigned&tenant_id=tenant-a&workspace_id=workspace-a");
+  });
+
+  it("keeps only same-origin application routes for the browser crawl", () => {
+    const baseUrl = "http://127.0.0.1:43123";
+    expect(sameOriginApplicationRoute("/vendors#queue", baseUrl)).toBe("/vendors");
+    expect(sameOriginApplicationRoute("/api/cerebro/grc/vendors", baseUrl)).toBeNull();
+    expect(sameOriginApplicationRoute("https://example.com/vendors", baseUrl)).toBeNull();
+    expect(sameOriginApplicationRoute("/_next/static/chunk.js", baseUrl)).toBeNull();
+    expect(sameOriginApplicationRoute("/impact?root_urn=%5Bidentity-user-1%5D", baseUrl)).toBeNull();
+  });
+
+  it("allows only the two optional local evaluation reports to be absent", () => {
+    expect(isExpectedLocal404("/evals/ask/latest.json", 404)).toBe(true);
+    expect(isExpectedLocal404("/evals/security-agent/latest.json", 404)).toBe(true);
+    expect(isExpectedLocal404("/api/cerebro/grc/vendors", 404)).toBe(false);
+    expect(isExpectedLocal404("/evals/ask/latest.json", 500)).toBe(false);
+  });
+
+  it("reports document 404s, overlays, console errors, page errors, and missing backend paths", () => {
+    expect(routeBugbashFindings({
+      body: "This page could not be found",
+      consoleErrors: ["Failed to load resource"],
+      documentStatus: 404,
+      pageErrors: ["render exploded"],
+      response404s: ["/api/cerebro/grc/vendors"],
+      responseFailures: [{ pathname: "/api/audit-log", status: 502 }],
+      route: "/vendors",
+    })).toEqual([
+      "/vendors returned document status 404",
+      "/vendors rendered an application or framework error",
+      "/vendors raised a page error: render exploded",
+      "/vendors logged a console error: Failed to load resource",
+      "/vendors requested missing backend path /api/cerebro/grc/vendors",
+      "/vendors requested 502 response at /api/audit-log",
+    ]);
+  });
+
+  it("reports redirects, dropped scope, and browser network failures", () => {
+    expect(routeBugbashFindings({
+      body: "Ready",
+      consoleErrors: [],
+      documentStatus: 200,
+      finalURL: "http://127.0.0.1:43123/login?tenant_id=tenant-a",
+      pageErrors: [],
+      requestFailures: [{ error: "net::ERR_CONNECTION_RESET", url: "/api/cerebro/grc/vendors" }],
+      route: "/vendors?tenant_id=tenant-a&workspace_id=workspace-a",
+    })).toEqual([
+      "/vendors?tenant_id=tenant-a&workspace_id=workspace-a navigated to unexpected path /login",
+      "/vendors?tenant_id=tenant-a&workspace_id=workspace-a dropped workspace_id during navigation",
+      "/vendors?tenant_id=tenant-a&workspace_id=workspace-a had a network failure at /api/cerebro/grc/vendors: net::ERR_CONNECTION_RESET",
+    ]);
+  });
+
+  it("accepts declared legacy redirects and requires scope on the preserving redirect", () => {
+    expect(routeBugbashFindings({
+      body: "Ready",
+      consoleErrors: [],
+      documentStatus: 200,
+      finalURL: "http://127.0.0.1:43123/developer",
+      pageErrors: [],
+      route: "/developer/codegen?tenant_id=tenant-a&workspace_id=workspace-a",
+    })).toEqual([]);
+    expect(routeBugbashFindings({
+      body: "Ready",
+      consoleErrors: [],
+      documentStatus: 200,
+      finalURL: "http://127.0.0.1:43123/connectors/activation?tenant_id=tenant-a",
+      pageErrors: [],
+      route: "/connectors/source-cdk?tenant_id=tenant-a&workspace_id=workspace-a",
+    })).toEqual([
+      "/connectors/source-cdk?tenant_id=tenant-a&workspace_id=workspace-a dropped workspace_id during navigation",
+    ]);
   });
 });
 

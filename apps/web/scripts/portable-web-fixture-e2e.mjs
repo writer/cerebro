@@ -3,7 +3,7 @@
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -17,15 +17,42 @@ const defaultWebRoot = path.resolve(scriptDir, "..");
 const fixtureDevScript = path.join(scriptDir, "dev-fixtures.mjs");
 const fixtureRootURN = "urn:cerebro:local-e2e:entity:root";
 const renderedErrorPattern = /Application error|Unhandled Runtime Error|Cerebro request failed \([45][0-9][0-9]\)/i;
+const frameworkErrorPattern = /This page could not be found|Next\.js.*error|ChunkLoadError|Minified React error/i;
 const defaultTimeoutMs = 180_000;
 const perRequestTimeoutMs = 15_000;
+const routeBugbashTimeoutMs = 420_000;
+const maxBugbashRoutes = 300;
+const fixtureTenantID = "demo-tenant";
+const fixtureWorkspaceID = "fixture-workspace";
+const routeParameterSamples = Object.freeze({
+  dashboardID: "fixture-program-overview",
+  frameworkID: "soc2",
+  id: "demo-finding-critical",
+  operationID: "fixture-operation",
+  slug: "grc",
+  snapshotID: "fixture-snapshot-1",
+  sourceID: "okta",
+});
+const expectedRouteRedirects = new Map([
+  ["/connectors/source-cdk", { pathname: "/connectors/activation", preserveScope: true }],
+  ["/developer/codegen", { pathname: "/developer", preserveScope: false }],
+  ["/mission-control", { pathname: "/connectors", preserveScope: false }],
+  ["/vision", { pathname: "/", preserveScope: false }],
+]);
+
+const routeURNParameterSample = (pageFile) => pageFile === path.join("vendors", "[urn]", "page.tsx")
+  ? "urn:cerebro:demo-tenant:vendor:core-sso"
+  : "urn:cerebro:demo-tenant:identity:platform-admin";
 
 export function parseArgs(argv) {
-  const options = { browser: true, port: 0, timeoutMs: defaultTimeoutMs };
+  const options = { allRoutes: false, browser: true, port: 0, timeoutMs: defaultTimeoutMs };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--browser") {
       options.browser = true;
+    } else if (arg === "--all-routes") {
+      options.allRoutes = true;
+      if (options.timeoutMs === defaultTimeoutMs) options.timeoutMs = routeBugbashTimeoutMs;
     } else if (arg === "--no-browser") {
       options.browser = false;
     } else if (arg === "--port") {
@@ -45,6 +72,112 @@ export function parseArgs(argv) {
     }
   }
   return options;
+}
+
+function pageRouteSegment(segment, pageFile) {
+  if (segment.startsWith("(") && segment.endsWith(")")) return "";
+  if (segment.startsWith("@")) return "";
+  const dynamic = segment.match(/^\[(?:\.\.\.)?([^\]]+)\]$/);
+  if (!dynamic) return segment;
+  const sample = dynamic[1] === "urn"
+    ? routeURNParameterSample(pageFile)
+    : routeParameterSamples[dynamic[1]];
+  if (!sample) {
+    throw new Error(`No local route sample is registered for [${dynamic[1]}]`);
+  }
+  return encodeURIComponent(sample);
+}
+
+async function pageFilesBelow(directory, relativeDirectory = "") {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const relativePath = path.join(relativeDirectory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await pageFilesBelow(path.join(directory, entry.name), relativePath));
+    } else if (entry.isFile() && entry.name === "page.tsx") {
+      files.push(relativePath);
+    }
+  }
+  return files;
+}
+
+export async function discoverPageRoutes(webRoot = defaultWebRoot) {
+  const appRoot = path.join(webRoot, "src", "app");
+  const pageFiles = await pageFilesBelow(appRoot);
+  return pageFiles
+    .map((pageFile) => {
+      const segments = path.dirname(pageFile)
+        .split(path.sep)
+        .filter((segment) => segment !== ".")
+        .map((segment) => pageRouteSegment(segment, pageFile))
+        .filter(Boolean);
+      return `/${segments.join("/")}`;
+    })
+    .sort((left, right) => left.localeCompare(right));
+}
+
+export function routeWithScope(route, tenantID = fixtureTenantID, workspaceID = fixtureWorkspaceID) {
+  const url = new URL(route, "http://cerebro.local");
+  url.searchParams.set("tenant_id", tenantID);
+  url.searchParams.set("workspace_id", workspaceID);
+  return `${url.pathname}${url.search}`;
+}
+
+export function sameOriginApplicationRoute(href, baseUrl) {
+  let url;
+  try {
+    url = new URL(href, baseUrl);
+  } catch {
+    return null;
+  }
+  const base = new URL(baseUrl);
+  if (url.origin !== base.origin) return null;
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/")) return null;
+  if (url.pathname !== "/" && /\.[a-z0-9]{2,8}$/i.test(url.pathname)) return null;
+  if ([...url.searchParams.values()].some((value) => /\[[^\]]+\]/.test(value))) return null;
+  url.hash = "";
+  return `${url.pathname}${url.search}`;
+}
+
+export function isExpectedLocal404(pathname, status) {
+  return status === 404 && [
+    "/evals/ask/latest.json",
+    "/evals/security-agent/latest.json",
+  ].includes(pathname);
+}
+
+export function routeBugbashFindings({ body, consoleErrors, documentStatus, finalURL, pageErrors, requestFailures = [], response404s = [], responseFailures = [], route }) {
+  const findings = [];
+  if (documentStatus !== 200) findings.push(`${route} returned document status ${documentStatus ?? "none"}`);
+  if (finalURL) {
+    const requested = new URL(route, finalURL);
+    const final = new URL(finalURL);
+    const expectedRedirect = expectedRouteRedirects.get(requested.pathname);
+    const expectedPathname = expectedRedirect?.pathname ?? requested.pathname;
+    if (expectedPathname !== final.pathname) {
+      findings.push(`${route} navigated to unexpected path ${final.pathname}`);
+    }
+    if (!expectedRedirect || expectedRedirect.preserveScope) {
+      for (const key of ["tenant_id", "workspace_id"]) {
+        const expected = requested.searchParams.get(key);
+        if (expected && final.searchParams.get(key) !== expected) {
+          findings.push(`${route} dropped ${key} during navigation`);
+        }
+      }
+    }
+  }
+  if (renderedErrorPattern.test(body) || frameworkErrorPattern.test(body)) {
+    findings.push(`${route} rendered an application or framework error`);
+  }
+  for (const error of pageErrors) findings.push(`${route} raised a page error: ${error}`);
+  for (const failure of requestFailures) findings.push(`${route} had a network failure at ${failure.url}: ${failure.error}`);
+  for (const error of consoleErrors) findings.push(`${route} logged a console error: ${error}`);
+  for (const pathname of response404s) findings.push(`${route} requested missing backend path ${pathname}`);
+  for (const failure of responseFailures) {
+    findings.push(`${route} requested ${failure.status} response at ${failure.pathname}`);
+  }
+  return findings;
 }
 
 function parseIntegerOption(name, value, { minimum, maximum = Number.MAX_SAFE_INTEGER }) {
@@ -243,6 +376,127 @@ export async function validateBrowserContracts(baseUrl, contracts, deadline) {
   }
 }
 
+async function waitForRouteSettled(page, deadline, route) {
+  const waitMs = Math.max(1, Math.min(500, deadline.remaining()));
+  try {
+    await page.waitForLoadState("networkidle", { timeout: waitMs });
+  } catch (error) {
+    if (error?.name !== "TimeoutError") throw error;
+  }
+  await deadline.run(page.waitForTimeout(50), `${route} render settlement`);
+}
+
+export async function validateBrowserRouteBugbash(baseUrl, options) {
+  const { deadline, webRoot = defaultWebRoot } = options;
+  const { chromium } = await deadline.run(import("@playwright/test"), "Playwright import");
+  const browser = await deadline.run(chromium.launch({ headless: true }), "Chromium launch");
+  const routeQueue = [];
+  const queuedRoutes = new Set();
+  const auditedRoutes = new Set();
+  const enqueue = (route, { preserveSearch = true } = {}) => {
+    const normalized = sameOriginApplicationRoute(route, baseUrl);
+    if (!normalized) return;
+    const crawlRoute = preserveSearch
+      ? normalized
+      : new URL(normalized, baseUrl).pathname;
+    if (queuedRoutes.has(crawlRoute)) return;
+    if (queuedRoutes.size >= maxBugbashRoutes) {
+      throw new Error(`Local route bug bash exceeded its ${maxBugbashRoutes}-route bound`);
+    }
+    queuedRoutes.add(crawlRoute);
+    routeQueue.push(crawlRoute);
+  };
+  try {
+    const discoveredRoutes = await deadline.run(discoverPageRoutes(webRoot), "application route discovery");
+    for (const route of discoveredRoutes) {
+      enqueue(route);
+      enqueue(routeWithScope(route));
+    }
+
+    const page = await deadline.run(browser.newPage({ viewport: { width: 1440, height: 1000 } }), "bug-bash page creation");
+    let currentConsoleErrors = [];
+    let currentPageErrors = [];
+    let currentRequestFailures = [];
+    let currentResponseFailures = [];
+    const scopedAPIRequests = new Set();
+    page.on("console", (message) => {
+      if (message.type() !== "error") return;
+      if (/^Failed to load resource: the server responded with a status of/i.test(message.text())) return;
+      currentConsoleErrors.push(message.text());
+    });
+    page.on("pageerror", (error) => currentPageErrors.push(error.message));
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.origin !== new URL(baseUrl).origin || !url.pathname.startsWith("/api/cerebro/")) return;
+      if (url.searchParams.get("tenant_id") === fixtureTenantID && url.searchParams.get("workspace_id") === fixtureWorkspaceID) {
+        scopedAPIRequests.add(`${url.pathname}${url.search}`);
+      }
+    });
+    page.on("requestfailed", (request) => {
+      const url = new URL(request.url());
+      const error = request.failure()?.errorText ?? "unknown browser failure";
+      if (url.origin !== new URL(baseUrl).origin || error === "net::ERR_ABORTED") return;
+      currentRequestFailures.push({ error, url: `${url.pathname}${url.search}` });
+    });
+    page.on("response", (response) => {
+      const url = new URL(response.url());
+      if (url.origin !== new URL(baseUrl).origin || response.status() < 400) return;
+      if (url.pathname.startsWith("/_next/") || isExpectedLocal404(url.pathname, response.status())) return;
+      currentResponseFailures.push({ pathname: url.pathname, status: response.status() });
+    });
+
+    const findings = [];
+    while (routeQueue.length > 0) {
+      const route = routeQueue.shift();
+      if (!route || auditedRoutes.has(route)) continue;
+      auditedRoutes.add(route);
+      currentConsoleErrors = [];
+      currentPageErrors = [];
+      currentRequestFailures = [];
+      currentResponseFailures = [];
+      const response = await page.goto(new URL(route, baseUrl).toString(), {
+        timeout: Math.max(1, Math.min(perRequestTimeoutMs, deadline.remaining())),
+        waitUntil: "domcontentloaded",
+      });
+      await waitForRouteSettled(page, deadline, route);
+      const body = await deadline.run(page.locator("body").innerText(), `${route} body read`);
+      findings.push(...routeBugbashFindings({
+        body,
+        consoleErrors: [...new Set(currentConsoleErrors)],
+        documentStatus: response?.status(),
+        finalURL: page.url(),
+        pageErrors: [...new Set(currentPageErrors)],
+        requestFailures: [...new Map(currentRequestFailures.map((failure) => [
+          `${failure.error}:${failure.url}`,
+          failure,
+        ])).values()],
+        responseFailures: [...new Map(currentResponseFailures.map((failure) => [
+          `${failure.status}:${failure.pathname}`,
+          failure,
+        ])).values()],
+        route,
+      }));
+      const hrefs = await deadline.run(page.locator("a[href]").evaluateAll((anchors) =>
+        anchors.map((anchor) => anchor.href).filter(Boolean)), `${route} link discovery`);
+      for (const href of hrefs) enqueue(href, { preserveSearch: false });
+    }
+    if (findings.length > 0) {
+      throw new Error(`Local route bug bash found ${findings.length} failure(s):\n- ${findings.join("\n- ")}`);
+    }
+    if (scopedAPIRequests.size === 0) {
+      throw new Error("Local route bug bash did not observe tenant and workspace scope on an API request");
+    }
+    return {
+      discoveredRouteCount: auditedRoutes.size,
+      routeTemplateCount: discoveredRoutes.length,
+      scopedRouteCount: [...auditedRoutes].filter((route) => route.includes("workspace_id=")).length,
+      scopedAPIRequestCount: scopedAPIRequests.size,
+    };
+  } finally {
+    await deadline.run(browser.close(), "Chromium shutdown");
+  }
+}
+
 function fixtureAppExit(child) {
   return new Promise((_, reject) => {
     child.once("error", reject);
@@ -400,9 +654,13 @@ export async function runPortableWebFixtureE2E(options = {}) {
       if (options.browser ?? true) {
         await validateBrowserContracts(baseUrl, contracts, validationDeadline);
       }
+      const routeBugbash = options.allRoutes
+        ? await validateBrowserRouteBugbash(baseUrl, { deadline: validationDeadline, webRoot })
+        : null;
       return {
         browserChecked: options.browser ?? true,
         routeCount: contracts.length,
+        routeBugbash,
         scriptChunkCount: smoke.chunkResponses.length,
       };
     };
@@ -451,6 +709,11 @@ async function runCli() {
   const result = await runPortableWebFixtureE2E(parseArgs(process.argv.slice(2)));
   const browser = result.browserChecked ? " with Chromium checks" : " without Chromium checks";
   console.log(`[e2e:web:fixtures] passed ${result.routeCount} route contracts${browser}`);
+  if (result.routeBugbash) {
+    console.log(`[e2e:web:fixtures] bug-bashed ${result.routeBugbash.discoveredRouteCount} local routes from ${result.routeBugbash.routeTemplateCount} page templates`);
+    console.log(`[e2e:web:fixtures] checked ${result.routeBugbash.scopedRouteCount} tenant and workspace route variants`);
+    console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.scopedAPIRequestCount} tenant and workspace scoped API requests`);
+  }
   console.log(`[e2e:web:fixtures] checked ${result.scriptChunkCount} application chunks`);
 }
 

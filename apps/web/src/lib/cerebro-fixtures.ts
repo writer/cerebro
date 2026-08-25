@@ -572,6 +572,38 @@ const graph = {
   ],
 };
 
+const actionFixture = {
+  proposal: {
+    operation_id: "fixture-operation",
+    tenant_id: tenantID,
+    finding_id: "demo-finding-critical",
+    finding_revision_digest: "fixture-finding-revision",
+    finding_validation_receipt_digest: "fixture-validation-receipt",
+    graph_revision: 1,
+    action_kind: "require_mfa",
+    action_definition_digest: "fixture-action-definition",
+    target_id: adminURN,
+    expected_effects: [{
+      target_id: adminURN,
+      effect_kind: "mfa_required",
+      expected_state_digest: "fixture-expected-state",
+    }],
+    rollback_ref: "fixture://actions/fixture-operation/rollback",
+    idempotency_key: "fixture-operation",
+    simulation_digest: "fixture-simulation",
+    verification_plan_digest: "fixture-verification-plan",
+    proposed_by: "fixture-operator",
+    proposed_at_unix_ms: Date.parse("2026-01-15T11:00:00.000Z"),
+    proposal_expires_at_unix_ms: Date.parse("2026-01-16T11:00:00.000Z"),
+    proposal_digest: "fixture-proposal",
+  },
+  state: "waiting_for_approval",
+  version: 1,
+  approval_receipt: null,
+  verification_state: "pending",
+  verification_receipt: null,
+};
+
 const assets = [
   {
     urn: adminURN,
@@ -4360,6 +4392,64 @@ export const cerebroFixtureResponseFor = ({
     return jsonFixture({ status: "ready", components: [{ name: "fixture", status: "ready" }], generated_at: generatedAt });
   }
 
+  if (normalizedPath === "v1/actions") {
+    return jsonFixture({ actions: [actionFixture], next_page_token: null });
+  }
+
+  const actionPathParts = normalizedPath.split("/");
+  if (actionPathParts.length === 4 && actionPathParts[0] === "v1" && actionPathParts[1] === "actions" && actionPathParts[3] === "history") {
+    return jsonFixture([{
+      actor_id: "fixture-operator",
+      event_kind: "action.proposed",
+      operation_digest: actionFixture.proposal.proposal_digest,
+      committed_at_unix_ms: actionFixture.proposal.proposed_at_unix_ms,
+      operation: actionFixture,
+    }]);
+  }
+
+  if (actionPathParts.length === 3 && actionPathParts[0] === "v1" && actionPathParts[1] === "actions") {
+    return safeDecode(actionPathParts[2]) === actionFixture.proposal.operation_id
+      ? jsonFixture(actionFixture)
+      : jsonFixture({ error: "Action not found" }, 404);
+  }
+
+  if (normalizedPath === "ask-queries") {
+    return jsonFixture({ queries: [], generated_at: generatedAt });
+  }
+
+  if (normalizedPath === "v1/source-runtimes/health") {
+    return jsonFixture({
+      generated_at: generatedAt,
+      runtimes: connectors,
+      source_summaries: sourceSummaries,
+      tenant_id: searchParams?.get("tenant_id") ?? tenantID,
+    });
+  }
+
+  if (normalizedPath === "api/v1/agent-platform/contract") {
+    return jsonFixture({});
+  }
+
+  if (normalizedPath === "identity/orgs") {
+    return jsonFixture({
+      meta: { configured: 0, limit: 100, loaded: 0, persisted: 0 },
+      organizations: [],
+      tenant_id: searchParams?.get("tenant_id") ?? tenantID,
+    });
+  }
+
+  if (normalizedPath === "identity/users") {
+    return jsonFixture({
+      meta: { configured: 0, limit: 100, loaded: 0, persisted: 0 },
+      tenant_id: searchParams?.get("tenant_id") ?? tenantID,
+      users: [],
+    });
+  }
+
+  if (normalizedPath === "platform/graph/neighborhood") {
+    return jsonFixture(graph);
+  }
+
   if (normalizedPath === "user/preferences") {
     return jsonFixture({
       tenant_id: tenantID,
@@ -4577,6 +4667,10 @@ export const cerebroFixtureResponseFor = ({
     return jsonFixture({ evidence: limitList(evidence, searchParams), generated_at: generatedAt });
   }
 
+  if (normalizedPath === "grc/report-catalog") {
+    return jsonFixture({ sources: [], generated_at: generatedAt });
+  }
+
   if (normalizedPath === "grc/evidence-packets") {
     return jsonFixture(evidencePacketsFixture(searchParams));
   }
@@ -4685,6 +4779,15 @@ export const cerebroFixtureResponseFor = ({
 
   if (normalizedPath === "connector-definitions") {
     return jsonFixture(connectorDefinitionFixture());
+  }
+
+  const connectorDefinitionPathParts = normalizedPath.split("/");
+  if (connectorDefinitionPathParts.length === 2 && connectorDefinitionPathParts[0] === "connector-definitions") {
+    const definitionID = safeDecode(connectorDefinitionPathParts[1]);
+    const definition = connectorDefinitionFixture().definitions.find((item) => item.id === definitionID);
+    return definition
+      ? jsonFixture({ definition, generated_at: generatedAt })
+      : jsonFixture({ error: "Connector definition not found" }, 404);
   }
 
   const connectorDefinitionPlanMatch = /^connector-definitions\/([^/]+)\/promotion-plan$/.exec(normalizedPath);
