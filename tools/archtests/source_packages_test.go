@@ -52,6 +52,7 @@ var priorCatalogRuntimeOnlySourcePackages = map[string]struct{}{
 	"deepseek":        {},
 	"digitalocean":    {},
 	"openai":          {},
+	"pagerduty":       {},
 	"sentinelone":     {},
 	"slack":           {},
 	"tailscale":       {},

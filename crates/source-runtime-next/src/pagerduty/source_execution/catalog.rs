@@ -146,9 +146,6 @@ impl PagerDutySourceExecutionAdapter {
     }
 }
 
-pub(crate) static PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER: PagerDutySourceExecutionAdapter =
-    PagerDutySourceExecutionAdapter::new(PagerDutyFamily::User);
-
 pub(crate) static PAGERDUTY_SOURCE_EXECUTION_ADAPTERS: [PagerDutySourceExecutionAdapter; 7] = [
     PagerDutySourceExecutionAdapter::new(PagerDutyFamily::User),
     PagerDutySourceExecutionAdapter::new(PagerDutyFamily::Team),

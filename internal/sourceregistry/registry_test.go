@@ -318,7 +318,6 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"langfuse":              true,
 		"okta":                  true,
 		"onelogin":              true,
-		"pagerduty":             true,
 		"sailpoint_identitynow": true,
 		"snyk":                  true,
 		"writer":                true,
@@ -375,6 +374,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"jumpcloud",
 		"langchain",
 		"openai",
+		"pagerduty",
 		"sentinelone",
 		"tailscale",
 		"twilio",
@@ -407,7 +407,7 @@ func TestWorkerCatalogSourcesKeepMetadataAndFailClosedWithoutWorkerRouting(t *te
 		if !ok || source.Spec().GetId() != sourceID {
 			t.Fatalf("worker source %q is missing its portable catalog metadata", sourceID)
 		}
-		family := map[string]string{"asana": "users", "digitalocean": "droplets", "sentinelone": "threat"}[sourceID]
+		family := map[string]string{"asana": "users", "digitalocean": "droplets", "pagerduty": "user", "sentinelone": "threat"}[sourceID]
 		if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"family": family})); !errors.Is(err, errWorkerCatalogExecutionRequired) {
 			t.Fatalf("worker source %q direct Check() error = %v, want fail-closed worker requirement", sourceID, err)
 		}

@@ -17,9 +17,7 @@ pub use projection::{
 };
 pub use request::{PagerDutyKernel, PagerDutyRequest};
 
-pub(crate) use source_execution::{
-    PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER, durable_checkpoint_cursor,
-};
+pub(crate) use source_execution::{PAGERDUTY_SOURCE_EXECUTION_ADAPTERS, durable_checkpoint_cursor};
 
 #[cfg(test)]
 mod tests;

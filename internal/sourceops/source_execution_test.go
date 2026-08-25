@@ -38,6 +38,11 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		"Linode issue":                {"linode", "issue", "issue", true},
 		"other Linode family":         {"linode", "event", "event", false},
 		"unknown Linode family":       {"linode", "future-family", "future-family", false},
+		"PagerDuty default":           {"pagerduty", "", "user", true},
+		"PagerDuty user":              {"pagerduty", "user", "user", true},
+		"PagerDuty team":              {"pagerduty", "team", "team", true},
+		"PagerDuty integration":       {"pagerduty", "integration", "integration", true},
+		"unknown PagerDuty family":    {"pagerduty", "future-family", "future-family", true},
 		"SentinelOne threat":          {"sentinelone", "threat", "threat", true},
 		"SentinelOne application":     {"sentinelone", "application", "application", true},
 		"unknown SentinelOne family":  {"sentinelone", "future-family", "future-family", false},
@@ -113,6 +118,77 @@ func TestUnknownAsanaFamilyFailsClosedWithoutLegacyCalls(t *testing.T) {
 	}
 	config := map[string]string{"family": "future-family", "tenant_id": "tenant-1", "token": "host-only-secret", "workspace_gid": "workspace-1"}
 	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "asana", Config: config}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if legacy.checkCalls != 0 {
+		t.Fatalf("legacy check calls = %d", legacy.checkCalls)
+	}
+}
+
+func TestPagerDutyCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
+	const credentialFixture = "host-only-pagerduty-secret" // #nosec G101 -- synthetic boundary-test sentinel, not credential material.
+	for _, family := range []string{"user", "team", "service", "schedule", "escalation_policy", "integration", "vendor"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &authorityProbeSource{sourceID: "pagerduty"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := New(registry)
+			service.sourceWorker = previewWorkerStub{}
+			calls := 0
+			service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, reference string, credential []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+				calls++
+				if reference != previewCredentialReference || string(credential) != credentialFixture {
+					t.Fatal("PagerDuty credential was not confined to the trusted runner boundary")
+				}
+				encoded, marshalErr := json.Marshal(input)
+				if marshalErr != nil || strings.Contains(string(encoded), credentialFixture) || input.Scope.PublicConfig["token"] != "" {
+					t.Fatalf("credential crossed the worker protocol: %s, %v", encoded, marshalErr)
+				}
+				if input.SourceID != "pagerduty" || input.FamilyID != family || input.Scope.PublicConfig["per_page"] != "100" {
+					t.Fatalf("Rust selection = %s.%s, public config = %#v", input.SourceID, input.FamilyID, input.Scope.PublicConfig)
+				}
+				if family == "integration" && input.Scope.PublicConfig["service_ids"] != "PS1,PS2" {
+					t.Fatalf("integration service scope = %#v", input.Scope.PublicConfig)
+				}
+				return pagerDutyPreviewOutput(family, input.Scope.PriorTerminalWatermarkUnixMillis), nil
+			}
+			config := map[string]string{"family": family, "tenant_id": "tenant-1", "token": credentialFixture, "per_page": "100"}
+			if family == "integration" {
+				config["service_ids"] = "PS1,PS2"
+			}
+			if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "pagerduty", Config: config}); err != nil {
+				t.Fatal(err)
+			}
+			discovered, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "pagerduty", Config: config})
+			if err != nil || len(discovered.GetUrns()) != 1 {
+				t.Fatalf("Discover() = %#v, %v", discovered, err)
+			}
+			read, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "pagerduty", Config: config})
+			if err != nil || len(read.GetEvents()) != 1 || read.GetEvents()[0].GetSourceId() != "pagerduty" || read.GetCheckpoint().GetCursorOpaque() == "" {
+				t.Fatalf("Read() = %#v, %v", read, err)
+			}
+			if calls != 3 || legacy.checkCalls != 0 || legacy.discoverCalls != 0 || legacy.readCalls != 0 {
+				t.Fatalf("calls = Rust %d, Go check/discover/read %d/%d/%d", calls, legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
+			}
+		})
+	}
+}
+
+func TestUnknownPagerDutyFamilyFailsClosedWithoutLegacyCalls(t *testing.T) {
+	legacy := &authorityProbeSource{sourceID: "pagerduty"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(registry)
+	service.sourceWorker = previewWorkerStub{}
+	service.runSourceExecution = func(context.Context, sourceworker.Worker, string, []byte, time.Time, sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+		return nil, sourceworker.ErrWorkerUnsupported
+	}
+	config := map[string]string{"family": "future-family", "tenant_id": "tenant-1", "token": "host-only-secret"}
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "pagerduty", Config: config}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
 		t.Fatalf("Check() error = %v", err)
 	}
 	if legacy.checkCalls != 0 {
@@ -787,6 +863,27 @@ func digitalOceanPreviewOutput(family string, priorWatermark int64) *sourceworke
 			"tenant_id": "tenant-1", "source_event_id": providerID, "resource_id": providerID,
 			"resource_type": strings.TrimSuffix(family, "s"),
 			"resource_urn":  "urn:cerebro:tenant-1:digitalocean_" + family + ":" + providerID,
+		},
+		PayloadJson: []byte(`{"id":"` + providerID + `"}`),
+	}
+	return &sourceworker.ExecutionOutput{
+		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
+		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: providerID, CheckpointWatermarkUnixMillis: watermark},
+	}
+}
+
+func pagerDutyPreviewOutput(family string, priorWatermark int64) *sourceworker.ExecutionOutput {
+	watermark := max(priorWatermark, 1_725_000_000_000)
+	providerID := "P" + strings.ToUpper(strings.ReplaceAll(family, "_", "")) + "1"
+	plan := &cerebrov1.SourceExecutionPlanV1{
+		SourceId: "pagerduty", FamilyId: family, EventKind: "pagerduty." + family, SchemaRef: "pagerduty/" + family + "/v1",
+	}
+	record := &cerebrov1.SourceWorkerRecordV1{
+		ProviderId: providerID, EventId: "pagerduty-tenant-1-" + providerID, OccurredAtUnixMillis: watermark,
+		Attributes: map[string]string{
+			"tenant_id": "tenant-1", "external_id": providerID, "source_event_id": providerID,
+			"resource_id": providerID, "resource_type": family,
+			"resource_urn": "urn:cerebro:tenant-1:pagerduty_" + family + ":" + providerID,
 		},
 		PayloadJson: []byte(`{"id":"` + providerID + `"}`),
 	}

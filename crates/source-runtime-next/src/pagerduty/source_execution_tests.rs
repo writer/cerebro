@@ -10,9 +10,7 @@ use crate::source_execution::{
     SourceWorkerPlanRequestV1, SourceWorkerRuntimeMetadataV2, seal_page_program_v2,
 };
 
-use super::{
-    DEFAULT_BASE_URL, PAGERDUTY_SOURCE_EXECUTION_ADAPTERS, PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER,
-};
+use super::{DEFAULT_BASE_URL, PAGERDUTY_SOURCE_EXECUTION_ADAPTERS};
 
 const OBSERVED_AT_MILLIS: i64 = 1_780_272_000_000;
 
@@ -93,7 +91,7 @@ fn decode_page(
 }
 
 #[test]
-fn closed_dispatcher_registers_only_pagerduty_user() {
+fn closed_dispatcher_registers_every_portable_pagerduty_family() {
     let dispatcher = SourceExecutionDispatcher;
     let plan = plan(dispatcher);
     assert_eq!(plan.plan_id, "source-plan-v1:pagerduty:user");
@@ -104,7 +102,22 @@ fn closed_dispatcher_registers_only_pagerduty_user() {
     assert_eq!(plan.event_kind, "pagerduty.user");
     assert_eq!(plan.schema_ref, "pagerduty/user/v1");
 
-    for family in ["team", "service", "schedule", "", "future"] {
+    for adapter in &PAGERDUTY_SOURCE_EXECUTION_ADAPTERS {
+        let family = adapter.family();
+        assert_eq!(
+            dispatcher
+                .compile_plan(&SourceExecutionSelectionRequestV1 {
+                    source_id: "pagerduty".to_owned(),
+                    family_id: family.as_str().to_owned(),
+                })
+                .unwrap(),
+            adapter.compiled_plan(),
+            "{}",
+            family.as_str()
+        );
+    }
+
+    for family in ["", "future"] {
         assert_eq!(
             dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
                 source_id: "pagerduty".to_owned(),
@@ -394,7 +407,7 @@ fn origin_cursor_status_and_identity_fail_closed() {
     record.event_id = "pagerduty-other-identity".to_owned();
     assert_eq!(
         crate::source_execution::SourceExecutionAdapter::validate_record_identity_v2(
-            &PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER,
+            &PAGERDUTY_SOURCE_EXECUTION_ADAPTERS[0],
             &execution_context,
             &record,
             &metadata,
