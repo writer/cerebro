@@ -155,7 +155,8 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 		"Discord bot token": {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "discord", references: map[string]string{"api_token": "credential:discord:bot-token", "token": "credential:discord:fallback"},
-			resolved: map[string]string{"api_token": "resolved-bot-token", "token": "resolved-fallback"}, wantReference: "credential:discord:bot-token", wantResolved: "resolved-bot-token",
+			resolved:      map[string]string{"api_token": "resolved-bot-token", "token": "resolved-fallback"}, // #nosec G101 -- synthetic resolved-value fixture.
+			wantReference: "credential:discord:bot-token", wantResolved: "resolved-bot-token",
 		},
 		"Discord api key compatibility": {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
