@@ -177,6 +177,12 @@ export function credentialStoreResolverLabel(resolver?: string) {
 }
 
 export function credentialStoreMatchesQuery(item: CredentialStoreOperational, query: string) {
+  return credentialStoreMetadataMatchesQuery(item, query)
+    || (item.bindings ?? []).some((binding) => credentialStoreBindingMatchesQuery(binding, query))
+    || (item.issues ?? []).some((issue) => credentialStoreIssueMatchesQuery(issue, query));
+}
+
+export function credentialStoreMetadataMatchesQuery(item: CredentialStoreOperational, query: string) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
   const values = [
@@ -190,28 +196,38 @@ export function credentialStoreMatchesQuery(item: CredentialStoreOperational, qu
     item.health.detail,
     item.health.next_action,
     ...(item.store.reference_prefixes ?? []),
-    ...(item.bindings ?? []).flatMap((binding) => [
-      binding.source_id,
-      binding.source_name,
-      binding.runtime_id,
-      binding.tenant_id,
-      binding.auth_method,
-      binding.resolver,
-      binding.credential_id,
-      binding.credential_status,
-      ...(binding.fields ?? []),
-      ...(binding.reference_prefixes ?? []),
-    ]),
-    ...(item.issues ?? []).flatMap((issue) => [
-      issue.source_id,
-      issue.runtime_id,
-      issue.credential_id,
-      issue.field,
-      issue.detail,
-      issue.next_action,
-    ]),
   ];
   return values.filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized));
+}
+
+export function credentialStoreBindingMatchesQuery(binding: CredentialStoreBinding, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    binding.credential_store_id,
+    binding.source_id,
+    binding.source_name,
+    binding.runtime_id,
+    binding.tenant_id,
+    binding.auth_method,
+    binding.resolver,
+    binding.credential_id,
+    binding.credential_status,
+    ...(binding.fields ?? []),
+    ...(binding.reference_prefixes ?? []),
+  ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized));
+}
+
+export function credentialStoreBindingsMatchingQuery(stores: CredentialStoreOperational[], query: string) {
+  return stores.flatMap((item) => {
+    const includeAllBindings = credentialStoreMetadataMatchesQuery(item, query);
+    return (item.bindings ?? [])
+      .filter((binding) => includeAllBindings || credentialStoreBindingMatchesQuery(binding, query))
+      .map((binding) => ({
+        ...binding,
+        credential_store_label: item.store.label,
+      }));
+  });
 }
 
 export function credentialStoreIssueMatchesQuery(issue: CredentialStoreIssue, query: string) {
