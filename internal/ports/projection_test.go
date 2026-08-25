@@ -66,3 +66,25 @@ func TestValidateProjectedTenantScopesRejectsCrossTenantLinkEndpoint(t *testing.
 	}
 	requireProjectedTenantScopeError(t, err, "projected link to urn", "urn:cerebro:victim:asset:target")
 }
+
+func TestValidateApplicationWorkspaceScopeIsTenantQualifiedAndBounded(t *testing.T) {
+	if got, err := ValidateApplicationWorkspaceScope("tenant-a", " workspace-a "); err != nil || got != "workspace-a" {
+		t.Fatalf("ValidateApplicationWorkspaceScope() = %q, %v", got, err)
+	}
+	for _, test := range []struct {
+		tenantID    string
+		workspaceID string
+	}{
+		{workspaceID: "workspace-a"},
+		{tenantID: "tenant-a", workspaceID: "*"},
+		{tenantID: "tenant-a", workspaceID: "workspace-a,workspace-b"},
+		{tenantID: "tenant-a", workspaceID: "workspace\nother"},
+	} {
+		if _, err := ValidateApplicationWorkspaceScope(test.tenantID, test.workspaceID); err == nil {
+			t.Fatalf("ValidateApplicationWorkspaceScope(%q, %q) error = nil", test.tenantID, test.workspaceID)
+		}
+	}
+	if got, err := ValidateApplicationWorkspaceScope("", ""); err != nil || got != "" {
+		t.Fatalf("blank tenant-wide legacy scope = %q, %v", got, err)
+	}
+}

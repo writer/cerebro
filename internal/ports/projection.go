@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
@@ -13,6 +15,12 @@ import (
 // ErrProjectedTenantScope indicates that a Cerebro-owned projection URN does
 // not belong to the tenant receiving the projection.
 var ErrProjectedTenantScope = errors.New("projected URN tenant scope mismatch")
+
+// ErrApplicationWorkspaceConflict marks an attempt to move one tenant-global
+// graph identity between application workspaces without an explicit migration.
+var ErrApplicationWorkspaceConflict = errors.New("application workspace projection conflict")
+
+const maxApplicationWorkspaceIDBytes = 256
 
 // ProjectedTenantScopeError identifies the rejected projection field and both
 // tenant scopes without requiring callers to parse an error string.
@@ -34,24 +42,58 @@ func (err *ProjectedTenantScopeError) Unwrap() error { return ErrProjectedTenant
 
 // ProjectedEntity is the normalized current-state and graph entity shape.
 type ProjectedEntity struct {
-	URN        string
-	TenantID   string
-	SourceID   string
-	RuntimeID  string
-	EntityType string
-	Label      string
-	Attributes map[string]string
+	URN                    string
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	RuntimeID              string
+	EntityType             string
+	Label                  string
+	Attributes             map[string]string
 }
 
 // ProjectedLink is the normalized graph edge shape.
 type ProjectedLink struct {
-	TenantID   string
-	SourceID   string
-	RuntimeID  string
-	FromURN    string
-	ToURN      string
-	Relation   string
-	Attributes map[string]string
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	RuntimeID              string
+	FromURN                string
+	ToURN                  string
+	Relation               string
+	Attributes             map[string]string
+}
+
+// NormalizeApplicationWorkspaceID validates one opaque application workspace
+// selector. Blank is the backward-compatible tenant-wide legacy scope.
+func NormalizeApplicationWorkspaceID(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if len(value) > maxApplicationWorkspaceIDBytes || !utf8.ValidString(value) || value == "*" || strings.Contains(value, ",") {
+		return "", fmt.Errorf("invalid application workspace id")
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return "", fmt.Errorf("invalid application workspace id")
+		}
+	}
+	return value, nil
+}
+
+// ValidateApplicationWorkspaceScope requires application workspaces to remain
+// nested under an explicit tenant. The workspace ID is intentionally opaque;
+// tenant qualification comes from this pair rather than provider payload data.
+func ValidateApplicationWorkspaceScope(tenantID string, workspaceID string) (string, error) {
+	workspaceID, err := NormalizeApplicationWorkspaceID(workspaceID)
+	if err != nil {
+		return "", err
+	}
+	if workspaceID != "" && strings.TrimSpace(tenantID) == "" {
+		return "", fmt.Errorf("application workspace id requires tenant id")
+	}
+	return workspaceID, nil
 }
 
 // ValidateProjectedTenantScopes rejects Cerebro-owned projection URNs that do
@@ -76,6 +118,9 @@ func ValidateProjectedEntityTenantScope(entity *ProjectedEntity) error {
 	if entity == nil {
 		return nil
 	}
+	if _, err := ValidateApplicationWorkspaceScope(entity.TenantID, entity.ApplicationWorkspaceID); err != nil {
+		return err
+	}
 	return validateProjectedCerebroURNScope("projected entity urn", entity.URN, entity.TenantID)
 }
 
@@ -84,6 +129,9 @@ func ValidateProjectedEntityTenantScope(entity *ProjectedEntity) error {
 func ValidateProjectedLinkTenantScope(link *ProjectedLink) error {
 	if link == nil {
 		return nil
+	}
+	if _, err := ValidateApplicationWorkspaceScope(link.TenantID, link.ApplicationWorkspaceID); err != nil {
+		return err
 	}
 	if err := validateProjectedCerebroURNScope("projected link from urn", link.FromURN, link.TenantID); err != nil {
 		return err

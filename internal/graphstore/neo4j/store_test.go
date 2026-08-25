@@ -1106,6 +1106,10 @@ func TestProjectedEntitiesBatchQueryPreservesPerItemSemantics(t *testing.T) {
 		"UNWIND $rows AS row",
 		"MERGE (e:Entity {urn: row.urn})",
 		"ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0",
+		"existing_tenant_id <> '' AND existing_tenant_id <> row.tenant_id",
+		"existing_workspace_id <> '' AND existing_workspace_id <> row.application_workspace_id",
+		"e.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE existing_workspace_id END",
+		"workspace_conflict AS workspace_conflict",
 		"e.label = CASE WHEN row.label <> row.urn THEN row.label ELSE coalesce(e.label, row.label) END",
 		"RETURN row.urn AS urn",
 	} {
@@ -1135,6 +1139,10 @@ func TestProjectedLinksBatchQueryRequiresBothEndpoints(t *testing.T) {
 		"MERGE (src)-[a:RELATION_ASSERTION {",
 		"source_id: row.source_id",
 		"runtime_id: row.runtime_id",
+		"logical_workspace_id <> '' AND logical_workspace_id <> row.application_workspace_id",
+		"assertion_workspace_id <> '' AND assertion_workspace_id <> row.application_workspace_id",
+		"a.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE assertion_workspace_id END",
+		"workspace_conflict",
 		"a.projection_reconciliation_id = row.reconciliation_id",
 		"RETURN row.from_urn AS from_urn",
 	} {
@@ -1273,6 +1281,20 @@ func TestPrepareProjectedEntitiesValidationErrors(t *testing.T) {
 	}
 }
 
+func TestPrepareProjectedEntitiesRejectsWorkspaceLastWriteWins(t *testing.T) {
+	entity := func(workspaceID string) *ports.ProjectedEntity {
+		return &ports.ProjectedEntity{URN: "urn:cerebro:writer:asset:one", TenantID: "writer", ApplicationWorkspaceID: workspaceID, SourceID: "github", EntityType: "asset"}
+	}
+	_, err := prepareProjectedEntities([]*ports.ProjectedEntity{entity("workspace-a"), entity("workspace-b")})
+	if !errors.Is(err, ports.ErrApplicationWorkspaceConflict) {
+		t.Fatalf("prepareProjectedEntities() error = %v, want workspace conflict", err)
+	}
+	prepared, err := prepareProjectedEntities([]*ports.ProjectedEntity{entity(""), entity("workspace-a")})
+	if err != nil || len(prepared) != 1 || prepared[0].applicationWorkspaceID != "workspace-a" {
+		t.Fatalf("blank legacy reprojection = %#v, %v", prepared, err)
+	}
+}
+
 func TestPrepareProjectedLinksCoalescesValidatesAndSorts(t *testing.T) {
 	prepared, err := prepareProjectedLinks([]*ports.ProjectedLink{
 		{
@@ -1334,6 +1356,16 @@ func TestPrepareProjectedLinksValidationErrors(t *testing.T) {
 		if got := err.Error(); !strings.Contains(got, want) {
 			t.Fatalf("prepareProjectedLinks(%#v) error = %q, want %q", link, got, want)
 		}
+	}
+}
+
+func TestPrepareProjectedLinksRejectsWorkspaceLastWriteWins(t *testing.T) {
+	link := func(workspaceID string) *ports.ProjectedLink {
+		return &ports.ProjectedLink{TenantID: "writer", ApplicationWorkspaceID: workspaceID, SourceID: "github", RuntimeID: "runtime-one", FromURN: "urn:cerebro:writer:asset:one", ToURN: "urn:cerebro:writer:asset:two", Relation: "associated_with"}
+	}
+	_, err := prepareProjectedLinks([]*ports.ProjectedLink{link("workspace-a"), link("workspace-b")})
+	if !errors.Is(err, ports.ErrApplicationWorkspaceConflict) {
+		t.Fatalf("prepareProjectedLinks() error = %v, want workspace conflict", err)
 	}
 }
 

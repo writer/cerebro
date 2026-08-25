@@ -17,6 +17,7 @@ var ensureProjectionStatements = []string{
 	`CREATE TABLE IF NOT EXISTS entities (
   urn TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
+  application_workspace_id TEXT NOT NULL DEFAULT '',
   source_id TEXT NOT NULL,
   runtime_id TEXT NOT NULL DEFAULT '',
   entity_type TEXT NOT NULL,
@@ -25,6 +26,8 @@ var ensureProjectionStatements = []string{
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`CREATE INDEX IF NOT EXISTS entities_tenant_type_idx ON entities (tenant_id, entity_type)`,
+	`ALTER TABLE entities ADD COLUMN IF NOT EXISTS application_workspace_id TEXT NOT NULL DEFAULT ''`,
+	`CREATE INDEX IF NOT EXISTS entities_tenant_workspace_type_idx ON entities (tenant_id, application_workspace_id, entity_type)`,
 	`ALTER TABLE entities ADD COLUMN IF NOT EXISTS runtime_id TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS entities_tenant_runtime_idx ON entities (tenant_id, runtime_id)`,
 	`CREATE INDEX IF NOT EXISTS entities_runtime_evidence_source_event_idx ON entities (tenant_id, runtime_id, (attributes_json ->> 'source_event_id')) WHERE entity_type = 'runtime.evidence'`,
@@ -33,6 +36,7 @@ var ensureProjectionStatements = []string{
   relation TEXT NOT NULL,
   to_urn TEXT NOT NULL,
   tenant_id TEXT NOT NULL,
+  application_workspace_id TEXT NOT NULL DEFAULT '',
   source_id TEXT NOT NULL,
   runtime_id TEXT NOT NULL DEFAULT '',
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -40,6 +44,8 @@ var ensureProjectionStatements = []string{
   PRIMARY KEY (from_urn, relation, to_urn)
 )`,
 	`CREATE INDEX IF NOT EXISTS entity_links_tenant_relation_idx ON entity_links (tenant_id, relation)`,
+	`ALTER TABLE entity_links ADD COLUMN IF NOT EXISTS application_workspace_id TEXT NOT NULL DEFAULT ''`,
+	`CREATE INDEX IF NOT EXISTS entity_links_tenant_workspace_relation_idx ON entity_links (tenant_id, application_workspace_id, relation)`,
 	`CREATE INDEX IF NOT EXISTS entity_links_to_urn_idx ON entity_links (to_urn)`,
 	`ALTER TABLE entity_links ADD COLUMN IF NOT EXISTS runtime_id TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS entity_links_tenant_runtime_idx ON entity_links (tenant_id, runtime_id)`,
@@ -47,30 +53,42 @@ var ensureProjectionStatements = []string{
 
 func projectedEntityUpsertSQL() string {
 	return `
-INSERT INTO entities (urn, tenant_id, source_id, runtime_id, entity_type, label, attributes_json)
-VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+INSERT INTO entities (urn, tenant_id, application_workspace_id, source_id, runtime_id, entity_type, label, attributes_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
 ON CONFLICT (urn)
 DO UPDATE SET
   tenant_id = EXCLUDED.tenant_id,
+  application_workspace_id = CASE WHEN EXCLUDED.application_workspace_id <> '' THEN EXCLUDED.application_workspace_id ELSE entities.application_workspace_id END,
   source_id = EXCLUDED.source_id,
   runtime_id = CASE WHEN EXCLUDED.runtime_id <> '' THEN EXCLUDED.runtime_id ELSE entities.runtime_id END,
   entity_type = EXCLUDED.entity_type,
   label = CASE WHEN EXCLUDED.label = EXCLUDED.urn THEN entities.label ELSE EXCLUDED.label END,
   attributes_json = entities.attributes_json || EXCLUDED.attributes_json,
-  updated_at = NOW()`
+  updated_at = NOW()
+WHERE entities.tenant_id = EXCLUDED.tenant_id
+  AND (
+    entities.application_workspace_id = ''
+    OR entities.application_workspace_id = EXCLUDED.application_workspace_id
+  )`
 }
 
 func projectedLinkUpsertSQL() string {
 	return `
-INSERT INTO entity_links (from_urn, relation, to_urn, tenant_id, source_id, runtime_id, attributes_json)
-VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+INSERT INTO entity_links (from_urn, relation, to_urn, tenant_id, application_workspace_id, source_id, runtime_id, attributes_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
 ON CONFLICT (from_urn, relation, to_urn)
 DO UPDATE SET
   tenant_id = EXCLUDED.tenant_id,
+  application_workspace_id = CASE WHEN EXCLUDED.application_workspace_id <> '' THEN EXCLUDED.application_workspace_id ELSE entity_links.application_workspace_id END,
   source_id = EXCLUDED.source_id,
   runtime_id = CASE WHEN EXCLUDED.runtime_id <> '' THEN EXCLUDED.runtime_id ELSE entity_links.runtime_id END,
   attributes_json = entity_links.attributes_json || EXCLUDED.attributes_json,
-  updated_at = NOW()`
+  updated_at = NOW()
+WHERE entity_links.tenant_id = EXCLUDED.tenant_id
+  AND (
+    entity_links.application_workspace_id = ''
+    OR entity_links.application_workspace_id = EXCLUDED.application_workspace_id
+  )`
 }
 
 func projectedLinkDeleteSQL() string {
@@ -93,14 +111,14 @@ WHERE urn = $1`
 
 func projectedEntityGetSQL() string {
 	return `
-SELECT urn, tenant_id, source_id, runtime_id, entity_type, label, attributes_json
+SELECT urn, tenant_id, application_workspace_id, source_id, runtime_id, entity_type, label, attributes_json
 FROM entities
 WHERE urn = $1`
 }
 
 func projectedRuntimeEvidenceBySourceEventSQL() string {
 	return `
-SELECT urn, tenant_id, source_id, runtime_id, entity_type, label, attributes_json
+SELECT urn, tenant_id, application_workspace_id, source_id, runtime_id, entity_type, label, attributes_json
 FROM entities
 WHERE tenant_id = $1
   AND entity_type = 'runtime.evidence'
@@ -390,8 +408,16 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if label == "" {
 		label = urn
 	}
-	if _, err := s.db.ExecContext(ctx, projectedEntityUpsertSQL(), urn, tenantID, sourceID, strings.TrimSpace(entity.RuntimeID), entityType, label, attributesJSON); err != nil {
+	workspaceID, err := ports.ValidateApplicationWorkspaceScope(tenantID, entity.ApplicationWorkspaceID)
+	if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, projectedEntityUpsertSQL(), urn, tenantID, workspaceID, sourceID, strings.TrimSpace(entity.RuntimeID), entityType, label, attributesJSON)
+	if err != nil {
 		return fmt.Errorf("upsert projected entity %q: %w", urn, err)
+	}
+	if updated, err := result.RowsAffected(); err == nil && updated == 0 {
+		return fmt.Errorf("%w: projected entity %q", ports.ErrApplicationWorkspaceConflict, urn)
 	}
 	return nil
 }
@@ -413,6 +439,7 @@ func (s *Store) GetProjectedEntity(ctx context.Context, urn string) (*ports.Proj
 	err := s.db.QueryRowContext(ctx, projectedEntityGetSQL(), normalizedURN).Scan(
 		&entity.URN,
 		&entity.TenantID,
+		&entity.ApplicationWorkspaceID,
 		&entity.SourceID,
 		&entity.RuntimeID,
 		&entity.EntityType,
@@ -462,6 +489,7 @@ func (s *Store) GetProjectedRuntimeEvidenceBySourceEvent(ctx context.Context, te
 	err := s.db.QueryRowContext(ctx, projectedRuntimeEvidenceBySourceEventSQL(), normalizedTenantID, normalizedSourceRuntimeID, normalizedSourceEventID).Scan(
 		&entity.URN,
 		&entity.TenantID,
+		&entity.ApplicationWorkspaceID,
 		&entity.SourceID,
 		&entity.RuntimeID,
 		&entity.EntityType,
@@ -523,8 +551,16 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err != nil {
 		return fmt.Errorf("marshal projected link attributes: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, projectedLinkUpsertSQL(), fromURN, relation, toURN, tenantID, sourceID, strings.TrimSpace(link.RuntimeID), attributesJSON); err != nil {
+	workspaceID, err := ports.ValidateApplicationWorkspaceScope(tenantID, link.ApplicationWorkspaceID)
+	if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, projectedLinkUpsertSQL(), fromURN, relation, toURN, tenantID, workspaceID, sourceID, strings.TrimSpace(link.RuntimeID), attributesJSON)
+	if err != nil {
 		return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, err)
+	}
+	if updated, err := result.RowsAffected(); err == nil && updated == 0 {
+		return fmt.Errorf("%w: projected link %q %q %q", ports.ErrApplicationWorkspaceConflict, fromURN, relation, toURN)
 	}
 	return nil
 }

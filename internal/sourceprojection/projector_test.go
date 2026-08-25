@@ -3,6 +3,7 @@ package sourceprojection
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"sort"
@@ -22,6 +23,34 @@ type projectionRecorder struct {
 	deletedEntities map[string]struct{}
 	deletedLinks    map[string]*ports.ProjectedLink
 	cleanupRequests []ports.ProjectionCleanupRequest
+}
+
+func TestFinalizeProjectedRecordsStampsTrustedApplicationWorkspace(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		Id:       "event-one",
+		TenantId: "tenant-a",
+		Attributes: map[string]string{
+			ports.EventAttributeApplicationWorkspaceID: "workspace-a",
+		},
+	}
+	entities := []*ports.ProjectedEntity{{URN: "urn:cerebro:tenant-a:asset:one", TenantID: "tenant-a"}}
+	links := []*ports.ProjectedLink{{TenantID: "tenant-a", FromURN: "urn:cerebro:tenant-a:asset:one", ToURN: "urn:cerebro:tenant-a:asset:two", Relation: relationBelongsTo}}
+	gotEntities, gotLinks, err := finalizeProjectedRecords(event, entities, links)
+	if err != nil {
+		t.Fatalf("finalizeProjectedRecords() error = %v", err)
+	}
+	if gotEntities[0].ApplicationWorkspaceID != "workspace-a" || gotLinks[0].ApplicationWorkspaceID != "workspace-a" {
+		t.Fatalf("workspace stamp missing: entity=%#v link=%#v", gotEntities[0], gotLinks[0])
+	}
+
+	entities[0].ApplicationWorkspaceID = "provider-spoof"
+	if _, _, err := finalizeProjectedRecords(event, entities, nil); !errors.Is(err, ports.ErrApplicationWorkspaceConflict) {
+		t.Fatalf("provider workspace conflict error = %v", err)
+	}
+	equalWorkspaceEntity := []*ports.ProjectedEntity{{URN: "urn:cerebro:tenant-a:asset:two", TenantID: "tenant-a", ApplicationWorkspaceID: "workspace-a"}}
+	if _, _, err := finalizeProjectedRecords(event, equalWorkspaceEntity, nil); !errors.Is(err, ports.ErrApplicationWorkspaceConflict) {
+		t.Fatalf("matching provider workspace must still be rejected, error = %v", err)
+	}
 }
 
 func (r *projectionRecorder) Ping(context.Context) error {
@@ -7218,13 +7247,14 @@ func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity 
 		attributes[key] = value
 	}
 	return &ports.ProjectedEntity{
-		URN:        entity.URN,
-		TenantID:   entity.TenantID,
-		SourceID:   entity.SourceID,
-		RuntimeID:  entity.RuntimeID,
-		EntityType: entity.EntityType,
-		Label:      entity.Label,
-		Attributes: attributes,
+		URN:                    entity.URN,
+		TenantID:               entity.TenantID,
+		ApplicationWorkspaceID: entity.ApplicationWorkspaceID,
+		SourceID:               entity.SourceID,
+		RuntimeID:              entity.RuntimeID,
+		EntityType:             entity.EntityType,
+		Label:                  entity.Label,
+		Attributes:             attributes,
 	}
 }
 
@@ -7237,13 +7267,14 @@ func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
 		attributes[key] = value
 	}
 	return &ports.ProjectedLink{
-		TenantID:   link.TenantID,
-		SourceID:   link.SourceID,
-		RuntimeID:  link.RuntimeID,
-		FromURN:    link.FromURN,
-		ToURN:      link.ToURN,
-		Relation:   link.Relation,
-		Attributes: attributes,
+		TenantID:               link.TenantID,
+		ApplicationWorkspaceID: link.ApplicationWorkspaceID,
+		SourceID:               link.SourceID,
+		RuntimeID:              link.RuntimeID,
+		FromURN:                link.FromURN,
+		ToURN:                  link.ToURN,
+		Relation:               link.Relation,
+		Attributes:             attributes,
 	}
 }
 

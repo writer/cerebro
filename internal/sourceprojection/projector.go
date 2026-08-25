@@ -542,10 +542,53 @@ func (s *Service) projectRecords(event *cerebrov1.EventEnvelope, project func(*R
 func finalizeProjectedRecords(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	normalizeProjectedEntityTypes(entities)
 	stampProjectionRuntime(event, entities, links)
+	if err := stampProjectionApplicationWorkspace(event, entities, links); err != nil {
+		return nil, nil, err
+	}
 	if err := validateProjectedFabricContract(links); err != nil {
 		return nil, nil, err
 	}
 	return entities, links, nil
+}
+
+func stampProjectionApplicationWorkspace(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) error {
+	if event == nil {
+		return nil
+	}
+	workspaceID, err := ports.ValidateApplicationWorkspaceScope(
+		event.GetTenantId(),
+		event.GetAttributes()[ports.EventAttributeApplicationWorkspaceID],
+	)
+	if err != nil {
+		return fmt.Errorf("project application workspace: %w", err)
+	}
+	for _, entity := range entities {
+		if entity == nil {
+			continue
+		}
+		candidate, err := ports.ValidateApplicationWorkspaceScope(entity.TenantID, entity.ApplicationWorkspaceID)
+		if err != nil {
+			return fmt.Errorf("projected entity %q application workspace: %w", entity.URN, err)
+		}
+		if candidate != "" {
+			return fmt.Errorf("%w: projected entity %q attempted to supply application workspace", ports.ErrApplicationWorkspaceConflict, entity.URN)
+		}
+		entity.ApplicationWorkspaceID = workspaceID
+	}
+	for _, link := range links {
+		if link == nil {
+			continue
+		}
+		candidate, err := ports.ValidateApplicationWorkspaceScope(link.TenantID, link.ApplicationWorkspaceID)
+		if err != nil {
+			return fmt.Errorf("projected link %q %q %q application workspace: %w", link.FromURN, link.Relation, link.ToURN, err)
+		}
+		if candidate != "" {
+			return fmt.Errorf("%w: projected link %q %q %q attempted to supply application workspace", ports.ErrApplicationWorkspaceConflict, link.FromURN, link.Relation, link.ToURN)
+		}
+		link.ApplicationWorkspaceID = workspaceID
+	}
+	return nil
 }
 
 func validateProjectedFabricContract(links []*ports.ProjectedLink) error {

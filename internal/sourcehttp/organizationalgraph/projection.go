@@ -67,23 +67,25 @@ func normalizeBaseURL(raw string) (string, error) {
 }
 
 type legacyProjectedEntity struct {
-	URN        string            `json:"urn"`
-	TenantID   string            `json:"tenant_id"`
-	SourceID   string            `json:"source_id"`
-	RuntimeID  string            `json:"runtime_id"`
-	EntityType string            `json:"entity_type"`
-	Label      string            `json:"label"`
-	Attributes map[string]string `json:"attributes"`
+	URN                    string            `json:"urn"`
+	TenantID               string            `json:"tenant_id"`
+	ApplicationWorkspaceID string            `json:"application_workspace_id"`
+	SourceID               string            `json:"source_id"`
+	RuntimeID              string            `json:"runtime_id"`
+	EntityType             string            `json:"entity_type"`
+	Label                  string            `json:"label"`
+	Attributes             map[string]string `json:"attributes"`
 }
 
 type legacyProjectedLink struct {
-	TenantID   string            `json:"tenant_id"`
-	SourceID   string            `json:"source_id"`
-	RuntimeID  string            `json:"runtime_id"`
-	FromURN    string            `json:"from_urn"`
-	ToURN      string            `json:"to_urn"`
-	Relation   string            `json:"relation"`
-	Attributes map[string]string `json:"attributes"`
+	TenantID               string            `json:"tenant_id"`
+	ApplicationWorkspaceID string            `json:"application_workspace_id"`
+	SourceID               string            `json:"source_id"`
+	RuntimeID              string            `json:"runtime_id"`
+	FromURN                string            `json:"from_urn"`
+	ToURN                  string            `json:"to_urn"`
+	Relation               string            `json:"relation"`
+	Attributes             map[string]string `json:"attributes"`
 }
 
 type legacyCleanupRequest struct {
@@ -480,13 +482,14 @@ func legacyDeltaRequest(delta ports.SourceProjectionDelta) legacyProjectionDelta
 			continue
 		}
 		result.Entities = append(result.Entities, legacyProjectedEntity{
-			URN:        entity.URN,
-			TenantID:   entity.TenantID,
-			SourceID:   entity.SourceID,
-			RuntimeID:  entity.RuntimeID,
-			EntityType: entity.EntityType,
-			Label:      entity.Label,
-			Attributes: cloneAttributes(entity.Attributes),
+			URN:                    entity.URN,
+			TenantID:               entity.TenantID,
+			ApplicationWorkspaceID: entity.ApplicationWorkspaceID,
+			SourceID:               entity.SourceID,
+			RuntimeID:              entity.RuntimeID,
+			EntityType:             entity.EntityType,
+			Label:                  entity.Label,
+			Attributes:             cloneAttributes(entity.Attributes),
 		})
 	}
 	for _, link := range delta.Links {
@@ -517,12 +520,13 @@ func legacyDeltaRequest(delta ports.SourceProjectionDelta) legacyProjectionDelta
 
 func legacyLinkRequest(link *ports.ProjectedLink) legacyProjectedLink {
 	return legacyProjectedLink{
-		TenantID:   link.TenantID,
-		SourceID:   link.SourceID,
-		RuntimeID:  link.RuntimeID,
-		FromURN:    link.FromURN,
-		ToURN:      link.ToURN,
-		Relation:   link.Relation,
-		Attributes: cloneAttributes(link.Attributes),
+		TenantID:               link.TenantID,
+		ApplicationWorkspaceID: link.ApplicationWorkspaceID,
+		SourceID:               link.SourceID,
+		RuntimeID:              link.RuntimeID,
+		FromURN:                link.FromURN,
+		ToURN:                  link.ToURN,
+		Relation:               link.Relation,
+		Attributes:             cloneAttributes(link.Attributes),
 	}
 }

@@ -40,12 +40,19 @@ const (
 )
 const mergeEntityAndLoadAttributesQuery = `MERGE (e:Entity {urn: $urn})
 ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
-SET e.tenant_id = $tenant_id,
+WITH e, coalesce(e.tenant_id, '') AS existing_tenant_id, coalesce(e.application_workspace_id, '') AS existing_workspace_id
+WITH e, existing_workspace_id,
+     (existing_tenant_id <> '' AND existing_tenant_id <> $tenant_id)
+       OR (existing_workspace_id <> '' AND existing_workspace_id <> $application_workspace_id) AS workspace_conflict
+FOREACH (_ IN CASE WHEN workspace_conflict THEN [] ELSE [1] END |
+  SET e.tenant_id = $tenant_id,
+    e.application_workspace_id = CASE WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE existing_workspace_id END,
     e.source_id = $source_id,
     e.runtime_id = CASE WHEN $runtime_id <> '' THEN $runtime_id ELSE coalesce(e.runtime_id, '') END,
     e.entity_type = $entity_type,
     e.label = CASE WHEN $label <> $urn THEN $label ELSE coalesce(e.label, $label) END
-RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`
+)
+RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0), workspace_conflict`
 
 var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
 var errProjectionAssertionMigrationScopeRequired = errors.New("tenant_id and relations are required for projected link assertion migration")
@@ -578,19 +585,23 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 		label = urn
 	}
 	params := map[string]any{
-		"urn":         urn,
-		"tenant_id":   tenantID,
-		"source_id":   sourceID,
-		"runtime_id":  strings.TrimSpace(entity.RuntimeID),
-		"entity_type": entityType,
-		"label":       label,
+		"urn":                      urn,
+		"tenant_id":                tenantID,
+		"application_workspace_id": strings.TrimSpace(entity.ApplicationWorkspaceID),
+		"source_id":                sourceID,
+		"runtime_id":               strings.TrimSpace(entity.RuntimeID),
+		"entity_type":              entityType,
+		"label":                    label,
 	}
 	incomingAttributes := projectionmeta.ApplyEntityMetadata(entityType, entity.Attributes)
 	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
 		_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-			attributesJSON, version, err := mergeEntityAndLoadAttributes(ctx, tx, params)
+			attributesJSON, version, workspaceConflict, err := mergeEntityAndLoadAttributes(ctx, tx, params)
 			if err != nil {
 				return nil, fmt.Errorf("load projected entity %q attributes: %w", urn, err)
+			}
+			if workspaceConflict {
+				return nil, fmt.Errorf("%w: projected entity %q", ports.ErrApplicationWorkspaceConflict, urn)
 			}
 			existing, err := graphAttributesFromJSON(attributesJSON)
 			if err != nil {
@@ -634,13 +645,14 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 		return err
 	}
 	params := map[string]any{
-		"from_urn":          fromURN,
-		"to_urn":            toURN,
-		"relation":          relation,
-		"tenant_id":         tenantID,
-		"source_id":         sourceID,
-		"runtime_id":        strings.TrimSpace(link.RuntimeID),
-		"reconciliation_id": projectedLinkReconciliationID(link.Attributes),
+		"from_urn":                 fromURN,
+		"to_urn":                   toURN,
+		"relation":                 relation,
+		"tenant_id":                tenantID,
+		"application_workspace_id": strings.TrimSpace(link.ApplicationWorkspaceID),
+		"source_id":                sourceID,
+		"runtime_id":               strings.TrimSpace(link.RuntimeID),
+		"reconciliation_id":        projectedLinkReconciliationID(link.Attributes),
 	}
 	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
 		_, err = s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -650,6 +662,9 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 			}
 			if !found {
 				return nil, nil
+			}
+			if current.workspaceConflict {
+				return nil, fmt.Errorf("%w: projected link %q %q %q", ports.ErrApplicationWorkspaceConflict, fromURN, relation, toURN)
 			}
 			existingLogical, err := graphAttributesFromJSON(current.logicalAttributesJSON)
 			if err != nil {
@@ -707,12 +722,19 @@ const defaultProjectionWriteConcurrency = 4
 const mergeProjectedEntitiesQuery = `UNWIND $rows AS row
 MERGE (e:Entity {urn: row.urn})
 ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
-SET e.tenant_id = row.tenant_id,
+WITH e, row, coalesce(e.tenant_id, '') AS existing_tenant_id, coalesce(e.application_workspace_id, '') AS existing_workspace_id
+WITH e, row, existing_workspace_id,
+     (existing_tenant_id <> '' AND existing_tenant_id <> row.tenant_id)
+       OR (existing_workspace_id <> '' AND existing_workspace_id <> row.application_workspace_id) AS workspace_conflict
+FOREACH (_ IN CASE WHEN workspace_conflict THEN [] ELSE [1] END |
+  SET e.tenant_id = row.tenant_id,
+    e.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE existing_workspace_id END,
     e.source_id = row.source_id,
     e.runtime_id = CASE WHEN row.runtime_id <> '' THEN row.runtime_id ELSE coalesce(e.runtime_id, '') END,
     e.entity_type = row.entity_type,
     e.label = CASE WHEN row.label <> row.urn THEN row.label ELSE coalesce(e.label, row.label) END
-RETURN row.urn AS urn, coalesce(e.attributes_json, '{}') AS attributes_json, coalesce(e.attributes_version, 0) AS attributes_version`
+)
+RETURN row.urn AS urn, workspace_conflict AS workspace_conflict, coalesce(e.attributes_json, '{}') AS attributes_json, coalesce(e.attributes_version, 0) AS attributes_version`
 
 // updateProjectedEntitiesQuery is the batched counterpart of updateEntityAttributes.
 // The version guard is redundant within a single transaction (the MERGE above
@@ -738,16 +760,12 @@ MERGE (src)-[r:RELATION {relation: row.relation}]->(dst)
 ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0, r.assertion_managed = true, r.assertion_quarantined = false
 WITH src, dst, r, row,
      coalesce(r.assertion_managed, false) AS was_assertion_managed,
+     coalesce(r.application_workspace_id, '') AS logical_workspace_id,
      CASE WHEN coalesce(r.tenant_id, '') <> '' THEN r.tenant_id ELSE row.tenant_id END AS legacy_tenant_id,
      coalesce(r.source_id, '') AS legacy_source_id,
      coalesce(r.runtime_id, '') AS legacy_runtime_id
-WITH src, dst, r, row, legacy_tenant_id, legacy_source_id, legacy_runtime_id,
+WITH src, dst, r, row, logical_workspace_id, legacy_tenant_id, legacy_source_id, legacy_runtime_id,
      NOT was_assertion_managed AS preserve_legacy_logical
-SET r.tenant_id = CASE WHEN preserve_legacy_logical THEN legacy_tenant_id ELSE row.tenant_id END,
-    r.source_id = CASE WHEN preserve_legacy_logical THEN legacy_source_id ELSE row.source_id END,
-    r.runtime_id = CASE WHEN preserve_legacy_logical THEN legacy_runtime_id ELSE row.runtime_id END,
-    r.assertion_managed = NOT preserve_legacy_logical,
-    r.assertion_quarantined = preserve_legacy_logical
 MERGE (src)-[a:RELATION_ASSERTION {
     relation: row.relation,
     tenant_id: row.tenant_id,
@@ -755,7 +773,23 @@ MERGE (src)-[a:RELATION_ASSERTION {
     runtime_id: row.runtime_id
 }]->(dst)
 ON CREATE SET a.attributes_json = '{}', a.attributes_version = 0
-SET a.projection_reconciliation_id = row.reconciliation_id
+WITH src, dst, r, a, row, logical_workspace_id, legacy_tenant_id, legacy_source_id, legacy_runtime_id, preserve_legacy_logical,
+     coalesce(a.application_workspace_id, '') AS assertion_workspace_id
+WITH src, dst, r, a, row, logical_workspace_id, assertion_workspace_id, preserve_legacy_logical,
+     (NOT preserve_legacy_logical AND legacy_tenant_id <> '' AND legacy_tenant_id <> row.tenant_id)
+       OR (logical_workspace_id <> '' AND logical_workspace_id <> row.application_workspace_id) AS logical_workspace_conflict,
+     assertion_workspace_id <> '' AND assertion_workspace_id <> row.application_workspace_id AS assertion_workspace_conflict,
+     legacy_tenant_id, legacy_source_id, legacy_runtime_id
+FOREACH (_ IN CASE WHEN logical_workspace_conflict OR assertion_workspace_conflict THEN [] ELSE [1] END |
+  SET r.tenant_id = CASE WHEN preserve_legacy_logical THEN legacy_tenant_id ELSE row.tenant_id END,
+      r.application_workspace_id = CASE WHEN preserve_legacy_logical THEN logical_workspace_id WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE logical_workspace_id END,
+      r.source_id = CASE WHEN preserve_legacy_logical THEN legacy_source_id ELSE row.source_id END,
+      r.runtime_id = CASE WHEN preserve_legacy_logical THEN legacy_runtime_id ELSE row.runtime_id END,
+      r.assertion_managed = NOT preserve_legacy_logical,
+      r.assertion_quarantined = preserve_legacy_logical,
+      a.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE assertion_workspace_id END,
+      a.projection_reconciliation_id = row.reconciliation_id
+)
 RETURN row.from_urn AS from_urn,
        row.relation AS relation,
        row.to_urn AS to_urn,
@@ -766,7 +800,8 @@ RETURN row.from_urn AS from_urn,
        coalesce(r.attributes_version, 0) AS logical_attributes_version,
        coalesce(a.attributes_json, '{}') AS assertion_attributes_json,
        coalesce(a.attributes_version, 0) AS assertion_attributes_version,
-       preserve_legacy_logical AS preserve_legacy_logical`
+       preserve_legacy_logical AS preserve_legacy_logical,
+       logical_workspace_conflict OR assertion_workspace_conflict AS workspace_conflict`
 
 // updateProjectedLinksQuery is the batched counterpart of updateLinkAttributes.
 const updateProjectedLinksQuery = `UNWIND $rows AS row
@@ -775,6 +810,7 @@ WHERE coalesce(r.attributes_version, 0) = row.attributes_version
 SET r.attributes_json = row.attributes_json,
     r.attributes_version = row.next_attributes_version,
     r.tenant_id = row.tenant_id,
+    r.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE coalesce(r.application_workspace_id, '') END,
     r.source_id = row.source_id,
     r.runtime_id = row.runtime_id,
     r.projection_reconciliation_id = row.reconciliation_id,
@@ -792,12 +828,14 @@ MATCH (:Entity {urn: row.from_urn})-[a:RELATION_ASSERTION {
 WHERE coalesce(a.attributes_version, 0) = row.attributes_version
 SET a.attributes_json = row.attributes_json,
     a.attributes_version = row.next_attributes_version,
+    a.application_workspace_id = CASE WHEN row.application_workspace_id <> '' THEN row.application_workspace_id ELSE coalesce(a.application_workspace_id, '') END,
     a.projection_reconciliation_id = row.reconciliation_id
 RETURN count(a)`
 
 type loadedAttributeRow struct {
-	attributesJSON string
-	version        int64
+	attributesJSON    string
+	version           int64
+	workspaceConflict bool
 }
 
 type loadedProjectedLinkRow struct {
@@ -806,26 +844,29 @@ type loadedProjectedLinkRow struct {
 	assertionAttributesJSON string
 	assertionVersion        int64
 	preserveLegacyLogical   bool
+	workspaceConflict       bool
 }
 
 type preparedProjectedEntity struct {
-	urn        string
-	tenantID   string
-	sourceID   string
-	runtimeID  string
-	entityType string
-	label      string
-	attributes map[string]string
+	urn                    string
+	tenantID               string
+	applicationWorkspaceID string
+	sourceID               string
+	runtimeID              string
+	entityType             string
+	label                  string
+	attributes             map[string]string
 }
 
 type preparedProjectedLink struct {
-	fromURN    string
-	toURN      string
-	relation   string
-	tenantID   string
-	sourceID   string
-	runtimeID  string
-	attributes map[string]string
+	fromURN                string
+	toURN                  string
+	relation               string
+	tenantID               string
+	applicationWorkspaceID string
+	sourceID               string
+	runtimeID              string
+	attributes             map[string]string
 }
 
 // UpsertProjectedEntities upserts normalized entities in batches. It preserves
@@ -899,12 +940,13 @@ func (s *Store) writeProjectedEntityChunk(ctx context.Context, chunk []*prepared
 		mergeRows := make([]map[string]any, 0, len(chunk))
 		for _, entity := range chunk {
 			mergeRows = append(mergeRows, map[string]any{
-				"urn":         entity.urn,
-				"tenant_id":   entity.tenantID,
-				"source_id":   entity.sourceID,
-				"runtime_id":  entity.runtimeID,
-				"entity_type": entity.entityType,
-				"label":       entity.label,
+				"urn":                      entity.urn,
+				"tenant_id":                entity.tenantID,
+				"application_workspace_id": entity.applicationWorkspaceID,
+				"source_id":                entity.sourceID,
+				"runtime_id":               entity.runtimeID,
+				"entity_type":              entity.entityType,
+				"label":                    entity.label,
 			})
 		}
 		loaded, err := loadAttributeRows(ctx, tx, mergeProjectedEntitiesQuery, mergeRows, entityAttributeRowKey)
@@ -916,6 +958,9 @@ func (s *Store) writeProjectedEntityChunk(ctx context.Context, chunk []*prepared
 			current, ok := loaded[entity.urn]
 			if !ok {
 				return nil, fmt.Errorf("merge projected entity %q returned no attributes", entity.urn)
+			}
+			if current.workspaceConflict {
+				return nil, fmt.Errorf("%w: projected entity %q", ports.ErrApplicationWorkspaceConflict, entity.urn)
 			}
 			existing, err := graphAttributesFromJSON(current.attributesJSON)
 			if err != nil {
@@ -964,13 +1009,14 @@ func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedPr
 		mergeRows := make([]map[string]any, 0, len(chunk))
 		for _, link := range chunk {
 			mergeRows = append(mergeRows, map[string]any{
-				"from_urn":          link.fromURN,
-				"to_urn":            link.toURN,
-				"relation":          link.relation,
-				"tenant_id":         link.tenantID,
-				"source_id":         link.sourceID,
-				"runtime_id":        link.runtimeID,
-				"reconciliation_id": projectedLinkReconciliationID(link.attributes),
+				"from_urn":                 link.fromURN,
+				"to_urn":                   link.toURN,
+				"relation":                 link.relation,
+				"tenant_id":                link.tenantID,
+				"application_workspace_id": link.applicationWorkspaceID,
+				"source_id":                link.sourceID,
+				"runtime_id":               link.runtimeID,
+				"reconciliation_id":        projectedLinkReconciliationID(link.attributes),
 			})
 		}
 		loaded, err := loadProjectedLinkRows(ctx, tx, mergeRows)
@@ -992,6 +1038,9 @@ func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedPr
 			if !ok {
 				continue
 			}
+			if current.workspaceConflict {
+				return nil, fmt.Errorf("%w: projected link %q %q %q", ports.ErrApplicationWorkspaceConflict, link.fromURN, link.relation, link.toURN)
+			}
 			existingAssertion, err := graphAttributesFromJSON(current.assertionAttributesJSON)
 			if err != nil {
 				return nil, fmt.Errorf("decode projected link assertion %q attributes: %w", key, err)
@@ -1001,16 +1050,17 @@ func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedPr
 				return nil, fmt.Errorf("marshal projected link assertion %q attributes: %w", key, err)
 			}
 			assertionUpdateRows = append(assertionUpdateRows, map[string]any{
-				"from_urn":                link.fromURN,
-				"to_urn":                  link.toURN,
-				"relation":                link.relation,
-				"tenant_id":               link.tenantID,
-				"source_id":               link.sourceID,
-				"runtime_id":              link.runtimeID,
-				"reconciliation_id":       projectedLinkReconciliationID(link.attributes),
-				"attributes_version":      current.assertionVersion,
-				"next_attributes_version": current.assertionVersion + 1,
-				"attributes_json":         assertionJSON,
+				"from_urn":                 link.fromURN,
+				"to_urn":                   link.toURN,
+				"relation":                 link.relation,
+				"tenant_id":                link.tenantID,
+				"application_workspace_id": link.applicationWorkspaceID,
+				"source_id":                link.sourceID,
+				"runtime_id":               link.runtimeID,
+				"reconciliation_id":        projectedLinkReconciliationID(link.attributes),
+				"attributes_version":       current.assertionVersion,
+				"next_attributes_version":  current.assertionVersion + 1,
+				"attributes_json":          assertionJSON,
 			})
 
 			logicalKey := projectedLinkKey(link.fromURN, link.relation, link.toURN)
@@ -1041,16 +1091,17 @@ func (s *Store) writeProjectedLinkChunk(ctx context.Context, chunk []*preparedPr
 				return nil, fmt.Errorf("marshal projected logical link %q attributes: %w", projectedLinkKey(logical.link.fromURN, logical.link.relation, logical.link.toURN), err)
 			}
 			logicalUpdateRows = append(logicalUpdateRows, map[string]any{
-				"from_urn":                logical.link.fromURN,
-				"to_urn":                  logical.link.toURN,
-				"relation":                logical.link.relation,
-				"tenant_id":               logical.link.tenantID,
-				"source_id":               logical.link.sourceID,
-				"runtime_id":              logical.link.runtimeID,
-				"reconciliation_id":       projectedLinkReconciliationID(logical.link.attributes),
-				"attributes_version":      logical.version,
-				"next_attributes_version": logical.version + 1,
-				"attributes_json":         attributesJSON,
+				"from_urn":                 logical.link.fromURN,
+				"to_urn":                   logical.link.toURN,
+				"relation":                 logical.link.relation,
+				"tenant_id":                logical.link.tenantID,
+				"application_workspace_id": logical.link.applicationWorkspaceID,
+				"source_id":                logical.link.sourceID,
+				"runtime_id":               logical.link.runtimeID,
+				"reconciliation_id":        projectedLinkReconciliationID(logical.link.attributes),
+				"attributes_version":       logical.version,
+				"next_attributes_version":  logical.version + 1,
+				"attributes_json":          attributesJSON,
 			})
 		}
 		if len(logicalUpdateRows) != 0 {
@@ -1083,8 +1134,9 @@ func loadAttributeRows(ctx context.Context, tx neo4jdriver.ManagedTransaction, q
 	for result.Next(ctx) {
 		values := result.Record().Values
 		loaded[key(values)] = loadedAttributeRow{
-			attributesJSON: stringValue(values[len(values)-2]),
-			version:        toInt64(values[len(values)-1]),
+			attributesJSON:    stringValue(values[len(values)-2]),
+			version:           toInt64(values[len(values)-1]),
+			workspaceConflict: len(values) >= 4 && boolValue(values[1]),
 		}
 	}
 	return loaded, result.Err()
@@ -1112,6 +1164,7 @@ func loadProjectedLinkRows(ctx context.Context, tx neo4jdriver.ManagedTransactio
 			assertionAttributesJSON: stringValue(values[8]),
 			assertionVersion:        toInt64(values[9]),
 			preserveLegacyLogical:   boolValue(values[10]),
+			workspaceConflict:       boolValue(values[11]),
 		}
 	}
 	return loaded, result.Err()
@@ -1194,12 +1247,25 @@ func prepareProjectedEntities(entities []*ports.ProjectedEntity) ([]*preparedPro
 		if err := ports.ValidateProjectedEntityTenantScope(entity); err != nil {
 			return nil, err
 		}
+		workspaceID, err := ports.ValidateApplicationWorkspaceScope(tenantID, entity.ApplicationWorkspaceID)
+		if err != nil {
+			return nil, err
+		}
 		label := strings.TrimSpace(entity.Label)
 		if label == "" {
 			label = urn
 		}
 		incoming := projectionmeta.ApplyEntityMetadata(entityType, entity.Attributes)
 		if existing, ok := index[urn]; ok {
+			if existing.tenantID != tenantID {
+				return nil, fmt.Errorf("%w: projected entity %q crossed tenants", ports.ErrApplicationWorkspaceConflict, urn)
+			}
+			if existing.applicationWorkspaceID != "" && workspaceID != "" && existing.applicationWorkspaceID != workspaceID {
+				return nil, fmt.Errorf("%w: projected entity %q has multiple workspaces", ports.ErrApplicationWorkspaceConflict, urn)
+			}
+			if workspaceID != "" {
+				existing.applicationWorkspaceID = workspaceID
+			}
 			existing.tenantID = tenantID
 			existing.sourceID = sourceID
 			existing.runtimeID = strings.TrimSpace(entity.RuntimeID)
@@ -1209,13 +1275,14 @@ func prepareProjectedEntities(entities []*ports.ProjectedEntity) ([]*preparedPro
 			continue
 		}
 		entry := &preparedProjectedEntity{
-			urn:        urn,
-			tenantID:   tenantID,
-			sourceID:   sourceID,
-			runtimeID:  strings.TrimSpace(entity.RuntimeID),
-			entityType: entityType,
-			label:      label,
-			attributes: incoming,
+			urn:                    urn,
+			tenantID:               tenantID,
+			applicationWorkspaceID: workspaceID,
+			sourceID:               sourceID,
+			runtimeID:              strings.TrimSpace(entity.RuntimeID),
+			entityType:             entityType,
+			label:                  label,
+			attributes:             incoming,
 		}
 		index[urn] = entry
 		prepared = append(prepared, entry)
@@ -1235,19 +1302,30 @@ func prepareProjectedLinks(links []*ports.ProjectedLink) ([]*preparedProjectedLi
 			return nil, err
 		}
 		runtimeID := strings.TrimSpace(link.RuntimeID)
+		workspaceID, err := ports.ValidateApplicationWorkspaceScope(tenantID, link.ApplicationWorkspaceID)
+		if err != nil {
+			return nil, err
+		}
 		key := projectedLinkAssertionKey(fromURN, relation, toURN, tenantID, sourceID, runtimeID)
 		if existing, ok := index[key]; ok {
+			if existing.applicationWorkspaceID != "" && workspaceID != "" && existing.applicationWorkspaceID != workspaceID {
+				return nil, fmt.Errorf("%w: projected link %q %q %q has multiple workspaces", ports.ErrApplicationWorkspaceConflict, fromURN, relation, toURN)
+			}
+			if workspaceID != "" {
+				existing.applicationWorkspaceID = workspaceID
+			}
 			existing.attributes = mergeGraphAttributes(existing.attributes, link.Attributes)
 			continue
 		}
 		entry := &preparedProjectedLink{
-			fromURN:    fromURN,
-			toURN:      toURN,
-			relation:   relation,
-			tenantID:   tenantID,
-			sourceID:   sourceID,
-			runtimeID:  runtimeID,
-			attributes: mergeGraphAttributes(nil, link.Attributes),
+			fromURN:                fromURN,
+			toURN:                  toURN,
+			relation:               relation,
+			tenantID:               tenantID,
+			applicationWorkspaceID: workspaceID,
+			sourceID:               sourceID,
+			runtimeID:              runtimeID,
+			attributes:             mergeGraphAttributes(nil, link.Attributes),
 		}
 		index[key] = entry
 		prepared = append(prepared, entry)
@@ -2872,19 +2950,19 @@ func normalizeCleanupValues(values []string) []string {
 	return normalized
 }
 
-func mergeEntityAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (string, int64, error) {
+func mergeEntityAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (string, int64, bool, error) {
 	result, err := tx.Run(ctx, mergeEntityAndLoadAttributesQuery, params)
 	if err != nil {
-		return "", 0, err
+		return "", 0, false, err
 	}
 	if !result.Next(ctx) {
 		if err := result.Err(); err != nil {
-			return "", 0, err
+			return "", 0, false, err
 		}
-		return "", 0, errors.New("entity merge returned no rows")
+		return "", 0, false, errors.New("entity merge returned no rows")
 	}
 	values := result.Record().Values
-	return stringValue(values[0]), toInt64(values[1]), result.Err()
+	return stringValue(values[0]), toInt64(values[1]), boolValue(values[2]), result.Err()
 }
 
 // entityTypedPropertyParams maps the derived typed properties onto the node
@@ -2925,16 +3003,12 @@ MERGE (src)-[r:RELATION {relation: $relation}]->(dst)
 ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0, r.assertion_managed = true, r.assertion_quarantined = false
 WITH src, dst, r,
      coalesce(r.assertion_managed, false) AS was_assertion_managed,
+     coalesce(r.application_workspace_id, '') AS logical_workspace_id,
      CASE WHEN coalesce(r.tenant_id, '') <> '' THEN r.tenant_id ELSE $tenant_id END AS legacy_tenant_id,
      coalesce(r.source_id, '') AS legacy_source_id,
      coalesce(r.runtime_id, '') AS legacy_runtime_id
-WITH src, dst, r, legacy_tenant_id, legacy_source_id, legacy_runtime_id,
+WITH src, dst, r, logical_workspace_id, legacy_tenant_id, legacy_source_id, legacy_runtime_id,
      NOT was_assertion_managed AS preserve_legacy_logical
-SET r.tenant_id = CASE WHEN preserve_legacy_logical THEN legacy_tenant_id ELSE $tenant_id END,
-	r.source_id = CASE WHEN preserve_legacy_logical THEN legacy_source_id ELSE $source_id END,
-	r.runtime_id = CASE WHEN preserve_legacy_logical THEN legacy_runtime_id ELSE $runtime_id END,
-	r.assertion_managed = NOT preserve_legacy_logical,
-	r.assertion_quarantined = preserve_legacy_logical
 MERGE (src)-[a:RELATION_ASSERTION {
     relation: $relation,
     tenant_id: $tenant_id,
@@ -2942,12 +3016,28 @@ MERGE (src)-[a:RELATION_ASSERTION {
     runtime_id: $runtime_id
 }]->(dst)
 ON CREATE SET a.attributes_json = '{}', a.attributes_version = 0
-SET a.projection_reconciliation_id = $reconciliation_id
+WITH r, a, logical_workspace_id, preserve_legacy_logical, legacy_tenant_id, legacy_source_id, legacy_runtime_id,
+     coalesce(a.application_workspace_id, '') AS assertion_workspace_id
+WITH r, a, logical_workspace_id, assertion_workspace_id, preserve_legacy_logical, legacy_tenant_id, legacy_source_id, legacy_runtime_id,
+     (NOT preserve_legacy_logical AND legacy_tenant_id <> '' AND legacy_tenant_id <> $tenant_id)
+       OR (logical_workspace_id <> '' AND logical_workspace_id <> $application_workspace_id) AS logical_workspace_conflict,
+     assertion_workspace_id <> '' AND assertion_workspace_id <> $application_workspace_id AS assertion_workspace_conflict
+FOREACH (_ IN CASE WHEN logical_workspace_conflict OR assertion_workspace_conflict THEN [] ELSE [1] END |
+  SET r.tenant_id = CASE WHEN preserve_legacy_logical THEN legacy_tenant_id ELSE $tenant_id END,
+      r.application_workspace_id = CASE WHEN preserve_legacy_logical THEN logical_workspace_id WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE logical_workspace_id END,
+      r.source_id = CASE WHEN preserve_legacy_logical THEN legacy_source_id ELSE $source_id END,
+      r.runtime_id = CASE WHEN preserve_legacy_logical THEN legacy_runtime_id ELSE $runtime_id END,
+      r.assertion_managed = NOT preserve_legacy_logical,
+      r.assertion_quarantined = preserve_legacy_logical,
+      a.application_workspace_id = CASE WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE assertion_workspace_id END,
+      a.projection_reconciliation_id = $reconciliation_id
+)
 RETURN coalesce(r.attributes_json, '{}'),
        coalesce(r.attributes_version, 0),
        coalesce(a.attributes_json, '{}'),
        coalesce(a.attributes_version, 0),
-       preserve_legacy_logical`, params)
+       preserve_legacy_logical,
+       logical_workspace_conflict OR assertion_workspace_conflict`, params)
 	if err != nil {
 		return loadedProjectedLinkRow{}, false, err
 	}
@@ -2961,6 +3051,7 @@ RETURN coalesce(r.attributes_json, '{}'),
 		assertionAttributesJSON: stringValue(values[2]),
 		assertionVersion:        toInt64(values[3]),
 		preserveLegacyLogical:   boolValue(values[4]),
+		workspaceConflict:       boolValue(values[5]),
 	}, true, result.Err()
 }
 
@@ -2972,6 +3063,9 @@ func updateLinkAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction
 	params["next_assertion_attributes_version"] = current.assertionVersion + 1
 	params["assertion_attributes_json"] = assertionAttributesJSON
 	params["preserve_legacy_logical"] = current.preserveLegacyLogical
+	if current.workspaceConflict {
+		return false, ports.ErrApplicationWorkspaceConflict
+	}
 	updated, err := countQuery(ctx, tx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
 MATCH (:Entity {urn: $from_urn})-[a:RELATION_ASSERTION {
     relation: $relation,
@@ -2984,6 +3078,7 @@ WHERE coalesce(r.attributes_version, 0) = $logical_attributes_version
 SET r.attributes_json = CASE WHEN $preserve_legacy_logical THEN r.attributes_json ELSE $logical_attributes_json END,
 	r.attributes_version = CASE WHEN $preserve_legacy_logical THEN r.attributes_version ELSE $next_logical_attributes_version END,
 	r.tenant_id = CASE WHEN $preserve_legacy_logical THEN r.tenant_id ELSE $tenant_id END,
+	r.application_workspace_id = CASE WHEN $preserve_legacy_logical THEN coalesce(r.application_workspace_id, '') WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE coalesce(r.application_workspace_id, '') END,
 	r.source_id = CASE WHEN $preserve_legacy_logical THEN r.source_id ELSE $source_id END,
 	r.runtime_id = CASE WHEN $preserve_legacy_logical THEN r.runtime_id ELSE $runtime_id END,
 	r.projection_reconciliation_id = CASE WHEN $preserve_legacy_logical THEN r.projection_reconciliation_id ELSE $reconciliation_id END,
@@ -2991,6 +3086,7 @@ SET r.attributes_json = CASE WHEN $preserve_legacy_logical THEN r.attributes_jso
 	r.assertion_quarantined = $preserve_legacy_logical,
 	a.attributes_json = $assertion_attributes_json,
 	a.attributes_version = $next_assertion_attributes_version,
+	a.application_workspace_id = CASE WHEN $application_workspace_id <> '' THEN $application_workspace_id ELSE coalesce(a.application_workspace_id, '') END,
 	a.projection_reconciliation_id = $reconciliation_id
 RETURN count(a)`, params)
 	if err != nil {
