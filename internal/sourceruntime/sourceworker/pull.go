@@ -22,6 +22,13 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 	sourceID = strings.TrimSpace(sourceID)
 	familyID = strings.TrimSpace(familyID)
 	switch sourceID {
+	case "anthropic":
+		if familyID == "" {
+			familyID = "user"
+		}
+		// Every cataloged Anthropic family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the retired Go path.
+		return familyID, true
 	case "asana":
 		if familyID == "" {
 			familyID = "users"
@@ -101,6 +108,9 @@ func CredentialBinding(sourceID string, references, resolved map[string]string) 
 		return passwordReference, encoded
 	}
 	keys := []string{"graph_token", "token"}
+	if strings.TrimSpace(sourceID) == "anthropic" {
+		keys = []string{"token", "api_token", "api_key", "access_token"}
+	}
 	if strings.TrimSpace(sourceID) == "discord" {
 		keys = []string{"api_token", "api_key", "token"}
 	}
@@ -142,6 +152,31 @@ func PublicExecutionConfig(values map[string]string) map[string]string {
 		if value, ok := values[key]; ok {
 			public[key] = strings.TrimSpace(value)
 		}
+	}
+	return public
+}
+
+// PublicExecutionConfigForSource adds provider-specific selectors that are
+// safe for the credential-free protocol. Secret-bearing aliases remain absent.
+func PublicExecutionConfigForSource(sourceID string, values map[string]string) map[string]string {
+	public := PublicExecutionConfig(values)
+	if strings.TrimSpace(sourceID) != "anthropic" {
+		return public
+	}
+	for _, key := range []string{
+		"activity_types", "actor_ids", "auth_model", "bucket_width", "context_windows",
+		"created_at_gt", "created_at_gte", "created_at_lt", "created_at_lte", "ending_at",
+		"group_by", "group_id", "include_archived", "inference_geos", "model", "models",
+		"organization_ids", "organization_uuid", "periods", "project_id", "role_id",
+		"service_tiers", "speeds", "starting_at", "status", "terminal_types", "user_ids",
+		"workspace_id", "workspace_ids",
+	} {
+		if value, ok := values[key]; ok {
+			public[key] = strings.TrimSpace(value)
+		}
+	}
+	if value, ok := values["api_key_ids"]; ok {
+		public["admin_key_ids"] = strings.TrimSpace(value)
 	}
 	return public
 }

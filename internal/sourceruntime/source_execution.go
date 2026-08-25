@@ -28,14 +28,14 @@ func (s *Service) validateRustSourceRuntimePlan(ctx context.Context, runtime *ce
 	executionContext, err := s.sourceWorker.Context(ctx, sourceworker.ContextRequest{
 		TenantID: strings.TrimSpace(runtime.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()),
 		PageNumber: 1, RuntimeGeneration: 1, LeaseGeneration: 1,
-		ObservedAtUnixMillis: now.UnixMilli(), PublicConfig: sourceworker.PublicExecutionConfig(config),
+		ObservedAtUnixMillis: now.UnixMilli(), PublicConfig: sourceworker.PublicExecutionConfigForSource(runtime.GetSourceId(), config),
 	})
 	if err != nil {
 		return fmt.Errorf("%w: validate Rust execution context: %w", ErrInvalidRequest, err)
 	}
 	_, err = s.sourceWorker.PlanV2(ctx, &cerebrov1.SourceWorkerPlanEnvelopeV2{
 		Request:  &cerebrov1.SourceWorkerPlanRequestV1{Plan: plan, Context: executionContext},
-		Metadata: &cerebrov1.SourceWorkerRuntimeMetadataV2{PublicConfig: sourceworker.PublicExecutionConfig(config)},
+		Metadata: &cerebrov1.SourceWorkerRuntimeMetadataV2{PublicConfig: sourceworker.PublicExecutionConfigForSource(runtime.GetSourceId(), config)},
 	})
 	if err != nil {
 		return fmt.Errorf("%w: validate Rust source plan: %w", ErrInvalidRequest, err)
@@ -69,7 +69,7 @@ func (s *Service) readSourcePull(ctx context.Context, runtime *cerebrov1.SourceR
 	if err != nil {
 		return sourcecdk.Pull{}, false, err
 	}
-	publicConfig := sourceworker.PublicExecutionConfig(cfg.Values())
+	publicConfig := sourceworker.PublicExecutionConfigForSource(runtime.GetSourceId(), cfg.Values())
 	priorWatermark := int64(0)
 	if watermark := checkpoint.GetWatermark(); watermark != nil && watermark.CheckValid() == nil {
 		priorWatermark = watermark.AsTime().UTC().UnixMilli()
