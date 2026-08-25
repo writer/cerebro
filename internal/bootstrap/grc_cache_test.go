@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,6 +43,9 @@ func TestGRCQueryCacheServesFreshHit(t *testing.T) {
 	}
 	if first.Body.String() != second.Body.String() {
 		t.Fatalf("cached body = %q, want %q", second.Body.String(), first.Body.String())
+	}
+	if got := second.Header().Get("Cache-Control"); !strings.Contains(got, "stale-while-revalidate=60") {
+		t.Fatalf("Cache-Control = %q, want stale-while-revalidate=60", got)
 	}
 }
 
@@ -281,27 +285,43 @@ func TestGRCQueryCacheReportsOversizedResponseWithoutClientCacheHeaders(t *testi
 	}
 }
 
-func TestGRCQueryCacheServesStaleOnRefreshError(t *testing.T) {
+func TestGRCQueryCacheServesStaleWithoutWaitingForRefresh(t *testing.T) {
+	cache := querycache.NewMemory(querycache.Options{Namespace: "test"})
 	app := &App{
 		cfg:  config.Config{Cache: config.CacheConfig{DefaultTTL: time.Millisecond, StaleTTL: time.Minute}},
-		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{Namespace: "test"})},
+		deps: Dependencies{QueryCache: cache},
 	}
-	calls := 0
+	var calls atomic.Int32
+	refreshStarted := make(chan struct{})
+	releaseRefresh := make(chan struct{})
 	handler := app.cacheGRCJSON(app.grcCachePolicy("test", time.Millisecond), func(w http.ResponseWriter, _ *http.Request) {
-		calls++
-		if calls > 1 {
-			http.Error(w, "backend failed", http.StatusInternalServerError)
-			return
+		call := calls.Add(1)
+		if call > 1 {
+			close(refreshStarted)
+			<-releaseRefresh
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"calls": calls})
+		writeJSON(w, http.StatusOK, map[string]any{"calls": call})
 	})
 
+	request := func() *http.Request {
+		return httptest.NewRequest(http.MethodGet, "/grc/dashboard?tenant_id=writer", nil)
+	}
 	first := httptest.NewRecorder()
-	handler(first, httptest.NewRequest(http.MethodGet, "/grc/dashboard?tenant_id=writer", nil))
+	handler(first, request())
 	time.Sleep(5 * time.Millisecond)
 
-	second := httptest.NewRecorder()
-	handler(second, httptest.NewRequest(http.MethodGet, "/grc/dashboard?tenant_id=writer", nil))
+	served := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		second := httptest.NewRecorder()
+		handler(second, request())
+		served <- second
+	}()
+	var second *httptest.ResponseRecorder
+	select {
+	case second = <-served:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("stale response waited for backend refresh")
+	}
 	if second.Header().Get("X-Cerebro-Cache") != "stale" {
 		t.Fatalf("second X-Cerebro-Cache = %q, want stale", second.Header().Get("X-Cerebro-Cache"))
 	}
@@ -311,4 +331,64 @@ func TestGRCQueryCacheServesStaleOnRefreshError(t *testing.T) {
 	if first.Body.String() != second.Body.String() {
 		t.Fatalf("stale body = %q, want %q", second.Body.String(), first.Body.String())
 	}
+	select {
+	case <-refreshStarted:
+	case <-time.After(time.Second):
+		t.Fatal("background refresh did not start")
+	}
+	close(releaseRefresh)
+
+	key := app.grcCacheKey(request(), app.grcCachePolicy("test", time.Millisecond))
+	deadline := time.Now().Add(time.Second)
+	for {
+		entry, err := cache.Get(t.Context(), key)
+		if err == nil && strings.Contains(string(entry.Payload), `"calls":2`) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background refresh did not replace cached payload: calls=%d err=%v", calls.Load(), err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestGRCQueryCacheCoalescesBackgroundRefreshes(t *testing.T) {
+	app := &App{
+		cfg:  config.Config{Cache: config.CacheConfig{DefaultTTL: time.Millisecond, StaleTTL: time.Minute}},
+		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{Namespace: "test"})},
+	}
+	var calls atomic.Int32
+	refreshStarted := make(chan struct{})
+	releaseRefresh := make(chan struct{})
+	handler := app.cacheGRCJSON(app.grcCachePolicy("test", time.Millisecond), func(w http.ResponseWriter, _ *http.Request) {
+		call := calls.Add(1)
+		if call > 1 {
+			close(refreshStarted)
+			<-releaseRefresh
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"calls": call})
+	})
+
+	request := func() *http.Request {
+		return httptest.NewRequest(http.MethodGet, "/grc/dashboard?tenant_id=writer", nil)
+	}
+	handler(httptest.NewRecorder(), request())
+	time.Sleep(5 * time.Millisecond)
+
+	for range 20 {
+		response := httptest.NewRecorder()
+		handler(response, request())
+		if got := response.Header().Get("X-Cerebro-Cache"); got != "stale" {
+			t.Fatalf("X-Cerebro-Cache = %q, want stale", got)
+		}
+	}
+	select {
+	case <-refreshStarted:
+	case <-time.After(time.Second):
+		t.Fatal("background refresh did not start")
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("handler calls = %d, want one initial load and one coalesced refresh", got)
+	}
+	close(releaseRefresh)
 }
