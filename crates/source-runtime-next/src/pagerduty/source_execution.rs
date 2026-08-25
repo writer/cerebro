@@ -1,7 +1,7 @@
 //! PagerDuty family bridges into the closed source-execution dispatcher.
 //!
 //! The adapter consumes authenticated tenant context, public configuration, and
-//! bounded provider response bytes. The trusted Go host retains credential
+//! bounded provider response bytes. The trusted runtime host retains credential
 //! redemption, PagerDuty authentication, network I/O, durable append,
 //! projection, and checkpoint ownership.
 
@@ -23,9 +23,7 @@ use super::PagerDutyFamily;
 #[path = "source_execution/catalog.rs"]
 mod catalog;
 
-pub(crate) use catalog::{
-    PAGERDUTY_SOURCE_EXECUTION_ADAPTERS, PAGERDUTY_USER_SOURCE_EXECUTION_ADAPTER,
-};
+pub(crate) use catalog::PAGERDUTY_SOURCE_EXECUTION_ADAPTERS;
 
 use catalog::{DEFAULT_BASE_URL, PagerDutySourceExecutionAdapter, map_error, optional};
 
