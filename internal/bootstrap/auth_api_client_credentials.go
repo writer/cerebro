@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/applicationworkspace"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/mcpoauth"
 )
@@ -60,17 +61,18 @@ func (app *App) exchangeAPIClientCredentialsToken(_ context.Context, r *http.Req
 		ttl = app.cfg.Auth.MCPOAuth.AccessTTL
 	}
 	access, err := issueCapabilityToken(app.cfg.Auth, capabilityClaims{
-		Audience:       app.cfg.Auth.CapabilityTokenAudience,
-		Subject:        "service:" + clientID,
-		IssuedAt:       now.Unix(),
-		CredentialID:   apiCredentialIdentifier(credential),
-		ClientID:       clientID,
-		Resource:       resource,
-		TenantID:       credential.TenantID,
-		AllowedTenants: cloneAuthValues(credential.AllowedTenants),
-		Scopes:         scopes,
-		Roles:          roles,
-		Groups:         []string{"security"},
+		Audience:                   app.cfg.Auth.CapabilityTokenAudience,
+		Subject:                    "service:" + clientID,
+		IssuedAt:                   now.Unix(),
+		CredentialID:               apiCredentialIdentifier(credential),
+		ClientID:                   clientID,
+		Resource:                   resource,
+		TenantID:                   credential.TenantID,
+		AllowedTenants:             cloneAuthValues(credential.AllowedTenants),
+		ApplicationWorkspaceGrants: applicationworkspace.CloneGrants(credential.ApplicationWorkspaceGrants),
+		Scopes:                     scopes,
+		Roles:                      roles,
+		Groups:                     []string{"security"},
 	}, ttl, now)
 	if err != nil {
 		return mcpoauth.TokenResponse{}, err

@@ -37,6 +37,13 @@ func TestAPIClientCredentialsIssuesAPIResourceBoundCapabilityToken(t *testing.T)
 	if tokenResp.AccessToken == "" || tokenResp.RefreshToken != "" || tokenResp.TokenType != "Bearer" {
 		t.Fatalf("token response = %#v", tokenResp)
 	}
+	principal, ok := authenticateCapabilityToken(cfg.Auth, tokenResp.AccessToken, time.Now())
+	if !ok {
+		t.Fatal("issued token did not authenticate")
+	}
+	if !applicationWorkspaceAllowed(principal, "writer", "workspace-a") || applicationWorkspaceAllowed(principal, "writer", "workspace-b") {
+		t.Fatalf("issued token application workspace grants = %#v, want writer/workspace-a only", principal.ApplicationWorkspaceGrants)
+	}
 
 	staticSecretReq, err := http.NewRequest(http.MethodGet, server.URL+"/sources?tenant_id=writer", nil)
 	if err != nil {
@@ -236,6 +243,9 @@ func apiClientCredentialsTestConfig() config.Config {
 				Principal: "ci",
 				TenantID:  "writer",
 				Scopes:    []string{scopeCosmoSecurityRead},
+				ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{
+					{TenantID: "writer", ApplicationWorkspaceIDs: []string{"workspace-a"}},
+				},
 			}},
 			RequestOrigin: config.RequestOriginConfig{PublicOrigin: "https://cerebro.example"},
 		},
