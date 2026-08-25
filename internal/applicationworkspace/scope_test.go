@@ -16,6 +16,23 @@ func TestSelectRequiresHeaderAndQueryAgreement(t *testing.T) {
 	}
 }
 
+func TestSelectValuesRejectsRepeatedSelectors(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		headers []string
+		query   []string
+	}{
+		{name: "headers", headers: []string{"workspace-a", "workspace-b"}},
+		{name: "query", query: []string{"workspace-a", "workspace-b"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := SelectValues(test.headers, test.query); err == nil {
+				t.Fatal("SelectValues() error = nil, want repeated-selector rejection")
+			}
+		})
+	}
+}
+
 func TestNormalizeGrantsDeduplicatesAndSorts(t *testing.T) {
 	got, ok := NormalizeGrants([]config.ApplicationWorkspaceGrant{
 		{TenantID: "writer", ApplicationWorkspaceIDs: []string{"workspace-b", "workspace-a"}},

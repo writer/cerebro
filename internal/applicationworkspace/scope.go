@@ -36,6 +36,22 @@ func Select(headerValue, queryValue string) (string, error) {
 	return workspaceID, nil
 }
 
+// SelectValues rejects ambiguous repeated selectors before reconciling header
+// and query values.
+func SelectValues(headerValues, queryValues []string) (string, error) {
+	if len(headerValues) > 1 || len(queryValues) > 1 {
+		return "", ErrInvalidSelector
+	}
+	var headerValue, queryValue string
+	if len(headerValues) == 1 {
+		headerValue = headerValues[0]
+	}
+	if len(queryValues) == 1 {
+		queryValue = queryValues[0]
+	}
+	return Select(headerValue, queryValue)
+}
+
 // ValidID reports whether value is a single bounded opaque workspace ID.
 func ValidID(value string) bool {
 	if value == "" || len(value) > maxSelectorIDBytes || !utf8.ValidString(value) || value == "*" || strings.Contains(value, ",") {

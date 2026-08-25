@@ -532,7 +532,10 @@ func requestApplicationWorkspaceSelector(r *http.Request) (string, error) {
 	if r == nil || r.URL == nil {
 		return "", nil
 	}
-	workspaceID, err := applicationworkspace.Select(r.Header.Get(applicationworkspace.Header), r.URL.Query().Get("workspace_id"))
+	workspaceID, err := applicationworkspace.SelectValues(
+		r.Header.Values(applicationworkspace.Header),
+		r.URL.Query()["workspace_id"],
+	)
 	if err != nil {
 		return "", fmt.Errorf("%w: workspace_id is invalid", errInvalidHTTPRequest)
 	}
