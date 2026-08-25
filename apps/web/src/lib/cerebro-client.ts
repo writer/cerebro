@@ -17,7 +17,6 @@ export const fetchCerebro = async <T = unknown>(
   const response = await fetch(`/api/cerebro${path}`, {
     ...init,
     headers,
-    cache: "no-store",
   });
   const text = await response.text();
   const contentType = response.headers.get("content-type");

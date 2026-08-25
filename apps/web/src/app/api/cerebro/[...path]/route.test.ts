@@ -24,6 +24,27 @@ afterEach(() => {
 });
 
 describe("Cerebro proxy route", () => {
+  it("does not force ordinary GET reads to bypass the upstream query cache", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    let upstreamInit: RequestInit | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      upstreamInit = init;
+      return new Response(JSON.stringify({ policies: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }));
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cerebro/grc/policy-lifecycle?cache_regression=ordinary"),
+      { params: Promise.resolve({ path: ["grc", "policy-lifecycle"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamInit?.cache).toBeUndefined();
+    expect(new Headers(upstreamInit?.headers).get("cache-control")).toBeNull();
+  });
+
   it.each([
     ["GET", GET],
     ["POST", POST],

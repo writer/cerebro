@@ -22,7 +22,9 @@ func TestMissingLifecycleStatusDoesNotCreateWork(t *testing.T) {
 }
 
 func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
-	store := &recordingPolicyLifecycleStore{}
+	store := &recordingPolicyLifecycleStore{responses: [][]ports.CypherRow{{
+		policyLifecycleTestRow("urn:cerebro:writer:policy:access", "policy", "Access policy", nil),
+	}}}
 	_, err := Build(context.Background(), store, Scope{
 		TenantID:  "writer",
 		SourceID:  "grc",
@@ -77,6 +79,18 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 		t.Fatalf("entity query %q does not filter broad claim/document types", entityRequest.Query)
 	}
 	relationRequest := store.requests[1]
+	entityURNs, ok := relationRequest.Params["entity_urns"].([]string)
+	if !ok || len(entityURNs) != 1 || entityURNs[0] != "urn:cerebro:writer:policy:access" {
+		t.Fatalf("relation entity urns = %#v, want selected lifecycle entity", relationRequest.Params["entity_urns"])
+	}
+	if relationRequest.RowLimit != 20 {
+		t.Fatalf("relation row limit = %d, want 20 for one selected entity", relationRequest.RowLimit)
+	}
+	if !strings.Contains(relationRequest.Query, "UNWIND $entity_urns AS entity_urn") ||
+		!strings.Contains(relationRequest.Query, "MATCH (anchor:Entity {urn: entity_urn})") ||
+		strings.HasPrefix(strings.TrimSpace(relationRequest.Query), "MATCH (left:Entity)-[r:RELATION]") {
+		t.Fatalf("relation query %q is not anchored to selected lifecycle entities", relationRequest.Query)
+	}
 	if relationRequest.Params["risk_scenario_attr_fragment"] != grcPolicyLifecycleRiskScenarioAttrFragment {
 		t.Fatalf("relation params = %#v, want risk scenario filter", relationRequest.Params)
 	}
@@ -86,6 +100,21 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 	}
 	if !strings.Contains(relationRequest.Query, "left.entity_type <> 'claim'") || !strings.Contains(relationRequest.Query, "right.entity_type <> 'document'") {
 		t.Fatalf("relation query %q does not filter broad claim/document types", relationRequest.Query)
+	}
+}
+
+func TestBuildSkipsRelationReadWhenNoLifecycleEntitiesMatch(t *testing.T) {
+	store := &recordingPolicyLifecycleStore{}
+
+	response, err := Build(context.Background(), store, Scope{TenantID: "writer", Limit: 1})
+	if err != nil {
+		t.Fatalf("Build error = %v", err)
+	}
+	if len(store.requests) != 1 {
+		t.Fatalf("requests len = %d, want only the entity read", len(store.requests))
+	}
+	if response.Summary.Policies != 0 || len(response.Policies) != 0 {
+		t.Fatalf("response = %#v, want empty policy lifecycle", response)
 	}
 }
 
@@ -1328,7 +1357,8 @@ func TestPolicyDocumentEvidenceFieldsFlowToLifecycleAndExport(t *testing.T) {
 }
 
 type recordingPolicyLifecycleStore struct {
-	requests []ports.CypherQueryRequest
+	requests  []ports.CypherQueryRequest
+	responses [][]ports.CypherRow
 }
 
 func (s *recordingPolicyLifecycleStore) Ping(context.Context) error {
@@ -1340,7 +1370,11 @@ func (s *recordingPolicyLifecycleStore) GetEntityNeighborhood(context.Context, s
 }
 
 func (s *recordingPolicyLifecycleStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	call := len(s.requests)
 	s.requests = append(s.requests, request)
+	if call < len(s.responses) {
+		return s.responses[call], nil
+	}
 	return nil, nil
 }
 

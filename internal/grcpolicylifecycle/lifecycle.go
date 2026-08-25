@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	grcPolicyLifecycleDefaultLimit         = 100
-	grcPolicyLifecycleDefaultRelationLimit = 2000
-	grcPolicyLifecycleExceptionWindow      = 30 * 24 * time.Hour
+	grcPolicyLifecycleDefaultLimit    = 100
+	grcPolicyLifecycleExceptionWindow = 30 * 24 * time.Hour
 )
 
 type Scope struct {
@@ -120,7 +119,18 @@ RETURN e.urn AS urn,
        coalesce(e.attributes_json, '{}') AS attributes_json
 ORDER BY e.entity_type, e.label, e.urn`
 
-const grcPolicyLifecycleRelationsQuery = `MATCH (left:Entity)-[r:RELATION]->(right:Entity)
+const grcPolicyLifecycleRelationsQuery = `UNWIND $entity_urns AS entity_urn
+MATCH (anchor:Entity {urn: entity_urn})
+CALL {
+  WITH anchor
+  MATCH (anchor)-[r:RELATION]->(right:Entity)
+  RETURN anchor AS left, r, right
+  UNION
+  WITH anchor
+  MATCH (left:Entity)-[r:RELATION]->(anchor)
+  RETURN left, r, anchor AS right
+}
+WITH DISTINCT left, r, right
 WHERE ($tenant_id = '' OR left.tenant_id = $tenant_id)
   AND ($tenant_id = '' OR right.tenant_id = $tenant_id)
   AND (
@@ -717,16 +727,18 @@ func Build(ctx context.Context, store ports.RawCypherQueryStore, scope Scope) (R
 	if err != nil {
 		return Response{}, err
 	}
-	relationLimit := limit * 20
-	if relationLimit < grcPolicyLifecycleDefaultRelationLimit {
-		relationLimit = grcPolicyLifecycleDefaultRelationLimit
+	entityURNs := grcPolicyLifecycleEntityURNs(entityRows)
+	if len(entityURNs) == 0 {
+		return grcPolicyLifecycleFromGraphWithScope(entityRows, nil, time.Now().UTC(), scope), nil
 	}
+	relationLimit := len(entityURNs) * 20
 	if relationLimit > ports.MaxCypherQueryRows {
 		relationLimit = ports.MaxCypherQueryRows
 	}
 	relationRows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query: grcPolicyLifecycleRelationsQuery,
 		Params: map[string]any{
+			"entity_urns":                 entityURNs,
 			"tenant_id":                   scope.TenantID,
 			"source_id":                   scope.SourceID,
 			"runtime_id":                  scope.RuntimeID,
@@ -742,6 +754,23 @@ func Build(ctx context.Context, store ports.RawCypherQueryStore, scope Scope) (R
 		return Response{}, err
 	}
 	return grcPolicyLifecycleFromGraphWithScope(entityRows, relationRows, time.Now().UTC(), scope), nil
+}
+
+func grcPolicyLifecycleEntityURNs(rows []ports.CypherRow) []string {
+	seen := make(map[string]struct{}, len(rows))
+	urns := make([]string, 0, len(rows))
+	for _, row := range rows {
+		urn := grcPolicyRowString(row, "urn")
+		if urn == "" {
+			continue
+		}
+		if _, ok := seen[urn]; ok {
+			continue
+		}
+		seen[urn] = struct{}{}
+		urns = append(urns, urn)
+	}
+	return urns
 }
 
 func grcPolicyLifecycleEntityTypeLimit(limit int) int {
