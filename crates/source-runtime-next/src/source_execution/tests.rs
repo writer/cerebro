@@ -669,6 +669,50 @@ fn closed_dispatcher_registers_the_exact_twilio_audit_events_plan() {
 }
 
 #[test]
+fn closed_dispatcher_registers_only_the_ready_google_workspace_plans() {
+    let dispatcher = super::SourceExecutionDispatcher;
+    for (family, kernel, path, kind, schema) in [
+        (
+            "user",
+            "google_workspace.user",
+            "/admin/directory/v1/users",
+            "google_workspace.user",
+            "google_workspace/user/v1",
+        ),
+        (
+            "group",
+            "google_workspace.group",
+            "/admin/directory/v1/groups",
+            "google_workspace.group",
+            "google_workspace/group/v1",
+        ),
+    ] {
+        let plan = dispatcher
+            .compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "google_workspace".to_owned(),
+                family_id: family.to_owned(),
+            })
+            .unwrap();
+        assert_eq!(plan.provider_kernel, kernel);
+        assert_eq!(plan.origin, "https://admin.googleapis.com");
+        assert_eq!(plan.path, path);
+        assert_eq!(plan.event_kind, kind);
+        assert_eq!(plan.schema_ref, schema);
+        assert_eq!(dispatcher.adapter_for(&plan).unwrap().family_id(), family);
+    }
+
+    for family in ["audit", "group_member", "role_assignment", "future-family"] {
+        assert_eq!(
+            dispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
+                source_id: "google_workspace".to_owned(),
+                family_id: family.to_owned(),
+            }),
+            Err(SourceExecutionError::UnknownAdapter)
+        );
+    }
+}
+
+#[test]
 fn twilio_keys_require_and_bind_public_account_scope_in_v2() {
     let dispatcher = super::SourceExecutionDispatcher;
     let plan = dispatcher

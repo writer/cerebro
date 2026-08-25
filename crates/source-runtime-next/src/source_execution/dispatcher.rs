@@ -5,6 +5,9 @@ use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
 use crate::deepseek::DEEPSEEK_SOURCE_EXECUTION_ADAPTERS;
 use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
 use crate::discord::DISCORD_SOURCE_EXECUTION_ADAPTERS;
+use crate::google_workspace::{
+    GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER, GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER,
+};
 use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
 use crate::openai::OPENAI_SOURCE_EXECUTION_ADAPTERS;
 use crate::pagerduty::PAGERDUTY_SOURCE_EXECUTION_ADAPTERS;
@@ -183,6 +186,16 @@ impl SourceExecutionDispatcher {
         }) {
             return Ok(adapter.compiled_plan());
         }
+        if request.source_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
+        if request.source_id == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.source_id()
+            && request.family_id == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.family_id()
+        {
+            return Ok(GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.compiled_plan());
+        }
         if request.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
         {
@@ -297,6 +310,20 @@ impl SourceExecutionDispatcher {
                 && plan.provider_kernel == adapter.provider_kernel()
         }) {
             return Ok(adapter);
+        }
+        if plan.source_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel
+                == GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&GOOGLE_WORKSPACE_USER_SOURCE_EXECUTION_ADAPTER);
+        }
+        if plan.source_id == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.source_id()
+            && plan.family_id == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.family_id()
+            && plan.provider_kernel
+                == GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER.provider_kernel()
+        {
+            return Ok(&GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER);
         }
         if plan.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
             && plan.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
