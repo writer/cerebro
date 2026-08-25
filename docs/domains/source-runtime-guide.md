@@ -289,6 +289,17 @@ curl -fsS -H "Authorization: Bearer ${CEREBRO_API_KEY}" \
   "https://cerebro.example.com/source-runtimes/<runtime-id>/invalid-events?limit=20"
 ```
 
+The Rust platform serves the tenant-bound runtime view at:
+
+```bash
+curl -fsS -H "Authorization: Bearer ${CEREBRO_OIDC_TOKEN}" \
+  "https://cerebro.example.com/v1/source-runtimes/<runtime-id>/invalid-events"
+```
+
+Missing and cross-tenant runtime IDs return the same empty event list. The
+response includes only bounded validation diagnostics; it never includes the
+rejected provider payload or source-runtime credential references.
+
 Use these during onboarding and after source code changes. Invalid events usually mean a source emitted data that failed validation or projection constraints.
 
 ## Claims and findings
