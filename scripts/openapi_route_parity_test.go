@@ -85,3 +85,42 @@ paths:
 		t.Fatal("openAPIPaths() error = nil, want invalid spec error")
 	}
 }
+
+func TestRouteParityIsBidirectional(t *testing.T) {
+	routes := []route{
+		{Method: "get", Path: "/v1/registered"},
+		{Method: "", Path: "/v1/wildcard"},
+		{Method: "post", Path: "/v1/missing-doc"},
+	}
+	paths := map[string]bool{
+		"/v1/registered":   true,
+		"/v1/wildcard":     true,
+		"/v1/ghost":        true,
+		"/v1/wrong-method": true,
+	}
+	methods := map[route]bool{
+		{Method: "get", Path: "/v1/registered"}:    true,
+		{Method: "get", Path: "/v1/wildcard"}:      true,
+		{Method: "delete", Path: "/v1/ghost"}:      true,
+		{Method: "post", Path: "/v1/wrong-method"}: true,
+	}
+
+	missing := missingOpenAPIRoutes(routes, paths, methods)
+	if len(missing) != 1 || missing[0] != (route{Method: "post", Path: "/v1/missing-doc"}) {
+		t.Fatalf("missingOpenAPIRoutes() = %#v", missing)
+	}
+
+	unregistered := unregisteredOpenAPIRoutes(routes, methods)
+	want := []route{
+		{Method: "delete", Path: "/v1/ghost"},
+		{Method: "post", Path: "/v1/wrong-method"},
+	}
+	if len(unregistered) != len(want) {
+		t.Fatalf("unregisteredOpenAPIRoutes() = %#v, want %#v", unregistered, want)
+	}
+	for index := range want {
+		if unregistered[index] != want[index] {
+			t.Fatalf("unregisteredOpenAPIRoutes()[%d] = %#v, want %#v", index, unregistered[index], want[index])
+		}
+	}
+}
