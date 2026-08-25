@@ -51,14 +51,27 @@ describe("cerebro proxy cache headers", () => {
     expect(getCerebroPublicConfig().apiBase).toBe("/api/cerebro");
   });
 
-  it("adds the server-owned tenant header for local Rust shared-secret auth", () => {
+  it.each([
+    "platform/graph/neighborhood",
+    "grc/inventory/categories",
+    "grc/vendors",
+    "grc/policy-lifecycle",
+  ])("adds the server-owned tenant header to %s", (path) => {
     vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", " tenant-demo ");
 
     const request = new NextRequest("http://localhost/graph");
-    const headers = new Headers(authHeadersFor(request, "platform/graph/neighborhood"));
+    const headers = new Headers(authHeadersFor(request, path));
 
     expect(headers.get("x-cerebro-tenant")).toBe("tenant-demo");
-    expect(new Headers(authHeadersFor(request, "user/preferences")).get("x-cerebro-tenant")).toBeNull();
+  });
+
+  it("keeps explicit tenant selection and unrelated routes independent of the graph tenant", () => {
+    vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", "tenant-demo");
+
+    const selectedTenantRequest = new NextRequest("http://localhost/api/cerebro/grc/vendors?tenant_id=tenant-selected");
+
+    expect(new Headers(authHeadersFor(selectedTenantRequest, "grc/vendors")).get("x-cerebro-tenant")).toBeNull();
+    expect(new Headers(authHeadersFor(selectedTenantRequest, "user/preferences")).get("x-cerebro-tenant")).toBeNull();
   });
 
   it("routes only runtime health to the configured Rust platform origin", () => {

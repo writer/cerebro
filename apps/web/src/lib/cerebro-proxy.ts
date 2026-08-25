@@ -103,6 +103,11 @@ export const rustTenantAuthHeaders = (tenantID: string, sharedSecret: string): H
 const isRustRuntimeHealthPath = (path: string) =>
   normalizeProxyPath(path) === RUST_RUNTIME_HEALTH_PATH;
 
+const usesOrganizationalGraphTenant = (path: string) => {
+  const normalizedPath = normalizeProxyPath(path);
+  return normalizedPath === "platform/graph/neighborhood" || normalizedPath.startsWith("grc/");
+};
+
 const forwardRequestAuth =
   parseBooleanEnv(process.env.CEREBRO_FORWARD_AUTH_HEADERS) ??
   !Boolean(SERVER_API_KEY || SERVER_AUTHORIZATION);
@@ -204,7 +209,8 @@ export const authHeadersFor = (request: NextRequest, upstreamPath = ""): Headers
   const organizationalGraphTenant = configuredOrganizationalGraphTenant();
   if (
     organizationalGraphTenant &&
-    normalizeProxyPath(upstreamPath) === "platform/graph/neighborhood"
+    usesOrganizationalGraphTenant(upstreamPath) &&
+    !request.nextUrl.searchParams.get("tenant_id")?.trim()
   ) {
     headers["X-Cerebro-Tenant"] = organizationalGraphTenant;
   }
