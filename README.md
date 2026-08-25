@@ -120,7 +120,7 @@ Current authority map:
 
 | Surface | Current role | Required evidence before deleting Go compatibility |
 | --- | --- | --- |
-| Rust organizational platform | Rust-authoritative tenant-scoped graph routes and invariant-heavy authority paths, including the Rust product demo | Typed graph tests, readiness/fail-closed receipts, product-shape compatibility, rollback evidence |
+| Rust organizational platform | Rust-authoritative tenant-scoped graph routes and invariant-heavy authority paths, including the fenced source-runtime sync route and Rust product demo | Typed graph and source-sync tests, readiness/fail-closed receipts, product-shape compatibility, rollback evidence |
 | Go compatibility runtime | Go compatibility runtime for source reads, CLI, HTTP, Connect, MCP, append-log, findings, reports, and compatibility workflows | Source/runtime parity, durable fencing, rollback receipts, OpenAPI/proto/SDK/MCP compatibility gates |
 | Credential-free source worker | Rust plans and decodes `azure.authorization_policy`; its closed dispatcher also compile-registers `sentinelone.agent`, while the trusted Go host owns credential redemption, bounded provider I/O, append, projection, and fenced checkpoint commit | Exact Go/Rust event parity, lease-generation rejection, restart deduplication, hosted checks, deployment correlation, and an authenticated product read |
 | Durable evidence stores | NATS JetStream, Postgres, and Neo4j are required for persisted evidence, append-log replay, receipts, findings, reports, graph projection, and graph queries | Preflight, health/readiness, projection and replay receipts; unconfigured routes must fail closed |

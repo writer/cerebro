@@ -139,6 +139,27 @@ curl -fsS -X POST \
   "https://cerebro.example.com/source-runtimes/<runtime-id>/sync?page_limit=100"
 ```
 
+Rust-authoritative catalog families can also sync through the write-capable
+`serve-neo4j` or `serve-neo4j-consumer` Rust platform route:
+
+```bash
+curl -fsS -X POST \
+  -H "Authorization: Bearer ${CEREBRO_RUST_TENANT_TOKEN}" \
+  -H "X-Cerebro-Tenant: <tenant-id>" \
+  "https://cerebro.example.com/v1/source-runtimes/<runtime-id>/sync"
+```
+
+That route accepts only the runtime ID. Rust loads the tenant, source, family,
+configuration, and cursor from the durable runtime record, verifies the
+authenticated tenant before resolving credentials, and holds the renewable
+Postgres lease through provider collection and the fenced graph commit. A
+concurrent holder returns a conflict; provider, configuration, and durable-store
+failures remain distinct and do not fall back to the Go writer.
+
+The example uses the Rust platform's tenant-HMAC mode. In OIDC mode, the signed
+identity supplies the tenant and must carry the `cerebro:write` scope; do not
+send a tenant selected independently from that identity.
+
 Operational guidance:
 
 - Default to small page limits during onboarding.
