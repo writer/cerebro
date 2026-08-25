@@ -1,0 +1,28 @@
+id: typescript.api.zod-request-boundaries
+title: Validate TypeScript request boundaries
+status: preferred
+enforcement: advisory
+summary: Parse request params, query, body, and webhook payloads with Zod or the package's existing boundary validator.
+rationale: Runtime validation protects TypeScript service code from trusting shapes that only exist at compile time.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [express, fastify, nextjs, hono, zod]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "pages/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**"]
+applies_when:
+  intents: ["request", "endpoint", "route", "params", "query", "body", "webhook", "validation"]
+  keywords: ["z.object", "safeParse", "parse", "req.body", "req.query", "params", "searchParams", "webhook"]
+avoid:
+  - Casting req.body, req.query, params, or searchParams to application types.
+  - Trusting generated TypeScript types for data received over HTTP.
+use_instead:
+  - Parse request data with Zod or the local validator before calling domain services.
+  - Return the framework's standard validation error shape on parse failure.
+good_examples:
+  - |
+    const input = updateUserSchema.parse({ body: req.body, params: req.params });
+bad_examples:
+  - const input = req.body as UpdateUserRequest
+owner: backend-platform
+last_reviewed: 2026-07-01

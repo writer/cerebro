@@ -1,0 +1,1278 @@
+# Generated from practices/*.yml. Edit practice records, then run practice generate-semgrep.
+rules:
+  - id: python.db.parameterized-sql
+    languages:
+      - python
+    message: "Parameterize SQL values: Do not build SQL statements by interpolating
+      values into query strings."
+    severity: ERROR
+    metadata:
+      practice_id: python.db.parameterized-sql
+      status: banned
+      enforcement: blocking
+      owner: data-platform
+      source_file: python/parameterized-sql.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+    pattern-regex: \b(execute|executemany)\s*\(\s*f["'][^\n]*(select|insert|update|delete)
+  - id: python.defaults.no-mutable-defaults
+    languages:
+      - python
+    message: "Do not use mutable default arguments: Do not add list, dict, set, or
+      bytearray values as Python function defaults."
+    severity: ERROR
+    metadata:
+      practice_id: python.defaults.no-mutable-defaults
+      status: banned
+      enforcement: blocking
+      owner: backend-platform
+      source_file: python/no-mutable-defaults.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - tests/**
+        - "**/tests/**"
+    pattern-regex: \bdef\s+\w+\s*\([^\n)]*=\s*(\[\]|\{\}|set\s*\(\)|list\s*\(\)|dict\s*\(\)|bytearray\s*\(\))
+  - id: python.errors.no-broad-except-without-context
+    languages:
+      - python
+    message: "Keep exception handlers specific: Avoid broad except blocks unless
+      they add context and re-raise or return a defined error state."
+    severity: WARNING
+    metadata:
+      practice_id: python.errors.no-broad-except-without-context
+      status: discouraged
+      enforcement: advisory
+      owner: backend-platform
+      source_file: python/broad-except.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+    pattern-regex: "\\bexcept\\s+(Exception)?\\s*:"
+  - id: python.http.client-timeout
+    languages:
+      - python
+    message: "Set timeouts on Python HTTP calls: Do not add outbound requests or
+      httpx calls without an explicit timeout."
+    severity: WARNING
+    metadata:
+      practice_id: python.http.client-timeout
+      status: discouraged
+      enforcement: advisory
+      owner: backend-platform
+      source_file: python/http-client-timeout.yml
+    paths:
+      include:
+        - src/**/*.py
+        - services/**/*.py
+        - apps/**/*.py
+        - packages/**/*.py
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - tests/**
+        - "**/tests/**"
+        - scripts/**
+    pattern-regex: \b(requests|httpx)\.(get|post|put|patch|delete|request)\s*\((?![^\n)]*timeout\s*=)[^\n)]*\)
+  - id: python.logging.no-fstring-logs
+    languages:
+      - python
+    message: "Use structured fields in Python logs: Do not add f-string logger
+      messages in Python service code."
+    severity: WARNING
+    metadata:
+      practice_id: python.logging.no-fstring-logs
+      status: discouraged
+      enforcement: advisory
+      owner: observability
+      source_file: python/no-fstring-logs.yml
+    paths:
+      include:
+        - src/**/*.py
+        - services/**/*.py
+        - apps/**/*.py
+        - packages/**/*.py
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - tests/**
+        - "**/tests/**"
+        - scripts/**
+    pattern-regex: \blogger\.(debug|info|warn|warning|error|exception)\s*\(\s*f["']
+  - id: python.logging.no-print-in-services
+    languages:
+      - python
+    message: "Use structured logging in Python services: Do not add print statements
+      to service code."
+    severity: WARNING
+    metadata:
+      practice_id: python.logging.no-print-in-services
+      status: discouraged
+      enforcement: advisory
+      owner: observability
+      source_file: python/no-print-in-services.yml
+    paths:
+      include:
+        - services/**/*.py
+        - apps/**/*.py
+        - src/**/*.py
+      exclude:
+        - scripts/**
+        - notebooks/**
+        - legacy/**
+    pattern-regex: \bprint\s*\(
+  - id: python.security.crypto-random-for-secrets
+    languages:
+      - python
+    message: "Use cryptographic randomness for secrets: Do not create tokens,
+      passwords, secrets, or API keys with the random module."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.crypto-random-for-secrets
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/secure-random.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(\w*(token|secret|password|api[_-]?key)\w*\s*=\s*[^\n]*random\.(random|randint|randrange|choice|choices|sample)\s*\(|random\.(random|randint|randrange|choice|choices|sample)\s*\([^\n]*(token|secret|password|api[_-]?key))
+  - id: python.security.insecure-tls-verification
+    languages:
+      - python
+    message: "Keep TLS certificate verification on: Do not disable TLS certificate
+      verification in Python HTTP clients or SSL contexts."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.insecure-tls-verification
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/insecure-tls-verification.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(verify\s*=\s*False|ssl\._create_unverified_context\s*\(|cert_reqs\s*=\s*["']CERT_NONE["']|ssl\.CERT_NONE)
+  - id: python.security.jwt-signature-verification
+    languages:
+      - python
+    message: "Verify JWT signatures: Do not decode JWTs with signature verification
+      disabled or with the none algorithm."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.jwt-signature-verification
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/jwt-verify-signature.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(options\s*=\s*\{[^\n]*["']verify_signature["']\s*:\s*False|verify_signature\s*=\s*False|algorithms\s*=\s*\[\s*["']none["']\s*\])
+  - id: python.security.no-debug-mode
+    languages:
+      - python
+    message: "Keep Python debug mode out of service code: Do not enable framework
+      debug mode in Python service code."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.no-debug-mode
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-debug-mode.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(DEBUG\s*=\s*True|debug\s*=\s*True|app\.run\s*\([^\n]*debug\s*=\s*True)
+  - id: python.security.no-eval-exec
+    languages:
+      - python
+    message: "Do not evaluate Python strings as code: Do not add eval, exec, or
+      compile for request, job, or configuration data."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.no-eval-exec
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-eval-exec.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(eval|exec|compile)\s*\(
+  - id: python.security.no-fast-password-hash
+    languages:
+      - python
+    message: "Use password hashing libraries for passwords: Do not hash passwords
+      with hashlib digest functions."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.no-fast-password-hash
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-fast-password-hash.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(\w*(password|passwd|pwd)\w*\s*=\s*hashlib\.(md5|sha1|sha256|sha512)\s*\(|hashlib\.(md5|sha1|sha256|sha512)\s*\([^\n]*(password|passwd|pwd))
+  - id: python.security.no-request-path-file-access
+    languages:
+      - python
+    message: "Do not open request paths directly: Do not pass request parameters
+      directly to file open, Path, or send_file helpers."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.no-request-path-file-access
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-request-path-file-access.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b((open|send_file|send_from_directory)\s*\([^\n]*(request\.(args|form|json|values)|flask\.request|req\.)|Path\s*\([^\n]*(request\.(args|form|json|values)|flask\.request|req\.))
+  - id: python.security.no-request-url-fetch
+    languages:
+      - python
+    message: "Do not fetch request-controlled URLs: Do not pass request parameters
+      directly to outbound HTTP clients."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.no-request-url-fetch
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-ssrf-from-request.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(requests|httpx)\.(get|post|put|patch|delete|request)\s*\([^\n]*(request\.(args|form|json|values)|flask\.request|req\.)
+  - id: python.security.no-sqlalchemy-text-fstring
+    languages:
+      - python
+    message: "Parameterize SQLAlchemy text queries: Do not pass f-string SQL to
+      SQLAlchemy text, session.execute, or connection.execute."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.no-sqlalchemy-text-fstring
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-sqlalchemy-text-fstring.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(text|session\.execute|connection\.execute)\s*\(\s*f["'][^\n]*(select|insert|update|delete)
+  - id: python.security.no-tempfile-mktemp
+    languages:
+      - python
+    message: "Use safe temporary file APIs: Do not use tempfile.mktemp."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.no-tempfile-mktemp
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-tempfile-mktemp.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \btempfile\.mktemp\s*\(
+  - id: python.security.no-template-autoescape-off
+    languages:
+      - python
+    message: "Keep template autoescape enabled: Do not disable template autoescape
+      in Python web code."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.no-template-autoescape-off
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-template-autoescape-off.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(autoescape\s*=\s*False|Environment\s*\([^\n]*autoescape\s*=\s*False)
+  - id: python.security.unsafe-deserialization
+    languages:
+      - python
+    message: "Avoid unsafe Python deserialization: Do not deserialize untrusted
+      bytes with pickle, dill, marshal, or unsafe YAML loaders."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.unsafe-deserialization
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/unsafe-deserialization.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b((pickle|dill|marshal)\.(load|loads)\s*\(|yaml\.(unsafe_load|full_load)\s*\(|yaml\.load\s*\([^\n]*(Loader\s*=\s*yaml\.(UnsafeLoader|FullLoader)|Loader\s*=\s*UnsafeLoader|Loader\s*=\s*FullLoader))
+  - id: python.security.unsafe-xml-parsing
+    languages:
+      - python
+    message: "Use hardened XML parsers: Do not parse untrusted XML with standard
+      library or lxml default parsers."
+    severity: ERROR
+    metadata:
+      practice_id: python.security.unsafe-xml-parsing
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/unsafe-xml-parsing.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b((xml\.etree\.ElementTree|ElementTree|ET)\.(fromstring|parse)\s*\(|(xml\.dom\.minidom|minidom)\.(parse|parseString)\s*\(|lxml\.etree\.(fromstring|parse)\s*\()
+  - id: python.subprocess.no-shell-true
+    languages:
+      - python
+    message: "Avoid shell=True for subprocess calls: Do not add subprocess calls
+      with shell=True."
+    severity: ERROR
+    metadata:
+      practice_id: python.subprocess.no-shell-true
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: python/no-shell-true.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+    pattern-regex: \b(subprocess\.(run|call|check_call|check_output)\([^\n#]*shell\s*=\s*True|os\.system\s*\()
+  - id: python.time.utc-aware-datetime
+    languages:
+      - python
+    message: "Use timezone-aware UTC datetimes: Use timezone-aware UTC datetimes for
+      persisted values, job scheduling, and external API timestamps."
+    severity: WARNING
+    metadata:
+      practice_id: python.time.utc-aware-datetime
+      status: preferred
+      enforcement: advisory
+      owner: backend-platform
+      source_file: python/utc-aware-datetime.yml
+    paths:
+      include:
+        - "**/*.py"
+      exclude:
+        - legacy/**
+    pattern-regex: \bdatetime\.(utcnow|now)\s*\(\s*\)
+  - id: python.writer.async-background-work
+    languages:
+      - python
+    message: "Run Python consumers from FastAPI lifespan: Do not start long-running
+      consumers or schedulers with ad-hoc asyncio.create_task calls."
+    severity: WARNING
+    metadata:
+      practice_id: python.writer.async-background-work
+      status: discouraged
+      enforcement: advisory
+      owner: backend-platform
+      source_file: python/async-background-work.yml
+    paths:
+      include:
+        - src/**/*.py
+        - services/**/*.py
+        - apps/**/*.py
+        - packages/**/*.py
+      exclude:
+        - tests/**
+        - scripts/**
+        - legacy/**
+        - notebooks/**
+    pattern-regex: \basyncio\.create_task\s*\(
+  - id: python.writer.newtype-domain-branding
+    languages:
+      - python
+    message: "Separate boundary validation from Python domain branding: Do not
+      combine NewType and Annotated in one alias; validate at the boundary and
+      use NewType inside domain code."
+    severity: WARNING
+    metadata:
+      practice_id: python.writer.newtype-domain-branding
+      status: discouraged
+      enforcement: advisory
+      owner: backend-platform
+      source_file: python/newtype-domain-branding.yml
+    paths:
+      include:
+        - src/**/*.py
+        - services/**/*.py
+        - apps/**/*.py
+        - packages/**/*.py
+      exclude:
+        - legacy/**
+        - notebooks/**
+    pattern-regex: \bNewType\s*\(\s*["'][^"']+["']\s*,\s*Annotated\s*\[
+  - id: python.writer.typed-settings
+    languages:
+      - python
+    message: "Load Python service configuration through typed settings: Do not read
+      environment variables throughout Python service code; parse configuration
+      once with pydantic-settings."
+    severity: WARNING
+    metadata:
+      practice_id: python.writer.typed-settings
+      status: discouraged
+      enforcement: advisory
+      owner: backend-platform
+      source_file: python/typed-settings.yml
+    paths:
+      include:
+        - src/**/*.py
+        - services/**/*.py
+        - apps/**/*.py
+        - packages/**/*.py
+      exclude:
+        - "**/config.py"
+        - tests/**
+        - scripts/**
+        - legacy/**
+        - notebooks/**
+    pattern-regex: \b(os\.getenv\s*\(|os\.environ(?:\.get\s*\(|\s*\[))
+  - id: rust.http.no-insecure-tls-verification
+    languages:
+      - rust
+    message: "Keep TLS verification enabled in Rust clients: Do not accept invalid
+      TLS certificates or hostnames in Rust HTTP clients."
+    severity: ERROR
+    metadata:
+      practice_id: rust.http.no-insecure-tls-verification
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: rust/no-insecure-tls.yml
+    paths:
+      include:
+        - src/**/*.rs
+        - crates/**/*.rs
+        - services/**/*.rs
+        - apps/**/*.rs
+      exclude:
+        - target/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \.danger_accept_invalid_(?:certs|hostnames)\s*\(\s*true\s*,?\s*\)
+  - id: rust.process.no-shell-command
+    languages:
+      - rust
+    message: "Execute Rust child processes without a shell: Do not launch sh, bash,
+      zsh, cmd, or PowerShell from production Rust code."
+    severity: ERROR
+    metadata:
+      practice_id: rust.process.no-shell-command
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: rust/no-shell-command.yml
+    paths:
+      include:
+        - src/**/*.rs
+        - crates/**/*.rs
+        - services/**/*.rs
+        - apps/**/*.rs
+      exclude:
+        - target/**
+        - fixtures/**
+        - testdata/**
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(?:std::process::|tokio::process::)?Command::new\s*\(\s*"(?:sh|bash|zsh|cmd(?:\.exe)?|powershell(?:\.exe)?|pwsh)"\s*,?\s*\)
+  - id: rust.safety.document-unsafe-invariants
+    languages:
+      - rust
+    message: "Document the invariant for each Rust unsafe block: Keep unsafe code in
+      a narrow boundary with a SAFETY comment that states the caller, lifetime,
+      aliasing, or layout invariant."
+    severity: WARNING
+    metadata:
+      practice_id: rust.safety.document-unsafe-invariants
+      status: allowed_with_context
+      enforcement: review
+      owner: security-platform
+      source_file: rust/document-unsafe-invariants.yml
+    paths:
+      include:
+        - src/**/*.rs
+        - crates/**/*.rs
+        - services/**/*.rs
+        - apps/**/*.rs
+      exclude:
+        - target/**
+        - vendor/**
+        - "**/generated/**"
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \bunsafe\s*\{
+  - id: scala.effects.no-await-result-in-services
+    languages:
+      - scala
+    message: "Do not block on futures in services: Do not add Await.result or
+      blocking waits in service code."
+    severity: ERROR
+    metadata:
+      practice_id: scala.effects.no-await-result-in-services
+      status: banned
+      enforcement: blocking
+      owner: scala-platform
+      source_file: scala/no-await-result.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - scripts/**
+        - "**/generated/**"
+    pattern-regex: \bAwait\.(result|ready)\s*\(
+  - id: scala.effects.no-unsafe-run-sync-in-services
+    languages:
+      - scala
+    message: "Do not run effects inside Scala service code: Do not add unsafeRunSync
+      or equivalent effect evaluation in Scala service code."
+    severity: ERROR
+    metadata:
+      practice_id: scala.effects.no-unsafe-run-sync-in-services
+      status: banned
+      enforcement: blocking
+      owner: scala-platform
+      source_file: scala/no-unsafe-run-sync.yml
+    paths:
+      include:
+        - server/src/**/*.scala
+        - src/**/*.scala
+        - apps/**/*.scala
+        - services/**/*.scala
+      exclude:
+        - legacy/**
+        - "**/generated/**"
+        - server/test/**
+        - "**/*Spec.scala"
+    pattern-regex: \.unsafeRunSync\s*\(
+  - id: scala.errors.typed-errors
+    languages:
+      - scala
+    message: "Return typed Scala errors at service boundaries: Use Either,
+      Validated, IO.raiseError with domain errors, or the local effect error
+      convention at service boundaries."
+    severity: WARNING
+    metadata:
+      practice_id: scala.errors.typed-errors
+      status: preferred
+      enforcement: advisory
+      owner: scala-platform
+      source_file: scala/typed-errors.yml
+    paths:
+      include:
+        - services/**/*.scala
+        - packages/**/*.scala
+        - src/**/*.scala
+      exclude:
+        - legacy/**
+        - "**/generated/**"
+    pattern-regex: \bthrow\s+new\s+(RuntimeException|Exception)\b
+  - id: scala.execution-context.no-global-in-services
+    languages:
+      - scala
+    message: "Use owned execution contexts in Scala services: Do not add
+      scala.concurrent.ExecutionContext.global in service code."
+    severity: WARNING
+    metadata:
+      practice_id: scala.execution-context.no-global-in-services
+      status: discouraged
+      enforcement: advisory
+      owner: scala-platform
+      source_file: scala/no-global-execution-context.yml
+    paths:
+      include:
+        - services/**/*.scala
+        - apps/**/*.scala
+        - src/**/*.scala
+        - server/src/**/*.scala
+        - server/src/**/*.sc
+      exclude:
+        - legacy/**
+        - scripts/**
+    pattern-regex: \b(ExecutionContext\.Implicits\.global|ExecutionContext\.global)\b
+  - id: scala.security.crypto-random-for-secrets
+    languages:
+      - scala
+    message: "Use SecureRandom for secrets: Do not create tokens, passwords,
+      secrets, or API keys with scala.util.Random or java.util.Random."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.crypto-random-for-secrets
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/secure-random-for-secrets.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(\w*([Tt]oken|[Ss]ecret|[Pp]assword|apiKey|ApiKey|api[_-]?key)\w*\s*=\s*[^\n]*(new\s+Random|Random\.)|(new\s+Random|Random\.)[^\n]*([Tt]oken|[Ss]ecret|[Pp]assword|apiKey|ApiKey|api[_-]?key))
+  - id: scala.security.insecure-tls-trust-all
+    languages:
+      - scala
+    message: "Do not trust all TLS certificates: Do not add trust-all hostname
+      verifiers, trust managers, or TLS client factories."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.insecure-tls-trust-all
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/insecure-tls-trust-all.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(NoopHostnameVerifier|ALLOW_ALL_HOSTNAME_VERIFIER|InsecureTrustManagerFactory|trustAllCerts|TrustAllStrategy)\b|checkServerTrusted\s*\([^\n]*\)\s*=\s*\(\)
+  - id: scala.security.java-deserialization
+    languages:
+      - scala
+    message: "Avoid Java native deserialization: Do not add ObjectInputStream or
+      readObject deserialization in Scala services."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.java-deserialization
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/java-deserialization.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(new\s+ObjectInputStream\s*\(|ObjectInputStream\s*\(|\.readObject\s*\()
+  - id: scala.security.no-fast-password-hash
+    languages:
+      - scala
+    message: "Use password hashing libraries for passwords: Do not hash passwords
+      with MessageDigest."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.no-fast-password-hash
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/no-fast-password-hash.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(\w*([Pp]assword|passwd|pwd)\w*[^\n]*MessageDigest\.getInstance\s*\(\s*["'](MD5|SHA-1|SHA1|SHA-256|SHA-512)["']\s*\)|MessageDigest\.getInstance\s*\(\s*["'](MD5|SHA-1|SHA1|SHA-256|SHA-512)["']\s*\)[^\n]*([Pp]assword|passwd|pwd))
+  - id: scala.security.no-request-path-file-access
+    languages:
+      - scala
+    message: "Do not open request paths directly: Do not pass request parameters
+      directly to File, Paths, or Source file APIs."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.no-request-path-file-access
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/no-request-path-file-access.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(Paths\.get|new\s+File|Source\.fromFile)\s*\([^\n]*(request\.|req\.|getParameter\s*\()
+  - id: scala.security.no-request-url-fetch
+    languages:
+      - scala
+    message: "Do not fetch request-controlled URLs: Do not pass request parameters
+      directly to outbound HTTP clients."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.no-request-url-fetch
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/no-request-url-fetch.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(requests\.(get|post|put|delete)|HttpRequest|basicRequest)\s*\([^\n]*(request\.|req\.|getParameter\s*\()
+  - id: scala.security.no-runtime-exec
+    languages:
+      - scala
+    message: "Do not execute shell commands from Scala services: Do not add
+      Runtime.exec, ProcessBuilder, sh -c, or interpolated scala.sys.process
+      commands in service code."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.no-runtime-exec
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/no-runtime-exec.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - scripts/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(Runtime\.getRuntime\(\)\.exec\s*\(|new\s+ProcessBuilder\s*\(|Seq\s*\([^\n]*["']sh["'][^\n]*["']-c["']|s?["'][^"']*\$[^"']*["']\s*\.!!?)
+  - id: scala.security.no-sql-interpolation
+    languages:
+      - scala
+    message: "Parameterize Scala SQL queries: Do not pass interpolated SQL strings
+      to execute, executeQuery, or executeUpdate."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.no-sql-interpolation
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/no-sql-interpolation.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(execute|executeQuery|executeUpdate)\s*\(\s*s["'][^\n]*(select|insert|update|delete)
+  - id: scala.security.no-unsafe-xml-load
+    languages:
+      - scala
+    message: "Use hardened XML parsing in Scala: Do not parse untrusted XML with
+      scala.xml.XML load helpers."
+    severity: ERROR
+    metadata:
+      practice_id: scala.security.no-unsafe-xml-load
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: scala/no-unsafe-xml-load.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: \b(scala\.xml\.XML|XML)\.(loadString|loadFile|load)\s*\(
+  - id: scala.security.weak-message-digest
+    languages:
+      - scala
+    message: "Review MD5 and SHA-1 digests: Do not add MD5 or SHA-1 digests for
+      authentication, signatures, passwords, tokens, or integrity decisions
+      without owner review."
+    severity: WARNING
+    metadata:
+      practice_id: scala.security.weak-message-digest
+      status: needs_review
+      enforcement: review
+      owner: security-platform
+      source_file: scala/weak-message-digest.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/generated/**"
+    pattern-regex: MessageDigest\.getInstance\s*\(\s*["'](MD5|SHA-1|SHA1)["']\s*\)
+  - id: scala.values.no-null
+    languages:
+      - scala
+    message: "Model missing Scala values explicitly: Do not introduce null as a
+      domain value in Scala code."
+    severity: ERROR
+    metadata:
+      practice_id: scala.values.no-null
+      status: banned
+      enforcement: blocking
+      owner: scala-platform
+      source_file: scala/no-null.yml
+    paths:
+      include:
+        - "**/*.scala"
+        - "**/*.sc"
+      exclude:
+        - legacy/**
+        - "**/generated/**"
+    pattern-regex: (^|[^A-Za-z0-9_])(null|orNull)([^A-Za-z0-9_]|$)|\.getOrElse\s*\(\s*null\s*\)
+  - id: security.cookies.no-insecure-flags
+    languages:
+      - python
+      - scala
+      - typescript
+      - javascript
+      - rust
+    message: "Keep session cookies protected: Do not set session or authentication
+      cookies with Secure or HttpOnly disabled."
+    severity: ERROR
+    metadata:
+      practice_id: security.cookies.no-insecure-flags
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: common/no-insecure-cookie-flags.yml
+    paths:
+      include:
+        - "**/*.py"
+        - "**/*.scala"
+        - "**/*.sc"
+        - "**/*.ts"
+        - "**/*.tsx"
+        - "**/*.js"
+        - "**/*.mjs"
+        - "**/*.rs"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - dist/**
+        - node_modules/**
+        - target/**
+        - "**/tests/**"
+        - tests/**
+        - "**/test/**"
+        - "**/*Test.scala"
+    pattern-regex: \b(set_cookie|Cookie)\s*\([^\n]*(secure\s*=\s*(False|false)|httponly\s*=\s*False|httpOnly\s*=\s*false)
+  - id: security.cors.no-wildcard-credentials
+    languages:
+      - python
+      - scala
+      - typescript
+      - javascript
+      - rust
+    message: "Do not combine wildcard CORS with credentials: Do not allow
+      credentials when CORS origins include the wildcard origin."
+    severity: ERROR
+    metadata:
+      practice_id: security.cors.no-wildcard-credentials
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: common/no-wildcard-cors-credentials.yml
+    paths:
+      include:
+        - "**/*.py"
+        - "**/*.scala"
+        - "**/*.sc"
+        - "**/*.ts"
+        - "**/*.tsx"
+        - "**/*.js"
+        - "**/*.mjs"
+        - "**/*.rs"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - dist/**
+        - node_modules/**
+        - target/**
+        - "**/tests/**"
+        - tests/**
+        - "**/test/**"
+        - "**/*Test.scala"
+    pattern-regex: \b(allow_credentials\s*=\s*True[^\n]*allow_origins\s*=\s*\[[^\n]*["']\*["']|allow_origins\s*=\s*\[[^\n]*["']\*["'][^\n]*allow_credentials\s*=\s*True|supportsCredentials\s*=\s*true[^\n]*allowedOrigins[^\n]*["']\*["'])
+  - id: security.logging.no-sensitive-values
+    languages:
+      - python
+      - scala
+      - typescript
+      - javascript
+      - rust
+    message: "Keep sensitive values out of logs: Do not log passwords, tokens,
+      authorization headers, session ids, or service secrets."
+    severity: ERROR
+    metadata:
+      practice_id: security.logging.no-sensitive-values
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: common/no-sensitive-logs.yml
+    paths:
+      include:
+        - "**/*.py"
+        - "**/*.scala"
+        - "**/*.sc"
+        - "**/*.ts"
+        - "**/*.tsx"
+        - "**/*.js"
+        - "**/*.mjs"
+        - "**/*.rs"
+      exclude:
+        - legacy/**
+        - fixtures/**
+        - testdata/**
+        - dist/**
+        - node_modules/**
+        - target/**
+        - "**/test/**"
+        - "**/*Test.scala"
+        - "**/tests/**"
+        - tests/**
+    pattern-regex: \b(log|logger)\.(debug|info|warn|warning|error|exception)\s*\([^\n]*(password|passwd|secret|token|authorization|api[_-]?key|session[_-]?id)["']?\s*[:=]
+  - id: security.secrets.no-hardcoded-secrets
+    languages:
+      - python
+      - scala
+      - typescript
+      - javascript
+      - rust
+    message: "Keep secrets out of source code: Do not add tokens, credentials,
+      private keys, or service secrets to source files."
+    severity: ERROR
+    metadata:
+      practice_id: security.secrets.no-hardcoded-secrets
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: common/no-hardcoded-secrets.yml
+    paths:
+      include:
+        - "**/*.py"
+        - "**/*.scala"
+        - "**/*.sc"
+        - "**/*.ts"
+        - "**/*.tsx"
+        - "**/*.js"
+        - "**/*.mjs"
+        - "**/*.rs"
+        - "**/*.conf"
+        - "**/*.env"
+        - "**/*.yml"
+        - "**/*.yaml"
+      exclude:
+        - dist/**
+        - node_modules/**
+        - target/**
+        - fixtures/**
+        - testdata/**
+    pattern-regex: (sk_live_[A-Za-z0-9_\-]+|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC
+      |OPENSSH |)PRIVATE KEY-----)
+  - id: typescript.config.no-process-env-outside-config
+    languages:
+      - typescript
+      - javascript
+    message: "Read environment through typed config: Do not read process.env
+      throughout TypeScript services or UI code."
+    severity: WARNING
+    metadata:
+      practice_id: typescript.config.no-process-env-outside-config
+      status: discouraged
+      enforcement: advisory
+      owner: backend-platform
+      source_file: typescript/no-process-env-outside-config.yml
+    paths:
+      include:
+        - src/**/*.ts
+        - src/**/*.tsx
+        - src/**/*.js
+        - src/**/*.mjs
+        - app/**/*.ts
+        - pages/**/*.ts
+      exclude:
+        - dist/**
+        - node_modules/**
+        - src/config/**
+        - src/config.ts
+        - config/**
+        - test/**
+        - tests/**
+    pattern-regex: \bprocess\.env\.[A-Za-z_][A-Za-z0-9_]*
+  - id: typescript.db.parameterized-sql
+    languages:
+      - typescript
+      - javascript
+    message: "Parameterize SQL values in TypeScript: Do not interpolate values into
+      SQL template strings or concatenated query text."
+    severity: ERROR
+    metadata:
+      practice_id: typescript.db.parameterized-sql
+      status: banned
+      enforcement: blocking
+      owner: data-platform
+      source_file: typescript/db-parameterized-sql.yml
+    paths:
+      include:
+        - src/**/*.ts
+        - src/**/*.tsx
+        - src/**/*.js
+        - src/**/*.mjs
+        - app/**/*.ts
+        - pages/**/*.ts
+      exclude:
+        - dist/**
+        - node_modules/**
+        - test/**
+        - tests/**
+        - fixtures/**
+    pattern-regex: "`[^`]*(?:\\bSELECT\\b[^`]*\\bFROM\\b|\\bINSERT\\b[^`]*\\bINTO\\\
+      b|\\bUPDATE\\b[^`]*\\bSET\\b|\\bDELETE\\b[^`]*\\bFROM\\b|\\bWHERE\\b[^`]*\
+      (?:=|\\bIN\\b|\\bLIKE\\b|[<>]))[^`]*\\$\\{"
+  - id: typescript.node.no-shell-exec
+    languages:
+      - typescript
+      - javascript
+    message: "Avoid shell execution in TypeScript tooling: Do not add child_process
+      exec, execSync, or shell-enabled spawn calls in TypeScript or Node
+      scripts."
+    severity: ERROR
+    metadata:
+      practice_id: typescript.node.no-shell-exec
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: typescript/node-no-shell-exec.yml
+    paths:
+      include:
+        - src/**/*.ts
+        - scripts/**/*.mjs
+        - hooks/**/*.mjs
+      exclude:
+        - dist/**
+        - node_modules/**
+        - fixtures/**
+        - testdata/**
+    pattern-regex: (?<![.A-Za-z0-9_])(?:exec|execSync)\s*\(|\b(?:child_process|childProcess|cp)\.(?:exec|execSync)\s*\(|\bshell\s*:\s*true
+  - id: typescript.react.no-dangerous-html
+    languages:
+      - typescript
+      - javascript
+    message: "Do not render unsanitized React HTML: Do not add
+      dangerouslySetInnerHTML unless the value is sanitized at the same
+      boundary."
+    severity: ERROR
+    metadata:
+      practice_id: typescript.react.no-dangerous-html
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: typescript/react-no-dangerous-html.yml
+    paths:
+      include:
+        - src/**/*.tsx
+        - src/**/*.jsx
+        - app/**/*.tsx
+        - pages/**/*.tsx
+        - components/**/*.tsx
+      exclude:
+        - dist/**
+        - node_modules/**
+        - test/**
+        - tests/**
+        - fixtures/**
+    pattern-regex: \bdangerouslySetInnerHTML\s*=
+  - id: typescript.security.no-eval-function
+    languages:
+      - typescript
+      - javascript
+    message: "Do not execute strings as TypeScript code: Do not add eval, new
+      Function, or timer calls that execute string input."
+    severity: ERROR
+    metadata:
+      practice_id: typescript.security.no-eval-function
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: typescript/no-eval-function.yml
+    paths:
+      include:
+        - src/**/*.ts
+        - src/**/*.tsx
+        - src/**/*.js
+        - src/**/*.mjs
+        - app/**/*.ts
+        - pages/**/*.ts
+      exclude:
+        - dist/**
+        - node_modules/**
+        - test/**
+        - tests/**
+        - fixtures/**
+    pattern-regex: \b(eval\s*\(|new\s+Function\s*\(|set(?:Timeout|Interval)\s*\(\s*["'`])
+  - id: typescript.security.no-ssrf-from-request
+    languages:
+      - typescript
+      - javascript
+    message: "Do not fetch request-controlled URLs: Do not pass request parameters,
+      query strings, or body fields directly into fetch or HTTP clients."
+    severity: ERROR
+    metadata:
+      practice_id: typescript.security.no-ssrf-from-request
+      status: banned
+      enforcement: blocking
+      owner: security-platform
+      source_file: typescript/no-ssrf-from-request.yml
+    paths:
+      include:
+        - src/**/*.ts
+        - src/**/*.tsx
+        - src/**/*.js
+        - src/**/*.mjs
+        - app/**/*.ts
+        - pages/**/*.ts
+      exclude:
+        - dist/**
+        - node_modules/**
+        - test/**
+        - tests/**
+        - fixtures/**
+    pattern-regex: \b(?:fetch|axios\.get|got|request)\s*\(\s*(?:req\.|request\.|ctx\.request|searchParams\.get|params\.|body\.)

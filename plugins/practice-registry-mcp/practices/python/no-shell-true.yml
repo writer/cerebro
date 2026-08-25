@@ -1,0 +1,30 @@
+id: python.subprocess.no-shell-true
+title: Avoid shell=True for subprocess calls
+status: banned
+enforcement: blocking
+summary: Do not add subprocess calls with shell=True.
+rationale: Shell execution makes argument handling harder to audit and can turn user-controlled input into command execution.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**"]
+applies_when:
+  intents: ["subprocess", "command", "shell", "process"]
+  keywords: ["subprocess", "shell=True", "os.system", "popen", "command"]
+avoid:
+  - subprocess.run(command, shell=True)
+  - os.system(command)
+use_instead:
+  - Pass an argument list to subprocess.run.
+  - Validate executable names and fixed flags before execution.
+good_examples:
+  - subprocess.run(["git", "status", "--short"], check=True)
+bad_examples:
+  - subprocess.run(f"git checkout {branch}", shell=True)
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(subprocess\\.(run|call|check_call|check_output)\\([^\\n#]*shell\\s*=\\s*True|os\\.system\\s*\\()"
+owner: security-platform
+last_reviewed: 2026-06-30

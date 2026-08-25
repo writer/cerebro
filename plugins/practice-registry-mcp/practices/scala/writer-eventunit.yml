@@ -1,0 +1,33 @@
+id: scala.writer.eventunit-startup-injection
+title: Construct Writer EventUnit publishers at startup
+status: preferred
+enforcement: advisory
+summary: Create each EventUnit once in the application loader and inject it into services.
+rationale: EventUnit hides the Pub/Sub or SNS provider behind typed publisher configuration; rebuilding it per call creates duplicate clients and hides configuration ownership.
+scope:
+  languages: [scala]
+  frameworks: [cats-effect, http4s]
+  paths:
+    include: ["server/src/**/*.scala", "src/**/*.scala", "apps/**/*.scala", "services/**/*.scala"]
+    exclude: ["legacy/**", "**/generated/**", "server/test/**"]
+applies_when:
+  intents: ["event publishing", "audit log", "usage event", "telemetry event", "Pub/Sub", "SNS", "EventUnit"]
+  keywords: ["EventUnit", "PublisherConfig", "saveAll", "save(", "Pub/Sub", "SNS", "application.provider", "topic"]
+avoid:
+  - Constructing EventUnit inside request handlers, workers, or service methods.
+  - Reading publisher configuration outside the application loader.
+  - Letting non-critical publish failures fail the user-facing flow.
+use_instead:
+  - Define DR[EventUnit[E]] in CustomApplicationLoader from application.<provider>.<publisher-key>.
+  - Inject EventUnit[E] through the service constructor.
+  - Use .attempt or local error handling when publish failure should not block the main flow.
+good_examples:
+  - |
+    val userEventUnit: DR[EventUnit[UserEvent]] =
+      Reval.resourceLater(EventUnit[UserEvent](publisherConfig, httpClient, creds))
+bad_examples:
+  - |
+    def createSession(...): SR[Session] =
+      SR.successF(EventUnit[UserEvent](config, httpClient, creds).flatMap(_.save(event)))
+owner: scala-platform
+last_reviewed: 2026-07-01

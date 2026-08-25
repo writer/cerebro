@@ -1,0 +1,26 @@
+id: testing.new-behavior-requires-test
+title: Cover new behavior with a focused test
+status: preferred
+enforcement: advisory
+summary: Add or update a focused test when changing behavior.
+rationale: A small test gives future agents and reviewers a stable signal for the intended behavior.
+scope:
+  languages: [python, scala, typescript, javascript, rust]
+  frameworks: []
+  paths:
+    include: ["**/*.py", "**/*.scala", "**/*.sc", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs", "**/*.rs"]
+    exclude: ["scripts/**", "notebooks/**"]
+applies_when:
+  intents: ["feature", "bug fix", "behavior", "refactor", "test"]
+  keywords: ["fix", "feature", "behavior", "test", "spec", "pytest", "ScalaTest", "munit", "cargo test", "proptest"]
+avoid:
+  - Behavior changes without a nearby unit, integration, or regression test.
+use_instead:
+  - A focused test for the changed branch.
+  - A regression test when fixing a defect.
+good_examples:
+  - def test_rejects_expired_token() -> None
+bad_examples:
+  - Changing validation logic without updating tests.
+owner: engineering
+last_reviewed: 2026-06-30

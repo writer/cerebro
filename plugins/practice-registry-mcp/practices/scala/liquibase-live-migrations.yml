@@ -1,0 +1,35 @@
+id: scala.writer.liquibase-live-migrations
+title: Keep Writer Liquibase migrations deployable
+status: preferred
+enforcement: advisory
+summary: Scala service database migrations should include live context, schema-qualified SQL, and a local test migration.
+rationale: Writer Scala services apply structural database changes through Liquibase, with production tracking and local EvolutionsSpec coverage.
+scope:
+  languages: [scala, sql]
+  frameworks: [liquibase, postgresql]
+  paths:
+    include: ["server/resources/evolutions/**/*.sql", "server/test/resources/evolutions/**/*.sql", "server/test/src/**/*.scala"]
+    exclude: ["legacy/**"]
+applies_when:
+  intents: ["database migration", "Liquibase", "schema change", "evolution", "Postgres"]
+  keywords: ["liquibase", "changeset", "contextFilter", "splitStatements:false", "core.", "EvolutionsSpec", "changelog-test"]
+avoid:
+  - Live migrations without contextFilter:"live".
+  - Production SQL that omits the core schema.
+  - Large data operations in Liquibase structural migrations.
+  - Migrations without a local-test copy and changelog-test entry.
+use_instead:
+  - Timestamp-based changeset ids.
+  - splitStatements:false for related live changes.
+  - Schema-qualified core. SQL in live migrations.
+  - A matching contextFilter:"init" local test migration and EvolutionsSpec coverage.
+good_examples:
+  - |
+    -- changeset be:1762370258816-1 contextFilter:"live" splitStatements:false
+    CREATE INDEX IF NOT EXISTS core.idx_draft_thread_id ON core.draft(thread_id);
+bad_examples:
+  - |
+    -- changeset be:1
+    CREATE INDEX idx_draft_thread_id ON draft(thread_id);
+owner: scala-platform
+last_reviewed: 2026-07-01

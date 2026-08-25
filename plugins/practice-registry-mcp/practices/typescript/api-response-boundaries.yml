@@ -1,0 +1,30 @@
+id: typescript.api.response-boundary-types
+title: Return typed API response shapes
+status: preferred
+enforcement: advisory
+summary: API handlers should return typed response objects instead of raw database rows or unvalidated upstream payloads.
+rationale: Typed response boundaries keep internal fields, nullable shapes, and upstream drift from leaking into public API contracts.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [express, fastify, nextjs, hono, zod]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "pages/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**"]
+applies_when:
+  intents: ["api", "route", "endpoint", "response", "json", "database", "upstream"]
+  keywords: ["res.json", "Response.json", "NextResponse.json", "reply.send", "z.object", "schema", "serialize"]
+avoid:
+  - Returning ORM rows, database records, or third-party API payloads directly.
+  - Response objects that are inferred from any or unknown values.
+use_instead:
+  - Map data into a declared response type or Zod output schema.
+  - Strip internal ids, secrets, and nullable implementation fields before returning JSON.
+good_examples:
+  - |
+    const body: UserResponse = userResponseSchema.parse(toUserResponse(row));
+    return res.json(body);
+bad_examples:
+  - |
+    return res.json(await db.user.findUnique({ where: { id } }));
+owner: backend-platform
+last_reviewed: 2026-07-01

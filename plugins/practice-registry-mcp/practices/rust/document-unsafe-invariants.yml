@@ -1,0 +1,33 @@
+id: rust.safety.document-unsafe-invariants
+title: Document the invariant for each Rust unsafe block
+status: allowed_with_context
+enforcement: review
+summary: Keep unsafe code in a narrow boundary with a SAFETY comment that states the caller, lifetime, aliasing, or layout invariant.
+rationale: Rust cannot verify the invariants inside unsafe blocks, so the owning module and its tests must make those assumptions reviewable.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "services/**/*.rs", "apps/**/*.rs"]
+    exclude: ["target/**", "vendor/**", "**/generated/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["unsafe rust", "ffi", "raw pointer", "memory mapping", "pin projection"]
+  keywords: ["unsafe", "SAFETY", "raw pointer", "FFI", "transmute", "map_unchecked"]
+avoid:
+  - An unsafe block without a local statement of the invariant it relies on.
+  - Spreading raw-pointer operations across unrelated modules.
+use_instead:
+  - Use a safe API when it represents the operation.
+  - Contain the unsafe operation in one module, add a SAFETY comment, and test the boundary's invalid cases.
+good_examples:
+  - |
+    // SAFETY: ptr points to len initialized bytes owned by this buffer.
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+bad_examples:
+  - 'let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };'
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\bunsafe\\s*\\{"
+  languages: [rust]
+owner: security-platform
+last_reviewed: 2026-07-16

@@ -1,0 +1,26 @@
+id: python.typing.public-boundaries
+title: Type public Python boundaries
+status: preferred
+enforcement: advisory
+summary: Add type annotations to public functions, service boundaries, and shared package APIs.
+rationale: Typed boundaries make agent-generated edits safer because callers and tests expose mismatched shapes earlier.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["services/**/*.py", "packages/**/*.py", "src/**/*.py"]
+    exclude: ["notebooks/**", "legacy/**"]
+applies_when:
+  intents: ["new function", "api", "service", "package", "refactor"]
+  keywords: ["def ", "class ", "typing", "pydantic", "dataclass", "return"]
+avoid:
+  - New public functions without parameter or return types.
+use_instead:
+  - Type annotations on parameters and return values.
+  - Pydantic models or dataclasses for structured request and response shapes.
+good_examples:
+  - "def load_account(account_id: str) -> Account:"
+bad_examples:
+  - "def load_account(account_id):"
+owner: backend-platform
+last_reviewed: 2026-06-30

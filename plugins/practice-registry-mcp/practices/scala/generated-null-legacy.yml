@@ -1,0 +1,27 @@
+id: scala.generated.null-legacy-accepted
+title: Keep generated Scala null handling contained
+status: legacy_accepted
+enforcement: advisory
+summary: Generated Scala code may contain nulls, but hand-written code should not add or depend on them.
+rationale: Some generators emit null for Java interop. The accepted practice is to keep that code generated and wrap it at service boundaries.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/generated/**/*.scala"]
+    exclude: []
+applies_when:
+  intents: ["generated code", "protobuf", "thrift", "java interop", "null"]
+  keywords: ["generated", "protobuf", "thrift", "null", "orNull"]
+avoid:
+  - Editing generated files by hand.
+  - Passing generated nulls into service code.
+use_instead:
+  - Regenerate files from the owning schema.
+  - Wrap generated values at the boundary with Option or typed errors.
+good_examples:
+  - Option(generatedUser.email)
+bad_examples:
+  - generatedUser.email.orNull
+owner: scala-platform
+last_reviewed: 2026-06-30

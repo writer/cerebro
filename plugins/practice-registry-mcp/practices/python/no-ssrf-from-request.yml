@@ -1,0 +1,30 @@
+id: python.security.no-request-url-fetch
+title: Do not fetch request-controlled URLs
+status: banned
+enforcement: blocking
+summary: Do not pass request parameters directly to outbound HTTP clients.
+rationale: Server-side fetches of caller-supplied URLs can reach internal metadata services, private network hosts, and service-only endpoints.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["ssrf", "webhook", "url fetch", "outbound http"]
+  keywords: ["requests.get(request.", "httpx.get(request.", "request.args[\"url\"]"]
+avoid:
+  - 'requests.get(request.args["url"])'
+  - 'httpx.post(request.json["callback_url"])'
+use_instead:
+  - Resolve destinations from an allowlisted integration record.
+  - Validate scheme, host, port, redirects, and private-network ranges before fetching.
+good_examples:
+  - 'response = integration_client.fetch(allowed_destination_id)'
+bad_examples:
+  - 'response = requests.get(request.args["url"])'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(requests|httpx)\\.(get|post|put|patch|delete|request)\\s*\\([^\\n]*(request\\.(args|form|json|values)|flask\\.request|req\\.)"
+owner: security-platform
+last_reviewed: 2026-07-01

@@ -1,0 +1,29 @@
+id: python.time.utc-aware-datetime
+title: Use timezone-aware UTC datetimes
+status: preferred
+enforcement: advisory
+summary: Use timezone-aware UTC datetimes for persisted values, job scheduling, and external API timestamps.
+rationale: Naive datetimes create ambiguous state around daylight saving time, regional settings, and cross-service comparisons.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**"]
+applies_when:
+  intents: ["time", "timestamp", "schedule", "datetime", "date"]
+  keywords: ["datetime.now", "datetime.utcnow", "timezone.utc", "timestamp", "schedule"]
+avoid:
+  - datetime.utcnow()
+  - datetime.now() without a timezone
+use_instead:
+  - datetime.now(timezone.utc)
+good_examples:
+  - datetime.now(timezone.utc)
+bad_examples:
+  - datetime.utcnow()
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\bdatetime\\.(utcnow|now)\\s*\\(\\s*\\)"
+owner: backend-platform
+last_reviewed: 2026-06-30

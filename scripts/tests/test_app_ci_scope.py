@@ -68,7 +68,28 @@ class AppCIScopeTests(unittest.TestCase):
     def test_root_npm_change_selects_every_javascript_workspace(self):
         self.assertEqual(
             select_scope(["package-lock.json"]),
-            CIScope(core=False, sdk=True, slack=True, web=True, web_image=True, web_integration=True),
+            CIScope(
+                core=False,
+                sdk=True,
+                slack=True,
+                web=True,
+                web_image=True,
+                web_integration=True,
+                practice_registry=True,
+            ),
+        )
+
+    def test_practice_registry_change_runs_only_its_owned_checks(self):
+        self.assertEqual(
+            select_scope(["plugins/practice-registry-mcp/src/mcpServer.ts"]),
+            CIScope(
+                core=False,
+                sdk=False,
+                slack=False,
+                web=False,
+                web_image=False,
+                practice_registry=True,
+            ),
         )
 
     def test_core_contract_changes_select_consuming_apps(self):
@@ -145,7 +166,7 @@ class AppCIScopeTests(unittest.TestCase):
         write_github_outputs(scope, output)
         self.assertEqual(
             output.getvalue(),
-            "core=false\nsdk=false\nslack=false\nweb=true\nweb_image=true\nweb_integration=true\n",
+            "core=false\nsdk=false\nslack=false\nweb=true\nweb_image=true\nweb_integration=true\npractice_registry=false\n",
         )
 
 

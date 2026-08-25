@@ -1,0 +1,30 @@
+id: python.db.parameterized-sql
+title: Parameterize SQL values
+status: banned
+enforcement: blocking
+summary: Do not build SQL statements by interpolating values into query strings.
+rationale: Parameterized queries preserve database escaping, query planning, and auditability.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**"]
+applies_when:
+  intents: ["database", "query", "sql", "repository"]
+  keywords: ["sql", "select", "insert", "update", "delete", "execute", "cursor", "f\"select", "%s"]
+avoid:
+  - f-strings that place values inside SQL text
+  - string concatenation for WHERE clauses
+use_instead:
+  - Driver parameter binding.
+  - Query builder helpers already used in the package.
+good_examples:
+  - cursor.execute("select * from users where id = %s", [user_id])
+bad_examples:
+  - cursor.execute(f"select * from users where id = {user_id}")
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(execute|executemany)\\s*\\(\\s*f[\"'][^\\n]*(select|insert|update|delete)"
+owner: data-platform
+last_reviewed: 2026-06-30

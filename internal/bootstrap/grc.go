@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/grcauditpacket"
 	"github.com/writer/cerebro/internal/grccontrol"
+	"github.com/writer/cerebro/internal/grcdashboard"
 	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/grcpolicylifecycle"
 	"github.com/writer/cerebro/internal/grcproductareas"
@@ -36,7 +37,6 @@ const (
 	grcMaxLimit                       = uint32(500)
 	grcMaxRuntimeScope                = uint32(500)
 	grcRuntimeScopeFetchLimit         = grcMaxRuntimeScope + 1
-	grcDashboardPreviewLimit          = uint32(25)
 	grcRuntimeHealthEnrichmentTimeout = 5 * time.Second
 	grcAuditPacketSchema              = grcauditpacket.SchemaVersion
 )
@@ -49,13 +49,6 @@ type grcScope struct {
 	VendorURN  string
 	Limit      uint32
 }
-
-type grcDashboardEnrichments string
-
-const (
-	grcDashboardEnrichmentsInline   grcDashboardEnrichments = "inline"
-	grcDashboardEnrichmentsDeferred grcDashboardEnrichments = "deferred"
-)
 
 type grcDashboardResponse struct {
 	Summary            grcSummary                   `json:"summary"`
@@ -94,12 +87,12 @@ type grcAuditFindingReference = grcauditpacket.FindingReference
 type grcAuditPacketGap = grcauditpacket.Gap
 
 func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
-	ctx, span := telemetry.Start(r.Context(), "grc.dashboard", grcDashboardTelemetryAttrs())
+	ctx, span := telemetry.Start(r.Context(), "grc.dashboard", grcdashboard.TelemetryAttrs())
 	dashboardCtx := ctx
 	r = r.WithContext(ctx)
 	status := "completed"
 	statusCode := http.StatusOK
-	endAttrs := grcDashboardTelemetryAttrs()
+	endAttrs := grcdashboard.TelemetryAttrs()
 	defer func() {
 		endAttrs = endAttrs.WithField(telemetry.Field{Key: "status_code", Value: statusCode})
 		telemetry.IncrementMain(dashboardCtx, "grc.dashboard.count", 1)
@@ -127,14 +120,14 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
 		return
 	}
-	enrichments, err := grcDashboardEnrichmentsFromRequest(r)
+	enrichments, err := grcdashboard.ParseEnrichments(r.URL.Query())
 	if err != nil {
 		statusCode = http.StatusBadRequest
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
 		return
 	}
-	endAttrs = endAttrs.WithField(telemetry.Field{Key: "enrichments", Value: string(enrichments)})
+	endAttrs = endAttrs.WithField(telemetry.Field{Key: "enrichments", Value: enrichments.String()})
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
 		statusCode = grcHTTPStatusCode(err)
@@ -143,9 +136,9 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "limit", Value: scope.Limit})
-	previewLimit := grcDashboardPreviewLimitFor(scope.Limit)
+	previewLimit := grcdashboard.PreviewLimitFor(scope.Limit)
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "preview_limit", Value: previewLimit})
-	ctx, runtimesSpan := telemetry.Start(r.Context(), "grc.dashboard.runtimes", grcDashboardScopeTelemetryAttrs(scope))
+	ctx, runtimesSpan := telemetry.Start(r.Context(), "grc.dashboard.runtimes", grcdashboard.ScopeTelemetryAttrs(scope.TenantID, scope.RuntimeID, scope.SourceID, scope.Limit))
 	runtimesRequest := r.WithContext(ctx)
 	runtimes, err := a.grcListRuntimes(runtimesRequest, scope)
 	runtimeAttrs := telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)})
@@ -157,7 +150,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	ctx, findingsSpan := telemetry.Start(r.Context(), "grc.dashboard.findings", grcDashboardScopeTelemetryAttrs(scope))
+	ctx, findingsSpan := telemetry.Start(r.Context(), "grc.dashboard.findings", grcdashboard.ScopeTelemetryAttrs(scope.TenantID, scope.RuntimeID, scope.SourceID, scope.Limit))
 	findingsRequest := r.WithContext(ctx)
 	findings, err := a.grcListFindingRecords(findingsRequest, runtimes, grcFindingFilter{Status: "open", Limit: previewLimit})
 	findingAttrs := telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findings)})
@@ -172,13 +165,10 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	findingIDs := grcFindingIDs(findings)
 	generatedAt := time.Now().UTC()
 	var (
-		evidence         []*cerebrov1.FindingEvidence
-		findingSummary   *ports.FindingSummary
-		evidenceCount    *int
-		aggregate        *ports.GRCDashboardAggregate
-		sourceSummaries  []sourceRuntimeHealthSummary
-		coverage         []sourcecoverage.Record
-		runtimeHealthErr error
+		evidence       []*cerebrov1.FindingEvidence
+		findingSummary *ports.FindingSummary
+		evidenceCount  *int
+		aggregate      *ports.GRCDashboardAggregate
 	)
 	group, groupCtx := errgroup.WithContext(r.Context())
 	group.Go(func() error {
@@ -207,41 +197,28 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 			return attrs, err
 		})
 	})
-	if enrichments == grcDashboardEnrichmentsInline {
-		group.Go(func() error {
-			runtimeHealthCtx, cancel := context.WithTimeout(groupCtx, grcRuntimeHealthEnrichmentTimeout)
-			defer cancel()
-			runtimeHealthErr = operationtelemetry.RunMainPhase(runtimeHealthCtx, "grc.dashboard.runtime_health", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
-				var err error
-				sourceSummaries, err = a.grcSourceRuntimeHealthSummaries(ctx, runtimes, generatedAt)
-				return telemetry.Attrs(telemetry.Field{Key: "source_summary_count", Value: len(sourceSummaries)}), err
-			})
-			if runtimeHealthErr != nil {
-				sourceSummaries = nil
-			}
-			return nil
-		})
-		group.Go(func() error {
-			var err error
-			return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.coverage", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
-				coverage, err = a.sourceCoverageRecordsScoped(ctx, runtimes, ports.SourceRuntimeFilter{
-					RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID,
-					SourceID: scope.SourceID, Limit: scope.Limit,
-				}, generatedAt, coverageScope)
-				return telemetry.Attrs(telemetry.Field{Key: "coverage_record_count", Value: len(coverage)}), err
-			})
-		})
-	}
+	enrichmentResult := grcdashboard.ScheduleEnrichments(group, groupCtx, enrichments, grcdashboard.EnrichmentWork[sourceRuntimeHealthSummary, sourcecoverage.Record]{
+		RuntimeCount:         len(runtimes),
+		RuntimeHealthTimeout: grcRuntimeHealthEnrichmentTimeout,
+		RuntimeHealth: func(ctx context.Context) ([]sourceRuntimeHealthSummary, error) {
+			return a.grcSourceRuntimeHealthSummaries(ctx, runtimes, generatedAt)
+		},
+		Coverage: func(ctx context.Context) ([]sourcecoverage.Record, error) {
+			return a.sourceCoverageRecordsScoped(ctx, runtimes, ports.SourceRuntimeFilter{
+				RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID,
+				SourceID: scope.SourceID, Limit: scope.Limit,
+			}, generatedAt, coverageScope)
+		},
+	})
 	if err := group.Wait(); err != nil {
 		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
 	}
-	sourceSummariesStatus := grcTelemetryStatus(runtimeHealthErr)
-	if enrichments == grcDashboardEnrichmentsDeferred {
-		sourceSummariesStatus = string(grcDashboardEnrichmentsDeferred)
-	}
+	sourceSummaries := enrichmentResult.SourceSummaries
+	coverage := enrichmentResult.Coverage
+	sourceSummariesStatus := enrichments.SourceSummariesStatus(grcTelemetryStatus(enrichmentResult.RuntimeHealthErr))
 	endAttrs = endAttrs.With(
 		telemetry.Attrs(
 			telemetry.Field{Key: "source_summaries_status", Value: sourceSummariesStatus},
@@ -262,10 +239,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	controls := grcControlItems(findingItems, evidenceItems)
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	serializedCoverageBlindSpots := coverageBlindSpots
-	var productAreas []grcproductareas.View
-	if enrichments == grcDashboardEnrichmentsInline {
-		productAreas = grcproductareas.BuildCoverageViews(coverage)
-	}
+	productAreas := grcdashboard.ProductAreas(enrichments, coverage)
 	if view == responseview.Summary {
 		serializedCoverageBlindSpots = nil
 		productAreas = responseview.CompactProductAreas(productAreas)
@@ -287,33 +261,12 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func grcDashboardEnrichmentsFromRequest(r *http.Request) (grcDashboardEnrichments, error) {
-	if r == nil || r.URL == nil {
-		return grcDashboardEnrichmentsInline, nil
-	}
-	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("enrichments"))) {
-	case "", string(grcDashboardEnrichmentsInline):
-		return grcDashboardEnrichmentsInline, nil
-	case string(grcDashboardEnrichmentsDeferred):
-		return grcDashboardEnrichmentsDeferred, nil
-	default:
-		return grcDashboardEnrichmentsInline, errors.New("enrichments must be inline or deferred when provided")
-	}
-}
-
 func (a *App) grcSourceRuntimeHealthSummaries(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, generatedAt time.Time) ([]sourceRuntimeHealthSummary, error) {
 	records, err := a.sourceRuntimeHealthRecords(ctx, runtimes, generatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return sourceRuntimeHealthSummaries(records), nil
-}
-
-func grcDashboardPreviewLimitFor(limit uint32) uint32 {
-	if limit == 0 || limit > grcDashboardPreviewLimit {
-		return grcDashboardPreviewLimit
-	}
-	return limit
 }
 
 const (
@@ -798,21 +751,6 @@ type grcFindingHeaderLister interface {
 
 type grcFindingTrendsProvider interface {
 	SummarizeGRCFindingTrends(context.Context, ports.GRCFindingTrendsRequest) (ports.GRCFindingTrends, error)
-}
-
-func grcDashboardTelemetryAttrs() telemetry.Attributes {
-	return telemetry.Attrs(
-		telemetry.Field{Key: "route", Value: "/grc/dashboard"},
-		telemetry.Field{Key: "dashboard", Value: "grc"},
-	)
-}
-
-func grcDashboardScopeTelemetryAttrs(scope grcScope) telemetry.Attributes {
-	return grcDashboardTelemetryAttrs().
-		WithField(telemetry.Field{Key: "tenant_id", Value: scope.TenantID}).
-		WithField(telemetry.Field{Key: "runtime_id", Value: scope.RuntimeID}).
-		WithField(telemetry.Field{Key: "source_id", Value: scope.SourceID}).
-		WithField(telemetry.Field{Key: "limit", Value: scope.Limit})
 }
 
 func grcTelemetryStatus(err error) string {

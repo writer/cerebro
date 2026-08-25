@@ -70,6 +70,7 @@ SLACK_CONTRACT_PREFIXES = (
 )
 JAVASCRIPT_ONLY_PREFIXES = (
     "apps/",
+    "plugins/practice-registry-mcp/",
     "sdk/typescript/",
 )
 
@@ -82,6 +83,7 @@ class CIScope:
     web: bool
     web_image: bool
     web_integration: bool = False
+    practice_registry: bool = False
 
     @classmethod
     def all(cls) -> "CIScope":
@@ -92,6 +94,7 @@ class CIScope:
             web=True,
             web_image=True,
             web_integration=True,
+            practice_registry=True,
         )
 
     def as_outputs(self) -> dict[str, str]:
@@ -153,6 +156,9 @@ def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
     sdk = root_npm_changed or sdk_contract_changed or any(
         path.startswith("sdk/typescript/") for path in normalized
     )
+    practice_registry = root_npm_changed or any(
+        path.startswith("plugins/practice-registry-mcp/") for path in normalized
+    )
 
     if any(path in WEB_CONTRACT_PATHS for path in normalized):
         web = True
@@ -173,6 +179,7 @@ def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
         web=web,
         web_image=web,
         web_integration=web_integration,
+        practice_registry=practice_registry,
     )
 
 

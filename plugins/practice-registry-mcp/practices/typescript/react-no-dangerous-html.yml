@@ -1,0 +1,32 @@
+id: typescript.react.no-dangerous-html
+title: Do not render unsanitized React HTML
+status: banned
+enforcement: blocking
+summary: Do not add dangerouslySetInnerHTML unless the value is sanitized at the same boundary.
+rationale: Raw HTML rendering bypasses React escaping and can turn stored or reflected content into script execution.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [react, nextjs]
+  paths:
+    include: ["src/**/*.tsx", "src/**/*.jsx", "app/**/*.tsx", "pages/**/*.tsx", "components/**/*.tsx"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**", "fixtures/**"]
+applies_when:
+  intents: ["html", "markdown", "rich text", "render content", "dangerouslySetInnerHTML", "xss"]
+  keywords: ["dangerouslySetInnerHTML", "__html", "sanitize", "markdown", "html"]
+avoid:
+  - dangerouslySetInnerHTML with content from users, markdown, CMS, or API responses.
+  - Sanitization that happens in a different layer without a documented invariant.
+use_instead:
+  - Render structured content through React components.
+  - Sanitize with the approved HTML sanitizer at the rendering boundary and document the allowed tags.
+good_examples:
+  - <SafeHtml html={sanitizeHtml(markdownHtml)} />
+bad_examples:
+  - |
+    <div dangerouslySetInnerHTML={{ __html: body }} />
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\bdangerouslySetInnerHTML\\s*="
+  languages: [typescript, javascript]
+owner: security-platform
+last_reviewed: 2026-07-01

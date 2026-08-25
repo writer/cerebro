@@ -1,0 +1,29 @@
+id: python.security.no-tempfile-mktemp
+title: Use safe temporary file APIs
+status: banned
+enforcement: blocking
+summary: Do not use tempfile.mktemp.
+rationale: tempfile.mktemp returns a name without creating the file, leaving a race before the caller opens it.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["temporary file", "temp file", "upload", "scratch file"]
+  keywords: ["tempfile.mktemp", "mktemp("]
+avoid:
+  - 'name = tempfile.mktemp()'
+use_instead:
+  - Use tempfile.NamedTemporaryFile.
+  - Use tempfile.TemporaryDirectory for owned scratch directories.
+good_examples:
+  - 'with tempfile.NamedTemporaryFile() as file:'
+bad_examples:
+  - 'name = tempfile.mktemp()'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\btempfile\\.mktemp\\s*\\("
+owner: security-platform
+last_reviewed: 2026-07-01

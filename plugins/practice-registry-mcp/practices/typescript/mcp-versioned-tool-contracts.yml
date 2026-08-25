@@ -1,0 +1,28 @@
+id: typescript.mcp.versioned-tool-contracts
+title: Version MCP tool contract changes
+status: preferred
+enforcement: advisory
+summary: Update the contract version, smoke tests, docs, and plugin metadata when MCP tool inputs or outputs change.
+rationale: Agents cache MCP tool schemas and plugin metadata; a visible contract version lets operators detect stale installs before relying on a gate.
+scope:
+  languages: [typescript]
+  frameworks: [mcp, codex]
+  paths:
+    include: ["src/**/*.ts", "scripts/**/*.mjs", ".codex-plugin/plugin.json", "README.md", "skills/**/*.md"]
+    exclude: ["dist/**", "node_modules/**"]
+applies_when:
+  intents: ["mcp tool", "tool schema", "output schema", "plugin", "contract", "version", "server info"]
+  keywords: ["registerTool", "inputSchema", "outputSchema", "server_info", "plugin.json", "contract_version"]
+avoid:
+  - Changing MCP tool inputs or outputs without updating the visible contract version.
+  - Relying on README text alone to detect stale Codex or editor plugin installs.
+use_instead:
+  - A server_info response with contract_version, supported_languages, and feature names.
+  - Smoke tests that assert new tools and fields through stdio.
+  - Plugin metadata that names the current language coverage.
+good_examples:
+  - server_info returns contract_version and features after adding plan_observation_id.
+bad_examples:
+  - Adding a tool argument while plugin metadata and smoke tests still describe the old contract.
+owner: agent-platform
+last_reviewed: 2026-07-01

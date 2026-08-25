@@ -1,0 +1,30 @@
+id: python.defaults.no-mutable-defaults
+title: Do not use mutable default arguments
+status: banned
+enforcement: blocking
+summary: Do not add list, dict, set, or bytearray values as Python function defaults.
+rationale: Mutable defaults are created once at function definition time and can leak state across requests, jobs, and tests.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "tests/**", "**/tests/**"]
+applies_when:
+  intents: ["function", "default argument", "list", "dict", "set"]
+  keywords: ["=[]", "={}", "=set()", "=list()", "=dict()"]
+avoid:
+  - 'def add_user(user, users=[]):'
+  - 'def build_metadata(metadata={}):'
+use_instead:
+  - Use None as the default and allocate the collection inside the function.
+  - Use a dataclass field default_factory for dataclass fields.
+good_examples:
+  - 'def add_user(user, users: list[User] | None = None):'
+bad_examples:
+  - 'def add_user(user, users=[]):'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\bdef\\s+\\w+\\s*\\([^\\n)]*=\\s*(\\[\\]|\\{\\}|set\\s*\\(\\)|list\\s*\\(\\)|dict\\s*\\(\\)|bytearray\\s*\\(\\))"
+owner: backend-platform
+last_reviewed: 2026-07-01
