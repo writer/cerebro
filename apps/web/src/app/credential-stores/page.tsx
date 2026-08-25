@@ -8,6 +8,7 @@ import { AppliedFilterChips, Badge, EmptyBlock, ErrorBlock, LoadingBlock, Metric
 import { withQuery } from "@/lib/cerebro-data";
 import {
   credentialStoreActionLabel,
+  credentialStoreBindingsMatchingQuery,
   credentialStoreIssueMatchesQuery,
   credentialStoreMatchesQuery,
   credentialStoreModeLabel,
@@ -48,13 +49,6 @@ function compactList(values?: string[], fallback = "No values") {
 function storePrimaryAction(store: CredentialStoreOperational) {
   const issueAction = store.issues?.find((issue) => issue.next_action)?.next_action;
   return credentialStoreActionLabel(issueAction || store.health.next_action);
-}
-
-function flattenBindings(stores: CredentialStoreOperational[]) {
-  return stores.flatMap((store) => (store.bindings ?? []).map((binding) => ({
-    ...binding,
-    credential_store_label: store.store.label,
-  })));
 }
 
 function StoreTable({ stores }: { stores: CredentialStoreOperational[] }) {
@@ -241,7 +235,10 @@ export default function CredentialStoresPage() {
     }),
     [allIssues, debouncedStoreQuery, visibleStoreIDs],
   );
-  const allBindings = useMemo(() => flattenBindings(visibleStores), [visibleStores]);
+  const allBindings = useMemo(
+    () => credentialStoreBindingsMatchingQuery(visibleStores, debouncedStoreQuery),
+    [debouncedStoreQuery, visibleStores],
+  );
   const boundedBindings = useMemo(() => grcBoundedRows({ rows: allBindings, limit: GRC_DETAIL_LIMIT }), [allBindings]);
   const bindings = boundedBindings.rows;
   const totals = useMemo(() => credentialStoreUsageTotals(stores), [stores]);
