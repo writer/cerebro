@@ -37,6 +37,14 @@ const STATUS_PROBES = [
   { key: "policies", label: "Policy lifecycle", path: "/api/cerebro/grc/policy-lifecycle?rule_profile=baseline&limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
 ];
 
+const pendingProbe = (probe: typeof STATUS_PROBES[number]): ProbeResult => ({
+  ...probe,
+  durationMs: 0,
+  ok: false,
+  state: "loading",
+  status: 0,
+});
+
 const parseStatus = async (response: Response): Promise<Record<string, unknown>> => {
   const text = await response.text();
   let body: unknown = text;
@@ -75,6 +83,7 @@ export default function StatusPanel() {
 
   const fetchStatus = useCallback(async (signal?: AbortSignal, bypassCache = false) => {
     setLoading(true);
+    setState({ probes: STATUS_PROBES.map(pendingProbe) });
     const headers: HeadersInit = apiKey ? { "X-API-Key": apiKey } : {};
 
     const runProbe = async (probe: typeof STATUS_PROBES[number]): Promise<ProbeResult> => {
@@ -117,7 +126,23 @@ export default function StatusPanel() {
     };
 
     try {
-      const probes = await Promise.all(STATUS_PROBES.map(runProbe));
+      const probes = await Promise.all(STATUS_PROBES.map(async (probe) => {
+        const result = await runProbe(probe);
+        if (!signal?.aborted) {
+          setState((current) => {
+            const nextProbes = (current.probes ?? STATUS_PROBES.map(pendingProbe)).map((currentProbe) => (
+              currentProbe.key === result.key ? result : currentProbe
+            ));
+            return {
+              ...current,
+              health: result.key === "health" ? result.data : current.health,
+              healthz: result.key === "healthz" ? result.data : current.healthz,
+              probes: nextProbes,
+            };
+          });
+        }
+        return result;
+      }));
       if (signal?.aborted) return;
       const health = probes.find((probe) => probe.key === "health")?.data;
       const healthz = probes.find((probe) => probe.key === "healthz")?.data;
@@ -210,7 +235,7 @@ export default function StatusPanel() {
             </table>
           </div>
 
-          {!loading && !state.error && (
+          {!state.error && (state.health || state.healthz) && (
             <div className="grid gap-4 md:grid-cols-2">
               {[
                 { title: "Health", data: state.health },
