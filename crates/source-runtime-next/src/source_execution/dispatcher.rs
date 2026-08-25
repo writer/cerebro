@@ -130,7 +130,8 @@ static SENTINELONE_AGENT: SentinelOneAgentSourceExecutionAdapter =
     SentinelOneAgentSourceExecutionAdapter;
 
 impl SourceExecutionDispatcher {
-    /// Compiles a plan only for a Rust-authoritative source-family selection.
+    /// Compiles a plan only for a registered credential-free source-family selection.
+    /// Production authority is decided independently by the trusted runtime host.
     pub fn compile_plan(
         &self,
         request: &SourceExecutionSelectionRequestV1,
