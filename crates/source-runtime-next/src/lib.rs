@@ -51,6 +51,7 @@ mod mapper;
 mod okta;
 mod openai;
 mod pagerduty;
+mod portable_ai;
 mod panopticon;
 mod protocol;
 mod provider_failure;

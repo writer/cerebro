@@ -43,6 +43,46 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Both cataloged DeepSeek families are closed in the Rust dispatcher.
 		// Unknown families fail there instead of restoring the retired Go path.
 		return familyID, true
+	case "azure_openai":
+		if familyID == "" {
+			familyID = "deployments"
+		}
+		return familyID, true
+	case "cohere":
+		if familyID == "" {
+			familyID = "model_catalog"
+		}
+		return familyID, true
+	case "google_gemini":
+		if familyID == "" {
+			familyID = "model_catalog"
+		}
+		return familyID, true
+	case "google_vertex_ai":
+		if familyID == "" {
+			familyID = "models"
+		}
+		return familyID, true
+	case "groq":
+		if familyID == "" {
+			familyID = "model_catalog"
+		}
+		return familyID, true
+	case "huggingface":
+		if familyID == "" {
+			familyID = "organization_members"
+		}
+		return familyID, true
+	case "mistral":
+		if familyID == "" {
+			familyID = "workspaces"
+		}
+		return familyID, true
+	case "perplexity":
+		if familyID == "" {
+			familyID = "api_groups"
+		}
+		return familyID, true
 	case "asana":
 		if familyID == "" {
 			familyID = "users"
@@ -131,6 +171,10 @@ func CredentialBinding(sourceID string, references, resolved map[string]string) 
 	if strings.TrimSpace(sourceID) == "deepseek" {
 		keys = []string{"token", "api_token", "api_key", "access_token"}
 	}
+	switch strings.TrimSpace(sourceID) {
+	case "azure_openai", "cohere", "google_gemini", "google_vertex_ai", "groq", "huggingface", "mistral", "perplexity":
+		keys = []string{"token", "api_token", "api_key", "access_token"}
+	}
 	if strings.TrimSpace(sourceID) == "discord" {
 		keys = []string{"api_token", "api_key", "token"}
 	}
@@ -203,6 +247,18 @@ func PublicExecutionConfigForSource(sourceID string, values map[string]string) m
 			copyPublicValue(public, values, key)
 		}
 		copyPublicAlias(public, values, "api_key_ids", "admin_key_ids")
+	case "azure_openai":
+		for _, key := range []string{"subscription_id", "resource_group", "account_name", "location"} {
+			copyPublicValue(public, values, key)
+		}
+	case "google_vertex_ai":
+		for _, key := range []string{"project_id", "location"} {
+			copyPublicValue(public, values, key)
+		}
+	case "huggingface":
+		copyPublicValue(public, values, "organization")
+	case "cohere", "google_gemini", "groq", "mistral", "perplexity":
+		// These catalog-defined families need no public provider selectors.
 	default:
 		return public
 	}
