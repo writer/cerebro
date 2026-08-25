@@ -631,7 +631,7 @@ func (a *App) buildGRCAuditPreview(r *http.Request, findingID string) (grcAuditP
 	if findingID == "" {
 		return grcAuditPacketResponse{}, fmt.Errorf("%w: finding id is required", errInvalidHTTPRequest)
 	}
-	limit, err := grcLimitFromRequest(r)
+	scope, err := grcScopeFromRequest(r)
 	if err != nil {
 		return grcAuditPacketResponse{}, err
 	}
@@ -646,13 +646,22 @@ func (a *App) buildGRCAuditPreview(r *http.Request, findingID string) (grcAuditP
 	if err != nil {
 		return grcAuditPacketResponse{}, err
 	}
-	scope := grcScope{TenantID: finding.TenantID, RuntimeID: finding.RuntimeID, Limit: limit}
+	workspaceGraph, err := a.graphQueryService().QualifyWorkspaceResources(r.Context(), graphquery.WorkspaceResourceRequest{
+		TenantID: scope.TenantID, ResourceTenantID: finding.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, URNs: finding.ResourceURNs,
+	})
+	if errors.Is(err, ports.ErrGraphEntityNotFound) || errors.Is(err, graphquery.ErrInvalidRequest) {
+		return grcAuditPacketResponse{}, ports.ErrFindingNotFound
+	}
+	if err != nil {
+		return grcAuditPacketResponse{}, err
+	}
+	scope.TenantID, scope.RuntimeID, scope.RuntimeIDs = finding.TenantID, finding.RuntimeID, nil
 	runtimes, err := a.grcListRuntimes(r, scope)
 	if err != nil {
 		return grcAuditPacketResponse{}, err
 	}
 	reportScopeRuntimes := a.grcReportScopeRuntimes(r, scope, runtimes)
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingID: finding.ID, Limit: limit})
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingID: finding.ID, Limit: scope.Limit})
 	if err != nil {
 		return grcAuditPacketResponse{}, err
 	}
@@ -669,14 +678,14 @@ func (a *App) buildGRCAuditPreview(r *http.Request, findingID string) (grcAuditP
 	case *evidenceTotal > len(evidence):
 		packetGaps = append(packetGaps, grcAuditPacketGap{
 			Code:    "evidence_snapshot_truncated",
-			Message: fmt.Sprintf("The snapshot includes %d of %d matching evidence records because the request limit is %d.", len(evidence), *evidenceTotal, limit),
+			Message: fmt.Sprintf("The snapshot includes %d of %d matching evidence records because the request limit is %d.", len(evidence), *evidenceTotal, scope.Limit),
 		})
 	}
-	var graph *ports.EntityNeighborhood
-	if len(finding.ResourceURNs) > 0 {
+	graph := workspaceGraph
+	if graph == nil && len(finding.ResourceURNs) > 0 {
 		if graphStore := a.deps.GraphReads.Neighborhoods; graphStore != nil {
 			var graphErr error
-			graph, graphErr = graphStore.GetEntityNeighborhood(r.Context(), finding.ResourceURNs[0], int(limit))
+			graph, graphErr = graphStore.GetEntityNeighborhood(r.Context(), finding.ResourceURNs[0], int(scope.Limit))
 			if graphErr != nil {
 				graph = nil
 			}

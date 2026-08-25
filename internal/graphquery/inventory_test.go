@@ -1,9 +1,88 @@
 package graphquery
 
 import (
+	"context"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/ports"
 )
+
+type recordingInventoryCatalog struct {
+	entities []struct {
+		workspaceID string
+		entity      ports.CatalogEntity
+	}
+	entityRequests []ports.EntityCatalogPageRequest
+}
+
+func (s *recordingInventoryCatalog) ListEntities(_ context.Context, request ports.EntityCatalogPageRequest) (*ports.EntityCatalogPage, error) {
+	s.entityRequests = append(s.entityRequests, request)
+	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID}
+	for _, candidate := range s.entities {
+		if request.Filter.ApplicationWorkspaceID != "" && candidate.workspaceID != request.Filter.ApplicationWorkspaceID {
+			continue
+		}
+		if request.Filter.ExactAgentKey != "" && candidate.entity.URN != request.Filter.ExactAgentKey {
+			continue
+		}
+		page.Entities = append(page.Entities, candidate.entity)
+	}
+	return page, nil
+}
+
+func (s *recordingInventoryCatalog) CountEntityKinds(_ context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
+	counts := map[string]uint64{}
+	for _, candidate := range s.entities {
+		if request.Filter.ApplicationWorkspaceID == "" || candidate.workspaceID == request.Filter.ApplicationWorkspaceID {
+			counts[candidate.entity.EntityType]++
+		}
+	}
+	page := &ports.EntityKindCountPage{TenantID: request.Filter.TenantID}
+	for kind, count := range counts {
+		page.Counts = append(page.Counts, ports.EntityKindCount{EntityKind: kind, Count: count})
+	}
+	return page, nil
+}
+
+func (s *recordingInventoryCatalog) ListEntityRelations(context.Context, ports.EntityRelationPageRequest) (*ports.EntityRelationPage, error) {
+	return &ports.EntityRelationPage{TenantID: "tenant-a"}, nil
+}
+
+func TestInventoryReadsIsolateApplicationWorkspacesAndPreserveTenantWideDefault(t *testing.T) {
+	store := &recordingInventoryCatalog{entities: []struct {
+		workspaceID string
+		entity      ports.CatalogEntity
+	}{
+		{workspaceID: "workspace-a", entity: ports.CatalogEntity{URN: "urn:cerebro:tenant-a:asset:a", TenantID: "tenant-a", EntityType: "asset", Label: "Asset A"}},
+		{workspaceID: "workspace-b", entity: ports.CatalogEntity{URN: "urn:cerebro:tenant-a:asset:b", TenantID: "tenant-a", EntityType: "asset", Label: "Asset B"}},
+	}}
+	service := NewWithCapabilities(nil, nil, store, nil)
+
+	assetsA, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", ApplicationWorkspaceID: " workspace-a ", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListInventoryAssets(workspace-a) error = %v", err)
+	}
+	assetsB, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", ApplicationWorkspaceID: "workspace-b", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListInventoryAssets(workspace-b) error = %v", err)
+	}
+	allAssets, err := service.ListInventoryAssets(context.Background(), InventoryAssetRequest{TenantID: "tenant-a", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListInventoryAssets(tenant-wide) error = %v", err)
+	}
+	if len(assetsA) != 1 || !strings.HasSuffix(assetsA[0].URN, ":a") || len(assetsB) != 1 || !strings.HasSuffix(assetsB[0].URN, ":b") || len(allAssets) != 2 {
+		t.Fatalf("workspace assets = A:%#v B:%#v all:%#v", assetsA, assetsB, allAssets)
+	}
+	if _, err := service.GetInventoryAsset(context.Background(), InventoryAssetDetailRequest{URN: "urn:cerebro:tenant-a:asset:b", ApplicationWorkspaceID: "workspace-a", Limit: 10}); !errors.Is(err, ports.ErrGraphEntityNotFound) {
+		t.Fatalf("GetInventoryAsset(workspace-a, asset-b) error = %v, want graph entity not found", err)
+	}
+	if got := store.entityRequests[0].Filter.ApplicationWorkspaceID; got != "workspace-a" {
+		t.Fatalf("first recorded filter workspace = %q, want workspace-a", got)
+	}
+}
 
 func TestInventoryEntityTypesForFilterUsesSynthesizedCategoryID(t *testing.T) {
 	got := inventoryEntityTypesForFilter("aws-lambda-function", "")

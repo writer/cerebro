@@ -23,13 +23,7 @@ func (a *App) handleGRCPolicyLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ruleProfile := strings.TrimSpace(r.URL.Query().Get("rule_profile"))
-	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{
-		TenantID:    scope.TenantID,
-		SourceID:    scope.SourceID,
-		RuntimeID:   scope.RuntimeID,
-		Limit:       scope.Limit,
-		RuleProfile: ruleProfile,
-	})
+	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: scope.SourceID, RuntimeID: scope.RuntimeID, Limit: scope.Limit, RuleProfile: ruleProfile})
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -105,13 +99,7 @@ func (a *App) handleGRCPolicyLifecycleExport(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	ruleProfile := strings.TrimSpace(r.URL.Query().Get("rule_profile"))
-	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{
-		TenantID:    scope.TenantID,
-		SourceID:    scope.SourceID,
-		RuntimeID:   scope.RuntimeID,
-		Limit:       grcExportLimit,
-		RuleProfile: ruleProfile,
-	})
+	response, err := grcpolicylifecycle.Build(r.Context(), store, grcpolicylifecycle.Scope{TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: scope.SourceID, RuntimeID: scope.RuntimeID, Limit: grcExportLimit, RuleProfile: ruleProfile})
 	if err != nil {
 		writeGRCError(w, err)
 		return

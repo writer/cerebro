@@ -26,10 +26,11 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 		policyLifecycleTestRow("urn:cerebro:writer:policy:access", "policy", "Access policy", nil),
 	}}}
 	_, err := Build(context.Background(), store, Scope{
-		TenantID:  "writer",
-		SourceID:  "grc",
-		RuntimeID: "rt-1",
-		Limit:     25,
+		TenantID:               "writer",
+		ApplicationWorkspaceID: "workspace-a",
+		SourceID:               "grc",
+		RuntimeID:              "rt-1",
+		Limit:                  25,
 	})
 	if err != nil {
 		t.Fatalf("Build error = %v", err)
@@ -40,6 +41,9 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 	entityRequest := store.requests[0]
 	if entityRequest.Params["type_limit"] != 25 {
 		t.Fatalf("entity params = %#v, want per-type limit", entityRequest.Params)
+	}
+	if entityRequest.Params["application_workspace_id"] != "workspace-a" || !strings.Contains(entityRequest.Query, "e.application_workspace_id") {
+		t.Fatalf("entity request = %#v, want workspace-a closed filter", entityRequest)
 	}
 	wantRowLimit := 25 * len(grcPolicyLifecycleEntityTypes)
 	if entityRequest.RowLimit != wantRowLimit {
@@ -93,6 +97,11 @@ func TestBuildAppliesEntityLimitPerLifecycleType(t *testing.T) {
 	}
 	if relationRequest.Params["risk_scenario_attr_fragment"] != grcPolicyLifecycleRiskScenarioAttrFragment {
 		t.Fatalf("relation params = %#v, want risk scenario filter", relationRequest.Params)
+	}
+	if relationRequest.Params["application_workspace_id"] != "workspace-a" ||
+		!strings.Contains(relationRequest.Query, "left.application_workspace_id") ||
+		!strings.Contains(relationRequest.Query, "right.application_workspace_id") {
+		t.Fatalf("relation request = %#v, want both endpoints closed to workspace-a", relationRequest)
 	}
 	anchorTypes, ok := relationRequest.Params["policy_anchor_entity_types"].([]string)
 	if !ok || !stringSliceContains(anchorTypes, "policy.version") {

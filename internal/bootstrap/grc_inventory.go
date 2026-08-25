@@ -160,7 +160,7 @@ func (a *App) handleGRCInventoryCategories(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	categories, err := a.graphQueryService().ListInventoryCategories(r.Context(), graphquery.InventoryCategoryRequest{
-		TenantID: scope.TenantID, SourceID: scope.SourceID,
+		TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: scope.SourceID,
 		Surface: strings.TrimSpace(r.URL.Query().Get("surface")),
 		Limit:   scope.Limit,
 	})
@@ -178,7 +178,7 @@ func (a *App) handleGRCInventoryAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	assets, err := a.graphQueryService().ListInventoryAssets(r.Context(), graphquery.InventoryAssetRequest{
-		TenantID: scope.TenantID, SourceID: scope.SourceID,
+		TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: scope.SourceID,
 		Surface:    strings.TrimSpace(r.URL.Query().Get("surface")),
 		CategoryID: strings.TrimSpace(r.URL.Query().Get("category_id")),
 		EntityType: strings.TrimSpace(r.URL.Query().Get("entity_type")),
@@ -213,8 +213,9 @@ func (a *App) handleGRCInventoryAssetDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	detail, err := a.graphQueryService().GetInventoryAsset(r.Context(), graphquery.InventoryAssetDetailRequest{
-		URN:   urn,
-		Limit: scope.Limit,
+		URN:                    urn,
+		ApplicationWorkspaceID: scope.ApplicationWorkspaceID,
+		Limit:                  scope.Limit,
 	})
 	if err != nil {
 		writeGRCError(w, err)
@@ -294,7 +295,7 @@ func (a *App) handleGRCResourceScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resources, err := a.graphQueryService().ListInventoryAssets(r.Context(), graphquery.InventoryAssetRequest{
-		TenantID: scope.TenantID, SourceID: sourceID,
+		TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: sourceID,
 		Surface:    strings.TrimSpace(r.URL.Query().Get("surface")),
 		CategoryID: strings.TrimSpace(r.URL.Query().Get("category_id")),
 		EntityType: strings.TrimSpace(r.URL.Query().Get("entity_type")),

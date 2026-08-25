@@ -1782,6 +1782,58 @@ func TestGRCAuditPacketNormalizesForeignFindingLookup(t *testing.T) {
 	}
 }
 
+func TestGRCAuditPreviewApplicationWorkspaceIsolation(t *testing.T) {
+	const (
+		tenantID   = "tenant-a"
+		runtimeID  = "runtime-a"
+		workspaceA = "workspace-a"
+		resourceA  = "urn:cerebro:tenant-a:asset:a"
+		resourceB  = "urn:cerebro:tenant-a:asset:b"
+	)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {Id: runtimeID, TenantId: tenantID, SourceId: "source-a"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-a": {ID: "finding-a", TenantID: tenantID, RuntimeID: runtimeID, Title: "Finding A", Status: "open", ResourceURNs: []string{resourceA}},
+			"finding-b": {ID: "finding-b", TenantID: tenantID, RuntimeID: runtimeID, Title: "Finding B", Status: "open", ResourceURNs: []string{resourceB}},
+		},
+	}
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
+		{{Values: map[string]any{"urn": resourceA, "tenant_id": tenantID, "application_workspace_id": workspaceA, "runtime_id": runtimeID, "source_id": "source-a", "entity_type": "asset", "label": "Asset A", "attributes_json": `{}`}}},
+		{{Values: map[string]any{"urn": resourceB, "tenant_id": tenantID, "application_workspace_id": "workspace-b", "runtime_id": runtimeID, "source_id": "source-a", "entity_type": "asset", "label": "Asset B", "attributes_json": `{}`}}},
+	}}
+	app := New(config.Config{}, Dependencies{StateStore: store, GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
+	request := func(findingID string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/grc/findings/"+findingID+"/audit-preview?tenant_id="+tenantID+"&workspace_id="+workspaceA, nil)
+		return r.WithContext(context.WithValue(r.Context(), authContextKey{}, authContext{principal: authPrincipal{
+			TenantID: tenantID,
+			ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{{
+				TenantID: tenantID, ApplicationWorkspaceIDs: []string{workspaceA},
+			}},
+		}}))
+	}
+
+	preview, err := app.buildGRCAuditPreview(request("finding-a"), "finding-a")
+	if err != nil {
+		t.Fatalf("buildGRCAuditPreview(workspace-a) error = %v", err)
+	}
+	if preview.Graph == nil || preview.Graph.Root == nil || preview.Graph.Root.URN != resourceA || len(preview.Graph.Neighbors) != 0 {
+		t.Fatalf("workspace preview graph = %#v, want an isolated root-only graph", preview.Graph)
+	}
+	if graph.neighborhoodRootURN != "" {
+		t.Fatalf("workspace preview traversed unscoped neighborhood root %q", graph.neighborhoodRootURN)
+	}
+	if len(graph.entityRequests) != 1 || graph.entityRequests[0].Filter.ApplicationWorkspaceID != workspaceA {
+		t.Fatalf("workspace catalog requests = %#v, want workspace-a", graph.entityRequests)
+	}
+
+	_, err = app.buildGRCAuditPreview(request("finding-b"), "finding-b")
+	if !errors.Is(err, ports.ErrFindingNotFound) {
+		t.Fatalf("buildGRCAuditPreview(workspace-a, finding-b) error = %v, want finding not found", err)
+	}
+}
+
 func TestGRCAuditPacketNormalizesForeignReceiptLookup(t *testing.T) {
 	store := &stubRuntimeStore{grcAuditPackets: map[string]*ports.GRCAuditPacketReceipt{
 		"packet-other": {ID: "packet-other", TenantID: "other", FindingID: "finding-other", Digest: "sha256:unused", Payload: []byte(`{}`), CreatedAt: time.Now()},

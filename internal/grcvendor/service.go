@@ -88,13 +88,14 @@ type ListVendorsRequest struct {
 }
 
 type VendorDetailRequest struct {
-	URN        string
-	VendorID   string
-	TenantID   string
-	RuntimeID  string
-	RuntimeIDs []string
-	SourceID   string
-	Limit      uint32
+	URN                    string
+	VendorID               string
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuntimeIDs             []string
+	SourceID               string
+	Limit                  uint32
 }
 
 type ListDiscoveriesRequest struct {
@@ -666,6 +667,7 @@ func (s *Service) GetVendor(ctx context.Context, request VendorDetailRequest) (*
 	} else {
 		filter.Query = vendorID
 	}
+	filter.ApplicationWorkspaceID = strings.TrimSpace(request.ApplicationWorkspaceID)
 	filter.RelationCounts = &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract", "security.review", "security.questionnaire", "assurance.document"}}
 	entityLimit := 2
 	if vendorID != "" {
@@ -699,6 +701,19 @@ func (s *Service) GetVendor(ctx context.Context, request VendorDetailRequest) (*
 		return nil, ports.ErrGraphEntityNotFound
 	}
 	urn = vendor.URN
+	if filter.ApplicationWorkspaceID != "" {
+		relationships := VendorRelationships{}
+		return &VendorDetail{
+			Vendor:        vendor,
+			Relationships: relationships,
+			Packet:        BuildVendorPacket(vendor, relationships),
+			Graph: &ports.EntityNeighborhood{
+				Root:      &ports.NeighborhoodNode{URN: vendor.URN, EntityType: "vendor", Label: vendor.Name},
+				Neighbors: []*ports.NeighborhoodNode{},
+				Relations: []*ports.NeighborhoodRelation{},
+			},
+		}, nil
+	}
 	limit := normalizeRelatedLimit(request.Limit)
 	relationPage, err := store.ListEntityRelations(ctx, ports.EntityRelationPageRequest{TenantID: tenantID, AgentKey: urn, Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming, ports.EntityRelationOutgoing}, Relations: []string{"associated_with", "owned_by", "has_identifier", "has_contact", "uses_subprocessor", "depends_on"}, NeighborKinds: vendorRelatedKinds(), Limit: limit})
 	if err != nil {

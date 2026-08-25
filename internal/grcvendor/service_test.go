@@ -40,7 +40,7 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 	if s.err != nil {
 		return nil, s.err
 	}
-	s.requests = append(s.requests, ports.CypherQueryRequest{Params: map[string]any{"tenant_id": request.Filter.TenantID, "limit": request.Limit}})
+	s.requests = append(s.requests, ports.CypherQueryRequest{Params: map[string]any{"tenant_id": request.Filter.TenantID, "application_workspace_id": request.Filter.ApplicationWorkspaceID, "limit": request.Limit}})
 	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, GraphRevision: s.graphRevision}
 	if len(s.rows) == 0 {
 		return page, nil
@@ -479,6 +479,23 @@ func TestGetVendorReturnsRelationshipsAndGraph(t *testing.T) {
 	}
 	if store.rootURN != urn || store.limit != relatedLimit {
 		t.Fatalf("neighborhood request = %q/%d, want %q/%d", store.rootURN, store.limit, urn, relatedLimit)
+	}
+}
+
+func TestGetVendorWorkspaceScopeDoesNotTraverseUnscopedRelationships(t *testing.T) {
+	urn := "urn:cerebro:writer:vendor:vrm:acme"
+	store := &stubGraphStore{rows: [][]ports.CypherRow{{vendorRow(urn, "Acme", `{"vendor_id":"acme"}`, 0, 0, 0, 0)}}}
+	detail, err := New(store).GetVendor(context.Background(), VendorDetailRequest{
+		URN: urn, TenantID: "writer", ApplicationWorkspaceID: "workspace-a", Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("GetVendor(workspace-a) error = %v", err)
+	}
+	if store.requests[0].Params["application_workspace_id"] != "workspace-a" {
+		t.Fatalf("catalog request params = %#v, want workspace-a", store.requests[0].Params)
+	}
+	if store.rootURN != "" || detail.Graph == nil || detail.Graph.Root == nil || len(detail.Graph.Neighbors) != 0 || len(detail.Graph.Relations) != 0 {
+		t.Fatalf("workspace detail graph = %#v root traversal = %q, want root-only graph", detail.Graph, store.rootURN)
 	}
 }
 
