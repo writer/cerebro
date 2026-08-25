@@ -50,6 +50,7 @@ mod linode;
 mod mapper;
 mod okta;
 mod openai;
+mod page_publication;
 mod pagerduty;
 mod panopticon;
 mod protocol;
@@ -256,6 +257,10 @@ pub use okta::{
 pub use openai::{
     OpenAiAuthRequirement, OpenAiCheckpoint, OpenAiError, OpenAiFamily, OpenAiKernel, OpenAiPage,
     OpenAiRecord, OpenAiRequest, OpenAiRequestInput,
+};
+pub use page_publication::{
+    PageAppendReceipt, PageEventInput, PageEventIntent, PageProjectionReceipt, PagePublication,
+    PagePublicationError, PagePublicationInput, PagePublicationState, PublishClaim,
 };
 pub use pagerduty::{
     PagerDutyEntityFact, PagerDutyError, PagerDutyFamily, PagerDutyFilters, PagerDutyKernel,

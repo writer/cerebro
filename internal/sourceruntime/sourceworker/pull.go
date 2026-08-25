@@ -36,6 +36,13 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Every cataloged OpenAI family is closed in the Rust dispatcher.
 		// Unknown families fail there instead of restoring the retired Go path.
 		return familyID, true
+	case "deepseek":
+		if familyID == "" {
+			familyID = "model_catalog"
+		}
+		// Both cataloged DeepSeek families are closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the retired Go path.
+		return familyID, true
 	case "asana":
 		if familyID == "" {
 			familyID = "users"
@@ -119,6 +126,9 @@ func CredentialBinding(sourceID string, references, resolved map[string]string) 
 		keys = []string{"token", "api_token", "api_key", "access_token"}
 	}
 	if strings.TrimSpace(sourceID) == "openai" {
+		keys = []string{"token", "api_token", "api_key", "access_token"}
+	}
+	if strings.TrimSpace(sourceID) == "deepseek" {
 		keys = []string{"token", "api_token", "api_key", "access_token"}
 	}
 	if strings.TrimSpace(sourceID) == "discord" {

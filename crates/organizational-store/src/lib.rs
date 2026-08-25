@@ -27,6 +27,7 @@
 mod credential_vault;
 mod cutover;
 mod neo4j;
+mod page_publication;
 mod parity;
 mod postgres;
 
@@ -46,6 +47,7 @@ pub use neo4j::{
     LegacyRootCoverage, LegacyRootCoverageKind, Neo4jProjector, PersonAccessPath,
     PersonAccessPathPage, ResolvedLifecycleFinding, SourceRuntimeGraphObservation,
 };
+pub use page_publication::PagePublicationOutbox;
 pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,
     SemanticMismatch, SemanticSnapshot,
