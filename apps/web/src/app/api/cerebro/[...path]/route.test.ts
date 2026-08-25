@@ -20,6 +20,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("Cerebro proxy route", () => {
@@ -66,6 +67,48 @@ describe("Cerebro proxy route", () => {
     expect(firstResponse.headers.get("x-cerebro-web-trace-id")).toMatch(/^[0-9a-f]{32}$/);
     expect(secondResponse.headers.get("x-cerebro-web-trace-id")).toMatch(/^[0-9a-f]{32}$/);
     await expect(secondResponse.json()).resolves.toMatchObject({ error: "Unable to reach Cerebro API" });
+  });
+
+  it("serves stale GRC data immediately while one background refresh runs", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    vi.useFakeTimers();
+    const refreshed = Promise.withResolvers<Response>();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ version: 1 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }))
+      .mockImplementationOnce(() => refreshed.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const context = { params: Promise.resolve({ path: ["grc", "dashboard"] }) };
+    const requestURL = "http://localhost/api/cerebro/grc/dashboard?stale_while_refresh=test";
+
+    const first = await GET(new NextRequest(requestURL), context);
+    expect(await first.json()).toEqual({ version: 1 });
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    const second = await GET(new NextRequest(requestURL), context);
+    expect(second.headers.get("x-cerebro-cache")).toBe("stale");
+    expect(await second.json()).toEqual({ version: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const third = await GET(new NextRequest(requestURL), context);
+    expect(third.headers.get("x-cerebro-cache")).toBe("stale");
+    expect(await third.json()).toEqual({ version: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    refreshed.resolve(new Response(JSON.stringify({ version: 2 }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    let fourth: Response | undefined;
+    await vi.waitFor(async () => {
+      fourth = await GET(new NextRequest(requestURL), context);
+      expect(fourth.headers.get("x-cerebro-cache")).toBe("hit");
+    });
+    if (!fourth) throw new Error("refreshed response was not observed");
+    expect(fourth.headers.get("x-cerebro-cache")).toBe("hit");
+    expect(await fourth.json()).toEqual({ version: 2 });
   });
 
   it("relays signed Rust-authority reads without deriving or stamping identity", async () => {
