@@ -142,7 +142,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
       response = await fetchCerebro(target, {
         method: "GET",
         headers: upstreamHeaders,
-        cache: "no-store",
         signal: background ? undefined : request.signal,
       });
     } catch (error) {

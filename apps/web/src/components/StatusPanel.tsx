@@ -73,7 +73,7 @@ export default function StatusPanel() {
   const [loading, setLoading] = useState(true);
   const identity = identityPosture({ error: identityError, loading: identityLoading, user });
 
-  const fetchStatus = useCallback(async (signal?: AbortSignal) => {
+  const fetchStatus = useCallback(async (signal?: AbortSignal, bypassCache = false) => {
     setLoading(true);
     const headers: HeadersInit = apiKey ? { "X-API-Key": apiKey } : {};
 
@@ -84,7 +84,11 @@ export default function StatusPanel() {
       signal?.addEventListener("abort", abort, { once: true });
       const timer = window.setTimeout(() => controller.abort(), probe.timeoutMs);
       try {
-        const response = await fetch(probe.path, { headers, cache: "no-store", signal: controller.signal });
+        const response = await fetch(probe.path, {
+          headers,
+          ...(bypassCache ? { cache: "no-store" as RequestCache } : {}),
+          signal: controller.signal,
+        });
         const data = await parseStatus(response);
         return {
           ...probe,
@@ -144,7 +148,7 @@ export default function StatusPanel() {
         <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">Runtime Health</h3>
         <div className="flex items-center gap-3">
           {state.checkedAt && <span className="text-[11px] text-[var(--text-muted)]">Checked {new Date(state.checkedAt).toLocaleTimeString()}</span>}
-          <button type="button" onClick={() => void fetchStatus()} disabled={loading} className="secondary-button px-2.5 py-1.5 text-[12px]">
+          <button type="button" onClick={() => void fetchStatus(undefined, true)} disabled={loading} className="secondary-button px-2.5 py-1.5 text-[12px]">
             {loading ? "Checking..." : "Refresh"}
           </button>
         </div>
