@@ -24,11 +24,8 @@ fn context(cursor: &str) -> SourceWorkerExecutionContextV1 {
     }
 }
 
-fn metadata(family: OpenAiFamily) -> SourceWorkerRuntimeMetadataV2 {
-    let mut public_config = HashMap::from([
-        ("family".to_owned(), family.id().to_owned()),
-        ("per_page".to_owned(), "2".to_owned()),
-    ]);
+fn initial_metadata(family: OpenAiFamily) -> SourceWorkerRuntimeMetadataV2 {
+    let mut public_config = HashMap::from([("family".to_owned(), family.id().to_owned())]);
     for parameter in family.spec().path_parameters {
         public_config.insert((*parameter).to_owned(), format!("{parameter}-1"));
     }
@@ -78,7 +75,7 @@ fn every_family_plans_one_origin_restricted_credential_free_request() {
                     plan: Some(adapter(family).compiled_plan()),
                     context: Some(context("")),
                 }),
-                metadata: Some(metadata(family)),
+                metadata: Some(initial_metadata(family)),
             })
             .unwrap_or_else(|error| panic!("{} plan: {error}", family.id()));
         assert_eq!(execution.allowed_origin, ORIGIN);
@@ -106,7 +103,7 @@ fn user_decode_preserves_cursor_and_tenant_scoped_identity() {
     let adapter = adapter(family);
     let plan = adapter.compiled_plan();
     let context = context("");
-    let metadata = metadata(family);
+    let metadata = initial_metadata(family);
     let execution = adapter
         .plan_v2(&SourceWorkerPlanEnvelopeV2 {
             request: Some(SourceWorkerPlanRequestV1 {

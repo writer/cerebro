@@ -95,7 +95,7 @@ impl PageEventPublisher for JetStreamPublisher {
                 subject.to_owned(),
                 PublishMessage::build()
                     .payload(envelope.to_vec().into())
-                    .message_id(message_id.to_owned())
+                    .message_id(message_id)
                     .expected_stream(self.stream.clone()),
             )
             .await
@@ -272,9 +272,8 @@ where
     };
     let first_unacknowledged = page.append_receipts().len();
     let mut published = 0;
-    for index in first_unacknowledged..page.events().len() {
+    for (index, envelope) in envelopes.iter().enumerate().skip(first_unacknowledged) {
         let intent = page.events()[index].clone();
-        let envelope = &envelopes[index];
         let subject = subject_for_event(publisher.subject_prefix(), &page, &intent, envelope)?;
         let acknowledgement = publisher
             .publish(&subject, intent.message_id(), envelope)

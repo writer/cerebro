@@ -5,6 +5,18 @@
 //! without owning credentials, egress policy, deployment routes, or tenant
 //! authorization.
 
+// Shared dispatcher registration lands separately so this provider-local slice
+// does not collide with another branch that owns the closed registry.
+#[allow(dead_code)]
+#[path = "amplitude/source_execution.rs"]
+mod source_execution;
+#[cfg(test)]
+#[path = "amplitude/source_execution_tests.rs"]
+mod source_execution_tests;
+
+#[allow(unused_imports)]
+pub(crate) use source_execution::AMPLITUDE_SOURCE_EXECUTION_ADAPTERS;
+
 use std::{collections::BTreeMap, error::Error, fmt, net::IpAddr, str::FromStr};
 
 use reqwest::Url;
