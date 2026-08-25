@@ -382,6 +382,10 @@ func PublicExecutionConfigForSource(sourceID string, values map[string]string) m
 			copyPublicValue(public, values, key)
 		}
 		copyPublicAlias(public, values, "api_key_ids", "admin_key_ids")
+	case "google_workspace":
+		for _, key := range []string{"customer_id", "domain"} {
+			copyPublicValue(public, values, key)
+		}
 	case "azure_openai":
 		for _, key := range []string{"subscription_id", "resource_group", "account_name", "location"} {
 			copyPublicValue(public, values, key)
