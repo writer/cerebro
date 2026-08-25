@@ -87,6 +87,7 @@ type GraphReadCapabilities struct {
 	Exposure         ExposureCoverageStore
 	EntityKindCounts EntityKindCountStore
 	RelationCounts   RelationCountStore
+	VendorRegister   VendorRegisterStore
 }
 
 func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
@@ -111,6 +112,9 @@ func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
 	}
 	if relationCounts, ok := store.(RelationCountStore); ok && !isNilGraphReadCapability(relationCounts) {
 		capabilities.RelationCounts = relationCounts
+	}
+	if vendorRegister, ok := store.(VendorRegisterStore); ok && !isNilGraphReadCapability(vendorRegister) {
+		capabilities.VendorRegister = vendorRegister
 	}
 	return capabilities
 }

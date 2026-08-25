@@ -14,9 +14,11 @@ import (
 const maxGRCVendorDiscoveryDecisionBodyBytes = 32 << 10
 
 type grcVendorsResponse struct {
-	grcvendor.VendorPage
-	Summary     grcvendor.Summary `json:"summary"`
-	GeneratedAt time.Time         `json:"generated_at"`
+	GraphRevision uint64                      `json:"graph_revision"`
+	DataAuthority string                      `json:"data_authority"`
+	Vendors       []ports.VendorRegisterRow   `json:"vendors"`
+	Summary       ports.VendorRegisterSummary `json:"summary"`
+	GeneratedAt   string                      `json:"generated_at"`
 }
 
 type grcVendorDetailResponse struct {
@@ -70,39 +72,28 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	page, err := grcvendor.NewWithCapabilities(a.deps.GraphReads.Catalog, a.deps.GraphReads.Neighborhoods).ListVendorsPage(r.Context(), grcvendor.ListVendorsRequest{
-		TenantID:    scope.TenantID,
-		RuntimeID:   scope.RuntimeID,
-		RuntimeIDs:  scope.RuntimeIDs,
-		SourceID:    scope.SourceID,
-		Query:       strings.TrimSpace(r.URL.Query().Get("q")),
-		RiskLevel:   strings.TrimSpace(r.URL.Query().Get("risk_level")),
-		ReviewState: strings.TrimSpace(r.URL.Query().Get("review_state")),
-		OwnerState:  strings.TrimSpace(r.URL.Query().Get("owner_state")),
-		Lifecycle:   strings.TrimSpace(r.URL.Query().Get("lifecycle_state")),
-		QueueOnly:   queueOnly,
-		DeferLimit:  queueOnly,
-		Limit:       scope.Limit,
+	if a.deps.GraphReads.VendorRegister == nil {
+		writeGRCError(w, grcvendor.ErrRuntimeUnavailable)
+		return
+	}
+	runtimeIDs := append([]string{}, scope.RuntimeIDs...)
+	if scope.RuntimeID != "" {
+		runtimeIDs = []string{scope.RuntimeID}
+	}
+	page, err := a.deps.GraphReads.VendorRegister.ListVendorRegister(r.Context(), ports.VendorRegisterFilter{
+		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
+		Query: strings.TrimSpace(r.URL.Query().Get("q")), RiskLevel: strings.TrimSpace(r.URL.Query().Get("risk_level")), ReviewState: strings.TrimSpace(r.URL.Query().Get("review_state")), OwnerState: strings.TrimSpace(r.URL.Query().Get("owner_state")), LifecycleState: strings.TrimSpace(r.URL.Query().Get("lifecycle_state")), QueueOnly: queueOnly, Limit: int(scope.Limit),
 	})
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	vendors := page.Vendors
-	vendors, err = a.enrichGRCVendors(r, scope, vendors)
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	if queueOnly {
-		vendors = grcvendor.FilterVendorsByQueue(vendors)
-	}
-	page.Vendors = grcvendor.SortAndLimitVendors(vendors, scope.Limit)
-	page.DataAuthority = "rust_graph"
 	writeJSON(w, http.StatusOK, grcVendorsResponse{
-		VendorPage:  page,
-		Summary:     grcvendor.Summarize(page.Vendors),
-		GeneratedAt: time.Now().UTC(),
+		GraphRevision: page.GraphRevision,
+		DataAuthority: page.DataAuthority,
+		Vendors:       page.Vendors,
+		Summary:       page.Summary,
+		GeneratedAt:   page.GeneratedAt,
 	})
 }
 
