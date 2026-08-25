@@ -13,6 +13,7 @@ mod slack_agent_session;
 mod slack_authority;
 mod slack_mrkdwn;
 mod source_page_publisher;
+mod source_runtime_invalid_events;
 mod source_runtime_registry;
 mod source_runtime_sync;
 mod threat_insight_projection;
@@ -684,6 +685,9 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/graph/paths" => "paths",
         "/v1/security/lifecycle" => "security_lifecycle",
         "/v1/source-runtimes" => "list_source_runtimes",
+        _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/invalid-events") => {
+            "list_source_runtime_invalid_events"
+        }
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => {
             "put_source_runtime"
         }
@@ -2252,6 +2256,10 @@ fn router_with_backend(
             post(sync_source_runtime),
         )
         .route(
+            "/v1/source-runtimes/{runtime_id}/invalid-events",
+            get(list_source_runtime_invalid_events),
+        )
+        .route(
             "/v1/projections/legacy-deltas",
             post(record_legacy_projection),
         )
@@ -2761,6 +2769,48 @@ fn source_runtime_registry_error(
         SourceRuntimeRegistryFailureKind::RuntimeUnavailable => {
             source_runtime_registry_unavailable()
         }
+    }
+}
+
+async fn list_source_runtime_invalid_events(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Path(runtime_id): Path<String>,
+) -> Result<
+    Json<source_runtime_invalid_events::SourceRuntimeInvalidEventsResponse>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    let ledger = state.runtime_ledger.ok_or_else(|| {
+        service_unavailable(
+            "source_runtime_invalid_events_unavailable",
+            "The Rust source-runtime ledger is not configured.",
+        )
+    })?;
+    source_runtime_invalid_events::list_source_runtime_invalid_events(
+        ledger,
+        &authenticated.0,
+        &runtime_id,
+    )
+    .await
+    .map(Json)
+    .map_err(source_runtime_invalid_events_error)
+}
+
+fn source_runtime_invalid_events_error(
+    error: source_runtime_invalid_events::SourceRuntimeInvalidEventsFailure,
+) -> (StatusCode, Json<ErrorResponse>) {
+    use source_runtime_invalid_events::SourceRuntimeInvalidEventsFailureKind;
+
+    eprintln!("Rust source-runtime invalid-event request failed: {error}");
+    match error.kind() {
+        SourceRuntimeInvalidEventsFailureKind::InvalidRequest => bad_request(
+            "invalid_source_runtime",
+            "The source runtime identifier is invalid.",
+        ),
+        SourceRuntimeInvalidEventsFailureKind::RuntimeUnavailable => service_unavailable(
+            "source_runtime_invalid_events_unavailable",
+            "Source-runtime invalid-event evidence is temporarily unavailable.",
+        ),
     }
 }
 
@@ -6371,6 +6421,20 @@ mod tests {
         assert_eq!(
             bounded_operation(&Method::GET, "/v1/source-runtimes/runtime-demo"),
             "get_source_runtime"
+        );
+        assert_eq!(
+            oidc_scope_for_route(
+                &Method::GET,
+                "/v1/source-runtimes/runtime-demo/invalid-events"
+            ),
+            "cerebro:read"
+        );
+        assert_eq!(
+            bounded_operation(
+                &Method::GET,
+                "/v1/source-runtimes/runtime-demo/invalid-events"
+            ),
+            "list_source_runtime_invalid_events"
         );
         assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/source-runtimes/runtime-demo/sync"),
