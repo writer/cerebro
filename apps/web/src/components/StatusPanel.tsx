@@ -27,9 +27,14 @@ type ProbeResult = {
 };
 
 const LIVENESS_TIMEOUT_MS = 3000;
+const PRODUCT_READ_TIMEOUT_MS = 5000;
 const STATUS_PROBES = [
   { key: "healthz", label: "API liveness", path: "/api/cerebro/healthz", timeoutMs: LIVENESS_TIMEOUT_MS },
   { key: "health", label: "API readiness", path: "/api/cerebro/health", timeoutMs: GRC_QUERY_TIMEOUT_MS },
+  { key: "actions", label: "Action authority", path: "/api/cerebro/v1/actions?limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
+  { key: "inventory", label: "Inventory", path: "/api/cerebro/grc/inventory/categories?limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
+  { key: "vendors", label: "Vendor register", path: "/api/cerebro/grc/vendors?limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
+  { key: "policies", label: "Policy lifecycle", path: "/api/cerebro/grc/policy-lifecycle?rule_profile=baseline&limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
 ];
 
 const parseStatus = async (response: Response): Promise<Record<string, unknown>> => {
