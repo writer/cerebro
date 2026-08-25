@@ -20,6 +20,7 @@ import {
   shortEntity,
 } from "@/lib/grc";
 import { grcPath, useDebouncedValue, useGRCQuery } from "@/lib/grc-client";
+import { grcScopeQuery, useDebouncedGRCScope, useGRCScopeQueryState, withGRCScope } from "@/lib/grc-scope";
 import { frameworkOptionLabel, inventoryAssetMatchesFrameworkSegment, supportedGRCFrameworkNames } from "@/lib/grc-frameworks";
 import { GRC_WORKLIST_LIMIT, grcBoundedRows } from "@/lib/grc-list";
 import {
@@ -453,7 +454,7 @@ function AccountabilityModal({
 export default function InventoryPage() {
   const { apiKey } = useApiKey();
   const { actor } = useCurrentUser();
-  const [tenantID, setTenantID] = useQueryParamState("tenant_id");
+  const { tenantID, workspaceID, setTenantID, setWorkspaceID } = useGRCScopeQueryState();
   const [categoryID, setCategoryID] = useQueryParamState("category_id");
   const [query, setQuery] = useQueryParamState("q");
   const [sourceID, setSourceID] = useQueryParamState("source_id");
@@ -476,7 +477,7 @@ export default function InventoryPage() {
   const [accountabilityDefaultState, setAccountabilityDefaultState] = useState<AccountabilityUpdateState>("known");
   const [accountabilitySaving, setAccountabilitySaving] = useState(false);
   const [accountabilityError, setAccountabilityError] = useState<string | null>(null);
-  const debouncedTenantID = useDebouncedValue(tenantID.trim());
+  const debouncedScope = useDebouncedGRCScope({ tenantID, workspaceID });
   const debouncedCategoryID = useDebouncedValue(categoryID.trim());
   const debouncedQuery = useDebouncedValue(query.trim());
   const debouncedSourceID = useDebouncedValue(sourceID.trim());
@@ -489,11 +490,11 @@ export default function InventoryPage() {
   const selectedSurface = inventoryRequestSurface(debouncedSurfaceFilter);
 
   const categoriesQuery = useGRCQuery<GRCInventoryCategoriesResponse>(
-    grcPath("/grc/inventory/categories", { tenant_id: debouncedTenantID, source_id: debouncedSourceID, surface: selectedSurface, limit: GRC_WORKLIST_LIMIT }),
+    grcPath("/grc/inventory/categories", { ...grcScopeQuery(debouncedScope), source_id: debouncedSourceID, surface: selectedSurface, limit: GRC_WORKLIST_LIMIT }),
   );
   const assetsQuery = useGRCQuery<GRCInventoryAssetsResponse>(
     grcPath("/grc/inventory/assets", {
-      tenant_id: debouncedTenantID,
+      ...grcScopeQuery(debouncedScope),
       source_id: debouncedSourceID,
       surface: selectedSurface,
       category_id: debouncedCategoryID,
@@ -505,7 +506,7 @@ export default function InventoryPage() {
     }),
   );
   const scopeQuery = useGRCQuery<GRCResourceScopeResponse>(
-    scopeOpen ? grcPath("/grc/inventory/resource-scope", { tenant_id: debouncedTenantID, source_id: debouncedSourceID || "github", surface: selectedSurface, category_id: debouncedCategoryID, q: debouncedQuery, limit: GRC_WORKLIST_LIMIT }) : null,
+    scopeOpen ? grcPath("/grc/inventory/resource-scope", { ...grcScopeQuery(debouncedScope), source_id: debouncedSourceID || "github", surface: selectedSurface, category_id: debouncedCategoryID, q: debouncedQuery, limit: GRC_WORKLIST_LIMIT }) : null,
   );
 
   const surfaceIsAssets = selectedSurface === "asset";
@@ -585,6 +586,7 @@ export default function InventoryPage() {
     { label: "Source", value: sourceID, onClear: () => setSourceID("") },
     { label: "Scope", value: scopeFilter ? inventoryScopeCopy(scopeFilter) : "", onClear: () => setScopeFilter("") },
     { label: "Tenant", value: tenantID, onClear: () => setTenantID("") },
+    { label: "Workspace", value: workspaceID, onClear: () => setWorkspaceID("") },
   ];
   const activeFilterCount = inventoryNarrowingFilterCount({
     surface: surfaceFilter,
@@ -597,7 +599,7 @@ export default function InventoryPage() {
     accountability: accountabilityFilter,
     source: sourceID,
     scope: scopeFilter,
-  });
+  }) + Number(Boolean(workspaceID.trim()));
   const clearFilters = () => {
     setCategoryID("");
     setQuery("");
@@ -609,6 +611,7 @@ export default function InventoryPage() {
     setSourceID("");
     setScopeFilter("");
     setTenantID("");
+    setWorkspaceID("");
     setSelectedAssetURNs([]);
   };
   const toggleAssetSelection = useCallback((asset: GRCInventoryAsset) => {
@@ -636,7 +639,7 @@ export default function InventoryPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        tenant_id: debouncedTenantID || undefined,
+        ...grcScopeQuery(debouncedScope),
         asset_urn: asset.urn,
         source_id: asset.source_id || debouncedSourceID || undefined,
         runtime_id: asset.runtime_id || undefined,
@@ -654,7 +657,7 @@ export default function InventoryPage() {
       void scopeQuery.reload();
     }
     return true;
-  }, [apiKey, assetsQuery, debouncedSourceID, debouncedTenantID, scopeQuery]);
+  }, [apiKey, assetsQuery, debouncedScope, debouncedSourceID, scopeQuery]);
   const updateScopeForAssets = useCallback(async (targetAssets: GRCInventoryAsset[], state: "in_scope" | "out_of_scope") => {
     if (targetAssets.length === 0) return;
     for (const asset of targetAssets) {
@@ -674,7 +677,7 @@ export default function InventoryPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenant_id: debouncedTenantID || undefined,
+          ...grcScopeQuery(debouncedScope),
           asset_urn: asset.urn,
           source_id: asset.source_id || debouncedSourceID || undefined,
           runtime_id: asset.runtime_id || undefined,
@@ -694,7 +697,7 @@ export default function InventoryPage() {
     setSelectedAssetURNs([]);
     void assetsQuery.reload();
     void scopeQuery.reload();
-  }, [apiKey, assetsQuery, debouncedSourceID, debouncedTenantID, scopeQuery]);
+  }, [apiKey, assetsQuery, debouncedScope, debouncedSourceID, scopeQuery]);
   const submitAssetReport = useCallback(async (asset: GRCInventoryAsset, reason: string) => {
     setReportSavingURN(asset.urn);
     setReportError(null);
@@ -702,7 +705,7 @@ export default function InventoryPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        tenant_id: debouncedTenantID || undefined,
+        ...grcScopeQuery(debouncedScope),
         asset_urn: asset.urn,
         source_id: asset.source_id || debouncedSourceID || undefined,
         reason,
@@ -721,7 +724,7 @@ export default function InventoryPage() {
     }
     setReportAsset(null);
     void assetsQuery.reload();
-  }, [actor, apiKey, assetsQuery, debouncedSourceID, debouncedTenantID]);
+  }, [actor, apiKey, assetsQuery, debouncedScope, debouncedSourceID]);
   const exportAssets = useCallback(() => {
     const headers = ["Record", "Surface", "Class", "Review state", "Accountability", "Risk score", "Owner", "Scope", "Source", "Account / region", "URN"];
     const rows = assets.map((asset) => [
@@ -868,8 +871,11 @@ export default function InventoryPage() {
                 </select>
               </label>
             </div>
-            <div className={`${filtersOpen ? "block" : "hidden"} mt-3 max-w-xs md:block`}>
-              <label className={labelClass}>Tenant<input value={tenantID} onChange={(event) => { setTenantID(event.target.value); setSelectedAssetURNs([]); }} placeholder="All" className={inputClass} /></label>
+            <div className={`${filtersOpen ? "block" : "hidden"} mt-3 max-w-2xl md:block`}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className={labelClass}>Tenant ID<input value={tenantID} onChange={(event) => { setTenantID(event.target.value); setSelectedAssetURNs([]); }} placeholder="All authorized tenants" className={inputClass} /></label>
+                <label className={labelClass}>Workspace ID<input value={workspaceID} onChange={(event) => { setWorkspaceID(event.target.value); setSelectedAssetURNs([]); }} placeholder="All authorized workspaces" className={inputClass} /></label>
+              </div>
             </div>
             <AppliedFilterChips filters={filterChips} onClearAll={clearFilters} />
             <div className={`${filtersOpen ? "flex" : "hidden"} mt-4 flex-wrap items-center gap-2 border-t border-[color:var(--border)] pt-3 md:flex`}>
@@ -967,7 +973,7 @@ export default function InventoryPage() {
                               <div className="flex items-center gap-3">
                                 <SourceMark asset={asset} />
                                 <div className="min-w-0">
-                                  <Link href={`/inventory/${encodeURIComponent(asset.urn)}`} className="block max-w-[26rem] truncate font-medium text-[var(--text-primary)] hover:text-[var(--primary)]">{asset.label || shortEntity(asset.urn)}</Link>
+                                  <Link href={withGRCScope(`/inventory/${encodeURIComponent(asset.urn)}`, { tenantID, workspaceID })} className="block max-w-[26rem] truncate font-medium text-[var(--text-primary)] hover:text-[var(--primary)]">{asset.label || shortEntity(asset.urn)}</Link>
                                   {secondaryAssetID(asset) && <div className="truncate font-mono text-[11px] text-[var(--text-muted)]">{secondaryAssetID(asset)}</div>}
                                   <div className="mt-1 text-[11px] text-[var(--text-muted)]">{surfaceFilterLabel(inventoryAssetSurface(asset))} / {descriptionLabel(asset)}</div>
                                 </div>

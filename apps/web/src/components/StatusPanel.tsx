@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useApiKey, useConsoleConfig, useCurrentUser } from "@/components/providers";
 import { identityPosture } from "@/lib/identity";
 import { GRC_QUERY_TIMEOUT_MS } from "@/lib/grc-client";
+import { type GRCScope, useDebouncedGRCScope, withGRCScope } from "@/lib/grc-scope";
 import { RuntimeState, runtimeStateCopy, runtimeStateForError, runtimeStateLabel } from "@/lib/runtime-state";
 
 type StatusState = {
@@ -28,16 +30,16 @@ type ProbeResult = {
 
 const LIVENESS_TIMEOUT_MS = 3000;
 const PRODUCT_READ_TIMEOUT_MS = 5000;
-const STATUS_PROBES = [
+export const statusProbes = (scope: GRCScope) => [
   { key: "healthz", label: "API liveness", path: "/api/cerebro/healthz", timeoutMs: LIVENESS_TIMEOUT_MS },
   { key: "health", label: "API readiness", path: "/api/cerebro/health", timeoutMs: GRC_QUERY_TIMEOUT_MS },
-  { key: "actions", label: "Action authority", path: "/api/cerebro/v1/actions?limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
-  { key: "inventory", label: "Inventory", path: "/api/cerebro/grc/inventory/categories?limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
-  { key: "vendors", label: "Vendor register", path: "/api/cerebro/grc/vendors?limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
-  { key: "policies", label: "Policy lifecycle", path: "/api/cerebro/grc/policy-lifecycle?rule_profile=baseline&limit=1", timeoutMs: PRODUCT_READ_TIMEOUT_MS },
+  { key: "actions", label: "Action authority", path: withGRCScope("/api/cerebro/v1/actions?limit=1", scope), timeoutMs: PRODUCT_READ_TIMEOUT_MS },
+  { key: "inventory", label: "Inventory", path: withGRCScope("/api/cerebro/grc/inventory/categories?limit=1", scope), timeoutMs: PRODUCT_READ_TIMEOUT_MS },
+  { key: "vendors", label: "Vendor register", path: withGRCScope("/api/cerebro/grc/vendors?limit=1", scope), timeoutMs: PRODUCT_READ_TIMEOUT_MS },
+  { key: "policies", label: "Policy lifecycle", path: withGRCScope("/api/cerebro/grc/policy-lifecycle?rule_profile=baseline&limit=1", scope), timeoutMs: PRODUCT_READ_TIMEOUT_MS },
 ];
 
-const pendingProbe = (probe: typeof STATUS_PROBES[number]): ProbeResult => ({
+const pendingProbe = (probe: ReturnType<typeof statusProbes>[number]): ProbeResult => ({
   ...probe,
   durationMs: 0,
   ok: false,
@@ -74,19 +76,28 @@ const stateClass = (state: RuntimeState) => {
 };
 
 export default function StatusPanel() {
+  const searchParams = useSearchParams();
   const { apiKey } = useApiKey();
   const { config } = useConsoleConfig();
   const { error: identityError, loading: identityLoading, user } = useCurrentUser();
   const [state, setState] = useState<StatusState>({});
   const [loading, setLoading] = useState(true);
   const identity = identityPosture({ error: identityError, loading: identityLoading, user });
+  const debouncedScope = useDebouncedGRCScope({
+    tenantID: searchParams.get("tenant_id") ?? "",
+    workspaceID: searchParams.get("workspace_id") ?? "",
+  });
+  const probesToRun = useMemo(
+    () => statusProbes(debouncedScope),
+    [debouncedScope],
+  );
 
   const fetchStatus = useCallback(async (signal?: AbortSignal, bypassCache = false) => {
     setLoading(true);
-    setState({ probes: STATUS_PROBES.map(pendingProbe) });
+    setState({ probes: probesToRun.map(pendingProbe) });
     const headers: HeadersInit = apiKey ? { "X-API-Key": apiKey } : {};
 
-    const runProbe = async (probe: typeof STATUS_PROBES[number]): Promise<ProbeResult> => {
+    const runProbe = async (probe: ReturnType<typeof statusProbes>[number]): Promise<ProbeResult> => {
       const started = performance.now();
       const controller = new AbortController();
       const abort = () => controller.abort();
@@ -126,11 +137,11 @@ export default function StatusPanel() {
     };
 
     try {
-      const probes = await Promise.all(STATUS_PROBES.map(async (probe) => {
+      const probes = await Promise.all(probesToRun.map(async (probe) => {
         const result = await runProbe(probe);
         if (!signal?.aborted) {
           setState((current) => {
-            const nextProbes = (current.probes ?? STATUS_PROBES.map(pendingProbe)).map((currentProbe) => (
+            const nextProbes = (current.probes ?? probesToRun.map(pendingProbe)).map((currentProbe) => (
               currentProbe.key === result.key ? result : currentProbe
             ));
             return {
@@ -152,7 +163,7 @@ export default function StatusPanel() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [apiKey]);
+  }, [apiKey, probesToRun]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -212,7 +223,7 @@ export default function StatusPanel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[color:var(--border)]">
-                {(probes.length > 0 ? probes : STATUS_PROBES.map((probe) => ({
+                {(probes.length > 0 ? probes : probesToRun.map((probe) => ({
                   ...probe,
                   durationMs: 0,
                   ok: false,

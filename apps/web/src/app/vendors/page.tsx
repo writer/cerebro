@@ -44,6 +44,7 @@ import {
   shortEntity,
 } from "@/lib/grc";
 import { grcPath, useDebouncedValue, useGRCFormMutation, useGRCMutation, useGRCQuery } from "@/lib/grc-client";
+import { type GRCScope, grcScopeQuery, useDebouncedGRCScope, useGRCScopeQueryState, withGRCScope } from "@/lib/grc-scope";
 import { GRC_DETAIL_LIMIT, GRC_WORKLIST_LIMIT } from "@/lib/grc-list";
 import { riskBadgeClassFor } from "@/lib/grc-status";
 import { grcUploadHistoryKey, grcUploadHistoryWith, readGRCUploadHistory, writeGRCUploadHistory } from "@/lib/grc-upload-history";
@@ -198,8 +199,8 @@ const quickReviewOptions = [
 const compactAttributes = (attributes: Record<string, string | undefined>) =>
   Object.fromEntries(Object.entries(attributes).filter(([, value]) => Boolean(value))) as Record<string, string>;
 
-const vendorCreateRequest = (draft: VendorCreateDraft, tenantID: string): GRCVendorCreateRequest => ({
-  tenant_id: tenantID.trim() || undefined,
+const vendorCreateRequest = (draft: VendorCreateDraft, scope: GRCScope): GRCVendorCreateRequest => ({
+  ...grcScopeQuery(scope),
   name: draft.name.trim(),
   source_id: "grc",
   owner: draft.owner.trim() || undefined,
@@ -418,8 +419,8 @@ function DuplicateMatchList({
   );
 }
 
-const vendorDetailHref = (vendor: GRCVendor) =>
-  `/vendors/${encodeURIComponent(vendor.urn)}`;
+const vendorDetailHref = (vendor: GRCVendor, scope: GRCScope) =>
+  withGRCScope(`/vendors/${encodeURIComponent(vendor.urn)}`, scope);
 
 function DiscoveryStateBadge({ state }: { state?: string }) {
   const normalized = state?.trim().toLowerCase() || "discovered";
@@ -1200,6 +1201,7 @@ function VendorRegisterSection({
   graphRevision,
   meta,
   onOpenVendor,
+  scope,
   vendors,
 }: {
   assuranceItems: number;
@@ -1207,6 +1209,7 @@ function VendorRegisterSection({
   graphRevision?: number;
   meta?: GRCVendorsResponse["meta"];
   onOpenVendor: (vendorURN: string) => void;
+  scope: GRCScope;
   vendors: GRCVendor[];
 }) {
   const vendorColumns = useMemo<TableColumn<GRCVendor>[]>(() => [
@@ -1311,7 +1314,7 @@ function VendorRegisterSection({
       onRowClick={(vendor) => onOpenVendor(vendor.urn)}
       tableContainerClassName="max-h-[36rem] overflow-auto"
       action={(
-        <Link href="/inventory?entity_type=vendor" className="text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">
+        <Link href={withGRCScope("/inventory?entity_type=vendor", scope)} className="text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">
           Inventory
         </Link>
       )}
@@ -1329,7 +1332,7 @@ function VendorRegisterSection({
             Open
           </button>
           <Link
-            href={vendorDetailHref(vendor)}
+            href={vendorDetailHref(vendor, scope)}
             onClick={(event) => event.stopPropagation()}
             className="text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]"
           >
@@ -1417,6 +1420,7 @@ function VendorDetailDrawer({
   onQuickAction,
   onReload,
   onUpdateActionDraft,
+  scope,
   vendor,
 }: {
   actionDraft: VendorQuickActionDraft;
@@ -1432,6 +1436,7 @@ function VendorDetailDrawer({
   onQuickAction: (action: "assign_owner" | "change_lifecycle" | "start_review") => Promise<void> | void;
   onReload: () => void;
   onUpdateActionDraft: (patch: Partial<VendorQuickActionDraft>) => void;
+  scope: GRCScope;
   vendor?: GRCVendor | null;
 }) {
   const activeVendor = detail?.vendor ?? vendor;
@@ -1623,7 +1628,7 @@ function VendorDetailDrawer({
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
                 Refresh
               </button>
-              <Link href={vendorDetailHref(activeVendor)} className="primary-button px-3 py-1.5 text-[13px]">
+              <Link href={vendorDetailHref(activeVendor, scope)} className="primary-button px-3 py-1.5 text-[13px]">
                 Open full detail
               </Link>
             </div>
@@ -1635,7 +1640,7 @@ function VendorDetailDrawer({
 }
 
 export default function VendorsPage() {
-  const [tenantID, setTenantID] = useQueryParamState("tenant_id");
+  const { tenantID, workspaceID, setTenantID, setWorkspaceID } = useGRCScopeQueryState();
   const [query, setQuery] = useQueryParamState("q");
   const [sourceID, setSourceID] = useQueryParamState("source_id");
   const [riskLevel, setRiskLevel] = useQueryParamState("risk_level");
@@ -1668,7 +1673,7 @@ export default function VendorsPage() {
   const [quickActionMessage, setQuickActionMessage] = useState("");
   const [quickActionDraft, setQuickActionDraft] = useState<VendorQuickActionDraft>(() => defaultVendorQuickActionDraft());
   const uploadPanelRef = useRef<HTMLDivElement>(null);
-  const debouncedTenantID = useDebouncedValue(tenantID.trim());
+  const debouncedScope = useDebouncedGRCScope({ tenantID, workspaceID });
   const debouncedQuery = useDebouncedValue(query.trim());
   const debouncedSourceID = useDebouncedValue(sourceID.trim());
   const debouncedRiskLevel = useDebouncedValue(riskLevel.trim());
@@ -1687,7 +1692,7 @@ export default function VendorsPage() {
 
   const vendorsQuery = useGRCQuery<GRCVendorsResponse>(
     grcPath("/grc/vendors", {
-      tenant_id: debouncedTenantID,
+      ...grcScopeQuery(debouncedScope),
       source_id: debouncedSourceID,
       q: debouncedQuery,
       risk_level: debouncedRiskLevel,
@@ -1700,7 +1705,7 @@ export default function VendorsPage() {
   );
   const discoveriesQuery = useGRCQuery<GRCVendorDiscoveriesResponse>(
     shouldLoadDiscoveries ? grcPath("/grc/vendor-discoveries", {
-      tenant_id: debouncedTenantID,
+      ...grcScopeQuery(debouncedScope),
       source_id: debouncedSourceID,
       q: debouncedQuery,
       limit: GRC_DETAIL_LIMIT,
@@ -1708,7 +1713,7 @@ export default function VendorsPage() {
   );
   const vendorDetailQuery = useGRCQuery<GRCVendorDetailResponse>(
     selectedVendorURN
-      ? grcPath(`/grc/vendors/${encodeURIComponent(selectedVendorURN)}`, { tenant_id: debouncedTenantID, limit: GRC_DETAIL_LIMIT })
+      ? grcPath(`/grc/vendors/${encodeURIComponent(selectedVendorURN)}`, { ...grcScopeQuery(debouncedScope), limit: GRC_DETAIL_LIMIT })
       : null,
   );
   const { mutate: mutateDiscoveryDecision, saving: decisionSaving, error: decisionError } = useGRCMutation();
@@ -1778,7 +1783,7 @@ export default function VendorsPage() {
       return Boolean((selectedHost && discoveryHost === selectedHost) || (selectedNameKey && discoveryNameKey === selectedNameKey));
     });
   }, [discoveries, selectedVendor?.name, selectedVendor?.website_url, selectedVendorURN]);
-  const vendorUploadStorageKey = useMemo(() => grcUploadHistoryKey("vendor", tenantID), [tenantID]);
+  const vendorUploadStorageKey = useMemo(() => grcUploadHistoryKey("vendor", tenantID, workspaceID), [tenantID, workspaceID]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1800,7 +1805,7 @@ export default function VendorsPage() {
     setVendorReplayError(null);
     try {
       const response = await replayVendorUploadEvents(
-        grcPath(`/grc/vendors/uploads/${encodeURIComponent(upload.upload_id)}/replay`, { tenant_id: tenantID.trim() }),
+        grcPath(`/grc/vendors/uploads/${encodeURIComponent(upload.upload_id)}/replay`, grcScopeQuery({ tenantID, workspaceID })),
         {},
       );
       setVendorReplayMessage(`${countLabel(response.events_projected ?? 0, "event")} replayed. ${countLabel((response.entities_projected ?? 0) + (response.links_projected ?? 0), "graph update")} projected.`);
@@ -1880,7 +1885,7 @@ export default function VendorsPage() {
     setCreateError(null);
   }, [setCreateError]);
   const submitVendorCreate = useCallback(async (draft: VendorCreateDraft) => {
-    const response = await mutateCreateVendor("/grc/vendors", vendorCreateRequest(draft, tenantID));
+    const response = await mutateCreateVendor(grcPath("/grc/vendors", grcScopeQuery({ tenantID, workspaceID })), vendorCreateRequest(draft, { tenantID, workspaceID }));
     setCreateOpen(false);
     setCreateDraft(defaultVendorCreateDraft());
     setCreateMessage(`${response.vendor.name} saved.`);
@@ -1888,7 +1893,7 @@ export default function VendorsPage() {
     const reloads = [vendorsQuery.reload()];
     if (shouldLoadDiscoveries) reloads.push(discoveriesQuery.reload());
     await Promise.all(reloads);
-  }, [discoveriesQuery, mutateCreateVendor, shouldLoadDiscoveries, tenantID, vendorsQuery]);
+  }, [discoveriesQuery, mutateCreateVendor, shouldLoadDiscoveries, tenantID, vendorsQuery, workspaceID]);
   const updateDecisionDraft = useCallback((urn: string, patch: Partial<DiscoveryDecisionDraft>) => {
     setDecisionDrafts((current) => ({
       ...current,
@@ -1901,8 +1906,8 @@ export default function VendorsPage() {
   }, []);
   const setDiscoveryDecision = useCallback(async (discovery: GRCVendorDiscovery, decision: DiscoveryDecision, overrideDraft?: DiscoveryDecisionDraft) => {
     const draft = overrideDraft ?? decisionDrafts[discovery.urn] ?? { reason: "", linkedVendorURN: "" };
-    await mutateDiscoveryDecision(`/grc/vendor-discoveries/${encodeURIComponent(discovery.urn)}/decision`, {
-      tenant_id: tenantID.trim(),
+    await mutateDiscoveryDecision(grcPath(`/grc/vendor-discoveries/${encodeURIComponent(discovery.urn)}/decision`, grcScopeQuery({ tenantID, workspaceID })), {
+      ...grcScopeQuery({ tenantID, workspaceID }),
       discovery_urn: discovery.urn,
       source_id: discovery.source_id,
       decision,
@@ -1916,11 +1921,11 @@ export default function VendorsPage() {
     });
     await discoveriesQuery.reload();
     await vendorsQuery.reload();
-  }, [decisionDrafts, discoveriesQuery, mutateDiscoveryDecision, tenantID, vendorsQuery]);
+  }, [decisionDrafts, discoveriesQuery, mutateDiscoveryDecision, tenantID, vendorsQuery, workspaceID]);
   const createVendorFromDiscovery = useCallback(async (discovery: GRCVendorDiscovery, overrides?: Partial<Pick<VendorCreateDraft, "owner" | "riskLevel">>) => {
     setCreateMessage("");
-    const response = await mutateCreateVendor("/grc/vendors", {
-      tenant_id: tenantID.trim() || undefined,
+    const response = await mutateCreateVendor(grcPath("/grc/vendors", grcScopeQuery({ tenantID, workspaceID })), {
+      ...grcScopeQuery({ tenantID, workspaceID }),
       name: discovery.name || shortEntity(discovery.urn),
       source_id: discovery.source_id || "grc",
       runtime_id: discovery.runtime_id,
@@ -1938,8 +1943,8 @@ export default function VendorsPage() {
         source_status: discovery.source_status,
       }),
     } satisfies GRCVendorCreateRequest);
-    await mutateDiscoveryDecision(`/grc/vendor-discoveries/${encodeURIComponent(discovery.urn)}/decision`, {
-      tenant_id: tenantID.trim(),
+    await mutateDiscoveryDecision(grcPath(`/grc/vendor-discoveries/${encodeURIComponent(discovery.urn)}/decision`, grcScopeQuery({ tenantID, workspaceID })), {
+      ...grcScopeQuery({ tenantID, workspaceID }),
       discovery_urn: discovery.urn,
       source_id: discovery.source_id,
       decision: "approved",
@@ -1954,7 +1959,7 @@ export default function VendorsPage() {
     setCreateMessage(`${response.vendor.name} saved.`);
     setCreatedVendor(response.vendor);
     await Promise.all([discoveriesQuery.reload(), vendorsQuery.reload()]);
-  }, [discoveriesQuery, mutateCreateVendor, mutateDiscoveryDecision, tenantID, vendorsQuery]);
+  }, [discoveriesQuery, mutateCreateVendor, mutateDiscoveryDecision, tenantID, vendorsQuery, workspaceID]);
 
   const runBulkDiscoveryAction = useCallback(async (action: "create" | "dismiss" | "link") => {
     const selectedDiscoveries = discoveries.filter((discovery) => selectedDiscoveryURNs.has(discovery.urn) && discoveryNeedsReview(discovery));
@@ -1997,8 +2002,8 @@ export default function VendorsPage() {
   }, [bulkDraft.linkedVendorURN, bulkDraft.owner, bulkDraft.reason, bulkDraft.riskLevel, createVendorFromDiscovery, discoveries, selectedDiscoveryURNs, setDiscoveryDecision]);
 
   const runDiscoverySync = useCallback(async (runSourceID?: string) => {
-    const response = await mutateDiscoverySync("/grc/vendor-discoveries/sync", {
-      tenant_id: tenantID.trim() || undefined,
+    const response = await mutateDiscoverySync(grcPath("/grc/vendor-discoveries/sync", grcScopeQuery({ tenantID, workspaceID })), {
+      ...grcScopeQuery({ tenantID, workspaceID }),
       source_id: runSourceID,
     });
     const sourceName = runSourceID
@@ -2006,12 +2011,12 @@ export default function VendorsPage() {
       : "All sources";
     setSyncMessage(`${sourceName} discovery ${response.status}.`);
     await discoveriesQuery.reload();
-  }, [discoveriesQuery, discoverySources, mutateDiscoverySync, tenantID]);
+  }, [discoveriesQuery, discoverySources, mutateDiscoverySync, tenantID, workspaceID]);
 
   const runVendorQuickAction = useCallback(async (action: "assign_owner" | "change_lifecycle" | "start_review") => {
     if (!selectedVendorURN) return;
-    const response = await mutateVendorAction(`/grc/vendors/${encodeURIComponent(selectedVendorURN)}/actions`, {
-      tenant_id: tenantID.trim() || undefined,
+    const response = await mutateVendorAction(grcPath(`/grc/vendors/${encodeURIComponent(selectedVendorURN)}/actions`, grcScopeQuery({ tenantID, workspaceID })), {
+      ...grcScopeQuery({ tenantID, workspaceID }),
       action,
       owner: action === "assign_owner" ? quickActionDraft.owner.trim() : undefined,
       lifecycle_state: action === "change_lifecycle" ? quickActionDraft.lifecycleState : undefined,
@@ -2020,7 +2025,7 @@ export default function VendorsPage() {
     });
     setQuickActionMessage(`${response.vendor.name} updated.`);
     await Promise.all([vendorsQuery.reload(), vendorDetailQuery.reload()]);
-  }, [mutateVendorAction, quickActionDraft.lifecycleState, quickActionDraft.owner, quickActionDraft.reviewState, selectedVendorURN, tenantID, vendorDetailQuery, vendorsQuery]);
+  }, [mutateVendorAction, quickActionDraft.lifecycleState, quickActionDraft.owner, quickActionDraft.reviewState, selectedVendorURN, tenantID, vendorDetailQuery, vendorsQuery, workspaceID]);
 
   const submitVendorUpload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2045,13 +2050,14 @@ export default function VendorsPage() {
     body.set("document_type", vendorUploadDocumentType.trim() || "assurance_document");
     body.set("status", "active");
     if (tenantID.trim()) body.set("tenant_id", tenantID.trim());
+    if (workspaceID.trim()) body.set("workspace_id", workspaceID.trim());
     if (sourceID.trim()) body.set("source_id", sourceID.trim());
     if (vendorUploadID.trim()) body.set("vendor_id", vendorUploadID.trim());
     if (vendorUploadRiskLevel.trim()) body.set("risk_level", vendorUploadRiskLevel.trim());
     if (vendorUploadWebsite.trim()) body.set("website_url", vendorUploadWebsite.trim());
     try {
       const response = await uploadVendorDocument(
-        grcPath("/grc/vendors/uploads", { tenant_id: tenantID.trim(), source_id: sourceID.trim() }),
+        grcPath("/grc/vendors/uploads", { ...grcScopeQuery({ tenantID, workspaceID }), source_id: sourceID.trim() }),
         body,
       );
       setLastVendorUpload(response);
@@ -2080,6 +2086,7 @@ export default function VendorsPage() {
     { label: "Queue", value: queueState ? selectLabel(queueFilters, queueState) : "", onClear: () => setQueueState("") },
     { label: "Source", value: sourceID ? sourceFilterOptions.find((item) => item.value === sourceID)?.label ?? sourceID : "", onClear: () => setSourceID("") },
     { label: "Tenant", value: tenantID, onClear: () => setTenantID("") },
+    { label: "Workspace", value: workspaceID, onClear: () => setWorkspaceID("") },
   ];
   const clearFilters = () => {
     setQuery("");
@@ -2090,6 +2097,7 @@ export default function VendorsPage() {
     setQueueState("");
     setSourceID("");
     setTenantID("");
+    setWorkspaceID("");
   };
 
   return (
@@ -2143,6 +2151,7 @@ export default function VendorsPage() {
         onQuickAction={runVendorQuickAction}
         onReload={() => { void vendorDetailQuery.reload(); }}
         onUpdateActionDraft={updateQuickActionDraft}
+        scope={{ tenantID, workspaceID }}
         vendor={selectedVendor}
       />
 
@@ -2319,7 +2328,7 @@ export default function VendorsPage() {
                       <button type="button" onClick={() => setSelectedVendorURN(vendorURN)} className="inline-flex items-center rounded-md border border-emerald-300 bg-white/80 px-3 py-1.5 text-[12px] font-semibold text-emerald-800 transition hover:border-emerald-400 hover:text-emerald-950">
                         Open vendor
                       </button>
-                      <Link href={`/vendors/${encodeURIComponent(vendorURN)}`} className="inline-flex items-center rounded-md border border-emerald-300 bg-white/80 px-3 py-1.5 text-[12px] font-semibold text-emerald-800 transition hover:border-emerald-400 hover:text-emerald-950">
+                      <Link href={withGRCScope(`/vendors/${encodeURIComponent(vendorURN)}`, { tenantID, workspaceID })} className="inline-flex items-center rounded-md border border-emerald-300 bg-white/80 px-3 py-1.5 text-[12px] font-semibold text-emerald-800 transition hover:border-emerald-400 hover:text-emerald-950">
                         Open full detail
                       </Link>
                     </>
@@ -2408,8 +2417,12 @@ export default function VendorsPage() {
               </select>
             </label>
             <label className={labelClass}>
-              Tenant
-              <input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="Current" className={inputClass} />
+              Tenant ID
+              <input value={tenantID} onChange={(event) => setTenantID(event.target.value)} placeholder="All authorized tenants" className={inputClass} />
+            </label>
+            <label className={labelClass}>
+              Workspace ID
+              <input value={workspaceID} onChange={(event) => setWorkspaceID(event.target.value)} placeholder="All authorized workspaces" className={inputClass} />
             </label>
           </div>
         </details>
@@ -2479,6 +2492,7 @@ export default function VendorsPage() {
           graphRevision={vendorsQuery.data?.graph_revision}
           meta={vendorMeta}
           onOpenVendor={openVendorDrawer}
+          scope={{ tenantID, workspaceID }}
           vendors={vendors}
         />
       ))}

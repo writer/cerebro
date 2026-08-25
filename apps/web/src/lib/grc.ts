@@ -1432,6 +1432,7 @@ export type GRCVendorsResponse = {
 
 export type GRCVendorCreateRequest = {
   tenant_id?: string;
+  workspace_id?: string;
   name: string;
   vendor_id?: string;
   source_id?: string;
@@ -2219,6 +2220,7 @@ export type GRCPolicyLifecycleActionDefinition = {
 export type GRCPolicyLifecycleActionRequest = {
   action: string;
   tenant_id?: string;
+  workspace_id?: string;
   source_id?: string;
   runtime_id?: string;
   policy_id?: string;
