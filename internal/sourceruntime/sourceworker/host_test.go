@@ -245,6 +245,20 @@ func TestCredentialHeaderAppliesOnlyClosedAnthropicSchemes(t *testing.T) {
 	}
 }
 
+func TestCredentialHeaderAppliesOnlyTheClosedOpenAIScheme(t *testing.T) {
+	header, value, err := credentialHeader("openai.admin_api_key_bearer", []byte("synthetic-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "Authorization" || string(value) != "Bearer synthetic-secret" {
+		t.Fatalf("OpenAI header = %q, value = %q", header, value)
+	}
+	if _, _, err := credentialHeader("openai.api_key", []byte("synthetic-secret")); !errors.Is(err, ErrWorkerContract) {
+		t.Fatalf("unregistered OpenAI credential operation error = %v", err)
+	}
+}
+
 func TestCredentialHeaderAppliesOnlyTheClosedDiscordScheme(t *testing.T) {
 	header, value, err := credentialHeader("discord.bot_token", []byte("synthetic-secret"))
 	if err != nil {

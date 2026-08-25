@@ -96,6 +96,20 @@ func TestAnthropicPublicExecutionConfigCarriesSelectorsWithoutCredentialMaterial
 	}
 }
 
+func TestOpenAIPublicExecutionConfigCarriesSelectorsWithoutCredentialMaterial(t *testing.T) {
+	public := PublicExecutionConfigForSource("openai", map[string]string{
+		"family": " usage_completion ", "project_id": " project-1 ",
+		"user_id": " user-1 ", "api_key_ids": " key-1,key-2 ", "models": " model-1,model-2 ",
+		"api_key": "must-not-cross", "token": "must-not-cross-either",
+	})
+	if public["family"] != "usage_completion" || public["project_id"] != "project-1" || public["user_id"] != "user-1" || public["admin_key_ids"] != "key-1,key-2" || public["models"] != "model-1,model-2" {
+		t.Fatalf("OpenAI public config lost declared selectors: %#v", public)
+	}
+	if public["api_key"] != "" || public["token"] != "" || public["api_key_ids"] != "" {
+		t.Fatalf("OpenAI public config leaked credential-shaped fields: %#v", public)
+	}
+}
+
 func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 	for name, test := range map[string]struct {
 		source, family, wantFamily string
@@ -107,6 +121,10 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"Anthropic user":              {"anthropic", " user ", "user", true},
 		"Anthropic compliance":        {"anthropic", "compliance_activity", "compliance_activity", true},
 		"unknown Anthropic family":    {"anthropic", "future-family", "future-family", true},
+		"OpenAI default":              {" openai ", "", "user", true},
+		"OpenAI user":                 {"openai", " user ", "user", true},
+		"OpenAI project API key":      {"openai", "project_api_key", "project_api_key", true},
+		"unknown OpenAI family":       {"openai", "future-family", "future-family", true},
 		"Asana default":               {" asana ", "", "users", true},
 		"Asana users":                 {"asana", " users ", "users", true},
 		"Asana projects":              {"asana", "projects", "projects", true},
@@ -196,6 +214,11 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "anthropic", references: map[string]string{"api_key": "credential:anthropic:api-key"},
 			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:anthropic:api-key", wantResolved: "resolved-api-key",
+		},
+		"OpenAI api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "openai", references: map[string]string{"api_key": "credential:openai:api-key"},
+			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:openai:api-key", wantResolved: "resolved-api-key",
 		},
 		"Twilio basic credentials": {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.

@@ -376,7 +376,7 @@ fn safe_identity(value: &str) -> bool {
         && !value.chars().any(char::is_control)
 }
 
-fn go_event_id(tenant_id: &str, path: &str, family: &str, provider_id: &str) -> String {
+pub(super) fn go_event_id(tenant_id: &str, path: &str, family: &str, provider_id: &str) -> String {
     let scope = Sha256::digest(format!("{ORIGIN}{BASE_PATH}\0{path}").as_bytes());
     format!(
         "{SOURCE_ID}-{}-{}-{}-{}",
