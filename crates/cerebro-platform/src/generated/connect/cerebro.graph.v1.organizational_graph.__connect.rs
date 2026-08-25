@@ -168,6 +168,18 @@ pub type OwnedListVendorRegisterResponseView = ::buffa::view::OwnedView<
         'static,
     >,
 >;
+///Shorthand for `OwnedView<ListVendorDiscoveriesRequestView<'static>>`.
+pub type OwnedListVendorDiscoveriesRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListVendorDiscoveriesRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListVendorDiscoveriesResponseView<'static>>`.
+pub type OwnedListVendorDiscoveriesResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListVendorDiscoveriesResponseView<
+        'static,
+    >,
+>;
 impl ::connectrpc::Encodable<crate::rpc::proto::cerebro::graph::v1::SearchResponse>
 for crate::rpc::proto::cerebro::graph::v1::__buffa::view::SearchResponseView<'_> {
     fn encode(
@@ -788,6 +800,48 @@ for ::buffa::view::OwnedView<
         )
     }
 }
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesResponse,
+>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListVendorDiscoveriesResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListVendorDiscoveriesResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
 /// Full service name for this service.
 pub const ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME: &str = "cerebro.graph.v1.OrganizationalGraphService";
 /// Static [`Spec`](::connectrpc::Spec) for the server-side `Search` RPC.
@@ -931,6 +985,15 @@ pub const ORGANIZATIONAL_GRAPH_SERVICE_GET_SOURCE_SUMMARY_SPEC: ::connectrpc::Sp
 /// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
 pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_VENDOR_REGISTER_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/cerebro.graph.v1.OrganizationalGraphService/ListVendorRegister",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `ListVendorDiscoveries` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_VENDOR_DISCOVERIES_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/ListVendorDiscoveries",
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
@@ -1351,6 +1414,29 @@ pub trait OrganizationalGraphService: Send + Sync + 'static {
         Output = ::connectrpc::ServiceResult<
             impl ::connectrpc::Encodable<
                 crate::rpc::proto::cerebro::graph::v1::ListVendorRegisterResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// ListVendorDiscoveries returns source-backed vendor candidates at one graph revision.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn list_vendor_discoveries<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesResponse,
             > + Send + use<'a, Self>,
         >,
     > + Send;
@@ -1850,6 +1936,35 @@ impl<S: OrganizationalGraphService> OrganizationalGraphServiceExt for S {
                 },
             )
             .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_LIST_VENDOR_REGISTER_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListVendorDiscoveries",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListVendorDiscoveriesRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.list_vendor_discoveries(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_LIST_VENDOR_DISCOVERIES_SPEC)
     }
 }
 /// Type-inference marker used by [`Router::add_service`](::connectrpc::Router::add_service).
@@ -2010,6 +2125,14 @@ for OrganizationalGraphServiceServer<T> {
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
                         .with_spec(
                             ORGANIZATIONAL_GRAPH_SERVICE_LIST_VENDOR_REGISTER_SPEC,
+                        ),
+                )
+            }
+            "ListVendorDiscoveries" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(
+                            ORGANIZATIONAL_GRAPH_SERVICE_LIST_VENDOR_DISCOVERIES_SPEC,
                         ),
                 )
             }
@@ -2378,6 +2501,28 @@ for OrganizationalGraphServiceServer<T> {
                         .await?
                         .encode::<
                             crate::rpc::proto::cerebro::graph::v1::ListVendorRegisterResponse,
+                        >(format)
+                })
+            }
+            "ListVendorDiscoveries" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListVendorDiscoveriesRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesRequest,
+                    >::from_parts(&req, &body);
+                    svc.list_vendor_discoveries(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesResponse,
                         >(format)
                 })
             }
@@ -3221,6 +3366,51 @@ where
                 &self.config,
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "ListVendorRegister",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the ListVendorDiscoveries RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/ListVendorDiscoveries.
+    pub async fn list_vendor_discoveries(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListVendorDiscoveriesResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.list_vendor_discoveries_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the ListVendorDiscoveries RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn list_vendor_discoveries_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListVendorDiscoveriesRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListVendorDiscoveriesResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListVendorDiscoveries",
                 request,
                 options,
             )
