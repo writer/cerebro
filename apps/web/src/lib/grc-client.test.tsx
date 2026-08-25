@@ -72,6 +72,7 @@ describe("grc client paths", () => {
 
   it("requests compact dashboard and readiness responses", () => {
     expect(grcDashboardPath({ limit: 12 })).toBe("/grc/dashboard?limit=12&view=summary");
+    expect(grcDashboardPath({ limit: 12, enrichments: "deferred" })).toBe("/grc/dashboard?limit=12&enrichments=deferred&view=summary");
     expect(grcProgramReadinessPath({ tenant_id: "writer" })).toBe("/grc/program-readiness?tenant_id=writer&view=summary");
   });
 });

@@ -90,14 +90,14 @@ describe("Home review links", () => {
     });
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
-      grcDashboardPath({ limit: 12 }),
+      grcDashboardPath({ limit: 12, enrichments: "deferred" }),
       null,
       null,
     ]);
   });
 
   it("starts secondary Home queries after dashboard data arrives", async () => {
-    const dashboardPath = grcDashboardPath({ limit: 12 });
+    const dashboardPath = grcDashboardPath({ limit: 12, enrichments: "deferred" });
     const dashboardData = {
       summary: {
         open_findings: 0,
@@ -140,5 +140,6 @@ describe("Home review links", () => {
         page_size: 3,
       }),
     ]);
+    expect(container.textContent).toContain("Loading source coverage.");
   });
 });

@@ -50,6 +50,13 @@ type grcScope struct {
 	Limit      uint32
 }
 
+type grcDashboardEnrichments string
+
+const (
+	grcDashboardEnrichmentsInline   grcDashboardEnrichments = "inline"
+	grcDashboardEnrichmentsDeferred grcDashboardEnrichments = "deferred"
+)
+
 type grcDashboardResponse struct {
 	Summary            grcSummary                   `json:"summary"`
 	Findings           []grcFindingItem             `json:"findings"`
@@ -120,6 +127,14 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
 		return
 	}
+	enrichments, err := grcDashboardEnrichmentsFromRequest(r)
+	if err != nil {
+		statusCode = http.StatusBadRequest
+		status, endAttrs = grcTelemetryError(endAttrs, err)
+		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
+		return
+	}
+	endAttrs = endAttrs.WithField(telemetry.Field{Key: "enrichments", Value: string(enrichments)})
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
 		statusCode = grcHTTPStatusCode(err)
@@ -192,38 +207,44 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 			return attrs, err
 		})
 	})
-	group.Go(func() error {
-		runtimeHealthCtx, cancel := context.WithTimeout(groupCtx, grcRuntimeHealthEnrichmentTimeout)
-		defer cancel()
-		runtimeHealthErr = operationtelemetry.RunMainPhase(runtimeHealthCtx, "grc.dashboard.runtime_health", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
+	if enrichments == grcDashboardEnrichmentsInline {
+		group.Go(func() error {
+			runtimeHealthCtx, cancel := context.WithTimeout(groupCtx, grcRuntimeHealthEnrichmentTimeout)
+			defer cancel()
+			runtimeHealthErr = operationtelemetry.RunMainPhase(runtimeHealthCtx, "grc.dashboard.runtime_health", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
+				var err error
+				sourceSummaries, err = a.grcSourceRuntimeHealthSummaries(ctx, runtimes, generatedAt)
+				return telemetry.Attrs(telemetry.Field{Key: "source_summary_count", Value: len(sourceSummaries)}), err
+			})
+			if runtimeHealthErr != nil {
+				sourceSummaries = nil
+			}
+			return nil
+		})
+		group.Go(func() error {
 			var err error
-			sourceSummaries, err = a.grcSourceRuntimeHealthSummaries(ctx, runtimes, generatedAt)
-			return telemetry.Attrs(telemetry.Field{Key: "source_summary_count", Value: len(sourceSummaries)}), err
+			return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.coverage", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
+				coverage, err = a.sourceCoverageRecordsScoped(ctx, runtimes, ports.SourceRuntimeFilter{
+					RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID,
+					SourceID: scope.SourceID, Limit: scope.Limit,
+				}, generatedAt, coverageScope)
+				return telemetry.Attrs(telemetry.Field{Key: "coverage_record_count", Value: len(coverage)}), err
+			})
 		})
-		if runtimeHealthErr != nil {
-			sourceSummaries = nil
-		}
-		return nil
-	})
-	group.Go(func() error {
-		var err error
-		return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.coverage", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
-			coverage, err = a.sourceCoverageRecordsScoped(ctx, runtimes, ports.SourceRuntimeFilter{
-				RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID,
-				SourceID: scope.SourceID, Limit: scope.Limit,
-			}, generatedAt, coverageScope)
-			return telemetry.Attrs(telemetry.Field{Key: "coverage_record_count", Value: len(coverage)}), err
-		})
-	})
+	}
 	if err := group.Wait(); err != nil {
 		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
 	}
+	sourceSummariesStatus := grcTelemetryStatus(runtimeHealthErr)
+	if enrichments == grcDashboardEnrichmentsDeferred {
+		sourceSummariesStatus = string(grcDashboardEnrichmentsDeferred)
+	}
 	endAttrs = endAttrs.With(
 		telemetry.Attrs(
-			telemetry.Field{Key: "source_summaries_status", Value: grcTelemetryStatus(runtimeHealthErr)},
+			telemetry.Field{Key: "source_summaries_status", Value: sourceSummariesStatus},
 			telemetry.Field{Key: "source_summary_count", Value: len(sourceSummaries)},
 		),
 	)
@@ -241,7 +262,10 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	controls := grcControlItems(findingItems, evidenceItems)
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	serializedCoverageBlindSpots := coverageBlindSpots
-	productAreas := grcproductareas.BuildCoverageViews(coverage)
+	var productAreas []grcproductareas.View
+	if enrichments == grcDashboardEnrichmentsInline {
+		productAreas = grcproductareas.BuildCoverageViews(coverage)
+	}
 	if view == responseview.Summary {
 		serializedCoverageBlindSpots = nil
 		productAreas = responseview.CompactProductAreas(productAreas)
@@ -261,6 +285,20 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		ProductAreas:       productAreas,
 		GeneratedAt:        generatedAt,
 	})
+}
+
+func grcDashboardEnrichmentsFromRequest(r *http.Request) (grcDashboardEnrichments, error) {
+	if r == nil || r.URL == nil {
+		return grcDashboardEnrichmentsInline, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("enrichments"))) {
+	case "", string(grcDashboardEnrichmentsInline):
+		return grcDashboardEnrichmentsInline, nil
+	case string(grcDashboardEnrichmentsDeferred):
+		return grcDashboardEnrichmentsDeferred, nil
+	default:
+		return grcDashboardEnrichmentsInline, errors.New("enrichments must be inline or deferred when provided")
+	}
 }
 
 func (a *App) grcSourceRuntimeHealthSummaries(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, generatedAt time.Time) ([]sourceRuntimeHealthSummary, error) {

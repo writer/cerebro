@@ -335,6 +335,7 @@ func TestGRCDashboardEmitsLatencyTelemetry(t *testing.T) {
 		"status":         "completed",
 		"route":          "/grc/dashboard",
 		"dashboard":      "grc",
+		"enrichments":    "inline",
 		"status_code":    float64(http.StatusOK),
 		"limit":          float64(1),
 		"preview_limit":  float64(1),
@@ -362,6 +363,85 @@ func TestGRCDashboardEmitsLatencyTelemetry(t *testing.T) {
 		if _, ok := phasePayload["duration_ms"].(float64); !ok {
 			t.Fatalf("%s duration_ms = %#v, want number; payload=%#v", name, phasePayload["duration_ms"], phasePayload)
 		}
+	}
+}
+
+func TestGRCDashboardDeferredEnrichmentsReturnCoreData(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-1": {
+				Id:       "runtime-1",
+				SourceId: "source-1",
+				TenantId: "tenant-1",
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:        "finding-1",
+				RuntimeID: "runtime-1",
+				TenantID:  "tenant-1",
+				Title:     "Finding",
+				Severity:  "HIGH",
+				Status:    "open",
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{},
+	}
+	app := New(
+		config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second},
+		Dependencies{
+			StateStore: store,
+			GraphStore: &stubGraphStore{err: errors.New("deferred runtime health must not run")},
+		},
+		nil,
+	)
+	server := httptest.NewServer(app.Handler())
+
+	stderr := captureBootstrapStderr(t, func() {
+		defer server.Close()
+		resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=tenant-1&limit=1&view=summary&enrichments=deferred")
+		if err != nil {
+			t.Fatalf("GET deferred /grc/dashboard error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET deferred /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+		var payload grcDashboardResponse
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode deferred /grc/dashboard: %v", err)
+		}
+		if payload.Summary.OpenFindings != 1 || len(payload.Findings) != 1 || len(payload.Connectors) != 1 {
+			t.Fatalf("deferred core payload = summary %+v, findings %d, connectors %d", payload.Summary, len(payload.Findings), len(payload.Connectors))
+		}
+		if len(payload.SourceSummaries) != 0 || len(payload.CoverageSummaries) != 0 || len(payload.ProductAreas) != 0 {
+			t.Fatalf("deferred enrichments = source summaries %d, coverage summaries %d, product areas %d, want 0/0/0", len(payload.SourceSummaries), len(payload.CoverageSummaries), len(payload.ProductAreas))
+		}
+	})
+
+	for _, phase := range []string{"grc.dashboard.runtime_health", "grc.dashboard.coverage"} {
+		if strings.Contains(stderr, `"name":"`+phase+`"`) {
+			t.Fatalf("deferred dashboard emitted %s telemetry: %s", phase, stderr)
+		}
+	}
+	payload := decodeBootstrapTelemetryPayload(t, stderr, "grc.dashboard")
+	if payload["enrichments"] != "deferred" || payload["source_summaries_status"] != "deferred" {
+		t.Fatalf("deferred dashboard telemetry = %#v", payload)
+	}
+}
+
+func TestGRCDashboardRejectsUnknownEnrichments(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?enrichments=eventually")
+	if err != nil {
+		t.Fatalf("GET /grc/dashboard with invalid enrichments error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /grc/dashboard with invalid enrichments status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
 	}
 }
 
