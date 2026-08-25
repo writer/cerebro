@@ -33,18 +33,6 @@ type grcVendorDetailResponse struct {
 	GeneratedAt   time.Time                     `json:"generated_at"`
 }
 
-type grcVendorDiscoveriesResponse struct {
-	Summary           grcvendor.DiscoverySummary                     `json:"summary"`
-	Discoveries       []grcvendor.VendorDiscovery                    `json:"discoveries"`
-	SourceSummaries   []ports.VendorDiscoverySourceSummary           `json:"source_summaries"`
-	Decisions         []*ports.GRCVendorDiscoveryDecisionRecord      `json:"decisions,omitempty"`
-	DecisionEvents    []*ports.GRCVendorDiscoveryDecisionEventRecord `json:"decision_events,omitempty"`
-	GraphRevision     uint64                                         `json:"graph_revision"`
-	DataAuthority     string                                         `json:"data_authority"`
-	DecisionAuthority string                                         `json:"decision_authority"`
-	GeneratedAt       string                                         `json:"generated_at"`
-}
-
 type grcVendorDiscoveryDecisionRequest struct {
 	TenantID        string            `json:"tenant_id,omitempty"`
 	DiscoveryURN    string            `json:"discovery_urn,omitempty"`
@@ -82,10 +70,7 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, grcvendor.ErrRuntimeUnavailable)
 		return
 	}
-	runtimeIDs := append([]string{}, scope.RuntimeIDs...)
-	if scope.RuntimeID != "" {
-		runtimeIDs = []string{scope.RuntimeID}
-	}
+	runtimeIDs := grcvendor.ResolvedRuntimeIDs(scope.RuntimeID, scope.RuntimeIDs)
 	page, err := a.deps.GraphReads.VendorRegister.ListVendorRegister(r.Context(), ports.VendorRegisterFilter{
 		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
 		Query: strings.TrimSpace(r.URL.Query().Get("q")), RiskLevel: strings.TrimSpace(r.URL.Query().Get("risk_level")), ReviewState: strings.TrimSpace(r.URL.Query().Get("review_state")), OwnerState: strings.TrimSpace(r.URL.Query().Get("owner_state")), LifecycleState: strings.TrimSpace(r.URL.Query().Get("lifecycle_state")), QueueOnly: queueOnly, Limit: int(scope.Limit),
@@ -207,10 +192,7 @@ func (a *App) grcVendorRegisterDetail(r *http.Request, scope grcScope, urn strin
 	if a.deps.GraphReads.VendorRegister == nil {
 		return ports.VendorRegisterRow{}, nil, grcvendor.ErrRuntimeUnavailable
 	}
-	runtimeIDs := append([]string{}, scope.RuntimeIDs...)
-	if scope.RuntimeID != "" {
-		runtimeIDs = []string{scope.RuntimeID}
-	}
+	runtimeIDs := grcvendor.ResolvedRuntimeIDs(scope.RuntimeID, scope.RuntimeIDs)
 	query := strings.TrimSpace(urn)
 	if query == "" {
 		query = strings.TrimSpace(vendorID)
@@ -261,10 +243,7 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 		writeGRCError(w, grcvendor.ErrRuntimeUnavailable)
 		return
 	}
-	runtimeIDs := append([]string{}, scope.RuntimeIDs...)
-	if scope.RuntimeID != "" {
-		runtimeIDs = []string{scope.RuntimeID}
-	}
+	runtimeIDs := grcvendor.ResolvedRuntimeIDs(scope.RuntimeID, scope.RuntimeIDs)
 	page, err := a.deps.GraphReads.VendorDiscoveries.ListVendorDiscoveries(r.Context(), ports.VendorDiscoveryFilter{
 		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
 		Query: strings.TrimSpace(r.URL.Query().Get("q")), SourceStatus: strings.TrimSpace(r.URL.Query().Get("status")), Limit: int(scope.Limit),
@@ -277,7 +256,7 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 		writeGRCError(w, grcvendor.ErrRuntimeUnavailable)
 		return
 	}
-	discoveries, err := grcVendorDiscoveriesFromRust(page.Discoveries)
+	discoveries, err := grcvendor.DiscoveriesFromRust(page.Discoveries)
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -296,7 +275,7 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 		writeGRCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, grcVendorDiscoveriesResponse{
+	writeJSON(w, http.StatusOK, grcvendor.DiscoveriesResponse{
 		Summary:           grcvendor.SummarizeDiscoveries(discoveries),
 		Discoveries:       discoveries,
 		SourceSummaries:   page.SourceSummaries,
@@ -307,29 +286,6 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 		DecisionAuthority: "state_store",
 		GeneratedAt:       page.GeneratedAt,
 	})
-}
-
-func grcVendorDiscoveriesFromRust(rows []ports.VendorDiscoveryRow) ([]grcvendor.VendorDiscovery, error) {
-	discoveries := make([]grcvendor.VendorDiscovery, 0, len(rows))
-	for _, row := range rows {
-		var decisionUpdatedAt *time.Time
-		if raw := strings.TrimSpace(row.DecisionUpdatedAt); raw != "" {
-			parsed, err := time.Parse(time.RFC3339, raw)
-			if err != nil {
-				return nil, fmt.Errorf("%w: rust vendor discovery returned an invalid decision timestamp", grcvendor.ErrRuntimeUnavailable)
-			}
-			parsed = parsed.UTC()
-			decisionUpdatedAt = &parsed
-		}
-		signals := make([]grcvendor.VendorDiscoverySignal, 0, len(row.Signals))
-		for _, signal := range row.Signals {
-			signals = append(signals, grcvendor.VendorDiscoverySignal{ID: signal.ID, Label: signal.Label, SourceID: signal.SourceID, RuntimeID: signal.RuntimeID, EntityType: signal.EntityType, EntityURN: signal.EntityURN, ConfidenceScore: signal.ConfidenceScore, ObservedAt: signal.ObservedAt, Reason: signal.Reason, Attributes: signal.Attributes})
-		}
-		discoveries = append(discoveries, grcvendor.VendorDiscovery{
-			URN: row.URN, DiscoveryID: row.DiscoveryID, Name: row.Name, NormalizedName: row.NormalizedName, SourceID: row.SourceID, SourceIDs: append([]string{}, row.SourceIDs...), RuntimeID: row.RuntimeID, Provider: row.Provider, SourceStatus: row.SourceStatus, DecisionState: row.DecisionState, Category: row.Category, WebsiteURL: row.WebsiteURL, ConfidenceScore: row.ConfidenceScore, DiscoveryReason: row.DiscoveryReason, FirstObservedAt: row.FirstObservedAt, LastObservedAt: row.LastObservedAt, LinkedVendorURN: row.LinkedVendorURN, DecisionReason: row.DecisionReason, DecisionUpdatedBy: row.DecisionUpdatedBy, DecisionUpdatedAt: decisionUpdatedAt, Signals: signals, Attributes: row.Attributes,
-		})
-	}
-	return discoveries, nil
 }
 
 func (a *App) handleUpdateGRCVendorDiscoveryDecision(w http.ResponseWriter, r *http.Request) {
