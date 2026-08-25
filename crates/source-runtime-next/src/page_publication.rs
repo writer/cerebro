@@ -761,6 +761,7 @@ fn page_message_id(
     event_id: &ObservationId,
     envelope_sha256: &str,
 ) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut hasher = Sha256::new();
     hasher.update(MESSAGE_ID_DOMAIN);
     for field in [
@@ -772,7 +773,14 @@ fn page_message_id(
         hasher.update(field.len().to_be_bytes());
         hasher.update(field);
     }
-    format!("cerebro-source-{digest:x}", digest = hasher.finalize())
+    let digest = hasher.finalize();
+    let mut message_id = String::with_capacity("cerebro-source-".len() + digest.len() * 2);
+    message_id.push_str("cerebro-source-");
+    for byte in digest {
+        message_id.push(char::from(HEX[usize::from(byte >> 4)]));
+        message_id.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    message_id
 }
 
 #[cfg(test)]
