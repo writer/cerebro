@@ -128,12 +128,12 @@ fn decode_page(
     plan: &SourceExecutionPlanV1,
     context: &SourceWorkerExecutionContextV1,
     metadata: &SourceWorkerRuntimeMetadataV2,
-    execution: &SourceWorkerHttpExecutionV2,
     status_code: u32,
     body: &[u8],
     response_headers: HashMap<String, String>,
 ) -> Result<SourceWorkerDecodeResultV1, SourceExecutionError> {
-    let safe_receipt = receipt(plan, context, execution, status_code, body);
+    let execution = plan_page(adapter, plan, context, metadata);
+    let safe_receipt = receipt(plan, context, &execution, status_code, body);
     adapter.decode_v2(&SourceWorkerDecodeEnvelopeV2 {
         request: Some(SourceWorkerDecodeRequestV1 {
             plan: Some(plan.clone()),
@@ -211,7 +211,6 @@ fn abnormal_security_decodes_every_fixture_with_exact_contract_and_seals() {
             &plan,
             &context,
             &metadata,
-            &execution,
             200,
             &body,
             HashMap::new(),
@@ -265,14 +264,12 @@ fn abnormal_security_pagination_and_provider_failures_are_typed() {
         let plan = adapter.compiled_plan();
         let context = context("", 1);
         let metadata = metadata(family);
-        let execution = plan_page(adapter, &plan, &context, &metadata);
         let body = response(family, vec![fixture(family)], Some(2));
         let result = decode_page(
             adapter,
             &plan,
             &context,
             &metadata,
-            &execution,
             200,
             &body,
             HashMap::new(),
@@ -286,7 +283,6 @@ fn abnormal_security_pagination_and_provider_failures_are_typed() {
     let plan = adapter.compiled_plan();
     let context = context("", 1);
     let metadata = metadata(family);
-    let execution = plan_page(adapter, &plan, &context, &metadata);
     for (status, expected) in [
         (401, SourceExecutionError::AuthenticationRejected),
         (403, SourceExecutionError::RequiredProviderScopeMissing),
@@ -299,7 +295,6 @@ fn abnormal_security_pagination_and_provider_failures_are_typed() {
                 &plan,
                 &context,
                 &metadata,
-                &execution,
                 status,
                 b"{}",
                 HashMap::new(),
@@ -313,7 +308,6 @@ fn abnormal_security_pagination_and_provider_failures_are_typed() {
             &plan,
             &context,
             &metadata,
-            &execution,
             429,
             b"{}",
             HashMap::from([("retry-after".to_owned(), "60".to_owned())]),
@@ -341,7 +335,6 @@ fn abnormal_security_rejects_bad_scope_cursor_duplicates_and_secret_material() {
     );
 
     let execution_context = context("", 1);
-    let execution = plan_page(adapter, &plan, &execution_context, &metadata);
     let original = fixture(family);
     let duplicate_body = response(family, vec![original.clone(), original.clone()], None);
     let result = decode_page(
@@ -349,7 +342,6 @@ fn abnormal_security_rejects_bad_scope_cursor_duplicates_and_secret_material() {
         &plan,
         &execution_context,
         &metadata,
-        &execution,
         200,
         &duplicate_body,
         HashMap::new(),
@@ -366,7 +358,6 @@ fn abnormal_security_rejects_bad_scope_cursor_duplicates_and_secret_material() {
             &plan,
             &execution_context,
             &metadata,
-            &execution,
             200,
             &conflicting_body,
             HashMap::new(),
@@ -382,7 +373,6 @@ fn abnormal_security_rejects_bad_scope_cursor_duplicates_and_secret_material() {
         &plan,
         &execution_context,
         &metadata,
-        &execution,
         200,
         &secret_body,
         HashMap::new(),
@@ -400,7 +390,6 @@ fn abnormal_security_rejects_bad_scope_cursor_duplicates_and_secret_material() {
             &plan,
             &execution_context,
             &metadata,
-            &execution,
             200,
             &untrusted_scope_body,
             HashMap::new(),
