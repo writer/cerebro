@@ -10,15 +10,13 @@ mod family;
 mod normalize;
 mod request;
 mod response;
-// Provider-local adapters remain intentionally unreachable from the shared
-// dispatcher until a later authority change qualifies each family.
-#[cfg_attr(not(test), allow(dead_code))]
 mod source_execution;
 mod types;
 mod wire;
 
 pub use error::DiscordError;
 pub use family::DiscordFamily;
+pub(crate) use source_execution::DISCORD_SOURCE_EXECUTION_ADAPTERS;
 pub use types::{DiscordKernel, DiscordPage, DiscordRecord, DiscordRequest};
 
 #[cfg(test)]

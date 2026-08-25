@@ -38,6 +38,13 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Every public DigitalOcean family is closed in the Rust dispatcher. An
 		// unknown future family must fail there instead of restoring Go authority.
 		return familyID, true
+	case "discord":
+		if familyID == "" {
+			familyID = "audit_log"
+		}
+		// Every portable Discord family is closed in the Rust dispatcher. Unknown
+		// families fail there instead of restoring the retired Go provider path.
+		return familyID, true
 	case "jumpcloud":
 		if familyID == "" {
 			familyID = "users"
@@ -94,6 +101,9 @@ func CredentialBinding(sourceID string, references, resolved map[string]string) 
 		return passwordReference, encoded
 	}
 	keys := []string{"graph_token", "token"}
+	if strings.TrimSpace(sourceID) == "discord" {
+		keys = []string{"api_token", "api_key", "token"}
+	}
 	if strings.TrimSpace(sourceID) == "jumpcloud" {
 		keys = []string{"api_key", "api_token", "token"}
 	}
@@ -125,8 +135,8 @@ func TailscaleFamily(sourceID, familyID string) (string, bool) {
 func PublicExecutionConfig(values map[string]string) map[string]string {
 	public := make(map[string]string)
 	for _, key := range []string{
-		"account_sid", "activity_type", "agent_id", "audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
-		"family", "group_id", "group_ids", "insights_base_url", "org_id", "page_size", "per_page",
+		"account_sid", "activity_type", "agent_id", "application_id", "audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
+		"family", "group_id", "group_ids", "guild_id", "insights_base_url", "org_id", "page_size", "per_page",
 		"service_id", "service_ids", "since", "site_id", "tailnet", "until", "user_group_id", "user_group_ids", "workspace_gid",
 	} {
 		if value, ok := values[key]; ok {

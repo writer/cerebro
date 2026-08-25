@@ -16,7 +16,6 @@ import (
 	catalogruntimesource "github.com/writer/cerebro/sources/catalogruntime"
 	cerebrosource "github.com/writer/cerebro/sources/cerebro"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
-	discordsource "github.com/writer/cerebro/sources/discord"
 	emaildomainhealthsource "github.com/writer/cerebro/sources/emaildomainhealth"
 	evidencecassource "github.com/writer/cerebro/sources/evidencecas"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
@@ -49,7 +48,7 @@ type builtinSourceLoader struct {
 	load func() (sourcecdk.Source, error)
 }
 
-var workerCatalogSourceIDs = []string{"asana", "digitalocean", "pagerduty", "sentinelone"}
+var workerCatalogSourceIDs = []string{"asana", "digitalocean", "discord", "pagerduty", "sentinelone"}
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
@@ -98,12 +97,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "cosmo",
 		load: func() (sourcecdk.Source, error) {
 			return cosmosource.New()
-		},
-	},
-	{
-		name: "discord",
-		load: func() (sourcecdk.Source, error) {
-			return discordsource.New()
 		},
 	},
 	{
