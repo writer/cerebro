@@ -115,7 +115,7 @@ describe("Home review links", () => {
       evidence: [],
       connectors: [],
       generated_at: "2026-08-25T00:00:00Z",
-    };
+    } as GRCDashboard;
     mocks.useGRCQuery.mockImplementation((path: string | null) => ({
       data: path === dashboardPath ? dashboardData : null,
       durationMs: null,
