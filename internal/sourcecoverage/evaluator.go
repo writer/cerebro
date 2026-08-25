@@ -50,19 +50,32 @@ type coverageEvaluationResponse struct {
 	Records []Record `json:"records"`
 }
 
-var coverageEvaluator = wasmjson.New(wasmjson.Config{
-	Name:              "embedded source coverage evaluator",
-	Module:            coverageEvaluatorWasm,
-	ABIVersion:        coverageEvaluatorABIVersion,
-	ABIVersionExport:  "cerebro_sourcecoverage_abi_version",
-	AllocateExport:    "cerebro_sourcecoverage_alloc",
-	EvaluateExport:    "cerebro_sourcecoverage_evaluate",
-	MemoryLimitPages:  1024,
-	MaxInputBytes:     coverageEvaluatorMaxInput,
-	MaxOutputBytes:    coverageEvaluatorMaxOutput,
-	InitializeTimeout: 30 * time.Second,
-	CallTimeout:       2 * time.Second,
-})
+func newCoverageEvaluator() *wasmjson.Evaluator {
+	return wasmjson.New(wasmjson.Config{
+		Name:              "embedded source coverage evaluator",
+		Module:            coverageEvaluatorWasm,
+		ABIVersion:        coverageEvaluatorABIVersion,
+		ABIVersionExport:  "cerebro_sourcecoverage_abi_version",
+		AllocateExport:    "cerebro_sourcecoverage_alloc",
+		EvaluateExport:    "cerebro_sourcecoverage_evaluate",
+		MemoryLimitPages:  1024,
+		MaxInputBytes:     coverageEvaluatorMaxInput,
+		MaxOutputBytes:    coverageEvaluatorMaxOutput,
+		InitializeTimeout: 30 * time.Second,
+		CallTimeout:       2 * time.Second,
+	})
+}
+
+var coverageEvaluator = newCoverageEvaluator()
+
+// WarmEvaluator compiles and validates the embedded coverage module before a
+// user request reaches a coverage-backed GRC route.
+func WarmEvaluator(ctx context.Context) error {
+	if err := coverageEvaluator.Warm(ctx); err != nil {
+		return fmt.Errorf("%w: %w", ErrEvaluatorUnavailable, err)
+	}
+	return nil
+}
 
 func evaluateCoverage(ctx context.Context, contracts []sourcecdk.CoverageContract, observations []RuntimeObservation, options Options) ([]Record, error) {
 	if contracts == nil {
