@@ -27,6 +27,7 @@
 mod credential_vault;
 mod cutover;
 mod neo4j;
+mod page_publication;
 mod parity;
 mod postgres;
 
