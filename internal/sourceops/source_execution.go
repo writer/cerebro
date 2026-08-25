@@ -45,7 +45,7 @@ func rustSourceFamily(sourceID string, config map[string]string) (string, bool) 
 	// runtime-authoritative provider must keep its existing sourceops path until
 	// its preview credential adapter and product-surface parity are ready.
 	switch sourceID {
-	case "anthropic", "asana", "azure", "digitalocean", "discord", "linode", "openai", "pagerduty", "sentinelone", "tailscale":
+	case "anthropic", "asana", "azure", "deepseek", "digitalocean", "discord", "linode", "openai", "pagerduty", "sentinelone", "tailscale":
 		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
 	case "jumpcloud":
 		family := strings.TrimSpace(config["family"])
@@ -159,6 +159,13 @@ func previewCredential(sourceID string, config map[string]string) string {
 		}
 		return ""
 	case "openai":
+		for _, key := range []string{"token", "api_token", "api_key", "access_token"} {
+			if credential := strings.TrimSpace(config[key]); credential != "" {
+				return credential
+			}
+		}
+		return ""
+	case "deepseek":
 		for _, key := range []string{"token", "api_token", "api_key", "access_token"} {
 			if credential := strings.TrimSpace(config[key]); credential != "" {
 				return credential
