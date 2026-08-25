@@ -307,7 +307,6 @@ func TestBuiltinKeepsOnlyCatalogCompatibilityExceptionsAsStaticLoaders(t *testin
 		"anthropic":             true,
 		"asana":                 true,
 		"azure":                 true,
-		"digitalocean":          true,
 		"github":                true,
 		"google_drive":          true,
 		"kandji":                true,
@@ -364,6 +363,7 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 		"cloudflare",
 		"conjur",
 		"deepseek",
+		"digitalocean",
 		"duo",
 		"fivetran",
 		"increase",
@@ -403,7 +403,8 @@ func TestWorkerCatalogSourcesKeepMetadataAndFailClosedWithoutWorkerRouting(t *te
 		if !ok || source.Spec().GetId() != sourceID {
 			t.Fatalf("worker source %q is missing its portable catalog metadata", sourceID)
 		}
-		if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"family": "threat"})); !errors.Is(err, errWorkerCatalogExecutionRequired) {
+		family := map[string]string{"digitalocean": "droplets", "sentinelone": "threat"}[sourceID]
+		if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"family": family})); !errors.Is(err, errWorkerCatalogExecutionRequired) {
 			t.Fatalf("worker source %q direct Check() error = %v, want fail-closed worker requirement", sourceID, err)
 		}
 	}

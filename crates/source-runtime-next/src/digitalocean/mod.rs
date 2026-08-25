@@ -1,9 +1,10 @@
 //! Credential-free DigitalOcean request, normalization, and parity kernel.
 //!
 //! The trusted host owns credential-reference resolution, Bearer authentication,
-//! redirects, deadlines, and bounded network I/O. The existing Go source and
-//! projector remain authoritative until shared registration and production
-//! qualification land separately.
+//! redirects, deadlines, and bounded network I/O. The closed Rust dispatcher
+//! owns request planning, response normalization, validation, and checkpoint
+//! proposals for every cataloged DigitalOcean family. The existing Go
+//! projector remains authoritative for graph projection.
 
 mod error;
 mod family;
@@ -15,7 +16,7 @@ mod response;
 mod source_execution;
 mod types;
 
-pub(crate) use source_execution::DIGITALOCEAN_DROPLETS_SOURCE_EXECUTION_ADAPTER;
+pub(crate) use source_execution::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
 
 pub use error::DigitalOceanError;
 pub use family::DigitalOceanFamily;

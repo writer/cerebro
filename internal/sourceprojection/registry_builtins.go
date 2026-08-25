@@ -2134,7 +2134,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"dig_security.policies":        digSecurityPoliciesProjections,
 	"dig_security.vulnerabilities": digSecurityVulnerabilitiesProjections,
 
-	// digitalocean deep-tier projectors (godo SDK: compute, network, security)
+	// DigitalOcean compute, network, and security projectors.
 	"digitalocean.droplets":  digitaloceanDropletsProjections,
 	"digitalocean.firewalls": digitaloceanFirewallsProjections,
 	"digitalocean.vpcs":      digitaloceanVPCsProjections,
