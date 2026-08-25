@@ -482,10 +482,11 @@ fn users_adapter_rejects_invalid_tenant_family_and_request_contracts() {
         Err(GoogleWorkspaceError::UserFamilyRequired)
     );
     let adapter = user_adapter("writer.com", 2);
-    let generic_request = adapter.plan(None).unwrap();
+    let mut wrong_family_request = adapter.plan_user_page(None).unwrap();
+    wrong_family_request.family = GoogleWorkspaceFamily::Group;
     assert_eq!(
         adapter.decode_user_response(
-            &generic_request,
+            &wrong_family_request,
             StatusCode::OK,
             br#"{"users":[]}"#,
             OBSERVED_AT,
