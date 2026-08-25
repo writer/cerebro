@@ -234,6 +234,21 @@ CREATE TABLE IF NOT EXISTS source_runtime_page_publications (
 CREATE INDEX IF NOT EXISTS source_runtime_page_publications_recovery_idx
   ON source_runtime_page_publications
     (tenant_id, source_runtime_id, state, updated_at, logical_page_id);
+CREATE TABLE IF NOT EXISTS source_runtime_page_events (
+  tenant_id TEXT NOT NULL,
+  logical_page_id TEXT NOT NULL,
+  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+  event_id TEXT NOT NULL,
+  envelope_sha256 TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  envelope BYTEA NOT NULL,
+  PRIMARY KEY (tenant_id, logical_page_id, ordinal),
+  UNIQUE (tenant_id, logical_page_id, event_id),
+  UNIQUE (tenant_id, logical_page_id, message_id),
+  FOREIGN KEY (tenant_id, logical_page_id)
+    REFERENCES source_runtime_page_publications (tenant_id, logical_page_id)
+    ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS organizational_entities (
   tenant_id TEXT NOT NULL,
   entity_id TEXT NOT NULL,
@@ -411,6 +426,8 @@ ALTER TABLE organizational_source_collection_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_source_collection_receipts FORCE ROW LEVEL SECURITY;
 ALTER TABLE source_runtime_page_publications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE source_runtime_page_publications FORCE ROW LEVEL SECURITY;
+ALTER TABLE source_runtime_page_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE source_runtime_page_events FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_entities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_entities FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_assertions ENABLE ROW LEVEL SECURITY;
@@ -436,6 +453,7 @@ BEGIN
     'organizational_legacy_projection_receipts',
     'organizational_source_collection_receipts',
     'source_runtime_page_publications',
+    'source_runtime_page_events',
     'organizational_entities',
     'organizational_assertions',
     'organizational_identity_bindings',
@@ -3240,6 +3258,7 @@ mod tests {
             "organizational_source_collection_receipts",
             "source_runtime_page_publications",
             "source_runtime_page_publications_recovery_idx",
+            "source_runtime_page_events",
             "organizational_source_collection_latest_idx",
             "organizational_consumer_runs",
             "organizational_consumer_family_progress",

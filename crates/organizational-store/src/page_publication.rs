@@ -3,16 +3,47 @@
 use cerebro_organizational_model::TenantId;
 use cerebro_source_runtime_next::{PagePublication, PagePublicationState};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tokio_postgres::{Row, Transaction};
 
 use crate::{PostgresLedger, StoreError};
 
 const PAGE_COLUMNS: &str = "tenant_id, logical_page_id, source_runtime_id, source_id, family_id, state, revision, publication_json";
+const MAX_EVENT_ENVELOPE_BYTES: usize = 16 << 20;
+const MAX_PAGE_OUTBOX_BYTES: usize = 32 << 20;
+
+/// One validated page and the exact secret-free envelope bytes required to
+/// resume its ordered append publication without recollecting provider data.
+pub struct PagePublicationOutbox {
+    page: PagePublication,
+    envelopes: Vec<Vec<u8>>,
+}
+
+impl PagePublicationOutbox {
+    /// Returns the validated publication state and ordered event intents.
+    pub fn page(&self) -> &PagePublication {
+        &self.page
+    }
+
+    /// Returns canonical envelope bytes in the exact order of `page.events()`.
+    pub fn envelopes(&self) -> &[Vec<u8>] {
+        &self.envelopes
+    }
+
+    /// Consumes the outbox into its validated state and ordered envelopes.
+    pub fn into_parts(self) -> (PagePublication, Vec<Vec<u8>>) {
+        (self.page, self.envelopes)
+    }
+}
 
 impl PostgresLedger {
     /// Inserts a newly prepared page. Repeating the exact snapshot is
     /// idempotent; reusing its identity for different content fails closed.
-    pub async fn prepare_page_publication(&self, page: &PagePublication) -> Result<(), StoreError> {
+    pub async fn prepare_page_publication(
+        &self,
+        page: &PagePublication,
+        envelopes: Vec<Vec<u8>>,
+    ) -> Result<(), StoreError> {
         if page.state() != PagePublicationState::Prepared || page.revision() != 1 {
             return Err(StoreError::Conflict(
                 "only a newly prepared page can enter the publication ledger".to_owned(),
@@ -21,6 +52,7 @@ impl PostgresLedger {
         let revision = storage_revision(page.revision())?;
         let state = state_name(page.state());
         let snapshot = serde_json::to_value(page)?;
+        validate_envelopes(page, &envelopes)?;
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
         set_tenant(&transaction, page.tenant_id().as_str()).await?;
@@ -62,6 +94,68 @@ RETURNING revision
         if stored.is_none() {
             return Err(StoreError::Conflict(
                 "logical page identity already belongs to different publication content".to_owned(),
+            ));
+        }
+        let ordinals = page
+            .events()
+            .iter()
+            .map(|event| {
+                i32::try_from(event.ordinal())
+                    .map_err(|_| StoreError::Conflict("page event ordinal overflow".to_owned()))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        let event_ids = page
+            .events()
+            .iter()
+            .map(|event| event.event_id().as_str().to_owned())
+            .collect::<Vec<_>>();
+        let envelope_digests = page
+            .events()
+            .iter()
+            .map(|event| event.envelope_sha256().to_owned())
+            .collect::<Vec<_>>();
+        let message_ids = page
+            .events()
+            .iter()
+            .map(|event| event.message_id().to_owned())
+            .collect::<Vec<_>>();
+        let event_rows = transaction
+            .query(
+                r#"
+INSERT INTO source_runtime_page_events (
+  tenant_id,
+  logical_page_id,
+  ordinal,
+  event_id,
+  envelope_sha256,
+  message_id,
+  envelope
+)
+SELECT $1, $2, input.ordinal, input.event_id, input.envelope_sha256, input.message_id, input.envelope
+FROM UNNEST($3::INTEGER[], $4::TEXT[], $5::TEXT[], $6::TEXT[], $7::BYTEA[])
+  AS input(ordinal, event_id, envelope_sha256, message_id, envelope)
+ON CONFLICT (tenant_id, logical_page_id, ordinal) DO UPDATE
+SET ordinal = EXCLUDED.ordinal
+WHERE source_runtime_page_events.event_id = EXCLUDED.event_id
+  AND source_runtime_page_events.envelope_sha256 = EXCLUDED.envelope_sha256
+  AND source_runtime_page_events.message_id = EXCLUDED.message_id
+  AND source_runtime_page_events.envelope = EXCLUDED.envelope
+RETURNING ordinal
+"#,
+                &[
+                    &page.tenant_id().as_str(),
+                    &page.logical_page_id(),
+                    &ordinals,
+                    &event_ids,
+                    &envelope_digests,
+                    &message_ids,
+                    &envelopes,
+                ],
+            )
+            .await?;
+        if event_rows.len() != page.events().len() {
+            return Err(StoreError::Conflict(
+                "logical page outbox already contains different event bytes".to_owned(),
             ));
         }
         transaction.commit().await?;
@@ -170,6 +264,37 @@ WHERE tenant_id = $1
         row.map(decode_page_publication).transpose()
     }
 
+    /// Loads one page and the exact envelope outbox needed for publication.
+    pub async fn load_page_publication_outbox(
+        &self,
+        tenant_id: &TenantId,
+        logical_page_id: &str,
+    ) -> Result<Option<PagePublicationOutbox>, StoreError> {
+        if logical_page_id.trim().is_empty() {
+            return Err(StoreError::Conflict(
+                "logical page id is required".to_owned(),
+            ));
+        }
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let query = format!(
+            "SELECT {PAGE_COLUMNS} FROM source_runtime_page_publications WHERE tenant_id = $1 AND logical_page_id = $2"
+        );
+        let row = transaction
+            .query_opt(&query, &[&tenant_id.as_str(), &logical_page_id])
+            .await?;
+        let outbox = match row {
+            Some(row) => {
+                let page = decode_page_publication(row)?;
+                Some(load_outbox(&transaction, page).await?)
+            }
+            None => None,
+        };
+        transaction.commit().await?;
+        Ok(outbox)
+    }
+
     /// Lists recoverable pages for one tenant in stable oldest-first order.
     /// Terminal and quarantined pages remain queryable by exact identity but
     /// are never admitted to automatic recovery.
@@ -177,7 +302,7 @@ WHERE tenant_id = $1
         &self,
         tenant_id: &TenantId,
         limit: usize,
-    ) -> Result<Vec<PagePublication>, StoreError> {
+    ) -> Result<Vec<PagePublicationOutbox>, StoreError> {
         if limit == 0 || limit > 500 {
             return Err(StoreError::Conflict(
                 "page publication recovery limit is invalid".to_owned(),
@@ -194,9 +319,51 @@ WHERE tenant_id = $1
         let rows = transaction
             .query(&query, &[&tenant_id.as_str(), &limit])
             .await?;
+        let mut outboxes = Vec::with_capacity(rows.len());
+        for row in rows {
+            let page = decode_page_publication(row)?;
+            outboxes.push(load_outbox(&transaction, page).await?);
+        }
         transaction.commit().await?;
-        rows.into_iter().map(decode_page_publication).collect()
+        Ok(outboxes)
     }
+}
+
+async fn load_outbox(
+    transaction: &Transaction<'_>,
+    page: PagePublication,
+) -> Result<PagePublicationOutbox, StoreError> {
+    let rows = transaction
+        .query(
+            "SELECT ordinal, event_id, envelope_sha256, message_id, envelope FROM source_runtime_page_events WHERE tenant_id = $1 AND logical_page_id = $2 ORDER BY ordinal",
+            &[&page.tenant_id().as_str(), &page.logical_page_id()],
+        )
+        .await?;
+    if rows.len() != page.events().len() {
+        return Err(StoreError::Conflict(
+            "stored page publication outbox is incomplete".to_owned(),
+        ));
+    }
+    let mut envelopes = Vec::with_capacity(rows.len());
+    for (expected, row) in page.events().iter().zip(rows) {
+        let ordinal: i32 = row.get(0);
+        let event_id: String = row.get(1);
+        let envelope_sha256: String = row.get(2);
+        let message_id: String = row.get(3);
+        let envelope: Vec<u8> = row.get(4);
+        if i64::from(ordinal) != i64::from(expected.ordinal())
+            || event_id != expected.event_id().as_str()
+            || envelope_sha256 != expected.envelope_sha256()
+            || message_id != expected.message_id()
+        {
+            return Err(StoreError::Conflict(
+                "stored page event metadata does not match its intent".to_owned(),
+            ));
+        }
+        envelopes.push(envelope);
+    }
+    validate_envelopes(&page, &envelopes)?;
+    Ok(PagePublicationOutbox { page, envelopes })
 }
 
 fn decode_page_publication(row: Row) -> Result<PagePublication, StoreError> {
@@ -226,6 +393,47 @@ fn decode_page_publication(row: Row) -> Result<PagePublication, StoreError> {
         ));
     }
     Ok(page)
+}
+
+fn validate_envelopes(page: &PagePublication, envelopes: &[Vec<u8>]) -> Result<(), StoreError> {
+    if envelopes.len() != page.events().len() {
+        return Err(StoreError::Conflict(
+            "page publication outbox does not match its event count".to_owned(),
+        ));
+    }
+    let mut total_bytes = 0_usize;
+    for (event, envelope) in page.events().iter().zip(envelopes) {
+        if envelope.is_empty() || envelope.len() > MAX_EVENT_ENVELOPE_BYTES {
+            return Err(StoreError::Conflict(
+                "page event envelope size is invalid".to_owned(),
+            ));
+        }
+        total_bytes = total_bytes.checked_add(envelope.len()).ok_or_else(|| {
+            StoreError::Conflict("page publication outbox size overflow".to_owned())
+        })?;
+        if total_bytes > MAX_PAGE_OUTBOX_BYTES {
+            return Err(StoreError::Conflict(
+                "page publication outbox exceeds its byte limit".to_owned(),
+            ));
+        }
+        if digest_bytes(envelope) != event.envelope_sha256() {
+            return Err(StoreError::Conflict(
+                "page event envelope does not match its digest".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn digest_bytes(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    encoded
 }
 
 fn state_name(state: PagePublicationState) -> &'static str {
@@ -283,5 +491,13 @@ mod tests {
         assert!(storage_revision(0).is_err());
         assert!(storage_revision(u64::MAX).is_err());
         assert_eq!(storage_revision(1).unwrap(), 1);
+    }
+
+    #[test]
+    fn envelope_digest_is_lowercase_sha256() {
+        assert_eq!(
+            digest_bytes(b"event"),
+            "b8e1f80bd70ae0784c7855a451731b745fddb67749d23f637be9082b75e9575b"
+        );
     }
 }
