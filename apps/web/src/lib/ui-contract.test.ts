@@ -100,6 +100,8 @@ describe("product UI contract", () => {
     expect(statusSource).toContain("Runtime Health");
     expect(statusSource).toContain("API liveness");
     expect(statusSource).toContain("API readiness");
+    expect(statusSource).toContain("Action authority");
+    expect(statusSource).toContain("Inventory");
     expect(statusSource).toContain("Vendor register");
     expect(statusSource).toContain("Policy lifecycle");
     expect(statusSource).toContain("LIVENESS_TIMEOUT_MS");
