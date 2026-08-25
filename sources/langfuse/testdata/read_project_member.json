@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "id": "langfuse-writer-96a6417383e6-project_member-member_123",
+    "tenant_id": "writer",
+    "source_id": "langfuse",
+    "kind": "langfuse.project_member",
+    "occurred_at": "2026-06-24T12:00:00Z",
+    "schema_ref": "langfuse/project_member/v1",
+    "payload": {
+      "createdAt": "2026-06-24T12:00:00Z",
+      "email": "owner@example.com",
+      "id": "member_123",
+      "project_id": "project_123",
+      "role": "OWNER",
+      "userId": "user_123"
+    },
+    "attributes": {
+      "created_at": "2026-06-24T12:00:00Z",
+      "email": "owner@example.com",
+      "external_id": "member_123",
+      "family": "project_member",
+      "principal_id": "user_123",
+      "principal_type": "user",
+      "project_id": "project_123",
+      "provider": "langfuse",
+      "role": "OWNER",
+      "source_product": "langfuse",
+      "source_provider": "langfuse",
+      "user_id": "user_123"
+    }
+  }
+]

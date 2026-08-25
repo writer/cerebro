@@ -472,7 +472,7 @@ fn aws_bedrock_and_langfuse_preserve_provider_specific_request_contracts() {
     assert_eq!(member.credential_operation, "langfuse.basic");
     assert_eq!(
         member.request.unwrap().url,
-        "https://cloud.langfuse.com/api/public/projects/project-1/members"
+        "https://cloud.langfuse.com/api/public/projects/project-1/memberships"
     );
 }
 
