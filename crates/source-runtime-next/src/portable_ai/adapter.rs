@@ -369,14 +369,13 @@ impl PortableAiSourceExecutionAdapter {
             in_json_body: true,
             ..
         } = &self.family.pagination
+            && !context.prior_cursor.is_empty()
         {
-            if !context.prior_cursor.is_empty() {
-                validate_cursor(&context.prior_cursor)?;
-                body.insert(
-                    parameter.clone(),
-                    Value::String(context.prior_cursor.clone()),
-                );
-            }
+            validate_cursor(&context.prior_cursor)?;
+            body.insert(
+                parameter.clone(),
+                Value::String(context.prior_cursor.clone()),
+            );
         }
         if body.is_empty() {
             return Ok(Vec::new());
