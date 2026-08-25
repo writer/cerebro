@@ -281,10 +281,6 @@ impl GoogleWorkspaceKernel {
         };
         {
             let mut query = url.query_pairs_mut();
-            query.append_pair("maxResults", &self.page_size.to_string());
-            if let Some(cursor) = cursor {
-                query.append_pair("pageToken", cursor);
-            }
             match self.family {
                 GoogleWorkspaceFamily::User | GoogleWorkspaceFamily::Group => {
                     query.append_pair("customer", &self.customer_id);
@@ -293,6 +289,10 @@ impl GoogleWorkspaceKernel {
                     query.append_pair("customerId", &self.customer_id);
                 }
                 GoogleWorkspaceFamily::GroupMember | GoogleWorkspaceFamily::RoleAssignment => {}
+            }
+            query.append_pair("maxResults", &self.page_size.to_string());
+            if let Some(cursor) = cursor {
+                query.append_pair("pageToken", cursor);
             }
         }
         Ok(GoogleWorkspaceRequest {
