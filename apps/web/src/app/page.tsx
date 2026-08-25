@@ -468,8 +468,10 @@ export default function Home() {
   const coverageBlindSpotCount = readiness?.coverage_blind_spots ?? coverageSummaries.reduce((total, source) => total + source.blind_spots, 0);
   const coverageSourceCount = coverageSummaries.filter((source) => source.blind_spots > 0).length;
   const coveragePending = !readinessQuery.data && !coverageQuery.data && (readinessQuery.loading || coverageQuery.loading);
-  const missingEvidenceItems = (data?.controls ?? []).reduce((total, control) => total + (control.missing_evidence_items ?? 0), 0);
-  const staleEvidenceItems = (data?.controls ?? []).reduce((total, control) => total + (control.stale_evidence_items ?? 0), 0);
+  const missingEvidenceItems = readiness?.missing_evidence_items
+    ?? (data?.controls ?? []).reduce((total, control) => total + (control.missing_evidence_items ?? 0), 0);
+  const staleEvidenceItems = readiness?.stale_evidence_items
+    ?? (data?.controls ?? []).reduce((total, control) => total + (control.stale_evidence_items ?? 0), 0);
   const primaryFrameworkRecord = readinessQuery.data?.frameworks?.[0];
   const primaryFramework = primaryFrameworkRecord?.framework_name || "Program";
   const scopedDashboardControls = (data?.controls ?? []).filter((control) =>

@@ -142,4 +142,57 @@ describe("Home review links", () => {
     ]);
     expect(container.textContent).toContain("Loading source coverage.");
   });
+
+  it("uses program readiness totals for evidence blockers", async () => {
+    const dashboardPath = grcDashboardPath({ limit: 12, enrichments: "deferred" });
+    const dashboardData = {
+      summary: {
+        open_findings: 0,
+        critical_findings: 0,
+        high_findings: 0,
+        overdue_findings: 0,
+        unassigned: 0,
+        controls_failing: 0,
+        evidence_items: 0,
+        connectors: 0,
+        stale_connectors: 0,
+      },
+      findings: [],
+      controls: [],
+      evidence: [],
+      connectors: [],
+      generated_at: "2026-08-25T00:00:00Z",
+    } as GRCDashboard;
+    const readinessData = {
+      summary: {
+        controls: 36,
+        passing_controls: 0,
+        missing_evidence_items: 32,
+        stale_evidence_items: 2,
+        coverage_blind_spots: 0,
+      },
+      frameworks: [],
+      controls: [],
+      work_items: [],
+      connectors: [],
+    };
+    mocks.useGRCQuery.mockImplementation((path: string | null) => ({
+      data: path === dashboardPath ? dashboardData : path === grcProgramReadinessPath() ? readinessData : null,
+      durationMs: null,
+      error: null,
+      lastSuccessfulAt: null,
+      loading: false,
+      reload: mocks.reload,
+      state: path ? "ready" : "empty",
+    }));
+
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    const evidenceLink = [...container.querySelectorAll<HTMLAnchorElement>("a")]
+      .find((link) => link.getAttribute("href") === "/evidence");
+    expect(evidenceLink?.textContent).toContain("34");
+    expect(evidenceLink?.textContent).toContain("32 missing, 2 stale");
+  });
 });
