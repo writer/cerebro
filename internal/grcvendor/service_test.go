@@ -733,3 +733,40 @@ func relatedRow(urn string, entityType string, label string, relation string) po
 		"attributes_json": "{}",
 	}}
 }
+
+func TestVendorFromRegisterRowPreservesRustProductState(t *testing.T) {
+	row := ports.VendorRegisterRow{
+		VendorRegisterIdentity: ports.VendorRegisterIdentity{
+			URN: "urn:cerebro:writer:vendor:acme", VendorID: "acme", Name: "Acme",
+			SourceID: "grc", RuntimeID: "writer-vrm", Provider: "manual", Status: "active",
+			Category: "payments", WebsiteURL: "https://acme.example", ServicesProvided: "Payments",
+			LifecycleState: "active", Owner: "alice", OwnerState: "assigned",
+		},
+		VendorRegisterAssessment: ports.VendorRegisterAssessment{
+			RiskLevel: "high", RiskScore: 78, RiskScoreLevel: "high", ReviewState: "due_soon",
+			ReviewDueAt: "2026-09-01", EvidenceFreshnessState: "current", PacketState: "ready",
+		},
+		VendorRegisterSignals: ports.VendorRegisterSignals{
+			ContractCount: 2, SecurityReviewCount: 3, QuestionnaireCount: 4,
+			AssuranceDocumentCount: 5, OpenFindings: 6, CriticalFindings: 1,
+			HighFindings: 2, EvidenceItems: 7, RiskQueueRank: 42,
+			QueueReasons: []string{"Complete the review"},
+			NextActions:  []ports.VendorRegisterAction{{ID: "complete_review", Label: "Complete the review"}},
+		},
+		Attributes: map[string]string{"data_sensitivity": "restricted", "business_unit": "Finance"},
+	}
+
+	vendor := VendorFromRegisterRow(row, time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC))
+	if vendor.URN != row.URN || vendor.Name != "Acme" || vendor.LifecycleState != "active" || vendor.Owner != "alice" {
+		t.Fatalf("identity or ownership = %#v", vendor)
+	}
+	if vendor.RiskScore != 78 || vendor.ReviewState != "due_soon" || vendor.PacketState != "ready" {
+		t.Fatalf("assessment = %#v", vendor)
+	}
+	if vendor.ContractCount != 2 || vendor.OpenFindings != 6 || vendor.EvidenceItems != 7 || vendor.RiskQueueRank != 42 {
+		t.Fatalf("counts or queue = %#v", vendor)
+	}
+	if len(vendor.NextActions) != 1 || vendor.NextActions[0].ID != "complete_review" || vendor.DataSensitivity != "restricted" || vendor.BusinessUnit != "Finance" {
+		t.Fatalf("actions or attributes = %#v", vendor)
+	}
+}

@@ -28,6 +28,8 @@ type grcVendorDetailResponse struct {
 	Graph         any                           `json:"graph,omitempty"`
 	Findings      []grcFindingItem              `json:"findings"`
 	Evidence      []grcEvidenceItem             `json:"evidence"`
+	GraphRevision uint64                        `json:"graph_revision"`
+	DataAuthority string                        `json:"data_authority"`
 	GeneratedAt   time.Time                     `json:"generated_at"`
 }
 
@@ -134,9 +136,12 @@ func (a *App) grcVendorDetailResponse(r *http.Request) (grcVendorDetailResponse,
 	if err != nil {
 		return grcVendorDetailResponse{}, err
 	}
+	registerRow, registerPage, err := a.grcVendorRegisterDetail(r, scope, urn, vendorID)
+	if err != nil {
+		return grcVendorDetailResponse{}, err
+	}
 	detail, err := grcvendor.NewWithCapabilities(a.deps.GraphReads.Catalog, a.deps.GraphReads.Neighborhoods).GetVendor(r.Context(), grcvendor.VendorDetailRequest{
-		URN:        urn,
-		VendorID:   vendorID,
+		URN:        registerRow.URN,
 		TenantID:   scope.TenantID,
 		RuntimeID:  scope.RuntimeID,
 		RuntimeIDs: scope.RuntimeIDs,
@@ -146,6 +151,7 @@ func (a *App) grcVendorDetailResponse(r *http.Request) (grcVendorDetailResponse,
 	if err != nil {
 		return grcVendorDetailResponse{}, err
 	}
+	detail.Vendor = grcvendor.VendorFromRegisterRow(registerRow, time.Now().UTC())
 	urn = detail.Vendor.URN
 	questionnaireRollups, err := grcvendor.QuestionnaireVendorRollups(r.Context(), grcQuestionnaireRunStore(a.deps.StateStore), scope.TenantID, []string{urn}, time.Now().UTC())
 	if err != nil {
@@ -187,8 +193,50 @@ func (a *App) grcVendorDetailResponse(r *http.Request) (grcVendorDetailResponse,
 		Graph:         detail.Graph,
 		Findings:      findingItems,
 		Evidence:      evidenceItems,
+		GraphRevision: registerPage.GraphRevision,
+		DataAuthority: registerPage.DataAuthority,
 		GeneratedAt:   time.Now().UTC(),
 	}, nil
+}
+
+func (a *App) grcVendorRegisterDetail(r *http.Request, scope grcScope, urn string, vendorID string) (ports.VendorRegisterRow, *ports.VendorRegisterPage, error) {
+	if a.deps.GraphReads.VendorRegister == nil {
+		return ports.VendorRegisterRow{}, nil, grcvendor.ErrRuntimeUnavailable
+	}
+	runtimeIDs := append([]string{}, scope.RuntimeIDs...)
+	if scope.RuntimeID != "" {
+		runtimeIDs = []string{scope.RuntimeID}
+	}
+	query := strings.TrimSpace(urn)
+	if query == "" {
+		query = strings.TrimSpace(vendorID)
+	}
+	page, err := a.deps.GraphReads.VendorRegister.ListVendorRegister(r.Context(), ports.VendorRegisterFilter{
+		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs, Query: query, Limit: int(scope.Limit),
+	})
+	if err != nil {
+		return ports.VendorRegisterRow{}, nil, err
+	}
+	if page == nil || page.TenantID != scope.TenantID || page.DataAuthority != "rust_graph" {
+		return ports.VendorRegisterRow{}, nil, grcvendor.ErrRuntimeUnavailable
+	}
+	matched := make([]ports.VendorRegisterRow, 0, 1)
+	for _, row := range page.Vendors {
+		if urn != "" && row.URN == urn {
+			matched = append(matched, row)
+			continue
+		}
+		if urn == "" && (strings.EqualFold(row.VendorID, vendorID) || strings.EqualFold(row.Name, vendorID) || strings.HasSuffix(strings.ToLower(row.URN), ":"+strings.ToLower(vendorID))) {
+			matched = append(matched, row)
+		}
+	}
+	if len(matched) == 0 {
+		return ports.VendorRegisterRow{}, nil, ports.ErrGraphEntityNotFound
+	}
+	if len(matched) != 1 {
+		return ports.VendorRegisterRow{}, nil, grcvendor.ErrRuntimeUnavailable
+	}
+	return matched[0], page, nil
 }
 
 func (a *App) handleGRCVendorRiskVendors(w http.ResponseWriter, r *http.Request) {

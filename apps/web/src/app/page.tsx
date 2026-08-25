@@ -443,9 +443,11 @@ export default function Home() {
   const compactHome = preferences.display.density === "compact";
   const dashboard = useGRCQuery<GRCDashboard>(grcDashboardPath({ limit: HOME_DASHBOARD_FINDING_LIMIT }));
   const data = dashboard.data;
-  const readinessQuery = useGRCQuery<GRCProgramReadiness>(grcProgramReadinessPath());
+  const readinessQuery = useGRCQuery<GRCProgramReadiness>(data ? grcProgramReadinessPath() : null);
   const coverageQuery = useGRCQuery<{ blind_spots?: GRCSourceCoverageRecord[]; records?: GRCSourceCoverageRecord[] }>(
-    grcPath("/connectors/coverage", { coverage_scope: "configured", coverage_view: "page", blind_spots_only: "true", page_size: 3 }),
+    data
+      ? grcPath("/connectors/coverage", { coverage_scope: "configured", coverage_view: "page", blind_spots_only: "true", page_size: 3 })
+      : null,
   );
   const readiness = readinessQuery.data?.summary;
   const priorityFindings = useMemo(() => (data?.findings ?? []).slice().sort(riskSort), [data?.findings]);
@@ -498,6 +500,7 @@ export default function Home() {
   const reload = () => {
     void dashboard.reload();
     void readinessQuery.reload();
+    void coverageQuery.reload();
   };
 
   return (
