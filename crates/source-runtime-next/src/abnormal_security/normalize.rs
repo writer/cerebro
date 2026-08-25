@@ -162,7 +162,7 @@ fn admit(record: &AbnormalSecurityRecord) -> Result<(), AbnormalSecurityError> {
     Ok(())
 }
 
-fn event_id(kernel: &AbnormalSecurityKernel, provider_id: &str) -> String {
+pub(super) fn event_id(kernel: &AbnormalSecurityKernel, provider_id: &str) -> String {
     let scope = Sha256::digest(format!(
         "{}\0{}",
         kernel.base_url.as_str(),
@@ -263,14 +263,25 @@ fn reject_protected(value: &Value, depth: usize) -> Result<(), AbnormalSecurityE
             }
             for (key, value) in values {
                 let key = key.to_ascii_lowercase().replace(['-', '.'], "_");
-                if key == "tenant_id" {
+                if ["tenant", "tenant_id", "runtime_id", "source_runtime_id"]
+                    .contains(&key.as_str())
+                {
                     return Err(AbnormalSecurityError::TenantMismatch);
                 }
                 if [
                     "token",
+                    "access_token",
+                    "refresh_token",
+                    "session_token",
                     "api_key",
+                    "api_token",
                     "authorization",
+                    "cookie",
+                    "set_cookie",
                     "password",
+                    "passcode",
+                    "secret",
+                    "client_secret",
                     "private_key",
                 ]
                 .contains(&key.as_str())
