@@ -1,0 +1,32 @@
+id: rust.tooling.cargo-quality-gates
+title: Run the Rust quality gates for changed crates
+status: preferred
+enforcement: advisory
+summary: Rust changes should pass formatting, tests, Clippy with warnings denied, and documentation checks for the affected crates.
+rationale: Writer Rust repositories use these commands to catch formatting drift, behavior regressions, lint failures, and broken public documentation before merge.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["Cargo.toml", "Cargo.lock", "**/Cargo.toml", "**/Cargo.lock", "**/*.rs", ".github/workflows/*.yml"]
+    exclude: ["target/**", "vendor/**"]
+applies_when:
+  intents: ["new crate", "rust change", "ci", "test", "lint", "release"]
+  keywords: ["cargo fmt", "cargo test", "cargo clippy", "cargo doc", "RUSTDOCFLAGS", "warnings"]
+avoid:
+  - Publishing a Rust change after running only cargo check.
+  - Silencing a Clippy finding across the workspace without a scoped reason.
+use_instead:
+  - Run cargo fmt --check and the affected crate test suite.
+  - Run cargo clippy --all-targets with warnings denied and the repository's relevant feature set.
+  - Run RUSTDOCFLAGS="-D warnings" cargo doc --no-deps when public Rust APIs change.
+good_examples:
+  - |
+    cargo fmt --check
+    cargo test
+    cargo clippy --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+bad_examples:
+  - Running cargo check and handing off the change without tests or Clippy.
+owner: backend-platform
+last_reviewed: 2026-07-16

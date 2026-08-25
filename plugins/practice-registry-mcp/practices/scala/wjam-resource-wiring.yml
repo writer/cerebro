@@ -1,0 +1,37 @@
+id: scala.writer.wjam-resource-wiring
+title: Keep Writer Jam wiring in DR until the edge
+status: preferred
+enforcement: advisory
+summary: Compose Writer Jam dependencies as DR/Reval values in the loader and evaluate only at the application edge.
+rationale: Jam composes resource acquisition and effectful construction; evaluating early loses lifecycle management and can recreate shared clients.
+scope:
+  languages: [scala]
+  frameworks: [cats-effect, http4s]
+  paths:
+    include: ["server/src/**/*.scala", "src/**/*.scala", "apps/**/*.scala", "services/**/*.scala"]
+    exclude: ["legacy/**", "**/generated/**", "server/test/**"]
+applies_when:
+  intents: ["dependency injection", "application loader", "resource", "service wiring", "Jam", "wjam"]
+  keywords: ["wjam", "brewRecF", "brewWithRecF", "Reval", "DR", "resourceLater", "memoize", "CustomApplicationLoader"]
+avoid:
+  - Evaluating DR or UR values while assembling dependencies.
+  - Shared clients or resources without memoize when they should be singletons.
+  - Large ambiguous constructor parameter lists that make Jam choose between same-typed values.
+  - Circular dependencies between services.
+use_instead:
+  - Use DR[A] during loader composition.
+  - Use Reval.resourceLater for long-lived infrastructure resources.
+  - Call .memoize for shared clients and publishers.
+  - Use brewWithRecF when construction needs config or disambiguation.
+good_examples:
+  - |
+    val routes: DR[HttpRoutes[UR]] = List(
+      wjam.brewRecF[DR][ServiceApi],
+      wjam.brewRecF[DR][KnowledgeApi],
+    ).sequence.map(new Http4sTapirRouter(_).routes)
+bad_examples:
+  - |
+    val client = makeClient.unsafeRunSync()
+    val service = new UserService(client)
+owner: scala-platform
+last_reviewed: 2026-07-01

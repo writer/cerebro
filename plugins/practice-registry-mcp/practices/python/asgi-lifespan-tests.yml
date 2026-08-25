@@ -1,0 +1,32 @@
+id: python.writer.asgi-lifespan-tests
+title: Drive FastAPI lifespan in HTTP tests
+status: preferred
+enforcement: advisory
+summary: HTTP tests for FastAPI services should run the ASGI app in process and drive lifespan hooks.
+rationale: ASGITransport alone does not run startup and shutdown; Writer services use lifespan for consumers, schedulers, and dependency readiness.
+scope:
+  languages: [python]
+  frameworks: [fastapi, pytest]
+  paths:
+    include: ["tests/**/*.py", "src/**/*.py", "services/**/*.py", "apps/**/*.py"]
+    exclude: ["legacy/**", "notebooks/**"]
+applies_when:
+  intents: ["test", "http test", "FastAPI test", "lifespan", "integration test"]
+  keywords: ["ASGITransport", "LifespanManager", "TestClient", "pytest", "httpx", "startup", "shutdown"]
+avoid:
+  - HTTP tests that instantiate ASGITransport without starting lifespan.
+  - Tests that require a manually started server socket for normal request coverage.
+use_instead:
+  - httpx ASGITransport with asgi-lifespan LifespanManager.
+  - FastAPI TestClient used as a context manager.
+  - Testcontainers fixtures for database, Redis, and Kafka dependencies.
+good_examples:
+  - |
+    async with LifespanManager(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+bad_examples:
+  - client = AsyncClient(transport=ASGITransport(app=app))
+owner: backend-platform
+last_reviewed: 2026-07-01

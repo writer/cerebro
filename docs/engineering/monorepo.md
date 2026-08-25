@@ -21,6 +21,7 @@ Keeping the clients in this repository lets contract changes land with their gen
 | `apps/web/` | Browser application, server-side web boundary, UI tests | Core persistence; environment deployment overlays |
 | `apps/slack-companion/` | Portable Slack lifecycle, admission, execution, delivery, assistance, refinement, and conformance contracts | Concrete Slack transport, environment deployment overlays, or rollout policy |
 | `apps/slack-companion-host/` | Executable Slack runtime and topology-neutral host adapters over the portable companion and public SDK | Environment credentials, private routes, or rollout policy |
+| `plugins/practice-registry-mcp/` | Recorded code practices, MCP and CLI gates, generated Semgrep rules, editor setup, and Codex hooks | Credential values, environment topology, or private operational configuration |
 | repositories outside this repository | Environment deployment adapters and operational configuration | Portable application behavior or public contract definitions |
 
 ## Dependency Direction
@@ -55,6 +56,7 @@ Dependencies do not point from the Go runtime into `apps/`. Applications are bui
 
 - The repository uses npm workspaces from the root `package.json` and one root `package-lock.json` for JavaScript and TypeScript packages.
 - Application manifests set `private: true`.
+- The practice registry is a private npm workspace distributed through the repository-local Codex marketplace.
 - Root commands run checks across every workspace that declares the matching script.
 - A workspace may provide narrower local commands, but CI invokes the root workspace check.
 - Runtime dependencies require a named owner and a reason in the pull request.

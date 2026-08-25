@@ -1,0 +1,30 @@
+id: python.security.no-request-path-file-access
+title: Do not open request paths directly
+status: banned
+enforcement: blocking
+summary: Do not pass request parameters directly to file open, Path, or send_file helpers.
+rationale: Request-controlled paths can escape intended directories and expose files outside the allowed storage boundary.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["file download", "path traversal", "upload", "attachment"]
+  keywords: ["send_file(request.", "open(request.", "Path(request.", "request.args"]
+avoid:
+  - 'send_file(request.args["path"])'
+  - 'open(request.args["filename"])'
+use_instead:
+  - Resolve request identifiers through an owned storage record.
+  - Join paths under an approved base directory and reject traversal before opening files.
+good_examples:
+  - 'return send_file(storage.resolve_owned_file(file_id, actor_id))'
+bad_examples:
+  - 'return send_file(request.args["path"])'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b((open|send_file|send_from_directory)\\s*\\([^\\n]*(request\\.(args|form|json|values)|flask\\.request|req\\.)|Path\\s*\\([^\\n]*(request\\.(args|form|json|values)|flask\\.request|req\\.))"
+owner: security-platform
+last_reviewed: 2026-07-01

@@ -1,0 +1,37 @@
+id: typescript.agent.model-led-read-only-evidence-tools
+title: Keep agent evidence tools model-led and read-only
+status: preferred
+enforcement: advisory
+summary: Agent evidence tools should run inside the model work loop, derive identity and conclusions server-side, and return reviewable read-only receipts.
+rationale: Model-led selection preserves the assistant routing contract, while server-derived identity, evidence state, and immutable receipts prevent callers from manufacturing authority or conclusions.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [node.js, slack, agent]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**", "fixtures/**"]
+applies_when:
+  intents: ["agent evidence", "decision packet", "assistant routing", "evidence receipt", "claim verification", "agent tool"]
+  keywords: ["decision packet", "evidence receipt", "claim ledger", "assistant loop", "tool metadata", "coverage gap", "contradiction"]
+avoid:
+  - Routing assistant questions with keywords, regular expressions, or classifiers before the model work loop runs.
+  - Accepting tenant, actor, verdict, confidence, approval, or execution state from model arguments when the evidence service owns those fields.
+  - Executing an action proposal returned by an evidence or decision packet.
+  - Logging raw evidence payloads, authorization headers, or service credentials.
+use_instead:
+  - Register a bounded read-only tool and let the model select it from the approved tool catalog.
+  - Derive tenant, actor, verdict, confidence, gaps, and contradictions in the evidence service.
+  - Return immutable receipt ids, source versions, freshness, coverage gaps, contradictions, and bounded action previews.
+  - Use a separate reviewed approval, execution, and independent verification path for writes.
+good_examples:
+  - A model-selected tool builds a tenant-scoped decision packet and returns its immutable receipt id, evidence digest, coverage digest, gaps, and contradictions without executing its action previews.
+bad_examples:
+  - A Slack keyword router calls an evidence endpoint directly and treats a caller-supplied confidence value as approval to execute.
+owner: jonathanhaaswriter
+last_reviewed: 2026-07-15
+approval:
+  method: owner
+  approved_by: jonathanhaaswriter
+  approved_at: 2026-07-15
+  conclusion: The repository owner approved this reusable model-led and read-only evidence-tool contract for the Cerebro Slack companion.
+  sources: []

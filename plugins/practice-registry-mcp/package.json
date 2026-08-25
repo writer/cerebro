@@ -1,0 +1,55 @@
+{
+  "name": "@writer/cerebro-practice-registry-mcp",
+  "version": "0.1.0",
+  "description": "Cerebro MCP server and CLI for recorded code practice guidance.",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/writer/cerebro.git",
+    "directory": "plugins/practice-registry-mcp"
+  },
+  "bin": {
+    "practice-registry-mcp": "./dist/index.js",
+    "practice": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "practices",
+    "semgrep",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "check": "npm run build && npm test",
+    "dev:mcp": "tsx src/index.ts",
+    "eval:gates": "npm run build && node scripts/eval-practice-gates.mjs",
+    "generate-semgrep": "tsx src/cli.ts generate-semgrep",
+    "index": "tsx src/cli.ts index",
+    "lint:practices": "npm run build && node dist/cli.js lint-practices --fail-on-actionable",
+    "smoke:cli-ux": "npm run build && node scripts/cli-ux-smoke-test.mjs",
+    "smoke:hooks": "npm run build && node scripts/hook-smoke-test.mjs",
+    "smoke:editor-config": "npm run build && node scripts/editor-config-smoke-test.mjs",
+    "smoke:mcp": "npm run build && node scripts/mcp-smoke-test.mjs",
+    "smoke:plugin-config": "npm run build && node scripts/plugin-config-smoke-test.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.11.1",
+    "minimatch": "^10.0.3",
+    "yaml": "^2.9.0",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

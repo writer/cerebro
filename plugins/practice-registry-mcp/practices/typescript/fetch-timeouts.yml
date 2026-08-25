@@ -1,0 +1,28 @@
+id: typescript.http.fetch-timeouts
+title: Bound outbound fetch calls
+status: discouraged
+enforcement: advisory
+summary: Do not add outbound fetch calls without a timeout, abort signal, and expected response handling.
+rationale: Unbounded HTTP calls can hold request workers, background jobs, and browser interactions open long after the caller has moved on.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [node, nextjs, react, express, fastify]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "pages/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**", "fixtures/**"]
+applies_when:
+  intents: ["fetch", "http", "api call", "outbound request", "webhook", "integration"]
+  keywords: ["fetch(", "await fetch", "globalThis.fetch"]
+avoid:
+  - fetch(url) with no AbortSignal or timeout boundary.
+  - Ignoring non-2xx responses.
+use_instead:
+  - Pass an AbortSignal from a request-scoped timeout or AbortSignal.timeout.
+  - Check response.ok and map failures into the service's error shape.
+good_examples:
+  - |
+    await fetch(url, { signal: AbortSignal.timeout(5000) });
+bad_examples:
+  - await fetch(url)
+owner: backend-platform
+last_reviewed: 2026-07-01

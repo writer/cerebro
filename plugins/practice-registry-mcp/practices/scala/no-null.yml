@@ -1,0 +1,34 @@
+id: scala.values.no-null
+title: Model missing Scala values explicitly
+status: banned
+enforcement: blocking
+summary: Do not introduce null as a domain value in Scala code.
+rationale: Null bypasses the type system and moves missing-value handling to runtime failures.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "**/generated/**"]
+applies_when:
+  intents: ["optional value", "missing value", "domain model", "null"]
+keywords: ["null", "Option", "Some", "None", "orNull"]
+avoid:
+  - null fields
+  - returning null from methods
+  - calling orNull at service boundaries
+  - getOrElse(null)
+use_instead:
+  - Option for optional values.
+  - Either or a typed error for failed operations.
+good_examples:
+  - |
+    def emailFor(user: User): Option[Email]
+bad_examples:
+  - |
+    def emailFor(user: User): String = null
+semgrep:
+  severity: ERROR
+  pattern_regex: "(^|[^A-Za-z0-9_])(null|orNull)([^A-Za-z0-9_]|$)|\\.getOrElse\\s*\\(\\s*null\\s*\\)"
+owner: scala-platform
+last_reviewed: 2026-07-01

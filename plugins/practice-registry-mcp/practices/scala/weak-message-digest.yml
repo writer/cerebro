@@ -1,0 +1,30 @@
+id: scala.security.weak-message-digest
+title: Review MD5 and SHA-1 digests
+status: needs_review
+enforcement: review
+summary: Do not add MD5 or SHA-1 digests for authentication, signatures, passwords, tokens, or integrity decisions without owner review.
+rationale: MD5 and SHA-1 are collision-prone and are not suitable for security decisions or credential material.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/test/**", "**/*Test.scala", "**/generated/**"]
+applies_when:
+  intents: ["hash", "digest", "signature", "password", "token", "integrity"]
+  keywords: ["MessageDigest", "MD5", "SHA-1", "SHA1"]
+avoid:
+  - MessageDigest.getInstance("MD5")
+  - MessageDigest.getInstance("SHA-1")
+use_instead:
+  - Use SHA-256 or SHA-512 for non-password integrity checks.
+  - Use the approved password hashing or signing library for credentials and signatures.
+good_examples:
+  - MessageDigest.getInstance("SHA-256")
+bad_examples:
+  - MessageDigest.getInstance("MD5")
+semgrep:
+  severity: WARNING
+  pattern_regex: "MessageDigest\\.getInstance\\s*\\(\\s*[\"'](MD5|SHA-1|SHA1)[\"']\\s*\\)"
+owner: security-platform
+last_reviewed: 2026-07-01

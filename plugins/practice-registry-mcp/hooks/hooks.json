@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^apply_patch$|^Edit$|^Write$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const cp=require('node:child_process');const path=require('node:path');let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',(chunk)=>input+=chunk);process.stdin.on('end',()=>{let root=process.env.PRACTICE_REGISTRY_PLUGIN_ROOT||'';if(!root){const out=cp.execFileSync('codex',['plugin','list'],{encoding:'utf8',stdio:['ignore','pipe','ignore']});const line=out.split('\\n').find((entry)=>entry.includes('practice-registry-mcp@')&&entry.includes('installed, enabled'));if(line)root=line.trim().split(/\\s+/).at(-1)||'';}if(!root){console.error('Practice Registry plugin is not installed or enabled.');process.exit(1);}const result=cp.spawnSync(process.execPath,[path.join(root,'hooks','practice-pre-tool-use.mjs')],{input,encoding:'utf8',stdio:['pipe','inherit','inherit']});process.exit(result.status??(result.error?1:0));});\"",
+            "timeout": 60,
+            "statusMessage": "Checking proposed practice changes"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^apply_patch$|^Edit$|^Write$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const cp=require('node:child_process');const path=require('node:path');let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',(chunk)=>input+=chunk);process.stdin.on('end',()=>{let root=process.env.PRACTICE_REGISTRY_PLUGIN_ROOT||'';if(!root){const out=cp.execFileSync('codex',['plugin','list'],{encoding:'utf8',stdio:['ignore','pipe','ignore']});const line=out.split('\\n').find((entry)=>entry.includes('practice-registry-mcp@')&&entry.includes('installed, enabled'));if(line)root=line.trim().split(/\\s+/).at(-1)||'';}if(!root){console.error('Practice Registry plugin is not installed or enabled.');process.exit(1);}const result=cp.spawnSync(process.execPath,[path.join(root,'hooks','practice-post-tool-use.mjs')],{input,encoding:'utf8',stdio:['pipe','inherit','inherit']});process.exit(result.status??(result.error?1:0));});\"",
+            "timeout": 60,
+            "statusMessage": "Checking practice findings"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const cp=require('node:child_process');const path=require('node:path');let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',(chunk)=>input+=chunk);process.stdin.on('end',()=>{let root=process.env.PRACTICE_REGISTRY_PLUGIN_ROOT||'';if(!root){const out=cp.execFileSync('codex',['plugin','list'],{encoding:'utf8',stdio:['ignore','pipe','ignore']});const line=out.split('\\n').find((entry)=>entry.includes('practice-registry-mcp@')&&entry.includes('installed, enabled'));if(line)root=line.trim().split(/\\s+/).at(-1)||'';}if(!root){console.error('Practice Registry plugin is not installed or enabled.');process.exit(1);}const result=cp.spawnSync(process.execPath,[path.join(root,'hooks','practice-stop.mjs')],{input,encoding:'utf8',stdio:['pipe','inherit','inherit']});process.exit(result.status??(result.error?1:0));});\"",
+            "timeout": 60,
+            "statusMessage": "Checking final practice findings"
+          }
+        ]
+      }
+    ]
+  }
+}

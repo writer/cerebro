@@ -1,0 +1,30 @@
+id: scala.effects.no-await-result-in-services
+title: Do not block on futures in services
+status: banned
+enforcement: blocking
+summary: Do not add Await.result or blocking waits in service code.
+rationale: Blocking waits consume execution threads and can turn normal latency into cascading request failures.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "scripts/**", "**/generated/**"]
+applies_when:
+  intents: ["future", "async", "effect", "blocking"]
+  keywords: ["Await.result", "Await.ready", "blocking"]
+avoid:
+  - Await.result in request handlers, workers, and shared services
+  - Blocking waits inside map or flatMap chains
+use_instead:
+  - Compose the Future, IO, ZIO, or Task value.
+  - Move blocking calls to the approved blocking execution context.
+good_examples:
+  - userRepo.fetch(id).flatMap(renderUser)
+bad_examples:
+  - Await.result(userRepo.fetch(id), 5.seconds)
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\bAwait\\.(result|ready)\\s*\\("
+owner: scala-platform
+last_reviewed: 2026-06-30

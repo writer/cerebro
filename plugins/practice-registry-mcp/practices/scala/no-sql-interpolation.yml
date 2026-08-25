@@ -1,0 +1,30 @@
+id: scala.security.no-sql-interpolation
+title: Parameterize Scala SQL queries
+status: banned
+enforcement: blocking
+summary: Do not pass interpolated SQL strings to execute, executeQuery, or executeUpdate.
+rationale: SQL built with interpolation can turn caller-controlled values into query syntax instead of bound parameters.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/test/**", "**/*Test.scala", "**/generated/**"]
+applies_when:
+  intents: ["sql", "database query", "jdbc"]
+  keywords: ["executeQuery(s\"", "executeUpdate(s\"", "execute(s\""]
+avoid:
+  - 'statement.executeQuery(s"select * from users where id = $userId")'
+  - 'statement.executeUpdate(s"delete from jobs where id = $jobId")'
+use_instead:
+  - Use prepared statements and bind parameters.
+  - Use the package query builder or repository helper.
+good_examples:
+  - 'prepared.setString(1, userId)'
+bad_examples:
+  - 'statement.executeQuery(s"select * from users where id = $userId")'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(execute|executeQuery|executeUpdate)\\s*\\(\\s*s[\"'][^\\n]*(select|insert|update|delete)"
+owner: security-platform
+last_reviewed: 2026-07-01

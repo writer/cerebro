@@ -1,0 +1,31 @@
+id: typescript.security.no-eval-function
+title: Do not execute strings as TypeScript code
+status: banned
+enforcement: blocking
+summary: Do not add eval, new Function, or timer calls that execute string input.
+rationale: String execution turns data into code and bypasses review, bundler, and type-system boundaries.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [node, react, nextjs]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "pages/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**", "fixtures/**"]
+applies_when:
+  intents: ["eval", "dynamic code", "script", "expression", "sandbox"]
+  keywords: ["eval", "new Function", "setTimeout", "setInterval", "script"]
+avoid:
+  - eval(input) or new Function(input).
+  - setTimeout or setInterval with a string argument.
+use_instead:
+  - Parse a constrained data format and dispatch to enumerated functions.
+  - Use a reviewed expression parser with an allowlist when product requirements need formulas.
+good_examples:
+  - const handler = handlers[action]; handler(payload)
+bad_examples:
+  - const fn = new Function(userExpression)
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(eval\\s*\\(|new\\s+Function\\s*\\(|set(?:Timeout|Interval)\\s*\\(\\s*[\"'`])"
+  languages: [typescript, javascript]
+owner: security-platform
+last_reviewed: 2026-07-01

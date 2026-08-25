@@ -1,0 +1,28 @@
+id: typescript.api.auth-before-handler
+title: Check authorization before handler work
+status: preferred
+enforcement: advisory
+summary: Route handlers should establish auth and tenant scope before reading request data or touching dependencies.
+rationale: Authorization gates at the top of the handler keep logging, database calls, and downstream requests inside the caller's allowed scope.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [express, fastify, nextjs, hono]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "pages/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**"]
+applies_when:
+  intents: ["route", "endpoint", "handler", "api", "auth", "tenant", "middleware"]
+  keywords: ["req.user", "session", "auth", "tenant", "middleware", "handler", "route"]
+avoid:
+  - Reading body, params, or query values before the route has an authenticated principal.
+  - Database or outbound calls before tenant and permission checks.
+use_instead:
+  - Run auth middleware before the handler body.
+  - Derive tenant and actor ids once and pass them to downstream services.
+  - Return the framework's standard unauthorized response before side effects.
+good_examples:
+  - requireUser(req); requireTenantAccess(actor, tenantId); await service.load({ actor, tenantId })
+bad_examples:
+  - const user = await userRepo.find(req.params.id); if (!req.user) return res.status(401).end()
+owner: security-platform
+last_reviewed: 2026-07-01

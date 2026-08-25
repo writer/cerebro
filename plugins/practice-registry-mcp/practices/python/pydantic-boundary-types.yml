@@ -1,0 +1,35 @@
+id: python.writer.pydantic-boundary-types
+title: Validate Python boundary values with Pydantic constraints
+status: preferred
+enforcement: advisory
+summary: Use Pydantic v2 constrained types at HTTP, database, event, and settings boundaries.
+rationale: Writer's Python service architecture keeps invalid data out of domain code by validating every deserialization boundary.
+scope:
+  languages: [python]
+  frameworks: [fastapi, pydantic]
+  paths:
+    include: ["src/**/*.py", "services/**/*.py", "apps/**/*.py", "packages/**/*.py"]
+    exclude: ["legacy/**", "notebooks/**", "tests/**"]
+applies_when:
+  intents: ["api model", "request model", "event model", "database row", "settings", "validation", "domain type"]
+  keywords: ["BaseModel", "Annotated", "StringConstraints", "EmailStr", "Field", "model_validate", "Pydantic", "FastAPI"]
+avoid:
+  - Raw str or int fields for externally supplied identifiers, emails, ports, and non-empty names.
+  - Custom validators when Annotated, Field, StringConstraints, or EmailStr can express the rule.
+  - Letting unvalidated dictionaries or event payloads reach domain services.
+use_instead:
+  - Annotated aliases with Field or StringConstraints for boundary models.
+  - Pydantic built-in validated types such as EmailStr.
+  - model_validate or model_validate_json at database and event boundaries.
+good_examples:
+  - |
+    Username = Annotated[str, StringConstraints(min_length=3, max_length=50)]
+    Port = Annotated[int, Field(ge=1, le=65535)]
+    Email = EmailStr
+bad_examples:
+  - |
+    class CreateUserRequest(BaseModel):
+        email: str
+        port: int
+owner: backend-platform
+last_reviewed: 2026-07-01

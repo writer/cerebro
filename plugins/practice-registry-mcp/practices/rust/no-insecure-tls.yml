@@ -1,0 +1,31 @@
+id: rust.http.no-insecure-tls-verification
+title: Keep TLS verification enabled in Rust clients
+status: banned
+enforcement: blocking
+summary: Do not accept invalid TLS certificates or hostnames in Rust HTTP clients.
+rationale: Disabling certificate or hostname verification lets an intermediary impersonate the configured service endpoint.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "services/**/*.rs", "apps/**/*.rs"]
+    exclude: ["target/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["http client", "tls", "certificate", "hostname verification"]
+  keywords: ["danger_accept_invalid_certs(true)", "danger_accept_invalid_hostnames(true)", "disable certificate verification", "skip tls verification"]
+avoid:
+  - danger_accept_invalid_certs(true)
+  - danger_accept_invalid_hostnames(true)
+use_instead:
+  - Install the required CA certificate or configure a pinned trust root for the service.
+  - Keep certificate and hostname verification enabled in every deployed environment.
+good_examples:
+  - 'let client = reqwest::Client::builder().https_only(true).build()?;'
+bad_examples:
+  - 'let client = reqwest::Client::builder().danger_accept_invalid_certs(true).build()?;'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\.danger_accept_invalid_(?:certs|hostnames)\\s*\\(\\s*true\\s*,?\\s*\\)"
+  languages: [rust]
+owner: security-platform
+last_reviewed: 2026-07-16

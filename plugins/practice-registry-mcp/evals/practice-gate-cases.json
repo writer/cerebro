@@ -1,0 +1,255 @@
+[
+  {
+    "name": "python shell plan stops before code",
+    "tool": "check_plan",
+    "input": {
+      "language": "python",
+      "files": ["services/sync/git_worker.py"],
+      "intent": "run a git command in a worker",
+      "planned_approach": "Use subprocess.run(command, shell=True) and return the output."
+    },
+    "expect": {
+      "decision": "change_code",
+      "passed": false,
+      "practice_id": "python.subprocess.no-shell-true"
+    }
+  },
+  {
+    "name": "scala EventUnit plan passes with guidance",
+    "tool": "check_plan",
+    "input": {
+      "language": "scala",
+      "framework": "cats-effect",
+      "files": ["server/src/com/writer/reporting/SessionInternalService.scala"],
+      "intent": "publish an audit log event",
+      "planned_approach": "Create an EventUnit in the application loader and inject it into the service."
+    },
+    "expect": {
+      "decision": "follow_guidance",
+      "passed": true,
+      "practice_id": "scala.writer.eventunit-startup-injection"
+    }
+  },
+  {
+    "name": "scala blocking wait scan stops final diff",
+    "tool": "scan_diff",
+    "input": {
+      "use_semgrep": false,
+      "diff": "diff --git a/services/users/UserService.scala b/services/users/UserService.scala\n+++ b/services/users/UserService.scala\n@@ -1,1 +1,2 @@\n final class UserService\n+val user = Await.result(userRepo.fetch(id), 5.seconds)\n"
+    },
+    "expect": {
+      "decision": "change_code",
+      "passed": false,
+      "practice_id": "scala.effects.no-await-result-in-services"
+    }
+  },
+  {
+    "name": "typescript MCP contract plan passes with guidance",
+    "tool": "check_plan",
+    "input": {
+      "language": "typescript",
+      "framework": "mcp",
+      "files": ["src/mcpServer.ts", "scripts/mcp-smoke-test.mjs"],
+      "intent": "add a new MCP tool argument and result field",
+      "planned_approach": "Update registerTool inputSchema and outputSchema, add server_info contract metadata, update smoke tests, and document the contract version."
+    },
+    "expect": {
+      "decision": "follow_guidance",
+      "passed": true,
+      "practice_id": "typescript.mcp.versioned-tool-contracts"
+    }
+  },
+  {
+    "name": "typescript shell execution scan stops scripts",
+    "tool": "scan_diff",
+    "input": {
+      "use_semgrep": false,
+      "diff": "diff --git a/scripts/release.mjs b/scripts/release.mjs\n+++ b/scripts/release.mjs\n@@ -1,1 +1,2 @@\n import { execSync } from \"node:child_process\";\n+execSync(`git checkout ${branch}`)\n"
+    },
+    "expect": {
+      "decision": "change_code",
+      "passed": false,
+      "practice_id": "typescript.node.no-shell-exec"
+    }
+  },
+  {
+    "name": "rust shell execution plan stops before code",
+    "tool": "check_plan",
+    "input": {
+      "language": "rust",
+      "files": ["src/release.rs"],
+      "intent": "run a release command",
+      "planned_approach": "Use Command::new(\"sh\").arg(\"-c\").arg(command) and return the status."
+    },
+    "expect": {
+      "decision": "change_code",
+      "passed": false,
+      "practice_id": "rust.process.no-shell-command"
+    }
+  },
+  {
+    "name": "rust shell execution scan stops final diff",
+    "tool": "scan_diff",
+    "input": {
+      "use_semgrep": false,
+      "diff": "diff --git a/src/release.rs b/src/release.rs\n+++ b/src/release.rs\n@@ -1,1 +1,2 @@\n use std::process::Command;\n+Command::new(\"sh\").arg(\"-c\").arg(command).status()?;\n"
+    },
+    "expect": {
+      "decision": "change_code",
+      "passed": false,
+      "practice_id": "rust.process.no-shell-command"
+    }
+  },
+  {
+    "name": "typescript sql interpolation plan stops before code",
+    "tool": "check_plan",
+    "input": {
+      "language": "typescript",
+      "framework": "express",
+      "files": ["src/routes/users.ts"],
+      "intent": "add an endpoint that reads user id and queries postgres",
+      "planned_approach": "Build SQL with a template string, run it through the db client, log the user id, and return JSON."
+    },
+    "expect": {
+      "decision": "change_code",
+      "passed": false,
+      "practice_id": "typescript.db.parameterized-sql"
+    }
+  },
+  {
+    "name": "preflight catches risky TypeScript SQL approach",
+    "tool": "preflight",
+    "input": {
+      "language": "typescript",
+      "framework": "express",
+      "files": ["src/routes/users.ts"],
+      "intent": "add an endpoint that reads user id and queries postgres",
+      "planned_approach": "Build SQL with a template string and pass it to the db client."
+    },
+    "expect": {
+      "decision": "change_code",
+      "passed": false,
+      "practice_id": "typescript.db.parameterized-sql"
+    }
+  },
+  {
+    "name": "react fetch plan asks for cleanup and timeout",
+    "tool": "check_plan",
+    "input": {
+      "language": "typescript",
+      "framework": "react",
+      "files": ["src/components/ProfileForm.tsx"],
+      "intent": "add a profile form that calls the API and handles validation",
+      "planned_approach": "Use useEffect, fetch without AbortController, store raw API response in state, and show errors inline."
+    },
+    "expect": {
+      "decision": "revise_or_justify",
+      "passed": false,
+      "practice_id": "typescript.http.fetch-timeouts"
+    }
+  },
+  {
+    "name": "react connector catalog plan follows bounded list guidance",
+    "tool": "check_plan",
+    "input": {
+      "language": "typescript",
+      "framework": "react",
+      "files": ["src/app/connectors/page.tsx"],
+      "intent": "reduce connector catalog response size",
+      "planned_approach": "Use the existing query client with its timeout, abort signal, and response error mapping. Request a bounded summary projection for the list and load the expanded connector only when the user opens its detail state."
+    },
+    "expect": {
+      "decision": "follow_guidance",
+      "passed": true,
+      "practice_id": "typescript.react.bounded-list-projections"
+    }
+  },
+  {
+    "name": "scala safe effect plan does not trigger blocking effect records",
+    "tool": "check_plan",
+    "input": {
+      "language": "scala",
+      "framework": "cats-effect",
+      "files": ["services/UserService.scala"],
+      "intent": "add user lookup with database call and audit log",
+      "planned_approach": "Use IO, no Await.result, inject Resource-backed clients, use EventUnit for audit events, and return typed errors."
+    },
+    "expect": {
+      "decision": "follow_guidance",
+      "passed": true,
+      "practice_id": "scala.writer.eventunit-startup-injection"
+    }
+  },
+  {
+    "name": "finalize fails when plan gate was skipped",
+    "tool": "finalize_change",
+    "input": {
+      "language": "python",
+      "use_semgrep": false,
+      "diff": "diff --git a/src/api/users.py b/src/api/users.py\n+++ b/src/api/users.py\n@@ -1,1 +1,2 @@\n from fastapi import APIRouter\n+router = APIRouter()\n"
+    },
+    "expect": {
+      "decision": "needs_review",
+      "passed": false,
+      "passing_plan_found": false
+    }
+  },
+  {
+    "name": "finalize passes after a passing plan",
+    "tool": "sequence",
+    "steps": [
+      {
+          "tool": "check_plan",
+          "input": {
+          "language": "scala",
+          "framework": "cats-effect",
+          "files": ["server/src/com/writer/reporting/SessionInternalService.scala"],
+          "intent": "publish an audit log event",
+          "planned_approach": "Create an EventUnit in the application loader and inject it into the service."
+        }
+      },
+      {
+        "tool": "finalize_change",
+        "input": {
+          "language": "scala",
+          "use_semgrep": false,
+          "diff": "diff --git a/server/src/com/writer/reporting/SessionInternalService.scala b/server/src/com/writer/reporting/SessionInternalService.scala\n+++ b/server/src/com/writer/reporting/SessionInternalService.scala\n@@ -1,1 +1,2 @@\n final class SessionInternalService\n+def publishAuditLog(): Unit = ()\n"
+        }
+      }
+    ],
+    "expect": {
+      "decision": "allowed",
+      "passed": true,
+      "passing_plan_found": true
+    }
+  },
+  {
+    "name": "finalize rejects stale passing plan for another language",
+    "tool": "sequence",
+    "steps": [
+      {
+        "tool": "check_plan",
+        "input": {
+          "language": "scala",
+          "framework": "cats-effect",
+          "files": ["server/src/com/writer/reporting/SessionInternalService.scala"],
+          "intent": "publish an audit log event",
+          "planned_approach": "Create an EventUnit in the application loader and inject it into the service."
+        }
+      },
+      {
+        "tool": "finalize_change",
+        "input": {
+          "language": "python",
+          "use_semgrep": false,
+          "diff": "diff --git a/src/api/users.py b/src/api/users.py\n+++ b/src/api/users.py\n@@ -1,1 +1,2 @@\n from fastapi import APIRouter\n+router = APIRouter()\n"
+        }
+      }
+    ],
+    "expect": {
+      "decision": "needs_review",
+      "passed": false,
+      "passing_plan_found": false
+    }
+  }
+]

@@ -1,0 +1,28 @@
+id: scala.collections.prefer-immutable
+title: Prefer immutable Scala collections
+status: preferred
+enforcement: advisory
+summary: Use immutable collections for service logic and domain models.
+rationale: Immutable data keeps concurrent code predictable and reduces accidental mutation across call sites.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "**/generated/**"]
+applies_when:
+  intents: ["collection", "domain model", "state"]
+  keywords: ["mutable", "ListBuffer", "ArrayBuffer", "HashMap", "Map", "Seq", "List"]
+avoid:
+  - Mutable collections in domain state.
+  - Sharing mutable builders across async boundaries.
+use_instead:
+  - Immutable List, Vector, Map, and Set.
+  - Local builders that are converted before returning.
+good_examples:
+  - |
+    val activeUsers: Vector[User] = users.filter(_.active).toVector
+bad_examples:
+  - val activeUsers = scala.collection.mutable.ListBuffer.empty[User]
+owner: scala-platform
+last_reviewed: 2026-06-30

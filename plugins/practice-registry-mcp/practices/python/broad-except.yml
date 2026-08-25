@@ -1,0 +1,30 @@
+id: python.errors.no-broad-except-without-context
+title: Keep exception handlers specific
+status: discouraged
+enforcement: advisory
+summary: Avoid broad except blocks unless they add context and re-raise or return a defined error state.
+rationale: Broad exception handlers hide broken states and make retries, alerts, and user-facing errors harder to reason about.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**"]
+applies_when:
+  intents: ["error handling", "retry", "exception", "fallback"]
+  keywords: ["except Exception", "except:", "try:", "raise", "retry", "fallback"]
+avoid:
+  - except Exception blocks that swallow errors
+  - bare except blocks
+use_instead:
+  - Catch specific exception types.
+  - Log relevant context and re-raise when the caller must decide.
+good_examples:
+  - "except TimeoutError as error:\n    logger.warning(\"vendor_timeout\", extra={\"vendor\": vendor}, exc_info=error)\n    raise"
+bad_examples:
+  - "except Exception:\n    pass"
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\bexcept\\s+(Exception)?\\s*:"
+owner: backend-platform
+last_reviewed: 2026-06-30

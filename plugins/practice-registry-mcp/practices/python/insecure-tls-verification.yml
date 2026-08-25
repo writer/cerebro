@@ -1,0 +1,30 @@
+id: python.security.insecure-tls-verification
+title: Keep TLS certificate verification on
+status: banned
+enforcement: blocking
+summary: Do not disable TLS certificate verification in Python HTTP clients or SSL contexts.
+rationale: Turning off certificate checks lets network intermediaries impersonate services and read or change traffic.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["http client", "api client", "tls", "ssl", "certificate"]
+  keywords: ["verify=False", "ssl.CERT_NONE", "_create_unverified_context", "certificate"]
+avoid:
+  - requests.get(url, verify=False)
+  - ssl._create_unverified_context()
+use_instead:
+  - Keep verification enabled and configure the correct CA bundle.
+  - Fix the service certificate or test fixture certificate instead of disabling verification.
+good_examples:
+  - requests.get(url, timeout=10)
+bad_examples:
+  - requests.post(url, json=payload, verify=False)
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(verify\\s*=\\s*False|ssl\\._create_unverified_context\\s*\\(|cert_reqs\\s*=\\s*[\"']CERT_NONE[\"']|ssl\\.CERT_NONE)"
+owner: security-platform
+last_reviewed: 2026-07-01

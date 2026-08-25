@@ -1,0 +1,28 @@
+id: observability.structured-logs
+title: Log events with stable names and fields
+status: preferred
+enforcement: advisory
+summary: Use stable event names and structured fields for production logs.
+rationale: Stable fields let support, security, and on-call engineers search logs without parsing message text.
+scope:
+  languages: [python, scala, typescript, javascript, rust]
+  frameworks: []
+  paths:
+    include: ["services/**", "apps/**", "src/**", "packages/**"]
+    exclude: ["legacy/**"]
+applies_when:
+  intents: ["logging", "observability", "debugging", "incident"]
+  keywords: ["logger", "log", "info", "warn", "error", "debug"]
+avoid:
+  - Free-form production messages without event names.
+  - Logging sensitive values.
+use_instead:
+  - Stable event names.
+  - Fields for entity ids, job ids, request ids, and non-sensitive status values.
+good_examples:
+  - |
+    logger.info("invoice_export_finished", extra={"account_id": account_id, "rows": row_count})
+bad_examples:
+  - logger.info(f"done exporting account {account_id}")
+owner: observability
+last_reviewed: 2026-06-30

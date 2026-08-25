@@ -1,0 +1,29 @@
+id: scala.errors.typed-errors
+title: Return typed Scala errors at service boundaries
+status: preferred
+enforcement: advisory
+summary: Use Either, Validated, IO.raiseError with domain errors, or the local effect error convention at service boundaries.
+rationale: Typed errors make expected failure modes visible to callers and tests.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["services/**/*.scala", "packages/**/*.scala", "src/**/*.scala"]
+    exclude: ["legacy/**", "**/generated/**"]
+applies_when:
+  intents: ["typed error", "typed errors", "error handling", "validation", "api"]
+  keywords: ["typed error", "typed errors", "throw new", "Exception", "Either", "Validated", "raiseError", "Throwable"]
+avoid:
+  - Throwing generic exceptions for expected domain failures.
+use_instead:
+  - Domain error ADTs.
+  - The package effect type's established error channel.
+good_examples:
+  - "sealed trait CreateUserError\ncase object EmailAlreadyUsed extends CreateUserError"
+bad_examples:
+  - throw new RuntimeException("email already used")
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\bthrow\\s+new\\s+(RuntimeException|Exception)\\b"
+owner: scala-platform
+last_reviewed: 2026-06-30

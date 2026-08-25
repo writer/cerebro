@@ -1,0 +1,27 @@
+id: rust.testing.fuzz-parsers-and-invariants
+title: Exercise Rust parsers and invariant kernels with generated input
+status: preferred
+enforcement: advisory
+summary: Add property tests or fuzz targets for Rust parsers, path routers, binary formats, range logic, and state machines that consume variable input.
+rationale: Generated input reaches malformed encodings and boundary combinations that example tests rarely enumerate, including inputs that trigger panics.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "fuzz/**/*.rs", "tests/**/*.rs", "Cargo.toml", "**/Cargo.toml"]
+    exclude: ["target/**", "vendor/**"]
+applies_when:
+  intents: ["parser", "decoder", "path routing", "state machine", "range handling", "fuzz"]
+  keywords: ["cargo fuzz", "proptest", "arbitrary input", "never panics", "parser", "decoder", "corpus"]
+avoid:
+  - Testing an untrusted parser only with valid examples.
+  - Adding a fuzz target without a stated invariant or regression corpus.
+use_instead:
+  - Assert that arbitrary input returns a value or typed error without panicking.
+  - Keep minimized regression inputs for every fixed panic or invariant violation.
+good_examples:
+  - 'proptest!(|(bytes in proptest::collection::vec(any::<u8>(), 0..4096))| { let _ = parse(&bytes); });'
+bad_examples:
+  - Testing a binary parser with one valid fixture and no malformed input.
+owner: security-platform
+last_reviewed: 2026-07-16

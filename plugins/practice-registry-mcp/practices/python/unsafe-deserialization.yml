@@ -1,0 +1,32 @@
+id: python.security.unsafe-deserialization
+title: Avoid unsafe Python deserialization
+status: banned
+enforcement: blocking
+summary: Do not deserialize untrusted bytes with pickle, dill, marshal, or unsafe YAML loaders.
+rationale: Native Python deserializers can execute code or construct attacker-controlled objects before application validation runs.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["deserialize", "decode", "cache", "job payload", "message payload", "yaml"]
+  keywords: ["pickle", "dill", "marshal", "yaml.load", "unsafe_load", "full_load", "deserialize"]
+avoid:
+  - pickle.loads(payload)
+  - dill.load(file)
+  - yaml.unsafe_load(raw_config)
+use_instead:
+  - Parse JSON or typed Pydantic models from the boundary.
+  - Use yaml.safe_load for trusted configuration files that need YAML.
+  - Require owner review before adding native deserialization at a trusted storage boundary.
+good_examples:
+  - ConfigModel.model_validate_json(payload)
+bad_examples:
+  - pickle.loads(request.body)
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b((pickle|dill|marshal)\\.(load|loads)\\s*\\(|yaml\\.(unsafe_load|full_load)\\s*\\(|yaml\\.load\\s*\\([^\\n]*(Loader\\s*=\\s*yaml\\.(UnsafeLoader|FullLoader)|Loader\\s*=\\s*UnsafeLoader|Loader\\s*=\\s*FullLoader))"
+owner: security-platform
+last_reviewed: 2026-07-01

@@ -1,0 +1,27 @@
+id: rust.async.isolate-blocking-io
+title: Keep blocking work off Rust async workers
+status: preferred
+enforcement: advisory
+summary: Move blocking filesystem, process, compression, and synchronous client work behind spawn_blocking or a bounded blocking service.
+rationale: Blocking a Tokio worker delays unrelated requests, timers, cancellations, and health checks on that runtime thread.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "services/**/*.rs", "apps/**/*.rs"]
+    exclude: ["target/**", "**/tests/**", "tests/**", "benches/**"]
+applies_when:
+  intents: ["async io", "filesystem", "child process", "compression", "blocking client"]
+  keywords: ["spawn_blocking", "tokio::fs", "std::fs", "reqwest::blocking", "Command::output", "async fn"]
+avoid:
+  - Calling long-running std::fs, synchronous client, or CPU-heavy work directly inside an async request path.
+  - Starting unbounded blocking tasks from each request.
+use_instead:
+  - Use the runtime's async API when it exists.
+  - Run unavoidable blocking work with spawn_blocking and bound its concurrency and deadline.
+good_examples:
+  - 'let bytes = tokio::task::spawn_blocking(move || std::fs::read(path)).await??;'
+bad_examples:
+  - 'async fn load(path: &Path) -> Result<Vec<u8>> { Ok(std::fs::read(path)?) }'
+owner: backend-platform
+last_reviewed: 2026-07-16

@@ -1,0 +1,30 @@
+id: scala.effects.no-unsafe-run-sync-in-services
+title: Do not run effects inside Scala service code
+status: banned
+enforcement: blocking
+summary: Do not add unsafeRunSync or equivalent effect evaluation in Scala service code.
+rationale: Writer services expose UR, SR, DR, IO, or Resource values so the application edge owns execution, cancellation, and lifecycle.
+scope:
+  languages: [scala]
+  frameworks: [cats-effect]
+  paths:
+    include: ["server/src/**/*.scala", "src/**/*.scala", "apps/**/*.scala", "services/**/*.scala"]
+    exclude: ["legacy/**", "**/generated/**", "server/test/**", "**/*Spec.scala"]
+applies_when:
+  intents: ["effect", "cats effect", "resource", "application loader", "blocking", "unsafe"]
+  keywords: ["unsafeRunSync", "unsafeRun", "Reval"]
+avoid:
+  - .unsafeRunSync() in services, routes, repositories, and application wiring.
+  - Running effects to obtain constructor parameters.
+use_instead:
+  - Return the effect value and compose with map, flatMap, Resource, DR, or SR.
+  - Evaluate once at the framework or application entry point.
+good_examples:
+  - userRepo.fetch(id).flatMap(renderUser)
+bad_examples:
+  - val user = userRepo.fetch(id).unsafeRunSync()
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\.unsafeRunSync\\s*\\("
+owner: scala-platform
+last_reviewed: 2026-07-01

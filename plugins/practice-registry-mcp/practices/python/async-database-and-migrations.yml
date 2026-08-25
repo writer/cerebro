@@ -1,0 +1,35 @@
+id: python.writer.async-database-and-migrations
+title: Use async database access with checked migrations
+status: preferred
+enforcement: advisory
+summary: Use SQLAlchemy 2 async with asyncpg and Alembic, or raw asyncpg with Pydantic row parsing and Alembic migrations.
+rationale: Writer Python services need async database calls, typed row shapes, and migration checks that run in CI and local tests.
+scope:
+  languages: [python]
+  frameworks: [fastapi, sqlalchemy, asyncpg]
+  paths:
+    include: ["src/**/*.py", "services/**/*.py", "apps/**/*.py", "alembic/**/*.py", "tests/**/*.py"]
+    exclude: ["legacy/**", "notebooks/**"]
+applies_when:
+  intents: ["database", "repository", "migration", "SQLAlchemy", "asyncpg", "Alembic", "testcontainers"]
+  keywords: ["SQLAlchemy", "AsyncSession", "asyncpg", "Alembic", "Mapped", "selectinload", "testcontainers", "pytest-alembic"]
+avoid:
+  - Synchronous SQLAlchemy engines in async FastAPI services.
+  - SQLAlchemy async relationship access that relies on implicit lazy loading.
+  - Raw asyncpg rows passed into domain logic without Pydantic validation.
+  - Migrations that are not exercised by local tests or CI.
+use_instead:
+  - SQLAlchemy 2 Mapped[T] models, async_sessionmaker, and explicit eager loading.
+  - Raw asyncpg repositories that parse rows through Pydantic models before returning.
+  - Alembic migrations plus pytest-alembic or testcontainers-backed integration tests.
+good_examples:
+  - |
+    stmt = select(UserRow).options(selectinload(UserRow.posts)).where(UserRow.id == user_id)
+    result = await session.execute(stmt)
+bad_examples:
+  - |
+    engine = create_engine(database_url)
+    user = await repo.get_user(user_id)
+    posts = user.posts
+owner: backend-platform
+last_reviewed: 2026-07-01
