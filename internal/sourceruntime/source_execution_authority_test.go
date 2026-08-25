@@ -37,6 +37,62 @@ func TestPutTailscaleRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T)
 	}
 }
 
+func TestPutAnthropicRuntimeValidatesWithRustWithoutCallingGoCheck(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "anthropic"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &runtimePlanWorker{}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+		Id: "anthropic-user-runtime", SourceId: "anthropic", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "user", "auth_model": "api_key", "per_page": "100",
+			"api_key": sourceconfig.CredentialReferenceValue("anthropic", "api_key"),
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.checkCalls != 0 || worker.planCalls != 1 {
+		t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+	}
+	if worker.selection.SourceID != "anthropic" || worker.selection.FamilyID != "user" {
+		t.Fatalf("Rust selection = %#v", worker.selection)
+	}
+	if worker.publicConfig["family"] != "user" || worker.publicConfig["auth_model"] != "api_key" || worker.publicConfig["per_page"] != "100" || worker.publicConfig["api_key"] != "" {
+		t.Fatalf("Rust public config = %#v", worker.publicConfig)
+	}
+}
+
+func TestAnthropicRuntimeNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "anthropic"}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := &Service{sourceWorker: worker}
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "anthropic-user-runtime", SourceId: "anthropic", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "user", "auth_model": "api_key",
+			"api_key": sourceconfig.CredentialReferenceValue("anthropic", "api_key"),
+		},
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{
+		"family": "user", "auth_model": "api_key", "api_key": "host-only-secret",
+	})
+
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "anthropic" || worker.selection.FamilyID != "user" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+	}
+}
+
 func TestTailscaleRuntimeFailsClosedWithoutRustWorker(t *testing.T) {
 	legacy := &runtimeAuthorityProbe{sourceID: "tailscale"}
 	registry, err := sourcecdk.NewRegistry(legacy)

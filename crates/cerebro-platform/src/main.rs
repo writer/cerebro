@@ -14,6 +14,7 @@ mod slack_authority;
 mod slack_mrkdwn;
 mod threat_insight_projection;
 mod trusted_endpoint_projection;
+mod vendor_register;
 
 use std::{
     collections::{BTreeMap, BTreeSet},

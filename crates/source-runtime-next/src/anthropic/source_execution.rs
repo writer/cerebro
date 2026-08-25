@@ -20,6 +20,7 @@ use crate::source_execution::{
 #[path = "source_execution/catalog.rs"]
 mod catalog;
 
+pub(crate) use catalog::ANTHROPIC_SOURCE_EXECUTION_ADAPTERS;
 use catalog::{AnthropicSourceExecutionAdapter, map_error, optional, timestamp, validated_kernel};
 
 impl SourceExecutionAdapter for AnthropicSourceExecutionAdapter {

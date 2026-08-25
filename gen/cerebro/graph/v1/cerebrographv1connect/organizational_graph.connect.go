@@ -79,6 +79,9 @@ const (
 	// OrganizationalGraphServiceGetSourceSummaryProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's GetSourceSummary RPC.
 	OrganizationalGraphServiceGetSourceSummaryProcedure = "/cerebro.graph.v1.OrganizationalGraphService/GetSourceSummary"
+	// OrganizationalGraphServiceListVendorRegisterProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's ListVendorRegister RPC.
+	OrganizationalGraphServiceListVendorRegisterProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListVendorRegister"
 )
 
 // OrganizationalGraphServiceClient is a client for the cerebro.graph.v1.OrganizationalGraphService
@@ -115,6 +118,8 @@ type OrganizationalGraphServiceClient interface {
 	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
+	// ListVendorRegister returns the product-ready vendor register at one graph revision.
+	ListVendorRegister(context.Context, *connect.Request[v1.ListVendorRegisterRequest]) (*connect.Response[v1.ListVendorRegisterResponse], error)
 }
 
 // NewOrganizationalGraphServiceClient constructs a client for the
@@ -219,6 +224,12 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("GetSourceSummary")),
 			connect.WithClientOptions(opts...),
 		),
+		listVendorRegister: connect.NewClient[v1.ListVendorRegisterRequest, v1.ListVendorRegisterResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceListVendorRegisterProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListVendorRegister")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -239,6 +250,7 @@ type organizationalGraphServiceClient struct {
 	listCloudAttackPaths    *connect.Client[v1.ListCloudAttackPathsRequest, v1.ListCloudAttackPathsResponse]
 	listEntityRelations     *connect.Client[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse]
 	getSourceSummary        *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
+	listVendorRegister      *connect.Client[v1.ListVendorRegisterRequest, v1.ListVendorRegisterResponse]
 }
 
 // Search calls cerebro.graph.v1.OrganizationalGraphService.Search.
@@ -317,6 +329,11 @@ func (c *organizationalGraphServiceClient) GetSourceSummary(ctx context.Context,
 	return c.getSourceSummary.CallUnary(ctx, req)
 }
 
+// ListVendorRegister calls cerebro.graph.v1.OrganizationalGraphService.ListVendorRegister.
+func (c *organizationalGraphServiceClient) ListVendorRegister(ctx context.Context, req *connect.Request[v1.ListVendorRegisterRequest]) (*connect.Response[v1.ListVendorRegisterResponse], error) {
+	return c.listVendorRegister.CallUnary(ctx, req)
+}
+
 // OrganizationalGraphServiceHandler is an implementation of the
 // cerebro.graph.v1.OrganizationalGraphService service.
 type OrganizationalGraphServiceHandler interface {
@@ -351,6 +368,8 @@ type OrganizationalGraphServiceHandler interface {
 	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
+	// ListVendorRegister returns the product-ready vendor register at one graph revision.
+	ListVendorRegister(context.Context, *connect.Request[v1.ListVendorRegisterRequest]) (*connect.Response[v1.ListVendorRegisterResponse], error)
 }
 
 // NewOrganizationalGraphServiceHandler builds an HTTP handler from the service implementation. It
@@ -450,6 +469,12 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("GetSourceSummary")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceListVendorRegisterHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceListVendorRegisterProcedure,
+		svc.ListVendorRegister,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListVendorRegister")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.graph.v1.OrganizationalGraphService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OrganizationalGraphServiceSearchProcedure:
@@ -482,6 +507,8 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceListEntityRelationsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceGetSourceSummaryProcedure:
 			organizationalGraphServiceGetSourceSummaryHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceListVendorRegisterProcedure:
+			organizationalGraphServiceListVendorRegisterHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -549,4 +576,8 @@ func (UnimplementedOrganizationalGraphServiceHandler) ListEntityRelations(contex
 
 func (UnimplementedOrganizationalGraphServiceHandler) GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) ListVendorRegister(context.Context, *connect.Request[v1.ListVendorRegisterRequest]) (*connect.Response[v1.ListVendorRegisterResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListVendorRegister is not implemented"))
 }
