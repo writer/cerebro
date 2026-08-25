@@ -71,6 +71,46 @@ func newAppForDeviceTest(t *testing.T) *App {
 	return app
 }
 
+func TestDeviceRoutesRemainRegisteredWhenDeviceAuthIsDisabled(t *testing.T) {
+	app := &App{}
+	mux := http.NewServeMux()
+	app.registerDeviceRoutes(mux)
+
+	tests := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/platform/devices/enroll"},
+		{method: http.MethodPost, path: "/platform/devices/token"},
+		{method: http.MethodPost, path: "/platform/devices/bootstrap-tokens"},
+		{method: http.MethodPost, path: "/platform/devices/device-a/revoke"},
+		{method: http.MethodPost, path: "/platform/telemetry/ingest"},
+		{method: http.MethodGet, path: "/.well-known/device-jwks.json"},
+	}
+	for _, test := range tests {
+		t.Run(test.method+" "+test.path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
+			if response.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
+			}
+			var payload map[string]string
+			if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if payload["error"] != "device_auth_disabled" {
+				t.Fatalf("error = %q, want device_auth_disabled", payload["error"])
+			}
+
+			options := httptest.NewRecorder()
+			mux.ServeHTTP(options, httptest.NewRequest(http.MethodOptions, test.path, nil))
+			if options.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("OPTIONS status = %d, want %d", options.Code, http.StatusMethodNotAllowed)
+			}
+		})
+	}
+}
+
 // deviceAuthMemStore wraps deviceauth.MemStore and implements ports.StateStore
 // (Ping) so it can be passed via Dependencies.
 type deviceAuthMemStore struct {

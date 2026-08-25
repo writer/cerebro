@@ -407,15 +407,16 @@ func (app *App) registerMCPRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/mcp", routeSurfacePlatformHTTP, app.handleMCP)
 }
 func (app *App) registerDeviceRoutes(mux *http.ServeMux) {
-	if app.deviceHandler == nil {
-		return
+	handler := app.deviceHandler
+	if handler == nil {
+		handler = &deviceAuthHTTPHandler{}
 	}
-	registerHTTPRoute(mux, "POST /platform/devices/enroll", routeSurfacePlatformHTTP, app.deviceHandler.handleEnroll)
-	registerHTTPRoute(mux, "POST /platform/devices/token", routeSurfacePlatformHTTP, app.deviceHandler.handleToken)
-	registerHTTPRoute(mux, "POST /platform/devices/bootstrap-tokens", routeSurfacePlatformHTTP, app.deviceHandler.handleIssueBootstrapToken)
-	registerHTTPRoute(mux, "POST /platform/devices/{deviceID}/revoke", routeSurfacePlatformHTTP, app.deviceHandler.handleRevoke)
-	registerHTTPRoute(mux, "POST /platform/telemetry/ingest", routeSurfacePlatformHTTP, app.deviceHandler.handleIngestTelemetry)
-	registerHTTPRoute(mux, "GET /.well-known/device-jwks.json", routeSurfacePublicHTTP, app.deviceHandler.handleJWKS)
+	registerHTTPRoute(mux, "POST /platform/devices/enroll", routeSurfacePlatformHTTP, handler.handleEnroll)
+	registerHTTPRoute(mux, "POST /platform/devices/token", routeSurfacePlatformHTTP, handler.handleToken)
+	registerHTTPRoute(mux, "POST /platform/devices/bootstrap-tokens", routeSurfacePlatformHTTP, handler.handleIssueBootstrapToken)
+	registerHTTPRoute(mux, "POST /platform/devices/{deviceID}/revoke", routeSurfacePlatformHTTP, handler.handleRevoke)
+	registerHTTPRoute(mux, "POST /platform/telemetry/ingest", routeSurfacePlatformHTTP, handler.handleIngestTelemetry)
+	registerHTTPRoute(mux, "GET /.well-known/device-jwks.json", routeSurfacePublicHTTP, handler.handleJWKS)
 }
 func registerHTTPRoute(mux *http.ServeMux, pattern string, _ bootstrapRouteSurface, handler http.HandlerFunc) {
 	mux.HandleFunc(pattern, handler)
