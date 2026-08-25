@@ -1169,6 +1169,14 @@ impl RelationKind {
     }
 }
 
+fn entity_application_workspace_id(entity: &Entity) -> &str {
+    entity
+        .properties()
+        .get("application_workspace_id")
+        .map(String::as_str)
+        .unwrap_or_default()
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 /// An evidence-backed, directed relationship between two sealed entities.
 pub struct RelationshipAssertion {
@@ -1179,6 +1187,8 @@ pub struct RelationshipAssertion {
     relation: RelationKind,
     to: EntityId,
     to_kind: EntityKind,
+    #[serde(skip_serializing)]
+    application_workspace_id: String,
     provenance: AssertionProvenance,
     observed_at_unix_ms: i64,
 }
@@ -1205,7 +1215,12 @@ impl RelationshipAssertion {
         if from.tenant_id != to.tenant_id || from.tenant_id != *provenance.tenant_id() {
             return Err(ModelError::TenantMismatch);
         }
-        if !relation.accepts(&from.kind, &to.kind) || observed_at_unix_ms <= 0 {
+        let from_workspace = entity_application_workspace_id(from);
+        let to_workspace = entity_application_workspace_id(to);
+        if !relation.accepts(&from.kind, &to.kind)
+            || observed_at_unix_ms <= 0
+            || from_workspace != to_workspace
+        {
             return Err(ModelError::InvalidRelationship);
         }
         let id = AssertionId::parse(deterministic_id(
@@ -1226,6 +1241,7 @@ impl RelationshipAssertion {
             relation,
             to: to.id.clone(),
             to_kind: to.kind.clone(),
+            application_workspace_id: from_workspace.to_owned(),
             provenance,
             observed_at_unix_ms,
         })
@@ -1249,6 +1265,11 @@ impl RelationshipAssertion {
     /// Returns the destination endpoint entity ID.
     pub fn to(&self) -> &EntityId {
         &self.to
+    }
+
+    /// Returns the trusted application workspace shared by both endpoints.
+    pub fn application_workspace_id(&self) -> &str {
+        &self.application_workspace_id
     }
 
     /// Returns the admitted relationship kind.
@@ -1981,6 +2002,52 @@ mod tests {
                 &repository,
                 RelationKind::MemberOf,
                 &group,
+                provenance(receipt.receipt()),
+                10,
+            ),
+            Err(ModelError::InvalidRelationship)
+        );
+    }
+
+    #[test]
+    fn relationship_workspace_scope_must_match_both_endpoints() {
+        let receipt = receipt();
+        let team = Entity::canonical(
+            TenantId::parse("tenant-a").unwrap(),
+            EntityId::parse("group-workspace").unwrap(),
+            EntityKind::Team,
+            "team",
+        )
+        .unwrap()
+        .with_property("application_workspace_id", "workspace-a")
+        .unwrap();
+        let repository = Entity::canonical(
+            TenantId::parse("tenant-a").unwrap(),
+            EntityId::parse("repository-workspace").unwrap(),
+            EntityKind::Repository,
+            "repository",
+        )
+        .unwrap()
+        .with_property("application_workspace_id", "workspace-a")
+        .unwrap();
+        let assertion = RelationshipAssertion::new(
+            &team,
+            RelationKind::Owns,
+            &repository,
+            provenance(receipt.receipt()),
+            10,
+        )
+        .unwrap();
+        assert_eq!(assertion.application_workspace_id(), "workspace-a");
+
+        let other_workspace = repository
+            .with_property("application_workspace_id", "workspace-b")
+            .unwrap();
+        assert_eq!(
+            RelationshipAssertion::new(
+                &team,
+                RelationKind::Owns,
+                &other_workspace,
                 provenance(receipt.receipt()),
                 10,
             ),

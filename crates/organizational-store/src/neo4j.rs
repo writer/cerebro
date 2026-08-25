@@ -113,6 +113,7 @@ MERGE (source)-[assertion:ORGANIZATIONAL_RELATION {
 }]->(target)
 SET assertion.relation = row.relation,
     assertion.source_runtime_id = row.source_runtime_id,
+    assertion.application_workspace_id = row.application_workspace_id,
     assertion.state = row.state,
     assertion.provenance_json = row.provenance_json,
     assertion.observed_at_unix_ms = row.observed_at_unix_ms,
@@ -226,19 +227,20 @@ RETURN root_key,
        coalesce(edge.assertion_id, '') AS assertion_id,
        coalesce(edge.relation, '') AS relation,
        coalesce(edge.source_runtime_id, '') AS source_runtime_id,
+       coalesce(edge.application_workspace_id, '') AS application_workspace_id,
        coalesce(revision.graph_revision, 0) AS graph_revision
 ORDER BY root_key, assertion_id
 "#;
 
 fn expand_statement(depth: usize) -> String {
     format!(
-        "MATCH path=(root:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $root_id}})-[:ORGANIZATIONAL_RELATION*1..{depth}]-(node:OrganizationalEntity) WITH relationships(path) AS relations UNWIND relations AS edge WITH DISTINCT edge MATCH (source)-[edge]->(target) WHERE source.tenant_id = $tenant_id AND target.tenant_id = $tenant_id RETURN source.entity_id AS from_id, source.entity_kind AS from_kind, source.authority_json AS from_authority, source.label AS from_label, source.properties_json AS from_properties, target.entity_id AS to_id, target.entity_kind AS to_kind, target.authority_json AS to_authority, target.label AS to_label, target.properties_json AS to_properties, edge.assertion_id AS assertion_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id ORDER BY assertion_id LIMIT $row_limit"
+        "MATCH path=(root:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $root_id}})-[:ORGANIZATIONAL_RELATION*1..{depth}]-(node:OrganizationalEntity) WITH relationships(path) AS relations UNWIND relations AS edge WITH DISTINCT edge MATCH (source)-[edge]->(target) WHERE source.tenant_id = $tenant_id AND target.tenant_id = $tenant_id RETURN source.entity_id AS from_id, source.entity_kind AS from_kind, source.authority_json AS from_authority, source.label AS from_label, source.properties_json AS from_properties, target.entity_id AS to_id, target.entity_kind AS to_kind, target.authority_json AS to_authority, target.label AS to_label, target.properties_json AS to_properties, edge.assertion_id AS assertion_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id, coalesce(edge.application_workspace_id, '') AS application_workspace_id ORDER BY assertion_id LIMIT $row_limit"
     )
 }
 
 fn paths_statement(max_depth: usize) -> String {
     format!(
-        "MATCH path=(source:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $from_id}})-[:ORGANIZATIONAL_RELATION*1..{max_depth}]->(target:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $to_id}}) WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(node IN nodes(path) WHERE single(other IN nodes(path) WHERE other = node)) RETURN [node IN nodes(path) | node.entity_id] AS entity_ids, [node IN nodes(path) | node.entity_kind] AS entity_kinds, [node IN nodes(path) | node.authority_json] AS authorities, [node IN nodes(path) | node.label] AS labels, [node IN nodes(path) | node.properties_json] AS properties, [edge IN relationships(path) | edge.assertion_id] AS assertion_ids, [edge IN relationships(path) | edge.relation] AS relations, [edge IN relationships(path) | edge.source_runtime_id] AS runtime_ids ORDER BY length(path), assertion_ids LIMIT $limit"
+        "MATCH path=(source:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $from_id}})-[:ORGANIZATIONAL_RELATION*1..{max_depth}]->(target:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $to_id}}) WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(node IN nodes(path) WHERE single(other IN nodes(path) WHERE other = node)) RETURN [node IN nodes(path) | node.entity_id] AS entity_ids, [node IN nodes(path) | node.entity_kind] AS entity_kinds, [node IN nodes(path) | node.authority_json] AS authorities, [node IN nodes(path) | node.label] AS labels, [node IN nodes(path) | node.properties_json] AS properties, [edge IN relationships(path) | edge.assertion_id] AS assertion_ids, [edge IN relationships(path) | edge.relation] AS relations, [edge IN relationships(path) | edge.source_runtime_id] AS runtime_ids, [edge IN relationships(path) | coalesce(edge.application_workspace_id, '')] AS application_workspace_ids ORDER BY length(path), assertion_ids LIMIT $limit"
     )
 }
 
@@ -314,6 +316,7 @@ fn fact_query_statement(fact_query: &FactQuery) -> String {
             format!("edge_{index}.relation AS edge_{index}_relation"),
             format!("node_{to}.entity_id AS edge_{index}_to_id"),
             format!("edge_{index}.source_runtime_id AS edge_{index}_source_runtime_id"),
+            format!("coalesce(edge_{index}.application_workspace_id, '') AS edge_{index}_application_workspace_id"),
         ]);
         order.push(format!("edge_{index}.assertion_id"));
     }
@@ -2974,6 +2977,7 @@ impl AgentGraph for Neo4jProjector {
                 to: EntityId::parse(row_string(&row, "to_id")?)
                     .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
                 source_runtime_id: row_string(&row, "source_runtime_id")?,
+                application_workspace_id: row_string(&row, "application_workspace_id")?,
                 identity_binding: row_string(&row, "relation")? == "represents",
             });
         }
@@ -3062,6 +3066,9 @@ impl AgentGraph for Neo4jProjector {
             let assertion_ids: Vec<String> = row.get("assertion_ids").map_err(context_decode)?;
             let relations: Vec<String> = row.get("relations").map_err(context_decode)?;
             let runtime_ids: Vec<String> = row.get("runtime_ids").map_err(context_decode)?;
+            let application_workspace_ids: Vec<String> = row
+                .get("application_workspace_ids")
+                .map_err(context_decode)?;
             if !same_len(&[
                 entity_ids.len(),
                 entity_kinds.len(),
@@ -3069,7 +3076,12 @@ impl AgentGraph for Neo4jProjector {
                 labels.len(),
                 properties.len(),
             ]) || entity_ids.len() != assertion_ids.len().saturating_add(1)
-                || !same_len(&[assertion_ids.len(), relations.len(), runtime_ids.len()])
+                || !same_len(&[
+                    assertion_ids.len(),
+                    relations.len(),
+                    runtime_ids.len(),
+                    application_workspace_ids.len(),
+                ])
             {
                 return Err(ContextError::BackendUnavailable(
                     "Neo4j path columns have inconsistent lengths".to_owned(),
@@ -3097,6 +3109,7 @@ impl AgentGraph for Neo4jProjector {
                     relation: relations[index].clone(),
                     to: entities[index + 1].entity_id.clone(),
                     source_runtime_id: runtime_ids[index].clone(),
+                    application_workspace_id: application_workspace_ids[index].clone(),
                     identity_binding: relations[index] == "represents",
                 });
             }
@@ -3136,7 +3149,7 @@ impl AgentGraph for Neo4jProjector {
         let mut stream = self
             .graph
             .execute(
-                query("MATCH (source:OrganizationalEntity)-[edge:ORGANIZATIONAL_RELATION {tenant_id: $tenant_id, assertion_id: $assertion_id}]->(target:OrganizationalEntity) RETURN source.entity_id AS from_id, target.entity_id AS to_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id")
+                query("MATCH (source:OrganizationalEntity)-[edge:ORGANIZATIONAL_RELATION {tenant_id: $tenant_id, assertion_id: $assertion_id}]->(target:OrganizationalEntity) RETURN source.entity_id AS from_id, target.entity_id AS to_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id, coalesce(edge.application_workspace_id, '') AS application_workspace_id")
                     .param("tenant_id", tenant_id.as_str())
                     .param("assertion_id", assertion_id.as_str()),
             )
@@ -3156,6 +3169,7 @@ impl AgentGraph for Neo4jProjector {
             to: EntityId::parse(row_string(&row, "to_id")?)
                 .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
             source_runtime_id: row_string(&row, "source_runtime_id")?,
+            application_workspace_id: row_string(&row, "application_workspace_id")?,
             identity_binding: relation == "represents",
         })
     }
@@ -3234,6 +3248,10 @@ impl AgentGraph for Neo4jProjector {
                         source_runtime_id: row_string(
                             &row,
                             &format!("edge_{index}_source_runtime_id"),
+                        )?,
+                        application_workspace_id: row_string(
+                            &row,
+                            &format!("edge_{index}_application_workspace_id"),
                         )?,
                         identity_binding: relation == "represents",
                     },
@@ -3319,6 +3337,7 @@ impl Neo4jProjector {
                 relation: relation.clone(),
                 to: to.entity_id.clone(),
                 source_runtime_id: row_string(&row, "source_runtime_id")?,
+                application_workspace_id: row_string(&row, "application_workspace_id")?,
                 identity_binding: relation == "represents",
             };
             accumulator.entities.insert(from.entity_id.clone(), from);
@@ -4657,6 +4676,10 @@ fn legacy_context_edge(
         relation,
         to: legacy_entity_id(tenant_id, &to),
         source_runtime_id,
+        application_workspace_id: properties
+            .get("application_workspace_id")
+            .cloned()
+            .unwrap_or_default(),
         identity_binding,
     })
 }
@@ -4815,6 +4838,10 @@ fn assertion_row(assertion: &ProjectionAssertion) -> BoltMap {
         (
             "source_runtime_id",
             assertion.source_runtime_id.clone().into(),
+        ),
+        (
+            "application_workspace_id",
+            assertion.application_workspace_id.clone().into(),
         ),
         ("state", assertion.state.clone().into()),
         ("provenance_json", assertion.provenance_json.clone().into()),
@@ -5156,6 +5183,8 @@ mod tests {
         assert!(validate_catalog_request(&tenant, &filter, 100, "").is_ok());
         filter.application_workspace_id = " workspace-a".to_owned();
         assert!(validate_catalog_request(&tenant, &filter, 100, "").is_err());
+        filter.application_workspace_id = "w".repeat(128);
+        assert!(validate_catalog_request(&tenant, &filter, 100, "").is_ok());
         filter.application_workspace_id = "w".repeat(129);
         assert!(validate_catalog_request(&tenant, &filter, 100, "").is_err());
         filter.application_workspace_id.clear();

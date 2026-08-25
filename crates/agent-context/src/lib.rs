@@ -96,6 +96,9 @@ pub struct ContextEdge {
     pub to: EntityId,
     /// Collector runtime whose evidence supports the assertion.
     pub source_runtime_id: String,
+    /// Trusted Cerebro application workspace shared by the edge endpoints.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub application_workspace_id: String,
     /// Whether this edge projects an identity-binding assertion.
     pub identity_binding: bool,
 }
@@ -1374,6 +1377,7 @@ fn context_edge(assertion: &GraphAssertion) -> ContextEdge {
             relation: value.relation().as_str().to_owned(),
             to: value.to().clone(),
             source_runtime_id: value.provenance().source_runtime_id().to_string(),
+            application_workspace_id: value.application_workspace_id().to_owned(),
             identity_binding: false,
         },
         GraphAssertion::IdentityBinding(value) => ContextEdge {
@@ -1382,6 +1386,7 @@ fn context_edge(assertion: &GraphAssertion) -> ContextEdge {
             relation: "represents".to_owned(),
             to: value.canonical_identity().clone(),
             source_runtime_id: value.provenance().source_runtime_id().to_string(),
+            application_workspace_id: String::new(),
             identity_binding: true,
         },
     }

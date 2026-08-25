@@ -84,6 +84,11 @@ func TestGRCQueryCacheIsolatesApplicationWorkspaceHeader(t *testing.T) {
 	if calls["workspace-a"] != 1 || calls["workspace-b"] != 1 || firstA.Body.String() == firstB.Body.String() {
 		t.Fatalf("workspace cache isolation = calls:%#v A:%q B:%q", calls, firstA.Body.String(), firstB.Body.String())
 	}
+	for _, response := range []*httptest.ResponseRecorder{firstA, secondA, firstB, secondB} {
+		if !strings.Contains(response.Header().Get("Vary"), applicationWorkspaceHeader) {
+			t.Fatalf("Vary = %q, want %q", response.Header().Get("Vary"), applicationWorkspaceHeader)
+		}
+	}
 }
 
 func TestGRCCacheKeyNormalizesWorkspaceSelectorAndBindsGrants(t *testing.T) {

@@ -2,6 +2,7 @@ package applicationworkspace
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/config"
@@ -30,6 +31,15 @@ func TestSelectValuesRejectsRepeatedSelectors(t *testing.T) {
 				t.Fatal("SelectValues() error = nil, want repeated-selector rejection")
 			}
 		})
+	}
+}
+
+func TestValidIDUsesShared128ByteContract(t *testing.T) {
+	if !ValidID(strings.Repeat("w", 128)) {
+		t.Fatal("ValidID(128 bytes) = false")
+	}
+	if ValidID(strings.Repeat("w", 129)) {
+		t.Fatal("ValidID(129 bytes) = true")
 	}
 }
 

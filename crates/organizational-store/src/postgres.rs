@@ -667,6 +667,8 @@ pub(crate) struct ProjectionAssertion {
     pub to_entity_id: String,
     pub relation: String,
     pub source_runtime_id: String,
+    #[serde(default)]
+    pub application_workspace_id: String,
     pub state: String,
     pub provenance_json: String,
     pub observed_at_unix_ms: i64,
@@ -2999,12 +3001,14 @@ pub(crate) fn projection_commit(
         .iter()
         .map(|assertion| {
             let (from, to, relation) = assertion_endpoints(assertion);
-            let (state, observed_at_unix_ms) = match assertion {
-                GraphAssertion::Relationship(value) => {
-                    ("confirmed".to_owned(), value.observed_at_unix_ms())
-                }
+            let (state, observed_at_unix_ms, application_workspace_id) = match assertion {
+                GraphAssertion::Relationship(value) => (
+                    "confirmed".to_owned(),
+                    value.observed_at_unix_ms(),
+                    value.application_workspace_id(),
+                ),
                 GraphAssertion::IdentityBinding(value) => {
-                    (enum_name(&value.state())?, value.observed_at_unix_ms())
+                    (enum_name(&value.state())?, value.observed_at_unix_ms(), "")
                 }
             };
             Ok(ProjectionAssertion {
@@ -3017,6 +3021,7 @@ pub(crate) fn projection_commit(
                     .source_runtime_id()
                     .as_str()
                     .to_owned(),
+                application_workspace_id: application_workspace_id.to_owned(),
                 state,
                 provenance_json: serde_json::to_string(assertion.provenance())?,
                 observed_at_unix_ms,
