@@ -294,7 +294,7 @@ fn parse_date(value: &str) -> Option<Date> {
     if let Ok(timestamp) = OffsetDateTime::parse(value, &Rfc3339) {
         return Some(timestamp.date());
     }
-    let format = time::format_description::parse("[year]-[month]-[day]").ok()?;
+    let format = time::format_description::parse_borrowed::<2>("[year]-[month]-[day]").ok()?;
     Date::parse(value.get(..10).unwrap_or(value), &format).ok()
 }
 
