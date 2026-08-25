@@ -210,6 +210,27 @@ func BenchmarkRuntimeRun(b *testing.B) {
 	}
 }
 
+func TestRuntimeWarmPreparesRun(t *testing.T) {
+	runtime := New(testRuntimeConfig())
+	ctx := context.Background()
+	if err := runtime.Warm(ctx); err != nil {
+		t.Fatalf("Warm() error = %v", err)
+	}
+	if runtime.compiled == nil {
+		t.Fatal("Warm() compiled module = nil")
+	}
+	called := false
+	if err := runtime.Run(ctx, func(context.Context, api.Module) error {
+		called = true
+		return nil
+	}); err != nil {
+		t.Fatalf("Run() after Warm() error = %v", err)
+	}
+	if !called {
+		t.Fatal("Run() after Warm() did not invoke callback")
+	}
+}
+
 func testRuntimeConfig() Config {
 	return Config{
 		Name:             "test module",

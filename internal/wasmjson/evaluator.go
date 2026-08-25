@@ -71,6 +71,17 @@ func New(config Config) *Evaluator {
 	return evaluator
 }
 
+// Warm compiles and validates the embedded module without evaluating a payload.
+func (e *Evaluator) Warm(ctx context.Context) error {
+	if e == nil {
+		return wasmhost.Diagnose(wasmhost.DiagnosticInvalidInput, fmt.Errorf("%w: evaluator is required", ErrInvalidConfig))
+	}
+	if e.configErr != nil {
+		return e.configErr
+	}
+	return e.runtime.Warm(ctx)
+}
+
 // Evaluate passes one bounded JSON payload through the embedded module.
 func (e *Evaluator) Evaluate(ctx context.Context, payload []byte) ([]byte, error) {
 	if e.configErr != nil {
