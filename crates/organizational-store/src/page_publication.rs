@@ -327,6 +327,39 @@ WHERE tenant_id = $1
         transaction.commit().await?;
         Ok(outboxes)
     }
+
+    /// Lists pages that still require append-log publication in stable
+    /// oldest-first order. Pages awaiting projection or progress commit are
+    /// left to their owning recovery stages so they cannot starve publishers.
+    pub async fn publishable_page_publications(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+    ) -> Result<Vec<PagePublicationOutbox>, StoreError> {
+        if limit == 0 || limit > 500 {
+            return Err(StoreError::Conflict(
+                "page publication recovery limit is invalid".to_owned(),
+            ));
+        }
+        let limit = i64::try_from(limit)
+            .map_err(|_| StoreError::Conflict("page recovery limit overflow".to_owned()))?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let query = format!(
+            "SELECT {PAGE_COLUMNS} FROM source_runtime_page_publications WHERE tenant_id = $1 AND state IN ('prepared', 'publishing') ORDER BY updated_at, logical_page_id LIMIT $2"
+        );
+        let rows = transaction
+            .query(&query, &[&tenant_id.as_str(), &limit])
+            .await?;
+        let mut outboxes = Vec::with_capacity(rows.len());
+        for row in rows {
+            let page = decode_page_publication(row)?;
+            outboxes.push(load_outbox(&transaction, page).await?);
+        }
+        transaction.commit().await?;
+        Ok(outboxes)
+    }
 }
 
 async fn load_outbox(

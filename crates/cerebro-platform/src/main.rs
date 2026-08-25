@@ -12,6 +12,7 @@ mod slack_agent_mcp;
 mod slack_agent_session;
 mod slack_authority;
 mod slack_mrkdwn;
+mod source_page_publisher;
 mod threat_insight_projection;
 mod trusted_endpoint_projection;
 
@@ -1568,6 +1569,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("rebuild-lifecycle-projection") => rebuild_lifecycle_projection().await,
         Some("audit-legacy-root-coverage") => audit_legacy_root_coverage().await,
         Some("sync-source") => sync_source().await,
+        Some("publish-source-pages") => source_page_publisher::run().await,
         Some("catalog-summary") => catalog_summary(),
         Some("list-catalog-families") => list_catalog_families(),
         Some("compare-projection") => parity_command::compare_projection().await,
@@ -1577,7 +1579,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("evaluate-all-families") => cutover_command::evaluate_all_families().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|eval-slack-agent|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|audit-legacy-root-coverage|sync-source|catalog-summary|list-catalog-families|compare-projection|evaluate-family|promote-family|show-authority|evaluate-all-families>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|eval-slack-agent|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|audit-legacy-root-coverage|sync-source|publish-source-pages|catalog-summary|list-catalog-families|compare-projection|evaluate-family|promote-family|show-authority|evaluate-all-families>"
             );
             Ok(())
         }
