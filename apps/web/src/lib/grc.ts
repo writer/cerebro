@@ -1689,6 +1689,9 @@ export type GRCVendorDiscoveriesResponse = {
   discoveries: GRCVendorDiscovery[];
   decisions?: GRCVendorDiscoveryDecision[];
   decision_events?: GRCVendorDiscoveryDecisionEvent[];
+  graph_revision?: number;
+  data_authority?: "rust_graph" | string;
+  decision_authority?: "state_store" | string;
   generated_at: string;
 };
 

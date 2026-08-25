@@ -573,6 +573,86 @@ func vendorRegisterSummary(summary *cerebrographv1.VendorRegisterSummary) ports.
 	return ports.VendorRegisterSummary{TotalVendors: summary.GetTotalVendors(), ActiveVendors: summary.GetActiveVendors(), HighRiskVendors: summary.GetHighRiskVendors(), OwnerMissingVendors: summary.GetOwnerMissingVendors(), ReviewOverdueVendors: summary.GetReviewOverdueVendors(), ReviewDueSoonVendors: summary.GetReviewDueSoonVendors(), ReviewNotScheduled: summary.GetReviewNotScheduled(), RiskQueueVendors: summary.GetRiskQueueVendors(), StaleEvidenceVendors: summary.GetStaleEvidenceVendors(), OpenFindings: summary.GetOpenFindings(), CriticalFindings: summary.GetCriticalFindings(), HighFindings: summary.GetHighFindings(), EvidenceItems: summary.GetEvidenceItems()}
 }
 
+func (s *QueryStore) ListVendorDiscoveries(ctx context.Context, filter ports.VendorDiscoveryFilter) (*ports.VendorDiscoveryPage, error) {
+	tenantID := strings.TrimSpace(filter.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("vendor discovery tenant_id is required")
+	}
+	if filter.Limit < 1 || filter.Limit > 500 {
+		return nil, errors.New("vendor discovery limit must be between 1 and 500")
+	}
+	runtimeIDs := make([]string, 0, len(filter.RuntimeIDs))
+	for _, runtimeID := range filter.RuntimeIDs {
+		if runtimeID = strings.TrimSpace(runtimeID); runtimeID != "" {
+			runtimeIDs = append(runtimeIDs, runtimeID)
+		}
+	}
+	request := connect.NewRequest(&cerebrographv1.ListVendorDiscoveriesRequest{
+		Filter: &cerebrographv1.VendorDiscoveryFilter{
+			TenantId:     tenantID,
+			SourceId:     strings.TrimSpace(filter.SourceID),
+			RuntimeIds:   runtimeIDs,
+			Query:        strings.TrimSpace(filter.Query),
+			SourceStatus: strings.TrimSpace(filter.SourceStatus),
+		},
+		Limit: uint32(filter.Limit), // #nosec G115 -- validated above.
+	})
+	if err := s.auth.authorizeHeader(request.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListVendorDiscoveries(ctx, request)
+	if err != nil {
+		return nil, graphRPCError("list vendor discoveries", err)
+	}
+	message := response.Msg
+	if message.GetTenantId() != tenantID || message.GetDataAuthority() != "rust_graph" || len(message.GetDiscoveries()) > filter.Limit || message.GetSummary() == nil {
+		return nil, errors.New("rust vendor discoveries returned an invalid authority, tenant, or bound")
+	}
+	page := &ports.VendorDiscoveryPage{
+		TenantID:        tenantID,
+		GraphRevision:   message.GetGraphRevision(),
+		DataAuthority:   message.GetDataAuthority(),
+		GeneratedAt:     message.GetGeneratedAt(),
+		Summary:         vendorDiscoverySummary(message.GetSummary()),
+		Discoveries:     make([]ports.VendorDiscoveryRow, 0, len(message.GetDiscoveries())),
+		SourceSummaries: make([]ports.VendorDiscoverySourceSummary, 0, len(message.GetSourceSummaries())),
+	}
+	seen := make(map[string]struct{}, len(message.GetDiscoveries()))
+	for _, discovery := range message.GetDiscoveries() {
+		if discovery == nil || strings.TrimSpace(discovery.GetUrn()) == "" || !cerebrourn.SameTenant(discovery.GetUrn(), tenantID) {
+			return nil, errors.New("rust vendor discoveries returned an invalid discovery")
+		}
+		if _, exists := seen[discovery.GetUrn()]; exists {
+			return nil, errors.New("rust vendor discoveries returned duplicate discoveries")
+		}
+		seen[discovery.GetUrn()] = struct{}{}
+		row := ports.VendorDiscoveryRow{
+			URN: discovery.GetUrn(), DiscoveryID: discovery.GetDiscoveryId(), Name: discovery.GetName(), NormalizedName: discovery.GetNormalizedName(), SourceID: discovery.GetSourceId(), RuntimeID: discovery.GetRuntimeId(), Provider: discovery.GetProvider(), SourceStatus: discovery.GetSourceStatus(), DecisionState: discovery.GetDecisionState(), Category: discovery.GetCategory(), WebsiteURL: discovery.GetWebsiteUrl(), LinkedVendorURN: discovery.GetLinkedVendorUrn(), DecisionReason: discovery.GetDecisionReason(), DecisionUpdatedBy: discovery.GetDecisionUpdatedBy(), DecisionUpdatedAt: discovery.GetDecisionUpdatedAt(), Attributes: maps.Clone(discovery.GetAttributes()), SourceIDs: append([]string{}, discovery.GetSourceIds()...), ConfidenceScore: discovery.GetConfidenceScore(), DiscoveryReason: discovery.GetDiscoveryReason(), FirstObservedAt: discovery.GetFirstObservedAt(), LastObservedAt: discovery.GetLastObservedAt(), Signals: make([]ports.VendorDiscoverySignal, 0, len(discovery.GetSignals())),
+		}
+		for _, signal := range discovery.GetSignals() {
+			if signal == nil || strings.TrimSpace(signal.GetId()) == "" || strings.TrimSpace(signal.GetLabel()) == "" {
+				return nil, errors.New("rust vendor discoveries returned an invalid signal")
+			}
+			if signal.GetEntityUrn() != "" && !cerebrourn.SameTenant(signal.GetEntityUrn(), tenantID) {
+				return nil, errors.New("rust vendor discoveries returned a cross-tenant signal")
+			}
+			row.Signals = append(row.Signals, ports.VendorDiscoverySignal{ID: signal.GetId(), Label: signal.GetLabel(), SourceID: signal.GetSourceId(), RuntimeID: signal.GetRuntimeId(), EntityType: signal.GetEntityType(), EntityURN: signal.GetEntityUrn(), ConfidenceScore: signal.GetConfidenceScore(), ObservedAt: signal.GetObservedAt(), Reason: signal.GetReason(), Attributes: maps.Clone(signal.GetAttributes())})
+		}
+		page.Discoveries = append(page.Discoveries, row)
+	}
+	for _, summary := range message.GetSourceSummaries() {
+		if summary == nil || strings.TrimSpace(summary.GetSourceId()) == "" {
+			return nil, errors.New("rust vendor discoveries returned an invalid source summary")
+		}
+		page.SourceSummaries = append(page.SourceSummaries, ports.VendorDiscoverySourceSummary{SourceID: summary.GetSourceId(), Provider: summary.GetProvider(), RuntimeID: summary.GetRuntimeId(), Status: summary.GetStatus(), Freshness: summary.GetFreshness(), Total: summary.GetTotal(), Discovered: summary.GetDiscovered(), Approved: summary.GetApproved(), Rejected: summary.GetRejected(), Ignored: summary.GetIgnored(), Linked: summary.GetLinked(), Failed: summary.GetFailed(), Stale: summary.GetStale(), CursorPending: summary.GetCursorPending(), SyncLagSeconds: summary.GetSyncLagSeconds(), LastError: summary.GetLastError(), LastSyncedAt: summary.GetLastSyncedAt()})
+	}
+	return page, nil
+}
+
+func vendorDiscoverySummary(summary *cerebrographv1.VendorDiscoverySummary) ports.VendorDiscoverySummary {
+	return ports.VendorDiscoverySummary{TotalDiscoveries: summary.GetTotalDiscoveries(), Discovered: summary.GetDiscovered(), Approved: summary.GetApproved(), Rejected: summary.GetRejected(), Ignored: summary.GetIgnored(), Linked: summary.GetLinked(), SourceCount: summary.GetSourceCount(), EvidenceSignals: summary.GetEvidenceSignals()}
+}
+
 func (s *QueryStore) CountEntityKinds(ctx context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
 	filter, tenantID, err := entityCatalogFilter(request.Filter)
 	if err != nil {

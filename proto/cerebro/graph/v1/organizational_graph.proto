@@ -39,6 +39,8 @@ service OrganizationalGraphService {
   rpc GetSourceSummary(GetSourceSummaryRequest) returns (GetSourceSummaryResponse);
   // ListVendorRegister returns the product-ready vendor register at one graph revision.
   rpc ListVendorRegister(ListVendorRegisterRequest) returns (ListVendorRegisterResponse);
+  // ListVendorDiscoveries returns source-backed vendor candidates at one graph revision.
+  rpc ListVendorDiscoveries(ListVendorDiscoveriesRequest) returns (ListVendorDiscoveriesResponse);
 }
 
 // GraphEntity is the stable agent-facing view of one organizational entity.
@@ -519,6 +521,98 @@ message ListVendorRegisterResponse {
   string generated_at = 4;
   repeated VendorRegisterRow vendors = 5;
   VendorRegisterSummary summary = 6;
+}
+
+message VendorDiscoveryFilter {
+  string tenant_id = 1;
+  string source_id = 2;
+  repeated string runtime_ids = 3;
+  string query = 4;
+  string source_status = 5;
+}
+
+message ListVendorDiscoveriesRequest {
+  VendorDiscoveryFilter filter = 1;
+  uint32 limit = 2;
+}
+
+message VendorDiscoveryRow {
+  string urn = 1;
+  string discovery_id = 2;
+  string name = 3;
+  string normalized_name = 4;
+  string source_id = 5;
+  string runtime_id = 6;
+  string provider = 7;
+  string source_status = 8;
+  string decision_state = 9;
+  string category = 10;
+  string website_url = 11;
+  string linked_vendor_urn = 12;
+  string decision_reason = 13;
+  string decision_updated_by = 14;
+  string decision_updated_at = 15;
+  map<string, string> attributes = 16;
+  repeated string source_ids = 17;
+  double confidence_score = 18;
+  string discovery_reason = 19;
+  string first_observed_at = 20;
+  string last_observed_at = 21;
+  repeated VendorDiscoverySignal signals = 22;
+}
+
+message VendorDiscoverySignal {
+  string id = 1;
+  string label = 2;
+  string source_id = 3;
+  string runtime_id = 4;
+  string entity_type = 5;
+  string entity_urn = 6;
+  double confidence_score = 7;
+  string observed_at = 8;
+  string reason = 9;
+  map<string, string> attributes = 10;
+}
+
+message VendorDiscoverySummary {
+  uint64 total_discoveries = 1;
+  uint64 discovered = 2;
+  uint64 approved = 3;
+  uint64 rejected = 4;
+  uint64 ignored = 5;
+  uint64 linked = 6;
+  uint64 source_count = 7;
+  uint64 evidence_signals = 8;
+}
+
+message VendorDiscoverySourceSummary {
+  string source_id = 1;
+  string provider = 2;
+  string runtime_id = 3;
+  string status = 4;
+  string freshness = 5;
+  uint64 total = 6;
+  uint64 discovered = 7;
+  uint64 approved = 8;
+  uint64 rejected = 9;
+  uint64 ignored = 10;
+  uint64 linked = 11;
+  uint64 failed = 12;
+  uint64 stale = 13;
+  uint64 cursor_pending = 14;
+  uint64 sync_lag_seconds = 15;
+  string last_error = 16;
+  string last_synced_at = 17;
+}
+
+message ListVendorDiscoveriesResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  string data_authority = 3;
+  string generated_at = 4;
+  repeated VendorDiscoveryRow discoveries = 5;
+  VendorDiscoverySummary summary = 6;
+  repeated VendorDiscoverySourceSummary source_summaries = 7;
 }
 
 // ExposureCoverageProfile declares the closed entity kinds and sources used by
