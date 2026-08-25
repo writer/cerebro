@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/writer/cerebro/internal/applicationworkspace"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
 	httpcompression "github.com/writer/cerebro/internal/sourcehttp/compression"
@@ -163,16 +164,21 @@ func requestBypassesQueryCache(r *http.Request) bool {
 
 func (a *App) grcCacheKey(r *http.Request, policy grcCachePolicy) string {
 	tenantID := grcCacheTenantID(r)
+	applicationWorkspaceID, err := requestApplicationWorkspaceSelector(r)
+	if err != nil {
+		applicationWorkspaceID = "\x00" + strings.Join(append(r.Header.Values(applicationWorkspaceHeader), r.URL.Query()["workspace_id"]...), "\x00")
+	}
 	versions := a.grcCacheVersions(r, tenantID, policy.VersionScopes)
 	material := map[string]any{
-		"family":            policy.Family,
-		"method":            r.Method,
-		"path":              r.URL.EscapedPath(),
-		"query":             canonicalRawQuery(r),
-		"auth":              grcCacheAuthMaterial(r),
-		"tenant":            tenantID,
-		"versions":          versions,
-		"response_encoding": grcCacheResponseEncoding(r),
+		"application_workspace_id": applicationWorkspaceID,
+		"family":                   policy.Family,
+		"method":                   r.Method,
+		"path":                     r.URL.EscapedPath(),
+		"query":                    applicationworkspace.CanonicalCacheQuery(r.URL.Query()),
+		"auth":                     grcCacheAuthMaterial(r),
+		"tenant":                   tenantID,
+		"versions":                 versions,
+		"response_encoding":        grcCacheResponseEncoding(r),
 	}
 	raw, err := json.Marshal(material)
 	if err != nil {
@@ -245,29 +251,23 @@ func grcCacheTenantID(r *http.Request) string {
 	return ""
 }
 
-func canonicalRawQuery(r *http.Request) string {
-	if r == nil || r.URL == nil {
-		return ""
-	}
-	return r.URL.Query().Encode()
-}
-
 func grcCacheAuthMaterial(r *http.Request) string {
 	auth, _ := r.Context().Value(authContextKey{}).(authContext)
 	material := map[string]any{
-		"mode":            auth.principal.AuthMode,
-		"name":            auth.principal.Name,
-		"tenant_id":       auth.principal.TenantID,
-		"credential_id":   auth.principal.CredentialID,
-		"client_id":       auth.principal.ClientID,
-		"token_resource":  auth.principal.TokenResource,
-		"allowed_tenants": normalizedStringSlice(auth.principal.AllowedTenants),
-		"scopes":          normalizedStringSlice(expandedPrincipalScopes(auth.principal)),
-		"roles":           normalizedStringSlice(auth.principal.Roles),
-		"groups":          normalizedStringSlice(auth.principal.Groups),
-		"capability":      auth.principal.Capability,
-		"device_id":       auth.principal.DeviceID,
-		"assurance":       auth.principal.AssuranceLevel,
+		"mode":                         auth.principal.AuthMode,
+		"name":                         auth.principal.Name,
+		"tenant_id":                    auth.principal.TenantID,
+		"credential_id":                auth.principal.CredentialID,
+		"client_id":                    auth.principal.ClientID,
+		"token_resource":               auth.principal.TokenResource,
+		"allowed_tenants":              normalizedStringSlice(auth.principal.AllowedTenants),
+		"application_workspace_grants": applicationworkspace.CanonicalGrants(auth.principal.ApplicationWorkspaceGrants),
+		"scopes":                       normalizedStringSlice(expandedPrincipalScopes(auth.principal)),
+		"roles":                        normalizedStringSlice(auth.principal.Roles),
+		"groups":                       normalizedStringSlice(auth.principal.Groups),
+		"capability":                   auth.principal.Capability,
+		"device_id":                    auth.principal.DeviceID,
+		"assurance":                    auth.principal.AssuranceLevel,
 	}
 	raw, err := json.Marshal(material)
 	if err != nil {

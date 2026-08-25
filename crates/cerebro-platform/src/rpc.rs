@@ -291,8 +291,14 @@ impl GraphRpc {
         entities.truncate(limit);
 
         let relation_counts = if let Some(count_filter) = filter.relation_counts.as_ref() {
-            self.in_memory_catalog_relation_counts(tenant, revision_before, &entities, count_filter)
-                .await?
+            self.in_memory_catalog_relation_counts(
+                tenant,
+                revision_before,
+                &entities,
+                &filter.application_workspace_id,
+                count_filter,
+            )
+            .await?
         } else {
             Vec::new()
         };
@@ -321,6 +327,7 @@ impl GraphRpc {
         tenant: &TenantId,
         graph_revision: u64,
         entities: &[ContextEntity],
+        application_workspace_id: &str,
         filter: &StoreCatalogRelationCountFilter,
     ) -> Result<Vec<cerebro_organizational_store::EntityCatalogRelationCount>, ConnectError> {
         let mut grouped = BTreeMap::<(String, String, String, String), BTreeSet<EntityId>>::new();
@@ -359,6 +366,9 @@ impl GraphRpc {
                             "The in-memory catalog relation omitted its neighbor.",
                         ));
                     };
+                    if !in_memory_catalog_workspace_matches(neighbor, application_workspace_id) {
+                        continue;
+                    }
                     if !filter.directions.contains(&direction)
                         || !filter.relations.contains(&edge.relation)
                         || !filter.neighbor_kinds.contains(&neighbor.entity_kind)
@@ -869,18 +879,7 @@ impl OrganizationalGraphService for GraphRpc {
                 "vendor discovery limit must be between 1 and 500",
             ));
         }
-        let catalog_filter = StoreCatalogFilter {
-            source_id: filter.source_id.to_owned(),
-            runtime_ids: filter
-                .runtime_ids
-                .iter()
-                .map(|value| (*value).to_owned())
-                .collect(),
-            include_kinds: vec!["vendor.discovery".to_owned()],
-            search: filter.query.to_owned(),
-            search_attributes: true,
-            ..StoreCatalogFilter::default()
-        };
+        let catalog_filter = vendor_discovery_catalog_filter(filter);
         let page = if let Some(projection) = self.lifecycle_projection.as_ref() {
             tokio::time::timeout(
                 GRAPH_RPC_TIMEOUT,
@@ -1607,6 +1606,22 @@ fn catalog_values_are_closed(values: &[String]) -> bool {
         && values.iter().collect::<BTreeSet<_>>().len() == values.len()
 }
 
+fn in_memory_catalog_workspace_matches(
+    entity: &ContextEntity,
+    application_workspace_id: &str,
+) -> bool {
+    // ContextEdge has no workspace metadata. The Go projection invariant test
+    // TestFinalizeProjectedRecordsStampsTrustedApplicationWorkspace and the
+    // graph-store duplicate-workspace tests ensure admitted links inherit one
+    // trusted workspace; roots and neighbors are filtered here.
+    application_workspace_id.is_empty()
+        || entity
+            .properties
+            .get("application_workspace_id")
+            .map(String::as_str)
+            == Some(application_workspace_id)
+}
+
 fn in_memory_catalog_entity_matches(entity: &ContextEntity, filter: &StoreCatalogFilter) -> bool {
     if !filter.exact_agent_key.is_empty() && entity.agent_key != filter.exact_agent_key {
         return false;
@@ -1662,6 +1677,24 @@ fn in_memory_catalog_entity_matches(entity: &ContextEntity, filter: &StoreCatalo
             && entity.properties.iter().any(|(key, value)| {
                 key.to_lowercase().contains(&query) || value.to_lowercase().contains(&query)
             }))
+}
+
+fn vendor_discovery_catalog_filter(
+    filter: &__buffa::view::VendorDiscoveryFilterView<'_>,
+) -> StoreCatalogFilter {
+    StoreCatalogFilter {
+        application_workspace_id: filter.application_workspace_id.to_owned(),
+        source_id: filter.source_id.to_owned(),
+        runtime_ids: filter
+            .runtime_ids
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect(),
+        include_kinds: vec!["vendor.discovery".to_owned()],
+        search: filter.query.to_owned(),
+        search_attributes: true,
+        ..StoreCatalogFilter::default()
+    }
 }
 
 fn catalog_store_error(error: StoreError) -> ConnectError {
@@ -2547,6 +2580,32 @@ mod tests {
         assert!(!in_memory_catalog_entity_matches(&entity, &filter));
         filter.application_workspace_id = " workspace-a".to_owned();
         assert!(validate_in_memory_catalog_request(&tenant, &filter, "").is_err());
+
+        assert!(in_memory_catalog_workspace_matches(&entity, "workspace-a"));
+        assert!(!in_memory_catalog_workspace_matches(&entity, "workspace-b"));
+        assert!(in_memory_catalog_workspace_matches(&entity, ""));
+        entity.properties.remove("application_workspace_id");
+        assert!(!in_memory_catalog_workspace_matches(&entity, "workspace-a"));
+    }
+
+    #[test]
+    fn vendor_discovery_filter_preserves_application_workspace_scope() {
+        let filter = VendorDiscoveryFilter {
+            tenant_id: "tenant-a".to_owned(),
+            application_workspace_id: "workspace-a".to_owned(),
+            source_id: "source-a".to_owned(),
+            runtime_ids: vec!["runtime-a".to_owned()],
+            query: "acme".to_owned(),
+            source_status: "discovered".to_owned(),
+            ..Default::default()
+        };
+        let encoded = filter.encode_to_vec();
+        let view = VendorDiscoveryFilter::decode_view(&encoded).unwrap();
+        let mapped = vendor_discovery_catalog_filter(&view);
+        assert_eq!(mapped.application_workspace_id, "workspace-a");
+        assert_eq!(mapped.source_id, "source-a");
+        assert_eq!(mapped.runtime_ids, ["runtime-a"]);
+        assert_eq!(mapped.include_kinds, ["vendor.discovery"]);
     }
 
     #[test]

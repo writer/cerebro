@@ -4322,14 +4322,17 @@ func (x *ListVendorRegisterResponse) GetSummary() *VendorRegisterSummary {
 }
 
 type VendorDiscoveryFilter struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	SourceId      string                 `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
-	RuntimeIds    []string               `protobuf:"bytes,3,rep,name=runtime_ids,json=runtimeIds,proto3" json:"runtime_ids,omitempty"`
-	Query         string                 `protobuf:"bytes,4,opt,name=query,proto3" json:"query,omitempty"`
-	SourceStatus  string                 `protobuf:"bytes,5,opt,name=source_status,json=sourceStatus,proto3" json:"source_status,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	TenantId     string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	SourceId     string                 `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	RuntimeIds   []string               `protobuf:"bytes,3,rep,name=runtime_ids,json=runtimeIds,proto3" json:"runtime_ids,omitempty"`
+	Query        string                 `protobuf:"bytes,4,opt,name=query,proto3" json:"query,omitempty"`
+	SourceStatus string                 `protobuf:"bytes,5,opt,name=source_status,json=sourceStatus,proto3" json:"source_status,omitempty"`
+	// application_workspace_id scopes the read to a Cerebro application
+	// workspace. It is distinct from provider-owned workspace identifiers.
+	ApplicationWorkspaceId string `protobuf:"bytes,6,opt,name=application_workspace_id,json=applicationWorkspaceId,proto3" json:"application_workspace_id,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *VendorDiscoveryFilter) Reset() {
@@ -4393,6 +4396,13 @@ func (x *VendorDiscoveryFilter) GetQuery() string {
 func (x *VendorDiscoveryFilter) GetSourceStatus() string {
 	if x != nil {
 		return x.SourceStatus
+	}
+	return ""
+}
+
+func (x *VendorDiscoveryFilter) GetApplicationWorkspaceId() string {
+	if x != nil {
+		return x.ApplicationWorkspaceId
 	}
 	return ""
 }
@@ -6264,14 +6274,15 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x0edata_authority\x18\x03 \x01(\tR\rdataAuthority\x12!\n" +
 	"\fgenerated_at\x18\x04 \x01(\tR\vgeneratedAt\x12=\n" +
 	"\avendors\x18\x05 \x03(\v2#.cerebro.graph.v1.VendorRegisterRowR\avendors\x12A\n" +
-	"\asummary\x18\x06 \x01(\v2'.cerebro.graph.v1.VendorRegisterSummaryR\asummary\"\xad\x01\n" +
+	"\asummary\x18\x06 \x01(\v2'.cerebro.graph.v1.VendorRegisterSummaryR\asummary\"\xe7\x01\n" +
 	"\x15VendorDiscoveryFilter\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x1f\n" +
 	"\vruntime_ids\x18\x03 \x03(\tR\n" +
 	"runtimeIds\x12\x14\n" +
 	"\x05query\x18\x04 \x01(\tR\x05query\x12#\n" +
-	"\rsource_status\x18\x05 \x01(\tR\fsourceStatus\"u\n" +
+	"\rsource_status\x18\x05 \x01(\tR\fsourceStatus\x128\n" +
+	"\x18application_workspace_id\x18\x06 \x01(\tR\x16applicationWorkspaceId\"u\n" +
 	"\x1cListVendorDiscoveriesRequest\x12?\n" +
 	"\x06filter\x18\x01 \x01(\v2'.cerebro.graph.v1.VendorDiscoveryFilterR\x06filter\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\rR\x05limit\"\xbf\a\n" +

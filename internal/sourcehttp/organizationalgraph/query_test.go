@@ -157,7 +157,7 @@ func TestProductExposureCoverageEnforcesTenantBoundsAndCompleteness(t *testing.T
 func TestQueryStoreVendorDiscoveriesPreservesRustAuthorityAndVisibleFields(t *testing.T) {
 	server := newGraphTestServer(t, graphServiceStub{
 		vendorDiscoveries: func(_ context.Context, request *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error) {
-			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetFilter().GetTenantId() != "tenant-a" || request.Msg.GetFilter().GetSourceStatus() != "discovered" || request.Msg.GetLimit() != 25 {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetFilter().GetTenantId() != "tenant-a" || request.Msg.GetFilter().GetApplicationWorkspaceId() != "workspace-a" || request.Msg.GetFilter().GetSourceStatus() != "discovered" || request.Msg.GetLimit() != 25 {
 				t.Fatalf("vendor discovery authority or bounds missing: headers=%v request=%#v", request.Header(), request.Msg)
 			}
 			return connect.NewResponse(&cerebrographv1.ListVendorDiscoveriesResponse{
@@ -173,7 +173,7 @@ func TestQueryStoreVendorDiscoveriesPreservesRustAuthorityAndVisibleFields(t *te
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
-	page, err := store.ListVendorDiscoveries(context.Background(), ports.VendorDiscoveryFilter{TenantID: "tenant-a", SourceStatus: "discovered", Limit: 25})
+	page, err := store.ListVendorDiscoveries(context.Background(), ports.VendorDiscoveryFilter{TenantID: "tenant-a", ApplicationWorkspaceID: " workspace-a ", SourceStatus: "discovered", Limit: 25})
 	if err != nil {
 		t.Fatalf("ListVendorDiscoveries() error = %v", err)
 	}

@@ -1143,7 +1143,14 @@ ORDER BY runtime_id
                 .take(limit)
                 .map(|entity| entity.agent_key.clone())
                 .collect::<Vec<_>>();
-            catalog_relation_counts(&mut transaction, tenant_id, &root_keys, count_filter).await?
+            catalog_relation_counts(
+                &mut transaction,
+                tenant_id,
+                &root_keys,
+                &filter.application_workspace_id,
+                count_filter,
+            )
+            .await?
         } else {
             Vec::new()
         };
@@ -3467,6 +3474,7 @@ async fn catalog_relation_counts(
     transaction: &mut Txn,
     tenant_id: &TenantId,
     root_keys: &[String],
+    application_workspace_id: &str,
     filter: &EntityCatalogRelationCountFilter,
 ) -> Result<Vec<EntityCatalogRelationCount>, StoreError> {
     if root_keys.is_empty() {
@@ -3504,13 +3512,15 @@ async fn catalog_relation_counts(
             "entity catalog contains cross-tenant relation counts".to_owned(),
         ));
     }
-    let statement = catalog_relation_count_statement(&filter.directions);
+    let statement =
+        catalog_relation_count_statement(&filter.directions, !application_workspace_id.is_empty());
 
     let mut rows = transaction
         .execute(
-            query(statement)
+            query(&statement)
                 .param("tenant_id", tenant_id.as_str())
                 .param("root_keys", string_list(root_keys))
+                .param("application_workspace_id", application_workspace_id)
                 .param("directions", string_list(&direction_names))
                 .param("relations", string_list(&filter.relations))
                 .param("neighbor_kinds", string_list(&filter.neighbor_kinds)),
@@ -3538,17 +3548,25 @@ async fn catalog_relation_counts(
     Ok(counts)
 }
 
-fn catalog_relation_count_statement(directions: &[EntityCatalogDirection]) -> &'static str {
+fn catalog_relation_count_statement(
+    directions: &[EntityCatalogDirection],
+    application_workspace_scoped: bool,
+) -> String {
+    let workspace_property = if application_workspace_scoped {
+        ", application_workspace_id: $application_workspace_id"
+    } else {
+        ""
+    };
     match directions {
-        [EntityCatalogDirection::Incoming] => {
-            "UNWIND $root_keys AS root_key MATCH (neighbor:Entity {tenant_id: $tenant_id})-[edge:RELATION {tenant_id: $tenant_id}]->(root:Entity {tenant_id: $tenant_id, urn: root_key}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, 'incoming' AS direction RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
-        }
-        [EntityCatalogDirection::Outgoing] => {
-            "UNWIND $root_keys AS root_key MATCH (root:Entity {tenant_id: $tenant_id, urn: root_key})-[edge:RELATION {tenant_id: $tenant_id}]->(neighbor:Entity {tenant_id: $tenant_id}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, 'outgoing' AS direction RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
-        }
-        _ => {
-            "UNWIND $root_keys AS root_key MATCH (root:Entity {tenant_id: $tenant_id, urn: root_key})-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE direction IN $directions RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
-        }
+        [EntityCatalogDirection::Incoming] => format!(
+            "UNWIND $root_keys AS root_key MATCH (neighbor:Entity {{tenant_id: $tenant_id{workspace_property}}})-[edge:RELATION {{tenant_id: $tenant_id{workspace_property}}}]->(root:Entity {{tenant_id: $tenant_id{workspace_property}, urn: root_key}}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, 'incoming' AS direction RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
+        ),
+        [EntityCatalogDirection::Outgoing] => format!(
+            "UNWIND $root_keys AS root_key MATCH (root:Entity {{tenant_id: $tenant_id{workspace_property}, urn: root_key}})-[edge:RELATION {{tenant_id: $tenant_id{workspace_property}}}]->(neighbor:Entity {{tenant_id: $tenant_id{workspace_property}}}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, 'outgoing' AS direction RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
+        ),
+        _ => format!(
+            "UNWIND $root_keys AS root_key MATCH (root:Entity {{tenant_id: $tenant_id{workspace_property}, urn: root_key}})-[edge:RELATION {{tenant_id: $tenant_id{workspace_property}}}]-(neighbor:Entity {{tenant_id: $tenant_id{workspace_property}}}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE direction IN $directions RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
+        ),
     }
 }
 
@@ -5231,21 +5249,44 @@ mod tests {
 
     #[test]
     fn entity_catalog_relation_counts_use_directed_root_lookups() {
-        let incoming = catalog_relation_count_statement(&[EntityCatalogDirection::Incoming]);
+        let incoming = catalog_relation_count_statement(&[EntityCatalogDirection::Incoming], false);
         assert!(incoming.starts_with("UNWIND $root_keys AS root_key"));
         assert!(incoming.contains("]->(root:Entity {tenant_id: $tenant_id, urn: root_key})"));
         assert!(!incoming.contains("startNode"));
 
-        let outgoing = catalog_relation_count_statement(&[EntityCatalogDirection::Outgoing]);
+        let outgoing = catalog_relation_count_statement(&[EntityCatalogDirection::Outgoing], false);
         assert!(outgoing.contains("urn: root_key})-[edge:RELATION"));
         assert!(!outgoing.contains("startNode"));
 
-        let both = catalog_relation_count_statement(&[
-            EntityCatalogDirection::Incoming,
-            EntityCatalogDirection::Outgoing,
-        ]);
+        let both = catalog_relation_count_statement(
+            &[
+                EntityCatalogDirection::Incoming,
+                EntityCatalogDirection::Outgoing,
+            ],
+            false,
+        );
         assert!(both.contains("startNode(edge) = root"));
         assert!(both.contains("direction IN $directions"));
+
+        for directions in [
+            vec![EntityCatalogDirection::Incoming],
+            vec![EntityCatalogDirection::Outgoing],
+            vec![
+                EntityCatalogDirection::Incoming,
+                EntityCatalogDirection::Outgoing,
+            ],
+        ] {
+            let workspace = catalog_relation_count_statement(&directions, true);
+            assert_eq!(
+                workspace
+                    .matches("application_workspace_id: $application_workspace_id")
+                    .count(),
+                3
+            );
+            assert!(workspace.contains("neighbor:Entity {tenant_id: $tenant_id, application_workspace_id: $application_workspace_id}"));
+            assert!(workspace.contains("edge:RELATION {tenant_id: $tenant_id, application_workspace_id: $application_workspace_id}"));
+            assert!(workspace.contains("root:Entity {tenant_id: $tenant_id, application_workspace_id: $application_workspace_id, urn: root_key}"));
+        }
     }
 
     #[test]

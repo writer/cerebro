@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"compress/gzip"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -46,6 +47,93 @@ func TestGRCQueryCacheServesFreshHit(t *testing.T) {
 	}
 	if got := second.Header().Get("Cache-Control"); !strings.Contains(got, "stale-while-revalidate=60") {
 		t.Fatalf("Cache-Control = %q, want stale-while-revalidate=60", got)
+	}
+}
+
+func TestGRCQueryCacheIsolatesApplicationWorkspaceHeader(t *testing.T) {
+	app := &App{
+		cfg:  config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}},
+		deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{Namespace: "test"})},
+	}
+	calls := map[string]int{}
+	handler := app.cacheGRCJSON(app.grcCachePolicy("test", time.Minute), func(w http.ResponseWriter, r *http.Request) {
+		workspaceID, err := requestApplicationWorkspaceSelector(r)
+		if err != nil {
+			t.Fatalf("requestApplicationWorkspaceSelector() error = %v", err)
+		}
+		calls[workspaceID]++
+		writeJSON(w, http.StatusOK, map[string]any{"workspace_id": workspaceID})
+	})
+
+	request := func(workspaceID string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/grc/vendors?tenant_id=writer", nil)
+		r.Header.Set(applicationWorkspaceHeader, workspaceID)
+		return r
+	}
+	serve := func(workspaceID string) *httptest.ResponseRecorder {
+		response := httptest.NewRecorder()
+		handler(response, request(workspaceID))
+		return response
+	}
+
+	firstA, secondA := serve("workspace-a"), serve("workspace-a")
+	firstB, secondB := serve("workspace-b"), serve("workspace-b")
+	if firstA.Header().Get("X-Cerebro-Cache") != "miss" || secondA.Header().Get("X-Cerebro-Cache") != "hit" || firstB.Header().Get("X-Cerebro-Cache") != "miss" || secondB.Header().Get("X-Cerebro-Cache") != "hit" {
+		t.Fatalf("workspace cache states = A:%q/%q B:%q/%q", firstA.Header().Get("X-Cerebro-Cache"), secondA.Header().Get("X-Cerebro-Cache"), firstB.Header().Get("X-Cerebro-Cache"), secondB.Header().Get("X-Cerebro-Cache"))
+	}
+	if calls["workspace-a"] != 1 || calls["workspace-b"] != 1 || firstA.Body.String() == firstB.Body.String() {
+		t.Fatalf("workspace cache isolation = calls:%#v A:%q B:%q", calls, firstA.Body.String(), firstB.Body.String())
+	}
+}
+
+func TestGRCCacheKeyNormalizesWorkspaceSelectorAndBindsGrants(t *testing.T) {
+	app := &App{}
+	policy := app.grcCachePolicy("test", time.Minute)
+	headerRequest := httptest.NewRequest(http.MethodGet, "/grc/vendors?tenant_id=writer", nil)
+	headerRequest.Header.Set(applicationWorkspaceHeader, "workspace-a")
+	queryRequest := httptest.NewRequest(http.MethodGet, "/grc/vendors?tenant_id=writer&workspace_id=workspace-a", nil)
+	if headerKey, queryKey := app.grcCacheKey(headerRequest, policy), app.grcCacheKey(queryRequest, policy); headerKey == "" || headerKey != queryKey {
+		t.Fatalf("equivalent workspace selector cache keys = header:%q query:%q", headerKey, queryKey)
+	}
+
+	withGrant := func(workspaceID string) *http.Request {
+		request := headerRequest.Clone(context.WithValue(headerRequest.Context(), authContextKey{}, authContext{principal: authPrincipal{
+			TenantID: "writer",
+			ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{{
+				TenantID: "writer", ApplicationWorkspaceIDs: []string{workspaceID},
+			}},
+		}}))
+		return request
+	}
+	if keyA, keyB := app.grcCacheKey(withGrant("workspace-a"), policy), app.grcCacheKey(withGrant("workspace-b"), policy); keyA == keyB {
+		t.Fatalf("workspace grant cache keys collide: %q", keyA)
+	}
+
+	conflict := queryRequest.Clone(queryRequest.Context())
+	conflict.Header.Set(applicationWorkspaceHeader, "workspace-b")
+	if key, validKey := app.grcCacheKey(conflict, policy), app.grcCacheKey(headerRequest, policy); key == validKey {
+		t.Fatalf("conflicting workspace selector cache key = %q, collides with valid selector", key)
+	}
+
+	cacheApp := &App{cfg: config.Config{Cache: config.CacheConfig{DefaultTTL: time.Minute, StaleTTL: time.Minute}}, deps: Dependencies{QueryCache: querycache.NewMemory(querycache.Options{Namespace: "test-invalid"})}}
+	calls := 0
+	handler := cacheApp.cacheGRCJSON(policy, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if _, err := requestApplicationWorkspaceSelector(r); err != nil {
+			http.Error(w, "invalid workspace selector", http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+	for range 2 {
+		response := httptest.NewRecorder()
+		handler(response, conflict.Clone(conflict.Context()))
+		if response.Code != http.StatusBadRequest || response.Header().Get("X-Cerebro-Cache") != "bypass" {
+			t.Fatalf("invalid selector response = status:%d cache:%q", response.Code, response.Header().Get("X-Cerebro-Cache"))
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("invalid selector handler calls = %d, want uncached calls", calls)
 	}
 }
 

@@ -3,12 +3,13 @@ package ports
 import "context"
 
 type VendorDiscoveryFilter struct {
-	TenantID     string
-	SourceID     string
-	RuntimeIDs   []string
-	Query        string
-	SourceStatus string
-	Limit        int
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	RuntimeIDs             []string
+	Query                  string
+	SourceStatus           string
+	Limit                  int
 }
 
 type VendorDiscoveryRow struct {
