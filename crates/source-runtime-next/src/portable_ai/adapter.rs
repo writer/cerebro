@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::LazyLock};
 
 use reqwest::Url;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::source_execution::{
     SourceExecutionAdapter, SourceExecutionError, SourceExecutionPlanV1,
@@ -16,6 +16,7 @@ use crate::source_execution::{
 use super::{
     catalog::{Family, Pagination, SOURCES, Source},
     normalize::{expected_event_id, normalize_records, scalar_at},
+    pagination::{link_next, next_offset, next_page, response_header, validated_continuation},
 };
 
 const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
@@ -66,11 +67,20 @@ impl PortableAiSourceExecutionAdapter {
         &self,
         metadata: &SourceWorkerRuntimeMetadataV2,
     ) -> Result<String, SourceExecutionError> {
-        let mut origin = if self.source.id == "langfuse" {
+        let mut origin = if matches!(self.source.id.as_str(), "langchain" | "langfuse" | "writer") {
             public_value(&metadata.public_config, "base_url")
                 .ok_or(SourceExecutionError::MissingConfiguration)?
                 .trim_end_matches('/')
                 .to_owned()
+        } else if self.source.id == "microsoft_foundry" {
+            let endpoint = public_value(&metadata.public_config, "endpoint")
+                .filter(|value| safe_dns_hostname(value))
+                .ok_or(SourceExecutionError::MissingConfiguration)?;
+            let project = path_component(
+                public_value(&metadata.public_config, "project_name")
+                    .ok_or(SourceExecutionError::MissingConfiguration)?,
+            )?;
+            format!("https://{endpoint}/api/projects/{project}")
         } else {
             self.source.origin_template.clone()
         };
@@ -113,7 +123,7 @@ impl PortableAiSourceExecutionAdapter {
         {
             return Err(SourceExecutionError::EgressDenied);
         }
-        if self.source.id != "langfuse"
+        if !matches!(self.source.id.as_str(), "langchain" | "langfuse" | "writer")
             && public_value(&metadata.public_config, "base_url").is_some_and(|base_url| {
                 base_url.trim_end_matches('/') != origin.trim_end_matches('/')
             })
@@ -225,11 +235,23 @@ impl PortableAiSourceExecutionAdapter {
                         query.append_pair(parameter, &page_size.to_string());
                     }
                 }
+                Pagination::Offset {
+                    page_size_parameter,
+                    page_size,
+                    ..
+                } => {
+                    query.append_pair(page_size_parameter, &page_size.to_string());
+                }
                 Pagination::None | Pagination::NextUrl { .. } => {}
             }
         }
-        if let Pagination::Cursor { parameter, .. } = &self.family.pagination {
-            if !context.prior_cursor.is_empty() {
+        if let Pagination::Cursor {
+            parameter,
+            in_json_body,
+            ..
+        } = &self.family.pagination
+        {
+            if !*in_json_body && !context.prior_cursor.is_empty() {
                 validate_cursor(&context.prior_cursor)?;
                 url.query_pairs_mut()
                     .append_pair(parameter, &context.prior_cursor);
@@ -252,6 +274,27 @@ impl PortableAiSourceExecutionAdapter {
             };
             url.query_pairs_mut()
                 .append_pair(parameter, &page.to_string());
+        } else if let Pagination::Offset {
+            parameter,
+            start,
+            inject_first,
+            ..
+        } = &self.family.pagination
+        {
+            let offset = if context.prior_cursor.is_empty() {
+                *start
+            } else {
+                context
+                    .prior_cursor
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|offset| *offset >= *start && *offset <= 10_000_000)
+                    .ok_or(SourceExecutionError::InvalidCursor)?
+            };
+            if *inject_first || !context.prior_cursor.is_empty() {
+                url.query_pairs_mut()
+                    .append_pair(parameter, &offset.to_string());
+            }
         } else if matches!(&self.family.pagination, Pagination::None)
             && !context.prior_cursor.is_empty()
         {
@@ -268,6 +311,7 @@ impl PortableAiSourceExecutionAdapter {
         body: &[u8],
         headers: &HashMap<String, String>,
         origin: &str,
+        prior_cursor: &str,
     ) -> Result<String, SourceExecutionError> {
         let document: Value =
             serde_json::from_slice(body).map_err(|_| SourceExecutionError::MalformedResponse)?;
@@ -281,6 +325,15 @@ impl PortableAiSourceExecutionAdapter {
             }
             Pagination::Link { header, .. } => response_header(headers, header).and_then(link_next),
             Pagination::Page { .. } => next_page(&document)?,
+            Pagination::Offset {
+                start, page_size, ..
+            } => next_offset(
+                &document,
+                &self.family.record_selector,
+                prior_cursor,
+                *start,
+                *page_size,
+            )?,
         };
         let Some(cursor) = cursor else {
             return Ok(String::new());
@@ -293,6 +346,77 @@ impl PortableAiSourceExecutionAdapter {
             validated_continuation(origin, &cursor)?;
         }
         Ok(cursor)
+    }
+
+    fn request_body(
+        &self,
+        context: &SourceWorkerExecutionContextV1,
+        metadata: &SourceWorkerRuntimeMetadataV2,
+    ) -> Result<Vec<u8>, SourceExecutionError> {
+        let mut body = self
+            .family
+            .static_json_body
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Map<String, Value>>();
+        for (field, config_key) in &self.family.config_json_body {
+            if let Some(value) = public_value(&metadata.public_config, config_key) {
+                body.insert(field.clone(), Value::String(value.to_owned()));
+            }
+        }
+        if let Pagination::Cursor {
+            parameter,
+            in_json_body: true,
+            ..
+        } = &self.family.pagination
+        {
+            if !context.prior_cursor.is_empty() {
+                validate_cursor(&context.prior_cursor)?;
+                body.insert(
+                    parameter.clone(),
+                    Value::String(context.prior_cursor.clone()),
+                );
+            }
+        }
+        if body.is_empty() {
+            return Ok(Vec::new());
+        }
+        serde_json::to_vec(&Value::Object(body)).map_err(|_| SourceExecutionError::InternalRuntime)
+    }
+
+    fn declared_headers(
+        &self,
+        metadata: &SourceWorkerRuntimeMetadataV2,
+        has_body: bool,
+    ) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+        for (name, value) in self
+            .source
+            .static_headers
+            .iter()
+            .chain(self.family.static_headers.iter())
+        {
+            headers.insert(name.to_ascii_lowercase(), value.clone());
+        }
+        for (name, config_key) in &self.family.config_headers {
+            if let Some(value) = public_value(&metadata.public_config, config_key) {
+                headers.insert(name.to_ascii_lowercase(), value.to_owned());
+            }
+        }
+        if has_body {
+            headers.insert("content-type".to_owned(), "application/json".to_owned());
+        }
+        headers
+    }
+
+    fn credential_operation(&self, metadata: &SourceWorkerRuntimeMetadataV2) -> &'static str {
+        if self.source.id == "langchain"
+            && public_value(&metadata.public_config, "auth_model") == Some("bearer_token")
+        {
+            "source.bearer"
+        } else {
+            self.source.auth.host_operation()
+        }
     }
 
     fn validate_identity(
@@ -379,12 +503,13 @@ impl SourceExecutionAdapter for PortableAiSourceExecutionAdapter {
             request_intent_digest: String::new(),
         };
         planned.request_intent_digest = canonical_request_intent_digest(plan, context, &planned);
+        let body = self.request_body(context, metadata)?;
         let mut execution = SourceWorkerHttpExecutionV2 {
             request: Some(planned),
-            body: Vec::new(),
-            declared_headers: HashMap::new(),
+            declared_headers: self.declared_headers(metadata, !body.is_empty()),
+            body,
             execution_intent_digest_sha256: String::new(),
-            credential_operation: self.source.auth.host_operation().to_owned(),
+            credential_operation: self.credential_operation(metadata).to_owned(),
             allowed_origin: origin,
         };
         execution.execution_intent_digest_sha256 =
@@ -441,8 +566,12 @@ impl SourceExecutionAdapter for PortableAiSourceExecutionAdapter {
             &metadata.public_config,
         )?;
         let records = validate_and_deduplicate_records(records)?;
-        let next_cursor =
-            self.next_cursor(&request.response_body, &envelope.response_headers, &origin)?;
+        let next_cursor = self.next_cursor(
+            &request.response_body,
+            &envelope.response_headers,
+            &origin,
+            &context.prior_cursor,
+        )?;
         let result_digest_sha256 = canonical_result_digest(receipt, &next_cursor, &records)?;
         Ok(SourceWorkerDecodeResultV1 {
             plan_id: plan.plan_id.clone(),
@@ -493,6 +622,14 @@ fn safe_dns_label(value: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
+fn safe_dns_hostname(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 253
+        && value
+            .split('.')
+            .all(|label| safe_dns_label(&label.to_ascii_lowercase()))
+}
+
 fn path_component(value: &str) -> Result<String, SourceExecutionError> {
     if value.is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
         return Err(SourceExecutionError::MissingConfiguration);
@@ -506,64 +643,4 @@ fn path_component(value: &str) -> Result<String, SourceExecutionError> {
             _ => format!("%{byte:02X}").chars().collect(),
         })
         .collect())
-}
-
-fn validated_continuation(origin: &str, value: &str) -> Result<Url, SourceExecutionError> {
-    let origin = Url::parse(origin).map_err(|_| SourceExecutionError::InvalidPlan)?;
-    let continuation = Url::parse(value).map_err(|_| SourceExecutionError::InvalidCursor)?;
-    let prefix = origin.path().trim_end_matches('/');
-    if continuation.scheme() != origin.scheme()
-        || continuation.host_str() != origin.host_str()
-        || continuation.port_or_known_default() != origin.port_or_known_default()
-        || continuation.username() != ""
-        || continuation.password().is_some()
-        || continuation.fragment().is_some()
-        || (!prefix.is_empty()
-            && continuation.path() != prefix
-            && !continuation.path().starts_with(&format!("{prefix}/")))
-    {
-        return Err(SourceExecutionError::EgressDenied);
-    }
-    Ok(continuation)
-}
-
-fn response_header<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
-    headers
-        .iter()
-        .find(|(key, _)| key.eq_ignore_ascii_case(name))
-        .map(|(_, value)| value.trim())
-        .filter(|value| !value.is_empty())
-}
-
-fn link_next(value: &str) -> Option<String> {
-    value.split(',').find_map(|part| {
-        let part = part.trim();
-        let (target, parameters) = part.split_once('>')?;
-        if !parameters.split(';').any(|parameter| {
-            parameter.trim().eq_ignore_ascii_case("rel=\"next\"")
-                || parameter.trim().eq_ignore_ascii_case("rel=next")
-        }) {
-            return None;
-        }
-        target
-            .trim()
-            .strip_prefix('<')
-            .map(str::to_owned)
-            .filter(|target| !target.is_empty())
-    })
-}
-
-fn next_page(document: &Value) -> Result<Option<String>, SourceExecutionError> {
-    let current = scalar_at(document, &["$.meta.page".to_owned()])
-        .ok_or(SourceExecutionError::MalformedResponse)?
-        .parse::<usize>()
-        .map_err(|_| SourceExecutionError::MalformedResponse)?;
-    let total = scalar_at(document, &["$.meta.totalPages".to_owned()])
-        .ok_or(SourceExecutionError::MalformedResponse)?
-        .parse::<usize>()
-        .map_err(|_| SourceExecutionError::MalformedResponse)?;
-    if current == 0 || total > 10_000_000 {
-        return Err(SourceExecutionError::InvalidCursor);
-    }
-    Ok((current < total).then(|| (current + 1).to_string()))
 }

@@ -78,10 +78,24 @@ fn normalize_record(
     source: &Source,
     family: &Family,
     tenant_id: &str,
-    raw: Value,
+    mut raw: Value,
     observed_at: OffsetDateTime,
     public_config: &HashMap<String, String>,
 ) -> Result<SourceWorkerRecordV1, SourceExecutionError> {
+    let raw_values = raw
+        .as_object_mut()
+        .ok_or(SourceExecutionError::InvalidProviderRecord)?;
+    for (attribute, config_key) in &family.config_attributes {
+        if !raw_values.contains_key(attribute)
+            && let Some(value) = public_config
+                .get(config_key)
+                .map(String::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        {
+            raw_values.insert(attribute.clone(), Value::String(value.to_owned()));
+        }
+    }
     let values = raw
         .as_object()
         .ok_or(SourceExecutionError::InvalidProviderRecord)?;

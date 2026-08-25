@@ -213,8 +213,18 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 		return "Authorization", append([]byte("Bearer "), credential...), nil
 	case "google.api_key_header":
 		return "X-Goog-Api-Key", append([]byte(nil), credential...), nil
+	case "elevenlabs.xi_api_key":
+		return "Xi-Api-Key", append([]byte(nil), credential...), nil
+	case "langsmith.x_api_key":
+		return "X-Api-Key", append([]byte(nil), credential...), nil
 	case "langfuse.basic":
 		return "Authorization", append([]byte("Basic "), credential...), nil
+	case "microsoft_foundry.api_key":
+		return "Api-Key", append([]byte(nil), credential...), nil
+	case "pinecone.api_key":
+		return "Api-Key", append([]byte(nil), credential...), nil
+	case "qdrant.api_key":
+		return "Authorization", append([]byte("apikey "), credential...), nil
 	case "jumpcloud.x_api_key":
 		return "X-Api-Key", append([]byte(nil), credential...), nil
 	case "sentinelone.api_token":
