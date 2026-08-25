@@ -163,6 +163,106 @@ func TestOtherAzureFamilyRemainsGoCompatible(t *testing.T) {
 	}
 }
 
+func TestPutDiscordAuthoritativeFamiliesValidateWithRustWithoutCallingGoCheck(t *testing.T) {
+	for _, family := range []string{"audit_log", "member", "role", "permission"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &runtimeAuthorityProbe{sourceID: "discord"}
+			registry, err := sourcecdk.NewRegistry(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			worker := &runtimePlanWorker{}
+			service := New(registry, &runtimeStore{}, nil, nil)
+			service.sourceWorker = worker
+			_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: &cerebrov1.SourceRuntime{
+				Id: "discord-" + family + "-runtime", SourceId: "discord", TenantId: "tenant-1",
+				Config: map[string]string{
+					"family": family, "guild_id": "100000000000000000", "application_id": "200000000000000000", "per_page": "100",
+					"api_token": sourceconfig.CredentialReferenceValue("discord", "api_token"),
+				},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if legacy.checkCalls != 0 || worker.planCalls != 1 {
+				t.Fatalf("validation calls = Go %d, Rust %d", legacy.checkCalls, worker.planCalls)
+			}
+			if worker.selection.SourceID != "discord" || worker.selection.FamilyID != family {
+				t.Fatalf("Rust selection = %#v", worker.selection)
+			}
+			if worker.publicConfig["family"] != family || worker.publicConfig["guild_id"] != "100000000000000000" || worker.publicConfig["application_id"] != "200000000000000000" || worker.publicConfig["per_page"] != "100" || worker.publicConfig["api_token"] != "" {
+				t.Fatalf("Rust public config = %#v", worker.publicConfig)
+			}
+		})
+	}
+}
+
+func TestDiscordAuthoritativeFamiliesNeverFallBackToGo(t *testing.T) {
+	for _, family := range []string{"audit_log", "member", "role", "permission"} {
+		t.Run(family, func(t *testing.T) {
+			legacy := &runtimeAuthorityProbe{sourceID: "discord"}
+			worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+			service := &Service{sourceWorker: worker}
+			runtime := &cerebrov1.SourceRuntime{
+				Id: "discord-" + family + "-runtime", SourceId: "discord", TenantId: "tenant-1",
+				Config: map[string]string{
+					"family": family, "guild_id": "100000000000000000", "application_id": "200000000000000000", "per_page": "100",
+					"api_token": sourceconfig.CredentialReferenceValue("discord", "api_token"),
+				},
+			}
+			ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+				Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+			}})
+			resolved := sourcecdk.NewConfig(map[string]string{
+				"family": family, "guild_id": "100000000000000000", "application_id": "200000000000000000", "per_page": "100", "api_token": "host-only-secret",
+			})
+
+			if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+				t.Fatalf("readSourcePull() error = %v", err)
+			}
+			if legacy.readCalls != 0 || worker.selection.SourceID != "discord" || worker.selection.FamilyID != family {
+				t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+			}
+		})
+	}
+}
+
+func TestUnknownDiscordFamilyNeverFallsBackToGoAuthority(t *testing.T) {
+	legacy := &runtimeAuthorityProbe{sourceID: "discord"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &runtimePlanWorker{compileErr: sourceworker.ErrWorkerUnsupported}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	service.sourceWorker = worker
+	runtime := &cerebrov1.SourceRuntime{
+		Id: "discord-future-runtime", SourceId: "discord", TenantId: "tenant-1",
+		Config: map[string]string{
+			"family": "future-family", "guild_id": "100000000000000000", "application_id": "200000000000000000",
+			"api_token": sourceconfig.CredentialReferenceValue("discord", "api_token"),
+		},
+	}
+	if _, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: runtime}); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if legacy.checkCalls != 0 {
+		t.Fatalf("Go Check calls = %d", legacy.checkCalls)
+	}
+	ctx := context.WithValue(context.Background(), sourceRuntimeLeaseFenceContextKey{}, sourceRuntimeLeaseAuthority{fence: ports.SourceRuntimeLeaseFence{
+		Owner: "owner-1", Generation: 1, ExpiresAt: time.Now().Add(time.Minute),
+	}})
+	resolved := sourcecdk.NewConfig(map[string]string{
+		"family": "future-family", "guild_id": "100000000000000000", "application_id": "200000000000000000", "api_token": "host-only-secret",
+	})
+	if _, _, err := service.readSourcePull(ctx, runtime, legacy, resolved, nil, nil, 1); !errors.Is(err, sourceworker.ErrWorkerUnsupported) {
+		t.Fatalf("readSourcePull() error = %v", err)
+	}
+	if legacy.readCalls != 0 || worker.selection.SourceID != "discord" || worker.selection.FamilyID != "future-family" {
+		t.Fatalf("authority calls = Go %d, Rust selection %#v", legacy.readCalls, worker.selection)
+	}
+}
+
 func TestPutPagerDutyAuthoritativeFamiliesValidateWithRustWithoutCallingGoCheck(t *testing.T) {
 	for _, family := range []string{"user", "team", "service", "schedule", "escalation_policy", "integration", "vendor"} {
 		t.Run(family, func(t *testing.T) {

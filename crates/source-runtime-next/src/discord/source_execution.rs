@@ -16,6 +16,7 @@ use crate::source_execution::{
 #[path = "source_execution/catalog.rs"]
 mod catalog;
 
+pub(crate) use catalog::DISCORD_SOURCE_EXECUTION_ADAPTERS;
 use catalog::{DiscordSourceExecutionAdapter, map_error, optional, validated_kernel};
 
 impl SourceExecutionAdapter for DiscordSourceExecutionAdapter {

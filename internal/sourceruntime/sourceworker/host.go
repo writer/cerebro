@@ -194,6 +194,8 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 		return "X-Api-Key", append([]byte(nil), credential...), nil
 	case "sentinelone.api_token":
 		return "Authorization", append([]byte("ApiToken "), credential...), nil
+	case "discord.bot_token":
+		return "Authorization", append([]byte("Bot "), credential...), nil
 	case "twilio.basic":
 		return "Authorization", append([]byte("Basic "), credential...), nil
 	case "pagerduty.token":
