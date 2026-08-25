@@ -39,7 +39,12 @@ try {
   if (config.mcpServers?.["practice-registry"]?.env) {
     throw new Error("setup wrote inline env paths into mcp.json.");
   }
-  fs.accessSync(launcherPath, fs.constants.X_OK);
+  const launcherFd = fs.openSync(launcherPath, "r");
+  const launcherStat = fs.fstatSync(launcherFd);
+  fs.closeSync(launcherFd);
+  if ((launcherStat.mode & 0o111) === 0) {
+    throw new Error("setup did not write an executable launcher.");
+  }
   const rule = fs.readFileSync(rulePath, "utf8");
   if (!rule.includes("practice-registry.check_plan") || !rule.includes("practice-registry.finalize_change")) {
     throw new Error("setup did not write the expected editor rule.");

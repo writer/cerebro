@@ -615,11 +615,19 @@ function formatSetup(value: {
 }
 
 function writeTextFile(filePath: string, text: string, overwrite: boolean): void {
-  if (fs.existsSync(filePath) && !overwrite) {
-    throw new Error(`${filePath} exists. Pass --overwrite to replace it.`);
-  }
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, text);
+  try {
+    fs.writeFileSync(filePath, text, { flag: overwrite ? "w" : "wx" });
+  } catch (error) {
+    if (!overwrite && isNodeError(error, "EEXIST")) {
+      throw new Error(`${filePath} exists. Pass --overwrite to replace it.`);
+    }
+    throw error;
+  }
+}
+
+function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === code;
 }
 
 function downstreamAgentsText(serverName: string): string {

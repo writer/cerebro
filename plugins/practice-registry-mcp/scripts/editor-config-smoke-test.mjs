@@ -57,8 +57,13 @@ try {
   if (server.env) {
     throw new Error(`Expected generated config to omit inline env paths, got ${JSON.stringify(server.env)}`);
   }
-  fs.accessSync(launcherPath, fs.constants.X_OK);
-  const launcherText = fs.readFileSync(launcherPath, "utf8");
+  const launcherFd = fs.openSync(launcherPath, "r");
+  const launcherStat = fs.fstatSync(launcherFd);
+  const launcherText = fs.readFileSync(launcherFd, "utf8");
+  fs.closeSync(launcherFd);
+  if ((launcherStat.mode & 0o111) === 0) {
+    throw new Error("Generated launcher is not executable.");
+  }
   if (!launcherText.includes("PRACTICE_REGISTRY_DB") || !launcherText.includes(`REGISTRY_ROOT='${root}'`)) {
     throw new Error("Generated launcher does not set repo database and registry entry point.");
   }

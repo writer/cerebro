@@ -12,7 +12,7 @@ scope:
     exclude: ["dist/**", "node_modules/**", "test/**", "tests/**", "fixtures/**"]
 applies_when:
   intents: ["sql", "database", "query", "postgres", "mysql", "where clause"]
-  keywords: ["SELECT", "INSERT", "UPDATE", "DELETE", "WHERE", "query", "execute", "sql", "postgres"]
+  keywords: ["SELECT", "INSERT", "DELETE", "WHERE", "query", "execute", "sql", "postgres", "db.query(", "db.exec(", "${"]
 avoid:
   - SQL template strings that include ${value}.
   - String concatenation for WHERE clauses or identifiers from requests.
