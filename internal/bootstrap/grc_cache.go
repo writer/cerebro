@@ -28,6 +28,7 @@ const (
 	grcCacheScopeRuntime   = "runtime"
 	grcCacheScopeGraph     = "graph"
 	grcCacheScopeInventory = "inventory"
+	grcCacheRefreshTimeout = 30 * time.Second
 )
 
 type queryCacheRefreshGroup struct {
@@ -47,6 +48,13 @@ func (g *queryCacheRefreshGroup) Do(key string, fn func() (*capturedHTTPResponse
 	}
 	response, _ := value.(*capturedHTTPResponse)
 	return response, nil
+}
+
+func (g *queryCacheRefreshGroup) Start(ctx context.Context, key string, fn func(context.Context)) {
+	_ = g.group.DoChan(key, func() (any, error) {
+		fn(ctx)
+		return nil, nil
+	})
 }
 
 type grcCachePolicy struct {
@@ -73,19 +81,8 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 				writeCachedJSON(w, http.StatusOK, entry.Payload, "hit", policy)
 				return
 			case querycache.StateStale:
-				response, refreshErr := a.queryCacheGroup.Do(key, func() (*capturedHTTPResponse, error) {
-					return captureCacheResponse(next, r), nil
-				})
-				if refreshErr == nil && response.cacheableJSON() {
-					setErr := cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
-					response.writeTo(w, queryCacheWriteState(r.Context(), setErr), policy)
-					return
-				}
-				if refreshErr != nil || response == nil || response.statusCode >= http.StatusInternalServerError {
-					writeCachedJSON(w, http.StatusOK, entry.Payload, "stale", policy)
-					return
-				}
-				response.writeTo(w, "bypass", policy)
+				writeCachedJSON(w, http.StatusOK, entry.Payload, "stale", policy)
+				a.refreshGRCJSONInBackground(key, policy, next, r)
 				return
 			}
 		} else if !errors.Is(err, querycache.ErrMiss) {
@@ -109,6 +106,26 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 		}
 		response.writeTo(w, "bypass", policy)
 	}
+}
+
+func (a *App) refreshGRCJSONInBackground(key string, policy grcCachePolicy, next http.HandlerFunc, r *http.Request) {
+	refreshContext := context.WithoutCancel(r.Context())
+	request := r.Clone(refreshContext)
+	a.queryCacheGroup.Start(refreshContext, key, func(parent context.Context) {
+		ctx, cancel := context.WithTimeout(parent, grcCacheRefreshTimeout)
+		defer cancel()
+		response := captureCacheResponse(next, request.Clone(ctx))
+		if response == nil || !response.cacheableJSON() {
+			telemetry.IncrementMain(ctx, "query_cache.refresh_error.count", 1)
+			return
+		}
+		if err := a.deps.QueryCache.Set(ctx, key, response.body.Bytes(), policy.TTL, policy.StaleTTL); err != nil {
+			_ = queryCacheWriteState(ctx, err)
+			telemetry.IncrementMain(ctx, "query_cache.refresh_error.count", 1)
+			return
+		}
+		telemetry.IncrementMain(ctx, "query_cache.refresh.count", 1)
+	})
 }
 
 func queryCacheWriteState(ctx context.Context, err error) string {
@@ -353,7 +370,7 @@ func setGRCQueryCacheHeaders(header http.Header, cacheState string, policy grcCa
 			if stale < 1 {
 				stale = 1
 			}
-			value += ", stale-if-error=" + strconv.Itoa(stale)
+			value += ", stale-while-revalidate=" + strconv.Itoa(stale) + ", stale-if-error=" + strconv.Itoa(stale)
 		}
 		header.Set("Cache-Control", value)
 	}

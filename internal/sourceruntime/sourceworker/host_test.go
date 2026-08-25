@@ -3,6 +3,7 @@ package sourceworker
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -298,6 +299,86 @@ func TestCredentialHeaderAppliesOnlyTheClosedPagerDutyScheme(t *testing.T) {
 	}
 	if _, _, err := credentialHeader("pagerduty.bearer", []byte("synthetic-token")); !errors.Is(err, ErrWorkerContract) {
 		t.Fatalf("unregistered credential operation error = %v, want ErrWorkerContract", err)
+	}
+}
+
+func TestCredentialHeaderAppliesGeminiKeyOnlyInsideTheTrustedHost(t *testing.T) {
+	header, value, err := credentialHeader("google.api_key_header", []byte("synthetic-api-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "X-Goog-Api-Key" || string(value) != "synthetic-api-key" {
+		t.Fatal("Gemini credential operation did not produce the exact provider header")
+	}
+	if _, _, err := credentialHeader("google.api_key_query", []byte("synthetic-api-key")); !errors.Is(err, ErrWorkerContract) {
+		t.Fatalf("query credential operation error = %v, want ErrWorkerContract", err)
+	}
+}
+
+func TestCredentialHeaderAppliesLangfuseBasicOnlyInsideTheTrustedHost(t *testing.T) {
+	header, value, err := credentialHeader("langfuse.basic", []byte("synthetic-basic-value"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "Authorization" || string(value) != "Basic synthetic-basic-value" {
+		t.Fatalf("Langfuse header = %q, value = %q", header, value)
+	}
+}
+
+func TestCredentialHeaderAppliesPortableAIProviderSchemesOnlyInsideTheTrustedHost(t *testing.T) {
+	for name, test := range map[string]struct {
+		operation, header, value string
+	}{
+		"ElevenLabs":        {"elevenlabs.xi_api_key", "Xi-Api-Key", "synthetic-secret"},
+		"LangSmith":         {"langsmith.x_api_key", "X-Api-Key", "synthetic-secret"},
+		"Microsoft Foundry": {"microsoft_foundry.api_key", "Api-Key", "synthetic-secret"},
+		"Pinecone":          {"pinecone.api_key", "Api-Key", "synthetic-secret"},
+		"Qdrant":            {"qdrant.api_key", "Authorization", "apikey synthetic-secret"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			header, value, err := credentialHeader(test.operation, []byte("synthetic-secret"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer clear(value)
+			if header != test.header || string(value) != test.value {
+				t.Fatalf("credential header = (%q, %q), want (%q, %q)", header, value, test.header, test.value)
+			}
+		})
+	}
+	if err := validateDeclaredHeaders(map[string]string{
+		"x-organization-id":      "org-1",
+		"x-pinecone-api-version": "2025-10",
+		"x-tenant-id":            "workspace-1",
+	}); err != nil {
+		t.Fatalf("portable AI public headers were rejected: %v", err)
+	}
+}
+
+func TestAWSBedrockSigningStaysInsideTheTrustedHostAndBindsTheOrigin(t *testing.T) {
+	credential := []byte(base64.RawStdEncoding.EncodeToString([]byte("AKIDEXAMPLE")) + "." + base64.RawStdEncoding.EncodeToString([]byte("synthetic-secret"))) // #nosec G101 -- synthetic signer fixture.
+	request, err := http.NewRequest(http.MethodGet, "https://bedrock.us-east-1.amazonaws.com/foundation-models", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := signAWSBedrockRequest(context.Background(), request, credential, time.Date(2026, time.August, 24, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	authorization := request.Header.Get("Authorization")
+	if !strings.Contains(authorization, "AWS4-HMAC-SHA256") || !strings.Contains(authorization, "Credential=AKIDEXAMPLE/20260824/us-east-1/bedrock/aws4_request") {
+		t.Fatalf("AWS authorization scope = %q", authorization)
+	}
+	if strings.Contains(request.URL.String(), "AKIDEXAMPLE") || strings.Contains(request.URL.String(), "synthetic-secret") {
+		t.Fatal("AWS credential entered the request URL")
+	}
+	wrongOrigin, _ := http.NewRequest(http.MethodGet, "https://s3.us-east-1.amazonaws.com/", nil)
+	if err := signAWSBedrockRequest(context.Background(), wrongOrigin, credential, time.Now()); !errors.Is(err, ErrProviderEgress) {
+		t.Fatalf("wrong AWS origin error = %v, want ErrProviderEgress", err)
+	}
+	if err := signAWSBedrockRequest(context.Background(), request, []byte("malformed"), time.Now()); !errors.Is(err, ErrCredentialUnavailable) {
+		t.Fatalf("malformed AWS credential error = %v, want ErrCredentialUnavailable", err)
 	}
 }
 

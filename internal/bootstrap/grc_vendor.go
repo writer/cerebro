@@ -34,11 +34,15 @@ type grcVendorDetailResponse struct {
 }
 
 type grcVendorDiscoveriesResponse struct {
-	Summary        grcvendor.DiscoverySummary                     `json:"summary"`
-	Discoveries    []grcvendor.VendorDiscovery                    `json:"discoveries"`
-	Decisions      []*ports.GRCVendorDiscoveryDecisionRecord      `json:"decisions,omitempty"`
-	DecisionEvents []*ports.GRCVendorDiscoveryDecisionEventRecord `json:"decision_events,omitempty"`
-	GeneratedAt    time.Time                                      `json:"generated_at"`
+	Summary           grcvendor.DiscoverySummary                     `json:"summary"`
+	Discoveries       []grcvendor.VendorDiscovery                    `json:"discoveries"`
+	SourceSummaries   []ports.VendorDiscoverySourceSummary           `json:"source_summaries"`
+	Decisions         []*ports.GRCVendorDiscoveryDecisionRecord      `json:"decisions,omitempty"`
+	DecisionEvents    []*ports.GRCVendorDiscoveryDecisionEventRecord `json:"decision_events,omitempty"`
+	GraphRevision     uint64                                         `json:"graph_revision"`
+	DataAuthority     string                                         `json:"data_authority"`
+	DecisionAuthority string                                         `json:"decision_authority"`
+	GeneratedAt       string                                         `json:"generated_at"`
 }
 
 type grcVendorDiscoveryDecisionRequest struct {
@@ -253,21 +257,32 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 		writeGRCError(w, err)
 		return
 	}
-	decisionState := strings.TrimSpace(r.URL.Query().Get("decision_state"))
-	discoveries, err := grcvendor.NewWithCapabilities(a.deps.GraphReads.Catalog, a.deps.GraphReads.Neighborhoods).ListDiscoveries(r.Context(), grcvendor.ListDiscoveriesRequest{
-		TenantID:      scope.TenantID,
-		RuntimeID:     scope.RuntimeID,
-		RuntimeIDs:    scope.RuntimeIDs,
-		SourceID:      scope.SourceID,
-		Query:         strings.TrimSpace(r.URL.Query().Get("q")),
-		Status:        strings.TrimSpace(r.URL.Query().Get("status")),
-		DecisionState: decisionState,
-		Limit:         scope.Limit,
+	if a.deps.GraphReads.VendorDiscoveries == nil {
+		writeGRCError(w, grcvendor.ErrRuntimeUnavailable)
+		return
+	}
+	runtimeIDs := append([]string{}, scope.RuntimeIDs...)
+	if scope.RuntimeID != "" {
+		runtimeIDs = []string{scope.RuntimeID}
+	}
+	page, err := a.deps.GraphReads.VendorDiscoveries.ListVendorDiscoveries(r.Context(), ports.VendorDiscoveryFilter{
+		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
+		Query: strings.TrimSpace(r.URL.Query().Get("q")), SourceStatus: strings.TrimSpace(r.URL.Query().Get("status")), Limit: int(scope.Limit),
 	})
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
+	if page == nil || page.TenantID != scope.TenantID || page.DataAuthority != "rust_graph" {
+		writeGRCError(w, grcvendor.ErrRuntimeUnavailable)
+		return
+	}
+	discoveries, err := grcVendorDiscoveriesFromRust(page.Discoveries)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	decisionState := strings.TrimSpace(r.URL.Query().Get("decision_state"))
 	decisions, err := a.listGRCVendorDiscoveryDecisions(r, scope, grcDiscoveryURNs(discoveries))
 	if err != nil {
 		writeGRCError(w, err)
@@ -282,12 +297,39 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, grcVendorDiscoveriesResponse{
-		Summary:        grcvendor.SummarizeDiscoveries(discoveries),
-		Discoveries:    discoveries,
-		Decisions:      decisions,
-		DecisionEvents: decisionEvents,
-		GeneratedAt:    time.Now().UTC(),
+		Summary:           grcvendor.SummarizeDiscoveries(discoveries),
+		Discoveries:       discoveries,
+		SourceSummaries:   page.SourceSummaries,
+		Decisions:         decisions,
+		DecisionEvents:    decisionEvents,
+		GraphRevision:     page.GraphRevision,
+		DataAuthority:     page.DataAuthority,
+		DecisionAuthority: "state_store",
+		GeneratedAt:       page.GeneratedAt,
 	})
+}
+
+func grcVendorDiscoveriesFromRust(rows []ports.VendorDiscoveryRow) ([]grcvendor.VendorDiscovery, error) {
+	discoveries := make([]grcvendor.VendorDiscovery, 0, len(rows))
+	for _, row := range rows {
+		var decisionUpdatedAt *time.Time
+		if raw := strings.TrimSpace(row.DecisionUpdatedAt); raw != "" {
+			parsed, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				return nil, fmt.Errorf("%w: rust vendor discovery returned an invalid decision timestamp", grcvendor.ErrRuntimeUnavailable)
+			}
+			parsed = parsed.UTC()
+			decisionUpdatedAt = &parsed
+		}
+		signals := make([]grcvendor.VendorDiscoverySignal, 0, len(row.Signals))
+		for _, signal := range row.Signals {
+			signals = append(signals, grcvendor.VendorDiscoverySignal{ID: signal.ID, Label: signal.Label, SourceID: signal.SourceID, RuntimeID: signal.RuntimeID, EntityType: signal.EntityType, EntityURN: signal.EntityURN, ConfidenceScore: signal.ConfidenceScore, ObservedAt: signal.ObservedAt, Reason: signal.Reason, Attributes: signal.Attributes})
+		}
+		discoveries = append(discoveries, grcvendor.VendorDiscovery{
+			URN: row.URN, DiscoveryID: row.DiscoveryID, Name: row.Name, NormalizedName: row.NormalizedName, SourceID: row.SourceID, SourceIDs: append([]string{}, row.SourceIDs...), RuntimeID: row.RuntimeID, Provider: row.Provider, SourceStatus: row.SourceStatus, DecisionState: row.DecisionState, Category: row.Category, WebsiteURL: row.WebsiteURL, ConfidenceScore: row.ConfidenceScore, DiscoveryReason: row.DiscoveryReason, FirstObservedAt: row.FirstObservedAt, LastObservedAt: row.LastObservedAt, LinkedVendorURN: row.LinkedVendorURN, DecisionReason: row.DecisionReason, DecisionUpdatedBy: row.DecisionUpdatedBy, DecisionUpdatedAt: decisionUpdatedAt, Signals: signals, Attributes: row.Attributes,
+		})
+	}
+	return discoveries, nil
 }
 
 func (a *App) handleUpdateGRCVendorDiscoveryDecision(w http.ResponseWriter, r *http.Request) {

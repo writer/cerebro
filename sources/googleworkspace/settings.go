@@ -13,7 +13,6 @@ type settings struct {
 	family      string
 	domain      string
 	customerID  string
-	token       string
 	baseURL     string
 	groupKey    string
 	application string
@@ -26,7 +25,6 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		family:      sourcecdk.ConfigValue(cfg, "family"),
 		domain:      sourcecdk.ConfigValue(cfg, "domain"),
 		customerID:  sourcecdk.ConfigValue(cfg, "customer_id"),
-		token:       sourcecdk.ConfigValue(cfg, "token"),
 		baseURL:     sourcecdk.ConfigValue(cfg, "base_url"),
 		groupKey:    sourcecdk.ConfigValue(cfg, "group_key"),
 		application: sourcecdk.ConfigValue(cfg, "application"),

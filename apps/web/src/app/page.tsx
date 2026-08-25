@@ -382,16 +382,20 @@ function HealthRow({
 }
 
 function ProgramHealthPanel({
+  coveragePending,
   coverageSourceCount,
   metrics,
   readinessLabel,
 }: {
+  coveragePending: boolean;
   coverageSourceCount: number;
   metrics: HomeMetrics;
   readinessLabel: string;
 }) {
   const sourceIssues = metrics.summary.stale_connectors + metrics.coverageBlindSpotCount;
-  const sourceDetail = `${countLabel(metrics.summary.stale_connectors, "stale source")}, ${countLabel(metrics.coverageBlindSpotCount, "coverage gap")} across ${countLabel(coverageSourceCount, "source")}`;
+  const sourceDetail = coveragePending
+    ? "Loading source coverage."
+    : `${countLabel(metrics.summary.stale_connectors, "stale source")}, ${countLabel(metrics.coverageBlindSpotCount, "coverage gap")} across ${countLabel(coverageSourceCount, "source")}`;
   return (
     <aside className="surface-panel p-5">
       <div className="flex items-start justify-between gap-3">
@@ -422,9 +426,9 @@ function ProgramHealthPanel({
         <HealthRow
           href="/connectors"
           label="Sources"
-          value={sourceIssues}
+          value={coveragePending ? "—" : sourceIssues}
           detail={sourceDetail}
-          tone={sourceIssues > 0 ? "warning" : "success"}
+          tone={coveragePending ? "neutral" : sourceIssues > 0 ? "warning" : "success"}
         />
       </div>
       <div className="mt-5 border-t border-[color:var(--border)] pt-4">
@@ -441,7 +445,7 @@ export default function Home() {
   const { preferences } = useUserPreferences();
   const visibleSections = preferences.homepage.sections;
   const compactHome = preferences.display.density === "compact";
-  const dashboard = useGRCQuery<GRCDashboard>(grcDashboardPath({ limit: HOME_DASHBOARD_FINDING_LIMIT }));
+  const dashboard = useGRCQuery<GRCDashboard>(grcDashboardPath({ limit: HOME_DASHBOARD_FINDING_LIMIT, enrichments: "deferred" }));
   const data = dashboard.data;
   const readinessQuery = useGRCQuery<GRCProgramReadiness>(data ? grcProgramReadinessPath() : null);
   const coverageQuery = useGRCQuery<{ blind_spots?: GRCSourceCoverageRecord[]; records?: GRCSourceCoverageRecord[] }>(
@@ -463,6 +467,7 @@ export default function Home() {
   );
   const coverageBlindSpotCount = readiness?.coverage_blind_spots ?? coverageSummaries.reduce((total, source) => total + source.blind_spots, 0);
   const coverageSourceCount = coverageSummaries.filter((source) => source.blind_spots > 0).length;
+  const coveragePending = !readinessQuery.data && !coverageQuery.data && (readinessQuery.loading || coverageQuery.loading);
   const missingEvidenceItems = (data?.controls ?? []).reduce((total, control) => total + (control.missing_evidence_items ?? 0), 0);
   const staleEvidenceItems = (data?.controls ?? []).reduce((total, control) => total + (control.stale_evidence_items ?? 0), 0);
   const primaryFrameworkRecord = readinessQuery.data?.frameworks?.[0];
@@ -535,6 +540,7 @@ export default function Home() {
               {visibleSections.reviewNow && <ReviewNowPanel items={queueItems} />}
               {visibleSections.programHealth && (
                 <ProgramHealthPanel
+                  coveragePending={coveragePending}
                   coverageSourceCount={coverageSourceCount}
                   metrics={homeMetrics}
                   readinessLabel={readinessLabel}

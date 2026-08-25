@@ -42,6 +42,22 @@ type Settings struct {
 	RefreshToken        string
 }
 
+// SourceExecutionCredentialProvider derives Google Workspace request
+// credentials inside the trusted Go host.
+type SourceExecutionCredentialProvider struct{}
+
+func (SourceExecutionCredentialProvider) SourceExecutionCredential(ctx context.Context, cfg sourcecdk.Config) ([]byte, error) {
+	settings := FromConfig(cfg)
+	if err := Validate(settings); err != nil {
+		return nil, err
+	}
+	token, err := BearerToken(ctx, settings)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(token), nil
+}
+
 func NewSettings(token, serviceAccountEmail, privateKey, delegatedAdminEmail, clientID, clientSecret, refreshToken string) Settings {
 	return Settings{
 		Token:               strings.TrimSpace(token),

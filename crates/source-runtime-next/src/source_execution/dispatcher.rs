@@ -11,6 +11,7 @@ use crate::google_workspace::{
 use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
 use crate::openai::OPENAI_SOURCE_EXECUTION_ADAPTERS;
 use crate::pagerduty::PAGERDUTY_SOURCE_EXECUTION_ADAPTERS;
+use crate::portable_ai::PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS;
 use crate::sentinelone::{
     SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER, SENTINELONE_DIRECT_SOURCE_EXECUTION_ADAPTERS,
     SentinelOneAgentSourceExecutionAdapter,
@@ -156,6 +157,14 @@ impl SourceExecutionDispatcher {
         }) {
             return Ok(adapter.compiled_plan());
         }
+        if let Some(adapter) = PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS
+            .iter()
+            .find(|adapter| {
+                request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+            })
+        {
+            return Ok(adapter.compiled_plan());
+        }
         if request.source_id == AZURE_AUTHORIZATION_POLICY.source_id()
             && request.family_id == AZURE_AUTHORIZATION_POLICY.family_id()
         {
@@ -271,6 +280,16 @@ impl SourceExecutionDispatcher {
                 && plan.family_id == adapter.family_id()
                 && plan.provider_kernel == adapter.provider_kernel()
         }) {
+            return Ok(adapter);
+        }
+        if let Some(adapter) = PORTABLE_AI_SOURCE_EXECUTION_ADAPTERS
+            .iter()
+            .find(|adapter| {
+                plan.source_id == adapter.source_id()
+                    && plan.family_id == adapter.family_id()
+                    && plan.provider_kernel == adapter.provider_kernel()
+            })
+        {
             return Ok(adapter);
         }
         if plan.source_id == AZURE_AUTHORIZATION_POLICY.source_id()

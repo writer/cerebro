@@ -13370,6 +13370,2479 @@ pub const __LIST_VENDOR_REGISTER_RESPONSE_JSON_ANY: ::buffa::type_registry::Json
     from_json: ::buffa::type_registry::any_from_json::<ListVendorRegisterResponse>,
     is_wkt: false,
 };
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct VendorDiscoveryFilter {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 3: `runtime_ids`
+    #[serde(
+        rename = "runtimeIds",
+        alias = "runtime_ids",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub runtime_ids: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 4: `query`
+    #[serde(
+        rename = "query",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub query: ::buffa::alloc::string::String,
+    /// Field 5: `source_status`
+    #[serde(
+        rename = "sourceStatus",
+        alias = "source_status",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_status: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for VendorDiscoveryFilter {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("VendorDiscoveryFilter")
+            .field("tenant_id", &self.tenant_id)
+            .field("source_id", &self.source_id)
+            .field("runtime_ids", &self.runtime_ids)
+            .field("query", &self.query)
+            .field("source_status", &self.source_status)
+            .finish()
+    }
+}
+impl VendorDiscoveryFilter {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoveryFilter";
+}
+::buffa::impl_default_instance!(VendorDiscoveryFilter);
+impl ::buffa::MessageName for VendorDiscoveryFilter {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "VendorDiscoveryFilter";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoveryFilter";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoveryFilter";
+}
+impl ::buffa::Message for VendorDiscoveryFilter {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        for v in &self.runtime_ids {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if !self.query.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.query) as u64;
+        }
+        if !self.source_status.is_empty() {
+            size
+                += 1u64 + ::buffa::types::string_encoded_len(&self.source_status) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.source_id, buf);
+        }
+        for v in &self.runtime_ids {
+            ::buffa::types::put_string_field(3u32, v, buf);
+        }
+        if !self.query.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.query, buf);
+        }
+        if !self.source_status.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.source_status, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.runtime_ids.push(__elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.query, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_status, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.source_id.clear();
+        self.runtime_ids.clear();
+        self.query.clear();
+        self.source_status.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for VendorDiscoveryFilter {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.VendorDiscoveryFilter";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for VendorDiscoveryFilter {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __VENDOR_DISCOVERY_FILTER_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.VendorDiscoveryFilter",
+    to_json: ::buffa::type_registry::any_to_json::<VendorDiscoveryFilter>,
+    from_json: ::buffa::type_registry::any_from_json::<VendorDiscoveryFilter>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListVendorDiscoveriesRequest {
+    /// Field 1: `filter`
+    #[serde(
+        rename = "filter",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub filter: ::buffa::MessageField<
+        VendorDiscoveryFilter,
+        ::buffa::Inline<VendorDiscoveryFilter>,
+    >,
+    /// Field 2: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListVendorDiscoveriesRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListVendorDiscoveriesRequest")
+            .field("filter", &self.filter)
+            .field("limit", &self.limit)
+            .finish()
+    }
+}
+impl ListVendorDiscoveriesRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorDiscoveriesRequest";
+}
+::buffa::impl_default_instance!(ListVendorDiscoveriesRequest);
+impl ::buffa::MessageName for ListVendorDiscoveriesRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListVendorDiscoveriesRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListVendorDiscoveriesRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorDiscoveriesRequest";
+}
+impl ::buffa::Message for ListVendorDiscoveriesRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.filter.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.filter.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.filter.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.filter.write_to(__cache, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(2u32, self.limit, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.filter.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.filter = ::buffa::MessageField::none();
+        self.limit = 0u32;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListVendorDiscoveriesRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListVendorDiscoveriesRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListVendorDiscoveriesRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_VENDOR_DISCOVERIES_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListVendorDiscoveriesRequest",
+    to_json: ::buffa::type_registry::any_to_json::<ListVendorDiscoveriesRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<ListVendorDiscoveriesRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct VendorDiscoveryRow {
+    /// Field 1: `urn`
+    #[serde(
+        rename = "urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub urn: ::buffa::alloc::string::String,
+    /// Field 2: `discovery_id`
+    #[serde(
+        rename = "discoveryId",
+        alias = "discovery_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub discovery_id: ::buffa::alloc::string::String,
+    /// Field 3: `name`
+    #[serde(
+        rename = "name",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub name: ::buffa::alloc::string::String,
+    /// Field 4: `normalized_name`
+    #[serde(
+        rename = "normalizedName",
+        alias = "normalized_name",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub normalized_name: ::buffa::alloc::string::String,
+    /// Field 5: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 6: `runtime_id`
+    #[serde(
+        rename = "runtimeId",
+        alias = "runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub runtime_id: ::buffa::alloc::string::String,
+    /// Field 7: `provider`
+    #[serde(
+        rename = "provider",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub provider: ::buffa::alloc::string::String,
+    /// Field 8: `source_status`
+    #[serde(
+        rename = "sourceStatus",
+        alias = "source_status",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_status: ::buffa::alloc::string::String,
+    /// Field 9: `decision_state`
+    #[serde(
+        rename = "decisionState",
+        alias = "decision_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub decision_state: ::buffa::alloc::string::String,
+    /// Field 10: `category`
+    #[serde(
+        rename = "category",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub category: ::buffa::alloc::string::String,
+    /// Field 11: `website_url`
+    #[serde(
+        rename = "websiteUrl",
+        alias = "website_url",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub website_url: ::buffa::alloc::string::String,
+    /// Field 12: `linked_vendor_urn`
+    #[serde(
+        rename = "linkedVendorUrn",
+        alias = "linked_vendor_urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub linked_vendor_urn: ::buffa::alloc::string::String,
+    /// Field 13: `decision_reason`
+    #[serde(
+        rename = "decisionReason",
+        alias = "decision_reason",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub decision_reason: ::buffa::alloc::string::String,
+    /// Field 14: `decision_updated_by`
+    #[serde(
+        rename = "decisionUpdatedBy",
+        alias = "decision_updated_by",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub decision_updated_by: ::buffa::alloc::string::String,
+    /// Field 15: `decision_updated_at`
+    #[serde(
+        rename = "decisionUpdatedAt",
+        alias = "decision_updated_at",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub decision_updated_at: ::buffa::alloc::string::String,
+    /// Field 16: `attributes`
+    #[serde(
+        rename = "attributes",
+        skip_serializing_if = "::buffa::__private::HashMap::is_empty",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub attributes: ::buffa::__private::HashMap<
+        ::buffa::alloc::string::String,
+        ::buffa::alloc::string::String,
+    >,
+    /// Field 17: `source_ids`
+    #[serde(
+        rename = "sourceIds",
+        alias = "source_ids",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub source_ids: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 18: `confidence_score`
+    #[serde(
+        rename = "confidenceScore",
+        alias = "confidence_score",
+        with = "::buffa::json_helpers::double",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_f64"
+    )]
+    pub confidence_score: f64,
+    /// Field 19: `discovery_reason`
+    #[serde(
+        rename = "discoveryReason",
+        alias = "discovery_reason",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub discovery_reason: ::buffa::alloc::string::String,
+    /// Field 20: `first_observed_at`
+    #[serde(
+        rename = "firstObservedAt",
+        alias = "first_observed_at",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub first_observed_at: ::buffa::alloc::string::String,
+    /// Field 21: `last_observed_at`
+    #[serde(
+        rename = "lastObservedAt",
+        alias = "last_observed_at",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub last_observed_at: ::buffa::alloc::string::String,
+    /// Field 22: `signals`
+    #[serde(
+        rename = "signals",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub signals: ::buffa::alloc::vec::Vec<VendorDiscoverySignal>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for VendorDiscoveryRow {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("VendorDiscoveryRow")
+            .field("urn", &self.urn)
+            .field("discovery_id", &self.discovery_id)
+            .field("name", &self.name)
+            .field("normalized_name", &self.normalized_name)
+            .field("source_id", &self.source_id)
+            .field("runtime_id", &self.runtime_id)
+            .field("provider", &self.provider)
+            .field("source_status", &self.source_status)
+            .field("decision_state", &self.decision_state)
+            .field("category", &self.category)
+            .field("website_url", &self.website_url)
+            .field("linked_vendor_urn", &self.linked_vendor_urn)
+            .field("decision_reason", &self.decision_reason)
+            .field("decision_updated_by", &self.decision_updated_by)
+            .field("decision_updated_at", &self.decision_updated_at)
+            .field("attributes", &self.attributes)
+            .field("source_ids", &self.source_ids)
+            .field("confidence_score", &self.confidence_score)
+            .field("discovery_reason", &self.discovery_reason)
+            .field("first_observed_at", &self.first_observed_at)
+            .field("last_observed_at", &self.last_observed_at)
+            .field("signals", &self.signals)
+            .finish()
+    }
+}
+impl VendorDiscoveryRow {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoveryRow";
+}
+::buffa::impl_default_instance!(VendorDiscoveryRow);
+impl ::buffa::MessageName for VendorDiscoveryRow {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "VendorDiscoveryRow";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoveryRow";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoveryRow";
+}
+impl ::buffa::Message for VendorDiscoveryRow {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.urn.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.urn) as u64;
+        }
+        if !self.discovery_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.discovery_id) as u64;
+        }
+        if !self.name.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.name) as u64;
+        }
+        if !self.normalized_name.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.normalized_name) as u64;
+        }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        if !self.runtime_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.runtime_id) as u64;
+        }
+        if !self.provider.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.provider) as u64;
+        }
+        if !self.source_status.is_empty() {
+            size
+                += 1u64 + ::buffa::types::string_encoded_len(&self.source_status) as u64;
+        }
+        if !self.decision_state.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.decision_state) as u64;
+        }
+        if !self.category.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.category) as u64;
+        }
+        if !self.website_url.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.website_url) as u64;
+        }
+        if !self.linked_vendor_urn.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.linked_vendor_urn) as u64;
+        }
+        if !self.decision_reason.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.decision_reason) as u64;
+        }
+        if !self.decision_updated_by.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.decision_updated_by)
+                        as u64;
+        }
+        if !self.decision_updated_at.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.decision_updated_at)
+                        as u64;
+        }
+        size
+            += ::buffa::map_codec::field_len::<
+                ::buffa::map_codec::Str,
+                ::buffa::map_codec::Str,
+                _,
+            >(&self.attributes, 2u64);
+        for v in &self.source_ids {
+            size += 2u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if self.confidence_score.to_bits() != 0u64 {
+            size += 2u64 + ::buffa::types::FIXED64_ENCODED_LEN as u64;
+        }
+        if !self.discovery_reason.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.discovery_reason) as u64;
+        }
+        if !self.first_observed_at.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.first_observed_at) as u64;
+        }
+        if !self.last_observed_at.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.last_observed_at) as u64;
+        }
+        for v in &self.signals {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 2u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.urn.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.urn, buf);
+        }
+        if !self.discovery_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.discovery_id, buf);
+        }
+        if !self.name.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.name, buf);
+        }
+        if !self.normalized_name.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.normalized_name, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.source_id, buf);
+        }
+        if !self.runtime_id.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.runtime_id, buf);
+        }
+        if !self.provider.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.provider, buf);
+        }
+        if !self.source_status.is_empty() {
+            ::buffa::types::put_string_field(8u32, &self.source_status, buf);
+        }
+        if !self.decision_state.is_empty() {
+            ::buffa::types::put_string_field(9u32, &self.decision_state, buf);
+        }
+        if !self.category.is_empty() {
+            ::buffa::types::put_string_field(10u32, &self.category, buf);
+        }
+        if !self.website_url.is_empty() {
+            ::buffa::types::put_string_field(11u32, &self.website_url, buf);
+        }
+        if !self.linked_vendor_urn.is_empty() {
+            ::buffa::types::put_string_field(12u32, &self.linked_vendor_urn, buf);
+        }
+        if !self.decision_reason.is_empty() {
+            ::buffa::types::put_string_field(13u32, &self.decision_reason, buf);
+        }
+        if !self.decision_updated_by.is_empty() {
+            ::buffa::types::put_string_field(14u32, &self.decision_updated_by, buf);
+        }
+        if !self.decision_updated_at.is_empty() {
+            ::buffa::types::put_string_field(15u32, &self.decision_updated_at, buf);
+        }
+        ::buffa::map_codec::write_field::<
+            ::buffa::map_codec::Str,
+            ::buffa::map_codec::Str,
+            _,
+        >(&self.attributes, 16u32, buf);
+        for v in &self.source_ids {
+            ::buffa::types::put_string_field(17u32, v, buf);
+        }
+        if self.confidence_score.to_bits() != 0u64 {
+            ::buffa::types::put_double_field(18u32, self.confidence_score, buf);
+        }
+        if !self.discovery_reason.is_empty() {
+            ::buffa::types::put_string_field(19u32, &self.discovery_reason, buf);
+        }
+        if !self.first_observed_at.is_empty() {
+            ::buffa::types::put_string_field(20u32, &self.first_observed_at, buf);
+        }
+        if !self.last_observed_at.is_empty() {
+            ::buffa::types::put_string_field(21u32, &self.last_observed_at, buf);
+        }
+        for v in &self.signals {
+            ::buffa::types::put_len_delimited_header(
+                22u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.urn, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.discovery_id, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.name, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.normalized_name, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.runtime_id, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.provider, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_status, buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.decision_state, buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.category, buf)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.website_url, buf)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.linked_vendor_urn, buf)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.decision_reason, buf)?;
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.decision_updated_by, buf)?;
+            }
+            15u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.decision_updated_at, buf)?;
+            }
+            16u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::map_codec::merge_entry::<
+                    ::buffa::map_codec::Str,
+                    ::buffa::map_codec::Str,
+                    _,
+                >(&mut self.attributes, buf, ctx)?;
+            }
+            17u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.source_ids.push(__elem);
+            }
+            18u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Fixed64,
+                )?;
+                self.confidence_score = ::buffa::types::decode_double(buf)?;
+            }
+            19u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.discovery_reason, buf)?;
+            }
+            20u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.first_observed_at, buf)?;
+            }
+            21u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.last_observed_at, buf)?;
+            }
+            22u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.signals.push(elem);
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.urn.clear();
+        self.discovery_id.clear();
+        self.name.clear();
+        self.normalized_name.clear();
+        self.source_id.clear();
+        self.runtime_id.clear();
+        self.provider.clear();
+        self.source_status.clear();
+        self.decision_state.clear();
+        self.category.clear();
+        self.website_url.clear();
+        self.linked_vendor_urn.clear();
+        self.decision_reason.clear();
+        self.decision_updated_by.clear();
+        self.decision_updated_at.clear();
+        self.attributes.clear();
+        self.source_ids.clear();
+        self.confidence_score = 0f64;
+        self.discovery_reason.clear();
+        self.first_observed_at.clear();
+        self.last_observed_at.clear();
+        self.signals.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for VendorDiscoveryRow {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.VendorDiscoveryRow";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for VendorDiscoveryRow {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __VENDOR_DISCOVERY_ROW_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.VendorDiscoveryRow",
+    to_json: ::buffa::type_registry::any_to_json::<VendorDiscoveryRow>,
+    from_json: ::buffa::type_registry::any_from_json::<VendorDiscoveryRow>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct VendorDiscoverySignal {
+    /// Field 1: `id`
+    #[serde(
+        rename = "id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub id: ::buffa::alloc::string::String,
+    /// Field 2: `label`
+    #[serde(
+        rename = "label",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub label: ::buffa::alloc::string::String,
+    /// Field 3: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 4: `runtime_id`
+    #[serde(
+        rename = "runtimeId",
+        alias = "runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub runtime_id: ::buffa::alloc::string::String,
+    /// Field 5: `entity_type`
+    #[serde(
+        rename = "entityType",
+        alias = "entity_type",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub entity_type: ::buffa::alloc::string::String,
+    /// Field 6: `entity_urn`
+    #[serde(
+        rename = "entityUrn",
+        alias = "entity_urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub entity_urn: ::buffa::alloc::string::String,
+    /// Field 7: `confidence_score`
+    #[serde(
+        rename = "confidenceScore",
+        alias = "confidence_score",
+        with = "::buffa::json_helpers::double",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_f64"
+    )]
+    pub confidence_score: f64,
+    /// Field 8: `observed_at`
+    #[serde(
+        rename = "observedAt",
+        alias = "observed_at",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub observed_at: ::buffa::alloc::string::String,
+    /// Field 9: `reason`
+    #[serde(
+        rename = "reason",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub reason: ::buffa::alloc::string::String,
+    /// Field 10: `attributes`
+    #[serde(
+        rename = "attributes",
+        skip_serializing_if = "::buffa::__private::HashMap::is_empty",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub attributes: ::buffa::__private::HashMap<
+        ::buffa::alloc::string::String,
+        ::buffa::alloc::string::String,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for VendorDiscoverySignal {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("VendorDiscoverySignal")
+            .field("id", &self.id)
+            .field("label", &self.label)
+            .field("source_id", &self.source_id)
+            .field("runtime_id", &self.runtime_id)
+            .field("entity_type", &self.entity_type)
+            .field("entity_urn", &self.entity_urn)
+            .field("confidence_score", &self.confidence_score)
+            .field("observed_at", &self.observed_at)
+            .field("reason", &self.reason)
+            .field("attributes", &self.attributes)
+            .finish()
+    }
+}
+impl VendorDiscoverySignal {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySignal";
+}
+::buffa::impl_default_instance!(VendorDiscoverySignal);
+impl ::buffa::MessageName for VendorDiscoverySignal {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "VendorDiscoverySignal";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoverySignal";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySignal";
+}
+impl ::buffa::Message for VendorDiscoverySignal {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.id) as u64;
+        }
+        if !self.label.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.label) as u64;
+        }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        if !self.runtime_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.runtime_id) as u64;
+        }
+        if !self.entity_type.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.entity_type) as u64;
+        }
+        if !self.entity_urn.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.entity_urn) as u64;
+        }
+        if self.confidence_score.to_bits() != 0u64 {
+            size += 1u64 + ::buffa::types::FIXED64_ENCODED_LEN as u64;
+        }
+        if !self.observed_at.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.observed_at) as u64;
+        }
+        if !self.reason.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.reason) as u64;
+        }
+        size
+            += ::buffa::map_codec::field_len::<
+                ::buffa::map_codec::Str,
+                ::buffa::map_codec::Str,
+                _,
+            >(&self.attributes, 1u64);
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.id, buf);
+        }
+        if !self.label.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.label, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.source_id, buf);
+        }
+        if !self.runtime_id.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.runtime_id, buf);
+        }
+        if !self.entity_type.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.entity_type, buf);
+        }
+        if !self.entity_urn.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.entity_urn, buf);
+        }
+        if self.confidence_score.to_bits() != 0u64 {
+            ::buffa::types::put_double_field(7u32, self.confidence_score, buf);
+        }
+        if !self.observed_at.is_empty() {
+            ::buffa::types::put_string_field(8u32, &self.observed_at, buf);
+        }
+        if !self.reason.is_empty() {
+            ::buffa::types::put_string_field(9u32, &self.reason, buf);
+        }
+        ::buffa::map_codec::write_field::<
+            ::buffa::map_codec::Str,
+            ::buffa::map_codec::Str,
+            _,
+        >(&self.attributes, 10u32, buf);
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.label, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.runtime_id, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.entity_type, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.entity_urn, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Fixed64,
+                )?;
+                self.confidence_score = ::buffa::types::decode_double(buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.observed_at, buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.reason, buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::map_codec::merge_entry::<
+                    ::buffa::map_codec::Str,
+                    ::buffa::map_codec::Str,
+                    _,
+                >(&mut self.attributes, buf, ctx)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.id.clear();
+        self.label.clear();
+        self.source_id.clear();
+        self.runtime_id.clear();
+        self.entity_type.clear();
+        self.entity_urn.clear();
+        self.confidence_score = 0f64;
+        self.observed_at.clear();
+        self.reason.clear();
+        self.attributes.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for VendorDiscoverySignal {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.VendorDiscoverySignal";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for VendorDiscoverySignal {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __VENDOR_DISCOVERY_SIGNAL_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySignal",
+    to_json: ::buffa::type_registry::any_to_json::<VendorDiscoverySignal>,
+    from_json: ::buffa::type_registry::any_from_json::<VendorDiscoverySignal>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct VendorDiscoverySummary {
+    /// Field 1: `total_discoveries`
+    #[serde(
+        rename = "totalDiscoveries",
+        alias = "total_discoveries",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub total_discoveries: u64,
+    /// Field 2: `discovered`
+    #[serde(
+        rename = "discovered",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub discovered: u64,
+    /// Field 3: `approved`
+    #[serde(
+        rename = "approved",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub approved: u64,
+    /// Field 4: `rejected`
+    #[serde(
+        rename = "rejected",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub rejected: u64,
+    /// Field 5: `ignored`
+    #[serde(
+        rename = "ignored",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub ignored: u64,
+    /// Field 6: `linked`
+    #[serde(
+        rename = "linked",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub linked: u64,
+    /// Field 7: `source_count`
+    #[serde(
+        rename = "sourceCount",
+        alias = "source_count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub source_count: u64,
+    /// Field 8: `evidence_signals`
+    #[serde(
+        rename = "evidenceSignals",
+        alias = "evidence_signals",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub evidence_signals: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for VendorDiscoverySummary {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("VendorDiscoverySummary")
+            .field("total_discoveries", &self.total_discoveries)
+            .field("discovered", &self.discovered)
+            .field("approved", &self.approved)
+            .field("rejected", &self.rejected)
+            .field("ignored", &self.ignored)
+            .field("linked", &self.linked)
+            .field("source_count", &self.source_count)
+            .field("evidence_signals", &self.evidence_signals)
+            .finish()
+    }
+}
+impl VendorDiscoverySummary {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySummary";
+}
+::buffa::impl_default_instance!(VendorDiscoverySummary);
+impl ::buffa::MessageName for VendorDiscoverySummary {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "VendorDiscoverySummary";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoverySummary";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySummary";
+}
+impl ::buffa::Message for VendorDiscoverySummary {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.total_discoveries != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.total_discoveries) as u64;
+        }
+        if self.discovered != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.discovered) as u64;
+        }
+        if self.approved != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.approved) as u64;
+        }
+        if self.rejected != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.rejected) as u64;
+        }
+        if self.ignored != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.ignored) as u64;
+        }
+        if self.linked != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.linked) as u64;
+        }
+        if self.source_count != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.source_count) as u64;
+        }
+        if self.evidence_signals != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.evidence_signals) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.total_discoveries != 0u64 {
+            ::buffa::types::put_uint64_field(1u32, self.total_discoveries, buf);
+        }
+        if self.discovered != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.discovered, buf);
+        }
+        if self.approved != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.approved, buf);
+        }
+        if self.rejected != 0u64 {
+            ::buffa::types::put_uint64_field(4u32, self.rejected, buf);
+        }
+        if self.ignored != 0u64 {
+            ::buffa::types::put_uint64_field(5u32, self.ignored, buf);
+        }
+        if self.linked != 0u64 {
+            ::buffa::types::put_uint64_field(6u32, self.linked, buf);
+        }
+        if self.source_count != 0u64 {
+            ::buffa::types::put_uint64_field(7u32, self.source_count, buf);
+        }
+        if self.evidence_signals != 0u64 {
+            ::buffa::types::put_uint64_field(8u32, self.evidence_signals, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.total_discoveries = ::buffa::types::decode_uint64(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.discovered = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.approved = ::buffa::types::decode_uint64(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.rejected = ::buffa::types::decode_uint64(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.ignored = ::buffa::types::decode_uint64(buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.linked = ::buffa::types::decode_uint64(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.source_count = ::buffa::types::decode_uint64(buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.evidence_signals = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.total_discoveries = 0u64;
+        self.discovered = 0u64;
+        self.approved = 0u64;
+        self.rejected = 0u64;
+        self.ignored = 0u64;
+        self.linked = 0u64;
+        self.source_count = 0u64;
+        self.evidence_signals = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for VendorDiscoverySummary {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.VendorDiscoverySummary";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for VendorDiscoverySummary {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __VENDOR_DISCOVERY_SUMMARY_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySummary",
+    to_json: ::buffa::type_registry::any_to_json::<VendorDiscoverySummary>,
+    from_json: ::buffa::type_registry::any_from_json::<VendorDiscoverySummary>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct VendorDiscoverySourceSummary {
+    /// Field 1: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 2: `provider`
+    #[serde(
+        rename = "provider",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub provider: ::buffa::alloc::string::String,
+    /// Field 3: `runtime_id`
+    #[serde(
+        rename = "runtimeId",
+        alias = "runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub runtime_id: ::buffa::alloc::string::String,
+    /// Field 4: `status`
+    #[serde(
+        rename = "status",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub status: ::buffa::alloc::string::String,
+    /// Field 5: `freshness`
+    #[serde(
+        rename = "freshness",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub freshness: ::buffa::alloc::string::String,
+    /// Field 6: `total`
+    #[serde(
+        rename = "total",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub total: u64,
+    /// Field 7: `discovered`
+    #[serde(
+        rename = "discovered",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub discovered: u64,
+    /// Field 8: `approved`
+    #[serde(
+        rename = "approved",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub approved: u64,
+    /// Field 9: `rejected`
+    #[serde(
+        rename = "rejected",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub rejected: u64,
+    /// Field 10: `ignored`
+    #[serde(
+        rename = "ignored",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub ignored: u64,
+    /// Field 11: `linked`
+    #[serde(
+        rename = "linked",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub linked: u64,
+    /// Field 12: `failed`
+    #[serde(
+        rename = "failed",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub failed: u64,
+    /// Field 13: `stale`
+    #[serde(
+        rename = "stale",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub stale: u64,
+    /// Field 14: `cursor_pending`
+    #[serde(
+        rename = "cursorPending",
+        alias = "cursor_pending",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub cursor_pending: u64,
+    /// Field 15: `sync_lag_seconds`
+    #[serde(
+        rename = "syncLagSeconds",
+        alias = "sync_lag_seconds",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub sync_lag_seconds: u64,
+    /// Field 16: `last_error`
+    #[serde(
+        rename = "lastError",
+        alias = "last_error",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub last_error: ::buffa::alloc::string::String,
+    /// Field 17: `last_synced_at`
+    #[serde(
+        rename = "lastSyncedAt",
+        alias = "last_synced_at",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub last_synced_at: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for VendorDiscoverySourceSummary {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("VendorDiscoverySourceSummary")
+            .field("source_id", &self.source_id)
+            .field("provider", &self.provider)
+            .field("runtime_id", &self.runtime_id)
+            .field("status", &self.status)
+            .field("freshness", &self.freshness)
+            .field("total", &self.total)
+            .field("discovered", &self.discovered)
+            .field("approved", &self.approved)
+            .field("rejected", &self.rejected)
+            .field("ignored", &self.ignored)
+            .field("linked", &self.linked)
+            .field("failed", &self.failed)
+            .field("stale", &self.stale)
+            .field("cursor_pending", &self.cursor_pending)
+            .field("sync_lag_seconds", &self.sync_lag_seconds)
+            .field("last_error", &self.last_error)
+            .field("last_synced_at", &self.last_synced_at)
+            .finish()
+    }
+}
+impl VendorDiscoverySourceSummary {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySourceSummary";
+}
+::buffa::impl_default_instance!(VendorDiscoverySourceSummary);
+impl ::buffa::MessageName for VendorDiscoverySourceSummary {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "VendorDiscoverySourceSummary";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoverySourceSummary";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySourceSummary";
+}
+impl ::buffa::Message for VendorDiscoverySourceSummary {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        if !self.provider.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.provider) as u64;
+        }
+        if !self.runtime_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.runtime_id) as u64;
+        }
+        if !self.status.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.status) as u64;
+        }
+        if !self.freshness.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.freshness) as u64;
+        }
+        if self.total != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.total) as u64;
+        }
+        if self.discovered != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.discovered) as u64;
+        }
+        if self.approved != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.approved) as u64;
+        }
+        if self.rejected != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.rejected) as u64;
+        }
+        if self.ignored != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.ignored) as u64;
+        }
+        if self.linked != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.linked) as u64;
+        }
+        if self.failed != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.failed) as u64;
+        }
+        if self.stale != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.stale) as u64;
+        }
+        if self.cursor_pending != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.cursor_pending) as u64;
+        }
+        if self.sync_lag_seconds != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.sync_lag_seconds) as u64;
+        }
+        if !self.last_error.is_empty() {
+            size += 2u64 + ::buffa::types::string_encoded_len(&self.last_error) as u64;
+        }
+        if !self.last_synced_at.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.last_synced_at) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.source_id, buf);
+        }
+        if !self.provider.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.provider, buf);
+        }
+        if !self.runtime_id.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.runtime_id, buf);
+        }
+        if !self.status.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.status, buf);
+        }
+        if !self.freshness.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.freshness, buf);
+        }
+        if self.total != 0u64 {
+            ::buffa::types::put_uint64_field(6u32, self.total, buf);
+        }
+        if self.discovered != 0u64 {
+            ::buffa::types::put_uint64_field(7u32, self.discovered, buf);
+        }
+        if self.approved != 0u64 {
+            ::buffa::types::put_uint64_field(8u32, self.approved, buf);
+        }
+        if self.rejected != 0u64 {
+            ::buffa::types::put_uint64_field(9u32, self.rejected, buf);
+        }
+        if self.ignored != 0u64 {
+            ::buffa::types::put_uint64_field(10u32, self.ignored, buf);
+        }
+        if self.linked != 0u64 {
+            ::buffa::types::put_uint64_field(11u32, self.linked, buf);
+        }
+        if self.failed != 0u64 {
+            ::buffa::types::put_uint64_field(12u32, self.failed, buf);
+        }
+        if self.stale != 0u64 {
+            ::buffa::types::put_uint64_field(13u32, self.stale, buf);
+        }
+        if self.cursor_pending != 0u64 {
+            ::buffa::types::put_uint64_field(14u32, self.cursor_pending, buf);
+        }
+        if self.sync_lag_seconds != 0u64 {
+            ::buffa::types::put_uint64_field(15u32, self.sync_lag_seconds, buf);
+        }
+        if !self.last_error.is_empty() {
+            ::buffa::types::put_string_field(16u32, &self.last_error, buf);
+        }
+        if !self.last_synced_at.is_empty() {
+            ::buffa::types::put_string_field(17u32, &self.last_synced_at, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.provider, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.runtime_id, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.status, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.freshness, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.total = ::buffa::types::decode_uint64(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.discovered = ::buffa::types::decode_uint64(buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.approved = ::buffa::types::decode_uint64(buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.rejected = ::buffa::types::decode_uint64(buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.ignored = ::buffa::types::decode_uint64(buf)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.linked = ::buffa::types::decode_uint64(buf)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.failed = ::buffa::types::decode_uint64(buf)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.stale = ::buffa::types::decode_uint64(buf)?;
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.cursor_pending = ::buffa::types::decode_uint64(buf)?;
+            }
+            15u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.sync_lag_seconds = ::buffa::types::decode_uint64(buf)?;
+            }
+            16u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.last_error, buf)?;
+            }
+            17u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.last_synced_at, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.source_id.clear();
+        self.provider.clear();
+        self.runtime_id.clear();
+        self.status.clear();
+        self.freshness.clear();
+        self.total = 0u64;
+        self.discovered = 0u64;
+        self.approved = 0u64;
+        self.rejected = 0u64;
+        self.ignored = 0u64;
+        self.linked = 0u64;
+        self.failed = 0u64;
+        self.stale = 0u64;
+        self.cursor_pending = 0u64;
+        self.sync_lag_seconds = 0u64;
+        self.last_error.clear();
+        self.last_synced_at.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for VendorDiscoverySourceSummary {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.VendorDiscoverySourceSummary";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for VendorDiscoverySourceSummary {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __VENDOR_DISCOVERY_SOURCE_SUMMARY_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySourceSummary",
+    to_json: ::buffa::type_registry::any_to_json::<VendorDiscoverySourceSummary>,
+    from_json: ::buffa::type_registry::any_from_json::<VendorDiscoverySourceSummary>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListVendorDiscoveriesResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `data_authority`
+    #[serde(
+        rename = "dataAuthority",
+        alias = "data_authority",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub data_authority: ::buffa::alloc::string::String,
+    /// Field 4: `generated_at`
+    #[serde(
+        rename = "generatedAt",
+        alias = "generated_at",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub generated_at: ::buffa::alloc::string::String,
+    /// Field 5: `discoveries`
+    #[serde(
+        rename = "discoveries",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub discoveries: ::buffa::alloc::vec::Vec<VendorDiscoveryRow>,
+    /// Field 6: `summary`
+    #[serde(
+        rename = "summary",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub summary: ::buffa::MessageField<
+        VendorDiscoverySummary,
+        ::buffa::Inline<VendorDiscoverySummary>,
+    >,
+    /// Field 7: `source_summaries`
+    #[serde(
+        rename = "sourceSummaries",
+        alias = "source_summaries",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub source_summaries: ::buffa::alloc::vec::Vec<VendorDiscoverySourceSummary>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListVendorDiscoveriesResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListVendorDiscoveriesResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("data_authority", &self.data_authority)
+            .field("generated_at", &self.generated_at)
+            .field("discoveries", &self.discoveries)
+            .field("summary", &self.summary)
+            .field("source_summaries", &self.source_summaries)
+            .finish()
+    }
+}
+impl ListVendorDiscoveriesResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorDiscoveriesResponse";
+}
+::buffa::impl_default_instance!(ListVendorDiscoveriesResponse);
+impl ::buffa::MessageName for ListVendorDiscoveriesResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListVendorDiscoveriesResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListVendorDiscoveriesResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorDiscoveriesResponse";
+}
+impl ::buffa::Message for ListVendorDiscoveriesResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        if !self.data_authority.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.data_authority) as u64;
+        }
+        if !self.generated_at.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.generated_at) as u64;
+        }
+        for v in &self.discoveries {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.summary.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.summary.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.source_summaries {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        if !self.data_authority.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.data_authority, buf);
+        }
+        if !self.generated_at.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.generated_at, buf);
+        }
+        for v in &self.discoveries {
+            ::buffa::types::put_len_delimited_header(
+                5u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.summary.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.summary.write_to(__cache, buf);
+        }
+        for v in &self.source_summaries {
+            ::buffa::types::put_len_delimited_header(
+                7u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.data_authority, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.generated_at, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.discoveries.push(elem);
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.summary.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.source_summaries.push(elem);
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.data_authority.clear();
+        self.generated_at.clear();
+        self.discoveries.clear();
+        self.summary = ::buffa::MessageField::none();
+        self.source_summaries.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListVendorDiscoveriesResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListVendorDiscoveriesResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListVendorDiscoveriesResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_VENDOR_DISCOVERIES_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListVendorDiscoveriesResponse",
+    to_json: ::buffa::type_registry::any_to_json::<ListVendorDiscoveriesResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<ListVendorDiscoveriesResponse>,
+    is_wkt: false,
+};
 /// ExposureCoverageProfile declares the closed entity kinds and sources used by
 /// one coverage comparison. Relations are fixed by the server.
 #[derive(Clone, PartialEq, Default)]
@@ -39160,6 +41633,4042 @@ pub mod __buffa {
                 ::serde::Serialize::serialize(&self.0, __s)
             }
         }
+        #[derive(Clone, Debug, Default)]
+        pub struct VendorDiscoveryFilterView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `source_id`
+            pub source_id: &'a str,
+            /// Field 3: `runtime_ids`
+            pub runtime_ids: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 4: `query`
+            pub query: &'a str,
+            /// Field 5: `source_status`
+            pub source_status: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for VendorDiscoveryFilterView<'a> {
+            type Owned = super::super::VendorDiscoveryFilter;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.query = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_status = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.runtime_ids.push(__elem);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoveryFilter,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoveryFilter,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::VendorDiscoveryFilter {
+                    tenant_id: self.tenant_id.to_string(),
+                    source_id: self.source_id.to_string(),
+                    runtime_ids: self
+                        .runtime_ids
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    query: self.query.to_string(),
+                    source_status: self.source_status.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for VendorDiscoveryFilterView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                for v in &self.runtime_ids {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if !self.query.is_empty() {
+                    size
+                        += 1u64 + ::buffa::types::string_encoded_len(&self.query) as u64;
+                }
+                if !self.source_status.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_status)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.source_id, buf);
+                }
+                for v in &self.runtime_ids {
+                    ::buffa::types::put_string_field(3u32, v, buf);
+                }
+                if !self.query.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.query, buf);
+                }
+                if !self.source_status.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.source_status, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for VendorDiscoveryFilterView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !self.runtime_ids.is_empty() {
+                    __map.serialize_entry("runtimeIds", &*self.runtime_ids)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.query) {
+                    __map.serialize_entry("query", self.query)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_status) {
+                    __map.serialize_entry("sourceStatus", self.source_status)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for VendorDiscoveryFilterView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "VendorDiscoveryFilter";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoveryFilter";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoveryFilter";
+        }
+        ::buffa::impl_default_view_instance!(VendorDiscoveryFilterView);
+        ::buffa::impl_view_reborrow!(VendorDiscoveryFilterView);
+        /** Self-contained, `'static` owned view of a `VendorDiscoveryFilter` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`VendorDiscoveryFilterView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`VendorDiscoveryFilterView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct VendorDiscoveryFilterOwnedView(
+            ::buffa::OwnedView<VendorDiscoveryFilterView<'static>>,
+        );
+        impl VendorDiscoveryFilterOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoveryFilterOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoveryFilterOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::VendorDiscoveryFilter,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoveryFilterOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`VendorDiscoveryFilterView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &VendorDiscoveryFilterView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::VendorDiscoveryFilter {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 3: `runtime_ids`
+            #[must_use]
+            pub fn runtime_ids(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().runtime_ids
+            }
+            /// Field 4: `query`
+            #[must_use]
+            pub fn query(&self) -> &'_ str {
+                self.0.reborrow().query
+            }
+            /// Field 5: `source_status`
+            #[must_use]
+            pub fn source_status(&self) -> &'_ str {
+                self.0.reborrow().source_status
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<VendorDiscoveryFilterView<'static>>,
+        > for VendorDiscoveryFilterOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<VendorDiscoveryFilterView<'static>>,
+            ) -> Self {
+                VendorDiscoveryFilterOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<VendorDiscoveryFilterOwnedView>
+        for ::buffa::OwnedView<VendorDiscoveryFilterView<'static>> {
+            fn from(wrapper: VendorDiscoveryFilterOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<VendorDiscoveryFilterView<'static>>,
+        > for VendorDiscoveryFilterOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<VendorDiscoveryFilterView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::VendorDiscoveryFilter {
+            type View<'a> = VendorDiscoveryFilterView<'a>;
+            type ViewHandle = VendorDiscoveryFilterOwnedView;
+        }
+        impl ::serde::Serialize for VendorDiscoveryFilterOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListVendorDiscoveriesRequestView<'a> {
+            /// Field 1: `filter`
+            pub filter: ::buffa::MessageFieldView<
+                super::super::__buffa::view::VendorDiscoveryFilterView<'a>,
+            >,
+            /// Field 2: `limit`
+            pub limit: u32,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListVendorDiscoveriesRequestView<'a> {
+            type Owned = super::super::ListVendorDiscoveriesRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.filter.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.filter = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::VendorDiscoveryFilterView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListVendorDiscoveriesRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListVendorDiscoveriesRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListVendorDiscoveriesRequest {
+                    filter: match self.filter.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::VendorDiscoveryFilter,
+                                ::buffa::Inline<super::super::VendorDiscoveryFilter>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    limit: self.limit,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListVendorDiscoveriesRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.filter.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.filter.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.filter.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.filter.write_to(__cache, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(2u32, self.limit, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListVendorDiscoveriesRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.filter.as_option() {
+                        __map.serialize_entry("filter", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListVendorDiscoveriesRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListVendorDiscoveriesRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListVendorDiscoveriesRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorDiscoveriesRequest";
+        }
+        ::buffa::impl_default_view_instance!(ListVendorDiscoveriesRequestView);
+        ::buffa::impl_view_reborrow!(ListVendorDiscoveriesRequestView);
+        /** Self-contained, `'static` owned view of a `ListVendorDiscoveriesRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListVendorDiscoveriesRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListVendorDiscoveriesRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListVendorDiscoveriesRequestOwnedView(
+            ::buffa::OwnedView<ListVendorDiscoveriesRequestView<'static>>,
+        );
+        impl ListVendorDiscoveriesRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorDiscoveriesRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorDiscoveriesRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListVendorDiscoveriesRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorDiscoveriesRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListVendorDiscoveriesRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListVendorDiscoveriesRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListVendorDiscoveriesRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `filter`
+            #[must_use]
+            pub fn filter(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::VendorDiscoveryFilterView<'_>,
+            > {
+                &self.0.reborrow().filter
+            }
+            /// Field 2: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListVendorDiscoveriesRequestView<'static>>,
+        > for ListVendorDiscoveriesRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListVendorDiscoveriesRequestView<'static>>,
+            ) -> Self {
+                ListVendorDiscoveriesRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListVendorDiscoveriesRequestOwnedView>
+        for ::buffa::OwnedView<ListVendorDiscoveriesRequestView<'static>> {
+            fn from(wrapper: ListVendorDiscoveriesRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListVendorDiscoveriesRequestView<'static>>,
+        > for ListVendorDiscoveriesRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListVendorDiscoveriesRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListVendorDiscoveriesRequest {
+            type View<'a> = ListVendorDiscoveriesRequestView<'a>;
+            type ViewHandle = ListVendorDiscoveriesRequestOwnedView;
+        }
+        impl ::serde::Serialize for ListVendorDiscoveriesRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct VendorDiscoveryRowView<'a> {
+            /// Field 1: `urn`
+            pub urn: &'a str,
+            /// Field 2: `discovery_id`
+            pub discovery_id: &'a str,
+            /// Field 3: `name`
+            pub name: &'a str,
+            /// Field 4: `normalized_name`
+            pub normalized_name: &'a str,
+            /// Field 5: `source_id`
+            pub source_id: &'a str,
+            /// Field 6: `runtime_id`
+            pub runtime_id: &'a str,
+            /// Field 7: `provider`
+            pub provider: &'a str,
+            /// Field 8: `source_status`
+            pub source_status: &'a str,
+            /// Field 9: `decision_state`
+            pub decision_state: &'a str,
+            /// Field 10: `category`
+            pub category: &'a str,
+            /// Field 11: `website_url`
+            pub website_url: &'a str,
+            /// Field 12: `linked_vendor_urn`
+            pub linked_vendor_urn: &'a str,
+            /// Field 13: `decision_reason`
+            pub decision_reason: &'a str,
+            /// Field 14: `decision_updated_by`
+            pub decision_updated_by: &'a str,
+            /// Field 15: `decision_updated_at`
+            pub decision_updated_at: &'a str,
+            /// Field 16: `attributes` (map)
+            pub attributes: ::buffa::MapView<'a, &'a str, &'a str>,
+            /// Field 17: `source_ids`
+            pub source_ids: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 18: `confidence_score`
+            pub confidence_score: f64,
+            /// Field 19: `discovery_reason`
+            pub discovery_reason: &'a str,
+            /// Field 20: `first_observed_at`
+            pub first_observed_at: &'a str,
+            /// Field 21: `last_observed_at`
+            pub last_observed_at: &'a str,
+            /// Field 22: `signals`
+            pub signals: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::VendorDiscoverySignalView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for VendorDiscoveryRowView<'a> {
+            type Owned = super::super::VendorDiscoveryRow;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.discovery_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.name = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.normalized_name = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.provider = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_status = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.decision_state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.category = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    11u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.website_url = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    12u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.linked_vendor_urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    13u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.decision_reason = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    14u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.decision_updated_by = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    15u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.decision_updated_at = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    18u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Fixed64,
+                        )?;
+                        view.confidence_score = ::buffa::types::decode_double(&mut cur)?;
+                    }
+                    19u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.discovery_reason = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    20u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.first_observed_at = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    21u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.last_observed_at = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    17u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.source_ids.push(__elem);
+                    }
+                    22u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::VendorDiscoverySignalView,
+                            >(),
+                        )?;
+                        view.signals
+                            .push(
+                                <super::super::__buffa::view::VendorDiscoverySignalView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    16u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let entry_bytes = ::buffa::types::borrow_bytes(&mut cur)?;
+                        let mut entry_cur: &'a [u8] = entry_bytes;
+                        let mut key = "";
+                        let mut val = "";
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&key)
+                                + ::buffa::__private::element_footprint(&val),
+                        )?;
+                        while !entry_cur.is_empty() {
+                            let entry_tag = ::buffa::encoding::Tag::decode(
+                                &mut entry_cur,
+                            )?;
+                            match entry_tag.field_number() {
+                                1 => {
+                                    ::buffa::encoding::check_wire_type(
+                                        entry_tag,
+                                        ::buffa::encoding::WireType::LengthDelimited,
+                                    )?;
+                                    key = ::buffa::types::borrow_str(&mut entry_cur)?;
+                                }
+                                2 => {
+                                    ::buffa::encoding::check_wire_type(
+                                        entry_tag,
+                                        ::buffa::encoding::WireType::LengthDelimited,
+                                    )?;
+                                    val = ::buffa::types::borrow_str(&mut entry_cur)?;
+                                }
+                                _ => {
+                                    ::buffa::encoding::skip_field_depth(
+                                        entry_tag,
+                                        &mut entry_cur,
+                                        ctx.depth(),
+                                    )?;
+                                }
+                            }
+                        }
+                        view.attributes.push(key, val);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoveryRow,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoveryRow,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::VendorDiscoveryRow {
+                    urn: self.urn.to_string(),
+                    discovery_id: self.discovery_id.to_string(),
+                    name: self.name.to_string(),
+                    normalized_name: self.normalized_name.to_string(),
+                    source_id: self.source_id.to_string(),
+                    runtime_id: self.runtime_id.to_string(),
+                    provider: self.provider.to_string(),
+                    source_status: self.source_status.to_string(),
+                    decision_state: self.decision_state.to_string(),
+                    category: self.category.to_string(),
+                    website_url: self.website_url.to_string(),
+                    linked_vendor_urn: self.linked_vendor_urn.to_string(),
+                    decision_reason: self.decision_reason.to_string(),
+                    decision_updated_by: self.decision_updated_by.to_string(),
+                    decision_updated_at: self.decision_updated_at.to_string(),
+                    attributes: self
+                        .attributes
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                    source_ids: self.source_ids.iter().map(|s| s.to_string()).collect(),
+                    confidence_score: self.confidence_score,
+                    discovery_reason: self.discovery_reason.to_string(),
+                    first_observed_at: self.first_observed_at.to_string(),
+                    last_observed_at: self.last_observed_at.to_string(),
+                    signals: self
+                        .signals
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for VendorDiscoveryRowView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.urn.is_empty() {
+                    size += 1u64 + ::buffa::types::string_encoded_len(&self.urn) as u64;
+                }
+                if !self.discovery_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.discovery_id)
+                                as u64;
+                }
+                if !self.name.is_empty() {
+                    size += 1u64 + ::buffa::types::string_encoded_len(&self.name) as u64;
+                }
+                if !self.normalized_name.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.normalized_name)
+                                as u64;
+                }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                if !self.runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.runtime_id)
+                                as u64;
+                }
+                if !self.provider.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.provider) as u64;
+                }
+                if !self.source_status.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_status)
+                                as u64;
+                }
+                if !self.decision_state.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.decision_state)
+                                as u64;
+                }
+                if !self.category.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.category) as u64;
+                }
+                if !self.website_url.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.website_url)
+                                as u64;
+                }
+                if !self.linked_vendor_urn.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.linked_vendor_urn)
+                                as u64;
+                }
+                if !self.decision_reason.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.decision_reason)
+                                as u64;
+                }
+                if !self.decision_updated_by.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.decision_updated_by,
+                            ) as u64;
+                }
+                if !self.decision_updated_at.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.decision_updated_at,
+                            ) as u64;
+                }
+                #[allow(clippy::for_kv_map)]
+                for (k, v) in &self.attributes {
+                    let entry_size: u64 = 1u64
+                        + ::buffa::types::string_encoded_len(k) as u64 + 1u64
+                        + ::buffa::types::string_encoded_len(v) as u64;
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(entry_size) as u64
+                            + entry_size;
+                }
+                for v in &self.source_ids {
+                    size += 2u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if self.confidence_score.to_bits() != 0u64 {
+                    size += 2u64 + ::buffa::types::FIXED64_ENCODED_LEN as u64;
+                }
+                if !self.discovery_reason.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.discovery_reason)
+                                as u64;
+                }
+                if !self.first_observed_at.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.first_observed_at)
+                                as u64;
+                }
+                if !self.last_observed_at.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.last_observed_at)
+                                as u64;
+                }
+                for v in &self.signals {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.urn.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.urn, buf);
+                }
+                if !self.discovery_id.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.discovery_id, buf);
+                }
+                if !self.name.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.name, buf);
+                }
+                if !self.normalized_name.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.normalized_name, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.source_id, buf);
+                }
+                if !self.runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(6u32, &self.runtime_id, buf);
+                }
+                if !self.provider.is_empty() {
+                    ::buffa::types::put_string_field(7u32, &self.provider, buf);
+                }
+                if !self.source_status.is_empty() {
+                    ::buffa::types::put_string_field(8u32, &self.source_status, buf);
+                }
+                if !self.decision_state.is_empty() {
+                    ::buffa::types::put_string_field(9u32, &self.decision_state, buf);
+                }
+                if !self.category.is_empty() {
+                    ::buffa::types::put_string_field(10u32, &self.category, buf);
+                }
+                if !self.website_url.is_empty() {
+                    ::buffa::types::put_string_field(11u32, &self.website_url, buf);
+                }
+                if !self.linked_vendor_urn.is_empty() {
+                    ::buffa::types::put_string_field(
+                        12u32,
+                        &self.linked_vendor_urn,
+                        buf,
+                    );
+                }
+                if !self.decision_reason.is_empty() {
+                    ::buffa::types::put_string_field(13u32, &self.decision_reason, buf);
+                }
+                if !self.decision_updated_by.is_empty() {
+                    ::buffa::types::put_string_field(
+                        14u32,
+                        &self.decision_updated_by,
+                        buf,
+                    );
+                }
+                if !self.decision_updated_at.is_empty() {
+                    ::buffa::types::put_string_field(
+                        15u32,
+                        &self.decision_updated_at,
+                        buf,
+                    );
+                }
+                for (k, v) in &self.attributes {
+                    let entry_size: u64 = 1u64
+                        + ::buffa::types::string_encoded_len(k) as u64 + 1u64
+                        + ::buffa::types::string_encoded_len(v) as u64;
+                    ::buffa::encoding::Tag::new(
+                            16u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::encoding::encode_varint(entry_size, buf);
+                    ::buffa::encoding::Tag::new(
+                            1u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::types::encode_string(k, buf);
+                    ::buffa::encoding::Tag::new(
+                            2u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::types::encode_string(v, buf);
+                }
+                for v in &self.source_ids {
+                    ::buffa::types::put_string_field(17u32, v, buf);
+                }
+                if self.confidence_score.to_bits() != 0u64 {
+                    ::buffa::types::put_double_field(18u32, self.confidence_score, buf);
+                }
+                if !self.discovery_reason.is_empty() {
+                    ::buffa::types::put_string_field(19u32, &self.discovery_reason, buf);
+                }
+                if !self.first_observed_at.is_empty() {
+                    ::buffa::types::put_string_field(
+                        20u32,
+                        &self.first_observed_at,
+                        buf,
+                    );
+                }
+                if !self.last_observed_at.is_empty() {
+                    ::buffa::types::put_string_field(21u32, &self.last_observed_at, buf);
+                }
+                for v in &self.signals {
+                    ::buffa::types::put_len_delimited_header(
+                        22u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for VendorDiscoveryRowView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.urn) {
+                    __map.serialize_entry("urn", self.urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.discovery_id) {
+                    __map.serialize_entry("discoveryId", self.discovery_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.name) {
+                    __map.serialize_entry("name", self.name)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.normalized_name) {
+                    __map.serialize_entry("normalizedName", self.normalized_name)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.runtime_id) {
+                    __map.serialize_entry("runtimeId", self.runtime_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.provider) {
+                    __map.serialize_entry("provider", self.provider)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_status) {
+                    __map.serialize_entry("sourceStatus", self.source_status)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.decision_state) {
+                    __map.serialize_entry("decisionState", self.decision_state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.category) {
+                    __map.serialize_entry("category", self.category)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.website_url) {
+                    __map.serialize_entry("websiteUrl", self.website_url)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.linked_vendor_urn,
+                ) {
+                    __map.serialize_entry("linkedVendorUrn", self.linked_vendor_urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.decision_reason) {
+                    __map.serialize_entry("decisionReason", self.decision_reason)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.decision_updated_by,
+                ) {
+                    __map
+                        .serialize_entry("decisionUpdatedBy", self.decision_updated_by)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.decision_updated_at,
+                ) {
+                    __map
+                        .serialize_entry("decisionUpdatedAt", self.decision_updated_at)?;
+                }
+                if !self.attributes.is_empty() {
+                    struct _WM<'__a, '__x>(
+                        &'__x ::buffa::MapView<'__x, &'__a str, &'__a str>,
+                    );
+                    impl<'__a> ::serde::Serialize for _WM<'__a, '_> {
+                        fn serialize<__S: ::serde::Serializer>(
+                            &self,
+                            __s: __S,
+                        ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                            use ::serde::ser::SerializeMap as _;
+                            let mut __m = __s
+                                .serialize_map(::core::option::Option::Some(self.0.len()))?;
+                            for (k, v) in self.0.iter_unique() {
+                                __m.serialize_entry(k, v)?;
+                            }
+                            __m.end()
+                        }
+                    }
+                    __map.serialize_entry("attributes", &_WM(&self.attributes))?;
+                }
+                if !self.source_ids.is_empty() {
+                    __map.serialize_entry("sourceIds", &*self.source_ids)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_f64(&self.confidence_score) {
+                    __map
+                        .serialize_entry(
+                            "confidenceScore",
+                            &::buffa::json_helpers::ProtoJson(&self.confidence_score),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.discovery_reason) {
+                    __map.serialize_entry("discoveryReason", self.discovery_reason)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.first_observed_at,
+                ) {
+                    __map.serialize_entry("firstObservedAt", self.first_observed_at)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.last_observed_at) {
+                    __map.serialize_entry("lastObservedAt", self.last_observed_at)?;
+                }
+                if !self.signals.is_empty() {
+                    __map.serialize_entry("signals", &*self.signals)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for VendorDiscoveryRowView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "VendorDiscoveryRow";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoveryRow";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoveryRow";
+        }
+        ::buffa::impl_default_view_instance!(VendorDiscoveryRowView);
+        ::buffa::impl_view_reborrow!(VendorDiscoveryRowView);
+        /** Self-contained, `'static` owned view of a `VendorDiscoveryRow` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`VendorDiscoveryRowView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`VendorDiscoveryRowView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct VendorDiscoveryRowOwnedView(
+            ::buffa::OwnedView<VendorDiscoveryRowView<'static>>,
+        );
+        impl VendorDiscoveryRowOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoveryRowOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoveryRowOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::VendorDiscoveryRow,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoveryRowOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`VendorDiscoveryRowView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &VendorDiscoveryRowView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::VendorDiscoveryRow {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `urn`
+            #[must_use]
+            pub fn urn(&self) -> &'_ str {
+                self.0.reborrow().urn
+            }
+            /// Field 2: `discovery_id`
+            #[must_use]
+            pub fn discovery_id(&self) -> &'_ str {
+                self.0.reborrow().discovery_id
+            }
+            /// Field 3: `name`
+            #[must_use]
+            pub fn name(&self) -> &'_ str {
+                self.0.reborrow().name
+            }
+            /// Field 4: `normalized_name`
+            #[must_use]
+            pub fn normalized_name(&self) -> &'_ str {
+                self.0.reborrow().normalized_name
+            }
+            /// Field 5: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 6: `runtime_id`
+            #[must_use]
+            pub fn runtime_id(&self) -> &'_ str {
+                self.0.reborrow().runtime_id
+            }
+            /// Field 7: `provider`
+            #[must_use]
+            pub fn provider(&self) -> &'_ str {
+                self.0.reborrow().provider
+            }
+            /// Field 8: `source_status`
+            #[must_use]
+            pub fn source_status(&self) -> &'_ str {
+                self.0.reborrow().source_status
+            }
+            /// Field 9: `decision_state`
+            #[must_use]
+            pub fn decision_state(&self) -> &'_ str {
+                self.0.reborrow().decision_state
+            }
+            /// Field 10: `category`
+            #[must_use]
+            pub fn category(&self) -> &'_ str {
+                self.0.reborrow().category
+            }
+            /// Field 11: `website_url`
+            #[must_use]
+            pub fn website_url(&self) -> &'_ str {
+                self.0.reborrow().website_url
+            }
+            /// Field 12: `linked_vendor_urn`
+            #[must_use]
+            pub fn linked_vendor_urn(&self) -> &'_ str {
+                self.0.reborrow().linked_vendor_urn
+            }
+            /// Field 13: `decision_reason`
+            #[must_use]
+            pub fn decision_reason(&self) -> &'_ str {
+                self.0.reborrow().decision_reason
+            }
+            /// Field 14: `decision_updated_by`
+            #[must_use]
+            pub fn decision_updated_by(&self) -> &'_ str {
+                self.0.reborrow().decision_updated_by
+            }
+            /// Field 15: `decision_updated_at`
+            #[must_use]
+            pub fn decision_updated_at(&self) -> &'_ str {
+                self.0.reborrow().decision_updated_at
+            }
+            /// Field 16: `attributes` (map)
+            #[must_use]
+            pub fn attributes(&self) -> &::buffa::MapView<'_, &'_ str, &'_ str> {
+                &self.0.reborrow().attributes
+            }
+            /// Field 17: `source_ids`
+            #[must_use]
+            pub fn source_ids(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().source_ids
+            }
+            /// Field 18: `confidence_score`
+            #[must_use]
+            pub fn confidence_score(&self) -> f64 {
+                self.0.reborrow().confidence_score
+            }
+            /// Field 19: `discovery_reason`
+            #[must_use]
+            pub fn discovery_reason(&self) -> &'_ str {
+                self.0.reborrow().discovery_reason
+            }
+            /// Field 20: `first_observed_at`
+            #[must_use]
+            pub fn first_observed_at(&self) -> &'_ str {
+                self.0.reborrow().first_observed_at
+            }
+            /// Field 21: `last_observed_at`
+            #[must_use]
+            pub fn last_observed_at(&self) -> &'_ str {
+                self.0.reborrow().last_observed_at
+            }
+            /// Field 22: `signals`
+            #[must_use]
+            pub fn signals(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::VendorDiscoverySignalView<'_>,
+            > {
+                &self.0.reborrow().signals
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<VendorDiscoveryRowView<'static>>>
+        for VendorDiscoveryRowOwnedView {
+            fn from(inner: ::buffa::OwnedView<VendorDiscoveryRowView<'static>>) -> Self {
+                VendorDiscoveryRowOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<VendorDiscoveryRowOwnedView>
+        for ::buffa::OwnedView<VendorDiscoveryRowView<'static>> {
+            fn from(wrapper: VendorDiscoveryRowOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<VendorDiscoveryRowView<'static>>>
+        for VendorDiscoveryRowOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<VendorDiscoveryRowView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::VendorDiscoveryRow {
+            type View<'a> = VendorDiscoveryRowView<'a>;
+            type ViewHandle = VendorDiscoveryRowOwnedView;
+        }
+        impl ::serde::Serialize for VendorDiscoveryRowOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct VendorDiscoverySignalView<'a> {
+            /// Field 1: `id`
+            pub id: &'a str,
+            /// Field 2: `label`
+            pub label: &'a str,
+            /// Field 3: `source_id`
+            pub source_id: &'a str,
+            /// Field 4: `runtime_id`
+            pub runtime_id: &'a str,
+            /// Field 5: `entity_type`
+            pub entity_type: &'a str,
+            /// Field 6: `entity_urn`
+            pub entity_urn: &'a str,
+            /// Field 7: `confidence_score`
+            pub confidence_score: f64,
+            /// Field 8: `observed_at`
+            pub observed_at: &'a str,
+            /// Field 9: `reason`
+            pub reason: &'a str,
+            /// Field 10: `attributes` (map)
+            pub attributes: ::buffa::MapView<'a, &'a str, &'a str>,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for VendorDiscoverySignalView<'a> {
+            type Owned = super::super::VendorDiscoverySignal;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.label = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.entity_type = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.entity_urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Fixed64,
+                        )?;
+                        view.confidence_score = ::buffa::types::decode_double(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.observed_at = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.reason = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let entry_bytes = ::buffa::types::borrow_bytes(&mut cur)?;
+                        let mut entry_cur: &'a [u8] = entry_bytes;
+                        let mut key = "";
+                        let mut val = "";
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&key)
+                                + ::buffa::__private::element_footprint(&val),
+                        )?;
+                        while !entry_cur.is_empty() {
+                            let entry_tag = ::buffa::encoding::Tag::decode(
+                                &mut entry_cur,
+                            )?;
+                            match entry_tag.field_number() {
+                                1 => {
+                                    ::buffa::encoding::check_wire_type(
+                                        entry_tag,
+                                        ::buffa::encoding::WireType::LengthDelimited,
+                                    )?;
+                                    key = ::buffa::types::borrow_str(&mut entry_cur)?;
+                                }
+                                2 => {
+                                    ::buffa::encoding::check_wire_type(
+                                        entry_tag,
+                                        ::buffa::encoding::WireType::LengthDelimited,
+                                    )?;
+                                    val = ::buffa::types::borrow_str(&mut entry_cur)?;
+                                }
+                                _ => {
+                                    ::buffa::encoding::skip_field_depth(
+                                        entry_tag,
+                                        &mut entry_cur,
+                                        ctx.depth(),
+                                    )?;
+                                }
+                            }
+                        }
+                        view.attributes.push(key, val);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoverySignal,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoverySignal,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::VendorDiscoverySignal {
+                    id: self.id.to_string(),
+                    label: self.label.to_string(),
+                    source_id: self.source_id.to_string(),
+                    runtime_id: self.runtime_id.to_string(),
+                    entity_type: self.entity_type.to_string(),
+                    entity_urn: self.entity_urn.to_string(),
+                    confidence_score: self.confidence_score,
+                    observed_at: self.observed_at.to_string(),
+                    reason: self.reason.to_string(),
+                    attributes: self
+                        .attributes
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for VendorDiscoverySignalView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.id.is_empty() {
+                    size += 1u64 + ::buffa::types::string_encoded_len(&self.id) as u64;
+                }
+                if !self.label.is_empty() {
+                    size
+                        += 1u64 + ::buffa::types::string_encoded_len(&self.label) as u64;
+                }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                if !self.runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.runtime_id)
+                                as u64;
+                }
+                if !self.entity_type.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.entity_type)
+                                as u64;
+                }
+                if !self.entity_urn.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.entity_urn)
+                                as u64;
+                }
+                if self.confidence_score.to_bits() != 0u64 {
+                    size += 1u64 + ::buffa::types::FIXED64_ENCODED_LEN as u64;
+                }
+                if !self.observed_at.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.observed_at)
+                                as u64;
+                }
+                if !self.reason.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.reason) as u64;
+                }
+                #[allow(clippy::for_kv_map)]
+                for (k, v) in &self.attributes {
+                    let entry_size: u64 = 1u64
+                        + ::buffa::types::string_encoded_len(k) as u64 + 1u64
+                        + ::buffa::types::string_encoded_len(v) as u64;
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(entry_size) as u64
+                            + entry_size;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.id, buf);
+                }
+                if !self.label.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.label, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.source_id, buf);
+                }
+                if !self.runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.runtime_id, buf);
+                }
+                if !self.entity_type.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.entity_type, buf);
+                }
+                if !self.entity_urn.is_empty() {
+                    ::buffa::types::put_string_field(6u32, &self.entity_urn, buf);
+                }
+                if self.confidence_score.to_bits() != 0u64 {
+                    ::buffa::types::put_double_field(7u32, self.confidence_score, buf);
+                }
+                if !self.observed_at.is_empty() {
+                    ::buffa::types::put_string_field(8u32, &self.observed_at, buf);
+                }
+                if !self.reason.is_empty() {
+                    ::buffa::types::put_string_field(9u32, &self.reason, buf);
+                }
+                for (k, v) in &self.attributes {
+                    let entry_size: u64 = 1u64
+                        + ::buffa::types::string_encoded_len(k) as u64 + 1u64
+                        + ::buffa::types::string_encoded_len(v) as u64;
+                    ::buffa::encoding::Tag::new(
+                            10u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::encoding::encode_varint(entry_size, buf);
+                    ::buffa::encoding::Tag::new(
+                            1u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::types::encode_string(k, buf);
+                    ::buffa::encoding::Tag::new(
+                            2u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::types::encode_string(v, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for VendorDiscoverySignalView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.id) {
+                    __map.serialize_entry("id", self.id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.label) {
+                    __map.serialize_entry("label", self.label)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.runtime_id) {
+                    __map.serialize_entry("runtimeId", self.runtime_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.entity_type) {
+                    __map.serialize_entry("entityType", self.entity_type)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.entity_urn) {
+                    __map.serialize_entry("entityUrn", self.entity_urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_f64(&self.confidence_score) {
+                    __map
+                        .serialize_entry(
+                            "confidenceScore",
+                            &::buffa::json_helpers::ProtoJson(&self.confidence_score),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.observed_at) {
+                    __map.serialize_entry("observedAt", self.observed_at)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.reason) {
+                    __map.serialize_entry("reason", self.reason)?;
+                }
+                if !self.attributes.is_empty() {
+                    struct _WM<'__a, '__x>(
+                        &'__x ::buffa::MapView<'__x, &'__a str, &'__a str>,
+                    );
+                    impl<'__a> ::serde::Serialize for _WM<'__a, '_> {
+                        fn serialize<__S: ::serde::Serializer>(
+                            &self,
+                            __s: __S,
+                        ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                            use ::serde::ser::SerializeMap as _;
+                            let mut __m = __s
+                                .serialize_map(::core::option::Option::Some(self.0.len()))?;
+                            for (k, v) in self.0.iter_unique() {
+                                __m.serialize_entry(k, v)?;
+                            }
+                            __m.end()
+                        }
+                    }
+                    __map.serialize_entry("attributes", &_WM(&self.attributes))?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for VendorDiscoverySignalView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "VendorDiscoverySignal";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoverySignal";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySignal";
+        }
+        ::buffa::impl_default_view_instance!(VendorDiscoverySignalView);
+        ::buffa::impl_view_reborrow!(VendorDiscoverySignalView);
+        /** Self-contained, `'static` owned view of a `VendorDiscoverySignal` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`VendorDiscoverySignalView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`VendorDiscoverySignalView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct VendorDiscoverySignalOwnedView(
+            ::buffa::OwnedView<VendorDiscoverySignalView<'static>>,
+        );
+        impl VendorDiscoverySignalOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySignalOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySignalOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::VendorDiscoverySignal,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySignalOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`VendorDiscoverySignalView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &VendorDiscoverySignalView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::VendorDiscoverySignal {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `id`
+            #[must_use]
+            pub fn id(&self) -> &'_ str {
+                self.0.reborrow().id
+            }
+            /// Field 2: `label`
+            #[must_use]
+            pub fn label(&self) -> &'_ str {
+                self.0.reborrow().label
+            }
+            /// Field 3: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 4: `runtime_id`
+            #[must_use]
+            pub fn runtime_id(&self) -> &'_ str {
+                self.0.reborrow().runtime_id
+            }
+            /// Field 5: `entity_type`
+            #[must_use]
+            pub fn entity_type(&self) -> &'_ str {
+                self.0.reborrow().entity_type
+            }
+            /// Field 6: `entity_urn`
+            #[must_use]
+            pub fn entity_urn(&self) -> &'_ str {
+                self.0.reborrow().entity_urn
+            }
+            /// Field 7: `confidence_score`
+            #[must_use]
+            pub fn confidence_score(&self) -> f64 {
+                self.0.reborrow().confidence_score
+            }
+            /// Field 8: `observed_at`
+            #[must_use]
+            pub fn observed_at(&self) -> &'_ str {
+                self.0.reborrow().observed_at
+            }
+            /// Field 9: `reason`
+            #[must_use]
+            pub fn reason(&self) -> &'_ str {
+                self.0.reborrow().reason
+            }
+            /// Field 10: `attributes` (map)
+            #[must_use]
+            pub fn attributes(&self) -> &::buffa::MapView<'_, &'_ str, &'_ str> {
+                &self.0.reborrow().attributes
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<VendorDiscoverySignalView<'static>>,
+        > for VendorDiscoverySignalOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<VendorDiscoverySignalView<'static>>,
+            ) -> Self {
+                VendorDiscoverySignalOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<VendorDiscoverySignalOwnedView>
+        for ::buffa::OwnedView<VendorDiscoverySignalView<'static>> {
+            fn from(wrapper: VendorDiscoverySignalOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<VendorDiscoverySignalView<'static>>,
+        > for VendorDiscoverySignalOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<VendorDiscoverySignalView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::VendorDiscoverySignal {
+            type View<'a> = VendorDiscoverySignalView<'a>;
+            type ViewHandle = VendorDiscoverySignalOwnedView;
+        }
+        impl ::serde::Serialize for VendorDiscoverySignalOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct VendorDiscoverySummaryView<'a> {
+            /// Field 1: `total_discoveries`
+            pub total_discoveries: u64,
+            /// Field 2: `discovered`
+            pub discovered: u64,
+            /// Field 3: `approved`
+            pub approved: u64,
+            /// Field 4: `rejected`
+            pub rejected: u64,
+            /// Field 5: `ignored`
+            pub ignored: u64,
+            /// Field 6: `linked`
+            pub linked: u64,
+            /// Field 7: `source_count`
+            pub source_count: u64,
+            /// Field 8: `evidence_signals`
+            pub evidence_signals: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for VendorDiscoverySummaryView<'a> {
+            type Owned = super::super::VendorDiscoverySummary;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.total_discoveries = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.discovered = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.approved = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.rejected = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.ignored = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.linked = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.source_count = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.evidence_signals = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoverySummary,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoverySummary,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::VendorDiscoverySummary {
+                    total_discoveries: self.total_discoveries,
+                    discovered: self.discovered,
+                    approved: self.approved,
+                    rejected: self.rejected,
+                    ignored: self.ignored,
+                    linked: self.linked,
+                    source_count: self.source_count,
+                    evidence_signals: self.evidence_signals,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for VendorDiscoverySummaryView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.total_discoveries != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.total_discoveries)
+                                as u64;
+                }
+                if self.discovered != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.discovered) as u64;
+                }
+                if self.approved != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.approved) as u64;
+                }
+                if self.rejected != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.rejected) as u64;
+                }
+                if self.ignored != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.ignored) as u64;
+                }
+                if self.linked != 0u64 {
+                    size
+                        += 1u64 + ::buffa::types::uint64_encoded_len(self.linked) as u64;
+                }
+                if self.source_count != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.source_count)
+                                as u64;
+                }
+                if self.evidence_signals != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.evidence_signals)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.total_discoveries != 0u64 {
+                    ::buffa::types::put_uint64_field(1u32, self.total_discoveries, buf);
+                }
+                if self.discovered != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.discovered, buf);
+                }
+                if self.approved != 0u64 {
+                    ::buffa::types::put_uint64_field(3u32, self.approved, buf);
+                }
+                if self.rejected != 0u64 {
+                    ::buffa::types::put_uint64_field(4u32, self.rejected, buf);
+                }
+                if self.ignored != 0u64 {
+                    ::buffa::types::put_uint64_field(5u32, self.ignored, buf);
+                }
+                if self.linked != 0u64 {
+                    ::buffa::types::put_uint64_field(6u32, self.linked, buf);
+                }
+                if self.source_count != 0u64 {
+                    ::buffa::types::put_uint64_field(7u32, self.source_count, buf);
+                }
+                if self.evidence_signals != 0u64 {
+                    ::buffa::types::put_uint64_field(8u32, self.evidence_signals, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for VendorDiscoverySummaryView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.total_discoveries,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "totalDiscoveries",
+                            &::buffa::json_helpers::ProtoJson(&self.total_discoveries),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.discovered) {
+                    __map
+                        .serialize_entry(
+                            "discovered",
+                            &::buffa::json_helpers::ProtoJson(&self.discovered),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.approved) {
+                    __map
+                        .serialize_entry(
+                            "approved",
+                            &::buffa::json_helpers::ProtoJson(&self.approved),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.rejected) {
+                    __map
+                        .serialize_entry(
+                            "rejected",
+                            &::buffa::json_helpers::ProtoJson(&self.rejected),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.ignored) {
+                    __map
+                        .serialize_entry(
+                            "ignored",
+                            &::buffa::json_helpers::ProtoJson(&self.ignored),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.linked) {
+                    __map
+                        .serialize_entry(
+                            "linked",
+                            &::buffa::json_helpers::ProtoJson(&self.linked),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.source_count) {
+                    __map
+                        .serialize_entry(
+                            "sourceCount",
+                            &::buffa::json_helpers::ProtoJson(&self.source_count),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.evidence_signals) {
+                    __map
+                        .serialize_entry(
+                            "evidenceSignals",
+                            &::buffa::json_helpers::ProtoJson(&self.evidence_signals),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for VendorDiscoverySummaryView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "VendorDiscoverySummary";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoverySummary";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySummary";
+        }
+        ::buffa::impl_default_view_instance!(VendorDiscoverySummaryView);
+        ::buffa::impl_view_reborrow!(VendorDiscoverySummaryView);
+        /** Self-contained, `'static` owned view of a `VendorDiscoverySummary` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`VendorDiscoverySummaryView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`VendorDiscoverySummaryView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct VendorDiscoverySummaryOwnedView(
+            ::buffa::OwnedView<VendorDiscoverySummaryView<'static>>,
+        );
+        impl VendorDiscoverySummaryOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySummaryOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySummaryOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::VendorDiscoverySummary,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySummaryOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`VendorDiscoverySummaryView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &VendorDiscoverySummaryView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::VendorDiscoverySummary {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `total_discoveries`
+            #[must_use]
+            pub fn total_discoveries(&self) -> u64 {
+                self.0.reborrow().total_discoveries
+            }
+            /// Field 2: `discovered`
+            #[must_use]
+            pub fn discovered(&self) -> u64 {
+                self.0.reborrow().discovered
+            }
+            /// Field 3: `approved`
+            #[must_use]
+            pub fn approved(&self) -> u64 {
+                self.0.reborrow().approved
+            }
+            /// Field 4: `rejected`
+            #[must_use]
+            pub fn rejected(&self) -> u64 {
+                self.0.reborrow().rejected
+            }
+            /// Field 5: `ignored`
+            #[must_use]
+            pub fn ignored(&self) -> u64 {
+                self.0.reborrow().ignored
+            }
+            /// Field 6: `linked`
+            #[must_use]
+            pub fn linked(&self) -> u64 {
+                self.0.reborrow().linked
+            }
+            /// Field 7: `source_count`
+            #[must_use]
+            pub fn source_count(&self) -> u64 {
+                self.0.reborrow().source_count
+            }
+            /// Field 8: `evidence_signals`
+            #[must_use]
+            pub fn evidence_signals(&self) -> u64 {
+                self.0.reborrow().evidence_signals
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<VendorDiscoverySummaryView<'static>>,
+        > for VendorDiscoverySummaryOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<VendorDiscoverySummaryView<'static>>,
+            ) -> Self {
+                VendorDiscoverySummaryOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<VendorDiscoverySummaryOwnedView>
+        for ::buffa::OwnedView<VendorDiscoverySummaryView<'static>> {
+            fn from(wrapper: VendorDiscoverySummaryOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<VendorDiscoverySummaryView<'static>>,
+        > for VendorDiscoverySummaryOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<VendorDiscoverySummaryView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::VendorDiscoverySummary {
+            type View<'a> = VendorDiscoverySummaryView<'a>;
+            type ViewHandle = VendorDiscoverySummaryOwnedView;
+        }
+        impl ::serde::Serialize for VendorDiscoverySummaryOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct VendorDiscoverySourceSummaryView<'a> {
+            /// Field 1: `source_id`
+            pub source_id: &'a str,
+            /// Field 2: `provider`
+            pub provider: &'a str,
+            /// Field 3: `runtime_id`
+            pub runtime_id: &'a str,
+            /// Field 4: `status`
+            pub status: &'a str,
+            /// Field 5: `freshness`
+            pub freshness: &'a str,
+            /// Field 6: `total`
+            pub total: u64,
+            /// Field 7: `discovered`
+            pub discovered: u64,
+            /// Field 8: `approved`
+            pub approved: u64,
+            /// Field 9: `rejected`
+            pub rejected: u64,
+            /// Field 10: `ignored`
+            pub ignored: u64,
+            /// Field 11: `linked`
+            pub linked: u64,
+            /// Field 12: `failed`
+            pub failed: u64,
+            /// Field 13: `stale`
+            pub stale: u64,
+            /// Field 14: `cursor_pending`
+            pub cursor_pending: u64,
+            /// Field 15: `sync_lag_seconds`
+            pub sync_lag_seconds: u64,
+            /// Field 16: `last_error`
+            pub last_error: &'a str,
+            /// Field 17: `last_synced_at`
+            pub last_synced_at: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for VendorDiscoverySourceSummaryView<'a> {
+            type Owned = super::super::VendorDiscoverySourceSummary;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.provider = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.status = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.freshness = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.total = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.discovered = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.approved = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.rejected = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.ignored = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    11u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.linked = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    12u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.failed = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    13u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.stale = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    14u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.cursor_pending = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    15u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.sync_lag_seconds = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    16u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.last_error = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    17u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.last_synced_at = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoverySourceSummary,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::VendorDiscoverySourceSummary,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::VendorDiscoverySourceSummary {
+                    source_id: self.source_id.to_string(),
+                    provider: self.provider.to_string(),
+                    runtime_id: self.runtime_id.to_string(),
+                    status: self.status.to_string(),
+                    freshness: self.freshness.to_string(),
+                    total: self.total,
+                    discovered: self.discovered,
+                    approved: self.approved,
+                    rejected: self.rejected,
+                    ignored: self.ignored,
+                    linked: self.linked,
+                    failed: self.failed,
+                    stale: self.stale,
+                    cursor_pending: self.cursor_pending,
+                    sync_lag_seconds: self.sync_lag_seconds,
+                    last_error: self.last_error.to_string(),
+                    last_synced_at: self.last_synced_at.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for VendorDiscoverySourceSummaryView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                if !self.provider.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.provider) as u64;
+                }
+                if !self.runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.runtime_id)
+                                as u64;
+                }
+                if !self.status.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.status) as u64;
+                }
+                if !self.freshness.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.freshness) as u64;
+                }
+                if self.total != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.total) as u64;
+                }
+                if self.discovered != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.discovered) as u64;
+                }
+                if self.approved != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.approved) as u64;
+                }
+                if self.rejected != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.rejected) as u64;
+                }
+                if self.ignored != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.ignored) as u64;
+                }
+                if self.linked != 0u64 {
+                    size
+                        += 1u64 + ::buffa::types::uint64_encoded_len(self.linked) as u64;
+                }
+                if self.failed != 0u64 {
+                    size
+                        += 1u64 + ::buffa::types::uint64_encoded_len(self.failed) as u64;
+                }
+                if self.stale != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.stale) as u64;
+                }
+                if self.cursor_pending != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.cursor_pending)
+                                as u64;
+                }
+                if self.sync_lag_seconds != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.sync_lag_seconds)
+                                as u64;
+                }
+                if !self.last_error.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.last_error)
+                                as u64;
+                }
+                if !self.last_synced_at.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.last_synced_at)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.source_id, buf);
+                }
+                if !self.provider.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.provider, buf);
+                }
+                if !self.runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.runtime_id, buf);
+                }
+                if !self.status.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.status, buf);
+                }
+                if !self.freshness.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.freshness, buf);
+                }
+                if self.total != 0u64 {
+                    ::buffa::types::put_uint64_field(6u32, self.total, buf);
+                }
+                if self.discovered != 0u64 {
+                    ::buffa::types::put_uint64_field(7u32, self.discovered, buf);
+                }
+                if self.approved != 0u64 {
+                    ::buffa::types::put_uint64_field(8u32, self.approved, buf);
+                }
+                if self.rejected != 0u64 {
+                    ::buffa::types::put_uint64_field(9u32, self.rejected, buf);
+                }
+                if self.ignored != 0u64 {
+                    ::buffa::types::put_uint64_field(10u32, self.ignored, buf);
+                }
+                if self.linked != 0u64 {
+                    ::buffa::types::put_uint64_field(11u32, self.linked, buf);
+                }
+                if self.failed != 0u64 {
+                    ::buffa::types::put_uint64_field(12u32, self.failed, buf);
+                }
+                if self.stale != 0u64 {
+                    ::buffa::types::put_uint64_field(13u32, self.stale, buf);
+                }
+                if self.cursor_pending != 0u64 {
+                    ::buffa::types::put_uint64_field(14u32, self.cursor_pending, buf);
+                }
+                if self.sync_lag_seconds != 0u64 {
+                    ::buffa::types::put_uint64_field(15u32, self.sync_lag_seconds, buf);
+                }
+                if !self.last_error.is_empty() {
+                    ::buffa::types::put_string_field(16u32, &self.last_error, buf);
+                }
+                if !self.last_synced_at.is_empty() {
+                    ::buffa::types::put_string_field(17u32, &self.last_synced_at, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for VendorDiscoverySourceSummaryView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.provider) {
+                    __map.serialize_entry("provider", self.provider)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.runtime_id) {
+                    __map.serialize_entry("runtimeId", self.runtime_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.status) {
+                    __map.serialize_entry("status", self.status)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.freshness) {
+                    __map.serialize_entry("freshness", self.freshness)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.total) {
+                    __map
+                        .serialize_entry(
+                            "total",
+                            &::buffa::json_helpers::ProtoJson(&self.total),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.discovered) {
+                    __map
+                        .serialize_entry(
+                            "discovered",
+                            &::buffa::json_helpers::ProtoJson(&self.discovered),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.approved) {
+                    __map
+                        .serialize_entry(
+                            "approved",
+                            &::buffa::json_helpers::ProtoJson(&self.approved),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.rejected) {
+                    __map
+                        .serialize_entry(
+                            "rejected",
+                            &::buffa::json_helpers::ProtoJson(&self.rejected),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.ignored) {
+                    __map
+                        .serialize_entry(
+                            "ignored",
+                            &::buffa::json_helpers::ProtoJson(&self.ignored),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.linked) {
+                    __map
+                        .serialize_entry(
+                            "linked",
+                            &::buffa::json_helpers::ProtoJson(&self.linked),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.failed) {
+                    __map
+                        .serialize_entry(
+                            "failed",
+                            &::buffa::json_helpers::ProtoJson(&self.failed),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.stale) {
+                    __map
+                        .serialize_entry(
+                            "stale",
+                            &::buffa::json_helpers::ProtoJson(&self.stale),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.cursor_pending) {
+                    __map
+                        .serialize_entry(
+                            "cursorPending",
+                            &::buffa::json_helpers::ProtoJson(&self.cursor_pending),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.sync_lag_seconds) {
+                    __map
+                        .serialize_entry(
+                            "syncLagSeconds",
+                            &::buffa::json_helpers::ProtoJson(&self.sync_lag_seconds),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.last_error) {
+                    __map.serialize_entry("lastError", self.last_error)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.last_synced_at) {
+                    __map.serialize_entry("lastSyncedAt", self.last_synced_at)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for VendorDiscoverySourceSummaryView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "VendorDiscoverySourceSummary";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.VendorDiscoverySourceSummary";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorDiscoverySourceSummary";
+        }
+        ::buffa::impl_default_view_instance!(VendorDiscoverySourceSummaryView);
+        ::buffa::impl_view_reborrow!(VendorDiscoverySourceSummaryView);
+        /** Self-contained, `'static` owned view of a `VendorDiscoverySourceSummary` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`VendorDiscoverySourceSummaryView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`VendorDiscoverySourceSummaryView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct VendorDiscoverySourceSummaryOwnedView(
+            ::buffa::OwnedView<VendorDiscoverySourceSummaryView<'static>>,
+        );
+        impl VendorDiscoverySourceSummaryOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySourceSummaryOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySourceSummaryOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::VendorDiscoverySourceSummary,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorDiscoverySourceSummaryOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`VendorDiscoverySourceSummaryView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &VendorDiscoverySourceSummaryView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::VendorDiscoverySourceSummary {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 2: `provider`
+            #[must_use]
+            pub fn provider(&self) -> &'_ str {
+                self.0.reborrow().provider
+            }
+            /// Field 3: `runtime_id`
+            #[must_use]
+            pub fn runtime_id(&self) -> &'_ str {
+                self.0.reborrow().runtime_id
+            }
+            /// Field 4: `status`
+            #[must_use]
+            pub fn status(&self) -> &'_ str {
+                self.0.reborrow().status
+            }
+            /// Field 5: `freshness`
+            #[must_use]
+            pub fn freshness(&self) -> &'_ str {
+                self.0.reborrow().freshness
+            }
+            /// Field 6: `total`
+            #[must_use]
+            pub fn total(&self) -> u64 {
+                self.0.reborrow().total
+            }
+            /// Field 7: `discovered`
+            #[must_use]
+            pub fn discovered(&self) -> u64 {
+                self.0.reborrow().discovered
+            }
+            /// Field 8: `approved`
+            #[must_use]
+            pub fn approved(&self) -> u64 {
+                self.0.reborrow().approved
+            }
+            /// Field 9: `rejected`
+            #[must_use]
+            pub fn rejected(&self) -> u64 {
+                self.0.reborrow().rejected
+            }
+            /// Field 10: `ignored`
+            #[must_use]
+            pub fn ignored(&self) -> u64 {
+                self.0.reborrow().ignored
+            }
+            /// Field 11: `linked`
+            #[must_use]
+            pub fn linked(&self) -> u64 {
+                self.0.reborrow().linked
+            }
+            /// Field 12: `failed`
+            #[must_use]
+            pub fn failed(&self) -> u64 {
+                self.0.reborrow().failed
+            }
+            /// Field 13: `stale`
+            #[must_use]
+            pub fn stale(&self) -> u64 {
+                self.0.reborrow().stale
+            }
+            /// Field 14: `cursor_pending`
+            #[must_use]
+            pub fn cursor_pending(&self) -> u64 {
+                self.0.reborrow().cursor_pending
+            }
+            /// Field 15: `sync_lag_seconds`
+            #[must_use]
+            pub fn sync_lag_seconds(&self) -> u64 {
+                self.0.reborrow().sync_lag_seconds
+            }
+            /// Field 16: `last_error`
+            #[must_use]
+            pub fn last_error(&self) -> &'_ str {
+                self.0.reborrow().last_error
+            }
+            /// Field 17: `last_synced_at`
+            #[must_use]
+            pub fn last_synced_at(&self) -> &'_ str {
+                self.0.reborrow().last_synced_at
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<VendorDiscoverySourceSummaryView<'static>>,
+        > for VendorDiscoverySourceSummaryOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<VendorDiscoverySourceSummaryView<'static>>,
+            ) -> Self {
+                VendorDiscoverySourceSummaryOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<VendorDiscoverySourceSummaryOwnedView>
+        for ::buffa::OwnedView<VendorDiscoverySourceSummaryView<'static>> {
+            fn from(wrapper: VendorDiscoverySourceSummaryOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<VendorDiscoverySourceSummaryView<'static>>,
+        > for VendorDiscoverySourceSummaryOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<VendorDiscoverySourceSummaryView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::VendorDiscoverySourceSummary {
+            type View<'a> = VendorDiscoverySourceSummaryView<'a>;
+            type ViewHandle = VendorDiscoverySourceSummaryOwnedView;
+        }
+        impl ::serde::Serialize for VendorDiscoverySourceSummaryOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListVendorDiscoveriesResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `data_authority`
+            pub data_authority: &'a str,
+            /// Field 4: `generated_at`
+            pub generated_at: &'a str,
+            /// Field 5: `discoveries`
+            pub discoveries: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::VendorDiscoveryRowView<'a>,
+            >,
+            /// Field 6: `summary`
+            pub summary: ::buffa::MessageFieldView<
+                super::super::__buffa::view::VendorDiscoverySummaryView<'a>,
+            >,
+            /// Field 7: `source_summaries`
+            pub source_summaries: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::VendorDiscoverySourceSummaryView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListVendorDiscoveriesResponseView<'a> {
+            type Owned = super::super::ListVendorDiscoveriesResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.data_authority = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.generated_at = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.summary.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.summary = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::VendorDiscoverySummaryView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::VendorDiscoveryRowView,
+                            >(),
+                        )?;
+                        view.discoveries
+                            .push(
+                                <super::super::__buffa::view::VendorDiscoveryRowView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::VendorDiscoverySourceSummaryView,
+                            >(),
+                        )?;
+                        view.source_summaries
+                            .push(
+                                <super::super::__buffa::view::VendorDiscoverySourceSummaryView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListVendorDiscoveriesResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListVendorDiscoveriesResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListVendorDiscoveriesResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    data_authority: self.data_authority.to_string(),
+                    generated_at: self.generated_at.to_string(),
+                    discoveries: self
+                        .discoveries
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    summary: match self.summary.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::VendorDiscoverySummary,
+                                ::buffa::Inline<super::super::VendorDiscoverySummary>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    source_summaries: self
+                        .source_summaries
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListVendorDiscoveriesResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                if !self.data_authority.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.data_authority)
+                                as u64;
+                }
+                if !self.generated_at.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.generated_at)
+                                as u64;
+                }
+                for v in &self.discoveries {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.summary.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.summary.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.source_summaries {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                if !self.data_authority.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.data_authority, buf);
+                }
+                if !self.generated_at.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.generated_at, buf);
+                }
+                for v in &self.discoveries {
+                    ::buffa::types::put_len_delimited_header(
+                        5u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.summary.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        6u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.summary.write_to(__cache, buf);
+                }
+                for v in &self.source_summaries {
+                    ::buffa::types::put_len_delimited_header(
+                        7u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListVendorDiscoveriesResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.data_authority) {
+                    __map.serialize_entry("dataAuthority", self.data_authority)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.generated_at) {
+                    __map.serialize_entry("generatedAt", self.generated_at)?;
+                }
+                if !self.discoveries.is_empty() {
+                    __map.serialize_entry("discoveries", &*self.discoveries)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.summary.as_option() {
+                        __map.serialize_entry("summary", __v)?;
+                    }
+                }
+                if !self.source_summaries.is_empty() {
+                    __map.serialize_entry("sourceSummaries", &*self.source_summaries)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListVendorDiscoveriesResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListVendorDiscoveriesResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListVendorDiscoveriesResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorDiscoveriesResponse";
+        }
+        ::buffa::impl_default_view_instance!(ListVendorDiscoveriesResponseView);
+        ::buffa::impl_view_reborrow!(ListVendorDiscoveriesResponseView);
+        /** Self-contained, `'static` owned view of a `ListVendorDiscoveriesResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListVendorDiscoveriesResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListVendorDiscoveriesResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListVendorDiscoveriesResponseOwnedView(
+            ::buffa::OwnedView<ListVendorDiscoveriesResponseView<'static>>,
+        );
+        impl ListVendorDiscoveriesResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorDiscoveriesResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorDiscoveriesResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListVendorDiscoveriesResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorDiscoveriesResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListVendorDiscoveriesResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListVendorDiscoveriesResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListVendorDiscoveriesResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `data_authority`
+            #[must_use]
+            pub fn data_authority(&self) -> &'_ str {
+                self.0.reborrow().data_authority
+            }
+            /// Field 4: `generated_at`
+            #[must_use]
+            pub fn generated_at(&self) -> &'_ str {
+                self.0.reborrow().generated_at
+            }
+            /// Field 5: `discoveries`
+            #[must_use]
+            pub fn discoveries(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::VendorDiscoveryRowView<'_>,
+            > {
+                &self.0.reborrow().discoveries
+            }
+            /// Field 6: `summary`
+            #[must_use]
+            pub fn summary(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::VendorDiscoverySummaryView<'_>,
+            > {
+                &self.0.reborrow().summary
+            }
+            /// Field 7: `source_summaries`
+            #[must_use]
+            pub fn source_summaries(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::VendorDiscoverySourceSummaryView<'_>,
+            > {
+                &self.0.reborrow().source_summaries
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListVendorDiscoveriesResponseView<'static>>,
+        > for ListVendorDiscoveriesResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListVendorDiscoveriesResponseView<'static>>,
+            ) -> Self {
+                ListVendorDiscoveriesResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListVendorDiscoveriesResponseOwnedView>
+        for ::buffa::OwnedView<ListVendorDiscoveriesResponseView<'static>> {
+            fn from(wrapper: ListVendorDiscoveriesResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListVendorDiscoveriesResponseView<'static>>,
+        > for ListVendorDiscoveriesResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListVendorDiscoveriesResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListVendorDiscoveriesResponse {
+            type View<'a> = ListVendorDiscoveriesResponseView<'a>;
+            type ViewHandle = ListVendorDiscoveriesResponseOwnedView;
+        }
+        impl ::serde::Serialize for ListVendorDiscoveriesResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
         /// ExposureCoverageProfile declares the closed entity kinds and sources used by
         /// one coverage comparison. Relations are fixed by the server.
         #[derive(Clone, Debug, Default)]
@@ -43718,6 +50227,13 @@ pub mod __buffa {
         reg.register_json_any(super::__VENDOR_REGISTER_ROW_JSON_ANY);
         reg.register_json_any(super::__VENDOR_REGISTER_SUMMARY_JSON_ANY);
         reg.register_json_any(super::__LIST_VENDOR_REGISTER_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__VENDOR_DISCOVERY_FILTER_JSON_ANY);
+        reg.register_json_any(super::__LIST_VENDOR_DISCOVERIES_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__VENDOR_DISCOVERY_ROW_JSON_ANY);
+        reg.register_json_any(super::__VENDOR_DISCOVERY_SIGNAL_JSON_ANY);
+        reg.register_json_any(super::__VENDOR_DISCOVERY_SUMMARY_JSON_ANY);
+        reg.register_json_any(super::__VENDOR_DISCOVERY_SOURCE_SUMMARY_JSON_ANY);
+        reg.register_json_any(super::__LIST_VENDOR_DISCOVERIES_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__EXPOSURE_COVERAGE_PROFILE_JSON_ANY);
         reg.register_json_any(super::__COMPARE_EXPOSURE_COVERAGE_REQUEST_JSON_ANY);
         reg.register_json_any(super::__EXPOSURE_COVERAGE_COUNTS_JSON_ANY);
@@ -43946,6 +50462,34 @@ pub use self::__buffa::view::VendorRegisterSummaryOwnedView;
 pub use self::__buffa::view::ListVendorRegisterResponseView;
 #[doc(inline)]
 pub use self::__buffa::view::ListVendorRegisterResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoveryFilterView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoveryFilterOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListVendorDiscoveriesRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ListVendorDiscoveriesRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoveryRowView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoveryRowOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoverySignalView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoverySignalOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoverySummaryView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoverySummaryOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoverySourceSummaryView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorDiscoverySourceSummaryOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListVendorDiscoveriesResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ListVendorDiscoveriesResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::view::ExposureCoverageProfileView;
 #[doc(inline)]

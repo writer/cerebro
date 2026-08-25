@@ -64,11 +64,11 @@ entries:
           event:
             kind: openrouter.api_keys
             required_payload_fields:
-              - id
+              - hash
             schema_ref: openrouter/api_keys/v1
             urn_kind: openrouter_api_keys
           id: api_keys
-          id_field: id
+          id_field: hash
           label: API keys
           method: GET
           name_field: name
@@ -78,7 +78,7 @@ entries:
           path: /v1/auth/keys
           projection:
             fields:
-              secret_id: id
+              secret_id: hash
               secret_name: name
               secret_status: secret_status|status|state
               secret_type: secret_type|type|kind
@@ -134,11 +134,11 @@ entries:
           event:
             kind: openrouter.usage_reports
             required_payload_fields:
-              - id
+              - endpoint_id
             schema_ref: openrouter/usage_reports/v1
             urn_kind: openrouter_usage_reports
           id: usage_reports
-          id_field: id
+          id_field: endpoint_id
           label: Usage reports
           method: GET
           pagination:
@@ -147,7 +147,7 @@ entries:
           path: /v1/usage
           projection:
             fields:
-              resource_id: id
+              resource_id: endpoint_id
               resource_type: resource_type|type|kind
               resource_urn: resource_urn|urn|metadata.resource_urn
             template: asset

@@ -127,67 +127,134 @@ func TestGoogleWorkspacePublicExecutionConfigCarriesScopeWithoutCredentialMateri
 	}
 }
 
+func TestPortableAIPublicExecutionConfigCarriesOnlyProviderSelectors(t *testing.T) {
+	azure := PublicExecutionConfigForSource("azure_openai", map[string]string{
+		"family": " deployments ", "subscription_id": " sub-1 ", "resource_group": " rg-ai ",
+		"account_name": " acct-openai ", "location": " westus ", "api_key": "must-not-cross",
+	})
+	if azure["subscription_id"] != "sub-1" || azure["resource_group"] != "rg-ai" || azure["account_name"] != "acct-openai" || azure["location"] != "westus" || azure["api_key"] != "" {
+		t.Fatalf("Azure OpenAI public config = %#v", azure)
+	}
+	vertex := PublicExecutionConfigForSource("google_vertex_ai", map[string]string{
+		"project_id": " project-1 ", "location": " us-central1 ", "token": "must-not-cross",
+	})
+	if vertex["project_id"] != "project-1" || vertex["location"] != "us-central1" || vertex["token"] != "" {
+		t.Fatalf("Vertex public config = %#v", vertex)
+	}
+	huggingface := PublicExecutionConfigForSource("huggingface", map[string]string{
+		"organization": " writer ", "token": "must-not-cross",
+	})
+	if huggingface["organization"] != "writer" || huggingface["token"] != "" {
+		t.Fatalf("Hugging Face public config = %#v", huggingface)
+	}
+	langchain := PublicExecutionConfigForSource("langchain", map[string]string{
+		"base_url": " https://api.smith.langchain.com ", "auth_model": " bearer_token ",
+		"organization_id": " org-1 ", "workspace_id": " workspace-1 ", "api_key": "must-not-cross",
+	})
+	if langchain["base_url"] != "https://api.smith.langchain.com" || langchain["auth_model"] != "bearer_token" || langchain["organization_id"] != "org-1" || langchain["workspace_id"] != "workspace-1" || langchain["api_key"] != "" {
+		t.Fatalf("LangChain public config = %#v", langchain)
+	}
+	foundry := PublicExecutionConfigForSource("microsoft_foundry", map[string]string{
+		"endpoint": " project.services.ai.azure.com ", "project_name": " project-1 ", "api_key": "must-not-cross",
+	})
+	if foundry["endpoint"] != "project.services.ai.azure.com" || foundry["project_name"] != "project-1" || foundry["api_key"] != "" {
+		t.Fatalf("Microsoft Foundry public config = %#v", foundry)
+	}
+	writer := PublicExecutionConfigForSource("writer", map[string]string{
+		"base_url": " https://api.writer.com ", "application_id": " app-1 ", "order": " desc ", "token": "must-not-cross",
+	})
+	if writer["base_url"] != "https://api.writer.com" || writer["application_id"] != "app-1" || writer["order"] != "desc" || writer["token"] != "" {
+		t.Fatalf("Writer public config = %#v", writer)
+	}
+}
+
 func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 	for name, test := range map[string]struct {
 		source, family, wantFamily string
 		wantAuthoritative          bool
 	}{
-		"Azure authorization policy":  {" azure ", " authorization_policy ", "authorization_policy", true},
-		"other Azure family":          {"azure", "user", "user", false},
-		"Anthropic default":           {" anthropic ", "", "user", true},
-		"Anthropic user":              {"anthropic", " user ", "user", true},
-		"Anthropic compliance":        {"anthropic", "compliance_activity", "compliance_activity", true},
-		"unknown Anthropic family":    {"anthropic", "future-family", "future-family", true},
-		"OpenAI default":              {" openai ", "", "user", true},
-		"OpenAI user":                 {"openai", " user ", "user", true},
-		"OpenAI project API key":      {"openai", "project_api_key", "project_api_key", true},
-		"unknown OpenAI family":       {"openai", "future-family", "future-family", true},
-		"DeepSeek default":            {" deepseek ", "", "model_catalog", true},
-		"DeepSeek model catalog":      {"deepseek", " model_catalog ", "model_catalog", true},
-		"DeepSeek account balances":   {"deepseek", "account_balances", "account_balances", true},
-		"unknown DeepSeek family":     {"deepseek", "future-family", "future-family", true},
-		"Asana default":               {" asana ", "", "users", true},
-		"Asana users":                 {"asana", " users ", "users", true},
-		"Asana projects":              {"asana", "projects", "projects", true},
-		"Asana audit events":          {"asana", "audit_events", "audit_events", true},
-		"unknown Asana family":        {"asana", "future-family", "future-family", true},
-		"DigitalOcean default":        {" digitalocean ", "", "droplets", true},
-		"DigitalOcean droplets":       {"digitalocean", " droplets ", "droplets", true},
-		"DigitalOcean VPCs":           {"digitalocean", " vpcs ", "vpcs", true},
-		"DigitalOcean firewalls":      {"digitalocean", "firewalls", "firewalls", true},
-		"unknown DigitalOcean family": {"digitalocean", "future-family", "future-family", true},
-		"Discord default":             {" discord ", "", "audit_log", true},
-		"Discord audit log":           {"discord", " audit_log ", "audit_log", true},
-		"Discord member":              {"discord", "member", "member", true},
-		"Discord role":                {"discord", "role", "role", true},
-		"Discord permission":          {"discord", "permission", "permission", true},
-		"unknown Discord family":      {"discord", "future-family", "future-family", true},
-		"JumpCloud default":           {"jumpcloud", "", "users", true},
-		"JumpCloud family":            {"jumpcloud", "group_members", "group_members", true},
-		"unknown JumpCloud family":    {"jumpcloud", "future-family", "future-family", true},
-		"Linode default":              {" linode ", "", "issue", true},
-		"Linode issue":                {"linode", " issue ", "issue", true},
-		"other Linode family":         {"linode", "event", "event", false},
-		"unknown Linode family":       {"linode", "future-family", "future-family", false},
-		"PagerDuty default":           {" pagerduty ", "", "user", true},
-		"PagerDuty user":              {"pagerduty", " user ", "user", true},
-		"PagerDuty team":              {"pagerduty", "team", "team", true},
-		"PagerDuty integration":       {"pagerduty", "integration", "integration", true},
-		"unknown PagerDuty family":    {"pagerduty", "future-family", "future-family", true},
-		"SentinelOne agent":           {" sentinelone ", " agent ", "agent", true},
-		"SentinelOne activity":        {"sentinelone", "activity", "activity", true},
-		"SentinelOne exclusion":       {"sentinelone", "exclusion", "exclusion", true},
-		"SentinelOne group":           {"sentinelone", "group", "group", true},
-		"SentinelOne site":            {"sentinelone", "site", "site", true},
-		"SentinelOne default":         {"sentinelone", "", "", false},
-		"SentinelOne threat":          {"sentinelone", "threat", "threat", true},
-		"SentinelOne application":     {"sentinelone", "application", "application", true},
-		"Tailscale default":           {"tailscale", "", "device", true},
-		"unknown Tailscale family":    {"tailscale", "future-family", "future-family", true},
-		"Twilio accounts":             {"twilio", "accounts", "accounts", true},
-		"Twilio audit events":         {"twilio", "audit_events", "audit_events", true},
-		"Twilio keys":                 {"twilio", "keys", "keys", true},
-		"unknown Twilio family":       {"twilio", "future-family", "future-family", false},
+		"Azure authorization policy":    {" azure ", " authorization_policy ", "authorization_policy", true},
+		"other Azure family":            {"azure", "user", "user", false},
+		"Anthropic default":             {" anthropic ", "", "user", true},
+		"Anthropic user":                {"anthropic", " user ", "user", true},
+		"Anthropic compliance":          {"anthropic", "compliance_activity", "compliance_activity", true},
+		"unknown Anthropic family":      {"anthropic", "future-family", "future-family", true},
+		"OpenAI default":                {" openai ", "", "user", true},
+		"OpenAI user":                   {"openai", " user ", "user", true},
+		"OpenAI project API key":        {"openai", "project_api_key", "project_api_key", true},
+		"unknown OpenAI family":         {"openai", "future-family", "future-family", true},
+		"DeepSeek default":              {" deepseek ", "", "model_catalog", true},
+		"DeepSeek model catalog":        {"deepseek", " model_catalog ", "model_catalog", true},
+		"DeepSeek account balances":     {"deepseek", "account_balances", "account_balances", true},
+		"unknown DeepSeek family":       {"deepseek", "future-family", "future-family", true},
+		"Azure OpenAI default":          {"azure_openai", "", "deployments", true},
+		"Cohere default":                {"cohere", "", "model_catalog", true},
+		"Gemini default":                {"google_gemini", "", "model_catalog", true},
+		"Vertex default":                {"google_vertex_ai", "", "models", true},
+		"Groq default":                  {"groq", "", "model_catalog", true},
+		"Hugging Face default":          {"huggingface", "", "organization_members", true},
+		"Mistral default":               {"mistral", "", "workspaces", true},
+		"Perplexity default":            {"perplexity", "", "api_groups", true},
+		"AWS Bedrock default":           {"aws_bedrock", "", "foundation_models", true},
+		"Langfuse default":              {"langfuse", "", "project", true},
+		"Cerebras default":              {"cerebras", "", "projects", true},
+		"Cloudflare Workers AI default": {"cloudflare_workers_ai", "", "model_catalog", true},
+		"ElevenLabs default":            {"elevenlabs", "", "model_catalog", true},
+		"Fireworks AI default":          {"fireworks_ai", "", "model_deployments", true},
+		"IBM watsonx.ai default":        {"ibm_watsonx_ai", "", "foundation_model_specs", true},
+		"LangChain default":             {"langchain", "", "organization", true},
+		"Microsoft Foundry default":     {"microsoft_foundry", "", "agents", true},
+		"OpenRouter default":            {"openrouter", "", "organization_members", true},
+		"Pinecone default":              {"pinecone", "", "indexes", true},
+		"Qdrant Cloud default":          {"qdrant_cloud", "", "accounts", true},
+		"Replicate default":             {"replicate", "", "models", true},
+		"Stability AI default":          {"stability_ai", "", "engines", true},
+		"Together AI default":           {"together_ai", "", "projects", true},
+		"Writer default":                {"writer", "", "application", true},
+		"xAI default":                   {"xai", "", "api_keys", true},
+		"unknown portable AI family":    {"google_gemini", "future-family", "future-family", true},
+		"Asana default":                 {" asana ", "", "users", true},
+		"Asana users":                   {"asana", " users ", "users", true},
+		"Asana projects":                {"asana", "projects", "projects", true},
+		"Asana audit events":            {"asana", "audit_events", "audit_events", true},
+		"unknown Asana family":          {"asana", "future-family", "future-family", true},
+		"DigitalOcean default":          {" digitalocean ", "", "droplets", true},
+		"DigitalOcean droplets":         {"digitalocean", " droplets ", "droplets", true},
+		"DigitalOcean VPCs":             {"digitalocean", " vpcs ", "vpcs", true},
+		"DigitalOcean firewalls":        {"digitalocean", "firewalls", "firewalls", true},
+		"unknown DigitalOcean family":   {"digitalocean", "future-family", "future-family", true},
+		"Discord default":               {" discord ", "", "audit_log", true},
+		"Discord audit log":             {"discord", " audit_log ", "audit_log", true},
+		"Discord member":                {"discord", "member", "member", true},
+		"Discord role":                  {"discord", "role", "role", true},
+		"Discord permission":            {"discord", "permission", "permission", true},
+		"unknown Discord family":        {"discord", "future-family", "future-family", true},
+		"JumpCloud default":             {"jumpcloud", "", "users", true},
+		"JumpCloud family":              {"jumpcloud", "group_members", "group_members", true},
+		"unknown JumpCloud family":      {"jumpcloud", "future-family", "future-family", true},
+		"Linode default":                {" linode ", "", "issue", true},
+		"Linode issue":                  {"linode", " issue ", "issue", true},
+		"other Linode family":           {"linode", "event", "event", false},
+		"unknown Linode family":         {"linode", "future-family", "future-family", false},
+		"PagerDuty default":             {" pagerduty ", "", "user", true},
+		"PagerDuty user":                {"pagerduty", " user ", "user", true},
+		"PagerDuty team":                {"pagerduty", "team", "team", true},
+		"PagerDuty integration":         {"pagerduty", "integration", "integration", true},
+		"unknown PagerDuty family":      {"pagerduty", "future-family", "future-family", true},
+		"SentinelOne agent":             {" sentinelone ", " agent ", "agent", true},
+		"SentinelOne activity":          {"sentinelone", "activity", "activity", true},
+		"SentinelOne exclusion":         {"sentinelone", "exclusion", "exclusion", true},
+		"SentinelOne group":             {"sentinelone", "group", "group", true},
+		"SentinelOne site":              {"sentinelone", "site", "site", true},
+		"SentinelOne default":           {"sentinelone", "", "", false},
+		"SentinelOne threat":            {"sentinelone", "threat", "threat", true},
+		"SentinelOne application":       {"sentinelone", "application", "application", true},
+		"Tailscale default":             {"tailscale", "", "device", true},
+		"unknown Tailscale family":      {"tailscale", "future-family", "future-family", true},
+		"Twilio accounts":               {"twilio", "accounts", "accounts", true},
+		"Twilio audit events":           {"twilio", "audit_events", "audit_events", true},
+		"Twilio keys":                   {"twilio", "keys", "keys", true},
+		"unknown Twilio family":         {"twilio", "future-family", "future-family", false},
 		"Google Workspace user compatibility": {
 			"google_workspace", "user", "", false,
 		},
@@ -252,6 +319,31 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			source: "deepseek", references: map[string]string{"api_key": "credential:deepseek:api-key"},
 			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:deepseek:api-key", wantResolved: "resolved-api-key",
 		},
+		"Gemini api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "google_gemini", references: map[string]string{"api_key": "credential:gemini:api-key"},
+			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:gemini:api-key", wantResolved: "resolved-api-key",
+		},
+		"LangChain api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "langchain", references: map[string]string{"api_key": "credential:langchain:api-key"},
+			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:langchain:api-key", wantResolved: "resolved-api-key",
+		},
+		"Qdrant api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "qdrant_cloud", references: map[string]string{"api_key": "credential:qdrant:api-key"},
+			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:qdrant:api-key", wantResolved: "resolved-api-key",
+		},
+		"AWS Bedrock compound host credential": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "aws_bedrock", references: map[string]string{"access_key": "credential:aws:access", "secret_key": "credential:aws:secret"},
+			resolved: map[string]string{"access_key": "AKIDEXAMPLE", "secret_key": "synthetic-secret"}, wantReference: "credential:aws:secret", wantResolved: EncodeAWSHostCredential("AKIDEXAMPLE", "synthetic-secret"),
+		},
+		"Langfuse basic host credential": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "langfuse", references: map[string]string{"public_key": "credential:langfuse:public", "secret_key": "credential:langfuse:secret"},
+			resolved: map[string]string{"public_key": "pk-example", "secret_key": "synthetic-secret"}, wantReference: "credential:langfuse:secret", wantResolved: "cGstZXhhbXBsZTpzeW50aGV0aWMtc2VjcmV0",
+		},
 		"Twilio basic credentials": {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "twilio", references: map[string]string{"username": "AC123", "password": "credential:twilio:password"},
@@ -266,6 +358,63 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			reference, resolved := CredentialBinding(test.source, test.references, test.resolved)
 			if reference != test.wantReference || resolved != test.wantResolved {
 				t.Fatalf("CredentialBinding() = (%q, %q), want (%q, %q)", reference, resolved, test.wantReference, test.wantResolved)
+			}
+		})
+	}
+}
+
+func TestTrustedHostCredentialReferenceMatchesGoogleWorkspaceAuthMode(t *testing.T) {
+	for name, test := range map[string]struct {
+		references map[string]string
+		resolved   map[string]string
+		want       string
+	}{
+		"static token": {
+			references: map[string]string{"token": "credential:google-workspace:token"}, // #nosec G101 -- opaque reference fixture.
+			resolved:   map[string]string{"token": "static-token"},
+			want:       "credential:google-workspace:token",
+		},
+		"delegated service account private key": {
+			references: map[string]string{"private_key": "env:GOOGLE_WORKSPACE_PRIVATE_KEY"},
+			resolved: map[string]string{
+				"service_account_email": "service-account@example.com",
+				"private_key":           "private-key-material",
+				"delegated_admin_email": "admin@example.com",
+			},
+			want: "env:GOOGLE_WORKSPACE_PRIVATE_KEY",
+		},
+		"service account alias": {
+			references: map[string]string{"service_account_private_key": "env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY"},
+			resolved: map[string]string{
+				"service_account_email":       "service-account@example.com",
+				"service_account_private_key": "private-key-material",
+				"subject_email":               "admin@example.com",
+			},
+			want: "env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY",
+		},
+		"OAuth refresh token": {
+			references: map[string]string{"refresh_token": "credential:google-workspace:refresh-token"}, // #nosec G101 -- opaque reference fixture.
+			resolved: map[string]string{
+				"client_id": "client-id", "client_secret": "client-secret", "refresh_token": "refresh-token",
+			},
+			want: "credential:google-workspace:refresh-token",
+		},
+		"incomplete mode fails closed": {
+			references: map[string]string{"private_key": "env:GOOGLE_WORKSPACE_PRIVATE_KEY"},
+			resolved:   map[string]string{"private_key": "private-key-material"},
+		},
+		"other providers cannot use adapter": {
+			references: map[string]string{"token": "credential:other:token"}, // #nosec G101 -- opaque reference fixture.
+			resolved:   map[string]string{"token": "token"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			sourceID := "google_workspace"
+			if name == "other providers cannot use adapter" {
+				sourceID = "other"
+			}
+			if got := TrustedHostCredentialReference(sourceID, test.references, test.resolved); got != test.want {
+				t.Fatalf("TrustedHostCredentialReference() = %q, want %q", got, test.want)
 			}
 		})
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	awsv4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -149,13 +152,25 @@ func (h *Host) get(ctx context.Context, endpoint *url.URL, method, accept string
 	for name, value := range declaredHeaders {
 		req.Header.Set(name, value)
 	}
-	authHeader, authValue, err := credentialHeader(credentialOperation, credential)
-	if err != nil {
-		return nil, nil, 0, err
+	authHeader := ""
+	var authValue []byte
+	if credentialOperation == "aws.sigv4" {
+		if err := signAWSBedrockRequest(ctx, req, credential, h.now().UTC()); err != nil {
+			return nil, nil, 0, err
+		}
+	} else {
+		authHeader, authValue, err = credentialHeader(credentialOperation, credential)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		req.Header.Set(authHeader, string(authValue))
 	}
-	req.Header.Set(authHeader, string(authValue))
 	response, err := h.client.Do(req)
-	req.Header.Del(authHeader)
+	if authHeader != "" {
+		req.Header.Del(authHeader)
+	}
+	req.Header.Del("Authorization")
+	req.Header.Del("X-Amz-Date")
 	clear(authValue)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -196,6 +211,20 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 		return "Authorization", append([]byte("Bearer "), credential...), nil
 	case "openai.admin_api_key_bearer":
 		return "Authorization", append([]byte("Bearer "), credential...), nil
+	case "google.api_key_header":
+		return "X-Goog-Api-Key", append([]byte(nil), credential...), nil
+	case "elevenlabs.xi_api_key":
+		return "Xi-Api-Key", append([]byte(nil), credential...), nil
+	case "langsmith.x_api_key":
+		return "X-Api-Key", append([]byte(nil), credential...), nil
+	case "langfuse.basic":
+		return "Authorization", append([]byte("Basic "), credential...), nil
+	case "microsoft_foundry.api_key":
+		return "Api-Key", append([]byte(nil), credential...), nil
+	case "pinecone.api_key":
+		return "Api-Key", append([]byte(nil), credential...), nil
+	case "qdrant.api_key":
+		return "Authorization", append([]byte("apikey "), credential...), nil
 	case "jumpcloud.x_api_key":
 		return "X-Api-Key", append([]byte(nil), credential...), nil
 	case "sentinelone.api_token":
@@ -209,6 +238,48 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 	default:
 		return "", nil, fmt.Errorf("%w: credential operation is not registered", ErrWorkerContract)
 	}
+}
+
+func signAWSBedrockRequest(ctx context.Context, req *http.Request, credential []byte, now time.Time) error {
+	accessKey, secretKey, err := decodeAWSHostCredential(credential)
+	if err != nil {
+		return err
+	}
+	defer clear(accessKey)
+	defer clear(secretKey)
+	host := strings.ToLower(req.URL.Hostname())
+	parts := strings.Split(host, ".")
+	if len(parts) != 4 || parts[0] != "bedrock" || parts[2] != "amazonaws" || parts[3] != "com" || !safeAWSRegion(parts[1]) {
+		return fmt.Errorf("%w: AWS Bedrock origin is invalid", ErrProviderEgress)
+	}
+	return awsv4.NewSigner().SignHTTP(ctx, awssdk.Credentials{
+		AccessKeyID: string(accessKey), SecretAccessKey: string(secretKey), Source: "cerebro-source-host",
+	}, req, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "bedrock", parts[1], now)
+}
+
+func decodeAWSHostCredential(value []byte) ([]byte, []byte, error) {
+	parts := bytes.SplitN(value, []byte("."), 2)
+	if len(parts) != 2 {
+		return nil, nil, ErrCredentialUnavailable
+	}
+	accessKey, err := base64.RawStdEncoding.DecodeString(string(parts[0]))
+	if err != nil || len(accessKey) == 0 {
+		clear(accessKey)
+		return nil, nil, ErrCredentialUnavailable
+	}
+	secretKey, err := base64.RawStdEncoding.DecodeString(string(parts[1]))
+	if err != nil || len(secretKey) == 0 {
+		clear(accessKey)
+		clear(secretKey)
+		return nil, nil, ErrCredentialUnavailable
+	}
+	return accessKey, secretKey, nil
+}
+
+func safeAWSRegion(value string) bool {
+	return value != "" && len(value) <= 63 && !strings.HasPrefix(value, "-") && !strings.HasSuffix(value, "-") && strings.IndexFunc(value, func(character rune) bool {
+		return (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '-'
+	}) == -1
 }
 
 func runtimeMetadata(scope CredentialScope) *cerebrov1.SourceWorkerRuntimeMetadataV2 {

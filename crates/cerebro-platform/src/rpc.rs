@@ -36,7 +36,9 @@ use cerebro_source_catalog::CatalogSummary;
 use connectrpc::{ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::{AUTHORIZATION, TENANT_AUTH_HEADER, TenantRequestAuth, vendor_register};
+use crate::{
+    AUTHORIZATION, TENANT_AUTH_HEADER, TenantRequestAuth, vendor_discoveries, vendor_register,
+};
 
 pub mod proto {
     pub mod cerebro {
@@ -845,6 +847,57 @@ impl OrganizationalGraphService for GraphRpc {
         Response::ok(vendor_register_response(vendor_register::build(
             page,
             &query,
+            OffsetDateTime::now_utc(),
+        )))
+    }
+
+    async fn list_vendor_discoveries(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListVendorDiscoveriesRequest>,
+    ) -> ServiceResult<ListVendorDiscoveriesResponse> {
+        let filter = request
+            .filter
+            .as_option()
+            .ok_or_else(|| ConnectError::invalid_argument("vendor discovery filter is required"))?;
+        let tenant = self.authorized_tenant(&context, filter.tenant_id)?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        if !(1..=500).contains(&limit) {
+            return Err(ConnectError::invalid_argument(
+                "vendor discovery limit must be between 1 and 500",
+            ));
+        }
+        let catalog_filter = StoreCatalogFilter {
+            source_id: filter.source_id.to_owned(),
+            runtime_ids: filter
+                .runtime_ids
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            include_kinds: vec!["vendor.discovery".to_owned()],
+            search: filter.query.to_owned(),
+            search_attributes: true,
+            ..StoreCatalogFilter::default()
+        };
+        let page = if let Some(projection) = self.lifecycle_projection.as_ref() {
+            tokio::time::timeout(
+                GRAPH_RPC_TIMEOUT,
+                projection.list_catalog_entities(&tenant, &catalog_filter, 500, ""),
+            )
+            .await
+            .map_err(|_| ConnectError::unavailable("Vendor discovery read exceeded 2 seconds."))?
+            .map_err(catalog_store_error)?
+        } else {
+            self.in_memory_catalog_page(&tenant, &catalog_filter, 500, "")
+                .await?
+        };
+        Response::ok(vendor_discovery_response(vendor_discoveries::build(
+            page,
+            &vendor_discoveries::Query {
+                source_status: filter.source_status.to_owned(),
+                limit,
+            },
             OffsetDateTime::now_utc(),
         )))
     }
@@ -1709,6 +1762,100 @@ fn vendor_register_response(register: vendor_register::Register) -> ListVendorRe
             ..Default::default()
         })
         .into(),
+        ..Default::default()
+    }
+}
+
+fn vendor_discovery_response(
+    register: vendor_discoveries::Register,
+) -> ListVendorDiscoveriesResponse {
+    let summary = register.summary;
+    ListVendorDiscoveriesResponse {
+        tenant_id: register.tenant_id,
+        graph_revision: register.graph_revision,
+        data_authority: "rust_graph".to_owned(),
+        generated_at: register.generated_at,
+        discoveries: register
+            .discoveries
+            .into_iter()
+            .map(|row| VendorDiscoveryRow {
+                urn: row.urn,
+                discovery_id: row.discovery_id,
+                name: row.name,
+                normalized_name: row.normalized_name,
+                source_id: row.source_id,
+                runtime_id: row.runtime_id,
+                provider: row.provider,
+                source_status: row.source_status,
+                decision_state: row.decision_state,
+                category: row.category,
+                website_url: row.website_url,
+                linked_vendor_urn: row.linked_vendor_urn,
+                decision_reason: row.decision_reason,
+                decision_updated_by: row.decision_updated_by,
+                decision_updated_at: row.decision_updated_at,
+                attributes: row.attributes.into_iter().collect(),
+                source_ids: row.source_ids,
+                confidence_score: row.confidence_score,
+                discovery_reason: row.discovery_reason,
+                first_observed_at: row.first_observed_at,
+                last_observed_at: row.last_observed_at,
+                signals: row
+                    .signals
+                    .into_iter()
+                    .map(|signal| VendorDiscoverySignal {
+                        id: signal.id,
+                        label: signal.label,
+                        source_id: signal.source_id,
+                        runtime_id: signal.runtime_id,
+                        entity_type: signal.entity_type,
+                        entity_urn: signal.entity_urn,
+                        confidence_score: signal.confidence_score,
+                        observed_at: signal.observed_at,
+                        reason: signal.reason,
+                        attributes: signal.attributes.into_iter().collect(),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            })
+            .collect(),
+        summary: Some(VendorDiscoverySummary {
+            total_discoveries: summary.total_discoveries,
+            discovered: summary.discovered,
+            approved: summary.approved,
+            rejected: summary.rejected,
+            ignored: summary.ignored,
+            linked: summary.linked,
+            source_count: summary.source_count,
+            evidence_signals: summary.evidence_signals,
+            ..Default::default()
+        })
+        .into(),
+        source_summaries: register
+            .source_summaries
+            .into_iter()
+            .map(|summary| VendorDiscoverySourceSummary {
+                source_id: summary.source_id,
+                provider: summary.provider,
+                runtime_id: summary.runtime_id,
+                status: summary.status,
+                freshness: summary.freshness,
+                total: summary.total,
+                discovered: summary.discovered,
+                approved: summary.approved,
+                rejected: summary.rejected,
+                ignored: summary.ignored,
+                linked: summary.linked,
+                failed: summary.failed,
+                stale: summary.stale,
+                cursor_pending: summary.cursor_pending,
+                sync_lag_seconds: summary.sync_lag_seconds,
+                last_error: summary.last_error,
+                last_synced_at: summary.last_synced_at,
+                ..Default::default()
+            })
+            .collect(),
         ..Default::default()
     }
 }

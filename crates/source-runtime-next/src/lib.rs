@@ -53,6 +53,7 @@ mod openai;
 mod page_publication;
 mod pagerduty;
 mod panopticon;
+mod portable_ai;
 mod protocol;
 mod provider_failure;
 mod runtime_config;

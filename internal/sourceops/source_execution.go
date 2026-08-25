@@ -2,6 +2,7 @@ package sourceops
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -45,7 +46,7 @@ func rustSourceFamily(sourceID string, config map[string]string) (string, bool) 
 	// runtime-authoritative provider must keep its existing sourceops path until
 	// its preview credential adapter and product-surface parity are ready.
 	switch sourceID {
-	case "anthropic", "asana", "azure", "deepseek", "digitalocean", "discord", "linode", "openai", "pagerduty", "sentinelone", "tailscale":
+	case "anthropic", "asana", "aws_bedrock", "azure", "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "deepseek", "digitalocean", "discord", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "langchain", "langfuse", "linode", "microsoft_foundry", "mistral", "openai", "openrouter", "pagerduty", "perplexity", "pinecone", "qdrant_cloud", "replicate", "sentinelone", "stability_ai", "tailscale", "together_ai", "writer", "xai":
 		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
 	case "jumpcloud":
 		family := strings.TrimSpace(config["family"])
@@ -66,7 +67,11 @@ func (s *Service) executeRustSource(ctx context.Context, sourceID, family string
 	}
 	sourceID, family = strings.TrimSpace(sourceID), strings.TrimSpace(family)
 	tenantID := strings.TrimSpace(config["tenant_id"])
-	credential := []byte(previewCredential(sourceID, config))
+	credential, err := s.previewSourceExecutionCredential(ctx, sourceID, config)
+	if err != nil {
+		clear(credential)
+		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
+	}
 	if tenantID == "" || len(credential) == 0 {
 		clear(credential)
 		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, sourceworker.ErrSourceConfiguration)
@@ -99,6 +104,17 @@ func (s *Service) executeRustSource(ctx context.Context, sourceID, family string
 		return sourcecdk.Pull{}, sourceExecutionError(sourceID, family, err)
 	}
 	return pull, nil
+}
+
+func (s *Service) previewSourceExecutionCredential(ctx context.Context, sourceID string, config map[string]string) ([]byte, error) {
+	source, err := s.lookup(sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if provider, ok := sourcecdk.SourceExecutionCredentialProviderFrom(source); ok {
+		return provider.SourceExecutionCredential(ctx, sourcecdk.NewConfig(config))
+	}
+	return []byte(previewCredential(sourceID, config)), nil
 }
 
 func (s *Service) discoverRustSource(ctx context.Context, sourceID, family string, config map[string]string) ([]sourcecdk.URN, error) {
@@ -140,6 +156,26 @@ func (s *Service) discoverRustSource(ctx context.Context, sourceID, family strin
 
 func previewCredential(sourceID string, config map[string]string) string {
 	switch strings.TrimSpace(sourceID) {
+	case "aws_bedrock":
+		accessKey := firstNonEmpty(config, "access_key", "access_key_id")
+		secretKey := firstNonEmpty(config, "secret_key", "secret_access_key")
+		if accessKey == "" || secretKey == "" {
+			return ""
+		}
+		return sourceworker.EncodeAWSHostCredential(accessKey, secretKey)
+	case "langfuse":
+		publicKey := strings.TrimSpace(config["public_key"])
+		secretKey := strings.TrimSpace(config["secret_key"])
+		if publicKey == "" || secretKey == "" {
+			return ""
+		}
+		basic := make([]byte, 0, len(publicKey)+1+len(secretKey))
+		basic = append(basic, publicKey...)
+		basic = append(basic, ':')
+		basic = append(basic, secretKey...)
+		encoded := base64.StdEncoding.EncodeToString(basic)
+		clear(basic)
+		return encoded
 	case "azure":
 		if credential := strings.TrimSpace(config["graph_token"]); credential != "" {
 			return credential
@@ -166,6 +202,13 @@ func previewCredential(sourceID string, config map[string]string) string {
 		}
 		return ""
 	case "deepseek":
+		for _, key := range []string{"token", "api_token", "api_key", "access_token"} {
+			if credential := strings.TrimSpace(config[key]); credential != "" {
+				return credential
+			}
+		}
+		return ""
+	case "azure_openai", "cerebras", "cloudflare_workers_ai", "cohere", "elevenlabs", "fireworks_ai", "google_gemini", "google_vertex_ai", "groq", "huggingface", "ibm_watsonx_ai", "langchain", "microsoft_foundry", "mistral", "openrouter", "perplexity", "pinecone", "qdrant_cloud", "replicate", "stability_ai", "together_ai", "writer", "xai":
 		for _, key := range []string{"token", "api_token", "api_key", "access_token"} {
 			if credential := strings.TrimSpace(config[key]); credential != "" {
 				return credential

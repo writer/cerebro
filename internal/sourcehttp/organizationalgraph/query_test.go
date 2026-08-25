@@ -36,11 +36,12 @@ type assertionQueryStoreStub struct {
 
 type graphServiceStub struct {
 	cerebrographv1connect.UnimplementedOrganizationalGraphServiceHandler
-	expand         func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
-	expandBatch    func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
-	listEntities   func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
-	countRelations func(context.Context, *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error)
-	personAccess   func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
+	expand            func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
+	expandBatch       func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
+	listEntities      func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
+	countRelations    func(context.Context, *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error)
+	personAccess      func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
+	vendorDiscoveries func(context.Context, *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error)
 }
 
 func (s graphServiceStub) ListEntities(ctx context.Context, request *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error) {
@@ -61,6 +62,10 @@ func (s graphServiceStub) CountRelations(ctx context.Context, request *connect.R
 
 func (s graphServiceStub) ListPersonAccessPaths(ctx context.Context, request *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error) {
 	return s.personAccess(ctx, request)
+}
+
+func (s graphServiceStub) ListVendorDiscoveries(ctx context.Context, request *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error) {
+	return s.vendorDiscoveries(ctx, request)
 }
 
 func newGraphTestServer(t *testing.T, service graphServiceStub) *httptest.Server {
@@ -141,6 +146,34 @@ func TestProductExposureCoverageEnforcesTenantBoundsAndCompleteness(t *testing.T
 				t.Fatal("productExposureCoverage() error = nil, want fail-closed rejection")
 			}
 		})
+	}
+}
+
+func TestQueryStoreVendorDiscoveriesPreservesRustAuthorityAndVisibleFields(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		vendorDiscoveries: func(_ context.Context, request *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetFilter().GetTenantId() != "tenant-a" || request.Msg.GetFilter().GetSourceStatus() != "discovered" || request.Msg.GetLimit() != 25 {
+				t.Fatalf("vendor discovery authority or bounds missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.ListVendorDiscoveriesResponse{
+				TenantId: "tenant-a", GraphRevision: 23, DataAuthority: "rust_graph", GeneratedAt: "2026-08-24T00:00:00Z",
+				Discoveries:     []*cerebrographv1.VendorDiscoveryRow{{Urn: "urn:cerebro:tenant-a:vendor_discovery:grc:acme", DiscoveryId: "acme", Name: "Acme", SourceId: "grc", RuntimeId: "grc-prod", Provider: "grc", SourceStatus: "discovered", DecisionState: "discovered", SourceIds: []string{"grc"}, ConfidenceScore: 0.91, DiscoveryReason: "Observed in the provider account", FirstObservedAt: "2026-08-20T00:00:00Z", LastObservedAt: "2026-08-24T00:00:00Z", Signals: []*cerebrographv1.VendorDiscoverySignal{{Id: "signal-1", Label: "Provider account", SourceId: "grc", EntityUrn: "urn:cerebro:tenant-a:vendor_discovery:grc:acme", ConfidenceScore: 0.91}}}},
+				Summary:         &cerebrographv1.VendorDiscoverySummary{TotalDiscoveries: 1, Discovered: 1, SourceCount: 1, EvidenceSignals: 1},
+				SourceSummaries: []*cerebrographv1.VendorDiscoverySourceSummary{{SourceId: "grc", Provider: "grc", RuntimeId: "grc-prod", Status: "ready", Total: 1, Discovered: 1}},
+			}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	page, err := store.ListVendorDiscoveries(context.Background(), ports.VendorDiscoveryFilter{TenantID: "tenant-a", SourceStatus: "discovered", Limit: 25})
+	if err != nil {
+		t.Fatalf("ListVendorDiscoveries() error = %v", err)
+	}
+	if page.GraphRevision != 23 || page.DataAuthority != "rust_graph" || page.Summary.EvidenceSignals != 1 || len(page.SourceSummaries) != 1 || len(page.Discoveries) != 1 || len(page.Discoveries[0].Signals) != 1 {
+		t.Fatalf("page = %#v", page)
 	}
 }
 

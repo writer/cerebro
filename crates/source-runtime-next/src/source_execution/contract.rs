@@ -35,6 +35,9 @@ pub const MAX_RECORD_PAYLOAD_BYTES: usize = 8 << 20;
 pub const MAX_PUBLIC_CONFIG_ENTRIES: usize = 32;
 /// Maximum bytes across public configuration keys and values.
 pub const MAX_PUBLIC_CONFIG_BYTES: usize = 16 << 10;
+/// Maximum bytes in one public configuration value. The total remains bounded
+/// separately so a metrics query can preserve the existing 16 KiB contract.
+pub const MAX_PUBLIC_CONFIG_VALUE_BYTES: usize = 16 << 10;
 /// Maximum credential-free request body emitted by an adapter.
 pub const MAX_REQUEST_BODY_BYTES: usize = 1 << 20;
 /// Maximum safe request or response header entries.
@@ -108,7 +111,7 @@ pub fn validate_public_config(
         if key != &lower
             || !safe_identifier(key, 64)
             || sensitive_config_key(&lower)
-            || value.len() > MAX_CURSOR_BYTES
+            || value.len() > MAX_PUBLIC_CONFIG_VALUE_BYTES
             || value.chars().any(char::is_control)
         {
             return Err(SourceExecutionError::InvalidExecutionContext);
@@ -154,6 +157,14 @@ pub fn validate_http_execution(
         || !matches!(
             execution.credential_operation.as_str(),
             "source.bearer"
+                | "google.api_key_header"
+                | "langfuse.basic"
+                | "aws.sigv4"
+                | "elevenlabs.xi_api_key"
+                | "langsmith.x_api_key"
+                | "microsoft_foundry.api_key"
+                | "pinecone.api_key"
+                | "qdrant.api_key"
                 | "jumpcloud.x_api_key"
                 | "sentinelone.api_token"
                 | "twilio.basic"
@@ -667,7 +678,15 @@ fn validate_header_map(
 }
 
 fn safe_declared_header_name(name: &str) -> bool {
-    matches!(name, "content-type" | "x-org-id")
+    matches!(
+        name,
+        "anthropic-version"
+            | "content-type"
+            | "x-org-id"
+            | "x-organization-id"
+            | "x-tenant-id"
+            | "x-pinecone-api-version"
+    )
 }
 
 fn sensitive_config_key(key: &str) -> bool {

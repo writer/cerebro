@@ -125,7 +125,12 @@ func validateHeaderMap(headers map[string]string, response bool) error {
 }
 
 func safeDeclaredHeaderName(name string) bool {
-	return name == "anthropic-version" || name == "content-type" || name == "x-org-id"
+	switch name {
+	case "anthropic-version", "content-type", "x-org-id", "x-organization-id", "x-pinecone-api-version", "x-tenant-id":
+		return true
+	default:
+		return false
+	}
 }
 
 func safeConfigKey(key string) bool {

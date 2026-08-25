@@ -335,22 +335,41 @@ type VendorCloseAction struct {
 }
 
 type VendorDiscovery struct {
-	URN               string            `json:"urn"`
-	DiscoveryID       string            `json:"discovery_id,omitempty"`
-	Name              string            `json:"name"`
-	NormalizedName    string            `json:"normalized_name,omitempty"`
-	SourceID          string            `json:"source_id,omitempty"`
-	RuntimeID         string            `json:"runtime_id,omitempty"`
-	Provider          string            `json:"provider,omitempty"`
-	SourceStatus      string            `json:"source_status"`
-	DecisionState     string            `json:"decision_state"`
-	Category          string            `json:"category,omitempty"`
-	WebsiteURL        string            `json:"website_url,omitempty"`
-	LinkedVendorURN   string            `json:"linked_vendor_urn,omitempty"`
-	DecisionReason    string            `json:"decision_reason,omitempty"`
-	DecisionUpdatedBy string            `json:"decision_updated_by,omitempty"`
-	DecisionUpdatedAt *time.Time        `json:"decision_updated_at,omitempty"`
-	Attributes        map[string]string `json:"attributes,omitempty"`
+	URN               string                  `json:"urn"`
+	DiscoveryID       string                  `json:"discovery_id,omitempty"`
+	Name              string                  `json:"name"`
+	NormalizedName    string                  `json:"normalized_name,omitempty"`
+	SourceID          string                  `json:"source_id,omitempty"`
+	SourceIDs         []string                `json:"source_ids,omitempty"`
+	RuntimeID         string                  `json:"runtime_id,omitempty"`
+	Provider          string                  `json:"provider,omitempty"`
+	SourceStatus      string                  `json:"source_status"`
+	DecisionState     string                  `json:"decision_state"`
+	Category          string                  `json:"category,omitempty"`
+	WebsiteURL        string                  `json:"website_url,omitempty"`
+	ConfidenceScore   float64                 `json:"confidence_score,omitempty"`
+	DiscoveryReason   string                  `json:"discovery_reason,omitempty"`
+	FirstObservedAt   string                  `json:"first_observed_at,omitempty"`
+	LastObservedAt    string                  `json:"last_observed_at,omitempty"`
+	LinkedVendorURN   string                  `json:"linked_vendor_urn,omitempty"`
+	DecisionReason    string                  `json:"decision_reason,omitempty"`
+	DecisionUpdatedBy string                  `json:"decision_updated_by,omitempty"`
+	DecisionUpdatedAt *time.Time              `json:"decision_updated_at,omitempty"`
+	Signals           []VendorDiscoverySignal `json:"signals,omitempty"`
+	Attributes        map[string]string       `json:"attributes,omitempty"`
+}
+
+type VendorDiscoverySignal struct {
+	ID              string            `json:"id"`
+	Label           string            `json:"label"`
+	SourceID        string            `json:"source_id,omitempty"`
+	RuntimeID       string            `json:"runtime_id,omitempty"`
+	EntityType      string            `json:"entity_type,omitempty"`
+	EntityURN       string            `json:"entity_urn,omitempty"`
+	ConfidenceScore float64           `json:"confidence_score,omitempty"`
+	ObservedAt      string            `json:"observed_at,omitempty"`
+	Reason          string            `json:"reason,omitempty"`
+	Attributes      map[string]string `json:"attributes,omitempty"`
 }
 
 type Summary struct {

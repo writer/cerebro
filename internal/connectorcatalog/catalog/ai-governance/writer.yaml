@@ -29,7 +29,7 @@ entries:
           pagination: {type: none, disable_page_size: true}
           projection:
             template: asset
-            fields: {resource_id: id, resource_name: name, resource_type: type}
+            fields: {model_id: id, resource_id: id, resource_name: name, resource_type: type}
             static_fields: {source_product: writer}
           coverage:
             - {id: models, type: entity_family, title: Writer models, families: [model], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
@@ -46,7 +46,7 @@ entries:
             config_query: {order: order}
           projection:
             template: asset
-            fields: {resource_id: id, resource_name: name, resource_type: type}
+            fields: {graph_id: id, resource_id: id, resource_name: name, resource_type: type}
             static_fields: {source_product: writer}
           coverage:
             - {id: graphs, type: entity_family, title: Writer Knowledge Graphs, families: [graph], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
@@ -63,7 +63,7 @@ entries:
             config_query: {file_types: file_types, graph_id: graph_id, order: order, status: status}
           projection:
             template: asset
-            fields: {resource_id: id, resource_name: name, resource_type: type}
+            fields: {file_id: id, resource_id: id, resource_name: name, resource_type: type}
             static_fields: {source_product: writer}
           coverage:
             - {id: files, type: entity_family, title: Writer files, families: [file], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
@@ -80,7 +80,7 @@ entries:
             config_query: {order: order, type: type}
           projection:
             template: identity_application
-            fields: {app_id: id, app_name: name, status: status}
+            fields: {app_id: id, app_name: name, application_id: id, status: status}
             static_fields: {source_product: writer}
           coverage:
             - {id: applications, type: entity_family, title: Writer applications, families: [application], support: supported, high_value: true, evidence_types: [source_snapshot], control_domains: [asset_inventory]}
@@ -116,7 +116,7 @@ entries:
             config_attributes: {application_id: application_id}
           projection:
             template: deployment
-            fields: {deployment_id: id, deployment_name: id, status: status, resource_id: application_id, resource_type: application_job}
+            fields: {deployment_id: id, deployment_name: id, job_id: id, status: status, resource_id: application_id, resource_type: application_job}
             static_fields: {source_product: writer}
           coverage:
             - {id: application_jobs, type: lifecycle_state, title: Writer application jobs, families: [application_job], support: supported, high_value: true, evidence_types: [configuration_state], control_domains: [security_operations]}
