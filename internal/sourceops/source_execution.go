@@ -45,7 +45,7 @@ func rustSourceFamily(sourceID string, config map[string]string) (string, bool) 
 	// runtime-authoritative provider must keep its existing sourceops path until
 	// its preview credential adapter and product-surface parity are ready.
 	switch sourceID {
-	case "anthropic", "asana", "azure", "digitalocean", "discord", "linode", "pagerduty", "sentinelone", "tailscale":
+	case "anthropic", "asana", "azure", "digitalocean", "discord", "linode", "openai", "pagerduty", "sentinelone", "tailscale":
 		return sourceworker.RustAuthoritativeFamily(sourceID, config["family"])
 	case "jumpcloud":
 		family := strings.TrimSpace(config["family"])
@@ -158,6 +158,13 @@ func previewCredential(sourceID string, config map[string]string) string {
 			}
 		}
 		return ""
+	case "openai":
+		for _, key := range []string{"token", "api_token", "api_key", "access_token"} {
+			if credential := strings.TrimSpace(config[key]); credential != "" {
+				return credential
+			}
+		}
+		return ""
 	case "discord":
 		for _, key := range []string{"api_token", "api_key", "token"} {
 			if credential := strings.TrimSpace(config[key]); credential != "" {
@@ -181,6 +188,15 @@ func discoverURNs(pull sourcecdk.Pull) ([]sourcecdk.URN, error) {
 			urn, err := sourcecdk.URNFor(event.GetTenantId(), "anthropic_"+family, stableID)
 			if err != nil {
 				return nil, fmt.Errorf("%w: Anthropic discovery identity is invalid", sourceworker.ErrWorkerContract)
+			}
+			raw = urn.String()
+		}
+		if raw == "" && strings.TrimSpace(event.GetSourceId()) == "openai" {
+			family := strings.TrimSpace(attributes["family"])
+			stableID := strings.TrimSpace(attributes["external_id"])
+			urn, err := sourcecdk.URNFor(event.GetTenantId(), "openai_"+family, stableID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: OpenAI discovery identity is invalid", sourceworker.ErrWorkerContract)
 			}
 			raw = urn.String()
 		}

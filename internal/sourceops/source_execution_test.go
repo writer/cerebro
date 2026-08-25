@@ -24,6 +24,10 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		"Anthropic user":              {"anthropic", "user", "user", true},
 		"Anthropic compliance":        {"anthropic", "compliance_activity", "compliance_activity", true},
 		"unknown Anthropic family":    {"anthropic", "future-family", "future-family", true},
+		"OpenAI default":              {"openai", "", "user", true},
+		"OpenAI user":                 {"openai", "user", "user", true},
+		"OpenAI project API key":      {"openai", "project_api_key", "project_api_key", true},
+		"unknown OpenAI family":       {"openai", "future-family", "future-family", true},
 		"Asana default":               {"asana", "", "users", true},
 		"Asana users":                 {"asana", "users", "users", true},
 		"Asana projects":              {"asana", "projects", "projects", true},
@@ -160,6 +164,49 @@ func TestAnthropicCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
 				t.Fatalf("calls = Rust %d, Go check/discover/read %d/%d/%d", calls, legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
 			}
 		})
+	}
+}
+
+func TestOpenAICheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
+	const credentialFixture = "host-only-openai-secret" // #nosec G101 -- synthetic boundary-test sentinel, not credential material.
+	legacy := &authorityProbeSource{sourceID: "openai"}
+	registry, err := sourcecdk.NewRegistry(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(registry)
+	service.sourceWorker = previewWorkerStub{}
+	calls := 0
+	service.runSourceExecution = func(_ context.Context, _ sourceworker.Worker, reference string, credential []byte, _ time.Time, input sourceworker.ExecutionInput) (*sourceworker.ExecutionOutput, error) {
+		calls++
+		if reference != previewCredentialReference || string(credential) != credentialFixture {
+			t.Fatal("OpenAI credential was not confined to the trusted runner boundary")
+		}
+		encoded, marshalErr := json.Marshal(input)
+		if marshalErr != nil || strings.Contains(string(encoded), credentialFixture) || input.Scope.PublicConfig["api_key"] != "" {
+			t.Fatalf("credential crossed the worker protocol: %s, %v", encoded, marshalErr)
+		}
+		if input.SourceID != "openai" || input.FamilyID != "user" || input.Scope.PublicConfig["per_page"] != "100" {
+			t.Fatalf("Rust selection = %s.%s, public config = %#v", input.SourceID, input.FamilyID, input.Scope.PublicConfig)
+		}
+		return openAIPreviewOutput(input.Scope.PriorTerminalWatermarkUnixMillis), nil
+	}
+	config := map[string]string{
+		"family": "user", "tenant_id": "tenant-1", "api_key": credentialFixture, "per_page": "100",
+	}
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "openai", Config: config}); err != nil {
+		t.Fatal(err)
+	}
+	discovered, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "openai", Config: config})
+	if err != nil || len(discovered.GetUrns()) != 1 || !strings.Contains(discovered.GetUrns()[0], ":openai_user:") {
+		t.Fatalf("Discover() = %#v, %v", discovered, err)
+	}
+	read, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "openai", Config: config})
+	if err != nil || len(read.GetEvents()) != 1 || read.GetEvents()[0].GetSourceId() != "openai" || read.GetCheckpoint().GetCursorOpaque() == "" {
+		t.Fatalf("Read() = %#v, %v", read, err)
+	}
+	if calls != 3 || legacy.checkCalls != 0 || legacy.discoverCalls != 0 || legacy.readCalls != 0 {
+		t.Fatalf("calls = Rust %d, Go check/discover/read %d/%d/%d", calls, legacy.checkCalls, legacy.discoverCalls, legacy.readCalls)
 	}
 }
 
@@ -592,6 +639,25 @@ func TestAnthropicPreviewCredentialAliases(t *testing.T) {
 	}
 }
 
+func TestOpenAIPreviewCredentialAliases(t *testing.T) {
+	for name, test := range map[string]struct {
+		config map[string]string
+		want   string
+	}{
+		"token precedence": {map[string]string{"token": "token", "api_key": "fallback"}, "token"},
+		"api token":        {map[string]string{"api_token": "api-token", "api_key": "fallback"}, "api-token"},
+		"api key":          {map[string]string{"api_key": "api-key"}, "api-key"},
+		"access token":     {map[string]string{"access_token": "access-token"}, "access-token"},
+		"missing":          {map[string]string{"graph_token": "wrong-provider"}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := previewCredential("openai", test.config); got != test.want {
+				t.Fatalf("previewCredential() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestTailscaleCheckDiscoverAndReadUseOnlyClosedRustAuthority(t *testing.T) {
 	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
 		t.Run(family, func(t *testing.T) {
@@ -983,6 +1049,24 @@ func anthropicPreviewOutput(family string, priorWatermark int64) *sourceworker.E
 	return &sourceworker.ExecutionOutput{
 		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
 		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: providerID, CheckpointWatermarkUnixMillis: watermark},
+	}
+}
+
+func openAIPreviewOutput(priorWatermark int64) *sourceworker.ExecutionOutput {
+	watermark := max(priorWatermark, 1_725_000_000_000)
+	plan := &cerebrov1.SourceExecutionPlanV1{
+		SourceId: "openai", FamilyId: "user", EventKind: "openai.user", SchemaRef: "openai/user/v1",
+	}
+	record := &cerebrov1.SourceWorkerRecordV1{
+		ProviderId: "user-1", EventId: "openai-tenant-1-user-1", OccurredAtUnixMillis: watermark,
+		Attributes: map[string]string{
+			"external_id": "user-1", "family": "user", "provider": "openai", "source_provider": "openai",
+		},
+		PayloadJson: []byte(`{"id":"user-1"}`),
+	}
+	return &sourceworker.ExecutionOutput{
+		Plan: plan, Result: &cerebrov1.SourceWorkerDecodeResultV1{ResultDigestSha256: "result-digest"},
+		Program: &sourceworker.PageProgram{TransitionDigest: "transition", AdmittedRecords: []*cerebrov1.SourceWorkerRecordV1{record}, CheckpointCursor: "user-1", CheckpointWatermarkUnixMillis: watermark},
 	}
 }
 

@@ -29,6 +29,13 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		// Every cataloged Anthropic family is closed in the Rust dispatcher.
 		// Unknown families fail there instead of restoring the retired Go path.
 		return familyID, true
+	case "openai":
+		if familyID == "" {
+			familyID = "user"
+		}
+		// Every cataloged OpenAI family is closed in the Rust dispatcher.
+		// Unknown families fail there instead of restoring the retired Go path.
+		return familyID, true
 	case "asana":
 		if familyID == "" {
 			familyID = "users"
@@ -111,6 +118,9 @@ func CredentialBinding(sourceID string, references, resolved map[string]string) 
 	if strings.TrimSpace(sourceID) == "anthropic" {
 		keys = []string{"token", "api_token", "api_key", "access_token"}
 	}
+	if strings.TrimSpace(sourceID) == "openai" {
+		keys = []string{"token", "api_token", "api_key", "access_token"}
+	}
 	if strings.TrimSpace(sourceID) == "discord" {
 		keys = []string{"api_token", "api_key", "token"}
 	}
@@ -160,25 +170,45 @@ func PublicExecutionConfig(values map[string]string) map[string]string {
 // safe for the credential-free protocol. Secret-bearing aliases remain absent.
 func PublicExecutionConfigForSource(sourceID string, values map[string]string) map[string]string {
 	public := PublicExecutionConfig(values)
-	if strings.TrimSpace(sourceID) != "anthropic" {
+	switch strings.TrimSpace(sourceID) {
+	case "anthropic":
+		for _, key := range []string{
+			"activity_types", "actor_ids", "auth_model", "bucket_width", "context_windows",
+			"created_at_gt", "created_at_gte", "created_at_lt", "created_at_lte", "ending_at",
+			"group_by", "group_id", "include_archived", "inference_geos", "model", "models",
+			"organization_ids", "organization_uuid", "periods", "project_id", "role_id",
+			"service_tiers", "speeds", "starting_at", "status", "terminal_types", "user_ids",
+			"workspace_id", "workspace_ids",
+		} {
+			copyPublicValue(public, values, key)
+		}
+		copyPublicAlias(public, values, "api_key_ids", "admin_key_ids")
+	case "openai":
+		for _, key := range []string{
+			"actor_emails", "actor_ids", "batch", "bucket_width", "effective_at_gt",
+			"effective_at_gte", "effective_at_lt", "effective_at_lte", "end_time", "event_types",
+			"group_by", "group_id", "models", "project_id", "project_ids", "resource_ids",
+			"start_time", "tenant_only", "user_id", "user_ids",
+		} {
+			copyPublicValue(public, values, key)
+		}
+		copyPublicAlias(public, values, "api_key_ids", "admin_key_ids")
+	default:
 		return public
 	}
-	for _, key := range []string{
-		"activity_types", "actor_ids", "auth_model", "bucket_width", "context_windows",
-		"created_at_gt", "created_at_gte", "created_at_lt", "created_at_lte", "ending_at",
-		"group_by", "group_id", "include_archived", "inference_geos", "model", "models",
-		"organization_ids", "organization_uuid", "periods", "project_id", "role_id",
-		"service_tiers", "speeds", "starting_at", "status", "terminal_types", "user_ids",
-		"workspace_id", "workspace_ids",
-	} {
-		if value, ok := values[key]; ok {
-			public[key] = strings.TrimSpace(value)
-		}
-	}
-	if value, ok := values["api_key_ids"]; ok {
-		public["admin_key_ids"] = strings.TrimSpace(value)
-	}
 	return public
+}
+
+func copyPublicValue(public, values map[string]string, key string) {
+	if value, ok := values[key]; ok {
+		public[key] = strings.TrimSpace(value)
+	}
+}
+
+func copyPublicAlias(public, values map[string]string, privateName, publicName string) {
+	if value, ok := values[privateName]; ok {
+		public[publicName] = strings.TrimSpace(value)
+	}
 }
 
 // ProviderResume unwraps a durable Rust checkpoint without allowing it to
