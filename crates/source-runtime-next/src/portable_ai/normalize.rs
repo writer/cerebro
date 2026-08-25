@@ -124,15 +124,14 @@ fn normalize_record(
         }
     }
     for (attribute, config_key) in &family.config_attributes {
-        if !protected_attribute(attribute) {
-            if let Some(value) = public_config
+        if !protected_attribute(attribute)
+            && let Some(value) = public_config
                 .get(config_key)
                 .map(String::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-            {
-                attributes.insert(attribute.clone(), value.to_owned());
-            }
+        {
+            attributes.insert(attribute.clone(), value.to_owned());
         }
     }
     for (attribute, paths) in &family.projection_fields {
