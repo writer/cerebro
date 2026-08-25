@@ -13,6 +13,7 @@ mod slack_agent_session;
 mod slack_authority;
 mod slack_mrkdwn;
 mod source_page_publisher;
+mod source_runtime_sync;
 mod threat_insight_projection;
 mod trusted_endpoint_projection;
 mod vendor_discoveries;
@@ -84,13 +85,9 @@ use cerebro_source_catalog::{
     CompiledSource, ProjectionClass, SourceCatalog,
 };
 use cerebro_source_runtime_next::{
-    AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CollectionRequest,
-    CommittedSourceEvent, CredentialLeaseReference, EgressPolicy, EgressRequestContext,
-    GraphMapper, GraphSink, HttpProviderAccess, HttpSourceConnector,
-    OperationScopedCredentialLease, ResolvedAuth, RuntimeHealthEvidence, RuntimeReadiness,
-    SourceRuntime, SourceRuntimeLeaseFence, SourceRuntimeOperation, canonical_digest,
-    contains_aws_secret_references, contains_credential_references, evaluate_runtime_readiness,
-    resolve_aws_secret_references, resolve_environment_references,
+    AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CommittedSourceEvent,
+    GraphMapper, GraphSink, ResolvedAuth, RuntimeHealthEvidence, RuntimeReadiness,
+    SourceRuntimeLeaseFence, evaluate_runtime_readiness,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -126,6 +123,7 @@ struct AppState {
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     runtime_ledger: Option<Arc<PostgresLedger>>,
+    source_sync: Option<Arc<dyn source_runtime_sync::SourceRuntimeSyncAuthority>>,
     metrics: PlatformMetrics,
 }
 
@@ -139,6 +137,7 @@ struct ActionBackends {
 struct PlatformStores {
     projection: Option<Arc<ProjectionRuntime>>,
     runtime_ledger: Option<Arc<PostgresLedger>>,
+    source_sync: Option<Arc<dyn source_runtime_sync::SourceRuntimeSyncAuthority>>,
 }
 
 #[derive(Clone, Default)]
@@ -626,6 +625,7 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
         "/v1/source-runtimes/health" => "cerebro:read",
+        _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
         "/v1/action-dispatches" => ACTION_EXECUTE_SCOPE,
@@ -681,6 +681,9 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
         "/v1/security/lifecycle" => "security_lifecycle",
+        _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => {
+            "sync_source_runtime"
+        }
         "/v1/actions" if method == Method::GET => "list_actions",
         "/v1/actions" => "propose_action",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
@@ -1699,156 +1702,7 @@ async fn audit_legacy_root_coverage() -> Result<(), Box<dyn Error>> {
 }
 
 async fn sync_source() -> Result<(), Box<dyn Error>> {
-    let runtime_id = SourceRuntimeId::parse(required_env("CEREBRO_SOURCE_RUNTIME_ID")?)?;
-    let postgres_dsn = required_env("CEREBRO_POSTGRES_DSN")?;
-    let lease_ledger = Arc::new(PostgresLedger::connect_tls(&postgres_dsn).await?);
-    lease_ledger.migrate().await?;
-    let stored_runtime = lease_ledger.load_source_runtime(&runtime_id).await?;
-    let tenant_id = stored_runtime.tenant_id().clone();
-    let source_id = stored_runtime.source_id().to_owned();
-    let cursor = stored_runtime.cursor().map(str::to_owned);
-    let mut config = resolve_environment_references(
-        &source_id,
-        stored_runtime.config(),
-        &source_config_environment_allowlist(),
-        |name| env::var(name).ok(),
-    )?;
-    if contains_credential_references(&config) {
-        let mut vault_key = required_secret_env_or_file("CEREBRO_CONNECTOR_CREDENTIAL_KEY")?;
-        let resolved = lease_ledger
-            .resolve_connector_credential_references(&stored_runtime, &config, &vault_key)
-            .await;
-        vault_key.zeroize();
-        config = resolved?;
-    }
-    if contains_aws_secret_references(&config) {
-        let reader = AwsSecretsManagerReader::from_env()?;
-        config = resolve_aws_secret_references(
-            tenant_id.as_str(),
-            &source_id,
-            runtime_id.as_str(),
-            &config,
-            &reader,
-        )
-        .await?;
-    }
-    let family_id = required_config(&config, "family")?;
-    let base_url = required_config(&config, "base_url")?;
-
-    let catalog = load_catalog()?;
-    let source = catalog
-        .get(&source_id)
-        .ok_or_else(|| format!("source {source_id} is not in the catalog"))?
-        .clone();
-    let auth = resolved_auth(
-        source.auth(),
-        CatalogAuthSettings::from_source(&source),
-        &mut config,
-    )?;
-    let lease_ttl_millis = source_runtime_lease_ttl_millis()?;
-    let lease_owner = source_runtime_lease_owner();
-    let fence = lease_ledger
-        .acquire_source_runtime_lease(&tenant_id, &runtime_id, &lease_owner, lease_ttl_millis)
-        .await?
-        .ok_or("source runtime is missing, belongs to another tenant, or is already leased")?;
-    let request_intent_digest = canonical_digest(&serde_json::json!({
-        "operation": "ReadPage",
-        "tenant_id": tenant_id.as_str(),
-        "runtime_id": runtime_id.as_str(),
-        "source_id": source_id,
-        "family_id": family_id,
-        "cursor": cursor,
-        "lease_generation": fence.generation(),
-    }));
-    let access_context = EgressRequestContext {
-        tenant_id: tenant_id.as_str().to_owned(),
-        runtime_id: runtime_id.as_str().to_owned(),
-        source_id: source_id.clone(),
-        family_id: family_id.clone(),
-        operation: SourceRuntimeOperation::ReadPage,
-        request_intent_digest: request_intent_digest.clone(),
-        logical_page_id: format!(
-            "page:{}:{}:{}",
-            runtime_id.as_str(),
-            family_id,
-            fence.generation()
-        ),
-        source_generation: fence.generation(),
-        authority_epoch: 1,
-    };
-    let lease_scope = access_context.lease_scope()?;
-    let issued_at_millis =
-        i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)?;
-    let credential_lease_ttl_millis = i64::try_from(lease_ttl_millis)?;
-    let credential_lease = OperationScopedCredentialLease::new(CredentialLeaseReference::new(
-        format!("lease:{}", &request_intent_digest[..16]),
-        lease_scope,
-        issued_at_millis,
-        credential_lease_ttl_millis,
-    )?);
-    let mut allowed_origins = vec![base_url.clone()];
-    if let Some(token_url) = auth.oauth_token_url() {
-        allowed_origins.push(token_url.to_owned());
-    }
-    let egress_policy = EgressPolicy::live(
-        tenant_id.as_str(),
-        &family_id,
-        &request_intent_digest,
-        allowed_origins,
-    )?;
-    let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?
-        .with_provider_access(HttpProviderAccess::new(
-            access_context,
-            egress_policy,
-            credential_lease,
-        ));
-
-    let ledger = PostgresLedger::connect_tls(&postgres_dsn).await?;
-    ledger.migrate().await?;
-    let identity_resolution = ledger.identity_resolution_snapshot(&tenant_id).await?;
-    let mapper = CatalogGraphMapper::new(source, env!("CARGO_PKG_VERSION"))?
-        .with_identity_resolution(identity_resolution);
-    let projector = connect_neo4j().await?;
-    projector.migrate().await?;
-    let store = DurableGraphStore::new(ledger, projector);
-    let mut runtime = SourceRuntime::new(connector, mapper, store);
-    let request = CollectionRequest {
-        tenant_id,
-        source_runtime_id: runtime_id,
-        cursor,
-    };
-    let (stop_renewal, renewal_failure, renewal_task) =
-        start_source_runtime_lease_renewal(lease_ledger.clone(), fence.clone(), lease_ttl_millis);
-    let mut renewal_failure = renewal_failure;
-    let outcome = {
-        let sync = runtime.sync_fenced(request, &fence);
-        tokio::pin!(sync);
-        tokio::select! {
-            biased;
-            result = &mut sync => result.map_err(|error| error.to_string()),
-            failure = &mut renewal_failure => Err(
-                failure.unwrap_or_else(|_| {
-                    "source runtime lease renewal stopped unexpectedly".to_owned()
-                })
-            ),
-        }
-    };
-    let _ = stop_renewal.send(());
-    if let Err(error) = renewal_task.await {
-        eprintln!("source runtime lease renewal task failed after commit: {error}");
-    }
-    match lease_ledger.release_source_runtime_lease(&fence).await {
-        Ok(true) => {}
-        Ok(false) => {
-            eprintln!(
-                "source runtime lease changed before release; the successor lease was preserved"
-            )
-        }
-        Err(error) => eprintln!("source runtime lease release failed after commit: {error}"),
-    }
-    let receipt = outcome.map_err(|error| -> Box<dyn Error> { error.into() })?;
-    println!("{}", serde_json::to_string_pretty(&receipt)?);
-    Ok(())
+    source_runtime_sync::sync_from_environment().await
 }
 
 fn source_config_environment_allowlist() -> BTreeSet<String> {
@@ -2271,6 +2125,7 @@ async fn serve(
     lifecycle_projection: Option<Arc<Neo4jProjector>>,
     projection: Option<Arc<ProjectionRuntime>>,
 ) -> Result<(), Box<dyn Error>> {
+    let source_sync_enabled = projection.is_some();
     let bind = env::var("CEREBRO_RUST_BIND").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
     let tenant_auth =
         TenantRequestAuth::new(required_env("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET")?)
@@ -2282,22 +2137,27 @@ async fn serve(
         OidcConfiguration::Disabled => None,
         OidcConfiguration::Configured(authenticator) => Some(authenticator),
     };
-    let (actions, cerebro_device, runtime_ledger) = match env::var("CEREBRO_POSTGRES_DSN") {
-        Ok(connection_string) => {
-            let ledger = PostgresActionLedger::connect_tls(&connection_string).await?;
-            ledger.migrate().await?;
-            let device = CerebroDeviceClient::connect_tls(&connection_string).await?;
-            let runtime_ledger = PostgresLedger::connect_tls(&connection_string).await?;
-            runtime_ledger.migrate().await?;
-            (
-                Some(Arc::new(ledger) as Arc<dyn ActionAuthority>),
-                Some(device),
-                Some(Arc::new(runtime_ledger)),
-            )
-        }
-        Err(env::VarError::NotPresent) => (None, None, None),
-        Err(error) => return Err(error.into()),
-    };
+    let (actions, cerebro_device, runtime_ledger, source_sync) =
+        match env::var("CEREBRO_POSTGRES_DSN") {
+            Ok(connection_string) => {
+                let ledger = PostgresActionLedger::connect_tls(&connection_string).await?;
+                ledger.migrate().await?;
+                let device = CerebroDeviceClient::connect_tls(&connection_string).await?;
+                let runtime_ledger = PostgresLedger::connect_tls(&connection_string).await?;
+                runtime_ledger.migrate().await?;
+                (
+                    Some(Arc::new(ledger) as Arc<dyn ActionAuthority>),
+                    Some(device),
+                    Some(Arc::new(runtime_ledger)),
+                    source_sync_enabled.then(|| {
+                        Arc::new(source_runtime_sync::EnvironmentSourceRuntimeSync)
+                            as Arc<dyn source_runtime_sync::SourceRuntimeSyncAuthority>
+                    }),
+                )
+            }
+            Err(env::VarError::NotPresent) => (None, None, None, None),
+            Err(error) => return Err(error.into()),
+        };
     let access_approvals = access_approvals_from_env()?;
     let action_providers = ActionProviders {
         access_approvals,
@@ -2314,6 +2174,7 @@ async fn serve(
             PlatformStores {
                 projection,
                 runtime_ledger,
+                source_sync,
             },
             ActionBackends {
                 actions,
@@ -2352,6 +2213,7 @@ fn router_with_backend(
     let PlatformStores {
         projection,
         runtime_ledger,
+        source_sync,
     } = stores;
     let platform_metrics = PlatformMetrics::default();
     let connect = rpc::router(
@@ -2373,6 +2235,10 @@ fn router_with_backend(
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/security/lifecycle", get(security_lifecycle))
         .route("/v1/source-runtimes/health", get(source_runtime_health))
+        .route(
+            "/v1/source-runtimes/{runtime_id}/sync",
+            post(sync_source_runtime),
+        )
         .route(
             "/v1/projections/legacy-deltas",
             post(record_legacy_projection),
@@ -2441,6 +2307,7 @@ fn router_with_backend(
             catalog_summary,
             projection,
             runtime_ledger,
+            source_sync,
             metrics: platform_metrics.clone(),
         })
         .layer(middleware::from_fn_with_state(
@@ -2779,6 +2646,64 @@ async fn current_user(
     Extension(identity): Extension<AuthenticatedIdentity>,
 ) -> Json<oidc::CurrentUserResponse> {
     Json(identity.current_user_response())
+}
+
+async fn sync_source_runtime(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Path(runtime_id): Path<String>,
+) -> Result<Json<source_runtime_sync::SourceRuntimeSyncReceipt>, (StatusCode, Json<ErrorResponse>)>
+{
+    let source_sync = state.source_sync.as_ref().ok_or_else(|| {
+        service_unavailable(
+            "source_runtime_sync_unavailable",
+            "The Rust source-runtime sync service is not configured.",
+        )
+    })?;
+    source_sync
+        .sync(&authenticated.0, &runtime_id)
+        .await
+        .map(Json)
+        .map_err(source_runtime_sync_error)
+}
+
+fn source_runtime_sync_error(
+    error: source_runtime_sync::SourceRuntimeSyncFailure,
+) -> (StatusCode, Json<ErrorResponse>) {
+    use source_runtime_sync::SourceRuntimeSyncFailureKind;
+
+    eprintln!("Rust source-runtime sync failed: {error}");
+    match error.kind() {
+        SourceRuntimeSyncFailureKind::InvalidRequest => bad_request(
+            "invalid_source_runtime_sync",
+            "The source runtime definition or sync request is invalid.",
+        ),
+        SourceRuntimeSyncFailureKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: "source_runtime_not_found",
+                message: "The source runtime was not found for this tenant.".to_owned(),
+            }),
+        ),
+        SourceRuntimeSyncFailureKind::Conflict => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: "source_runtime_sync_conflict",
+                message: "The source runtime is already syncing or lost its lease.".to_owned(),
+            }),
+        ),
+        SourceRuntimeSyncFailureKind::ProviderUnavailable => (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                code: "source_provider_unavailable",
+                message: "The provider request did not complete.".to_owned(),
+            }),
+        ),
+        SourceRuntimeSyncFailureKind::RuntimeUnavailable => service_unavailable(
+            "source_runtime_sync_unavailable",
+            "The source-runtime ledger or graph projection is unavailable.",
+        ),
+    }
 }
 
 async fn source_runtime_health(
@@ -4969,10 +4894,15 @@ mod tests {
                     .to_owned(),
             ),
         ]);
-        let resolved =
-            resolve_aws_secret_references("tenant-a", "github", "runtime-a", &config, &reader)
-                .await
-                .unwrap();
+        let resolved = cerebro_source_runtime_next::resolve_aws_secret_references(
+            "tenant-a",
+            "github",
+            "runtime-a",
+            &config,
+            &reader,
+        )
+        .await
+        .unwrap();
         assert_eq!(reads.load(Ordering::Relaxed), 1);
         assert_eq!(
             resolved.get("token").map(String::as_str),
@@ -4987,15 +4917,7 @@ mod tests {
 
     #[test]
     fn rust_source_sync_accepts_only_the_stored_runtime_selector() {
-        let source = include_str!("main.rs");
-        let sync_source = source
-            .split("async fn sync_source()")
-            .nth(1)
-            .and_then(|body| {
-                body.split("fn source_config_environment_allowlist()")
-                    .next()
-            })
-            .expect("sync-source implementation");
+        let sync_source = include_str!("source_runtime_sync.rs");
         assert!(sync_source.contains("CEREBRO_SOURCE_RUNTIME_ID"));
         for deprecated in [
             ["CEREBRO", "SOURCE", "ID"].join("_"),
@@ -5390,6 +5312,40 @@ mod tests {
     }
 
     struct UnavailableGraph;
+
+    struct FixtureSourceRuntimeSync;
+
+    #[async_trait]
+    impl source_runtime_sync::SourceRuntimeSyncAuthority for FixtureSourceRuntimeSync {
+        async fn sync(
+            &self,
+            tenant_id: &TenantId,
+            runtime_id: &str,
+        ) -> Result<
+            source_runtime_sync::SourceRuntimeSyncReceipt,
+            source_runtime_sync::SourceRuntimeSyncFailure,
+        > {
+            if tenant_id.as_str() != "tenant-demo" {
+                return Err(source_runtime_sync::SourceRuntimeSyncFailure::new(
+                    source_runtime_sync::SourceRuntimeSyncFailureKind::NotFound,
+                    "source runtime is not stored",
+                ));
+            }
+            Ok(source_runtime_sync::SourceRuntimeSyncReceipt {
+                runtime_id: runtime_id.to_owned(),
+                source_id: "fixture".to_owned(),
+                family_id: "users".to_owned(),
+                graph: cerebro_organizational_graph::GraphWriteReceipt {
+                    tenant_id: tenant_id.clone(),
+                    graph_revision: 7,
+                    delta_digest: "a".repeat(64),
+                    entities_upserted: 2,
+                    assertions_upserted: 1,
+                    assertions_retracted: 0,
+                },
+            })
+        }
+    }
     struct UnreachableActionAuthority;
 
     #[async_trait]
@@ -6283,6 +6239,104 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn source_runtime_sync_route_is_tenant_bound_and_served_by_rust() {
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/source-runtimes/runtime-demo/sync"),
+            "cerebro:write"
+        );
+        assert_eq!(
+            bounded_operation(&Method::POST, "/v1/source-runtimes/runtime-demo/sync"),
+            "sync_source_runtime"
+        );
+
+        let (graph, _, _) = demo_graph().unwrap();
+        let app = router_with_backend(
+            Arc::new(MemoryAgentGraph::new(graph)),
+            None,
+            None,
+            PlatformStores {
+                source_sync: Some(Arc::new(FixtureSourceRuntimeSync)),
+                ..PlatformStores::default()
+            },
+            ActionBackends::default(),
+            TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+            None,
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder().method(Method::POST), "tenant-demo")
+                    .uri("/v1/source-runtimes/runtime-demo/sync")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["runtime_id"], "runtime-demo");
+        assert_eq!(body["source_id"], "fixture");
+        assert_eq!(body["family_id"], "users");
+        assert_eq!(body["graph"]["tenant_id"], "tenant-demo");
+        assert_eq!(body["graph"]["graph_revision"], 7);
+
+        let cross_tenant = app
+            .oneshot(
+                authenticated(Request::builder().method(Method::POST), "tenant-other")
+                    .uri("/v1/source-runtimes/runtime-demo/sync")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cross_tenant.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn source_runtime_sync_failures_keep_operator_actions_distinct() {
+        use source_runtime_sync::SourceRuntimeSyncFailureKind;
+
+        for (kind, status, code) in [
+            (
+                SourceRuntimeSyncFailureKind::InvalidRequest,
+                StatusCode::BAD_REQUEST,
+                "invalid_source_runtime_sync",
+            ),
+            (
+                SourceRuntimeSyncFailureKind::NotFound,
+                StatusCode::NOT_FOUND,
+                "source_runtime_not_found",
+            ),
+            (
+                SourceRuntimeSyncFailureKind::Conflict,
+                StatusCode::CONFLICT,
+                "source_runtime_sync_conflict",
+            ),
+            (
+                SourceRuntimeSyncFailureKind::ProviderUnavailable,
+                StatusCode::BAD_GATEWAY,
+                "source_provider_unavailable",
+            ),
+            (
+                SourceRuntimeSyncFailureKind::RuntimeUnavailable,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "source_runtime_sync_unavailable",
+            ),
+        ] {
+            let error = source_runtime_sync_error(
+                source_runtime_sync::SourceRuntimeSyncFailure::new(kind, "internal detail"),
+            );
+            assert_eq!(error.0, status);
+            assert_eq!(error.1.0.code, code);
+            assert!(!error.1.0.message.contains("internal detail"));
+        }
+    }
+
+    #[tokio::test]
     async fn committed_event_payloads_cannot_be_submitted_over_http() {
         let app = router(OrganizationalGraph::new());
         let response = app
@@ -6515,6 +6569,7 @@ mod tests {
             catalog_summary: None,
             projection: None,
             runtime_ledger: None,
+            source_sync: None,
             metrics: PlatformMetrics::default(),
         };
         for limit in [0, 101, usize::MAX] {
@@ -6646,6 +6701,7 @@ mod tests {
             catalog_summary: None,
             projection: None,
             runtime_ledger: None,
+            source_sync: None,
             metrics: PlatformMetrics::default(),
         };
         let mut identity = action_identity("tenant:http:one", "actor:http:one");
@@ -6762,6 +6818,7 @@ mod tests {
             catalog_summary: None,
             projection: None,
             runtime_ledger: None,
+            source_sync: None,
             metrics: PlatformMetrics::default(),
         };
         let mut identity = action_identity("tenant:http:one", "actor:http:one");
@@ -6805,6 +6862,7 @@ mod tests {
             catalog_summary: None,
             projection: None,
             runtime_ledger: None,
+            source_sync: None,
             metrics: PlatformMetrics::default(),
         };
         let identity = action_identity("tenant:http:one", "actor:http:one");
@@ -6836,6 +6894,7 @@ mod tests {
             catalog_summary: None,
             projection: None,
             runtime_ledger: None,
+            source_sync: None,
             metrics: PlatformMetrics::default(),
         };
         let identity = action_identity("tenant:http:one", "actor:http:one");
@@ -6897,6 +6956,7 @@ mod tests {
             catalog_summary: None,
             projection: None,
             runtime_ledger: None,
+            source_sync: None,
             metrics: PlatformMetrics::default(),
         };
         let identity = action_identity("tenant:http:one", "validator:http:one");
@@ -6933,6 +6993,7 @@ mod tests {
             catalog_summary: None,
             projection: None,
             runtime_ledger: None,
+            source_sync: None,
             metrics: PlatformMetrics::default(),
         };
         let identity = action_identity("tenant:http:one", "validator:http:one");

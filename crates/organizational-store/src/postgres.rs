@@ -1306,6 +1306,18 @@ impl PostgresLedger {
         &self,
         source_runtime_id: &SourceRuntimeId,
     ) -> Result<StoredSourceRuntime, StoreError> {
+        self.find_source_runtime(source_runtime_id)
+            .await?
+            .ok_or_else(|| StoreError::Conflict("source runtime is not stored".to_owned()))
+    }
+
+    /// Find one durable runtime definition without collapsing absence into a
+    /// stored-contract conflict. Tenant-bound callers can keep a missing or
+    /// foreign runtime indistinguishable without parsing error text.
+    pub async fn find_source_runtime(
+        &self,
+        source_runtime_id: &SourceRuntimeId,
+    ) -> Result<Option<StoredSourceRuntime>, StoreError> {
         let row = self
             .client
             .lock()
@@ -1316,11 +1328,9 @@ impl PostgresLedger {
             )
             .await?;
         let Some(row) = row else {
-            return Err(StoreError::Conflict(
-                "source runtime is not stored".to_owned(),
-            ));
+            return Ok(None);
         };
-        decode_stored_source_runtime(source_runtime_id, row.get(0))
+        decode_stored_source_runtime(source_runtime_id, row.get(0)).map(Some)
     }
 
     /// Resolve connector-vault references against the exact durable runtime
