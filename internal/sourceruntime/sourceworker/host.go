@@ -196,6 +196,8 @@ func credentialHeader(operation string, credential []byte) (string, []byte, erro
 		return "Authorization", append([]byte("Bearer "), credential...), nil
 	case "openai.admin_api_key_bearer":
 		return "Authorization", append([]byte("Bearer "), credential...), nil
+	case "google.api_key_header":
+		return "X-Goog-Api-Key", append([]byte(nil), credential...), nil
 	case "jumpcloud.x_api_key":
 		return "X-Api-Key", append([]byte(nil), credential...), nil
 	case "sentinelone.api_token":

@@ -301,6 +301,20 @@ func TestCredentialHeaderAppliesOnlyTheClosedPagerDutyScheme(t *testing.T) {
 	}
 }
 
+func TestCredentialHeaderAppliesGeminiKeyOnlyInsideTheTrustedHost(t *testing.T) {
+	header, value, err := credentialHeader("google.api_key_header", []byte("synthetic-api-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "X-Goog-Api-Key" || string(value) != "synthetic-api-key" {
+		t.Fatal("Gemini credential operation did not produce the exact provider header")
+	}
+	if _, _, err := credentialHeader("google.api_key_query", []byte("synthetic-api-key")); !errors.Is(err, ErrWorkerContract) {
+		t.Fatalf("query credential operation error = %v, want ErrWorkerContract", err)
+	}
+}
+
 func TestSafeResponseHeadersRedactsAndBounds(t *testing.T) {
 	headers := http.Header{
 		"X-Result-Count": {"2"}, "X-Limit": {"2"}, "X-Search_after": {`{"id":"event-2"}`}, "Retry-After": {"30"},

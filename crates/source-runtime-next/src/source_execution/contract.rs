@@ -154,6 +154,7 @@ pub fn validate_http_execution(
         || !matches!(
             execution.credential_operation.as_str(),
             "source.bearer"
+                | "google.api_key_header"
                 | "jumpcloud.x_api_key"
                 | "sentinelone.api_token"
                 | "twilio.basic"

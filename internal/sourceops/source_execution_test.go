@@ -32,6 +32,15 @@ func TestRustSourceFamilyPreviewAuthorityIsExact(t *testing.T) {
 		"DeepSeek model catalog":      {"deepseek", "model_catalog", "model_catalog", true},
 		"DeepSeek account balances":   {"deepseek", "account_balances", "account_balances", true},
 		"unknown DeepSeek family":     {"deepseek", "future-family", "future-family", true},
+		"Azure OpenAI default":        {"azure_openai", "", "deployments", true},
+		"Cohere default":              {"cohere", "", "model_catalog", true},
+		"Gemini default":              {"google_gemini", "", "model_catalog", true},
+		"Vertex default":              {"google_vertex_ai", "", "models", true},
+		"Groq default":                {"groq", "", "model_catalog", true},
+		"Hugging Face default":        {"huggingface", "", "organization_members", true},
+		"Mistral default":             {"mistral", "", "workspaces", true},
+		"Perplexity default":          {"perplexity", "", "api_groups", true},
+		"unknown portable AI family":  {"mistral", "future-family", "future-family", true},
 		"Asana default":               {"asana", "", "users", true},
 		"Asana users":                 {"asana", "users", "users", true},
 		"Asana projects":              {"asana", "projects", "projects", true},
@@ -721,6 +730,19 @@ func TestDeepSeekPreviewCredentialAliases(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if got := previewCredential("deepseek", test.config); got != test.want {
 				t.Fatalf("previewCredential() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestPortableAIPreviewCredentialAliasesStayInsideTheTrustedRunner(t *testing.T) {
+	for _, sourceID := range []string{"azure_openai", "cohere", "google_gemini", "google_vertex_ai", "groq", "huggingface", "mistral", "perplexity"} {
+		t.Run(sourceID, func(t *testing.T) {
+			if got := previewCredential(sourceID, map[string]string{"api_key": "api-key", "token": "token"}); got != "token" {
+				t.Fatalf("previewCredential() = %q, want token precedence", got)
+			}
+			if got := previewCredential(sourceID, map[string]string{"api_key": "api-key"}); got != "api-key" {
+				t.Fatalf("previewCredential() = %q, want api-key compatibility", got)
 			}
 		})
 	}
