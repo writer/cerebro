@@ -1799,6 +1799,13 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 	for _, row := range rows {
 		attrs := map[string]string{}
 		_ = json.Unmarshal([]byte(fmt.Sprint(row.Values["attributes_json"])), &attrs)
+		workspaceID := fmt.Sprint(row.Values["application_workspace_id"])
+		if workspaceID == "<nil>" {
+			workspaceID = ""
+		}
+		if request.Filter.ApplicationWorkspaceID != "" && workspaceID != request.Filter.ApplicationWorkspaceID {
+			continue
+		}
 		tenant := fmt.Sprint(row.Values["tenant_id"])
 		if tenant == "<nil>" || tenant == "" {
 			tenant = request.Filter.TenantID
@@ -1812,7 +1819,7 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 }
 
 func (s *stubGraphStore) ListVendorRegister(ctx context.Context, filter ports.VendorRegisterFilter) (*ports.VendorRegisterPage, error) {
-	page, err := s.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: filter.TenantID, SourceID: filter.SourceID, RuntimeIDs: filter.RuntimeIDs, IncludeKinds: []string{"vendor"}, Query: filter.Query, QueryAttributes: true}, Limit: filter.Limit})
+	page, err := s.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: filter.TenantID, ApplicationWorkspaceID: filter.ApplicationWorkspaceID, SourceID: filter.SourceID, RuntimeIDs: filter.RuntimeIDs, IncludeKinds: []string{"vendor"}, Query: filter.Query, QueryAttributes: true}, Limit: filter.Limit})
 	if err != nil {
 		return nil, err
 	}
@@ -4223,7 +4230,7 @@ func TestGRCVendorDetailSelectsExactRustRegisterRow(t *testing.T) {
 	const vendorURN = "urn:cerebro:writer:vendor:one"
 	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{{{
 		Values: map[string]any{
-			"urn": vendorURN, "tenant_id": "writer", "runtime_id": "vendor-runtime",
+			"urn": vendorURN, "tenant_id": "writer", "application_workspace_id": "workspace-a", "runtime_id": "vendor-runtime",
 			"source_id": "vendor-source", "entity_type": "vendor", "label": "Vendor One",
 			"attributes_json": `{"risk_level":"high","security_owner_user_id":"alice"}`,
 		},
@@ -4231,7 +4238,7 @@ func TestGRCVendorDetailSelectsExactRustRegisterRow(t *testing.T) {
 	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
 	request := httptest.NewRequest(http.MethodGet, "/grc/vendors/"+url.PathEscape(vendorURN), nil)
 
-	row, page, err := app.grcVendorRegisterDetail(request, grcScope{TenantID: "writer", Limit: 10}, vendorURN, "")
+	row, page, err := app.grcVendorRegisterDetail(request, grcScope{TenantID: "writer", ApplicationWorkspaceID: "workspace-a", Limit: 10}, vendorURN, "")
 	if err != nil {
 		t.Fatalf("grcVendorRegisterDetail() error = %v", err)
 	}
@@ -4240,6 +4247,9 @@ func TestGRCVendorDetailSelectsExactRustRegisterRow(t *testing.T) {
 	}
 	if page.GraphRevision != 1 || page.DataAuthority != "rust_graph" {
 		t.Fatalf("page = %#v, want Rust graph revision 1", page)
+	}
+	if len(graph.entityRequests) != 1 || graph.entityRequests[0].Filter.ApplicationWorkspaceID != "workspace-a" {
+		t.Fatalf("entity requests = %#v, want workspace-a vendor filter", graph.entityRequests)
 	}
 }
 

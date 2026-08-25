@@ -57,7 +57,7 @@ func (a *App) handleGRCVendors(w http.ResponseWriter, r *http.Request) {
 	}
 	runtimeIDs := grcvendor.ResolvedRuntimeIDs(scope.RuntimeID, scope.RuntimeIDs)
 	page, err := a.deps.GraphReads.VendorRegister.ListVendorRegister(r.Context(), ports.VendorRegisterFilter{
-		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
+		TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
 		Query: strings.TrimSpace(r.URL.Query().Get("q")), RiskLevel: strings.TrimSpace(r.URL.Query().Get("risk_level")), ReviewState: strings.TrimSpace(r.URL.Query().Get("review_state")), OwnerState: strings.TrimSpace(r.URL.Query().Get("owner_state")), LifecycleState: strings.TrimSpace(r.URL.Query().Get("lifecycle_state")), QueueOnly: queueOnly, Limit: int(scope.Limit),
 	})
 	if err != nil {
@@ -115,12 +115,13 @@ func (a *App) grcVendorDetailResponse(r *http.Request) (grcVendorDetailResponse,
 		return grcVendorDetailResponse{}, err
 	}
 	detail, err := grcvendor.NewWithCapabilities(a.deps.GraphReads.Catalog, a.deps.GraphReads.Neighborhoods).GetVendor(r.Context(), grcvendor.VendorDetailRequest{
-		URN:        registerRow.URN,
-		TenantID:   scope.TenantID,
-		RuntimeID:  scope.RuntimeID,
-		RuntimeIDs: scope.RuntimeIDs,
-		SourceID:   scope.SourceID,
-		Limit:      scope.Limit,
+		URN:                    registerRow.URN,
+		TenantID:               scope.TenantID,
+		ApplicationWorkspaceID: scope.ApplicationWorkspaceID,
+		RuntimeID:              scope.RuntimeID,
+		RuntimeIDs:             scope.RuntimeIDs,
+		SourceID:               scope.SourceID,
+		Limit:                  scope.Limit,
 	})
 	if err != nil {
 		return grcVendorDetailResponse{}, err
@@ -183,7 +184,7 @@ func (a *App) grcVendorRegisterDetail(r *http.Request, scope grcScope, urn strin
 		query = strings.TrimSpace(vendorID)
 	}
 	page, err := a.deps.GraphReads.VendorRegister.ListVendorRegister(r.Context(), ports.VendorRegisterFilter{
-		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs, Query: query, Limit: int(scope.Limit),
+		TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs, Query: query, Limit: int(scope.Limit),
 	})
 	if err != nil {
 		return ports.VendorRegisterRow{}, nil, err

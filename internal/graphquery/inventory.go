@@ -16,25 +16,28 @@ const (
 )
 
 type InventoryCategoryRequest struct {
-	TenantID string
-	SourceID string
-	Surface  string
-	Limit    uint32
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	Surface                string
+	Limit                  uint32
 }
 
 type InventoryAssetRequest struct {
-	TenantID   string
-	SourceID   string
-	Surface    string
-	CategoryID string
-	EntityType string
-	Query      string
-	Limit      uint32
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	Surface                string
+	CategoryID             string
+	EntityType             string
+	Query                  string
+	Limit                  uint32
 }
 
 type InventoryAssetDetailRequest struct {
-	URN   string
-	Limit uint32
+	URN                    string
+	ApplicationWorkspaceID string
+	Limit                  uint32
 }
 
 type InventoryCategory struct {
@@ -112,7 +115,7 @@ func (s *Service) ListInventoryCategories(ctx context.Context, request Inventory
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	filter := inventoryCatalogFilter(tenantID, request.SourceID, request.Surface)
+	filter := inventoryCatalogFilter(tenantID, request.ApplicationWorkspaceID, request.SourceID, request.Surface)
 	page, err := s.catalog.CountEntityKinds(ctx, ports.EntityKindCountRequest{Filter: filter, Limit: maxInventoryLimit})
 	if err != nil {
 		return nil, err
@@ -169,7 +172,7 @@ func (s *Service) ListInventoryAssets(ctx context.Context, request InventoryAsse
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	filter := inventoryCatalogFilter(tenantID, request.SourceID, request.Surface)
+	filter := inventoryCatalogFilter(tenantID, request.ApplicationWorkspaceID, request.SourceID, request.Surface)
 	filter.Query = strings.TrimSpace(request.Query)
 	if len(entityTypes) > 0 {
 		filter.IncludeKinds = entityTypes
@@ -204,7 +207,7 @@ func (s *Service) GetInventoryAsset(ctx context.Context, request InventoryAssetD
 		return nil, err
 	}
 	tenantID := cerebrourn.TenantID(urn)
-	page, err := s.catalog.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ExactAgentKey: urn}, Limit: 1})
+	page, err := s.catalog.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: tenantID, ApplicationWorkspaceID: strings.TrimSpace(request.ApplicationWorkspaceID), ExactAgentKey: urn}, Limit: 1})
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +216,20 @@ func (s *Service) GetInventoryAsset(ctx context.Context, request InventoryAssetD
 	}
 	if len(page.Entities) == 0 {
 		return nil, ports.ErrGraphEntityNotFound
+	}
+	if strings.TrimSpace(request.ApplicationWorkspaceID) != "" {
+		entity := page.Entities[0]
+		return &InventoryAssetDetail{
+			Asset: inventoryAssetFromCatalog(entity),
+			Graph: &ports.EntityNeighborhood{
+				Root:      &ports.NeighborhoodNode{URN: entity.URN, EntityType: entity.EntityType, Label: entity.Label},
+				Neighbors: []*ports.NeighborhoodNode{},
+				Relations: []*ports.NeighborhoodRelation{},
+			},
+			Generated: map[string]InventorySignal{
+				"neighborhood": {Count: 0, State: "workspace_root_only"},
+			},
+		}, nil
 	}
 	limit := normalizeInventoryLimit(request.Limit)
 	if limit > maxNeighborhoodLimit {
@@ -248,8 +265,8 @@ func inventoryAssetFromCatalog(entity ports.CatalogEntity) InventoryAsset {
 	return InventoryAsset{URN: entity.URN, EntityType: entity.EntityType, Surface: InventorySurfaceForEntityType(entity.EntityType), Label: firstInventoryString(entity.Label, entity.URN), SourceID: entity.SourceID, RuntimeID: entity.RuntimeID, RiskScore: score, RiskLevel: inventoryRiskLevel(score), RiskReasons: reasons, ScopeState: "in_scope", Attributes: attrs}
 }
 
-func inventoryCatalogFilter(tenantID, sourceID, surface string) ports.EntityCatalogFilter {
-	filter := ports.EntityCatalogFilter{TenantID: tenantID, SourceID: strings.TrimSpace(sourceID), ExcludeKinds: excludedInventoryEntityTypes(), QueryAttributes: true}
+func inventoryCatalogFilter(tenantID, applicationWorkspaceID, sourceID, surface string) ports.EntityCatalogFilter {
+	filter := ports.EntityCatalogFilter{TenantID: tenantID, ApplicationWorkspaceID: strings.TrimSpace(applicationWorkspaceID), SourceID: strings.TrimSpace(sourceID), ExcludeKinds: excludedInventoryEntityTypes(), QueryAttributes: true}
 	normalized := NormalizeInventorySurface(surface)
 	if normalized == InventorySurfaceAll {
 		return filter

@@ -18,11 +18,12 @@ const (
 )
 
 type Scope struct {
-	TenantID    string
-	SourceID    string
-	RuntimeID   string
-	Limit       uint32
-	RuleProfile string
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	RuntimeID              string
+	Limit                  uint32
+	RuleProfile            string
 }
 
 var grcPolicyLifecycleEntityTypes = []string{
@@ -100,6 +101,7 @@ CALL {
   WITH entity_type
   MATCH (e:Entity)
   WHERE ($tenant_id = '' OR e.tenant_id = $tenant_id)
+    AND ($application_workspace_id = '' OR coalesce(e.application_workspace_id, '') = $application_workspace_id)
     AND ($source_id = '' OR e.source_id = $source_id)
     AND ($runtime_id = '' OR coalesce(e.runtime_id, '') = $runtime_id)
     AND e.entity_type = entity_type
@@ -133,6 +135,8 @@ CALL {
 WITH DISTINCT left, r, right
 WHERE ($tenant_id = '' OR left.tenant_id = $tenant_id)
   AND ($tenant_id = '' OR right.tenant_id = $tenant_id)
+  AND ($application_workspace_id = '' OR coalesce(left.application_workspace_id, '') = $application_workspace_id)
+  AND ($application_workspace_id = '' OR coalesce(right.application_workspace_id, '') = $application_workspace_id)
   AND (
     $source_id = '' OR
     (left.entity_type IN $entity_types AND left.source_id = $source_id) OR
@@ -715,6 +719,7 @@ func Build(ctx context.Context, store ports.RawCypherQueryStore, scope Scope) (R
 		Query: grcPolicyLifecycleEntitiesQuery,
 		Params: map[string]any{
 			"tenant_id":                   scope.TenantID,
+			"application_workspace_id":    scope.ApplicationWorkspaceID,
 			"source_id":                   scope.SourceID,
 			"runtime_id":                  scope.RuntimeID,
 			"entity_types":                grcPolicyLifecycleEntityTypes,
@@ -740,6 +745,7 @@ func Build(ctx context.Context, store ports.RawCypherQueryStore, scope Scope) (R
 		Params: map[string]any{
 			"entity_urns":                 entityURNs,
 			"tenant_id":                   scope.TenantID,
+			"application_workspace_id":    scope.ApplicationWorkspaceID,
 			"source_id":                   scope.SourceID,
 			"runtime_id":                  scope.RuntimeID,
 			"entity_types":                grcPolicyLifecycleEntityTypes,
