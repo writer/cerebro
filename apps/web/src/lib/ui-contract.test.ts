@@ -100,7 +100,10 @@ describe("product UI contract", () => {
     expect(statusSource).toContain("Runtime Health");
     expect(statusSource).toContain("API liveness");
     expect(statusSource).toContain("API readiness");
+    expect(statusSource).toContain("Vendor register");
+    expect(statusSource).toContain("Policy lifecycle");
     expect(statusSource).toContain("LIVENESS_TIMEOUT_MS");
+    expect(statusSource).toContain("PRODUCT_READ_TIMEOUT_MS");
     expect(statusSource).toContain("GRC_QUERY_TIMEOUT_MS");
     expect(statusSource).not.toContain("/api/cerebro/grc/dashboard");
     expect(primitivesSource).toContain("DataStateBanner");
