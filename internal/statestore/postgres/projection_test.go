@@ -79,6 +79,26 @@ func TestUpsertProjectedLinkRejectsCrossTenantCerebroURNBeforeDatabase(t *testin
 	}
 }
 
+func TestProjectionSQLBackfillsBlankWorkspaceAndRejectsConflicts(t *testing.T) {
+	for name, query := range map[string]string{
+		"entity": projectedEntityUpsertSQL(),
+		"link":   projectedLinkUpsertSQL(),
+	} {
+		for _, clause := range []string{"application_workspace_id", "EXCLUDED.application_workspace_id <> ''", "tenant_id = EXCLUDED.tenant_id", "application_workspace_id = ''", "application_workspace_id = EXCLUDED.application_workspace_id"} {
+			if !strings.Contains(query, clause) {
+				t.Fatalf("%s upsert missing %q:\n%s", name, clause, query)
+			}
+		}
+		if strings.Contains(query, "OR EXCLUDED.application_workspace_id = ''") {
+			t.Fatalf("%s upsert allows an unscoped replay to mutate a scoped row:\n%s", name, query)
+		}
+	}
+	joined := strings.Join(ensureProjectionStatements, "\n")
+	if !strings.Contains(joined, "ADD COLUMN IF NOT EXISTS application_workspace_id TEXT NOT NULL DEFAULT ''") {
+		t.Fatalf("projection migration does not preserve blank tenant-wide legacy rows")
+	}
+}
+
 func TestProjectionUpsertsMergeAttributes(t *testing.T) {
 	entitySQL := projectedEntityUpsertSQL()
 	if !strings.Contains(entitySQL, "attributes_json = entities.attributes_json || EXCLUDED.attributes_json") {

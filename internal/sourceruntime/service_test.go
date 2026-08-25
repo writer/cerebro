@@ -1451,10 +1451,13 @@ func TestMaterializeEventPinsSyncCollectionProvenance(t *testing.T) {
 			ports.EventAttributeSourceCollectionID: "provider-collection",
 		},
 	}
-	materialized := materializeEvent(&cerebrov1.SourceRuntime{
+	materialized, err := materializeEvent(&cerebrov1.SourceRuntime{
 		Id:       "runtime-authority",
 		TenantId: "tenant-a",
 	}, collectionID, event)
+	if err != nil {
+		t.Fatalf("materializeEvent() error = %v", err)
+	}
 	if got := materialized.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "runtime-authority" {
 		t.Fatalf("source_runtime_id = %q, want runtime authority", got)
 	}
@@ -1472,16 +1475,22 @@ func TestMaterializeEventKeepsImmutableMaterialAcrossCollections(t *testing.T) {
 	event := runtimeTestEvent("okta-threat-insight-sha256-stable", "okta", "okta.threat_insight")
 	event.TenantId = "provider-tenant"
 	event.Attributes["resource_id"] = "threat_insight_config"
-	first := materializeEvent(
+	first, err := materializeEvent(
 		&cerebrov1.SourceRuntime{Id: "writer-okta-primary", TenantId: "tenant-a"},
 		"collection-one",
 		event,
 	)
-	second := materializeEvent(
+	if err != nil {
+		t.Fatalf("materializeEvent(first) error = %v", err)
+	}
+	second, err := materializeEvent(
 		&cerebrov1.SourceRuntime{Id: "writer-okta-replacement", TenantId: "tenant-a"},
 		"collection-two",
 		event,
 	)
+	if err != nil {
+		t.Fatalf("materializeEvent(second) error = %v", err)
+	}
 
 	if first.GetId() != second.GetId() {
 		t.Fatalf("immutable event ID changed across collections: %q != %q", first.GetId(), second.GetId())
@@ -1501,6 +1510,38 @@ func TestMaterializeEventKeepsImmutableMaterialAcrossCollections(t *testing.T) {
 	delete(second.Attributes, ports.EventAttributeSourceRuntimeID)
 	if !proto.Equal(first, second) {
 		t.Fatalf("materialized immutable records differ beyond collection provenance: first=%v second=%v", first, second)
+	}
+}
+
+func TestMaterializeEventUsesOnlyTrustedRuntimeApplicationWorkspace(t *testing.T) {
+	t.Parallel()
+
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "runtime-authority",
+		TenantId: "tenant-a",
+		Config: map[string]string{
+			ports.SourceRuntimeApplicationWorkspaceIDConfigKey: " workspace-a ",
+		},
+	}
+	event := &cerebrov1.EventEnvelope{Attributes: map[string]string{"workspace_id": "provider-workspace"}}
+	materialized, err := materializeEvent(runtime, "collection-one", event)
+	if err != nil {
+		t.Fatalf("materializeEvent() error = %v", err)
+	}
+	if got := materialized.GetAttributes()[ports.EventAttributeApplicationWorkspaceID]; got != "workspace-a" {
+		t.Fatalf("reserved application workspace = %q, want trusted runtime workspace-a", got)
+	}
+	if got := materialized.GetAttributes()["workspace_id"]; got != "provider-workspace" {
+		t.Fatalf("provider workspace attribute changed to %q", got)
+	}
+
+	event.Attributes[ports.EventAttributeApplicationWorkspaceID] = "provider-spoof"
+	if _, err := materializeEvent(runtime, "collection-two", event); err == nil {
+		t.Fatal("materializeEvent() error = nil, want reserved attribute conflict")
+	}
+	event.Attributes[ports.EventAttributeApplicationWorkspaceID] = "workspace-a"
+	if _, err := materializeEvent(runtime, "collection-three", event); err == nil {
+		t.Fatal("materializeEvent() error = nil, want matching provider reserved attribute rejected")
 	}
 }
 

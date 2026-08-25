@@ -1458,6 +1458,8 @@ struct ProjectEventResponse {
 struct LegacyEntityDeltaRecord {
     urn: String,
     tenant_id: String,
+    #[serde(default)]
+    application_workspace_id: String,
     source_id: String,
     runtime_id: String,
     entity_type: String,
@@ -1470,6 +1472,8 @@ struct LegacyEntityDeltaRecord {
 #[serde(deny_unknown_fields)]
 struct LegacyLinkDeltaRecord {
     tenant_id: String,
+    #[serde(default)]
+    application_workspace_id: String,
     source_id: String,
     runtime_id: String,
     from_urn: String,
@@ -2553,6 +2557,7 @@ fn validate_legacy_projection(
     let expected_runtime = request.source_runtime_id.trim();
     for entity in &request.delta.entities {
         if entity.tenant_id.trim() != expected_tenant
+            || !valid_legacy_application_workspace_id(&entity.application_workspace_id)
             || entity.source_id.trim() != source_id
             || entity.runtime_id.trim() != expected_runtime
             || entity.urn.trim().is_empty()
@@ -2572,6 +2577,7 @@ fn validate_legacy_projection(
         .chain(request.delta.link_retractions.iter())
     {
         if link.tenant_id.trim() != expected_tenant
+            || !valid_legacy_application_workspace_id(&link.application_workspace_id)
             || link.source_id.trim() != source_id
             || link.runtime_id.trim() != expected_runtime
             || link.relation.trim().is_empty()
@@ -2611,6 +2617,15 @@ fn validate_legacy_projection(
         }
     }
     Ok(())
+}
+
+fn valid_legacy_application_workspace_id(value: &str) -> bool {
+    value.is_empty()
+        || (value.trim() == value
+            && value.len() <= 256
+            && value != "*"
+            && !value.contains(',')
+            && !value.chars().any(char::is_control))
 }
 
 fn legacy_urn_matches_tenant(tenant_id: &str, value: &str) -> bool {
@@ -5913,6 +5928,7 @@ mod tests {
                 entities: vec![LegacyEntityDeltaRecord {
                     urn: "urn:cerebro:tenant-demo:asset:one".to_owned(),
                     tenant_id: tenant_id.as_str().to_owned(),
+                    application_workspace_id: "workspace-a".to_owned(),
                     source_id: "box".to_owned(),
                     runtime_id: "box-runtime".to_owned(),
                     entity_type: "box.asset".to_owned(),

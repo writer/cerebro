@@ -228,6 +228,9 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	if runtime.GetId() == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
+	if _, err := applicationWorkspaceIDForRuntime(runtime); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
+	}
 	existing, err := s.lookupRuntime(ctx, runtime.GetId())
 	switch {
 	case err == nil:
@@ -453,7 +456,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		phaseStarted = time.Now()
 		materializedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
 		for _, event := range pull.Events {
-			syncedEvent := materializeEvent(runtime, collectionID, event)
+			syncedEvent, err := materializeEvent(runtime, collectionID, event)
+			if err != nil {
+				return nil, err
+			}
 			if syncedEvent == nil {
 				continue
 			}
@@ -1458,16 +1464,33 @@ func boundedUint32(value int) uint32 {
 	return uint32(value)
 }
 
-func materializeEvent(runtime *cerebrov1.SourceRuntime, collectionID string, event *cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
+func materializeEvent(runtime *cerebrov1.SourceRuntime, collectionID string, event *cerebrov1.EventEnvelope) (*cerebrov1.EventEnvelope, error) {
 	if event == nil {
-		return nil
+		return nil, nil
 	}
 	cloned := proto.Clone(event).(*cerebrov1.EventEnvelope)
 	if runtime == nil {
-		return cloned
+		return cloned, nil
+	}
+	workspaceID, err := applicationWorkspaceIDForRuntime(runtime)
+	if err != nil {
+		return nil, err
+	}
+	providerWorkspaceID := strings.TrimSpace(cloned.GetAttributes()[ports.EventAttributeApplicationWorkspaceID])
+	if providerWorkspaceID != "" {
+		return nil, fmt.Errorf("reserved application workspace attribute may only be set by the source runtime")
 	}
 	if strings.TrimSpace(runtime.GetTenantId()) != "" {
 		cloned.TenantId = strings.TrimSpace(runtime.GetTenantId())
+	}
+	if cloned.Attributes != nil {
+		delete(cloned.Attributes, ports.EventAttributeApplicationWorkspaceID)
+	}
+	if workspaceID != "" {
+		if cloned.Attributes == nil {
+			cloned.Attributes = make(map[string]string)
+		}
+		cloned.Attributes[ports.EventAttributeApplicationWorkspaceID] = workspaceID
 	}
 	if strings.TrimSpace(runtime.GetId()) != "" {
 		if cloned.Attributes == nil {
@@ -1481,7 +1504,21 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, collectionID string, eve
 		}
 		cloned.Attributes[ports.EventAttributeSourceCollectionID] = collectionID
 	}
-	return cloned
+	return cloned, nil
+}
+
+func applicationWorkspaceIDForRuntime(runtime *cerebrov1.SourceRuntime) (string, error) {
+	if runtime == nil {
+		return "", nil
+	}
+	workspaceID, err := ports.ValidateApplicationWorkspaceScope(
+		runtime.GetTenantId(),
+		runtime.GetConfig()[ports.SourceRuntimeApplicationWorkspaceIDConfigKey],
+	)
+	if err != nil {
+		return "", fmt.Errorf("source runtime application_workspace_id: %w", err)
+	}
+	return workspaceID, nil
 }
 
 func sameConfig(left map[string]string, right map[string]string) bool {

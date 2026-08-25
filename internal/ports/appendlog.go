@@ -12,6 +12,12 @@ import (
 
 const (
 	EventAttributeSourceRuntimeID = "source_runtime_id"
+	// EventAttributeApplicationWorkspaceID is reserved for the trusted
+	// source-runtime and admission hosts. Provider records must not populate it.
+	EventAttributeApplicationWorkspaceID = "cerebro_application_workspace_id"
+	// SourceRuntimeApplicationWorkspaceIDConfigKey assigns every projection
+	// emitted by one runtime to a tenant-qualified Cerebro application workspace.
+	SourceRuntimeApplicationWorkspaceIDConfigKey = "application_workspace_id"
 	// EventAttributeSourceCollectionID joins every normalized event from one
 	// sync to the final durable SourceCollectionManifest for that exact sync.
 	EventAttributeSourceCollectionID = "source_collection_id"
