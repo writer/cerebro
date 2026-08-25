@@ -83,14 +83,14 @@ entries:
           event:
             kind: azure_openai.model_catalog
             required_payload_fields:
-              - name
+              - model
             schema_ref: azure_openai/model_catalog/v1
             urn_kind: azure_openai_model_catalog
           id: model_catalog
-          id_field: name
+          id_field: model.name
           label: Model catalog
           method: GET
-          name_field: name
+          name_field: model.name
           pagination:
             disable_page_size: true
             next_url_json_path: $.nextLink
@@ -98,9 +98,9 @@ entries:
           path: /subscriptions/${config.subscription_id}/providers/Microsoft.CognitiveServices/locations/${config.location}/models
           projection:
             fields:
-              resource_id: name
-              resource_name: name
-              resource_type: resource_type|type|kind
+              resource_id: model.name
+              resource_name: model.name
+              resource_type: model.format|kind|resource_type|type
               resource_urn: resource_urn|urn|metadata.resource_urn
             template: asset
           record_selector: $.value[*]

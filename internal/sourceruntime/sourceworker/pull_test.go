@@ -110,6 +110,28 @@ func TestOpenAIPublicExecutionConfigCarriesSelectorsWithoutCredentialMaterial(t 
 	}
 }
 
+func TestPortableAIPublicExecutionConfigCarriesOnlyProviderSelectors(t *testing.T) {
+	azure := PublicExecutionConfigForSource("azure_openai", map[string]string{
+		"family": " deployments ", "subscription_id": " sub-1 ", "resource_group": " rg-ai ",
+		"account_name": " acct-openai ", "location": " westus ", "api_key": "must-not-cross",
+	})
+	if azure["subscription_id"] != "sub-1" || azure["resource_group"] != "rg-ai" || azure["account_name"] != "acct-openai" || azure["location"] != "westus" || azure["api_key"] != "" {
+		t.Fatalf("Azure OpenAI public config = %#v", azure)
+	}
+	vertex := PublicExecutionConfigForSource("google_vertex_ai", map[string]string{
+		"project_id": " project-1 ", "location": " us-central1 ", "token": "must-not-cross",
+	})
+	if vertex["project_id"] != "project-1" || vertex["location"] != "us-central1" || vertex["token"] != "" {
+		t.Fatalf("Vertex public config = %#v", vertex)
+	}
+	huggingface := PublicExecutionConfigForSource("huggingface", map[string]string{
+		"organization": " writer ", "token": "must-not-cross",
+	})
+	if huggingface["organization"] != "writer" || huggingface["token"] != "" {
+		t.Fatalf("Hugging Face public config = %#v", huggingface)
+	}
+}
+
 func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 	for name, test := range map[string]struct {
 		source, family, wantFamily string
@@ -129,6 +151,15 @@ func TestRustAuthoritativeFamilyIsAnExactClosedAllowlist(t *testing.T) {
 		"DeepSeek model catalog":      {"deepseek", " model_catalog ", "model_catalog", true},
 		"DeepSeek account balances":   {"deepseek", "account_balances", "account_balances", true},
 		"unknown DeepSeek family":     {"deepseek", "future-family", "future-family", true},
+		"Azure OpenAI default":        {"azure_openai", "", "deployments", true},
+		"Cohere default":              {"cohere", "", "model_catalog", true},
+		"Gemini default":              {"google_gemini", "", "model_catalog", true},
+		"Vertex default":              {"google_vertex_ai", "", "models", true},
+		"Groq default":                {"groq", "", "model_catalog", true},
+		"Hugging Face default":        {"huggingface", "", "organization_members", true},
+		"Mistral default":             {"mistral", "", "workspaces", true},
+		"Perplexity default":          {"perplexity", "", "api_groups", true},
+		"unknown portable AI family":  {"google_gemini", "future-family", "future-family", true},
 		"Asana default":               {" asana ", "", "users", true},
 		"Asana users":                 {"asana", " users ", "users", true},
 		"Asana projects":              {"asana", "projects", "projects", true},
@@ -228,6 +259,11 @@ func TestCredentialBindingUsesOnlyTheSelectedProviderAliases(t *testing.T) {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
 			source: "deepseek", references: map[string]string{"api_key": "credential:deepseek:api-key"},
 			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:deepseek:api-key", wantResolved: "resolved-api-key",
+		},
+		"Gemini api key": {
+			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
+			source: "google_gemini", references: map[string]string{"api_key": "credential:gemini:api-key"},
+			resolved: map[string]string{"api_key": "resolved-api-key"}, wantReference: "credential:gemini:api-key", wantResolved: "resolved-api-key",
 		},
 		"Twilio basic credentials": {
 			// #nosec G101 -- synthetic credential-reference and resolved-value fixtures.
