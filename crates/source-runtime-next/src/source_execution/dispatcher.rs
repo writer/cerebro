@@ -2,6 +2,7 @@ use prost::Message;
 
 use crate::asana::ASANA_SOURCE_EXECUTION_ADAPTERS;
 use crate::digitalocean::DIGITALOCEAN_SOURCE_EXECUTION_ADAPTERS;
+use crate::discord::DISCORD_SOURCE_EXECUTION_ADAPTERS;
 use crate::linode::LINODE_ISSUE_SOURCE_EXECUTION_ADAPTER;
 use crate::pagerduty::PAGERDUTY_SOURCE_EXECUTION_ADAPTERS;
 use crate::sentinelone::{
@@ -159,6 +160,11 @@ impl SourceExecutionDispatcher {
         {
             return Ok(adapter.compiled_plan());
         }
+        if let Some(adapter) = DISCORD_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            request.source_id == adapter.source_id() && request.family_id == adapter.family_id()
+        }) {
+            return Ok(adapter.compiled_plan());
+        }
         if request.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()
             && request.family_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.family_id()
         {
@@ -244,6 +250,13 @@ impl SourceExecutionDispatcher {
                     && plan.provider_kernel == adapter.provider_kernel()
             })
         {
+            return Ok(adapter);
+        }
+        if let Some(adapter) = DISCORD_SOURCE_EXECUTION_ADAPTERS.iter().find(|adapter| {
+            plan.source_id == adapter.source_id()
+                && plan.family_id == adapter.family_id()
+                && plan.provider_kernel == adapter.provider_kernel()
+        }) {
             return Ok(adapter);
         }
         if plan.source_id == SENTINELONE_APPLICATION_SOURCE_EXECUTION_ADAPTER.source_id()

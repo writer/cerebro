@@ -218,6 +218,20 @@ func TestCredentialHeaderAppliesOnlyTheClosedSentinelOneScheme(t *testing.T) {
 	}
 }
 
+func TestCredentialHeaderAppliesOnlyTheClosedDiscordScheme(t *testing.T) {
+	header, value, err := credentialHeader("discord.bot_token", []byte("synthetic-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(value)
+	if header != "Authorization" || string(value) != "Bot synthetic-secret" {
+		t.Fatal("Discord credential operation did not produce the exact provider scheme")
+	}
+	if _, _, err := credentialHeader("discord.bearer", []byte("synthetic-secret")); !errors.Is(err, ErrWorkerContract) {
+		t.Fatalf("unregistered credential operation error = %v, want ErrWorkerContract", err)
+	}
+}
+
 func TestCredentialHeaderAppliesOnlyTheClosedTwilioScheme(t *testing.T) {
 	header, value, err := credentialHeader("twilio.basic", []byte("synthetic-basic-value"))
 	if err != nil {
