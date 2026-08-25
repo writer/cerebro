@@ -80,12 +80,7 @@ pub(crate) async fn list_source_runtime_invalid_events(
     tenant_id: &TenantId,
     runtime_id: &str,
 ) -> Result<SourceRuntimeInvalidEventsResponse, SourceRuntimeInvalidEventsFailure> {
-    let runtime_id = SourceRuntimeId::parse(runtime_id.trim().to_owned()).map_err(|error| {
-        SourceRuntimeInvalidEventsFailure::new(
-            SourceRuntimeInvalidEventsFailureKind::InvalidRequest,
-            error.to_string(),
-        )
-    })?;
+    let runtime_id = parse_runtime_id(runtime_id)?;
     let runtime = ledger
         .find_source_runtime(&runtime_id)
         .await
@@ -98,6 +93,17 @@ pub(crate) async fn list_source_runtime_invalid_events(
         runtime.as_ref(),
         generated_at,
     ))
+}
+
+fn parse_runtime_id(
+    runtime_id: &str,
+) -> Result<SourceRuntimeId, SourceRuntimeInvalidEventsFailure> {
+    SourceRuntimeId::parse(runtime_id.trim().to_owned()).map_err(|error| {
+        SourceRuntimeInvalidEventsFailure::new(
+            SourceRuntimeInvalidEventsFailureKind::InvalidRequest,
+            error.to_string(),
+        )
+    })
 }
 
 fn response_for_runtime(
@@ -213,5 +219,74 @@ mod tests {
             let response = response_for_runtime(&tenant_a, runtime, "2026-08-25T00:00:00Z".into());
             assert!(response.events.is_empty());
         }
+    }
+
+    #[test]
+    fn invalid_event_record_preserves_bounded_timestamps_and_explicit_status() {
+        let runtime = stored(
+            "tenant-a",
+            BTreeMap::from([
+                (LAST_INVALID_FIELD.to_owned(), " object_id ".to_owned()),
+                (LAST_INVALID_STATUS.to_owned(), " quarantined ".to_owned()),
+                (
+                    LAST_INVALID_OBSERVED_AT.to_owned(),
+                    " 2026-08-25T00:00:00Z ".to_owned(),
+                ),
+                (
+                    LAST_INVALID_OCCURRED_AT.to_owned(),
+                    " 2026-08-24T23:59:00Z ".to_owned(),
+                ),
+                (LAST_INVALID_EVENT_ID.to_owned(), "  ".to_owned()),
+                (LAST_INVALID_DIAGNOSTIC.to_owned(), "  ".to_owned()),
+                (LAST_INVALID_RETRYABLE.to_owned(), "false".to_owned()),
+            ]),
+        );
+        let record = invalid_event_record(&runtime).unwrap();
+        assert_eq!(record.runtime_id, "runtime-a");
+        assert_eq!(record.source_id, "github");
+        assert_eq!(record.tenant_id, "tenant-a");
+        assert_eq!(record.failure_category, "");
+        assert_eq!(record.fields, vec!["object_id"]);
+        assert_eq!(record.status, "quarantined");
+        assert!(!record.retryable);
+        assert_eq!(record.observed_at.as_deref(), Some("2026-08-25T00:00:00Z"));
+        assert_eq!(record.occurred_at.as_deref(), Some("2026-08-24T23:59:00Z"));
+        assert_eq!(record.source_event_id, None);
+        assert_eq!(record.diagnostic, None);
+    }
+
+    #[test]
+    fn same_tenant_response_includes_one_invalid_event_and_generation_time() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let runtime = stored(
+            "tenant-a",
+            BTreeMap::from([(LAST_FAILURE_CATEGORY.to_owned(), "malformed".to_owned())]),
+        );
+        let response =
+            response_for_runtime(&tenant, Some(&runtime), "2026-08-25T01:00:00Z".to_owned());
+        assert_eq!(response.generated_at, "2026-08-25T01:00:00Z");
+        assert_eq!(response.events.len(), 1);
+        assert_eq!(response.events[0].failure_category, "malformed");
+    }
+
+    #[test]
+    fn runtime_selector_and_backend_failures_keep_operator_actions_distinct() {
+        assert_eq!(
+            parse_runtime_id(" runtime-a ").unwrap().as_str(),
+            "runtime-a"
+        );
+        let invalid = parse_runtime_id("invalid runtime").unwrap_err();
+        assert_eq!(
+            invalid.kind(),
+            SourceRuntimeInvalidEventsFailureKind::InvalidRequest
+        );
+        assert!(!invalid.to_string().is_empty());
+
+        let unavailable = runtime_unavailable("postgres unavailable");
+        assert_eq!(
+            unavailable.kind(),
+            SourceRuntimeInvalidEventsFailureKind::RuntimeUnavailable
+        );
+        assert_eq!(unavailable.to_string(), "postgres unavailable");
     }
 }
