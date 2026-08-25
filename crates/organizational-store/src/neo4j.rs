@@ -1101,10 +1101,13 @@ ORDER BY runtime_id
         let mut transaction = self.graph.start_txn().await?;
         let revision = catalog_revision(&mut transaction, tenant_id).await?;
         require_catalog_revision(filter.expected_graph_revision, revision)?;
-        let statement = "MATCH (entity:Entity {tenant_id: $tenant_id}) WHERE ($source_id = '' OR coalesce(entity.source_id, '') = $source_id) AND (size($runtime_ids) = 0 OR coalesce(entity.runtime_id, '') IN $runtime_ids) AND ($exact_key = '' OR entity.urn = $exact_key) AND (size($include_kinds) + size($include_prefixes) = 0 OR entity.entity_type IN $include_kinds OR any(prefix IN $include_prefixes WHERE entity.entity_type STARTS WITH prefix)) AND NOT entity.entity_type IN $exclude_kinds AND none(prefix IN $exclude_prefixes WHERE entity.entity_type STARTS WITH prefix) AND ($search = '' OR toLower(coalesce(entity.urn, '') + ' ' + coalesce(entity.label, '')) CONTAINS $search OR ($search_attributes AND toLower(coalesce(entity.attributes_json, '')) CONTAINS $search)) AND ($after_key = '' OR entity.urn > $after_key) RETURN entity.urn AS entity_key, coalesce(entity.entity_type, 'unknown') AS entity_kind, coalesce(entity.label, entity.urn) AS entity_label, coalesce(entity.attributes_json, '{}') AS entity_properties, coalesce(entity.source_id, '') AS entity_source_id, coalesce(entity.runtime_id, '') AS entity_runtime_id ORDER BY entity.urn LIMIT $row_limit";
+        let statement = format!(
+            "{} RETURN entity.urn AS entity_key, coalesce(entity.entity_type, 'unknown') AS entity_kind, coalesce(entity.label, entity.urn) AS entity_label, coalesce(entity.attributes_json, '{{}}') AS entity_properties, coalesce(entity.source_id, '') AS entity_source_id, coalesce(entity.runtime_id, '') AS entity_runtime_id ORDER BY entity.urn LIMIT $row_limit",
+            catalog_entity_match(filter, CatalogCursor::AgentKey(after_agent_key)),
+        );
         let mut rows = transaction
             .execute(
-                catalog_query(statement, tenant_id, filter)
+                catalog_query(&statement, tenant_id, filter)
                     .param("after_key", after_agent_key)
                     .param("row_limit", row_limit(limit)),
             )
@@ -1171,10 +1174,13 @@ ORDER BY runtime_id
         let mut transaction = self.graph.start_txn().await?;
         let revision = catalog_revision(&mut transaction, tenant_id).await?;
         require_catalog_revision(filter.expected_graph_revision, revision)?;
-        let statement = "MATCH (entity:Entity {tenant_id: $tenant_id}) WHERE ($source_id = '' OR coalesce(entity.source_id, '') = $source_id) AND (size($runtime_ids) = 0 OR coalesce(entity.runtime_id, '') IN $runtime_ids) AND ($exact_key = '' OR entity.urn = $exact_key) AND (size($include_kinds) + size($include_prefixes) = 0 OR entity.entity_type IN $include_kinds OR any(prefix IN $include_prefixes WHERE entity.entity_type STARTS WITH prefix)) AND NOT entity.entity_type IN $exclude_kinds AND none(prefix IN $exclude_prefixes WHERE entity.entity_type STARTS WITH prefix) AND ($search = '' OR toLower(coalesce(entity.urn, '') + ' ' + coalesce(entity.label, '')) CONTAINS $search OR ($search_attributes AND toLower(coalesce(entity.attributes_json, '')) CONTAINS $search)) AND entity.entity_type > $after_kind RETURN entity.entity_type AS entity_kind, count(entity) AS entity_count ORDER BY entity.entity_type LIMIT $row_limit";
+        let statement = format!(
+            "{} RETURN entity.entity_type AS entity_kind, count(entity) AS entity_count ORDER BY entity.entity_type LIMIT $row_limit",
+            catalog_entity_match(filter, CatalogCursor::EntityKind),
+        );
         let mut rows = transaction
             .execute(
-                catalog_query(statement, tenant_id, filter)
+                catalog_query(&statement, tenant_id, filter)
                     .param("after_kind", after_entity_kind)
                     .param("row_limit", row_limit(limit)),
             )
@@ -3366,6 +3372,62 @@ fn row_limit(limit: usize) -> i64 {
     i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX)
 }
 
+#[derive(Clone, Copy)]
+enum CatalogCursor<'a> {
+    AgentKey(&'a str),
+    EntityKind,
+}
+
+fn catalog_entity_match(filter: &EntityCatalogFilter, cursor: CatalogCursor<'_>) -> String {
+    let single_exact_kind = filter.include_kind_prefixes.is_empty()
+        && filter.include_kinds.len() == 1
+        && !filter.include_kinds[0].is_empty();
+    let mut properties = vec!["tenant_id: $tenant_id"];
+    if !filter.exact_agent_key.is_empty() {
+        properties.push("urn: $exact_key");
+    }
+    if !filter.source_id.is_empty() {
+        properties.push("source_id: $source_id");
+    }
+    if single_exact_kind {
+        properties.push("entity_type: $single_include_kind");
+    }
+
+    let mut predicates = Vec::new();
+    if !filter.runtime_ids.is_empty() {
+        predicates.push("entity.runtime_id IN $runtime_ids");
+    }
+    if !single_exact_kind
+        && (!filter.include_kinds.is_empty() || !filter.include_kind_prefixes.is_empty())
+    {
+        predicates.push("(entity.entity_type IN $include_kinds OR any(prefix IN $include_prefixes WHERE entity.entity_type STARTS WITH prefix))");
+    }
+    if !filter.exclude_kinds.is_empty() {
+        predicates.push("NOT entity.entity_type IN $exclude_kinds");
+    }
+    if !filter.exclude_kind_prefixes.is_empty() {
+        predicates
+            .push("none(prefix IN $exclude_prefixes WHERE entity.entity_type STARTS WITH prefix)");
+    }
+    if !filter.search.is_empty() {
+        predicates.push("(toLower(coalesce(entity.urn, '') + ' ' + coalesce(entity.label, '')) CONTAINS $search OR ($search_attributes AND toLower(coalesce(entity.attributes_json, '')) CONTAINS $search))");
+    }
+    match cursor {
+        CatalogCursor::AgentKey(after_agent_key) if !after_agent_key.is_empty() => {
+            predicates.push("entity.urn > $after_key");
+        }
+        CatalogCursor::EntityKind => predicates.push("entity.entity_type > $after_kind"),
+        CatalogCursor::AgentKey(_) => {}
+    }
+
+    let mut statement = format!("MATCH (entity:Entity {{{}}})", properties.join(", "));
+    if !predicates.is_empty() {
+        statement.push_str(" WHERE ");
+        statement.push_str(&predicates.join(" AND "));
+    }
+    statement
+}
+
 fn catalog_query(statement: &str, tenant_id: &TenantId, filter: &EntityCatalogFilter) -> Query {
     query(statement)
         .param("tenant_id", tenant_id.as_str())
@@ -3376,6 +3438,10 @@ fn catalog_query(statement: &str, tenant_id: &TenantId, filter: &EntityCatalogFi
         .param(
             "include_prefixes",
             string_list(&filter.include_kind_prefixes),
+        )
+        .param(
+            "single_include_kind",
+            filter.include_kinds.first().map_or("", String::as_str),
         )
         .param("exclude_kinds", string_list(&filter.exclude_kinds))
         .param(
@@ -3405,7 +3471,7 @@ async fn catalog_relation_counts(
         .collect::<Vec<_>>();
     let mut scope_rows = transaction
         .execute(
-            query("MATCH (root:Entity)-[edge:RELATION]-(neighbor:Entity) WHERE root.urn IN $root_keys AND (coalesce(root.tenant_id, '') <> $tenant_id OR coalesce(edge.tenant_id, '') <> $tenant_id OR coalesce(neighbor.tenant_id, '') <> $tenant_id) RETURN count(*) AS violations")
+            query("UNWIND $root_keys AS root_key MATCH (root:Entity {tenant_id: $tenant_id, urn: root_key})-[edge:RELATION]-(neighbor:Entity) WHERE coalesce(edge.tenant_id, '') <> $tenant_id OR coalesce(neighbor.tenant_id, '') <> $tenant_id RETURN count(*) AS violations")
                 .param("tenant_id", tenant_id.as_str())
                 .param("root_keys", string_list(root_keys)),
         )
@@ -3427,7 +3493,8 @@ async fn catalog_relation_counts(
             "entity catalog contains cross-tenant relation counts".to_owned(),
         ));
     }
-    let statement = "MATCH (root:Entity {tenant_id: $tenant_id})-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WHERE root.urn IN $root_keys WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE direction IN $directions AND edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind";
+    let statement = catalog_relation_count_statement(&filter.directions);
+
     let mut rows = transaction
         .execute(
             query(statement)
@@ -3458,6 +3525,20 @@ async fn catalog_relation_counts(
         });
     }
     Ok(counts)
+}
+
+fn catalog_relation_count_statement(directions: &[EntityCatalogDirection]) -> &'static str {
+    match directions {
+        [EntityCatalogDirection::Incoming] => {
+            "UNWIND $root_keys AS root_key MATCH (neighbor:Entity {tenant_id: $tenant_id})-[edge:RELATION {tenant_id: $tenant_id}]->(root:Entity {tenant_id: $tenant_id, urn: root_key}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, 'incoming' AS direction RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
+        }
+        [EntityCatalogDirection::Outgoing] => {
+            "UNWIND $root_keys AS root_key MATCH (root:Entity {tenant_id: $tenant_id, urn: root_key})-[edge:RELATION {tenant_id: $tenant_id}]->(neighbor:Entity {tenant_id: $tenant_id}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, 'outgoing' AS direction RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
+        }
+        _ => {
+            "UNWIND $root_keys AS root_key MATCH (root:Entity {tenant_id: $tenant_id, urn: root_key})-[edge:RELATION {tenant_id: $tenant_id}]-(neighbor:Entity {tenant_id: $tenant_id}) WHERE edge.relation IN $relations AND neighbor.entity_type IN $neighbor_kinds WITH root, edge, neighbor, CASE WHEN startNode(edge) = root THEN 'outgoing' ELSE 'incoming' END AS direction WHERE direction IN $directions RETURN root.urn AS agent_key, direction, edge.relation AS relation, neighbor.entity_type AS neighbor_kind, count(DISTINCT neighbor) AS entity_count ORDER BY agent_key, direction, relation, neighbor_kind"
+        }
+    }
 }
 
 fn validate_catalog_request(
@@ -5069,6 +5150,72 @@ mod tests {
             .is_err(),
             "all composite cursor fields are required"
         );
+    }
+
+    #[test]
+    fn entity_catalog_queries_only_compile_active_filters() {
+        let default_filter = EntityCatalogFilter::default();
+        assert_eq!(
+            catalog_entity_match(&default_filter, CatalogCursor::AgentKey("")),
+            "MATCH (entity:Entity {tenant_id: $tenant_id})"
+        );
+        assert_eq!(
+            catalog_entity_match(&default_filter, CatalogCursor::EntityKind),
+            "MATCH (entity:Entity {tenant_id: $tenant_id}) WHERE entity.entity_type > $after_kind"
+        );
+
+        let vendor_filter = EntityCatalogFilter {
+            source_id: "servicenow".to_owned(),
+            include_kinds: vec!["vendor".to_owned()],
+            ..Default::default()
+        };
+        let vendor_statement = catalog_entity_match(&vendor_filter, CatalogCursor::AgentKey(""));
+        assert_eq!(
+            vendor_statement,
+            "MATCH (entity:Entity {tenant_id: $tenant_id, source_id: $source_id, entity_type: $single_include_kind})"
+        );
+        assert!(!vendor_statement.contains("size("));
+        assert!(!vendor_statement.contains(" OR "));
+
+        let mixed_filter = EntityCatalogFilter {
+            runtime_ids: vec!["runtime-a".to_owned()],
+            include_kinds: vec!["vendor".to_owned()],
+            include_kind_prefixes: vec!["vendor.".to_owned()],
+            exclude_kinds: vec!["vendor.discovery".to_owned()],
+            exclude_kind_prefixes: vec!["vendor.internal.".to_owned()],
+            search: "acme".to_owned(),
+            search_attributes: true,
+            ..Default::default()
+        };
+        let mixed_statement =
+            catalog_entity_match(&mixed_filter, CatalogCursor::AgentKey("urn:next"));
+        assert!(mixed_statement.starts_with(
+            "MATCH (entity:Entity {tenant_id: $tenant_id}) WHERE entity.runtime_id IN $runtime_ids"
+        ));
+        assert!(mixed_statement.contains("entity.entity_type IN $include_kinds"));
+        assert!(mixed_statement.contains("NOT entity.entity_type IN $exclude_kinds"));
+        assert!(mixed_statement.contains("none(prefix IN $exclude_prefixes"));
+        assert!(mixed_statement.contains("CONTAINS $search"));
+        assert!(mixed_statement.ends_with("entity.urn > $after_key"));
+    }
+
+    #[test]
+    fn entity_catalog_relation_counts_use_directed_root_lookups() {
+        let incoming = catalog_relation_count_statement(&[EntityCatalogDirection::Incoming]);
+        assert!(incoming.starts_with("UNWIND $root_keys AS root_key"));
+        assert!(incoming.contains("]->(root:Entity {tenant_id: $tenant_id, urn: root_key})"));
+        assert!(!incoming.contains("startNode"));
+
+        let outgoing = catalog_relation_count_statement(&[EntityCatalogDirection::Outgoing]);
+        assert!(outgoing.contains("urn: root_key})-[edge:RELATION"));
+        assert!(!outgoing.contains("startNode"));
+
+        let both = catalog_relation_count_statement(&[
+            EntityCatalogDirection::Incoming,
+            EntityCatalogDirection::Outgoing,
+        ]);
+        assert!(both.contains("startNode(edge) = root"));
+        assert!(both.contains("direction IN $directions"));
     }
 
     #[test]
