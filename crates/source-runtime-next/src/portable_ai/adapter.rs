@@ -257,6 +257,9 @@ impl PortableAiSourceExecutionAdapter {
         {
             return Err(SourceExecutionError::InvalidCursor);
         }
+        if url.query() == Some("") {
+            url.set_query(None);
+        }
         Ok((origin, url.to_string()))
     }
 
