@@ -37,6 +37,8 @@ service OrganizationalGraphService {
   rpc ListEntityRelations(ListEntityRelationsRequest) returns (ListEntityRelationsResponse);
   // GetSourceSummary returns the catalog coverage compiled into the running Rust service.
   rpc GetSourceSummary(GetSourceSummaryRequest) returns (GetSourceSummaryResponse);
+  // ListVendorRegister returns the product-ready vendor register at one graph revision.
+  rpc ListVendorRegister(ListVendorRegisterRequest) returns (ListVendorRegisterResponse);
 }
 
 // GraphEntity is the stable agent-facing view of one organizational entity.
@@ -437,6 +439,86 @@ message GetSourceSummaryResponse {
   uint64 authoritative_families = 4;
   uint64 shadow_only_sources = 5;
   map<string, uint64> projection_classes = 6;
+}
+
+// VendorRegisterFilter contains only the bounded filters exposed by the vendor worklist.
+message VendorRegisterFilter {
+  string tenant_id = 1;
+  string source_id = 2;
+  repeated string runtime_ids = 3;
+  string query = 4;
+  string risk_level = 5;
+  string review_state = 6;
+  string owner_state = 7;
+  string lifecycle_state = 8;
+  bool queue_only = 9;
+}
+
+message ListVendorRegisterRequest {
+  VendorRegisterFilter filter = 1;
+  uint32 limit = 2;
+}
+
+// VendorRegisterRow is the Rust-owned product view rendered by the vendor register.
+message VendorRegisterRow {
+  string urn = 1;
+  string vendor_id = 2;
+  string name = 3;
+  string source_id = 4;
+  string runtime_id = 5;
+  string provider = 6;
+  string status = 7;
+  string category = 8;
+  string website_url = 9;
+  string services_provided = 10;
+  string lifecycle_state = 11;
+  string owner = 12;
+  string owner_state = 13;
+  string risk_level = 14;
+  int32 risk_score = 15;
+  string risk_score_level = 16;
+  string review_state = 17;
+  string review_due_at = 18;
+  string evidence_freshness_state = 19;
+  string packet_state = 20;
+  uint64 contract_count = 21;
+  uint64 security_review_count = 22;
+  uint64 questionnaire_count = 23;
+  uint64 assurance_document_count = 24;
+  uint64 open_findings = 25;
+  uint64 critical_findings = 26;
+  uint64 high_findings = 27;
+  uint64 evidence_items = 28;
+  int32 risk_queue_rank = 29;
+  repeated string queue_reasons = 30;
+  string next_action_id = 31;
+  string next_action_label = 32;
+  map<string, string> attributes = 33;
+}
+
+message VendorRegisterSummary {
+  uint64 total_vendors = 1;
+  uint64 active_vendors = 2;
+  uint64 high_risk_vendors = 3;
+  uint64 owner_missing_vendors = 4;
+  uint64 review_overdue_vendors = 5;
+  uint64 review_due_soon_vendors = 6;
+  uint64 review_not_scheduled = 7;
+  uint64 risk_queue_vendors = 8;
+  uint64 stale_evidence_vendors = 9;
+  uint64 open_findings = 10;
+  uint64 critical_findings = 11;
+  uint64 high_findings = 12;
+  uint64 evidence_items = 13;
+}
+
+message ListVendorRegisterResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  string data_authority = 3;
+  string generated_at = 4;
+  repeated VendorRegisterRow vendors = 5;
+  VendorRegisterSummary summary = 6;
 }
 
 // ExposureCoverageProfile declares the closed entity kinds and sources used by

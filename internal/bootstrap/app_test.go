@@ -1810,6 +1810,35 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 	}
 	return page, nil
 }
+
+func (s *stubGraphStore) ListVendorRegister(ctx context.Context, filter ports.VendorRegisterFilter) (*ports.VendorRegisterPage, error) {
+	page, err := s.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: filter.TenantID, SourceID: filter.SourceID, RuntimeIDs: filter.RuntimeIDs, IncludeKinds: []string{"vendor"}, Query: filter.Query, QueryAttributes: true}, Limit: filter.Limit})
+	if err != nil {
+		return nil, err
+	}
+	result := &ports.VendorRegisterPage{TenantID: filter.TenantID, GraphRevision: page.GraphRevision, DataAuthority: "rust_graph", GeneratedAt: "2026-08-24T00:00:00Z"}
+	for _, entity := range page.Entities {
+		risk := entity.Attributes["risk_level"]
+		if risk == "" {
+			risk = "unknown"
+		}
+		owner := entity.Attributes["security_owner_user_id"]
+		ownerState := "assigned"
+		if owner == "" {
+			ownerState = "missing"
+		}
+		result.Vendors = append(result.Vendors, ports.VendorRegisterRow{
+			VendorRegisterIdentity:   ports.VendorRegisterIdentity{URN: entity.URN, Name: entity.Label, SourceID: entity.SourceID, RuntimeID: entity.RuntimeID, Owner: owner, OwnerState: ownerState, LifecycleState: "unknown"},
+			VendorRegisterAssessment: ports.VendorRegisterAssessment{RiskLevel: risk, ReviewState: "not_scheduled", EvidenceFreshnessState: "missing"},
+			Attributes:               entity.Attributes,
+		})
+	}
+	result.Summary.TotalVendors = uint64(len(result.Vendors))
+	result.Summary.ActiveVendors = result.Summary.TotalVendors
+	result.Summary.OwnerMissingVendors = result.Summary.TotalVendors
+	return result, nil
+}
+
 func (s *stubGraphStore) CountEntityKinds(_ context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {
 	s.entityKindRequests = append(s.entityKindRequests, request)
 	return &ports.EntityKindCountPage{

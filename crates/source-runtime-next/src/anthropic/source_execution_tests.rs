@@ -49,7 +49,7 @@ fn adapter(family: AnthropicFamily) -> &'static super::AnthropicSourceExecutionA
 }
 
 #[test]
-fn provider_local_catalog_compiles_every_anthropic_family_without_authority() {
+fn shared_dispatcher_compiles_every_anthropic_family() {
     assert_eq!(
         ANTHROPIC_SOURCE_EXECUTION_ADAPTERS.len(),
         AnthropicFamily::ALL.len()
@@ -69,12 +69,14 @@ fn provider_local_catalog_compiles_every_anthropic_family_without_authority() {
         assert!(plan.required_attributes.contains(&"family".to_owned()));
 
         assert_eq!(
-            SourceExecutionDispatcher.compile_plan(&SourceExecutionSelectionRequestV1 {
-                source_id: "anthropic".to_owned(),
-                family_id: family.as_str().to_owned(),
-            }),
-            Err(SourceExecutionError::UnknownAdapter),
-            "{} must remain outside shared authority",
+            SourceExecutionDispatcher
+                .compile_plan(&SourceExecutionSelectionRequestV1 {
+                    source_id: "anthropic".to_owned(),
+                    family_id: family.as_str().to_owned(),
+                })
+                .unwrap_or_else(|error| panic!("{} compile: {error}", family.as_str())),
+            plan,
+            "{} shared plan mismatch",
             family.as_str()
         );
     }

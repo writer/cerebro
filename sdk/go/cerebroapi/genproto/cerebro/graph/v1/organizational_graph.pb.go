@@ -3615,6 +3615,692 @@ func (x *GetSourceSummaryResponse) GetProjectionClasses() map[string]uint64 {
 	return nil
 }
 
+// VendorRegisterFilter contains only the bounded filters exposed by the vendor worklist.
+type VendorRegisterFilter struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	TenantId       string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	SourceId       string                 `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	RuntimeIds     []string               `protobuf:"bytes,3,rep,name=runtime_ids,json=runtimeIds,proto3" json:"runtime_ids,omitempty"`
+	Query          string                 `protobuf:"bytes,4,opt,name=query,proto3" json:"query,omitempty"`
+	RiskLevel      string                 `protobuf:"bytes,5,opt,name=risk_level,json=riskLevel,proto3" json:"risk_level,omitempty"`
+	ReviewState    string                 `protobuf:"bytes,6,opt,name=review_state,json=reviewState,proto3" json:"review_state,omitempty"`
+	OwnerState     string                 `protobuf:"bytes,7,opt,name=owner_state,json=ownerState,proto3" json:"owner_state,omitempty"`
+	LifecycleState string                 `protobuf:"bytes,8,opt,name=lifecycle_state,json=lifecycleState,proto3" json:"lifecycle_state,omitempty"`
+	QueueOnly      bool                   `protobuf:"varint,9,opt,name=queue_only,json=queueOnly,proto3" json:"queue_only,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *VendorRegisterFilter) Reset() {
+	*x = VendorRegisterFilter{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VendorRegisterFilter) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VendorRegisterFilter) ProtoMessage() {}
+
+func (x *VendorRegisterFilter) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VendorRegisterFilter.ProtoReflect.Descriptor instead.
+func (*VendorRegisterFilter) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *VendorRegisterFilter) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *VendorRegisterFilter) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *VendorRegisterFilter) GetRuntimeIds() []string {
+	if x != nil {
+		return x.RuntimeIds
+	}
+	return nil
+}
+
+func (x *VendorRegisterFilter) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *VendorRegisterFilter) GetRiskLevel() string {
+	if x != nil {
+		return x.RiskLevel
+	}
+	return ""
+}
+
+func (x *VendorRegisterFilter) GetReviewState() string {
+	if x != nil {
+		return x.ReviewState
+	}
+	return ""
+}
+
+func (x *VendorRegisterFilter) GetOwnerState() string {
+	if x != nil {
+		return x.OwnerState
+	}
+	return ""
+}
+
+func (x *VendorRegisterFilter) GetLifecycleState() string {
+	if x != nil {
+		return x.LifecycleState
+	}
+	return ""
+}
+
+func (x *VendorRegisterFilter) GetQueueOnly() bool {
+	if x != nil {
+		return x.QueueOnly
+	}
+	return false
+}
+
+type ListVendorRegisterRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Filter        *VendorRegisterFilter  `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
+	Limit         uint32                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListVendorRegisterRequest) Reset() {
+	*x = ListVendorRegisterRequest{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListVendorRegisterRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListVendorRegisterRequest) ProtoMessage() {}
+
+func (x *ListVendorRegisterRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListVendorRegisterRequest.ProtoReflect.Descriptor instead.
+func (*ListVendorRegisterRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *ListVendorRegisterRequest) GetFilter() *VendorRegisterFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
+func (x *ListVendorRegisterRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// VendorRegisterRow is the Rust-owned product view rendered by the vendor register.
+type VendorRegisterRow struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	Urn                    string                 `protobuf:"bytes,1,opt,name=urn,proto3" json:"urn,omitempty"`
+	VendorId               string                 `protobuf:"bytes,2,opt,name=vendor_id,json=vendorId,proto3" json:"vendor_id,omitempty"`
+	Name                   string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	SourceId               string                 `protobuf:"bytes,4,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	RuntimeId              string                 `protobuf:"bytes,5,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
+	Provider               string                 `protobuf:"bytes,6,opt,name=provider,proto3" json:"provider,omitempty"`
+	Status                 string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`
+	Category               string                 `protobuf:"bytes,8,opt,name=category,proto3" json:"category,omitempty"`
+	WebsiteUrl             string                 `protobuf:"bytes,9,opt,name=website_url,json=websiteUrl,proto3" json:"website_url,omitempty"`
+	ServicesProvided       string                 `protobuf:"bytes,10,opt,name=services_provided,json=servicesProvided,proto3" json:"services_provided,omitempty"`
+	LifecycleState         string                 `protobuf:"bytes,11,opt,name=lifecycle_state,json=lifecycleState,proto3" json:"lifecycle_state,omitempty"`
+	Owner                  string                 `protobuf:"bytes,12,opt,name=owner,proto3" json:"owner,omitempty"`
+	OwnerState             string                 `protobuf:"bytes,13,opt,name=owner_state,json=ownerState,proto3" json:"owner_state,omitempty"`
+	RiskLevel              string                 `protobuf:"bytes,14,opt,name=risk_level,json=riskLevel,proto3" json:"risk_level,omitempty"`
+	RiskScore              int32                  `protobuf:"varint,15,opt,name=risk_score,json=riskScore,proto3" json:"risk_score,omitempty"`
+	RiskScoreLevel         string                 `protobuf:"bytes,16,opt,name=risk_score_level,json=riskScoreLevel,proto3" json:"risk_score_level,omitempty"`
+	ReviewState            string                 `protobuf:"bytes,17,opt,name=review_state,json=reviewState,proto3" json:"review_state,omitempty"`
+	ReviewDueAt            string                 `protobuf:"bytes,18,opt,name=review_due_at,json=reviewDueAt,proto3" json:"review_due_at,omitempty"`
+	EvidenceFreshnessState string                 `protobuf:"bytes,19,opt,name=evidence_freshness_state,json=evidenceFreshnessState,proto3" json:"evidence_freshness_state,omitempty"`
+	PacketState            string                 `protobuf:"bytes,20,opt,name=packet_state,json=packetState,proto3" json:"packet_state,omitempty"`
+	ContractCount          uint64                 `protobuf:"varint,21,opt,name=contract_count,json=contractCount,proto3" json:"contract_count,omitempty"`
+	SecurityReviewCount    uint64                 `protobuf:"varint,22,opt,name=security_review_count,json=securityReviewCount,proto3" json:"security_review_count,omitempty"`
+	QuestionnaireCount     uint64                 `protobuf:"varint,23,opt,name=questionnaire_count,json=questionnaireCount,proto3" json:"questionnaire_count,omitempty"`
+	AssuranceDocumentCount uint64                 `protobuf:"varint,24,opt,name=assurance_document_count,json=assuranceDocumentCount,proto3" json:"assurance_document_count,omitempty"`
+	OpenFindings           uint64                 `protobuf:"varint,25,opt,name=open_findings,json=openFindings,proto3" json:"open_findings,omitempty"`
+	CriticalFindings       uint64                 `protobuf:"varint,26,opt,name=critical_findings,json=criticalFindings,proto3" json:"critical_findings,omitempty"`
+	HighFindings           uint64                 `protobuf:"varint,27,opt,name=high_findings,json=highFindings,proto3" json:"high_findings,omitempty"`
+	EvidenceItems          uint64                 `protobuf:"varint,28,opt,name=evidence_items,json=evidenceItems,proto3" json:"evidence_items,omitempty"`
+	RiskQueueRank          int32                  `protobuf:"varint,29,opt,name=risk_queue_rank,json=riskQueueRank,proto3" json:"risk_queue_rank,omitempty"`
+	QueueReasons           []string               `protobuf:"bytes,30,rep,name=queue_reasons,json=queueReasons,proto3" json:"queue_reasons,omitempty"`
+	NextActionId           string                 `protobuf:"bytes,31,opt,name=next_action_id,json=nextActionId,proto3" json:"next_action_id,omitempty"`
+	NextActionLabel        string                 `protobuf:"bytes,32,opt,name=next_action_label,json=nextActionLabel,proto3" json:"next_action_label,omitempty"`
+	Attributes             map[string]string      `protobuf:"bytes,33,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *VendorRegisterRow) Reset() {
+	*x = VendorRegisterRow{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VendorRegisterRow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VendorRegisterRow) ProtoMessage() {}
+
+func (x *VendorRegisterRow) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VendorRegisterRow.ProtoReflect.Descriptor instead.
+func (*VendorRegisterRow) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *VendorRegisterRow) GetUrn() string {
+	if x != nil {
+		return x.Urn
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetVendorId() string {
+	if x != nil {
+		return x.VendorId
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetRuntimeId() string {
+	if x != nil {
+		return x.RuntimeId
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetWebsiteUrl() string {
+	if x != nil {
+		return x.WebsiteUrl
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetServicesProvided() string {
+	if x != nil {
+		return x.ServicesProvided
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetLifecycleState() string {
+	if x != nil {
+		return x.LifecycleState
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetOwnerState() string {
+	if x != nil {
+		return x.OwnerState
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetRiskLevel() string {
+	if x != nil {
+		return x.RiskLevel
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetRiskScore() int32 {
+	if x != nil {
+		return x.RiskScore
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetRiskScoreLevel() string {
+	if x != nil {
+		return x.RiskScoreLevel
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetReviewState() string {
+	if x != nil {
+		return x.ReviewState
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetReviewDueAt() string {
+	if x != nil {
+		return x.ReviewDueAt
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetEvidenceFreshnessState() string {
+	if x != nil {
+		return x.EvidenceFreshnessState
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetPacketState() string {
+	if x != nil {
+		return x.PacketState
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetContractCount() uint64 {
+	if x != nil {
+		return x.ContractCount
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetSecurityReviewCount() uint64 {
+	if x != nil {
+		return x.SecurityReviewCount
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetQuestionnaireCount() uint64 {
+	if x != nil {
+		return x.QuestionnaireCount
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetAssuranceDocumentCount() uint64 {
+	if x != nil {
+		return x.AssuranceDocumentCount
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetOpenFindings() uint64 {
+	if x != nil {
+		return x.OpenFindings
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetCriticalFindings() uint64 {
+	if x != nil {
+		return x.CriticalFindings
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetHighFindings() uint64 {
+	if x != nil {
+		return x.HighFindings
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetEvidenceItems() uint64 {
+	if x != nil {
+		return x.EvidenceItems
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetRiskQueueRank() int32 {
+	if x != nil {
+		return x.RiskQueueRank
+	}
+	return 0
+}
+
+func (x *VendorRegisterRow) GetQueueReasons() []string {
+	if x != nil {
+		return x.QueueReasons
+	}
+	return nil
+}
+
+func (x *VendorRegisterRow) GetNextActionId() string {
+	if x != nil {
+		return x.NextActionId
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetNextActionLabel() string {
+	if x != nil {
+		return x.NextActionLabel
+	}
+	return ""
+}
+
+func (x *VendorRegisterRow) GetAttributes() map[string]string {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+type VendorRegisterSummary struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	TotalVendors         uint64                 `protobuf:"varint,1,opt,name=total_vendors,json=totalVendors,proto3" json:"total_vendors,omitempty"`
+	ActiveVendors        uint64                 `protobuf:"varint,2,opt,name=active_vendors,json=activeVendors,proto3" json:"active_vendors,omitempty"`
+	HighRiskVendors      uint64                 `protobuf:"varint,3,opt,name=high_risk_vendors,json=highRiskVendors,proto3" json:"high_risk_vendors,omitempty"`
+	OwnerMissingVendors  uint64                 `protobuf:"varint,4,opt,name=owner_missing_vendors,json=ownerMissingVendors,proto3" json:"owner_missing_vendors,omitempty"`
+	ReviewOverdueVendors uint64                 `protobuf:"varint,5,opt,name=review_overdue_vendors,json=reviewOverdueVendors,proto3" json:"review_overdue_vendors,omitempty"`
+	ReviewDueSoonVendors uint64                 `protobuf:"varint,6,opt,name=review_due_soon_vendors,json=reviewDueSoonVendors,proto3" json:"review_due_soon_vendors,omitempty"`
+	ReviewNotScheduled   uint64                 `protobuf:"varint,7,opt,name=review_not_scheduled,json=reviewNotScheduled,proto3" json:"review_not_scheduled,omitempty"`
+	RiskQueueVendors     uint64                 `protobuf:"varint,8,opt,name=risk_queue_vendors,json=riskQueueVendors,proto3" json:"risk_queue_vendors,omitempty"`
+	StaleEvidenceVendors uint64                 `protobuf:"varint,9,opt,name=stale_evidence_vendors,json=staleEvidenceVendors,proto3" json:"stale_evidence_vendors,omitempty"`
+	OpenFindings         uint64                 `protobuf:"varint,10,opt,name=open_findings,json=openFindings,proto3" json:"open_findings,omitempty"`
+	CriticalFindings     uint64                 `protobuf:"varint,11,opt,name=critical_findings,json=criticalFindings,proto3" json:"critical_findings,omitempty"`
+	HighFindings         uint64                 `protobuf:"varint,12,opt,name=high_findings,json=highFindings,proto3" json:"high_findings,omitempty"`
+	EvidenceItems        uint64                 `protobuf:"varint,13,opt,name=evidence_items,json=evidenceItems,proto3" json:"evidence_items,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *VendorRegisterSummary) Reset() {
+	*x = VendorRegisterSummary{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VendorRegisterSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VendorRegisterSummary) ProtoMessage() {}
+
+func (x *VendorRegisterSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VendorRegisterSummary.ProtoReflect.Descriptor instead.
+func (*VendorRegisterSummary) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *VendorRegisterSummary) GetTotalVendors() uint64 {
+	if x != nil {
+		return x.TotalVendors
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetActiveVendors() uint64 {
+	if x != nil {
+		return x.ActiveVendors
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetHighRiskVendors() uint64 {
+	if x != nil {
+		return x.HighRiskVendors
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetOwnerMissingVendors() uint64 {
+	if x != nil {
+		return x.OwnerMissingVendors
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetReviewOverdueVendors() uint64 {
+	if x != nil {
+		return x.ReviewOverdueVendors
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetReviewDueSoonVendors() uint64 {
+	if x != nil {
+		return x.ReviewDueSoonVendors
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetReviewNotScheduled() uint64 {
+	if x != nil {
+		return x.ReviewNotScheduled
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetRiskQueueVendors() uint64 {
+	if x != nil {
+		return x.RiskQueueVendors
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetStaleEvidenceVendors() uint64 {
+	if x != nil {
+		return x.StaleEvidenceVendors
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetOpenFindings() uint64 {
+	if x != nil {
+		return x.OpenFindings
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetCriticalFindings() uint64 {
+	if x != nil {
+		return x.CriticalFindings
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetHighFindings() uint64 {
+	if x != nil {
+		return x.HighFindings
+	}
+	return 0
+}
+
+func (x *VendorRegisterSummary) GetEvidenceItems() uint64 {
+	if x != nil {
+		return x.EvidenceItems
+	}
+	return 0
+}
+
+type ListVendorRegisterResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	GraphRevision uint64                 `protobuf:"varint,2,opt,name=graph_revision,json=graphRevision,proto3" json:"graph_revision,omitempty"`
+	DataAuthority string                 `protobuf:"bytes,3,opt,name=data_authority,json=dataAuthority,proto3" json:"data_authority,omitempty"`
+	GeneratedAt   string                 `protobuf:"bytes,4,opt,name=generated_at,json=generatedAt,proto3" json:"generated_at,omitempty"`
+	Vendors       []*VendorRegisterRow   `protobuf:"bytes,5,rep,name=vendors,proto3" json:"vendors,omitempty"`
+	Summary       *VendorRegisterSummary `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListVendorRegisterResponse) Reset() {
+	*x = ListVendorRegisterResponse{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListVendorRegisterResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListVendorRegisterResponse) ProtoMessage() {}
+
+func (x *ListVendorRegisterResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListVendorRegisterResponse.ProtoReflect.Descriptor instead.
+func (*ListVendorRegisterResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *ListVendorRegisterResponse) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListVendorRegisterResponse) GetGraphRevision() uint64 {
+	if x != nil {
+		return x.GraphRevision
+	}
+	return 0
+}
+
+func (x *ListVendorRegisterResponse) GetDataAuthority() string {
+	if x != nil {
+		return x.DataAuthority
+	}
+	return ""
+}
+
+func (x *ListVendorRegisterResponse) GetGeneratedAt() string {
+	if x != nil {
+		return x.GeneratedAt
+	}
+	return ""
+}
+
+func (x *ListVendorRegisterResponse) GetVendors() []*VendorRegisterRow {
+	if x != nil {
+		return x.Vendors
+	}
+	return nil
+}
+
+func (x *ListVendorRegisterResponse) GetSummary() *VendorRegisterSummary {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
 // ExposureCoverageProfile declares the closed entity kinds and sources used by
 // one coverage comparison. Relations are fixed by the server.
 type ExposureCoverageProfile struct {
@@ -3632,7 +4318,7 @@ type ExposureCoverageProfile struct {
 
 func (x *ExposureCoverageProfile) Reset() {
 	*x = ExposureCoverageProfile{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[49]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3644,7 +4330,7 @@ func (x *ExposureCoverageProfile) String() string {
 func (*ExposureCoverageProfile) ProtoMessage() {}
 
 func (x *ExposureCoverageProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[49]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3657,7 +4343,7 @@ func (x *ExposureCoverageProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageProfile.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageProfile) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{49}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ExposureCoverageProfile) GetPrimarySourceId() string {
@@ -3726,7 +4412,7 @@ type CompareExposureCoverageRequest struct {
 
 func (x *CompareExposureCoverageRequest) Reset() {
 	*x = CompareExposureCoverageRequest{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[50]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3738,7 +4424,7 @@ func (x *CompareExposureCoverageRequest) String() string {
 func (*CompareExposureCoverageRequest) ProtoMessage() {}
 
 func (x *CompareExposureCoverageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[50]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3751,7 +4437,7 @@ func (x *CompareExposureCoverageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompareExposureCoverageRequest.ProtoReflect.Descriptor instead.
 func (*CompareExposureCoverageRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{50}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *CompareExposureCoverageRequest) GetTenantId() string {
@@ -3811,7 +4497,7 @@ type ExposureCoverageCounts struct {
 
 func (x *ExposureCoverageCounts) Reset() {
 	*x = ExposureCoverageCounts{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[51]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3823,7 +4509,7 @@ func (x *ExposureCoverageCounts) String() string {
 func (*ExposureCoverageCounts) ProtoMessage() {}
 
 func (x *ExposureCoverageCounts) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[51]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3836,7 +4522,7 @@ func (x *ExposureCoverageCounts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageCounts.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageCounts) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{51}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ExposureCoverageCounts) GetPrimaryEntities() uint64 {
@@ -3898,7 +4584,7 @@ type ExposureCoverageKindCount struct {
 
 func (x *ExposureCoverageKindCount) Reset() {
 	*x = ExposureCoverageKindCount{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[52]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3910,7 +4596,7 @@ func (x *ExposureCoverageKindCount) String() string {
 func (*ExposureCoverageKindCount) ProtoMessage() {}
 
 func (x *ExposureCoverageKindCount) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[52]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3923,7 +4609,7 @@ func (x *ExposureCoverageKindCount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageKindCount.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageKindCount) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{52}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ExposureCoverageKindCount) GetEntityKind() string {
@@ -3951,7 +4637,7 @@ type ExposureCoverageOverlap struct {
 
 func (x *ExposureCoverageOverlap) Reset() {
 	*x = ExposureCoverageOverlap{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[53]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3963,7 +4649,7 @@ func (x *ExposureCoverageOverlap) String() string {
 func (*ExposureCoverageOverlap) ProtoMessage() {}
 
 func (x *ExposureCoverageOverlap) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[53]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3976,7 +4662,7 @@ func (x *ExposureCoverageOverlap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageOverlap.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageOverlap) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{53}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ExposureCoverageOverlap) GetPrimary() *GraphEntity {
@@ -4010,7 +4696,7 @@ type ExposureCoveragePair struct {
 
 func (x *ExposureCoveragePair) Reset() {
 	*x = ExposureCoveragePair{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[54]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4022,7 +4708,7 @@ func (x *ExposureCoveragePair) String() string {
 func (*ExposureCoveragePair) ProtoMessage() {}
 
 func (x *ExposureCoveragePair) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[54]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4035,7 +4721,7 @@ func (x *ExposureCoveragePair) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoveragePair.ProtoReflect.Descriptor instead.
 func (*ExposureCoveragePair) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{54}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ExposureCoveragePair) GetPrimary() *GraphEntity {
@@ -4062,7 +4748,7 @@ type ExposureCoverageCorroboratingOnly struct {
 
 func (x *ExposureCoverageCorroboratingOnly) Reset() {
 	*x = ExposureCoverageCorroboratingOnly{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[55]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4074,7 +4760,7 @@ func (x *ExposureCoverageCorroboratingOnly) String() string {
 func (*ExposureCoverageCorroboratingOnly) ProtoMessage() {}
 
 func (x *ExposureCoverageCorroboratingOnly) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[55]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4087,7 +4773,7 @@ func (x *ExposureCoverageCorroboratingOnly) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ExposureCoverageCorroboratingOnly.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageCorroboratingOnly) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{55}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ExposureCoverageCorroboratingOnly) GetCorroborating() *GraphEntity {
@@ -4115,7 +4801,7 @@ type ExposureCoverageAccount struct {
 
 func (x *ExposureCoverageAccount) Reset() {
 	*x = ExposureCoverageAccount{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[56]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4127,7 +4813,7 @@ func (x *ExposureCoverageAccount) String() string {
 func (*ExposureCoverageAccount) ProtoMessage() {}
 
 func (x *ExposureCoverageAccount) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[56]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4140,7 +4826,7 @@ func (x *ExposureCoverageAccount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageAccount.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageAccount) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{56}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ExposureCoverageAccount) GetAccount() *GraphEntity {
@@ -4177,7 +4863,7 @@ type ExposureCoverageCompleteness struct {
 
 func (x *ExposureCoverageCompleteness) Reset() {
 	*x = ExposureCoverageCompleteness{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[57]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4189,7 +4875,7 @@ func (x *ExposureCoverageCompleteness) String() string {
 func (*ExposureCoverageCompleteness) ProtoMessage() {}
 
 func (x *ExposureCoverageCompleteness) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[57]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4202,7 +4888,7 @@ func (x *ExposureCoverageCompleteness) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureCoverageCompleteness.ProtoReflect.Descriptor instead.
 func (*ExposureCoverageCompleteness) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{57}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *ExposureCoverageCompleteness) GetTypeCountsTruncated() bool {
@@ -4259,7 +4945,7 @@ type CompareExposureCoverageResponse struct {
 
 func (x *CompareExposureCoverageResponse) Reset() {
 	*x = CompareExposureCoverageResponse{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[58]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4271,7 +4957,7 @@ func (x *CompareExposureCoverageResponse) String() string {
 func (*CompareExposureCoverageResponse) ProtoMessage() {}
 
 func (x *CompareExposureCoverageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[58]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4284,7 +4970,7 @@ func (x *CompareExposureCoverageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompareExposureCoverageResponse.ProtoReflect.Descriptor instead.
 func (*CompareExposureCoverageResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{58}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *CompareExposureCoverageResponse) GetTenantId() string {
@@ -4650,7 +5336,92 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x12projection_classes\x18\x06 \x03(\v2A.cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntryR\x11projectionClasses\x1aD\n" +
 	"\x16ProjectionClassesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\"\x88\x03\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\"\xb2\x02\n" +
+	"\x14VendorRegisterFilter\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
+	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x1f\n" +
+	"\vruntime_ids\x18\x03 \x03(\tR\n" +
+	"runtimeIds\x12\x14\n" +
+	"\x05query\x18\x04 \x01(\tR\x05query\x12\x1d\n" +
+	"\n" +
+	"risk_level\x18\x05 \x01(\tR\triskLevel\x12!\n" +
+	"\freview_state\x18\x06 \x01(\tR\vreviewState\x12\x1f\n" +
+	"\vowner_state\x18\a \x01(\tR\n" +
+	"ownerState\x12'\n" +
+	"\x0flifecycle_state\x18\b \x01(\tR\x0elifecycleState\x12\x1d\n" +
+	"\n" +
+	"queue_only\x18\t \x01(\bR\tqueueOnly\"q\n" +
+	"\x19ListVendorRegisterRequest\x12>\n" +
+	"\x06filter\x18\x01 \x01(\v2&.cerebro.graph.v1.VendorRegisterFilterR\x06filter\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\rR\x05limit\"\xb3\n" +
+	"\n" +
+	"\x11VendorRegisterRow\x12\x10\n" +
+	"\x03urn\x18\x01 \x01(\tR\x03urn\x12\x1b\n" +
+	"\tvendor_id\x18\x02 \x01(\tR\bvendorId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1b\n" +
+	"\tsource_id\x18\x04 \x01(\tR\bsourceId\x12\x1d\n" +
+	"\n" +
+	"runtime_id\x18\x05 \x01(\tR\truntimeId\x12\x1a\n" +
+	"\bprovider\x18\x06 \x01(\tR\bprovider\x12\x16\n" +
+	"\x06status\x18\a \x01(\tR\x06status\x12\x1a\n" +
+	"\bcategory\x18\b \x01(\tR\bcategory\x12\x1f\n" +
+	"\vwebsite_url\x18\t \x01(\tR\n" +
+	"websiteUrl\x12+\n" +
+	"\x11services_provided\x18\n" +
+	" \x01(\tR\x10servicesProvided\x12'\n" +
+	"\x0flifecycle_state\x18\v \x01(\tR\x0elifecycleState\x12\x14\n" +
+	"\x05owner\x18\f \x01(\tR\x05owner\x12\x1f\n" +
+	"\vowner_state\x18\r \x01(\tR\n" +
+	"ownerState\x12\x1d\n" +
+	"\n" +
+	"risk_level\x18\x0e \x01(\tR\triskLevel\x12\x1d\n" +
+	"\n" +
+	"risk_score\x18\x0f \x01(\x05R\triskScore\x12(\n" +
+	"\x10risk_score_level\x18\x10 \x01(\tR\x0eriskScoreLevel\x12!\n" +
+	"\freview_state\x18\x11 \x01(\tR\vreviewState\x12\"\n" +
+	"\rreview_due_at\x18\x12 \x01(\tR\vreviewDueAt\x128\n" +
+	"\x18evidence_freshness_state\x18\x13 \x01(\tR\x16evidenceFreshnessState\x12!\n" +
+	"\fpacket_state\x18\x14 \x01(\tR\vpacketState\x12%\n" +
+	"\x0econtract_count\x18\x15 \x01(\x04R\rcontractCount\x122\n" +
+	"\x15security_review_count\x18\x16 \x01(\x04R\x13securityReviewCount\x12/\n" +
+	"\x13questionnaire_count\x18\x17 \x01(\x04R\x12questionnaireCount\x128\n" +
+	"\x18assurance_document_count\x18\x18 \x01(\x04R\x16assuranceDocumentCount\x12#\n" +
+	"\ropen_findings\x18\x19 \x01(\x04R\fopenFindings\x12+\n" +
+	"\x11critical_findings\x18\x1a \x01(\x04R\x10criticalFindings\x12#\n" +
+	"\rhigh_findings\x18\x1b \x01(\x04R\fhighFindings\x12%\n" +
+	"\x0eevidence_items\x18\x1c \x01(\x04R\revidenceItems\x12&\n" +
+	"\x0frisk_queue_rank\x18\x1d \x01(\x05R\rriskQueueRank\x12#\n" +
+	"\rqueue_reasons\x18\x1e \x03(\tR\fqueueReasons\x12$\n" +
+	"\x0enext_action_id\x18\x1f \x01(\tR\fnextActionId\x12*\n" +
+	"\x11next_action_label\x18  \x01(\tR\x0fnextActionLabel\x12S\n" +
+	"\n" +
+	"attributes\x18! \x03(\v23.cerebro.graph.v1.VendorRegisterRow.AttributesEntryR\n" +
+	"attributes\x1a=\n" +
+	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe4\x04\n" +
+	"\x15VendorRegisterSummary\x12#\n" +
+	"\rtotal_vendors\x18\x01 \x01(\x04R\ftotalVendors\x12%\n" +
+	"\x0eactive_vendors\x18\x02 \x01(\x04R\ractiveVendors\x12*\n" +
+	"\x11high_risk_vendors\x18\x03 \x01(\x04R\x0fhighRiskVendors\x122\n" +
+	"\x15owner_missing_vendors\x18\x04 \x01(\x04R\x13ownerMissingVendors\x124\n" +
+	"\x16review_overdue_vendors\x18\x05 \x01(\x04R\x14reviewOverdueVendors\x125\n" +
+	"\x17review_due_soon_vendors\x18\x06 \x01(\x04R\x14reviewDueSoonVendors\x120\n" +
+	"\x14review_not_scheduled\x18\a \x01(\x04R\x12reviewNotScheduled\x12,\n" +
+	"\x12risk_queue_vendors\x18\b \x01(\x04R\x10riskQueueVendors\x124\n" +
+	"\x16stale_evidence_vendors\x18\t \x01(\x04R\x14staleEvidenceVendors\x12#\n" +
+	"\ropen_findings\x18\n" +
+	" \x01(\x04R\fopenFindings\x12+\n" +
+	"\x11critical_findings\x18\v \x01(\x04R\x10criticalFindings\x12#\n" +
+	"\rhigh_findings\x18\f \x01(\x04R\fhighFindings\x12%\n" +
+	"\x0eevidence_items\x18\r \x01(\x04R\revidenceItems\"\xac\x02\n" +
+	"\x1aListVendorRegisterResponse\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
+	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12%\n" +
+	"\x0edata_authority\x18\x03 \x01(\tR\rdataAuthority\x12!\n" +
+	"\fgenerated_at\x18\x04 \x01(\tR\vgeneratedAt\x12=\n" +
+	"\avendors\x18\x05 \x03(\v2#.cerebro.graph.v1.VendorRegisterRowR\avendors\x12A\n" +
+	"\asummary\x18\x06 \x01(\v2'.cerebro.graph.v1.VendorRegisterSummaryR\asummary\"\x88\x03\n" +
 	"\x17ExposureCoverageProfile\x12*\n" +
 	"\x11primary_source_id\x18\x01 \x01(\tR\x0fprimarySourceId\x12;\n" +
 	"\x1aprimary_entity_kind_prefix\x18\x02 \x01(\tR\x17primaryEntityKindPrefix\x126\n" +
@@ -4719,7 +5490,7 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x17EntityRelationDirection\x12)\n" +
 	"%ENTITY_RELATION_DIRECTION_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ENTITY_RELATION_DIRECTION_INCOMING\x10\x01\x12&\n" +
-	"\"ENTITY_RELATION_DIRECTION_OUTGOING\x10\x022\x81\f\n" +
+	"\"ENTITY_RELATION_DIRECTION_OUTGOING\x10\x022\xf2\f\n" +
 	"\x1aOrganizationalGraphService\x12K\n" +
 	"\x06Search\x12\x1f.cerebro.graph.v1.SearchRequest\x1a .cerebro.graph.v1.SearchResponse\x12T\n" +
 	"\tGetEntity\x12\".cerebro.graph.v1.GetEntityRequest\x1a#.cerebro.graph.v1.GetEntityResponse\x12K\n" +
@@ -4736,7 +5507,8 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x15ListPersonAccessPaths\x12..cerebro.graph.v1.ListPersonAccessPathsRequest\x1a/.cerebro.graph.v1.ListPersonAccessPathsResponse\x12u\n" +
 	"\x14ListCloudAttackPaths\x12-.cerebro.graph.v1.ListCloudAttackPathsRequest\x1a..cerebro.graph.v1.ListCloudAttackPathsResponse\x12r\n" +
 	"\x13ListEntityRelations\x12,.cerebro.graph.v1.ListEntityRelationsRequest\x1a-.cerebro.graph.v1.ListEntityRelationsResponse\x12i\n" +
-	"\x10GetSourceSummary\x12).cerebro.graph.v1.GetSourceSummaryRequest\x1a*.cerebro.graph.v1.GetSourceSummaryResponseB\xe1\x01\n" +
+	"\x10GetSourceSummary\x12).cerebro.graph.v1.GetSourceSummaryRequest\x1a*.cerebro.graph.v1.GetSourceSummaryResponse\x12o\n" +
+	"\x12ListVendorRegister\x12+.cerebro.graph.v1.ListVendorRegisterRequest\x1a,.cerebro.graph.v1.ListVendorRegisterResponseB\xe1\x01\n" +
 	"\x14com.cerebro.graph.v1B\x18OrganizationalGraphProtoP\x01ZMgithub.com/writer/cerebro/sdk/go/cerebroapi/genproto/cerebro/graph/v1;graphv1\xa2\x02\x03CGX\xaa\x02\x10Cerebro.Graph.V1\xca\x02\x10Cerebro\\Graph\\V1\xe2\x02\x1cCerebro\\Graph\\V1\\GPBMetadata\xea\x02\x12Cerebro::Graph::V1b\x06proto3"
 
 var (
@@ -4752,7 +5524,7 @@ func file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP() []byte {
 }
 
 var file_cerebro_graph_v1_organizational_graph_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 62)
+var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
 var file_cerebro_graph_v1_organizational_graph_proto_goTypes = []any{
 	(QueryDirection)(0),                       // 0: cerebro.graph.v1.QueryDirection
 	(EntityRelationDirection)(0),              // 1: cerebro.graph.v1.EntityRelationDirection
@@ -4805,22 +5577,28 @@ var file_cerebro_graph_v1_organizational_graph_proto_goTypes = []any{
 	(*ListEntityRelationsResponse)(nil),       // 48: cerebro.graph.v1.ListEntityRelationsResponse
 	(*GetSourceSummaryRequest)(nil),           // 49: cerebro.graph.v1.GetSourceSummaryRequest
 	(*GetSourceSummaryResponse)(nil),          // 50: cerebro.graph.v1.GetSourceSummaryResponse
-	(*ExposureCoverageProfile)(nil),           // 51: cerebro.graph.v1.ExposureCoverageProfile
-	(*CompareExposureCoverageRequest)(nil),    // 52: cerebro.graph.v1.CompareExposureCoverageRequest
-	(*ExposureCoverageCounts)(nil),            // 53: cerebro.graph.v1.ExposureCoverageCounts
-	(*ExposureCoverageKindCount)(nil),         // 54: cerebro.graph.v1.ExposureCoverageKindCount
-	(*ExposureCoverageOverlap)(nil),           // 55: cerebro.graph.v1.ExposureCoverageOverlap
-	(*ExposureCoveragePair)(nil),              // 56: cerebro.graph.v1.ExposureCoveragePair
-	(*ExposureCoverageCorroboratingOnly)(nil), // 57: cerebro.graph.v1.ExposureCoverageCorroboratingOnly
-	(*ExposureCoverageAccount)(nil),           // 58: cerebro.graph.v1.ExposureCoverageAccount
-	(*ExposureCoverageCompleteness)(nil),      // 59: cerebro.graph.v1.ExposureCoverageCompleteness
-	(*CompareExposureCoverageResponse)(nil),   // 60: cerebro.graph.v1.CompareExposureCoverageResponse
-	nil,                                       // 61: cerebro.graph.v1.GraphEntity.PropertiesEntry
-	nil,                                       // 62: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
-	nil,                                       // 63: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	(*VendorRegisterFilter)(nil),              // 51: cerebro.graph.v1.VendorRegisterFilter
+	(*ListVendorRegisterRequest)(nil),         // 52: cerebro.graph.v1.ListVendorRegisterRequest
+	(*VendorRegisterRow)(nil),                 // 53: cerebro.graph.v1.VendorRegisterRow
+	(*VendorRegisterSummary)(nil),             // 54: cerebro.graph.v1.VendorRegisterSummary
+	(*ListVendorRegisterResponse)(nil),        // 55: cerebro.graph.v1.ListVendorRegisterResponse
+	(*ExposureCoverageProfile)(nil),           // 56: cerebro.graph.v1.ExposureCoverageProfile
+	(*CompareExposureCoverageRequest)(nil),    // 57: cerebro.graph.v1.CompareExposureCoverageRequest
+	(*ExposureCoverageCounts)(nil),            // 58: cerebro.graph.v1.ExposureCoverageCounts
+	(*ExposureCoverageKindCount)(nil),         // 59: cerebro.graph.v1.ExposureCoverageKindCount
+	(*ExposureCoverageOverlap)(nil),           // 60: cerebro.graph.v1.ExposureCoverageOverlap
+	(*ExposureCoveragePair)(nil),              // 61: cerebro.graph.v1.ExposureCoveragePair
+	(*ExposureCoverageCorroboratingOnly)(nil), // 62: cerebro.graph.v1.ExposureCoverageCorroboratingOnly
+	(*ExposureCoverageAccount)(nil),           // 63: cerebro.graph.v1.ExposureCoverageAccount
+	(*ExposureCoverageCompleteness)(nil),      // 64: cerebro.graph.v1.ExposureCoverageCompleteness
+	(*CompareExposureCoverageResponse)(nil),   // 65: cerebro.graph.v1.CompareExposureCoverageResponse
+	nil,                                       // 66: cerebro.graph.v1.GraphEntity.PropertiesEntry
+	nil,                                       // 67: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	nil,                                       // 68: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	nil,                                       // 69: cerebro.graph.v1.VendorRegisterRow.AttributesEntry
 }
 var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
-	61, // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
+	66, // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
 	2,  // 1: cerebro.graph.v1.GraphPath.entities:type_name -> cerebro.graph.v1.GraphEntity
 	3,  // 2: cerebro.graph.v1.GraphPath.edges:type_name -> cerebro.graph.v1.GraphEdge
 	2,  // 3: cerebro.graph.v1.SearchResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
@@ -4828,7 +5606,7 @@ var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
 	2,  // 5: cerebro.graph.v1.ExpandResponse.root:type_name -> cerebro.graph.v1.GraphEntity
 	2,  // 6: cerebro.graph.v1.ExpandResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
 	3,  // 7: cerebro.graph.v1.ExpandResponse.edges:type_name -> cerebro.graph.v1.GraphEdge
-	62, // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	67, // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
 	4,  // 9: cerebro.graph.v1.FindPathsResponse.paths:type_name -> cerebro.graph.v1.GraphPath
 	3,  // 10: cerebro.graph.v1.ExplainAssertionResponse.edge:type_name -> cerebro.graph.v1.GraphEdge
 	0,  // 11: cerebro.graph.v1.QueryAbsentEdgePattern.direction:type_name -> cerebro.graph.v1.QueryDirection
@@ -4877,59 +5655,65 @@ var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
 	2,  // 54: cerebro.graph.v1.EntityRelation.entity:type_name -> cerebro.graph.v1.GraphEntity
 	47, // 55: cerebro.graph.v1.ListEntityRelationsResponse.relations:type_name -> cerebro.graph.v1.EntityRelation
 	1,  // 56: cerebro.graph.v1.ListEntityRelationsResponse.next_after_direction:type_name -> cerebro.graph.v1.EntityRelationDirection
-	63, // 57: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
-	51, // 58: cerebro.graph.v1.CompareExposureCoverageRequest.profile:type_name -> cerebro.graph.v1.ExposureCoverageProfile
-	2,  // 59: cerebro.graph.v1.ExposureCoverageOverlap.primary:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 60: cerebro.graph.v1.ExposureCoverageOverlap.indicator:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 61: cerebro.graph.v1.ExposureCoverageOverlap.corroborating:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 62: cerebro.graph.v1.ExposureCoveragePair.primary:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 63: cerebro.graph.v1.ExposureCoveragePair.indicator:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 64: cerebro.graph.v1.ExposureCoverageCorroboratingOnly.corroborating:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 65: cerebro.graph.v1.ExposureCoverageCorroboratingOnly.indicator:type_name -> cerebro.graph.v1.GraphEntity
-	2,  // 66: cerebro.graph.v1.ExposureCoverageAccount.account:type_name -> cerebro.graph.v1.GraphEntity
-	53, // 67: cerebro.graph.v1.CompareExposureCoverageResponse.counts:type_name -> cerebro.graph.v1.ExposureCoverageCounts
-	54, // 68: cerebro.graph.v1.CompareExposureCoverageResponse.type_counts:type_name -> cerebro.graph.v1.ExposureCoverageKindCount
-	55, // 69: cerebro.graph.v1.CompareExposureCoverageResponse.overlaps:type_name -> cerebro.graph.v1.ExposureCoverageOverlap
-	56, // 70: cerebro.graph.v1.CompareExposureCoverageResponse.primary_only:type_name -> cerebro.graph.v1.ExposureCoveragePair
-	57, // 71: cerebro.graph.v1.CompareExposureCoverageResponse.corroborating_only:type_name -> cerebro.graph.v1.ExposureCoverageCorroboratingOnly
-	58, // 72: cerebro.graph.v1.CompareExposureCoverageResponse.accounts:type_name -> cerebro.graph.v1.ExposureCoverageAccount
-	59, // 73: cerebro.graph.v1.CompareExposureCoverageResponse.completeness:type_name -> cerebro.graph.v1.ExposureCoverageCompleteness
-	10, // 74: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
-	5,  // 75: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
-	7,  // 76: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
-	9,  // 77: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
-	11, // 78: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
-	13, // 79: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
-	15, // 80: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
-	20, // 81: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:input_type -> cerebro.graph.v1.QueryFactsRequest
-	52, // 82: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:input_type -> cerebro.graph.v1.CompareExposureCoverageRequest
-	27, // 83: cerebro.graph.v1.OrganizationalGraphService.ListEntities:input_type -> cerebro.graph.v1.ListEntitiesRequest
-	31, // 84: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:input_type -> cerebro.graph.v1.CountEntityKindsRequest
-	34, // 85: cerebro.graph.v1.OrganizationalGraphService.CountRelations:input_type -> cerebro.graph.v1.CountRelationsRequest
-	37, // 86: cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths:input_type -> cerebro.graph.v1.ListPersonAccessPathsRequest
-	44, // 87: cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths:input_type -> cerebro.graph.v1.ListCloudAttackPathsRequest
-	46, // 88: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:input_type -> cerebro.graph.v1.ListEntityRelationsRequest
-	49, // 89: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
-	6,  // 90: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
-	8,  // 91: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
-	10, // 92: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
-	12, // 93: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
-	14, // 94: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
-	16, // 95: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
-	24, // 96: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:output_type -> cerebro.graph.v1.QueryFactsResponse
-	60, // 97: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:output_type -> cerebro.graph.v1.CompareExposureCoverageResponse
-	28, // 98: cerebro.graph.v1.OrganizationalGraphService.ListEntities:output_type -> cerebro.graph.v1.ListEntitiesResponse
-	32, // 99: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:output_type -> cerebro.graph.v1.CountEntityKindsResponse
-	35, // 100: cerebro.graph.v1.OrganizationalGraphService.CountRelations:output_type -> cerebro.graph.v1.CountRelationsResponse
-	38, // 101: cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths:output_type -> cerebro.graph.v1.ListPersonAccessPathsResponse
-	45, // 102: cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths:output_type -> cerebro.graph.v1.ListCloudAttackPathsResponse
-	48, // 103: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:output_type -> cerebro.graph.v1.ListEntityRelationsResponse
-	50, // 104: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
-	90, // [90:105] is the sub-list for method output_type
-	75, // [75:90] is the sub-list for method input_type
-	75, // [75:75] is the sub-list for extension type_name
-	75, // [75:75] is the sub-list for extension extendee
-	0,  // [0:75] is the sub-list for field type_name
+	68, // 57: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	51, // 58: cerebro.graph.v1.ListVendorRegisterRequest.filter:type_name -> cerebro.graph.v1.VendorRegisterFilter
+	69, // 59: cerebro.graph.v1.VendorRegisterRow.attributes:type_name -> cerebro.graph.v1.VendorRegisterRow.AttributesEntry
+	53, // 60: cerebro.graph.v1.ListVendorRegisterResponse.vendors:type_name -> cerebro.graph.v1.VendorRegisterRow
+	54, // 61: cerebro.graph.v1.ListVendorRegisterResponse.summary:type_name -> cerebro.graph.v1.VendorRegisterSummary
+	56, // 62: cerebro.graph.v1.CompareExposureCoverageRequest.profile:type_name -> cerebro.graph.v1.ExposureCoverageProfile
+	2,  // 63: cerebro.graph.v1.ExposureCoverageOverlap.primary:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 64: cerebro.graph.v1.ExposureCoverageOverlap.indicator:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 65: cerebro.graph.v1.ExposureCoverageOverlap.corroborating:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 66: cerebro.graph.v1.ExposureCoveragePair.primary:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 67: cerebro.graph.v1.ExposureCoveragePair.indicator:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 68: cerebro.graph.v1.ExposureCoverageCorroboratingOnly.corroborating:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 69: cerebro.graph.v1.ExposureCoverageCorroboratingOnly.indicator:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 70: cerebro.graph.v1.ExposureCoverageAccount.account:type_name -> cerebro.graph.v1.GraphEntity
+	58, // 71: cerebro.graph.v1.CompareExposureCoverageResponse.counts:type_name -> cerebro.graph.v1.ExposureCoverageCounts
+	59, // 72: cerebro.graph.v1.CompareExposureCoverageResponse.type_counts:type_name -> cerebro.graph.v1.ExposureCoverageKindCount
+	60, // 73: cerebro.graph.v1.CompareExposureCoverageResponse.overlaps:type_name -> cerebro.graph.v1.ExposureCoverageOverlap
+	61, // 74: cerebro.graph.v1.CompareExposureCoverageResponse.primary_only:type_name -> cerebro.graph.v1.ExposureCoveragePair
+	62, // 75: cerebro.graph.v1.CompareExposureCoverageResponse.corroborating_only:type_name -> cerebro.graph.v1.ExposureCoverageCorroboratingOnly
+	63, // 76: cerebro.graph.v1.CompareExposureCoverageResponse.accounts:type_name -> cerebro.graph.v1.ExposureCoverageAccount
+	64, // 77: cerebro.graph.v1.CompareExposureCoverageResponse.completeness:type_name -> cerebro.graph.v1.ExposureCoverageCompleteness
+	10, // 78: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
+	5,  // 79: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
+	7,  // 80: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
+	9,  // 81: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
+	11, // 82: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
+	13, // 83: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
+	15, // 84: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
+	20, // 85: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:input_type -> cerebro.graph.v1.QueryFactsRequest
+	57, // 86: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:input_type -> cerebro.graph.v1.CompareExposureCoverageRequest
+	27, // 87: cerebro.graph.v1.OrganizationalGraphService.ListEntities:input_type -> cerebro.graph.v1.ListEntitiesRequest
+	31, // 88: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:input_type -> cerebro.graph.v1.CountEntityKindsRequest
+	34, // 89: cerebro.graph.v1.OrganizationalGraphService.CountRelations:input_type -> cerebro.graph.v1.CountRelationsRequest
+	37, // 90: cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths:input_type -> cerebro.graph.v1.ListPersonAccessPathsRequest
+	44, // 91: cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths:input_type -> cerebro.graph.v1.ListCloudAttackPathsRequest
+	46, // 92: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:input_type -> cerebro.graph.v1.ListEntityRelationsRequest
+	49, // 93: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
+	52, // 94: cerebro.graph.v1.OrganizationalGraphService.ListVendorRegister:input_type -> cerebro.graph.v1.ListVendorRegisterRequest
+	6,  // 95: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
+	8,  // 96: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
+	10, // 97: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
+	12, // 98: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
+	14, // 99: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
+	16, // 100: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
+	24, // 101: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:output_type -> cerebro.graph.v1.QueryFactsResponse
+	65, // 102: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:output_type -> cerebro.graph.v1.CompareExposureCoverageResponse
+	28, // 103: cerebro.graph.v1.OrganizationalGraphService.ListEntities:output_type -> cerebro.graph.v1.ListEntitiesResponse
+	32, // 104: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:output_type -> cerebro.graph.v1.CountEntityKindsResponse
+	35, // 105: cerebro.graph.v1.OrganizationalGraphService.CountRelations:output_type -> cerebro.graph.v1.CountRelationsResponse
+	38, // 106: cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths:output_type -> cerebro.graph.v1.ListPersonAccessPathsResponse
+	45, // 107: cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths:output_type -> cerebro.graph.v1.ListCloudAttackPathsResponse
+	48, // 108: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:output_type -> cerebro.graph.v1.ListEntityRelationsResponse
+	50, // 109: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
+	55, // 110: cerebro.graph.v1.OrganizationalGraphService.ListVendorRegister:output_type -> cerebro.graph.v1.ListVendorRegisterResponse
+	95, // [95:111] is the sub-list for method output_type
+	79, // [79:95] is the sub-list for method input_type
+	79, // [79:79] is the sub-list for extension type_name
+	79, // [79:79] is the sub-list for extension extendee
+	0,  // [0:79] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_graph_v1_organizational_graph_proto_init() }
@@ -4943,7 +5727,7 @@ func file_cerebro_graph_v1_organizational_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_graph_v1_organizational_graph_proto_rawDesc), len(file_cerebro_graph_v1_organizational_graph_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   62,
+			NumMessages:   68,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

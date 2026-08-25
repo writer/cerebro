@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -496,6 +497,80 @@ func (s *QueryStore) ListEntities(ctx context.Context, request ports.EntityCatal
 		return nil, errors.New("rust entity catalog returned an invalid continuation")
 	}
 	return page, nil
+}
+
+func (s *QueryStore) ListVendorRegister(ctx context.Context, filter ports.VendorRegisterFilter) (*ports.VendorRegisterPage, error) {
+	tenantID := strings.TrimSpace(filter.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("vendor register tenant_id is required")
+	}
+	if filter.Limit < 1 || filter.Limit > 500 {
+		return nil, errors.New("vendor register limit must be between 1 and 500")
+	}
+	runtimeIDs := make([]string, 0, len(filter.RuntimeIDs))
+	for _, runtimeID := range filter.RuntimeIDs {
+		if runtimeID = strings.TrimSpace(runtimeID); runtimeID != "" {
+			runtimeIDs = append(runtimeIDs, runtimeID)
+		}
+	}
+	request := connect.NewRequest(&cerebrographv1.ListVendorRegisterRequest{
+		Filter: &cerebrographv1.VendorRegisterFilter{
+			TenantId:       tenantID,
+			SourceId:       strings.TrimSpace(filter.SourceID),
+			RuntimeIds:     runtimeIDs,
+			Query:          strings.TrimSpace(filter.Query),
+			RiskLevel:      strings.TrimSpace(filter.RiskLevel),
+			ReviewState:    strings.TrimSpace(filter.ReviewState),
+			OwnerState:     strings.TrimSpace(filter.OwnerState),
+			LifecycleState: strings.TrimSpace(filter.LifecycleState),
+			QueueOnly:      filter.QueueOnly,
+		},
+		Limit: uint32(filter.Limit), // #nosec G115 -- validated above.
+	})
+	if err := s.auth.authorizeHeader(request.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListVendorRegister(ctx, request)
+	if err != nil {
+		return nil, graphRPCError("list vendor register", err)
+	}
+	message := response.Msg
+	if message.GetTenantId() != tenantID || message.GetDataAuthority() != "rust_graph" || len(message.GetVendors()) > filter.Limit || message.GetSummary() == nil {
+		return nil, errors.New("rust vendor register returned an invalid authority, tenant, or bound")
+	}
+	page := &ports.VendorRegisterPage{
+		TenantID:      tenantID,
+		GraphRevision: message.GetGraphRevision(),
+		DataAuthority: message.GetDataAuthority(),
+		GeneratedAt:   message.GetGeneratedAt(),
+		Summary:       vendorRegisterSummary(message.GetSummary()),
+		Vendors:       make([]ports.VendorRegisterRow, 0, len(message.GetVendors())),
+	}
+	seen := make(map[string]struct{}, len(message.GetVendors()))
+	for _, vendor := range message.GetVendors() {
+		if vendor == nil || strings.TrimSpace(vendor.GetUrn()) == "" || !cerebrourn.SameTenant(vendor.GetUrn(), tenantID) {
+			return nil, errors.New("rust vendor register returned an invalid vendor")
+		}
+		if _, exists := seen[vendor.GetUrn()]; exists {
+			return nil, errors.New("rust vendor register returned duplicate vendors")
+		}
+		seen[vendor.GetUrn()] = struct{}{}
+		row := ports.VendorRegisterRow{
+			VendorRegisterIdentity:   ports.VendorRegisterIdentity{URN: vendor.GetUrn(), VendorID: vendor.GetVendorId(), Name: vendor.GetName(), SourceID: vendor.GetSourceId(), RuntimeID: vendor.GetRuntimeId(), Provider: vendor.GetProvider(), Status: vendor.GetStatus(), Category: vendor.GetCategory(), WebsiteURL: vendor.GetWebsiteUrl(), ServicesProvided: vendor.GetServicesProvided(), LifecycleState: vendor.GetLifecycleState(), Owner: vendor.GetOwner(), OwnerState: vendor.GetOwnerState()},
+			VendorRegisterAssessment: ports.VendorRegisterAssessment{RiskLevel: vendor.GetRiskLevel(), RiskScore: vendor.GetRiskScore(), RiskScoreLevel: vendor.GetRiskScoreLevel(), ReviewState: vendor.GetReviewState(), ReviewDueAt: vendor.GetReviewDueAt(), EvidenceFreshnessState: vendor.GetEvidenceFreshnessState(), PacketState: vendor.GetPacketState()},
+			VendorRegisterSignals:    ports.VendorRegisterSignals{ContractCount: vendor.GetContractCount(), SecurityReviewCount: vendor.GetSecurityReviewCount(), QuestionnaireCount: vendor.GetQuestionnaireCount(), AssuranceDocumentCount: vendor.GetAssuranceDocumentCount(), OpenFindings: vendor.GetOpenFindings(), CriticalFindings: vendor.GetCriticalFindings(), HighFindings: vendor.GetHighFindings(), EvidenceItems: vendor.GetEvidenceItems(), RiskQueueRank: vendor.GetRiskQueueRank(), QueueReasons: append([]string{}, vendor.GetQueueReasons()...)},
+			Attributes:               maps.Clone(vendor.GetAttributes()),
+		}
+		if vendor.GetNextActionId() != "" && vendor.GetNextActionLabel() != "" {
+			row.NextActions = []ports.VendorRegisterAction{{ID: vendor.GetNextActionId(), Label: vendor.GetNextActionLabel()}}
+		}
+		page.Vendors = append(page.Vendors, row)
+	}
+	return page, nil
+}
+
+func vendorRegisterSummary(summary *cerebrographv1.VendorRegisterSummary) ports.VendorRegisterSummary {
+	return ports.VendorRegisterSummary{TotalVendors: summary.GetTotalVendors(), ActiveVendors: summary.GetActiveVendors(), HighRiskVendors: summary.GetHighRiskVendors(), OwnerMissingVendors: summary.GetOwnerMissingVendors(), ReviewOverdueVendors: summary.GetReviewOverdueVendors(), ReviewDueSoonVendors: summary.GetReviewDueSoonVendors(), ReviewNotScheduled: summary.GetReviewNotScheduled(), RiskQueueVendors: summary.GetRiskQueueVendors(), StaleEvidenceVendors: summary.GetStaleEvidenceVendors(), OpenFindings: summary.GetOpenFindings(), CriticalFindings: summary.GetCriticalFindings(), HighFindings: summary.GetHighFindings(), EvidenceItems: summary.GetEvidenceItems()}
 }
 
 func (s *QueryStore) CountEntityKinds(ctx context.Context, request ports.EntityKindCountRequest) (*ports.EntityKindCountPage, error) {

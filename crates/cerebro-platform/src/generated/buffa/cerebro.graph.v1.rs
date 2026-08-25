@@ -11288,6 +11288,2088 @@ pub const __GET_SOURCE_SUMMARY_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAn
     from_json: ::buffa::type_registry::any_from_json::<GetSourceSummaryResponse>,
     is_wkt: false,
 };
+/// VendorRegisterFilter contains only the bounded filters exposed by the vendor worklist.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct VendorRegisterFilter {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 3: `runtime_ids`
+    #[serde(
+        rename = "runtimeIds",
+        alias = "runtime_ids",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub runtime_ids: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 4: `query`
+    #[serde(
+        rename = "query",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub query: ::buffa::alloc::string::String,
+    /// Field 5: `risk_level`
+    #[serde(
+        rename = "riskLevel",
+        alias = "risk_level",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub risk_level: ::buffa::alloc::string::String,
+    /// Field 6: `review_state`
+    #[serde(
+        rename = "reviewState",
+        alias = "review_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub review_state: ::buffa::alloc::string::String,
+    /// Field 7: `owner_state`
+    #[serde(
+        rename = "ownerState",
+        alias = "owner_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub owner_state: ::buffa::alloc::string::String,
+    /// Field 8: `lifecycle_state`
+    #[serde(
+        rename = "lifecycleState",
+        alias = "lifecycle_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub lifecycle_state: ::buffa::alloc::string::String,
+    /// Field 9: `queue_only`
+    #[serde(
+        rename = "queueOnly",
+        alias = "queue_only",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub queue_only: bool,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for VendorRegisterFilter {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("VendorRegisterFilter")
+            .field("tenant_id", &self.tenant_id)
+            .field("source_id", &self.source_id)
+            .field("runtime_ids", &self.runtime_ids)
+            .field("query", &self.query)
+            .field("risk_level", &self.risk_level)
+            .field("review_state", &self.review_state)
+            .field("owner_state", &self.owner_state)
+            .field("lifecycle_state", &self.lifecycle_state)
+            .field("queue_only", &self.queue_only)
+            .finish()
+    }
+}
+impl VendorRegisterFilter {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterFilter";
+}
+::buffa::impl_default_instance!(VendorRegisterFilter);
+impl ::buffa::MessageName for VendorRegisterFilter {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "VendorRegisterFilter";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.VendorRegisterFilter";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterFilter";
+}
+impl ::buffa::Message for VendorRegisterFilter {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        for v in &self.runtime_ids {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if !self.query.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.query) as u64;
+        }
+        if !self.risk_level.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.risk_level) as u64;
+        }
+        if !self.review_state.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.review_state) as u64;
+        }
+        if !self.owner_state.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.owner_state) as u64;
+        }
+        if !self.lifecycle_state.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.lifecycle_state) as u64;
+        }
+        if self.queue_only {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.source_id, buf);
+        }
+        for v in &self.runtime_ids {
+            ::buffa::types::put_string_field(3u32, v, buf);
+        }
+        if !self.query.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.query, buf);
+        }
+        if !self.risk_level.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.risk_level, buf);
+        }
+        if !self.review_state.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.review_state, buf);
+        }
+        if !self.owner_state.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.owner_state, buf);
+        }
+        if !self.lifecycle_state.is_empty() {
+            ::buffa::types::put_string_field(8u32, &self.lifecycle_state, buf);
+        }
+        if self.queue_only {
+            ::buffa::types::put_bool_field(9u32, self.queue_only, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.runtime_ids.push(__elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.query, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.risk_level, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.review_state, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.owner_state, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.lifecycle_state, buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.queue_only = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.source_id.clear();
+        self.runtime_ids.clear();
+        self.query.clear();
+        self.risk_level.clear();
+        self.review_state.clear();
+        self.owner_state.clear();
+        self.lifecycle_state.clear();
+        self.queue_only = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for VendorRegisterFilter {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.VendorRegisterFilter";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for VendorRegisterFilter {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __VENDOR_REGISTER_FILTER_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.VendorRegisterFilter",
+    to_json: ::buffa::type_registry::any_to_json::<VendorRegisterFilter>,
+    from_json: ::buffa::type_registry::any_from_json::<VendorRegisterFilter>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListVendorRegisterRequest {
+    /// Field 1: `filter`
+    #[serde(
+        rename = "filter",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub filter: ::buffa::MessageField<
+        VendorRegisterFilter,
+        ::buffa::Inline<VendorRegisterFilter>,
+    >,
+    /// Field 2: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListVendorRegisterRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListVendorRegisterRequest")
+            .field("filter", &self.filter)
+            .field("limit", &self.limit)
+            .finish()
+    }
+}
+impl ListVendorRegisterRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorRegisterRequest";
+}
+::buffa::impl_default_instance!(ListVendorRegisterRequest);
+impl ::buffa::MessageName for ListVendorRegisterRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListVendorRegisterRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListVendorRegisterRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorRegisterRequest";
+}
+impl ::buffa::Message for ListVendorRegisterRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.filter.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.filter.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.filter.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.filter.write_to(__cache, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(2u32, self.limit, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.filter.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.filter = ::buffa::MessageField::none();
+        self.limit = 0u32;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListVendorRegisterRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListVendorRegisterRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListVendorRegisterRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_VENDOR_REGISTER_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListVendorRegisterRequest",
+    to_json: ::buffa::type_registry::any_to_json::<ListVendorRegisterRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<ListVendorRegisterRequest>,
+    is_wkt: false,
+};
+/// VendorRegisterRow is the Rust-owned product view rendered by the vendor register.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct VendorRegisterRow {
+    /// Field 1: `urn`
+    #[serde(
+        rename = "urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub urn: ::buffa::alloc::string::String,
+    /// Field 2: `vendor_id`
+    #[serde(
+        rename = "vendorId",
+        alias = "vendor_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub vendor_id: ::buffa::alloc::string::String,
+    /// Field 3: `name`
+    #[serde(
+        rename = "name",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub name: ::buffa::alloc::string::String,
+    /// Field 4: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 5: `runtime_id`
+    #[serde(
+        rename = "runtimeId",
+        alias = "runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub runtime_id: ::buffa::alloc::string::String,
+    /// Field 6: `provider`
+    #[serde(
+        rename = "provider",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub provider: ::buffa::alloc::string::String,
+    /// Field 7: `status`
+    #[serde(
+        rename = "status",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub status: ::buffa::alloc::string::String,
+    /// Field 8: `category`
+    #[serde(
+        rename = "category",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub category: ::buffa::alloc::string::String,
+    /// Field 9: `website_url`
+    #[serde(
+        rename = "websiteUrl",
+        alias = "website_url",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub website_url: ::buffa::alloc::string::String,
+    /// Field 10: `services_provided`
+    #[serde(
+        rename = "servicesProvided",
+        alias = "services_provided",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub services_provided: ::buffa::alloc::string::String,
+    /// Field 11: `lifecycle_state`
+    #[serde(
+        rename = "lifecycleState",
+        alias = "lifecycle_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub lifecycle_state: ::buffa::alloc::string::String,
+    /// Field 12: `owner`
+    #[serde(
+        rename = "owner",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub owner: ::buffa::alloc::string::String,
+    /// Field 13: `owner_state`
+    #[serde(
+        rename = "ownerState",
+        alias = "owner_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub owner_state: ::buffa::alloc::string::String,
+    /// Field 14: `risk_level`
+    #[serde(
+        rename = "riskLevel",
+        alias = "risk_level",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub risk_level: ::buffa::alloc::string::String,
+    /// Field 15: `risk_score`
+    #[serde(
+        rename = "riskScore",
+        alias = "risk_score",
+        with = "::buffa::json_helpers::int32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_i32"
+    )]
+    pub risk_score: i32,
+    /// Field 16: `risk_score_level`
+    #[serde(
+        rename = "riskScoreLevel",
+        alias = "risk_score_level",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub risk_score_level: ::buffa::alloc::string::String,
+    /// Field 17: `review_state`
+    #[serde(
+        rename = "reviewState",
+        alias = "review_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub review_state: ::buffa::alloc::string::String,
+    /// Field 18: `review_due_at`
+    #[serde(
+        rename = "reviewDueAt",
+        alias = "review_due_at",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub review_due_at: ::buffa::alloc::string::String,
+    /// Field 19: `evidence_freshness_state`
+    #[serde(
+        rename = "evidenceFreshnessState",
+        alias = "evidence_freshness_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub evidence_freshness_state: ::buffa::alloc::string::String,
+    /// Field 20: `packet_state`
+    #[serde(
+        rename = "packetState",
+        alias = "packet_state",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub packet_state: ::buffa::alloc::string::String,
+    /// Field 21: `contract_count`
+    #[serde(
+        rename = "contractCount",
+        alias = "contract_count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub contract_count: u64,
+    /// Field 22: `security_review_count`
+    #[serde(
+        rename = "securityReviewCount",
+        alias = "security_review_count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub security_review_count: u64,
+    /// Field 23: `questionnaire_count`
+    #[serde(
+        rename = "questionnaireCount",
+        alias = "questionnaire_count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub questionnaire_count: u64,
+    /// Field 24: `assurance_document_count`
+    #[serde(
+        rename = "assuranceDocumentCount",
+        alias = "assurance_document_count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub assurance_document_count: u64,
+    /// Field 25: `open_findings`
+    #[serde(
+        rename = "openFindings",
+        alias = "open_findings",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub open_findings: u64,
+    /// Field 26: `critical_findings`
+    #[serde(
+        rename = "criticalFindings",
+        alias = "critical_findings",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub critical_findings: u64,
+    /// Field 27: `high_findings`
+    #[serde(
+        rename = "highFindings",
+        alias = "high_findings",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub high_findings: u64,
+    /// Field 28: `evidence_items`
+    #[serde(
+        rename = "evidenceItems",
+        alias = "evidence_items",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub evidence_items: u64,
+    /// Field 29: `risk_queue_rank`
+    #[serde(
+        rename = "riskQueueRank",
+        alias = "risk_queue_rank",
+        with = "::buffa::json_helpers::int32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_i32"
+    )]
+    pub risk_queue_rank: i32,
+    /// Field 30: `queue_reasons`
+    #[serde(
+        rename = "queueReasons",
+        alias = "queue_reasons",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub queue_reasons: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 31: `next_action_id`
+    #[serde(
+        rename = "nextActionId",
+        alias = "next_action_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub next_action_id: ::buffa::alloc::string::String,
+    /// Field 32: `next_action_label`
+    #[serde(
+        rename = "nextActionLabel",
+        alias = "next_action_label",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub next_action_label: ::buffa::alloc::string::String,
+    /// Field 33: `attributes`
+    #[serde(
+        rename = "attributes",
+        skip_serializing_if = "::buffa::__private::HashMap::is_empty",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub attributes: ::buffa::__private::HashMap<
+        ::buffa::alloc::string::String,
+        ::buffa::alloc::string::String,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for VendorRegisterRow {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("VendorRegisterRow")
+            .field("urn", &self.urn)
+            .field("vendor_id", &self.vendor_id)
+            .field("name", &self.name)
+            .field("source_id", &self.source_id)
+            .field("runtime_id", &self.runtime_id)
+            .field("provider", &self.provider)
+            .field("status", &self.status)
+            .field("category", &self.category)
+            .field("website_url", &self.website_url)
+            .field("services_provided", &self.services_provided)
+            .field("lifecycle_state", &self.lifecycle_state)
+            .field("owner", &self.owner)
+            .field("owner_state", &self.owner_state)
+            .field("risk_level", &self.risk_level)
+            .field("risk_score", &self.risk_score)
+            .field("risk_score_level", &self.risk_score_level)
+            .field("review_state", &self.review_state)
+            .field("review_due_at", &self.review_due_at)
+            .field("evidence_freshness_state", &self.evidence_freshness_state)
+            .field("packet_state", &self.packet_state)
+            .field("contract_count", &self.contract_count)
+            .field("security_review_count", &self.security_review_count)
+            .field("questionnaire_count", &self.questionnaire_count)
+            .field("assurance_document_count", &self.assurance_document_count)
+            .field("open_findings", &self.open_findings)
+            .field("critical_findings", &self.critical_findings)
+            .field("high_findings", &self.high_findings)
+            .field("evidence_items", &self.evidence_items)
+            .field("risk_queue_rank", &self.risk_queue_rank)
+            .field("queue_reasons", &self.queue_reasons)
+            .field("next_action_id", &self.next_action_id)
+            .field("next_action_label", &self.next_action_label)
+            .field("attributes", &self.attributes)
+            .finish()
+    }
+}
+impl VendorRegisterRow {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterRow";
+}
+::buffa::impl_default_instance!(VendorRegisterRow);
+impl ::buffa::MessageName for VendorRegisterRow {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "VendorRegisterRow";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.VendorRegisterRow";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterRow";
+}
+impl ::buffa::Message for VendorRegisterRow {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.urn.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.urn) as u64;
+        }
+        if !self.vendor_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.vendor_id) as u64;
+        }
+        if !self.name.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.name) as u64;
+        }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        if !self.runtime_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.runtime_id) as u64;
+        }
+        if !self.provider.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.provider) as u64;
+        }
+        if !self.status.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.status) as u64;
+        }
+        if !self.category.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.category) as u64;
+        }
+        if !self.website_url.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.website_url) as u64;
+        }
+        if !self.services_provided.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.services_provided) as u64;
+        }
+        if !self.lifecycle_state.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.lifecycle_state) as u64;
+        }
+        if !self.owner.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.owner) as u64;
+        }
+        if !self.owner_state.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.owner_state) as u64;
+        }
+        if !self.risk_level.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.risk_level) as u64;
+        }
+        if self.risk_score != 0i32 {
+            size += 1u64 + ::buffa::types::int32_encoded_len(self.risk_score) as u64;
+        }
+        if !self.risk_score_level.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.risk_score_level) as u64;
+        }
+        if !self.review_state.is_empty() {
+            size += 2u64 + ::buffa::types::string_encoded_len(&self.review_state) as u64;
+        }
+        if !self.review_due_at.is_empty() {
+            size
+                += 2u64 + ::buffa::types::string_encoded_len(&self.review_due_at) as u64;
+        }
+        if !self.evidence_freshness_state.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.evidence_freshness_state)
+                        as u64;
+        }
+        if !self.packet_state.is_empty() {
+            size += 2u64 + ::buffa::types::string_encoded_len(&self.packet_state) as u64;
+        }
+        if self.contract_count != 0u64 {
+            size
+                += 2u64 + ::buffa::types::uint64_encoded_len(self.contract_count) as u64;
+        }
+        if self.security_review_count != 0u64 {
+            size
+                += 2u64
+                    + ::buffa::types::uint64_encoded_len(self.security_review_count)
+                        as u64;
+        }
+        if self.questionnaire_count != 0u64 {
+            size
+                += 2u64
+                    + ::buffa::types::uint64_encoded_len(self.questionnaire_count)
+                        as u64;
+        }
+        if self.assurance_document_count != 0u64 {
+            size
+                += 2u64
+                    + ::buffa::types::uint64_encoded_len(self.assurance_document_count)
+                        as u64;
+        }
+        if self.open_findings != 0u64 {
+            size += 2u64 + ::buffa::types::uint64_encoded_len(self.open_findings) as u64;
+        }
+        if self.critical_findings != 0u64 {
+            size
+                += 2u64
+                    + ::buffa::types::uint64_encoded_len(self.critical_findings) as u64;
+        }
+        if self.high_findings != 0u64 {
+            size += 2u64 + ::buffa::types::uint64_encoded_len(self.high_findings) as u64;
+        }
+        if self.evidence_items != 0u64 {
+            size
+                += 2u64 + ::buffa::types::uint64_encoded_len(self.evidence_items) as u64;
+        }
+        if self.risk_queue_rank != 0i32 {
+            size
+                += 2u64 + ::buffa::types::int32_encoded_len(self.risk_queue_rank) as u64;
+        }
+        for v in &self.queue_reasons {
+            size += 2u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        if !self.next_action_id.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.next_action_id) as u64;
+        }
+        if !self.next_action_label.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.next_action_label) as u64;
+        }
+        size
+            += ::buffa::map_codec::field_len::<
+                ::buffa::map_codec::Str,
+                ::buffa::map_codec::Str,
+                _,
+            >(&self.attributes, 2u64);
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.urn.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.urn, buf);
+        }
+        if !self.vendor_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.vendor_id, buf);
+        }
+        if !self.name.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.name, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.source_id, buf);
+        }
+        if !self.runtime_id.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.runtime_id, buf);
+        }
+        if !self.provider.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.provider, buf);
+        }
+        if !self.status.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.status, buf);
+        }
+        if !self.category.is_empty() {
+            ::buffa::types::put_string_field(8u32, &self.category, buf);
+        }
+        if !self.website_url.is_empty() {
+            ::buffa::types::put_string_field(9u32, &self.website_url, buf);
+        }
+        if !self.services_provided.is_empty() {
+            ::buffa::types::put_string_field(10u32, &self.services_provided, buf);
+        }
+        if !self.lifecycle_state.is_empty() {
+            ::buffa::types::put_string_field(11u32, &self.lifecycle_state, buf);
+        }
+        if !self.owner.is_empty() {
+            ::buffa::types::put_string_field(12u32, &self.owner, buf);
+        }
+        if !self.owner_state.is_empty() {
+            ::buffa::types::put_string_field(13u32, &self.owner_state, buf);
+        }
+        if !self.risk_level.is_empty() {
+            ::buffa::types::put_string_field(14u32, &self.risk_level, buf);
+        }
+        if self.risk_score != 0i32 {
+            ::buffa::types::put_int32_field(15u32, self.risk_score, buf);
+        }
+        if !self.risk_score_level.is_empty() {
+            ::buffa::types::put_string_field(16u32, &self.risk_score_level, buf);
+        }
+        if !self.review_state.is_empty() {
+            ::buffa::types::put_string_field(17u32, &self.review_state, buf);
+        }
+        if !self.review_due_at.is_empty() {
+            ::buffa::types::put_string_field(18u32, &self.review_due_at, buf);
+        }
+        if !self.evidence_freshness_state.is_empty() {
+            ::buffa::types::put_string_field(19u32, &self.evidence_freshness_state, buf);
+        }
+        if !self.packet_state.is_empty() {
+            ::buffa::types::put_string_field(20u32, &self.packet_state, buf);
+        }
+        if self.contract_count != 0u64 {
+            ::buffa::types::put_uint64_field(21u32, self.contract_count, buf);
+        }
+        if self.security_review_count != 0u64 {
+            ::buffa::types::put_uint64_field(22u32, self.security_review_count, buf);
+        }
+        if self.questionnaire_count != 0u64 {
+            ::buffa::types::put_uint64_field(23u32, self.questionnaire_count, buf);
+        }
+        if self.assurance_document_count != 0u64 {
+            ::buffa::types::put_uint64_field(24u32, self.assurance_document_count, buf);
+        }
+        if self.open_findings != 0u64 {
+            ::buffa::types::put_uint64_field(25u32, self.open_findings, buf);
+        }
+        if self.critical_findings != 0u64 {
+            ::buffa::types::put_uint64_field(26u32, self.critical_findings, buf);
+        }
+        if self.high_findings != 0u64 {
+            ::buffa::types::put_uint64_field(27u32, self.high_findings, buf);
+        }
+        if self.evidence_items != 0u64 {
+            ::buffa::types::put_uint64_field(28u32, self.evidence_items, buf);
+        }
+        if self.risk_queue_rank != 0i32 {
+            ::buffa::types::put_int32_field(29u32, self.risk_queue_rank, buf);
+        }
+        for v in &self.queue_reasons {
+            ::buffa::types::put_string_field(30u32, v, buf);
+        }
+        if !self.next_action_id.is_empty() {
+            ::buffa::types::put_string_field(31u32, &self.next_action_id, buf);
+        }
+        if !self.next_action_label.is_empty() {
+            ::buffa::types::put_string_field(32u32, &self.next_action_label, buf);
+        }
+        ::buffa::map_codec::write_field::<
+            ::buffa::map_codec::Str,
+            ::buffa::map_codec::Str,
+            _,
+        >(&self.attributes, 33u32, buf);
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.urn, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.vendor_id, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.name, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.runtime_id, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.provider, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.status, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.category, buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.website_url, buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.services_provided, buf)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.lifecycle_state, buf)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.owner, buf)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.owner_state, buf)?;
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.risk_level, buf)?;
+            }
+            15u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.risk_score = ::buffa::types::decode_int32(buf)?;
+            }
+            16u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.risk_score_level, buf)?;
+            }
+            17u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.review_state, buf)?;
+            }
+            18u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.review_due_at, buf)?;
+            }
+            19u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.evidence_freshness_state, buf)?;
+            }
+            20u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.packet_state, buf)?;
+            }
+            21u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.contract_count = ::buffa::types::decode_uint64(buf)?;
+            }
+            22u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.security_review_count = ::buffa::types::decode_uint64(buf)?;
+            }
+            23u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.questionnaire_count = ::buffa::types::decode_uint64(buf)?;
+            }
+            24u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.assurance_document_count = ::buffa::types::decode_uint64(buf)?;
+            }
+            25u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.open_findings = ::buffa::types::decode_uint64(buf)?;
+            }
+            26u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.critical_findings = ::buffa::types::decode_uint64(buf)?;
+            }
+            27u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.high_findings = ::buffa::types::decode_uint64(buf)?;
+            }
+            28u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.evidence_items = ::buffa::types::decode_uint64(buf)?;
+            }
+            29u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.risk_queue_rank = ::buffa::types::decode_int32(buf)?;
+            }
+            30u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.queue_reasons.push(__elem);
+            }
+            31u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.next_action_id, buf)?;
+            }
+            32u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.next_action_label, buf)?;
+            }
+            33u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::map_codec::merge_entry::<
+                    ::buffa::map_codec::Str,
+                    ::buffa::map_codec::Str,
+                    _,
+                >(&mut self.attributes, buf, ctx)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.urn.clear();
+        self.vendor_id.clear();
+        self.name.clear();
+        self.source_id.clear();
+        self.runtime_id.clear();
+        self.provider.clear();
+        self.status.clear();
+        self.category.clear();
+        self.website_url.clear();
+        self.services_provided.clear();
+        self.lifecycle_state.clear();
+        self.owner.clear();
+        self.owner_state.clear();
+        self.risk_level.clear();
+        self.risk_score = 0i32;
+        self.risk_score_level.clear();
+        self.review_state.clear();
+        self.review_due_at.clear();
+        self.evidence_freshness_state.clear();
+        self.packet_state.clear();
+        self.contract_count = 0u64;
+        self.security_review_count = 0u64;
+        self.questionnaire_count = 0u64;
+        self.assurance_document_count = 0u64;
+        self.open_findings = 0u64;
+        self.critical_findings = 0u64;
+        self.high_findings = 0u64;
+        self.evidence_items = 0u64;
+        self.risk_queue_rank = 0i32;
+        self.queue_reasons.clear();
+        self.next_action_id.clear();
+        self.next_action_label.clear();
+        self.attributes.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for VendorRegisterRow {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.VendorRegisterRow";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for VendorRegisterRow {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __VENDOR_REGISTER_ROW_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.VendorRegisterRow",
+    to_json: ::buffa::type_registry::any_to_json::<VendorRegisterRow>,
+    from_json: ::buffa::type_registry::any_from_json::<VendorRegisterRow>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct VendorRegisterSummary {
+    /// Field 1: `total_vendors`
+    #[serde(
+        rename = "totalVendors",
+        alias = "total_vendors",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub total_vendors: u64,
+    /// Field 2: `active_vendors`
+    #[serde(
+        rename = "activeVendors",
+        alias = "active_vendors",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub active_vendors: u64,
+    /// Field 3: `high_risk_vendors`
+    #[serde(
+        rename = "highRiskVendors",
+        alias = "high_risk_vendors",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub high_risk_vendors: u64,
+    /// Field 4: `owner_missing_vendors`
+    #[serde(
+        rename = "ownerMissingVendors",
+        alias = "owner_missing_vendors",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub owner_missing_vendors: u64,
+    /// Field 5: `review_overdue_vendors`
+    #[serde(
+        rename = "reviewOverdueVendors",
+        alias = "review_overdue_vendors",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub review_overdue_vendors: u64,
+    /// Field 6: `review_due_soon_vendors`
+    #[serde(
+        rename = "reviewDueSoonVendors",
+        alias = "review_due_soon_vendors",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub review_due_soon_vendors: u64,
+    /// Field 7: `review_not_scheduled`
+    #[serde(
+        rename = "reviewNotScheduled",
+        alias = "review_not_scheduled",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub review_not_scheduled: u64,
+    /// Field 8: `risk_queue_vendors`
+    #[serde(
+        rename = "riskQueueVendors",
+        alias = "risk_queue_vendors",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub risk_queue_vendors: u64,
+    /// Field 9: `stale_evidence_vendors`
+    #[serde(
+        rename = "staleEvidenceVendors",
+        alias = "stale_evidence_vendors",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub stale_evidence_vendors: u64,
+    /// Field 10: `open_findings`
+    #[serde(
+        rename = "openFindings",
+        alias = "open_findings",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub open_findings: u64,
+    /// Field 11: `critical_findings`
+    #[serde(
+        rename = "criticalFindings",
+        alias = "critical_findings",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub critical_findings: u64,
+    /// Field 12: `high_findings`
+    #[serde(
+        rename = "highFindings",
+        alias = "high_findings",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub high_findings: u64,
+    /// Field 13: `evidence_items`
+    #[serde(
+        rename = "evidenceItems",
+        alias = "evidence_items",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub evidence_items: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for VendorRegisterSummary {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("VendorRegisterSummary")
+            .field("total_vendors", &self.total_vendors)
+            .field("active_vendors", &self.active_vendors)
+            .field("high_risk_vendors", &self.high_risk_vendors)
+            .field("owner_missing_vendors", &self.owner_missing_vendors)
+            .field("review_overdue_vendors", &self.review_overdue_vendors)
+            .field("review_due_soon_vendors", &self.review_due_soon_vendors)
+            .field("review_not_scheduled", &self.review_not_scheduled)
+            .field("risk_queue_vendors", &self.risk_queue_vendors)
+            .field("stale_evidence_vendors", &self.stale_evidence_vendors)
+            .field("open_findings", &self.open_findings)
+            .field("critical_findings", &self.critical_findings)
+            .field("high_findings", &self.high_findings)
+            .field("evidence_items", &self.evidence_items)
+            .finish()
+    }
+}
+impl VendorRegisterSummary {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterSummary";
+}
+::buffa::impl_default_instance!(VendorRegisterSummary);
+impl ::buffa::MessageName for VendorRegisterSummary {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "VendorRegisterSummary";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.VendorRegisterSummary";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterSummary";
+}
+impl ::buffa::Message for VendorRegisterSummary {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.total_vendors != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.total_vendors) as u64;
+        }
+        if self.active_vendors != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.active_vendors) as u64;
+        }
+        if self.high_risk_vendors != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.high_risk_vendors) as u64;
+        }
+        if self.owner_missing_vendors != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.owner_missing_vendors)
+                        as u64;
+        }
+        if self.review_overdue_vendors != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.review_overdue_vendors)
+                        as u64;
+        }
+        if self.review_due_soon_vendors != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.review_due_soon_vendors)
+                        as u64;
+        }
+        if self.review_not_scheduled != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.review_not_scheduled)
+                        as u64;
+        }
+        if self.risk_queue_vendors != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.risk_queue_vendors) as u64;
+        }
+        if self.stale_evidence_vendors != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.stale_evidence_vendors)
+                        as u64;
+        }
+        if self.open_findings != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.open_findings) as u64;
+        }
+        if self.critical_findings != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.critical_findings) as u64;
+        }
+        if self.high_findings != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.high_findings) as u64;
+        }
+        if self.evidence_items != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.evidence_items) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.total_vendors != 0u64 {
+            ::buffa::types::put_uint64_field(1u32, self.total_vendors, buf);
+        }
+        if self.active_vendors != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.active_vendors, buf);
+        }
+        if self.high_risk_vendors != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.high_risk_vendors, buf);
+        }
+        if self.owner_missing_vendors != 0u64 {
+            ::buffa::types::put_uint64_field(4u32, self.owner_missing_vendors, buf);
+        }
+        if self.review_overdue_vendors != 0u64 {
+            ::buffa::types::put_uint64_field(5u32, self.review_overdue_vendors, buf);
+        }
+        if self.review_due_soon_vendors != 0u64 {
+            ::buffa::types::put_uint64_field(6u32, self.review_due_soon_vendors, buf);
+        }
+        if self.review_not_scheduled != 0u64 {
+            ::buffa::types::put_uint64_field(7u32, self.review_not_scheduled, buf);
+        }
+        if self.risk_queue_vendors != 0u64 {
+            ::buffa::types::put_uint64_field(8u32, self.risk_queue_vendors, buf);
+        }
+        if self.stale_evidence_vendors != 0u64 {
+            ::buffa::types::put_uint64_field(9u32, self.stale_evidence_vendors, buf);
+        }
+        if self.open_findings != 0u64 {
+            ::buffa::types::put_uint64_field(10u32, self.open_findings, buf);
+        }
+        if self.critical_findings != 0u64 {
+            ::buffa::types::put_uint64_field(11u32, self.critical_findings, buf);
+        }
+        if self.high_findings != 0u64 {
+            ::buffa::types::put_uint64_field(12u32, self.high_findings, buf);
+        }
+        if self.evidence_items != 0u64 {
+            ::buffa::types::put_uint64_field(13u32, self.evidence_items, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.total_vendors = ::buffa::types::decode_uint64(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.active_vendors = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.high_risk_vendors = ::buffa::types::decode_uint64(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.owner_missing_vendors = ::buffa::types::decode_uint64(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.review_overdue_vendors = ::buffa::types::decode_uint64(buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.review_due_soon_vendors = ::buffa::types::decode_uint64(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.review_not_scheduled = ::buffa::types::decode_uint64(buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.risk_queue_vendors = ::buffa::types::decode_uint64(buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.stale_evidence_vendors = ::buffa::types::decode_uint64(buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.open_findings = ::buffa::types::decode_uint64(buf)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.critical_findings = ::buffa::types::decode_uint64(buf)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.high_findings = ::buffa::types::decode_uint64(buf)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.evidence_items = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.total_vendors = 0u64;
+        self.active_vendors = 0u64;
+        self.high_risk_vendors = 0u64;
+        self.owner_missing_vendors = 0u64;
+        self.review_overdue_vendors = 0u64;
+        self.review_due_soon_vendors = 0u64;
+        self.review_not_scheduled = 0u64;
+        self.risk_queue_vendors = 0u64;
+        self.stale_evidence_vendors = 0u64;
+        self.open_findings = 0u64;
+        self.critical_findings = 0u64;
+        self.high_findings = 0u64;
+        self.evidence_items = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for VendorRegisterSummary {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.VendorRegisterSummary";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for VendorRegisterSummary {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __VENDOR_REGISTER_SUMMARY_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.VendorRegisterSummary",
+    to_json: ::buffa::type_registry::any_to_json::<VendorRegisterSummary>,
+    from_json: ::buffa::type_registry::any_from_json::<VendorRegisterSummary>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListVendorRegisterResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `data_authority`
+    #[serde(
+        rename = "dataAuthority",
+        alias = "data_authority",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub data_authority: ::buffa::alloc::string::String,
+    /// Field 4: `generated_at`
+    #[serde(
+        rename = "generatedAt",
+        alias = "generated_at",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub generated_at: ::buffa::alloc::string::String,
+    /// Field 5: `vendors`
+    #[serde(
+        rename = "vendors",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub vendors: ::buffa::alloc::vec::Vec<VendorRegisterRow>,
+    /// Field 6: `summary`
+    #[serde(
+        rename = "summary",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub summary: ::buffa::MessageField<
+        VendorRegisterSummary,
+        ::buffa::Inline<VendorRegisterSummary>,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListVendorRegisterResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListVendorRegisterResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("data_authority", &self.data_authority)
+            .field("generated_at", &self.generated_at)
+            .field("vendors", &self.vendors)
+            .field("summary", &self.summary)
+            .finish()
+    }
+}
+impl ListVendorRegisterResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorRegisterResponse";
+}
+::buffa::impl_default_instance!(ListVendorRegisterResponse);
+impl ::buffa::MessageName for ListVendorRegisterResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListVendorRegisterResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListVendorRegisterResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorRegisterResponse";
+}
+impl ::buffa::Message for ListVendorRegisterResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        if !self.data_authority.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.data_authority) as u64;
+        }
+        if !self.generated_at.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.generated_at) as u64;
+        }
+        for v in &self.vendors {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.summary.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.summary.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        if !self.data_authority.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.data_authority, buf);
+        }
+        if !self.generated_at.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.generated_at, buf);
+        }
+        for v in &self.vendors {
+            ::buffa::types::put_len_delimited_header(
+                5u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.summary.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.summary.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.data_authority, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.generated_at, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.vendors.push(elem);
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.summary.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.data_authority.clear();
+        self.generated_at.clear();
+        self.vendors.clear();
+        self.summary = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListVendorRegisterResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListVendorRegisterResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListVendorRegisterResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_VENDOR_REGISTER_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListVendorRegisterResponse",
+    to_json: ::buffa::type_registry::any_to_json::<ListVendorRegisterResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<ListVendorRegisterResponse>,
+    is_wkt: false,
+};
 /// ExposureCoverageProfile declares the closed entity kinds and sources used by
 /// one coverage comparison. Relations are fixed by the server.
 #[derive(Clone, PartialEq, Default)]
@@ -33759,6 +35841,3325 @@ pub mod __buffa {
                 ::serde::Serialize::serialize(&self.0, __s)
             }
         }
+        /// VendorRegisterFilter contains only the bounded filters exposed by the vendor worklist.
+        #[derive(Clone, Debug, Default)]
+        pub struct VendorRegisterFilterView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `source_id`
+            pub source_id: &'a str,
+            /// Field 3: `runtime_ids`
+            pub runtime_ids: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 4: `query`
+            pub query: &'a str,
+            /// Field 5: `risk_level`
+            pub risk_level: &'a str,
+            /// Field 6: `review_state`
+            pub review_state: &'a str,
+            /// Field 7: `owner_state`
+            pub owner_state: &'a str,
+            /// Field 8: `lifecycle_state`
+            pub lifecycle_state: &'a str,
+            /// Field 9: `queue_only`
+            pub queue_only: bool,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for VendorRegisterFilterView<'a> {
+            type Owned = super::super::VendorRegisterFilter;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.query = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.risk_level = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.review_state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.owner_state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.lifecycle_state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.queue_only = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.runtime_ids.push(__elem);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::VendorRegisterFilter,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::VendorRegisterFilter,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::VendorRegisterFilter {
+                    tenant_id: self.tenant_id.to_string(),
+                    source_id: self.source_id.to_string(),
+                    runtime_ids: self
+                        .runtime_ids
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    query: self.query.to_string(),
+                    risk_level: self.risk_level.to_string(),
+                    review_state: self.review_state.to_string(),
+                    owner_state: self.owner_state.to_string(),
+                    lifecycle_state: self.lifecycle_state.to_string(),
+                    queue_only: self.queue_only,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for VendorRegisterFilterView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                for v in &self.runtime_ids {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if !self.query.is_empty() {
+                    size
+                        += 1u64 + ::buffa::types::string_encoded_len(&self.query) as u64;
+                }
+                if !self.risk_level.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.risk_level)
+                                as u64;
+                }
+                if !self.review_state.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.review_state)
+                                as u64;
+                }
+                if !self.owner_state.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.owner_state)
+                                as u64;
+                }
+                if !self.lifecycle_state.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.lifecycle_state)
+                                as u64;
+                }
+                if self.queue_only {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.source_id, buf);
+                }
+                for v in &self.runtime_ids {
+                    ::buffa::types::put_string_field(3u32, v, buf);
+                }
+                if !self.query.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.query, buf);
+                }
+                if !self.risk_level.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.risk_level, buf);
+                }
+                if !self.review_state.is_empty() {
+                    ::buffa::types::put_string_field(6u32, &self.review_state, buf);
+                }
+                if !self.owner_state.is_empty() {
+                    ::buffa::types::put_string_field(7u32, &self.owner_state, buf);
+                }
+                if !self.lifecycle_state.is_empty() {
+                    ::buffa::types::put_string_field(8u32, &self.lifecycle_state, buf);
+                }
+                if self.queue_only {
+                    ::buffa::types::put_bool_field(9u32, self.queue_only, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for VendorRegisterFilterView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !self.runtime_ids.is_empty() {
+                    __map.serialize_entry("runtimeIds", &*self.runtime_ids)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.query) {
+                    __map.serialize_entry("query", self.query)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.risk_level) {
+                    __map.serialize_entry("riskLevel", self.risk_level)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.review_state) {
+                    __map.serialize_entry("reviewState", self.review_state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.owner_state) {
+                    __map.serialize_entry("ownerState", self.owner_state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.lifecycle_state) {
+                    __map.serialize_entry("lifecycleState", self.lifecycle_state)?;
+                }
+                if self.queue_only {
+                    __map.serialize_entry("queueOnly", &self.queue_only)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for VendorRegisterFilterView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "VendorRegisterFilter";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.VendorRegisterFilter";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterFilter";
+        }
+        ::buffa::impl_default_view_instance!(VendorRegisterFilterView);
+        ::buffa::impl_view_reborrow!(VendorRegisterFilterView);
+        /** Self-contained, `'static` owned view of a `VendorRegisterFilter` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`VendorRegisterFilterView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`VendorRegisterFilterView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct VendorRegisterFilterOwnedView(
+            ::buffa::OwnedView<VendorRegisterFilterView<'static>>,
+        );
+        impl VendorRegisterFilterOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterFilterOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterFilterOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::VendorRegisterFilter,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterFilterOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`VendorRegisterFilterView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &VendorRegisterFilterView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::VendorRegisterFilter {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 3: `runtime_ids`
+            #[must_use]
+            pub fn runtime_ids(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().runtime_ids
+            }
+            /// Field 4: `query`
+            #[must_use]
+            pub fn query(&self) -> &'_ str {
+                self.0.reborrow().query
+            }
+            /// Field 5: `risk_level`
+            #[must_use]
+            pub fn risk_level(&self) -> &'_ str {
+                self.0.reborrow().risk_level
+            }
+            /// Field 6: `review_state`
+            #[must_use]
+            pub fn review_state(&self) -> &'_ str {
+                self.0.reborrow().review_state
+            }
+            /// Field 7: `owner_state`
+            #[must_use]
+            pub fn owner_state(&self) -> &'_ str {
+                self.0.reborrow().owner_state
+            }
+            /// Field 8: `lifecycle_state`
+            #[must_use]
+            pub fn lifecycle_state(&self) -> &'_ str {
+                self.0.reborrow().lifecycle_state
+            }
+            /// Field 9: `queue_only`
+            #[must_use]
+            pub fn queue_only(&self) -> bool {
+                self.0.reborrow().queue_only
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<VendorRegisterFilterView<'static>>>
+        for VendorRegisterFilterOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<VendorRegisterFilterView<'static>>,
+            ) -> Self {
+                VendorRegisterFilterOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<VendorRegisterFilterOwnedView>
+        for ::buffa::OwnedView<VendorRegisterFilterView<'static>> {
+            fn from(wrapper: VendorRegisterFilterOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<VendorRegisterFilterView<'static>>,
+        > for VendorRegisterFilterOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<VendorRegisterFilterView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::VendorRegisterFilter {
+            type View<'a> = VendorRegisterFilterView<'a>;
+            type ViewHandle = VendorRegisterFilterOwnedView;
+        }
+        impl ::serde::Serialize for VendorRegisterFilterOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListVendorRegisterRequestView<'a> {
+            /// Field 1: `filter`
+            pub filter: ::buffa::MessageFieldView<
+                super::super::__buffa::view::VendorRegisterFilterView<'a>,
+            >,
+            /// Field 2: `limit`
+            pub limit: u32,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListVendorRegisterRequestView<'a> {
+            type Owned = super::super::ListVendorRegisterRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.filter.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.filter = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::VendorRegisterFilterView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListVendorRegisterRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListVendorRegisterRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListVendorRegisterRequest {
+                    filter: match self.filter.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::VendorRegisterFilter,
+                                ::buffa::Inline<super::super::VendorRegisterFilter>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    limit: self.limit,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListVendorRegisterRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.filter.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.filter.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.filter.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.filter.write_to(__cache, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(2u32, self.limit, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListVendorRegisterRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.filter.as_option() {
+                        __map.serialize_entry("filter", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListVendorRegisterRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListVendorRegisterRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListVendorRegisterRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorRegisterRequest";
+        }
+        ::buffa::impl_default_view_instance!(ListVendorRegisterRequestView);
+        ::buffa::impl_view_reborrow!(ListVendorRegisterRequestView);
+        /** Self-contained, `'static` owned view of a `ListVendorRegisterRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListVendorRegisterRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListVendorRegisterRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListVendorRegisterRequestOwnedView(
+            ::buffa::OwnedView<ListVendorRegisterRequestView<'static>>,
+        );
+        impl ListVendorRegisterRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorRegisterRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorRegisterRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListVendorRegisterRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorRegisterRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListVendorRegisterRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListVendorRegisterRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ListVendorRegisterRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `filter`
+            #[must_use]
+            pub fn filter(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::VendorRegisterFilterView<'_>,
+            > {
+                &self.0.reborrow().filter
+            }
+            /// Field 2: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListVendorRegisterRequestView<'static>>,
+        > for ListVendorRegisterRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListVendorRegisterRequestView<'static>>,
+            ) -> Self {
+                ListVendorRegisterRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListVendorRegisterRequestOwnedView>
+        for ::buffa::OwnedView<ListVendorRegisterRequestView<'static>> {
+            fn from(wrapper: ListVendorRegisterRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListVendorRegisterRequestView<'static>>,
+        > for ListVendorRegisterRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListVendorRegisterRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListVendorRegisterRequest {
+            type View<'a> = ListVendorRegisterRequestView<'a>;
+            type ViewHandle = ListVendorRegisterRequestOwnedView;
+        }
+        impl ::serde::Serialize for ListVendorRegisterRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        /// VendorRegisterRow is the Rust-owned product view rendered by the vendor register.
+        #[derive(Clone, Debug, Default)]
+        pub struct VendorRegisterRowView<'a> {
+            /// Field 1: `urn`
+            pub urn: &'a str,
+            /// Field 2: `vendor_id`
+            pub vendor_id: &'a str,
+            /// Field 3: `name`
+            pub name: &'a str,
+            /// Field 4: `source_id`
+            pub source_id: &'a str,
+            /// Field 5: `runtime_id`
+            pub runtime_id: &'a str,
+            /// Field 6: `provider`
+            pub provider: &'a str,
+            /// Field 7: `status`
+            pub status: &'a str,
+            /// Field 8: `category`
+            pub category: &'a str,
+            /// Field 9: `website_url`
+            pub website_url: &'a str,
+            /// Field 10: `services_provided`
+            pub services_provided: &'a str,
+            /// Field 11: `lifecycle_state`
+            pub lifecycle_state: &'a str,
+            /// Field 12: `owner`
+            pub owner: &'a str,
+            /// Field 13: `owner_state`
+            pub owner_state: &'a str,
+            /// Field 14: `risk_level`
+            pub risk_level: &'a str,
+            /// Field 15: `risk_score`
+            pub risk_score: i32,
+            /// Field 16: `risk_score_level`
+            pub risk_score_level: &'a str,
+            /// Field 17: `review_state`
+            pub review_state: &'a str,
+            /// Field 18: `review_due_at`
+            pub review_due_at: &'a str,
+            /// Field 19: `evidence_freshness_state`
+            pub evidence_freshness_state: &'a str,
+            /// Field 20: `packet_state`
+            pub packet_state: &'a str,
+            /// Field 21: `contract_count`
+            pub contract_count: u64,
+            /// Field 22: `security_review_count`
+            pub security_review_count: u64,
+            /// Field 23: `questionnaire_count`
+            pub questionnaire_count: u64,
+            /// Field 24: `assurance_document_count`
+            pub assurance_document_count: u64,
+            /// Field 25: `open_findings`
+            pub open_findings: u64,
+            /// Field 26: `critical_findings`
+            pub critical_findings: u64,
+            /// Field 27: `high_findings`
+            pub high_findings: u64,
+            /// Field 28: `evidence_items`
+            pub evidence_items: u64,
+            /// Field 29: `risk_queue_rank`
+            pub risk_queue_rank: i32,
+            /// Field 30: `queue_reasons`
+            pub queue_reasons: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 31: `next_action_id`
+            pub next_action_id: &'a str,
+            /// Field 32: `next_action_label`
+            pub next_action_label: &'a str,
+            /// Field 33: `attributes` (map)
+            pub attributes: ::buffa::MapView<'a, &'a str, &'a str>,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for VendorRegisterRowView<'a> {
+            type Owned = super::super::VendorRegisterRow;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.vendor_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.name = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.provider = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.status = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.category = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.website_url = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.services_provided = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    11u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.lifecycle_state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    12u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.owner = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    13u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.owner_state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    14u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.risk_level = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    15u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.risk_score = ::buffa::types::decode_int32(&mut cur)?;
+                    }
+                    16u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.risk_score_level = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    17u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.review_state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    18u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.review_due_at = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    19u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.evidence_freshness_state = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    20u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.packet_state = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    21u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.contract_count = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    22u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.security_review_count = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    23u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.questionnaire_count = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    24u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.assurance_document_count = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    25u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.open_findings = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    26u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.critical_findings = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    27u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.high_findings = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    28u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.evidence_items = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    29u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.risk_queue_rank = ::buffa::types::decode_int32(&mut cur)?;
+                    }
+                    31u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.next_action_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    32u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.next_action_label = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    30u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.queue_reasons.push(__elem);
+                    }
+                    33u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let entry_bytes = ::buffa::types::borrow_bytes(&mut cur)?;
+                        let mut entry_cur: &'a [u8] = entry_bytes;
+                        let mut key = "";
+                        let mut val = "";
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&key)
+                                + ::buffa::__private::element_footprint(&val),
+                        )?;
+                        while !entry_cur.is_empty() {
+                            let entry_tag = ::buffa::encoding::Tag::decode(
+                                &mut entry_cur,
+                            )?;
+                            match entry_tag.field_number() {
+                                1 => {
+                                    ::buffa::encoding::check_wire_type(
+                                        entry_tag,
+                                        ::buffa::encoding::WireType::LengthDelimited,
+                                    )?;
+                                    key = ::buffa::types::borrow_str(&mut entry_cur)?;
+                                }
+                                2 => {
+                                    ::buffa::encoding::check_wire_type(
+                                        entry_tag,
+                                        ::buffa::encoding::WireType::LengthDelimited,
+                                    )?;
+                                    val = ::buffa::types::borrow_str(&mut entry_cur)?;
+                                }
+                                _ => {
+                                    ::buffa::encoding::skip_field_depth(
+                                        entry_tag,
+                                        &mut entry_cur,
+                                        ctx.depth(),
+                                    )?;
+                                }
+                            }
+                        }
+                        view.attributes.push(key, val);
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::VendorRegisterRow,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::VendorRegisterRow,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::VendorRegisterRow {
+                    urn: self.urn.to_string(),
+                    vendor_id: self.vendor_id.to_string(),
+                    name: self.name.to_string(),
+                    source_id: self.source_id.to_string(),
+                    runtime_id: self.runtime_id.to_string(),
+                    provider: self.provider.to_string(),
+                    status: self.status.to_string(),
+                    category: self.category.to_string(),
+                    website_url: self.website_url.to_string(),
+                    services_provided: self.services_provided.to_string(),
+                    lifecycle_state: self.lifecycle_state.to_string(),
+                    owner: self.owner.to_string(),
+                    owner_state: self.owner_state.to_string(),
+                    risk_level: self.risk_level.to_string(),
+                    risk_score: self.risk_score,
+                    risk_score_level: self.risk_score_level.to_string(),
+                    review_state: self.review_state.to_string(),
+                    review_due_at: self.review_due_at.to_string(),
+                    evidence_freshness_state: self.evidence_freshness_state.to_string(),
+                    packet_state: self.packet_state.to_string(),
+                    contract_count: self.contract_count,
+                    security_review_count: self.security_review_count,
+                    questionnaire_count: self.questionnaire_count,
+                    assurance_document_count: self.assurance_document_count,
+                    open_findings: self.open_findings,
+                    critical_findings: self.critical_findings,
+                    high_findings: self.high_findings,
+                    evidence_items: self.evidence_items,
+                    risk_queue_rank: self.risk_queue_rank,
+                    queue_reasons: self
+                        .queue_reasons
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    next_action_id: self.next_action_id.to_string(),
+                    next_action_label: self.next_action_label.to_string(),
+                    attributes: self
+                        .attributes
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for VendorRegisterRowView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.urn.is_empty() {
+                    size += 1u64 + ::buffa::types::string_encoded_len(&self.urn) as u64;
+                }
+                if !self.vendor_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.vendor_id) as u64;
+                }
+                if !self.name.is_empty() {
+                    size += 1u64 + ::buffa::types::string_encoded_len(&self.name) as u64;
+                }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                if !self.runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.runtime_id)
+                                as u64;
+                }
+                if !self.provider.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.provider) as u64;
+                }
+                if !self.status.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.status) as u64;
+                }
+                if !self.category.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.category) as u64;
+                }
+                if !self.website_url.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.website_url)
+                                as u64;
+                }
+                if !self.services_provided.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.services_provided)
+                                as u64;
+                }
+                if !self.lifecycle_state.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.lifecycle_state)
+                                as u64;
+                }
+                if !self.owner.is_empty() {
+                    size
+                        += 1u64 + ::buffa::types::string_encoded_len(&self.owner) as u64;
+                }
+                if !self.owner_state.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.owner_state)
+                                as u64;
+                }
+                if !self.risk_level.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.risk_level)
+                                as u64;
+                }
+                if self.risk_score != 0i32 {
+                    size
+                        += 1u64
+                            + ::buffa::types::int32_encoded_len(self.risk_score) as u64;
+                }
+                if !self.risk_score_level.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.risk_score_level)
+                                as u64;
+                }
+                if !self.review_state.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.review_state)
+                                as u64;
+                }
+                if !self.review_due_at.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.review_due_at)
+                                as u64;
+                }
+                if !self.evidence_freshness_state.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.evidence_freshness_state,
+                            ) as u64;
+                }
+                if !self.packet_state.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.packet_state)
+                                as u64;
+                }
+                if self.contract_count != 0u64 {
+                    size
+                        += 2u64
+                            + ::buffa::types::uint64_encoded_len(self.contract_count)
+                                as u64;
+                }
+                if self.security_review_count != 0u64 {
+                    size
+                        += 2u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.security_review_count,
+                            ) as u64;
+                }
+                if self.questionnaire_count != 0u64 {
+                    size
+                        += 2u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.questionnaire_count,
+                            ) as u64;
+                }
+                if self.assurance_document_count != 0u64 {
+                    size
+                        += 2u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.assurance_document_count,
+                            ) as u64;
+                }
+                if self.open_findings != 0u64 {
+                    size
+                        += 2u64
+                            + ::buffa::types::uint64_encoded_len(self.open_findings)
+                                as u64;
+                }
+                if self.critical_findings != 0u64 {
+                    size
+                        += 2u64
+                            + ::buffa::types::uint64_encoded_len(self.critical_findings)
+                                as u64;
+                }
+                if self.high_findings != 0u64 {
+                    size
+                        += 2u64
+                            + ::buffa::types::uint64_encoded_len(self.high_findings)
+                                as u64;
+                }
+                if self.evidence_items != 0u64 {
+                    size
+                        += 2u64
+                            + ::buffa::types::uint64_encoded_len(self.evidence_items)
+                                as u64;
+                }
+                if self.risk_queue_rank != 0i32 {
+                    size
+                        += 2u64
+                            + ::buffa::types::int32_encoded_len(self.risk_queue_rank)
+                                as u64;
+                }
+                for v in &self.queue_reasons {
+                    size += 2u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                if !self.next_action_id.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.next_action_id)
+                                as u64;
+                }
+                if !self.next_action_label.is_empty() {
+                    size
+                        += 2u64
+                            + ::buffa::types::string_encoded_len(&self.next_action_label)
+                                as u64;
+                }
+                #[allow(clippy::for_kv_map)]
+                for (k, v) in &self.attributes {
+                    let entry_size: u64 = 1u64
+                        + ::buffa::types::string_encoded_len(k) as u64 + 1u64
+                        + ::buffa::types::string_encoded_len(v) as u64;
+                    size
+                        += 2u64 + ::buffa::encoding::varint_len(entry_size) as u64
+                            + entry_size;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.urn.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.urn, buf);
+                }
+                if !self.vendor_id.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.vendor_id, buf);
+                }
+                if !self.name.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.name, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.source_id, buf);
+                }
+                if !self.runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.runtime_id, buf);
+                }
+                if !self.provider.is_empty() {
+                    ::buffa::types::put_string_field(6u32, &self.provider, buf);
+                }
+                if !self.status.is_empty() {
+                    ::buffa::types::put_string_field(7u32, &self.status, buf);
+                }
+                if !self.category.is_empty() {
+                    ::buffa::types::put_string_field(8u32, &self.category, buf);
+                }
+                if !self.website_url.is_empty() {
+                    ::buffa::types::put_string_field(9u32, &self.website_url, buf);
+                }
+                if !self.services_provided.is_empty() {
+                    ::buffa::types::put_string_field(
+                        10u32,
+                        &self.services_provided,
+                        buf,
+                    );
+                }
+                if !self.lifecycle_state.is_empty() {
+                    ::buffa::types::put_string_field(11u32, &self.lifecycle_state, buf);
+                }
+                if !self.owner.is_empty() {
+                    ::buffa::types::put_string_field(12u32, &self.owner, buf);
+                }
+                if !self.owner_state.is_empty() {
+                    ::buffa::types::put_string_field(13u32, &self.owner_state, buf);
+                }
+                if !self.risk_level.is_empty() {
+                    ::buffa::types::put_string_field(14u32, &self.risk_level, buf);
+                }
+                if self.risk_score != 0i32 {
+                    ::buffa::types::put_int32_field(15u32, self.risk_score, buf);
+                }
+                if !self.risk_score_level.is_empty() {
+                    ::buffa::types::put_string_field(16u32, &self.risk_score_level, buf);
+                }
+                if !self.review_state.is_empty() {
+                    ::buffa::types::put_string_field(17u32, &self.review_state, buf);
+                }
+                if !self.review_due_at.is_empty() {
+                    ::buffa::types::put_string_field(18u32, &self.review_due_at, buf);
+                }
+                if !self.evidence_freshness_state.is_empty() {
+                    ::buffa::types::put_string_field(
+                        19u32,
+                        &self.evidence_freshness_state,
+                        buf,
+                    );
+                }
+                if !self.packet_state.is_empty() {
+                    ::buffa::types::put_string_field(20u32, &self.packet_state, buf);
+                }
+                if self.contract_count != 0u64 {
+                    ::buffa::types::put_uint64_field(21u32, self.contract_count, buf);
+                }
+                if self.security_review_count != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        22u32,
+                        self.security_review_count,
+                        buf,
+                    );
+                }
+                if self.questionnaire_count != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        23u32,
+                        self.questionnaire_count,
+                        buf,
+                    );
+                }
+                if self.assurance_document_count != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        24u32,
+                        self.assurance_document_count,
+                        buf,
+                    );
+                }
+                if self.open_findings != 0u64 {
+                    ::buffa::types::put_uint64_field(25u32, self.open_findings, buf);
+                }
+                if self.critical_findings != 0u64 {
+                    ::buffa::types::put_uint64_field(26u32, self.critical_findings, buf);
+                }
+                if self.high_findings != 0u64 {
+                    ::buffa::types::put_uint64_field(27u32, self.high_findings, buf);
+                }
+                if self.evidence_items != 0u64 {
+                    ::buffa::types::put_uint64_field(28u32, self.evidence_items, buf);
+                }
+                if self.risk_queue_rank != 0i32 {
+                    ::buffa::types::put_int32_field(29u32, self.risk_queue_rank, buf);
+                }
+                for v in &self.queue_reasons {
+                    ::buffa::types::put_string_field(30u32, v, buf);
+                }
+                if !self.next_action_id.is_empty() {
+                    ::buffa::types::put_string_field(31u32, &self.next_action_id, buf);
+                }
+                if !self.next_action_label.is_empty() {
+                    ::buffa::types::put_string_field(
+                        32u32,
+                        &self.next_action_label,
+                        buf,
+                    );
+                }
+                for (k, v) in &self.attributes {
+                    let entry_size: u64 = 1u64
+                        + ::buffa::types::string_encoded_len(k) as u64 + 1u64
+                        + ::buffa::types::string_encoded_len(v) as u64;
+                    ::buffa::encoding::Tag::new(
+                            33u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::encoding::encode_varint(entry_size, buf);
+                    ::buffa::encoding::Tag::new(
+                            1u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::types::encode_string(k, buf);
+                    ::buffa::encoding::Tag::new(
+                            2u32,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )
+                        .encode(buf);
+                    ::buffa::types::encode_string(v, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for VendorRegisterRowView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.urn) {
+                    __map.serialize_entry("urn", self.urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.vendor_id) {
+                    __map.serialize_entry("vendorId", self.vendor_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.name) {
+                    __map.serialize_entry("name", self.name)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.runtime_id) {
+                    __map.serialize_entry("runtimeId", self.runtime_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.provider) {
+                    __map.serialize_entry("provider", self.provider)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.status) {
+                    __map.serialize_entry("status", self.status)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.category) {
+                    __map.serialize_entry("category", self.category)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.website_url) {
+                    __map.serialize_entry("websiteUrl", self.website_url)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.services_provided,
+                ) {
+                    __map.serialize_entry("servicesProvided", self.services_provided)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.lifecycle_state) {
+                    __map.serialize_entry("lifecycleState", self.lifecycle_state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.owner) {
+                    __map.serialize_entry("owner", self.owner)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.owner_state) {
+                    __map.serialize_entry("ownerState", self.owner_state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.risk_level) {
+                    __map.serialize_entry("riskLevel", self.risk_level)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_i32(&self.risk_score) {
+                    __map
+                        .serialize_entry(
+                            "riskScore",
+                            &::buffa::json_helpers::ProtoJson(&self.risk_score),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.risk_score_level) {
+                    __map.serialize_entry("riskScoreLevel", self.risk_score_level)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.review_state) {
+                    __map.serialize_entry("reviewState", self.review_state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.review_due_at) {
+                    __map.serialize_entry("reviewDueAt", self.review_due_at)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.evidence_freshness_state,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "evidenceFreshnessState",
+                            self.evidence_freshness_state,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.packet_state) {
+                    __map.serialize_entry("packetState", self.packet_state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.contract_count) {
+                    __map
+                        .serialize_entry(
+                            "contractCount",
+                            &::buffa::json_helpers::ProtoJson(&self.contract_count),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.security_review_count,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "securityReviewCount",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.security_review_count,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.questionnaire_count,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "questionnaireCount",
+                            &::buffa::json_helpers::ProtoJson(&self.questionnaire_count),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.assurance_document_count,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "assuranceDocumentCount",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.assurance_document_count,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.open_findings) {
+                    __map
+                        .serialize_entry(
+                            "openFindings",
+                            &::buffa::json_helpers::ProtoJson(&self.open_findings),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.critical_findings,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "criticalFindings",
+                            &::buffa::json_helpers::ProtoJson(&self.critical_findings),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.high_findings) {
+                    __map
+                        .serialize_entry(
+                            "highFindings",
+                            &::buffa::json_helpers::ProtoJson(&self.high_findings),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.evidence_items) {
+                    __map
+                        .serialize_entry(
+                            "evidenceItems",
+                            &::buffa::json_helpers::ProtoJson(&self.evidence_items),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_i32(&self.risk_queue_rank) {
+                    __map
+                        .serialize_entry(
+                            "riskQueueRank",
+                            &::buffa::json_helpers::ProtoJson(&self.risk_queue_rank),
+                        )?;
+                }
+                if !self.queue_reasons.is_empty() {
+                    __map.serialize_entry("queueReasons", &*self.queue_reasons)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.next_action_id) {
+                    __map.serialize_entry("nextActionId", self.next_action_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.next_action_label,
+                ) {
+                    __map.serialize_entry("nextActionLabel", self.next_action_label)?;
+                }
+                if !self.attributes.is_empty() {
+                    struct _WM<'__a, '__x>(
+                        &'__x ::buffa::MapView<'__x, &'__a str, &'__a str>,
+                    );
+                    impl<'__a> ::serde::Serialize for _WM<'__a, '_> {
+                        fn serialize<__S: ::serde::Serializer>(
+                            &self,
+                            __s: __S,
+                        ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                            use ::serde::ser::SerializeMap as _;
+                            let mut __m = __s
+                                .serialize_map(::core::option::Option::Some(self.0.len()))?;
+                            for (k, v) in self.0.iter_unique() {
+                                __m.serialize_entry(k, v)?;
+                            }
+                            __m.end()
+                        }
+                    }
+                    __map.serialize_entry("attributes", &_WM(&self.attributes))?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for VendorRegisterRowView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "VendorRegisterRow";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.VendorRegisterRow";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterRow";
+        }
+        ::buffa::impl_default_view_instance!(VendorRegisterRowView);
+        ::buffa::impl_view_reborrow!(VendorRegisterRowView);
+        /** Self-contained, `'static` owned view of a `VendorRegisterRow` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`VendorRegisterRowView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`VendorRegisterRowView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct VendorRegisterRowOwnedView(
+            ::buffa::OwnedView<VendorRegisterRowView<'static>>,
+        );
+        impl VendorRegisterRowOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterRowOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterRowOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::VendorRegisterRow,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterRowOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`VendorRegisterRowView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &VendorRegisterRowView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::VendorRegisterRow {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `urn`
+            #[must_use]
+            pub fn urn(&self) -> &'_ str {
+                self.0.reborrow().urn
+            }
+            /// Field 2: `vendor_id`
+            #[must_use]
+            pub fn vendor_id(&self) -> &'_ str {
+                self.0.reborrow().vendor_id
+            }
+            /// Field 3: `name`
+            #[must_use]
+            pub fn name(&self) -> &'_ str {
+                self.0.reborrow().name
+            }
+            /// Field 4: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 5: `runtime_id`
+            #[must_use]
+            pub fn runtime_id(&self) -> &'_ str {
+                self.0.reborrow().runtime_id
+            }
+            /// Field 6: `provider`
+            #[must_use]
+            pub fn provider(&self) -> &'_ str {
+                self.0.reborrow().provider
+            }
+            /// Field 7: `status`
+            #[must_use]
+            pub fn status(&self) -> &'_ str {
+                self.0.reborrow().status
+            }
+            /// Field 8: `category`
+            #[must_use]
+            pub fn category(&self) -> &'_ str {
+                self.0.reborrow().category
+            }
+            /// Field 9: `website_url`
+            #[must_use]
+            pub fn website_url(&self) -> &'_ str {
+                self.0.reborrow().website_url
+            }
+            /// Field 10: `services_provided`
+            #[must_use]
+            pub fn services_provided(&self) -> &'_ str {
+                self.0.reborrow().services_provided
+            }
+            /// Field 11: `lifecycle_state`
+            #[must_use]
+            pub fn lifecycle_state(&self) -> &'_ str {
+                self.0.reborrow().lifecycle_state
+            }
+            /// Field 12: `owner`
+            #[must_use]
+            pub fn owner(&self) -> &'_ str {
+                self.0.reborrow().owner
+            }
+            /// Field 13: `owner_state`
+            #[must_use]
+            pub fn owner_state(&self) -> &'_ str {
+                self.0.reborrow().owner_state
+            }
+            /// Field 14: `risk_level`
+            #[must_use]
+            pub fn risk_level(&self) -> &'_ str {
+                self.0.reborrow().risk_level
+            }
+            /// Field 15: `risk_score`
+            #[must_use]
+            pub fn risk_score(&self) -> i32 {
+                self.0.reborrow().risk_score
+            }
+            /// Field 16: `risk_score_level`
+            #[must_use]
+            pub fn risk_score_level(&self) -> &'_ str {
+                self.0.reborrow().risk_score_level
+            }
+            /// Field 17: `review_state`
+            #[must_use]
+            pub fn review_state(&self) -> &'_ str {
+                self.0.reborrow().review_state
+            }
+            /// Field 18: `review_due_at`
+            #[must_use]
+            pub fn review_due_at(&self) -> &'_ str {
+                self.0.reborrow().review_due_at
+            }
+            /// Field 19: `evidence_freshness_state`
+            #[must_use]
+            pub fn evidence_freshness_state(&self) -> &'_ str {
+                self.0.reborrow().evidence_freshness_state
+            }
+            /// Field 20: `packet_state`
+            #[must_use]
+            pub fn packet_state(&self) -> &'_ str {
+                self.0.reborrow().packet_state
+            }
+            /// Field 21: `contract_count`
+            #[must_use]
+            pub fn contract_count(&self) -> u64 {
+                self.0.reborrow().contract_count
+            }
+            /// Field 22: `security_review_count`
+            #[must_use]
+            pub fn security_review_count(&self) -> u64 {
+                self.0.reborrow().security_review_count
+            }
+            /// Field 23: `questionnaire_count`
+            #[must_use]
+            pub fn questionnaire_count(&self) -> u64 {
+                self.0.reborrow().questionnaire_count
+            }
+            /// Field 24: `assurance_document_count`
+            #[must_use]
+            pub fn assurance_document_count(&self) -> u64 {
+                self.0.reborrow().assurance_document_count
+            }
+            /// Field 25: `open_findings`
+            #[must_use]
+            pub fn open_findings(&self) -> u64 {
+                self.0.reborrow().open_findings
+            }
+            /// Field 26: `critical_findings`
+            #[must_use]
+            pub fn critical_findings(&self) -> u64 {
+                self.0.reborrow().critical_findings
+            }
+            /// Field 27: `high_findings`
+            #[must_use]
+            pub fn high_findings(&self) -> u64 {
+                self.0.reborrow().high_findings
+            }
+            /// Field 28: `evidence_items`
+            #[must_use]
+            pub fn evidence_items(&self) -> u64 {
+                self.0.reborrow().evidence_items
+            }
+            /// Field 29: `risk_queue_rank`
+            #[must_use]
+            pub fn risk_queue_rank(&self) -> i32 {
+                self.0.reborrow().risk_queue_rank
+            }
+            /// Field 30: `queue_reasons`
+            #[must_use]
+            pub fn queue_reasons(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().queue_reasons
+            }
+            /// Field 31: `next_action_id`
+            #[must_use]
+            pub fn next_action_id(&self) -> &'_ str {
+                self.0.reborrow().next_action_id
+            }
+            /// Field 32: `next_action_label`
+            #[must_use]
+            pub fn next_action_label(&self) -> &'_ str {
+                self.0.reborrow().next_action_label
+            }
+            /// Field 33: `attributes` (map)
+            #[must_use]
+            pub fn attributes(&self) -> &::buffa::MapView<'_, &'_ str, &'_ str> {
+                &self.0.reborrow().attributes
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<VendorRegisterRowView<'static>>>
+        for VendorRegisterRowOwnedView {
+            fn from(inner: ::buffa::OwnedView<VendorRegisterRowView<'static>>) -> Self {
+                VendorRegisterRowOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<VendorRegisterRowOwnedView>
+        for ::buffa::OwnedView<VendorRegisterRowView<'static>> {
+            fn from(wrapper: VendorRegisterRowOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<VendorRegisterRowView<'static>>>
+        for VendorRegisterRowOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<VendorRegisterRowView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::VendorRegisterRow {
+            type View<'a> = VendorRegisterRowView<'a>;
+            type ViewHandle = VendorRegisterRowOwnedView;
+        }
+        impl ::serde::Serialize for VendorRegisterRowOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct VendorRegisterSummaryView<'a> {
+            /// Field 1: `total_vendors`
+            pub total_vendors: u64,
+            /// Field 2: `active_vendors`
+            pub active_vendors: u64,
+            /// Field 3: `high_risk_vendors`
+            pub high_risk_vendors: u64,
+            /// Field 4: `owner_missing_vendors`
+            pub owner_missing_vendors: u64,
+            /// Field 5: `review_overdue_vendors`
+            pub review_overdue_vendors: u64,
+            /// Field 6: `review_due_soon_vendors`
+            pub review_due_soon_vendors: u64,
+            /// Field 7: `review_not_scheduled`
+            pub review_not_scheduled: u64,
+            /// Field 8: `risk_queue_vendors`
+            pub risk_queue_vendors: u64,
+            /// Field 9: `stale_evidence_vendors`
+            pub stale_evidence_vendors: u64,
+            /// Field 10: `open_findings`
+            pub open_findings: u64,
+            /// Field 11: `critical_findings`
+            pub critical_findings: u64,
+            /// Field 12: `high_findings`
+            pub high_findings: u64,
+            /// Field 13: `evidence_items`
+            pub evidence_items: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for VendorRegisterSummaryView<'a> {
+            type Owned = super::super::VendorRegisterSummary;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.total_vendors = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.active_vendors = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.high_risk_vendors = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.owner_missing_vendors = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.review_overdue_vendors = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.review_due_soon_vendors = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.review_not_scheduled = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.risk_queue_vendors = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.stale_evidence_vendors = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.open_findings = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    11u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.critical_findings = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    12u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.high_findings = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    13u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.evidence_items = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::VendorRegisterSummary,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::VendorRegisterSummary,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::VendorRegisterSummary {
+                    total_vendors: self.total_vendors,
+                    active_vendors: self.active_vendors,
+                    high_risk_vendors: self.high_risk_vendors,
+                    owner_missing_vendors: self.owner_missing_vendors,
+                    review_overdue_vendors: self.review_overdue_vendors,
+                    review_due_soon_vendors: self.review_due_soon_vendors,
+                    review_not_scheduled: self.review_not_scheduled,
+                    risk_queue_vendors: self.risk_queue_vendors,
+                    stale_evidence_vendors: self.stale_evidence_vendors,
+                    open_findings: self.open_findings,
+                    critical_findings: self.critical_findings,
+                    high_findings: self.high_findings,
+                    evidence_items: self.evidence_items,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for VendorRegisterSummaryView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.total_vendors != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.total_vendors)
+                                as u64;
+                }
+                if self.active_vendors != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.active_vendors)
+                                as u64;
+                }
+                if self.high_risk_vendors != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.high_risk_vendors)
+                                as u64;
+                }
+                if self.owner_missing_vendors != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.owner_missing_vendors,
+                            ) as u64;
+                }
+                if self.review_overdue_vendors != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.review_overdue_vendors,
+                            ) as u64;
+                }
+                if self.review_due_soon_vendors != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.review_due_soon_vendors,
+                            ) as u64;
+                }
+                if self.review_not_scheduled != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.review_not_scheduled,
+                            ) as u64;
+                }
+                if self.risk_queue_vendors != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.risk_queue_vendors)
+                                as u64;
+                }
+                if self.stale_evidence_vendors != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.stale_evidence_vendors,
+                            ) as u64;
+                }
+                if self.open_findings != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.open_findings)
+                                as u64;
+                }
+                if self.critical_findings != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.critical_findings)
+                                as u64;
+                }
+                if self.high_findings != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.high_findings)
+                                as u64;
+                }
+                if self.evidence_items != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.evidence_items)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.total_vendors != 0u64 {
+                    ::buffa::types::put_uint64_field(1u32, self.total_vendors, buf);
+                }
+                if self.active_vendors != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.active_vendors, buf);
+                }
+                if self.high_risk_vendors != 0u64 {
+                    ::buffa::types::put_uint64_field(3u32, self.high_risk_vendors, buf);
+                }
+                if self.owner_missing_vendors != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        4u32,
+                        self.owner_missing_vendors,
+                        buf,
+                    );
+                }
+                if self.review_overdue_vendors != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        5u32,
+                        self.review_overdue_vendors,
+                        buf,
+                    );
+                }
+                if self.review_due_soon_vendors != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        6u32,
+                        self.review_due_soon_vendors,
+                        buf,
+                    );
+                }
+                if self.review_not_scheduled != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        7u32,
+                        self.review_not_scheduled,
+                        buf,
+                    );
+                }
+                if self.risk_queue_vendors != 0u64 {
+                    ::buffa::types::put_uint64_field(8u32, self.risk_queue_vendors, buf);
+                }
+                if self.stale_evidence_vendors != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        9u32,
+                        self.stale_evidence_vendors,
+                        buf,
+                    );
+                }
+                if self.open_findings != 0u64 {
+                    ::buffa::types::put_uint64_field(10u32, self.open_findings, buf);
+                }
+                if self.critical_findings != 0u64 {
+                    ::buffa::types::put_uint64_field(11u32, self.critical_findings, buf);
+                }
+                if self.high_findings != 0u64 {
+                    ::buffa::types::put_uint64_field(12u32, self.high_findings, buf);
+                }
+                if self.evidence_items != 0u64 {
+                    ::buffa::types::put_uint64_field(13u32, self.evidence_items, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for VendorRegisterSummaryView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.total_vendors) {
+                    __map
+                        .serialize_entry(
+                            "totalVendors",
+                            &::buffa::json_helpers::ProtoJson(&self.total_vendors),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.active_vendors) {
+                    __map
+                        .serialize_entry(
+                            "activeVendors",
+                            &::buffa::json_helpers::ProtoJson(&self.active_vendors),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.high_risk_vendors,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "highRiskVendors",
+                            &::buffa::json_helpers::ProtoJson(&self.high_risk_vendors),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.owner_missing_vendors,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "ownerMissingVendors",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.owner_missing_vendors,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.review_overdue_vendors,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "reviewOverdueVendors",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.review_overdue_vendors,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.review_due_soon_vendors,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "reviewDueSoonVendors",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.review_due_soon_vendors,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.review_not_scheduled,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "reviewNotScheduled",
+                            &::buffa::json_helpers::ProtoJson(&self.review_not_scheduled),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.risk_queue_vendors,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "riskQueueVendors",
+                            &::buffa::json_helpers::ProtoJson(&self.risk_queue_vendors),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.stale_evidence_vendors,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "staleEvidenceVendors",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.stale_evidence_vendors,
+                            ),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.open_findings) {
+                    __map
+                        .serialize_entry(
+                            "openFindings",
+                            &::buffa::json_helpers::ProtoJson(&self.open_findings),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.critical_findings,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "criticalFindings",
+                            &::buffa::json_helpers::ProtoJson(&self.critical_findings),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.high_findings) {
+                    __map
+                        .serialize_entry(
+                            "highFindings",
+                            &::buffa::json_helpers::ProtoJson(&self.high_findings),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.evidence_items) {
+                    __map
+                        .serialize_entry(
+                            "evidenceItems",
+                            &::buffa::json_helpers::ProtoJson(&self.evidence_items),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for VendorRegisterSummaryView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "VendorRegisterSummary";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.VendorRegisterSummary";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.VendorRegisterSummary";
+        }
+        ::buffa::impl_default_view_instance!(VendorRegisterSummaryView);
+        ::buffa::impl_view_reborrow!(VendorRegisterSummaryView);
+        /** Self-contained, `'static` owned view of a `VendorRegisterSummary` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`VendorRegisterSummaryView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`VendorRegisterSummaryView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct VendorRegisterSummaryOwnedView(
+            ::buffa::OwnedView<VendorRegisterSummaryView<'static>>,
+        );
+        impl VendorRegisterSummaryOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterSummaryOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterSummaryOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::VendorRegisterSummary,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    VendorRegisterSummaryOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`VendorRegisterSummaryView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &VendorRegisterSummaryView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::VendorRegisterSummary {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `total_vendors`
+            #[must_use]
+            pub fn total_vendors(&self) -> u64 {
+                self.0.reborrow().total_vendors
+            }
+            /// Field 2: `active_vendors`
+            #[must_use]
+            pub fn active_vendors(&self) -> u64 {
+                self.0.reborrow().active_vendors
+            }
+            /// Field 3: `high_risk_vendors`
+            #[must_use]
+            pub fn high_risk_vendors(&self) -> u64 {
+                self.0.reborrow().high_risk_vendors
+            }
+            /// Field 4: `owner_missing_vendors`
+            #[must_use]
+            pub fn owner_missing_vendors(&self) -> u64 {
+                self.0.reborrow().owner_missing_vendors
+            }
+            /// Field 5: `review_overdue_vendors`
+            #[must_use]
+            pub fn review_overdue_vendors(&self) -> u64 {
+                self.0.reborrow().review_overdue_vendors
+            }
+            /// Field 6: `review_due_soon_vendors`
+            #[must_use]
+            pub fn review_due_soon_vendors(&self) -> u64 {
+                self.0.reborrow().review_due_soon_vendors
+            }
+            /// Field 7: `review_not_scheduled`
+            #[must_use]
+            pub fn review_not_scheduled(&self) -> u64 {
+                self.0.reborrow().review_not_scheduled
+            }
+            /// Field 8: `risk_queue_vendors`
+            #[must_use]
+            pub fn risk_queue_vendors(&self) -> u64 {
+                self.0.reborrow().risk_queue_vendors
+            }
+            /// Field 9: `stale_evidence_vendors`
+            #[must_use]
+            pub fn stale_evidence_vendors(&self) -> u64 {
+                self.0.reborrow().stale_evidence_vendors
+            }
+            /// Field 10: `open_findings`
+            #[must_use]
+            pub fn open_findings(&self) -> u64 {
+                self.0.reborrow().open_findings
+            }
+            /// Field 11: `critical_findings`
+            #[must_use]
+            pub fn critical_findings(&self) -> u64 {
+                self.0.reborrow().critical_findings
+            }
+            /// Field 12: `high_findings`
+            #[must_use]
+            pub fn high_findings(&self) -> u64 {
+                self.0.reborrow().high_findings
+            }
+            /// Field 13: `evidence_items`
+            #[must_use]
+            pub fn evidence_items(&self) -> u64 {
+                self.0.reborrow().evidence_items
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<VendorRegisterSummaryView<'static>>,
+        > for VendorRegisterSummaryOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<VendorRegisterSummaryView<'static>>,
+            ) -> Self {
+                VendorRegisterSummaryOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<VendorRegisterSummaryOwnedView>
+        for ::buffa::OwnedView<VendorRegisterSummaryView<'static>> {
+            fn from(wrapper: VendorRegisterSummaryOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<VendorRegisterSummaryView<'static>>,
+        > for VendorRegisterSummaryOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<VendorRegisterSummaryView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::VendorRegisterSummary {
+            type View<'a> = VendorRegisterSummaryView<'a>;
+            type ViewHandle = VendorRegisterSummaryOwnedView;
+        }
+        impl ::serde::Serialize for VendorRegisterSummaryOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListVendorRegisterResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `data_authority`
+            pub data_authority: &'a str,
+            /// Field 4: `generated_at`
+            pub generated_at: &'a str,
+            /// Field 5: `vendors`
+            pub vendors: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::VendorRegisterRowView<'a>,
+            >,
+            /// Field 6: `summary`
+            pub summary: ::buffa::MessageFieldView<
+                super::super::__buffa::view::VendorRegisterSummaryView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListVendorRegisterResponseView<'a> {
+            type Owned = super::super::ListVendorRegisterResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.data_authority = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.generated_at = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.summary.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.summary = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::VendorRegisterSummaryView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::VendorRegisterRowView,
+                            >(),
+                        )?;
+                        view.vendors
+                            .push(
+                                <super::super::__buffa::view::VendorRegisterRowView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListVendorRegisterResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListVendorRegisterResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListVendorRegisterResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    data_authority: self.data_authority.to_string(),
+                    generated_at: self.generated_at.to_string(),
+                    vendors: self
+                        .vendors
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    summary: match self.summary.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::VendorRegisterSummary,
+                                ::buffa::Inline<super::super::VendorRegisterSummary>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListVendorRegisterResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                if !self.data_authority.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.data_authority)
+                                as u64;
+                }
+                if !self.generated_at.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.generated_at)
+                                as u64;
+                }
+                for v in &self.vendors {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.summary.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.summary.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                if !self.data_authority.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.data_authority, buf);
+                }
+                if !self.generated_at.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.generated_at, buf);
+                }
+                for v in &self.vendors {
+                    ::buffa::types::put_len_delimited_header(
+                        5u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.summary.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        6u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.summary.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListVendorRegisterResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.data_authority) {
+                    __map.serialize_entry("dataAuthority", self.data_authority)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.generated_at) {
+                    __map.serialize_entry("generatedAt", self.generated_at)?;
+                }
+                if !self.vendors.is_empty() {
+                    __map.serialize_entry("vendors", &*self.vendors)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.summary.as_option() {
+                        __map.serialize_entry("summary", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListVendorRegisterResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListVendorRegisterResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListVendorRegisterResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListVendorRegisterResponse";
+        }
+        ::buffa::impl_default_view_instance!(ListVendorRegisterResponseView);
+        ::buffa::impl_view_reborrow!(ListVendorRegisterResponseView);
+        /** Self-contained, `'static` owned view of a `ListVendorRegisterResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListVendorRegisterResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListVendorRegisterResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListVendorRegisterResponseOwnedView(
+            ::buffa::OwnedView<ListVendorRegisterResponseView<'static>>,
+        );
+        impl ListVendorRegisterResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorRegisterResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorRegisterResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListVendorRegisterResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListVendorRegisterResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListVendorRegisterResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListVendorRegisterResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ListVendorRegisterResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `data_authority`
+            #[must_use]
+            pub fn data_authority(&self) -> &'_ str {
+                self.0.reborrow().data_authority
+            }
+            /// Field 4: `generated_at`
+            #[must_use]
+            pub fn generated_at(&self) -> &'_ str {
+                self.0.reborrow().generated_at
+            }
+            /// Field 5: `vendors`
+            #[must_use]
+            pub fn vendors(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::VendorRegisterRowView<'_>,
+            > {
+                &self.0.reborrow().vendors
+            }
+            /// Field 6: `summary`
+            #[must_use]
+            pub fn summary(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::VendorRegisterSummaryView<'_>,
+            > {
+                &self.0.reborrow().summary
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListVendorRegisterResponseView<'static>>,
+        > for ListVendorRegisterResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListVendorRegisterResponseView<'static>>,
+            ) -> Self {
+                ListVendorRegisterResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListVendorRegisterResponseOwnedView>
+        for ::buffa::OwnedView<ListVendorRegisterResponseView<'static>> {
+            fn from(wrapper: ListVendorRegisterResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListVendorRegisterResponseView<'static>>,
+        > for ListVendorRegisterResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListVendorRegisterResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListVendorRegisterResponse {
+            type View<'a> = ListVendorRegisterResponseView<'a>;
+            type ViewHandle = ListVendorRegisterResponseOwnedView;
+        }
+        impl ::serde::Serialize for ListVendorRegisterResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
         /// ExposureCoverageProfile declares the closed entity kinds and sources used by
         /// one coverage comparison. Relations are fixed by the server.
         #[derive(Clone, Debug, Default)]
@@ -38312,6 +43713,11 @@ pub mod __buffa {
         reg.register_json_any(super::__LIST_ENTITY_RELATIONS_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__GET_SOURCE_SUMMARY_REQUEST_JSON_ANY);
         reg.register_json_any(super::__GET_SOURCE_SUMMARY_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__VENDOR_REGISTER_FILTER_JSON_ANY);
+        reg.register_json_any(super::__LIST_VENDOR_REGISTER_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__VENDOR_REGISTER_ROW_JSON_ANY);
+        reg.register_json_any(super::__VENDOR_REGISTER_SUMMARY_JSON_ANY);
+        reg.register_json_any(super::__LIST_VENDOR_REGISTER_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__EXPOSURE_COVERAGE_PROFILE_JSON_ANY);
         reg.register_json_any(super::__COMPARE_EXPOSURE_COVERAGE_REQUEST_JSON_ANY);
         reg.register_json_any(super::__EXPOSURE_COVERAGE_COUNTS_JSON_ANY);
@@ -38520,6 +43926,26 @@ pub use self::__buffa::view::GetSourceSummaryRequestOwnedView;
 pub use self::__buffa::view::GetSourceSummaryResponseView;
 #[doc(inline)]
 pub use self::__buffa::view::GetSourceSummaryResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorRegisterFilterView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorRegisterFilterOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListVendorRegisterRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ListVendorRegisterRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorRegisterRowView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorRegisterRowOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorRegisterSummaryView;
+#[doc(inline)]
+pub use self::__buffa::view::VendorRegisterSummaryOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListVendorRegisterResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ListVendorRegisterResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::view::ExposureCoverageProfileView;
 #[doc(inline)]
