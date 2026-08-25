@@ -1,0 +1,31 @@
+id: python.security.no-sqlalchemy-text-fstring
+title: Parameterize SQLAlchemy text queries
+status: banned
+enforcement: blocking
+summary: Do not pass f-string SQL to SQLAlchemy text, session.execute, or connection.execute.
+rationale: SQL built with interpolation can turn caller-controlled values into query syntax instead of bound parameters.
+scope:
+  languages: [python]
+  frameworks: ["sqlalchemy"]
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["sqlalchemy", "sql text", "database query"]
+  keywords: ["text(f\"", "session.execute(f\"", "connection.execute(f\""]
+avoid:
+  - 'session.execute(f"select * from users where id = {user_id}")'
+  - 'text(f"delete from jobs where id = {job_id}")'
+use_instead:
+  - Use SQLAlchemy bind parameters.
+  - Use the package query builder or repository helper.
+good_examples:
+  - 'session.execute(text("select * from users where id = :id"), {"id": user_id})'
+bad_examples:
+  - 'session.execute(f"select * from users where id = {user_id}")'
+semgrep:
+  severity: ERROR
+  languages: [python]
+  pattern_regex: "\\b(text|session\\.execute|connection\\.execute)\\s*\\(\\s*f[\"'][^\\n]*(select|insert|update|delete)"
+owner: security-platform
+last_reviewed: 2026-07-01

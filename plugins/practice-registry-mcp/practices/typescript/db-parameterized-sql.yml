@@ -1,0 +1,32 @@
+id: typescript.db.parameterized-sql
+title: Parameterize SQL values in TypeScript
+status: banned
+enforcement: blocking
+summary: Do not interpolate values into SQL template strings or concatenated query text.
+rationale: Parameter binding keeps escaping, query planning, and audit trails under the database driver instead of application string logic.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [node, express, fastify, nextjs, postgres, mysql]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "pages/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**", "fixtures/**"]
+applies_when:
+  intents: ["sql", "database", "query", "postgres", "mysql", "where clause"]
+  keywords: ["SELECT", "INSERT", "UPDATE", "DELETE", "WHERE", "query", "execute", "sql", "postgres"]
+avoid:
+  - SQL template strings that include ${value}.
+  - String concatenation for WHERE clauses or identifiers from requests.
+use_instead:
+  - Parameterized queries with driver placeholders.
+  - Driver parameter binding such as db.query("select * from users where id = $1", [id]).
+  - A query builder helper already used in the package.
+good_examples:
+  - db.query("select * from users where id = $1", [userId])
+bad_examples:
+  - db.query(`select * from users where id = ${userId}`)
+semgrep:
+  severity: ERROR
+  pattern_regex: "`[^`]*(?:\\bSELECT\\b[^`]*\\bFROM\\b|\\bINSERT\\b[^`]*\\bINTO\\b|\\bUPDATE\\b[^`]*\\bSET\\b|\\bDELETE\\b[^`]*\\bFROM\\b|\\bWHERE\\b[^`]*(?:=|\\bIN\\b|\\bLIKE\\b|[<>]))[^`]*\\$\\{"
+  languages: [typescript, javascript]
+owner: data-platform
+last_reviewed: 2026-07-01

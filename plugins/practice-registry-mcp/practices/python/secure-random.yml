@@ -1,0 +1,30 @@
+id: python.security.crypto-random-for-secrets
+title: Use cryptographic randomness for secrets
+status: banned
+enforcement: blocking
+summary: Do not create tokens, passwords, secrets, or API keys with the random module.
+rationale: The random module is deterministic and is not designed to protect generated credentials or bearer tokens.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["token", "password", "secret", "api key", "credential", "random"]
+  keywords: ["random.choice", "random.randint", "random.randrange", "random.random", "token", "secret", "password"]
+avoid:
+  - reset_token = "".join(random.choice(alphabet) for _ in range(32))
+  - api_key = str(random.randint(100000, 999999))
+use_instead:
+  - Use secrets.token_urlsafe, secrets.token_hex, secrets.token_bytes, or secrets.choice.
+  - Use the approved identity or secret-issuing service when the token has account access.
+good_examples:
+  - reset_token = secrets.token_urlsafe(32)
+bad_examples:
+  - reset_token = "".join(random.choice(alphabet) for _ in range(32))
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(\\w*(token|secret|password|api[_-]?key)\\w*\\s*=\\s*[^\\n]*random\\.(random|randint|randrange|choice|choices|sample)\\s*\\(|random\\.(random|randint|randrange|choice|choices|sample)\\s*\\([^\\n]*(token|secret|password|api[_-]?key))"
+owner: security-platform
+last_reviewed: 2026-07-01

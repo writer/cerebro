@@ -1,0 +1,27 @@
+id: typescript.mcp.explicit-zod-tool-schemas
+title: Define explicit Zod schemas for MCP gate results
+status: preferred
+enforcement: advisory
+summary: MCP gate tools should expose concrete Zod input and output schemas for every field agents must trust.
+rationale: Agents and editors render MCP tool schemas before running the server, so trusted fields such as passed, action_required, and plan_observation_id need explicit schemas.
+scope:
+  languages: [typescript]
+  frameworks: [mcp, zod]
+  paths:
+    include: ["src/mcpServer.ts", "src/schema.ts", "scripts/**/*smoke*.mjs"]
+    exclude: ["dist/**", "node_modules/**"]
+applies_when:
+  intents: ["mcp tool", "schema", "zod", "result", "tool output", "structuredContent"]
+  keywords: ["z.object", "outputSchema", "structuredContent", "passed", "action_required", "plan_observation_id"]
+avoid:
+  - Gate result fields that exist in runtime JSON but not in the MCP output schema.
+  - Passthrough schemas for fields agents must use as control flow.
+use_instead:
+  - Explicit Zod fields for gate decisions, outcome booleans, observation ids, and finalization plan references.
+  - MCP smoke tests that inspect structuredContent for those fields.
+good_examples:
+  - finalize_change outputSchema includes observations.plan_check and observation_id.
+bad_examples:
+  - Adding plan_observation_id to TypeScript types without adding it to the MCP input schema.
+owner: agent-platform
+last_reviewed: 2026-07-01

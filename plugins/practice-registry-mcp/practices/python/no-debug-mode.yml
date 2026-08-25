@@ -1,0 +1,30 @@
+id: python.security.no-debug-mode
+title: Keep Python debug mode out of service code
+status: banned
+enforcement: blocking
+summary: Do not enable framework debug mode in Python service code.
+rationale: Debug mode can expose stack traces, environment details, and interactive tooling in deployed processes.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["debug mode", "development server", "service startup"]
+  keywords: ["debug=True", "DEBUG = True", "app.run(debug=True)"]
+avoid:
+  - 'app.run(debug=True)'
+  - 'DEBUG = True'
+use_instead:
+  - Read debug settings from typed configuration and keep production defaults off.
+  - Use local-only launcher scripts for development servers.
+good_examples:
+  - 'app.run(debug=settings.local_debug)'
+bad_examples:
+  - 'app.run(debug=True)'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(DEBUG\\s*=\\s*True|debug\\s*=\\s*True|app\\.run\\s*\\([^\\n]*debug\\s*=\\s*True)"
+owner: security-platform
+last_reviewed: 2026-07-01

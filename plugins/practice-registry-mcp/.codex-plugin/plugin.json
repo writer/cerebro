@@ -1,0 +1,41 @@
+{
+  "name": "practice-registry-mcp",
+  "version": "0.1.0+codex.20260716120000",
+  "description": "Company-specific code practice guidance, scanning, and Codex hooks for Scala, Python, TypeScript, JavaScript, and Rust.",
+  "author": {
+    "name": "Writer"
+  },
+  "repository": "https://github.com/writer/cerebro/tree/main/plugins/practice-registry-mcp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "practices",
+    "mcp",
+    "semgrep",
+    "codex",
+    "scala",
+    "python",
+    "typescript",
+    "javascript",
+    "rust"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Practice Registry",
+    "shortDescription": "Check Scala, Python, TypeScript, JavaScript, and Rust code against recorded practices.",
+    "longDescription": "Provides MCP preflight guidance, Semgrep-backed changed-line scanning, feedback capture, review queues, and Codex hooks for company-specific code practices.",
+    "developerName": "Writer",
+    "category": "Developer Tools",
+    "capabilities": [
+      "MCP",
+      "Hooks",
+      "CLI"
+    ],
+    "defaultPrompt": [
+      "Check this change against recorded practices.",
+      "Scan this diff for practice blockers.",
+      "Show practice decisions that need owner review."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

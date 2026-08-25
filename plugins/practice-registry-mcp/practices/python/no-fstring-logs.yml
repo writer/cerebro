@@ -1,0 +1,29 @@
+id: python.logging.no-fstring-logs
+title: Use structured fields in Python logs
+status: discouraged
+enforcement: advisory
+summary: Do not add f-string logger messages in Python service code.
+rationale: Structured fields keep request ids, entity ids, and status values searchable without parsing message text.
+scope:
+  languages: [python]
+  frameworks: [fastapi, flask, django]
+  paths:
+    include: ["src/**/*.py", "services/**/*.py", "apps/**/*.py", "packages/**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "tests/**", "**/tests/**", "scripts/**"]
+applies_when:
+  intents: ["logging", "debugging", "observability"]
+  keywords: ["logger.info(f", "logger.warning(f", "logger.error(f", "logger.debug(f"]
+avoid:
+  - 'logger.info(f"synced user {user_id}")'
+use_instead:
+  - Put values in structured fields.
+  - Keep the event name stable across releases.
+good_examples:
+  - 'logger.info("user_sync_complete", extra={"user_id": user_id})'
+bad_examples:
+  - 'logger.info(f"synced user {user_id}")'
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\blogger\\.(debug|info|warn|warning|error|exception)\\s*\\(\\s*f[\"']"
+owner: observability
+last_reviewed: 2026-07-01

@@ -1,0 +1,35 @@
+id: python.writer.typed-settings
+title: Load Python service configuration through typed settings
+status: discouraged
+enforcement: advisory
+summary: Do not read environment variables throughout Python service code; parse configuration once with pydantic-settings.
+rationale: A typed settings object fails fast during startup and keeps secrets, URLs, and environment values out of domain logic.
+scope:
+  languages: [python]
+  frameworks: [fastapi, pydantic]
+  paths:
+    include: ["src/**/*.py", "services/**/*.py", "apps/**/*.py", "packages/**/*.py"]
+    exclude: ["**/config.py", "tests/**", "scripts/**", "legacy/**", "notebooks/**"]
+applies_when:
+  intents: ["configuration", "settings", "secret", "environment variable", "startup"]
+  keywords: ["os.getenv", "os.environ", "environment", "module import", "BaseSettings", "pydantic-settings", "SecretStr", "SettingsConfigDict"]
+avoid:
+  - os.getenv or os.environ reads inside handlers, repositories, domain services, and workers.
+  - String secrets that can be logged accidentally.
+  - Optional environment reads that let the service start with invalid config.
+use_instead:
+  - A Settings class derived from pydantic_settings.BaseSettings.
+  - SecretStr or SecretBytes for sensitive values.
+  - A cached get_settings dependency or explicit Settings parameter in bootstrap code.
+good_examples:
+  - |
+    class Settings(BaseSettings):
+        database_url: PostgresDsn
+        jwt_secret: SecretStr
+bad_examples:
+  - database_url = os.getenv("DATABASE_URL")
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\b(os\\.getenv\\s*\\(|os\\.environ(?:\\.get\\s*\\(|\\s*\\[))"
+owner: backend-platform
+last_reviewed: 2026-07-01

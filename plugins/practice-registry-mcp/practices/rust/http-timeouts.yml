@@ -1,0 +1,27 @@
+id: rust.http.explicit-timeouts
+title: Set connection and request deadlines on Rust HTTP clients
+status: preferred
+enforcement: advisory
+summary: Configure connection timeouts and bound each outbound Rust HTTP operation with a request or route deadline.
+rationale: A client without deadlines can hold tasks, permits, retries, and shutdown indefinitely when an upstream stalls.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "services/**/*.rs", "apps/**/*.rs"]
+    exclude: ["target/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["http client", "grpc client", "outbound request", "retry", "deadline"]
+  keywords: ["reqwest::Client", "ClientBuilder", "connect_timeout", "timeout", "tokio::time::timeout", "tonic"]
+avoid:
+  - Relying on a client library's unbounded default for a production request.
+  - Retrying an outbound request without an overall deadline.
+use_instead:
+  - Configure connect_timeout on the shared client.
+  - Apply an overall request deadline that includes retries and response-body reads.
+good_examples:
+  - 'let response = tokio::time::timeout(deadline, client.execute(request)).await??;'
+bad_examples:
+  - 'let response = reqwest::Client::new().get(url).send().await?;'
+owner: backend-platform
+last_reviewed: 2026-07-16

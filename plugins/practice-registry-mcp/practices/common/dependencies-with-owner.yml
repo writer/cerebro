@@ -1,0 +1,27 @@
+id: dependencies.new-runtime-dependency-needs-owner
+title: Assign an owner before adding runtime dependencies
+status: allowed_with_context
+enforcement: review
+summary: New runtime dependencies are allowed when the owning team accepts maintenance, security, and upgrade responsibility.
+rationale: Runtime dependencies affect deploy size, vulnerability management, cold start, and incident response.
+scope:
+  languages: [python, scala, typescript, javascript, rust]
+  frameworks: []
+  paths:
+    include: ["pyproject.toml", "requirements*.txt", "poetry.lock", "build.sbt", "project/*.scala", "project/*.sbt", "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "Cargo.toml", "Cargo.lock", "**/Cargo.toml", "**/Cargo.lock"]
+    exclude: []
+applies_when:
+  intents: ["dependency", "package", "library", "upgrade"]
+  keywords: ["dependency", "pip", "poetry", "requirements", "libraryDependencies", "build.sbt", "cargo add", "crate", "Cargo.toml"]
+avoid:
+  - Adding a package without checking existing internal helpers.
+  - Adding an unowned package for one call site.
+use_instead:
+  - Existing platform packages.
+  - A dependency note with owner, reason, and expected call sites.
+good_examples:
+  - libraryDependencies += "org.typelevel" %% "cats-effect" % version
+bad_examples:
+  - Adding a package only to avoid a small local helper.
+owner: platform
+last_reviewed: 2026-06-30

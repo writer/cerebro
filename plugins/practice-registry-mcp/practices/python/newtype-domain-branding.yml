@@ -1,0 +1,33 @@
+id: python.writer.newtype-domain-branding
+title: Separate boundary validation from Python domain branding
+status: discouraged
+enforcement: advisory
+summary: Do not combine NewType and Annotated in one alias; validate at the boundary and use NewType inside domain code.
+rationale: Writer tested direct NewType plus Annotated aliases against FastAPI, Pydantic, OpenAPI, database round trips, and pyright strict; pyright strict did not pass cleanly without suppressions.
+scope:
+  languages: [python]
+  frameworks: [fastapi, pydantic]
+  paths:
+    include: ["src/**/*.py", "services/**/*.py", "apps/**/*.py", "packages/**/*.py"]
+    exclude: ["legacy/**", "notebooks/**"]
+applies_when:
+  intents: ["domain id", "identifier type", "boundary validation", "Pydantic model", "NewType"]
+  keywords: ["NewType", "Annotated", "Field", "UserId", "OrganizationId", "domain type", "pyright"]
+avoid:
+  - NewType("UserId", Annotated[int, Field(gt=0)]).
+  - Passing raw int identifiers through domain services after request validation.
+use_instead:
+  - Boundary aliases such as BoundaryUserId = Annotated[int, Field(gt=0)].
+  - Domain aliases such as UserId = NewType("UserId", int).
+  - Convert validated boundary values to NewType values when entering domain logic.
+good_examples:
+  - |
+    BoundaryUserId = Annotated[int, Field(gt=0)]
+    UserId = NewType("UserId", int)
+bad_examples:
+  - UserId = NewType("UserId", Annotated[int, Field(gt=0)])
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\bNewType\\s*\\(\\s*[\"'][^\"']+[\"']\\s*,\\s*Annotated\\s*\\["
+owner: backend-platform
+last_reviewed: 2026-07-01

@@ -1,0 +1,30 @@
+id: scala.security.no-request-path-file-access
+title: Do not open request paths directly
+status: banned
+enforcement: blocking
+summary: Do not pass request parameters directly to File, Paths, or Source file APIs.
+rationale: Request-controlled paths can escape intended directories and expose files outside the allowed storage boundary.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/test/**", "**/*Test.scala", "**/generated/**"]
+applies_when:
+  intents: ["file download", "path traversal", "upload", "attachment"]
+  keywords: ["Source.fromFile(request.", "Paths.get(request.", "new File(request.", "getParameter(\"path\")"]
+avoid:
+  - 'Source.fromFile(request.getParameter("path"))'
+  - 'Paths.get(req.path)'
+use_instead:
+  - Resolve request identifiers through an owned storage record.
+  - Join paths under an approved base directory and reject traversal before opening files.
+good_examples:
+  - 'storage.resolveOwnedFile(fileId, actorId).flatMap(readFile)'
+bad_examples:
+  - 'Source.fromFile(request.getParameter("path"))'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(Paths\\.get|new\\s+File|Source\\.fromFile)\\s*\\([^\\n]*(request\\.|req\\.|getParameter\\s*\\()"
+owner: security-platform
+last_reviewed: 2026-07-01

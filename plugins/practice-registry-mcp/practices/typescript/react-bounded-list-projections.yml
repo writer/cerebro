@@ -1,0 +1,46 @@
+id: typescript.react.bounded-list-projections
+title: Bound list responses and load detail on selection
+status: preferred
+enforcement: advisory
+summary: High-cardinality list screens should request a bounded compact projection and fetch expanded detail only for the selected item.
+rationale: Returning every expanded record makes transfer, parsing, caching, and rendering work grow with the complete collection even when the screen shows a bounded list.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [react, nextjs]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "app/**/*.tsx"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**", "fixtures/**"]
+applies_when:
+  intents: ["list screen", "catalog", "inventory", "search results", "graph results", "pagination", "response projection"]
+  keywords: ["cursor", "page_size", "page token", "summary view", "compact projection", "detail view", "infinite query"]
+avoid:
+  - Fetching every page of expanded records before rendering the initial list.
+  - Returning nested evidence, runtime, relationship, or resource arrays when the list only displays summary fields.
+use_instead:
+  - Request a server-bounded page with a stable cursor and the fields displayed in the list.
+  - Fetch the expanded record when the user opens its detail state.
+  - Preserve query, cursor, projection, and authorization inputs in the cache key.
+good_examples:
+  - useInfiniteQuery requests view=summary with a bounded limit, then fetches view=full for the selected connector id.
+bad_examples:
+  - The list hook follows every next_cursor and stores every expanded connector before the first useful render.
+owner: cerebro-web
+last_reviewed: 2026-07-15
+approval:
+  method: research
+  approved_by: cerebro-web
+  approved_at: 2026-07-15
+  conclusion: Independent API specifications directly support sparse list projections and bounded pagination for collections that can grow.
+  sources:
+    - title: JSON:API 1.1 Specification - Sparse Fieldsets
+      publisher: JSON:API
+      url: https://jsonapi.org/format/#fetching-sparse-fieldsets
+      direct_support: Clients may request only named fields and endpoints must omit additional fields from restricted resource objects.
+    - title: GraphQL Pagination
+      publisher: GraphQL Foundation
+      url: https://graphql.org/learn/pagination/
+      direct_support: List fields that may return substantial data should be paginated with a stable connection model.
+    - title: AIP-158 Pagination
+      publisher: Google API Improvement Proposals
+      url: https://google.aip.dev/158
+      direct_support: Collections can grow in lookup and response size, so list methods should provide bounded pagination.

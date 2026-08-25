@@ -1,0 +1,31 @@
+id: typescript.config.no-process-env-outside-config
+title: Read environment through typed config
+status: discouraged
+enforcement: advisory
+summary: Do not read process.env throughout TypeScript services or UI code.
+rationale: Central typed config makes defaults, required values, secret handling, and tests visible in one reviewed boundary.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [node, express, fastify, nextjs]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "pages/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "src/config/**", "src/config.ts", "config/**", "test/**", "tests/**"]
+applies_when:
+  intents: ["config", "environment", "settings", "secret", "feature flag"]
+  keywords: ["process.env", "env", "configuration", "feature flag", "secret"]
+avoid:
+  - process.env reads in route handlers, services, React components, or tests.
+  - Optional environment defaults that hide missing production settings.
+use_instead:
+  - A typed config module that validates env once at startup with Zod or the existing config helper.
+  - Inject config values into services and handlers.
+good_examples:
+  - const config = envSchema.parse(process.env); export type AppConfig = z.infer<typeof envSchema>
+bad_examples:
+  - const apiKey = process.env.API_KEY || ""
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\bprocess\\.env\\.[A-Za-z_][A-Za-z0-9_]*"
+  languages: [typescript, javascript]
+owner: backend-platform
+last_reviewed: 2026-07-01

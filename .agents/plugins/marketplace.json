@@ -15,6 +15,18 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Security"
+    },
+    {
+      "name": "practice-registry-mcp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/practice-registry-mcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "NONE"
+      },
+      "category": "Developer Tools"
     }
   ]
 }

@@ -1,0 +1,32 @@
+id: typescript.react.async-effect-cleanup
+title: Cancel async React effects
+status: preferred
+enforcement: advisory
+summary: React effects that start async work should cancel or ignore stale results during cleanup.
+rationale: Cleanup prevents stale network responses from overwriting newer state and keeps unmounted components from receiving updates.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [react, nextjs]
+  paths:
+    include: ["src/**/*.tsx", "src/**/*.jsx", "app/**/*.tsx", "pages/**/*.tsx", "components/**/*.tsx"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**"]
+applies_when:
+  intents: ["react", "form", "component", "useEffect", "fetch", "api call", "state"]
+  keywords: ["useEffect", "fetch", "AbortController", "setState", "useState", "form"]
+avoid:
+  - useEffect callbacks that fetch data without cleanup.
+  - Updating state from a promise after dependencies changed.
+use_instead:
+  - Use AbortController or an active flag in the effect cleanup.
+  - Keep loading, error, and data states tied to the current request.
+good_examples:
+  - |
+    useEffect(() => {
+      const controller = new AbortController();
+      fetch(url, { signal: controller.signal });
+      return () => controller.abort();
+    }, [url]);
+bad_examples:
+  - useEffect(() => { fetch(url).then(setProfile); }, [url])
+owner: frontend-platform
+last_reviewed: 2026-07-01

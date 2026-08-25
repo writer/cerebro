@@ -27,6 +27,7 @@ sdk/typescript/src/generated/proto/
 
 # Node
 node_modules/
+/.practice-registry/
 
 # Environment
 .env

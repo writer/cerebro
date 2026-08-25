@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.select.outputs.core }}
+      practice_registry: ${{ steps.select.outputs.practice_registry }}
       sdk: ${{ steps.select.outputs.sdk }}
       slack: ${{ steps.select.outputs.slack }}
       web: ${{ steps.select.outputs.web }}
@@ -50,6 +51,20 @@ jobs:
 
       - name: Check application workspace ownership
         run: make app-workspace-check
+
+  practice-registry:
+    runs-on: ubuntu-latest
+    needs: ci-scope
+    if: needs.ci-scope.outputs.practice_registry == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-javascript-workspaces
+        with:
+          install: "false"
+
+      - name: Check practice registry workspace
+        run: make practice-registry-check
 
   web:
     runs-on: ubuntu-latest
@@ -220,7 +235,7 @@ jobs:
   javascript-dependency-audit:
     runs-on: ubuntu-latest
     needs: ci-scope
-    if: needs.ci-scope.outputs.web == 'true' || needs.ci-scope.outputs.slack == 'true' || needs.ci-scope.outputs.sdk == 'true'
+    if: needs.ci-scope.outputs.web == 'true' || needs.ci-scope.outputs.slack == 'true' || needs.ci-scope.outputs.sdk == 'true' || needs.ci-scope.outputs.practice_registry == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -619,12 +634,13 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
-    needs: [ci-scope, app-workspace-contract, web, web-image, web-integration, web-rust-integration, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, catalog, test, race, lint]
+    needs: [ci-scope, app-workspace-contract, practice-registry, web, web-image, web-integration, web-rust-integration, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, catalog, test, race, lint]
     if: always()
     steps:
       - name: Check selected CI scopes
         env:
           CI_SCOPE_CORE: ${{ needs.ci-scope.outputs.core }}
+          CI_SCOPE_PRACTICE_REGISTRY: ${{ needs.ci-scope.outputs.practice_registry }}
           CI_SCOPE_SDK: ${{ needs.ci-scope.outputs.sdk }}
           CI_SCOPE_SLACK: ${{ needs.ci-scope.outputs.slack }}
           CI_SCOPE_WEB: ${{ needs.ci-scope.outputs.web }}
@@ -637,6 +653,11 @@ jobs:
           fi
           if [ "${{ needs.app-workspace-contract.result }}" != "success" ]; then
             echo "Application workspace ownership check failed"
+            exit 1
+          fi
+
+          if [ "${CI_SCOPE_PRACTICE_REGISTRY}" = "true" ] && [ "${{ needs.practice-registry.result }}" != "success" ]; then
+            echo "Practice registry checks failed"
             exit 1
           fi
 
@@ -664,7 +685,7 @@ jobs:
             echo "TypeScript SDK checks failed"
             exit 1
           fi
-          if { [ "${CI_SCOPE_WEB}" = "true" ] || [ "${CI_SCOPE_SLACK}" = "true" ] || [ "${CI_SCOPE_SDK}" = "true" ]; } \
+          if { [ "${CI_SCOPE_WEB}" = "true" ] || [ "${CI_SCOPE_SLACK}" = "true" ] || [ "${CI_SCOPE_SDK}" = "true" ] || [ "${CI_SCOPE_PRACTICE_REGISTRY}" = "true" ]; } \
             && [ "${{ needs.javascript-dependency-audit.result }}" != "success" ]; then
             echo "JavaScript dependency audit failed"
             exit 1
