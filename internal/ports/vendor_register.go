@@ -3,16 +3,17 @@ package ports
 import "context"
 
 type VendorRegisterFilter struct {
-	TenantID       string
-	SourceID       string
-	RuntimeIDs     []string
-	Query          string
-	RiskLevel      string
-	ReviewState    string
-	OwnerState     string
-	LifecycleState string
-	QueueOnly      bool
-	Limit          int
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	RuntimeIDs             []string
+	Query                  string
+	RiskLevel              string
+	ReviewState            string
+	OwnerState             string
+	LifecycleState         string
+	QueueOnly              bool
+	Limit                  int
 }
 
 type VendorRegisterAction struct {

@@ -3,18 +3,19 @@ package ports
 import "context"
 
 type EntityCatalogFilter struct {
-	TenantID            string
-	SourceID            string
-	RuntimeIDs          []string
-	ExactAgentKey       string
-	IncludeKinds        []string
-	IncludeKindPrefixes []string
-	ExcludeKinds        []string
-	ExcludeKindPrefixes []string
-	Query               string
-	QueryAttributes     bool
-	ExpectedRevision    uint64
-	RelationCounts      *EntityRelationCountFilter
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	RuntimeIDs             []string
+	ExactAgentKey          string
+	IncludeKinds           []string
+	IncludeKindPrefixes    []string
+	ExcludeKinds           []string
+	ExcludeKindPrefixes    []string
+	Query                  string
+	QueryAttributes        bool
+	ExpectedRevision       uint64
+	RelationCounts         *EntityRelationCountFilter
 }
 
 type EntityRelationCountFilter struct {

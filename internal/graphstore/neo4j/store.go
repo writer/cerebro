@@ -2501,6 +2501,7 @@ func neo4jSchemaStatements() []string {
 		"CREATE INDEX cerebro_entity_tenant_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.entity_type)",
 		"CREATE INDEX cerebro_entity_tenant_source IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id)",
 		"CREATE INDEX cerebro_entity_tenant_source_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id, e.entity_type)",
+		"CREATE INDEX cerebro_entity_tenant_application_workspace_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.application_workspace_id, e.entity_type)",
 		"CREATE INDEX cerebro_entity_tenant_label IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.label)",
 		"CREATE INDEX cerebro_entity_tenant_internet_exposed IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.internet_exposed)",
 		"CREATE INDEX cerebro_entity_tenant_privileged_identity IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.is_privileged_identity)",

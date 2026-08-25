@@ -233,6 +233,9 @@ message EntityCatalogFilter {
   // stable key and label. Callers must select this explicitly.
   bool query_attributes = 11;
   EntityRelationCountFilter relation_counts = 12;
+  // application_workspace_id scopes the read to a Cerebro application
+  // workspace. It is distinct from provider-owned workspace identifiers.
+  string application_workspace_id = 13;
 }
 
 // EntityRelationCountFilter requests complete grouped counts for the bounded
@@ -454,6 +457,9 @@ message VendorRegisterFilter {
   string owner_state = 7;
   string lifecycle_state = 8;
   bool queue_only = 9;
+  // application_workspace_id scopes the read to a Cerebro application
+  // workspace. It is distinct from provider-owned workspace identifiers.
+  string application_workspace_id = 10;
 }
 
 message ListVendorRegisterRequest {
