@@ -13,6 +13,8 @@ use std::{collections::BTreeMap, str::FromStr};
 use reqwest::Url;
 use serde_json::Value;
 
+#[allow(dead_code)]
+mod audit_source_execution;
 mod error;
 #[allow(dead_code)]
 mod group_source_execution;
@@ -25,6 +27,8 @@ mod source_execution;
 mod user_adapter;
 
 #[cfg(test)]
+mod audit_source_execution_tests;
+#[cfg(test)]
 mod group_source_execution_tests;
 #[cfg(test)]
 mod source_execution_tests;
@@ -33,6 +37,8 @@ mod tests;
 #[cfg(test)]
 mod user_adapter_tests;
 
+#[allow(unused_imports)]
+pub(crate) use audit_source_execution::GOOGLE_WORKSPACE_AUDIT_SOURCE_EXECUTION_ADAPTER;
 pub use error::GoogleWorkspaceError;
 #[allow(unused_imports)]
 pub(crate) use group_source_execution::GOOGLE_WORKSPACE_GROUP_SOURCE_EXECUTION_ADAPTER;
