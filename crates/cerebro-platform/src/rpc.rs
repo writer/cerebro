@@ -1688,7 +1688,7 @@ fn vendor_register_response(register: vendor_register::Register) -> ListVendorRe
                 queue_reasons: row.queue_reasons,
                 next_action_id: row.next_action_id,
                 next_action_label: row.next_action_label,
-                attributes: row.attributes,
+                attributes: row.attributes.into_iter().collect(),
                 ..Default::default()
             })
             .collect(),
@@ -1707,7 +1707,8 @@ fn vendor_register_response(register: vendor_register::Register) -> ListVendorRe
             high_findings: summary.high_findings,
             evidence_items: summary.evidence_items,
             ..Default::default()
-        }),
+        })
+        .into(),
         ..Default::default()
     }
 }

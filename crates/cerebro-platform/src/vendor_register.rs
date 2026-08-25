@@ -3,7 +3,7 @@ use std::{cmp::Ordering, collections::BTreeMap};
 use cerebro_organizational_store::{
     EntityCatalogDirection, EntityCatalogPage, EntityCatalogRelationCount,
 };
-use time::{Date, Duration, OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{Date, Duration, Month, OffsetDateTime, format_description::well_known::Rfc3339};
 
 const DUE_SOON_DAYS: i64 = 30;
 
@@ -294,8 +294,14 @@ fn parse_date(value: &str) -> Option<Date> {
     if let Ok(timestamp) = OffsetDateTime::parse(value, &Rfc3339) {
         return Some(timestamp.date());
     }
-    let format = time::format_description::parse("[year]-[month]-[day]").ok()?;
-    Date::parse(value.get(..10).unwrap_or(value), &format).ok()
+    let mut parts = value.get(..10).unwrap_or(value).split('-');
+    let year = parts.next()?.parse().ok()?;
+    let month = Month::try_from(parts.next()?.parse::<u8>().ok()?).ok()?;
+    let day = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Date::from_calendar_date(year, month, day).ok()
 }
 
 fn review_state(due_at: &str, now: OffsetDateTime) -> String {
