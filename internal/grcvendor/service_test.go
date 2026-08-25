@@ -13,6 +13,7 @@ import (
 
 type stubGraphStore struct {
 	requests      []ports.CypherQueryRequest
+	entityFilters []ports.EntityCatalogFilter
 	rows          [][]ports.CypherRow
 	neighborhood  *ports.EntityNeighborhood
 	rootURN       string
@@ -41,6 +42,7 @@ func (s *stubGraphStore) ListEntities(_ context.Context, request ports.EntityCat
 		return nil, s.err
 	}
 	s.requests = append(s.requests, ports.CypherQueryRequest{Params: map[string]any{"tenant_id": request.Filter.TenantID, "application_workspace_id": request.Filter.ApplicationWorkspaceID, "limit": request.Limit}})
+	s.entityFilters = append(s.entityFilters, request.Filter)
 	page := &ports.EntityCatalogPage{TenantID: request.Filter.TenantID, GraphRevision: s.graphRevision}
 	if len(s.rows) == 0 {
 		return page, nil
@@ -198,6 +200,24 @@ func TestListVendorsPagePreservesGraphRevision(t *testing.T) {
 	}
 	if page.GraphRevision != 42 || len(page.Vendors) != 1 {
 		t.Fatalf("page = %#v, want one vendor at graph revision 42", page)
+	}
+}
+
+func TestListVendorsWorkspaceScopesCatalogRelationCounts(t *testing.T) {
+	store := &stubGraphStore{rows: [][]ports.CypherRow{{
+		vendorRow("urn:cerebro:writer:vendor:one", "Vendor One", `{"vendor_id":"one"}`, 2, 0, 0, 0),
+	}}}
+	page, err := New(store).ListVendorsPage(context.Background(), ListVendorsRequest{
+		TenantID: "writer", ApplicationWorkspaceID: " workspace-a ", Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ListVendorsPage(workspace-a) error = %v", err)
+	}
+	if len(page.Vendors) != 1 || page.Vendors[0].ContractCount != 2 {
+		t.Fatalf("workspace vendor page = %#v", page)
+	}
+	if len(store.entityFilters) != 1 || store.entityFilters[0].ApplicationWorkspaceID != "workspace-a" || store.entityFilters[0].RelationCounts == nil {
+		t.Fatalf("workspace vendor catalog filter = %#v", store.entityFilters)
 	}
 }
 
@@ -494,6 +514,9 @@ func TestGetVendorWorkspaceScopeDoesNotTraverseUnscopedRelationships(t *testing.
 	if store.requests[0].Params["application_workspace_id"] != "workspace-a" {
 		t.Fatalf("catalog request params = %#v, want workspace-a", store.requests[0].Params)
 	}
+	if len(store.entityFilters) != 1 || store.entityFilters[0].RelationCounts == nil {
+		t.Fatalf("workspace detail relation-count filter = %#v", store.entityFilters)
+	}
 	if store.rootURN != "" || detail.Graph == nil || detail.Graph.Root == nil || len(detail.Graph.Neighbors) != 0 || len(detail.Graph.Relations) != 0 {
 		t.Fatalf("workspace detail graph = %#v root traversal = %q, want root-only graph", detail.Graph, store.rootURN)
 	}
@@ -573,12 +596,15 @@ func TestListDiscoveriesAppliesSourceStatusAndOverlay(t *testing.T) {
 	}
 	service := New(store)
 
-	discoveries, err := service.ListDiscoveries(context.Background(), ListDiscoveriesRequest{TenantID: "writer", Status: "discovered", Limit: 10})
+	discoveries, err := service.ListDiscoveries(context.Background(), ListDiscoveriesRequest{TenantID: "writer", ApplicationWorkspaceID: " workspace-a ", Status: "discovered", Limit: 10})
 	if err != nil {
 		t.Fatalf("ListDiscoveries() error = %v", err)
 	}
 	if len(discoveries) != 1 || discoveries[0].DiscoveryID != "shadow" || discoveries[0].DecisionState != DiscoveryStateDiscovered {
 		t.Fatalf("discoveries = %#v", discoveries)
+	}
+	if len(store.entityFilters) != 1 || store.entityFilters[0].ApplicationWorkspaceID != "workspace-a" {
+		t.Fatalf("workspace discovery catalog filter = %#v", store.entityFilters)
 	}
 	applied := ApplyDiscoveryDecisions(discoveries, []*ports.GRCVendorDiscoveryDecisionRecord{{
 		TenantID:        "writer",

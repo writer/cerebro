@@ -13471,6 +13471,17 @@ pub struct VendorDiscoveryFilter {
         skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
     )]
     pub source_status: ::buffa::alloc::string::String,
+    /// application_workspace_id scopes the read to a Cerebro application
+    /// workspace. It is distinct from provider-owned workspace identifiers.
+    ///
+    /// Field 6: `application_workspace_id`
+    #[serde(
+        rename = "applicationWorkspaceId",
+        alias = "application_workspace_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub application_workspace_id: ::buffa::alloc::string::String,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -13483,6 +13494,7 @@ impl ::core::fmt::Debug for VendorDiscoveryFilter {
             .field("runtime_ids", &self.runtime_ids)
             .field("query", &self.query)
             .field("source_status", &self.source_status)
+            .field("application_workspace_id", &self.application_workspace_id)
             .finish()
     }
 }
@@ -13529,6 +13541,12 @@ impl ::buffa::Message for VendorDiscoveryFilter {
             size
                 += 1u64 + ::buffa::types::string_encoded_len(&self.source_status) as u64;
         }
+        if !self.application_workspace_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.application_workspace_id)
+                        as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -13553,6 +13571,9 @@ impl ::buffa::Message for VendorDiscoveryFilter {
         }
         if !self.source_status.is_empty() {
             ::buffa::types::put_string_field(5u32, &self.source_status, buf);
+        }
+        if !self.application_workspace_id.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.application_workspace_id, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -13606,6 +13627,13 @@ impl ::buffa::Message for VendorDiscoveryFilter {
                 )?;
                 ::buffa::types::merge_string(&mut self.source_status, buf)?;
             }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.application_workspace_id, buf)?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -13619,6 +13647,7 @@ impl ::buffa::Message for VendorDiscoveryFilter {
         self.runtime_ids.clear();
         self.query.clear();
         self.source_status.clear();
+        self.application_workspace_id.clear();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -41795,6 +41824,11 @@ pub mod __buffa {
             pub query: &'a str,
             /// Field 5: `source_status`
             pub source_status: &'a str,
+            /// application_workspace_id scopes the read to a Cerebro application
+            /// workspace. It is distinct from provider-owned workspace identifiers.
+            ///
+            /// Field 6: `application_workspace_id`
+            pub application_workspace_id: &'a str,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for VendorDiscoveryFilterView<'a> {
@@ -41857,6 +41891,15 @@ pub mod __buffa {
                         )?;
                         view.source_status = ::buffa::types::borrow_str(&mut cur)?;
                     }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.application_workspace_id = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
                     3u32 => {
                         ::buffa::encoding::check_wire_type(
                             tag,
@@ -41906,6 +41949,7 @@ pub mod __buffa {
                         .collect(),
                     query: self.query.to_string(),
                     source_status: self.source_status.to_string(),
+                    application_workspace_id: self.application_workspace_id.to_string(),
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -41943,6 +41987,13 @@ pub mod __buffa {
                             + ::buffa::types::string_encoded_len(&self.source_status)
                                 as u64;
                 }
+                if !self.application_workspace_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.application_workspace_id,
+                            ) as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -41968,6 +42019,13 @@ pub mod __buffa {
                 }
                 if !self.source_status.is_empty() {
                     ::buffa::types::put_string_field(5u32, &self.source_status, buf);
+                }
+                if !self.application_workspace_id.is_empty() {
+                    ::buffa::types::put_string_field(
+                        6u32,
+                        &self.application_workspace_id,
+                        buf,
+                    );
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -42004,6 +42062,15 @@ pub mod __buffa {
                 }
                 if !::buffa::json_helpers::skip_if::is_empty_str(self.source_status) {
                     __map.serialize_entry("sourceStatus", self.source_status)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.application_workspace_id,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "applicationWorkspaceId",
+                            self.application_workspace_id,
+                        )?;
                 }
                 __map.end()
             }
@@ -42124,6 +42191,14 @@ pub mod __buffa {
             #[must_use]
             pub fn source_status(&self) -> &'_ str {
                 self.0.reborrow().source_status
+            }
+            /// application_workspace_id scopes the read to a Cerebro application
+            /// workspace. It is distinct from provider-owned workspace identifiers.
+            ///
+            /// Field 6: `application_workspace_id`
+            #[must_use]
+            pub fn application_workspace_id(&self) -> &'_ str {
+                self.0.reborrow().application_workspace_id
             }
         }
         impl ::core::convert::From<

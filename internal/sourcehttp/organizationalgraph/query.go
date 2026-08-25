@@ -590,11 +590,12 @@ func (s *QueryStore) ListVendorDiscoveries(ctx context.Context, filter ports.Ven
 	}
 	request := connect.NewRequest(&cerebrographv1.ListVendorDiscoveriesRequest{
 		Filter: &cerebrographv1.VendorDiscoveryFilter{
-			TenantId:     tenantID,
-			SourceId:     strings.TrimSpace(filter.SourceID),
-			RuntimeIds:   runtimeIDs,
-			Query:        strings.TrimSpace(filter.Query),
-			SourceStatus: strings.TrimSpace(filter.SourceStatus),
+			TenantId:               tenantID,
+			ApplicationWorkspaceId: strings.TrimSpace(filter.ApplicationWorkspaceID),
+			SourceId:               strings.TrimSpace(filter.SourceID),
+			RuntimeIds:             runtimeIDs,
+			Query:                  strings.TrimSpace(filter.Query),
+			SourceStatus:           strings.TrimSpace(filter.SourceStatus),
 		},
 		Limit: uint32(filter.Limit), // #nosec G115 -- validated above.
 	})

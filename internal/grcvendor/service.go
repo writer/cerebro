@@ -73,18 +73,19 @@ type GraphStore interface {
 }
 
 type ListVendorsRequest struct {
-	TenantID    string
-	RuntimeID   string
-	RuntimeIDs  []string
-	SourceID    string
-	Query       string
-	RiskLevel   string
-	ReviewState string
-	OwnerState  string
-	Lifecycle   string
-	QueueOnly   bool
-	DeferLimit  bool
-	Limit       uint32
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuntimeIDs             []string
+	SourceID               string
+	Query                  string
+	RiskLevel              string
+	ReviewState            string
+	OwnerState             string
+	Lifecycle              string
+	QueueOnly              bool
+	DeferLimit             bool
+	Limit                  uint32
 }
 
 type VendorDetailRequest struct {
@@ -99,14 +100,15 @@ type VendorDetailRequest struct {
 }
 
 type ListDiscoveriesRequest struct {
-	TenantID      string
-	RuntimeID     string
-	RuntimeIDs    []string
-	SourceID      string
-	Query         string
-	Status        string
-	DecisionState string
-	Limit         uint32
+	TenantID               string
+	ApplicationWorkspaceID string
+	RuntimeID              string
+	RuntimeIDs             []string
+	SourceID               string
+	Query                  string
+	Status                 string
+	DecisionState          string
+	Limit                  uint32
 }
 
 // Vendor is the canonical vendor row. Rows are anchored on
@@ -551,6 +553,7 @@ func (s *Service) ListVendorsPage(ctx context.Context, request ListVendorsReques
 	if !possible {
 		return VendorPage{Vendors: []Vendor{}}, nil
 	}
+	filter.ApplicationWorkspaceID = strings.TrimSpace(request.ApplicationWorkspaceID)
 	filter.RelationCounts = &ports.EntityRelationCountFilter{Directions: []ports.EntityRelationDirection{ports.EntityRelationIncoming}, Relations: []string{"associated_with"}, NeighborKinds: []string{"contract", "security.review", "security.questionnaire", "assurance.document"}}
 	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: queryLimit})
 	if err != nil {
@@ -598,6 +601,7 @@ func (s *Service) ListDiscoveries(ctx context.Context, request ListDiscoveriesRe
 	if !possible {
 		return []VendorDiscovery{}, nil
 	}
+	filter.ApplicationWorkspaceID = strings.TrimSpace(request.ApplicationWorkspaceID)
 	page, err := store.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: filter, Limit: queryLimit})
 	if err != nil {
 		return nil, err

@@ -231,7 +231,7 @@ func (a *App) handleGRCVendorDiscoveries(w http.ResponseWriter, r *http.Request)
 	}
 	runtimeIDs := grcvendor.ResolvedRuntimeIDs(scope.RuntimeID, scope.RuntimeIDs)
 	page, err := a.deps.GraphReads.VendorDiscoveries.ListVendorDiscoveries(r.Context(), ports.VendorDiscoveryFilter{
-		TenantID: scope.TenantID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
+		TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: scope.SourceID, RuntimeIDs: runtimeIDs,
 		Query: strings.TrimSpace(r.URL.Query().Get("q")), SourceStatus: strings.TrimSpace(r.URL.Query().Get("status")), Limit: int(scope.Limit),
 	})
 	if err != nil {

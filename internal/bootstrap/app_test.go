@@ -1847,7 +1847,7 @@ func (s *stubGraphStore) ListVendorRegister(ctx context.Context, filter ports.Ve
 }
 
 func (s *stubGraphStore) ListVendorDiscoveries(ctx context.Context, filter ports.VendorDiscoveryFilter) (*ports.VendorDiscoveryPage, error) {
-	page, err := s.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: filter.TenantID, SourceID: filter.SourceID, RuntimeIDs: filter.RuntimeIDs, IncludeKinds: []string{"vendor.discovery"}, Query: filter.Query, QueryAttributes: true}, Limit: filter.Limit})
+	page, err := s.ListEntities(ctx, ports.EntityCatalogPageRequest{Filter: ports.EntityCatalogFilter{TenantID: filter.TenantID, ApplicationWorkspaceID: filter.ApplicationWorkspaceID, SourceID: filter.SourceID, RuntimeIDs: filter.RuntimeIDs, IncludeKinds: []string{"vendor.discovery"}, Query: filter.Query, QueryAttributes: true}, Limit: filter.Limit})
 	if err != nil {
 		return nil, err
 	}
@@ -4223,6 +4223,57 @@ func TestGRCVendorsReportsRustGraphAuthority(t *testing.T) {
 	}
 	if body.DataAuthority != "rust_graph" || body.GraphRevision != 1 || len(body.Vendors) != 1 || body.Vendors[0].Name != "Vendor One" {
 		t.Fatalf("body = %#v, want one Rust graph vendor at revision 1", body)
+	}
+}
+
+func TestGRCVendorDiscoveriesIsolateApplicationWorkspaces(t *testing.T) {
+	rows := []ports.CypherRow{
+		{Values: map[string]any{"urn": "urn:cerebro:writer:vendor_discovery:one", "tenant_id": "writer", "application_workspace_id": "workspace-a", "entity_type": "vendor.discovery", "label": "Discovery A", "attributes_json": `{"status":"discovered"}`}},
+		{Values: map[string]any{"urn": "urn:cerebro:writer:vendor_discovery:two", "tenant_id": "writer", "application_workspace_id": "workspace-b", "entity_type": "vendor.discovery", "label": "Discovery B", "attributes_json": `{"status":"discovered"}`}},
+	}
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{rows, rows}}
+	app := New(config.Config{}, Dependencies{GraphStore: graph, GraphReads: NewGraphReadCapabilities(graph)}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	read := func(workspaceID string) []string {
+		t.Helper()
+		request, err := http.NewRequest(http.MethodGet, server.URL+"/grc/vendor-discoveries?tenant_id=writer&limit=10", nil)
+		if err != nil {
+			t.Fatalf("new vendor discovery request: %v", err)
+		}
+		request.Header.Set(applicationWorkspaceHeader, workspaceID)
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatalf("GET /grc/vendor-discoveries error = %v", err)
+		}
+		defer func() { _ = response.Body.Close() }()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("GET /grc/vendor-discoveries status = %d, want %d", response.StatusCode, http.StatusOK)
+		}
+		var body struct {
+			Discoveries []struct {
+				Name string `json:"name"`
+			} `json:"discoveries"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+			t.Fatalf("decode vendor discoveries: %v", err)
+		}
+		names := make([]string, 0, len(body.Discoveries))
+		for _, discovery := range body.Discoveries {
+			names = append(names, discovery.Name)
+		}
+		return names
+	}
+
+	if got := read("workspace-a"); len(got) != 1 || got[0] != "Discovery A" {
+		t.Fatalf("workspace-a discoveries = %#v", got)
+	}
+	if got := read("workspace-b"); len(got) != 1 || got[0] != "Discovery B" {
+		t.Fatalf("workspace-b discoveries = %#v", got)
+	}
+	if len(graph.entityRequests) != 2 || graph.entityRequests[0].Filter.ApplicationWorkspaceID != "workspace-a" || graph.entityRequests[1].Filter.ApplicationWorkspaceID != "workspace-b" {
+		t.Fatalf("vendor discovery workspace filters = %#v", graph.entityRequests)
 	}
 }
 
