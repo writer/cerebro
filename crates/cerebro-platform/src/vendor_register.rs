@@ -294,11 +294,8 @@ fn parse_date(value: &str) -> Option<Date> {
     if let Ok(timestamp) = OffsetDateTime::parse(value, &Rfc3339) {
         return Some(timestamp.date());
     }
-    Date::parse(
-        value.get(..10).unwrap_or(value),
-        time::macros::format_description!("[year]-[month]-[day]"),
-    )
-    .ok()
+    let format = time::format_description::parse("[year]-[month]-[day]").ok()?;
+    Date::parse(value.get(..10).unwrap_or(value), &format).ok()
 }
 
 fn review_state(due_at: &str, now: OffsetDateTime) -> String {
@@ -451,13 +448,16 @@ fn summarize(rows: &[Row]) -> Summary {
 mod tests {
     use super::*;
     use cerebro_agent_context::ContextEntity;
+    use cerebro_organizational_model::EntityId;
 
     #[test]
     fn builds_filtered_product_rows_and_summary_from_one_revision() {
         let now = OffsetDateTime::parse("2026-08-24T12:00:00Z", &Rfc3339).unwrap();
         let entity = ContextEntity {
+            entity_id: EntityId::parse("vendor-acme").unwrap(),
             agent_key: "urn:cerebro:writer:vendor:acme".to_owned(),
             entity_kind: "vendor".to_owned(),
+            authority: serde_json::Value::Null,
             label: "Acme".to_owned(),
             properties: BTreeMap::from([
                 ("risk_level".to_owned(), "high".to_owned()),
@@ -469,7 +469,6 @@ mod tests {
                 ("high_findings".to_owned(), "1".to_owned()),
                 ("evidence_items".to_owned(), "8".to_owned()),
             ]),
-            ..ContextEntity::default()
         };
         let page = EntityCatalogPage {
             tenant_id: "writer".to_owned(),
@@ -482,7 +481,8 @@ mod tests {
                 neighbor_kind: "contract".to_owned(),
                 count: 2,
             }],
-            ..EntityCatalogPage::default()
+            truncated: false,
+            next_after_agent_key: String::new(),
         };
         let register = build(
             page,
