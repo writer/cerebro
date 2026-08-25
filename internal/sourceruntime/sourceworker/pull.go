@@ -22,6 +22,13 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 	sourceID = strings.TrimSpace(sourceID)
 	familyID = strings.TrimSpace(familyID)
 	switch sourceID {
+	case "asana":
+		if familyID == "" {
+			familyID = "users"
+		}
+		// Every portable Asana family is closed in the Rust dispatcher. Unknown
+		// families fail there instead of restoring the retired Go provider path.
+		return familyID, true
 	case "azure":
 		return familyID, familyID == "authorization_policy"
 	case "digitalocean":
@@ -47,7 +54,9 @@ func RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {
 		if familyID == "" {
 			familyID = "user"
 		}
-		return familyID, familyID == "user"
+		// Every portable PagerDuty family is closed in the Rust dispatcher. Unknown
+		// families fail there instead of restoring the retired Go provider path.
+		return familyID, true
 	case "sentinelone":
 		switch familyID {
 		case "activity", "agent", "application", "exclusion", "group", "site", "threat":
@@ -118,7 +127,7 @@ func PublicExecutionConfig(values map[string]string) map[string]string {
 	for _, key := range []string{
 		"account_sid", "activity_type", "agent_id", "audit_end_time", "audit_services", "audit_sort", "audit_start_time", "base_url",
 		"family", "group_id", "group_ids", "insights_base_url", "org_id", "page_size", "per_page",
-		"since", "site_id", "tailnet", "until", "user_group_id", "user_group_ids",
+		"service_id", "service_ids", "since", "site_id", "tailnet", "until", "user_group_id", "user_group_ids", "workspace_gid",
 	} {
 		if value, ok := values[key]; ok {
 			public[key] = strings.TrimSpace(value)

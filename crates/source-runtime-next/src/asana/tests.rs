@@ -112,7 +112,7 @@ fn plans_all_families_without_credentials_or_redirects() {
 }
 
 #[test]
-fn provider_fixtures_match_go_oracles_and_projection_facts() {
+fn provider_fixtures_match_compatibility_oracles_and_projection_facts() {
     let users = kernel("tenant", AsanaFamily::Users)
         .decode(
             &kernel("tenant", AsanaFamily::Users).plan(None).unwrap(),

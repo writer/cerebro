@@ -1,6 +1,6 @@
 id: asana
 name: "Asana"
-description: "Asana work-management source covering users, projects, and workspace audit log events. The runtime reads Asana REST collections from the official API, keeps workspace-scoped audit events tied to actors and resources, and emits project and user records for ownership, access, and change review."
+description: "Asana work-management source covering users, projects, and workspace audit log events. The credential-free Rust worker plans and normalizes bounded Asana REST collections, keeps workspace-scoped audit events tied to actors and resources, and emits project and user records for ownership, access, and change review."
 emitted_kinds:
   - asana.users
   - asana.projects
@@ -125,7 +125,7 @@ coverage_contract:
       evidence_types: [source_sync_status]
       control_domains: [source_operations]
       notes:
-        - Uses Asana `limit` and `offset` pagination and stores `next_page.offset` in the Source CDK cursor for continued reads.
+        - Uses Asana `limit` and `offset` pagination and stores `next_page.offset` in the durable provider cursor for continued reads.
 event_contracts:
   - kind: asana.users
     schema_ref: asana/users/v1
