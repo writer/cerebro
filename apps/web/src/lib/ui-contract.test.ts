@@ -100,7 +100,8 @@ describe("product UI contract", () => {
     expect(statusSource).toContain("Runtime Health");
     expect(statusSource).toContain("API liveness");
     expect(statusSource).toContain("API readiness");
-    expect(statusSource).toContain("Action authority");
+    expect(statusSource).toContain("Rust source runtime");
+    expect(statusSource).not.toContain('withGRCScope("/api/cerebro/v1/actions?limit=1"');
     expect(statusSource).toContain("Inventory");
     expect(statusSource).toContain("Vendor register");
     expect(statusSource).toContain("Policy lifecycle");
