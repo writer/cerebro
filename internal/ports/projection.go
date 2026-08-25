@@ -20,7 +20,7 @@ var ErrProjectedTenantScope = errors.New("projected URN tenant scope mismatch")
 // graph identity between application workspaces without an explicit migration.
 var ErrApplicationWorkspaceConflict = errors.New("application workspace projection conflict")
 
-const maxApplicationWorkspaceIDBytes = 256
+const maxApplicationWorkspaceIDBytes = 128
 
 // ProjectedTenantScopeError identifies the rejected projection field and both
 // tenant scopes without requiring callers to parse an error string.

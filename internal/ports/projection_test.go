@@ -2,6 +2,7 @@ package ports
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -86,5 +87,11 @@ func TestValidateApplicationWorkspaceScopeIsTenantQualifiedAndBounded(t *testing
 	}
 	if got, err := ValidateApplicationWorkspaceScope("", ""); err != nil || got != "" {
 		t.Fatalf("blank tenant-wide legacy scope = %q, %v", got, err)
+	}
+	if got, err := ValidateApplicationWorkspaceScope("tenant-a", strings.Repeat("w", 128)); err != nil || len(got) != 128 {
+		t.Fatalf("128-byte workspace scope = %q, %v", got, err)
+	}
+	if _, err := ValidateApplicationWorkspaceScope("tenant-a", strings.Repeat("w", 129)); err == nil {
+		t.Fatal("129-byte workspace scope error = nil")
 	}
 }

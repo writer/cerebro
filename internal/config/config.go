@@ -20,7 +20,7 @@ const defaultHTTPAddr = ":8080"
 const defaultShutdownTimeout = 10 * time.Second
 const defaultJetStreamSubjectPrefix = "events"
 const defaultSourceEventAdmissionWorkers = 4
-const maxApplicationWorkspaceIDBytes = 256
+const maxApplicationWorkspaceIDBytes = 128
 
 const (
 	defaultPostgresMaxOpenConns        = 25
