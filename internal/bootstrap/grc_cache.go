@@ -50,9 +50,9 @@ func (g *queryCacheRefreshGroup) Do(key string, fn func() (*capturedHTTPResponse
 	return response, nil
 }
 
-func (g *queryCacheRefreshGroup) Start(key string, fn func()) {
+func (g *queryCacheRefreshGroup) Start(ctx context.Context, key string, fn func(context.Context)) {
 	_ = g.group.DoChan(key, func() (any, error) {
-		fn()
+		fn(ctx)
 		return nil, nil
 	})
 }
@@ -109,9 +109,10 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 }
 
 func (a *App) refreshGRCJSONInBackground(key string, policy grcCachePolicy, next http.HandlerFunc, r *http.Request) {
-	request := r.Clone(context.WithoutCancel(r.Context()))
-	a.queryCacheGroup.Start(key, func() {
-		ctx, cancel := context.WithTimeout(request.Context(), grcCacheRefreshTimeout)
+	refreshContext := context.WithoutCancel(r.Context())
+	request := r.Clone(refreshContext)
+	a.queryCacheGroup.Start(refreshContext, key, func(parent context.Context) {
+		ctx, cancel := context.WithTimeout(parent, grcCacheRefreshTimeout)
 		defer cancel()
 		response := captureCacheResponse(next, request.Clone(ctx))
 		if response == nil || !response.cacheableJSON() {
