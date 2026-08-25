@@ -1,0 +1,30 @@
+id: python.security.jwt-signature-verification
+title: Verify JWT signatures
+status: banned
+enforcement: blocking
+summary: Do not decode JWTs with signature verification disabled or with the none algorithm.
+rationale: A JWT without signature verification is caller-supplied JSON and does not prove issuer, audience, or claims integrity.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["jwt", "token", "authentication", "authorization", "claims"]
+  keywords: ["jwt.decode", "verify_signature", "algorithms", "none"]
+avoid:
+  - 'jwt.decode(token, options={"verify_signature": False})'
+  - 'algorithms=["none"]'
+use_instead:
+  - Configure the expected algorithms, issuer, audience, and signing keys.
+  - Validate claims at the authentication boundary before passing identity into service code.
+good_examples:
+  - 'jwt.decode(token, key, algorithms=["RS256"], audience=expected_audience, issuer=expected_issuer)'
+bad_examples:
+  - 'jwt.decode(token, options={"verify_signature": False})'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(options\\s*=\\s*\\{[^\\n]*[\"']verify_signature[\"']\\s*:\\s*False|verify_signature\\s*=\\s*False|algorithms\\s*=\\s*\\[\\s*[\"']none[\"']\\s*\\])"
+owner: security-platform
+last_reviewed: 2026-07-01

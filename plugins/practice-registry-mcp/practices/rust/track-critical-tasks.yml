@@ -1,0 +1,27 @@
+id: rust.concurrency.track-critical-tasks
+title: Track Rust tasks that own critical state
+status: preferred
+enforcement: advisory
+summary: Keep a JoinHandle, JoinSet, or supervisor for spawned tasks that reserve budget, write audit state, release permits, or update durable state.
+rationale: A detached task can panic or be cancelled after the caller returns, leaving reserved resources and required state transitions incomplete.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "services/**/*.rs", "apps/**/*.rs"]
+    exclude: ["target/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["spawn task", "background work", "audit write", "budget reservation", "shutdown"]
+  keywords: ["tokio::spawn", "JoinHandle", "JoinSet", "supervisor", "abort", "shutdown"]
+avoid:
+  - Dropping the handle for a task that owns a required state transition.
+  - Ignoring JoinError or task panic for critical work.
+use_instead:
+  - Await the JoinHandle before the operation completes or register it with a service-level JoinSet.
+  - Define cancellation and shutdown behavior for every critical background task.
+good_examples:
+  - 'join_set.spawn(async move { audit_writer.run().await });'
+bad_examples:
+  - 'tokio::spawn(async move { tracker.adjust_spend().await });'
+owner: backend-platform
+last_reviewed: 2026-07-16

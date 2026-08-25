@@ -1,0 +1,30 @@
+id: python.http.client-timeout
+title: Set timeouts on Python HTTP calls
+status: discouraged
+enforcement: advisory
+summary: Do not add outbound requests or httpx calls without an explicit timeout.
+rationale: HTTP calls without timeouts can pin request workers, background jobs, and shutdown paths behind a slow network dependency.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["src/**/*.py", "services/**/*.py", "apps/**/*.py", "packages/**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "tests/**", "**/tests/**", "scripts/**"]
+applies_when:
+  intents: ["http client", "api client", "webhook", "vendor call", "outbound request"]
+  keywords: ["requests.get", "requests.post", "httpx.get", "httpx.post", "timeout"]
+avoid:
+  - 'requests.get(url)'
+  - 'httpx.post(url, json=payload)'
+use_instead:
+  - Pass an explicit timeout for each outbound HTTP call.
+  - Use the package's configured HTTP client wrapper when one exists.
+good_examples:
+  - 'requests.get(url, timeout=10)'
+bad_examples:
+  - 'requests.get(url)'
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\b(requests|httpx)\\.(get|post|put|patch|delete|request)\\s*\\((?![^\\n)]*timeout\\s*=)[^\\n)]*\\)"
+owner: backend-platform
+last_reviewed: 2026-07-01

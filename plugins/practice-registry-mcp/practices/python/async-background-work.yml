@@ -1,0 +1,37 @@
+id: python.writer.async-background-work
+title: Run Python consumers from FastAPI lifespan
+status: discouraged
+enforcement: advisory
+summary: Do not start long-running consumers or schedulers with ad-hoc asyncio.create_task calls.
+rationale: Writer's Python service architecture uses FastAPI lifespan with asyncio.TaskGroup so background work starts, cancels, and fails with the application process.
+scope:
+  languages: [python]
+  frameworks: [fastapi, asyncio]
+  paths:
+    include: ["src/**/*.py", "services/**/*.py", "apps/**/*.py", "packages/**/*.py"]
+    exclude: ["tests/**", "scripts/**", "legacy/**", "notebooks/**"]
+applies_when:
+  intents: ["background task", "consumer", "scheduler", "Kafka", "SQS", "lifespan", "startup"]
+  keywords: ["asyncio.create_task", "TaskGroup", "lifespan", "Kafka", "SQS", "scheduler", "BackgroundTasks"]
+avoid:
+  - asyncio.create_task in request handlers or module import code.
+  - In-process consumers without an explicit worker and replica topology.
+  - Fire-and-forget work from HTTP handlers when retries or durability are required.
+use_instead:
+  - FastAPI lifespan with asyncio.TaskGroup for long-running consumers and interval schedulers.
+  - Explicit deployment notes for how many processes and replicas will run the task.
+  - A real queue such as arq when fire-and-forget work needs retries or durability.
+good_examples:
+  - |
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(consume_kafka_user_events())
+            yield
+bad_examples:
+  - asyncio.create_task(consume_kafka_user_events())
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\basyncio\\.create_task\\s*\\("
+owner: backend-platform
+last_reviewed: 2026-07-01

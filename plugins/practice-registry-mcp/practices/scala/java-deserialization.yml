@@ -1,0 +1,30 @@
+id: scala.security.java-deserialization
+title: Avoid Java native deserialization
+status: banned
+enforcement: blocking
+summary: Do not add ObjectInputStream or readObject deserialization in Scala services.
+rationale: Java native deserialization can instantiate attacker-controlled object graphs before application validation runs.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/test/**", "**/*Test.scala", "**/generated/**"]
+applies_when:
+  intents: ["deserialize", "object stream", "binary payload", "cache", "message payload"]
+  keywords: ["ObjectInputStream", "readObject", "Serializable", "deserialize"]
+avoid:
+  - new ObjectInputStream(input).readObject()
+  - stream.readObject().asInstanceOf[Payload]
+use_instead:
+  - Decode JSON, Protobuf, or Avro through the package's typed boundary.
+  - Add an explicit schema and validation step before constructing domain values.
+good_examples:
+  - payloadDecoder.decode(bytes).flatMap(Payload.fromBoundary)
+bad_examples:
+  - new ObjectInputStream(input).readObject().asInstanceOf[Payload]
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(new\\s+ObjectInputStream\\s*\\(|ObjectInputStream\\s*\\(|\\.readObject\\s*\\()"
+owner: security-platform
+last_reviewed: 2026-07-01

@@ -1,0 +1,31 @@
+id: rust.process.no-shell-command
+title: Execute Rust child processes without a shell
+status: banned
+enforcement: blocking
+summary: Do not launch sh, bash, zsh, cmd, or PowerShell from production Rust code.
+rationale: A shell combines command parsing with argument values and can turn repository, request, or configuration data into executable syntax.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "services/**/*.rs", "apps/**/*.rs"]
+    exclude: ["target/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["run command", "child process", "shell", "script"]
+  keywords: ["Command::new(\"sh\")", "Command::new(\"bash\")", "sh -c", "bash -c", "cmd /C", "powershell -Command"]
+avoid:
+  - 'Command::new("sh").arg("-c").arg(command)'
+  - 'Command::new("powershell").arg("-Command").arg(script)'
+use_instead:
+  - Call the fixed executable directly and pass each argument with arg or args.
+  - Enumerate allowed subcommands before constructing the child process.
+good_examples:
+  - 'Command::new("git").args(["diff", "--name-only"]).status()?;'
+bad_examples:
+  - 'Command::new("sh").arg("-c").arg(format!("git checkout {branch}")).status()?;'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(?:std::process::|tokio::process::)?Command::new\\s*\\(\\s*\"(?:sh|bash|zsh|cmd(?:\\.exe)?|powershell(?:\\.exe)?|pwsh)\"\\s*,?\\s*\\)"
+  languages: [rust]
+owner: security-platform
+last_reviewed: 2026-07-16

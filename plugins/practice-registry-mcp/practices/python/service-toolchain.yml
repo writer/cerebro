@@ -1,0 +1,33 @@
+id: python.writer.service-toolchain
+title: Use the Writer Python service toolchain
+status: preferred
+enforcement: advisory
+summary: New Writer Python services should use uv, ruff, and pyright strict from pyproject.toml.
+rationale: The Writer Python service architecture standardizes dependency resolution, formatting, linting, and type checking so services build and review the same way.
+scope:
+  languages: [python]
+  frameworks: [fastapi]
+  paths:
+    include: ["pyproject.toml", "uv.lock", "src/**/*.py", "services/**/*.py", "apps/**/*.py"]
+    exclude: ["legacy/**", "notebooks/**"]
+applies_when:
+  intents: ["new service", "service setup", "dependency", "lint", "format", "type check", "ci"]
+  keywords: ["uv", "ruff", "pyright", "pyproject.toml", "uv.lock", "FastAPI", "python 3.13"]
+avoid:
+  - Adding Poetry, pip-tools, pipenv, or pyenv as the service build path.
+  - Dropping pyright strict because one rule is noisy.
+  - Removing broad Ruff rule families instead of narrowing specific rules.
+use_instead:
+  - Keep dependencies and Python version in pyproject.toml with uv.lock committed.
+  - Configure ruff under [tool.ruff] and pyright under [tool.pyright].
+  - Disable individual pyright or Ruff checks only with a local reason.
+good_examples:
+  - |
+    [tool.pyright]
+    pythonVersion = "3.13"
+    typeCheckingMode = "strict"
+bad_examples:
+  - |
+    # pyproject.toml has dependencies but no uv.lock, ruff config, or pyright strict mode.
+owner: backend-platform
+last_reviewed: 2026-07-01

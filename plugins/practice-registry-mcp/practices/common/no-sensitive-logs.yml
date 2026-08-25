@@ -1,0 +1,31 @@
+id: security.logging.no-sensitive-values
+title: Keep sensitive values out of logs
+status: banned
+enforcement: blocking
+summary: Do not log passwords, tokens, authorization headers, session ids, or service secrets.
+rationale: Log sinks are copied into search indexes, incident exports, local files, and vendor systems where secrets are hard to revoke and personal data is hard to delete.
+scope:
+  languages: [python, scala, typescript, javascript, rust]
+  frameworks: []
+  paths:
+    include: ["**/*.py", "**/*.scala", "**/*.sc", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs", "**/*.rs"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "dist/**", "node_modules/**", "target/**", "**/test/**", "**/*Test.scala", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["authentication", "authorization", "secret", "token", "credential"]
+  keywords: ["password", "secret", "token", "authorization", "session_id", "api_key"]
+avoid:
+  - 'logger.info("token={}", token)'
+  - 'logger.warning("authorization: %s", authorization_header)'
+use_instead:
+  - Log stable request ids, actor ids, and redacted fields.
+  - Record secret state as present, missing, expired, or rotated.
+good_examples:
+  - 'logger.info("token_present=%s request_id=%s", bool(token), request_id)'
+bad_examples:
+  - 'logger.info("token=%s", token)'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(log|logger)\\.(debug|info|warn|warning|error|exception)\\s*\\([^\\n]*(password|passwd|secret|token|authorization|api[_-]?key|session[_-]?id)[\"']?\\s*[:=]"
+  languages: [python, scala, typescript, javascript, rust]
+owner: security-platform
+last_reviewed: 2026-07-01

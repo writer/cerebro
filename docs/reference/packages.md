@@ -14,6 +14,7 @@ api/                OpenAPI contract artifacts
 policies/           Security policy and control-mapping catalog metadata
 sdk/                Python and TypeScript helper clients for supported bootstrap routes
 tools/              Structural linters, arch tests, and catalog checks
+plugins/            Local Codex plugins and their portable validation contracts
 ```
 
 ## Core Runtime Packages
@@ -49,3 +50,4 @@ Adding another long-lived store crosses the repository non-goals and requires up
 - `api/openapi.yaml` describes the JSON HTTP surface.
 - `proto/cerebro/v1/bootstrap.proto` describes the Connect surface.
 - `tools/archtests` and `tools/linters` enforce package and architecture guardrails.
+- `plugins/practice-registry-mcp` owns recorded code-practice guidance, MCP and CLI gates, Semgrep rule generation, and editor setup.

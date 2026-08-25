@@ -1,0 +1,27 @@
+id: typescript.persistence.sqlite-observation-migrations
+title: Keep SQLite observation schema migrations idempotent
+status: preferred
+enforcement: advisory
+summary: Add idempotent migration code and tests when changing the persisted observation schema.
+rationale: Practice Registry databases live inside user repos and editor workspaces, so new server versions must open older databases without manual cleanup.
+scope:
+  languages: [typescript]
+  frameworks: [sqlite]
+  paths:
+    include: ["src/store.ts", "test/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**"]
+applies_when:
+  intents: ["sqlite", "database", "migration", "observation", "persistence", "schema"]
+  keywords: ["CREATE TABLE", "ALTER TABLE", "observations", "ensureObservationColumns", "recordObservation"]
+avoid:
+  - Changing observation columns without an idempotent migration path.
+  - Tests that only cover a freshly created SQLite database.
+use_instead:
+  - A column-existence check before ALTER TABLE.
+  - Tests that read observations after new metadata fields are recorded.
+good_examples:
+  - ensureObservationColumns adds missing columns and preserves existing observation rows.
+bad_examples:
+  - Replacing the observations table when adding a new result field.
+owner: agent-platform
+last_reviewed: 2026-07-01

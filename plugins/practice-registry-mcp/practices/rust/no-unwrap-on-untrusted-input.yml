@@ -1,0 +1,26 @@
+id: rust.errors.no-unwrap-on-untrusted-input
+title: Return errors for untrusted Rust input
+status: discouraged
+enforcement: advisory
+summary: Do not call unwrap or expect on request data, file content, network responses, configuration values, or other untrusted input.
+rationale: Invalid external input must produce a controlled error instead of terminating the process or request task.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "services/**/*.rs", "apps/**/*.rs"]
+    exclude: ["target/**", "**/tests/**", "tests/**", "benches/**", "fuzz/**", "examples/**"]
+applies_when:
+  intents: ["unwrap untrusted input", "panic on invalid input"]
+  keywords: ["unwrap()", ".unwrap(", ".expect(", "unwrap request", "unwrap config", "expect request", "expect config"]
+avoid:
+  - Calling unwrap or expect on values derived from requests, files, environment variables, or network responses.
+use_instead:
+  - Propagate the error with ? and map it to the boundary's typed error.
+  - Convert Option values with ok_or_else and name the missing field.
+good_examples:
+  - 'let id = raw.parse::<Uuid>().map_err(ApiError::invalid_id)?;'
+bad_examples:
+  - 'let id = raw.parse::<Uuid>().unwrap();'
+owner: backend-platform
+last_reviewed: 2026-07-16

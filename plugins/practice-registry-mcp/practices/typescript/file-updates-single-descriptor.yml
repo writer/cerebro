@@ -1,0 +1,28 @@
+id: typescript.fs.single-descriptor-updates
+title: Bind related file operations to one open descriptor
+status: preferred
+enforcement: advisory
+summary: Keep validation, reading, writing, and permission changes for one generated file bound to the same open file descriptor.
+rationale: Checking a path and reopening it later lets another process replace the file between operations, which can overwrite an unintended target or validate different content than the content used.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [node]
+  paths:
+    include: ["src/**/*.ts", "scripts/**/*.mjs", "test/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "fixtures/**", "testdata/**"]
+applies_when:
+  intents: ["file system race", "filesystem race", "generated file", "editor config", "launcher", "file update"]
+  keywords: ["existsSync", "accessSync", "openSync", "fstatSync", "ftruncateSync", "writeFileSync"]
+avoid:
+  - Checking existsSync or accessSync and then reopening the same path to read or write it.
+  - Validating one path lookup and assuming a later lookup still refers to the same file.
+use_instead:
+  - Use exclusive creation when an existing file must not be replaced.
+  - Open an existing file once, validate and update it through that descriptor, and close it in a finally block.
+  - Use fstat and fchmod when file metadata must stay bound to the opened file.
+good_examples:
+  - Open with r+, validate through the descriptor, then truncate and write through that descriptor.
+bad_examples:
+  - Check existsSync(path), readFileSync(path), and later writeFileSync(path).
+owner: security-platform
+last_reviewed: 2026-08-24

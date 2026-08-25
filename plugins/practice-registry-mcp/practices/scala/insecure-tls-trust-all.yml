@@ -1,0 +1,31 @@
+id: scala.security.insecure-tls-trust-all
+title: Do not trust all TLS certificates
+status: banned
+enforcement: blocking
+summary: Do not add trust-all hostname verifiers, trust managers, or TLS client factories.
+rationale: Trust-all TLS code lets network intermediaries impersonate services and removes the caller's service identity check.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/test/**", "**/*Test.scala", "**/generated/**"]
+applies_when:
+  intents: ["http client", "tls", "ssl", "certificate", "trust manager"]
+  keywords: ["NoopHostnameVerifier", "trustAllCerts", "InsecureTrustManagerFactory", "ALLOW_ALL_HOSTNAME_VERIFIER", "TrustAllStrategy"]
+avoid:
+  - NoopHostnameVerifier.INSTANCE
+  - InsecureTrustManagerFactory.INSTANCE
+  - trustAllCerts
+use_instead:
+  - Use the default trust store or the approved service CA bundle.
+  - Fix local test certificates instead of weakening the production client.
+good_examples:
+  - HttpClientBuilder.create().useSystemProperties().build()
+bad_examples:
+  - HttpClientBuilder.create().setSSLHostnameVerifier(NoopHostnameVerifier.INSTANCE).build()
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(NoopHostnameVerifier|ALLOW_ALL_HOSTNAME_VERIFIER|InsecureTrustManagerFactory|trustAllCerts|TrustAllStrategy)\\b|checkServerTrusted\\s*\\([^\\n]*\\)\\s*=\\s*\\(\\)"
+owner: security-platform
+last_reviewed: 2026-07-01

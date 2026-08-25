@@ -1,0 +1,30 @@
+id: python.security.no-eval-exec
+title: Do not evaluate Python strings as code
+status: banned
+enforcement: blocking
+summary: Do not add eval, exec, or compile for request, job, or configuration data.
+rationale: String evaluation turns data into executable code and makes authorization, validation, and review boundaries ineffective.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["eval", "exec", "dynamic code", "expression parser"]
+  keywords: ["eval(", "exec(", "compile("]
+avoid:
+  - 'eval(request.args["expr"])'
+  - 'exec(job_payload)'
+use_instead:
+  - Parse a constrained expression language or map names to approved functions.
+  - Use ast.literal_eval only for trusted Python literal syntax.
+good_examples:
+  - 'handler = allowed_handlers[name]'
+bad_examples:
+  - 'value = eval(request.args["expr"])'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(eval|exec|compile)\\s*\\("
+owner: security-platform
+last_reviewed: 2026-07-01

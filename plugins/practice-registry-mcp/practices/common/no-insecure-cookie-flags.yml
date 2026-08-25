@@ -1,0 +1,31 @@
+id: security.cookies.no-insecure-flags
+title: Keep session cookies protected
+status: banned
+enforcement: blocking
+summary: Do not set session or authentication cookies with Secure or HttpOnly disabled.
+rationale: Browser cookies without transport and script-access protections are easier to steal through network interception or client-side injection.
+scope:
+  languages: [python, scala, typescript, javascript, rust]
+  frameworks: []
+  paths:
+    include: ["**/*.py", "**/*.scala", "**/*.sc", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs", "**/*.rs"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "dist/**", "node_modules/**", "target/**", "**/tests/**", "tests/**", "**/test/**", "**/*Test.scala"]
+applies_when:
+  intents: ["cookie", "session cookie", "auth cookie"]
+  keywords: ["set_cookie", "secure=False", "httponly=False", "httpOnly=false"]
+avoid:
+  - 'response.set_cookie("session", value, secure=False)'
+  - 'Cookie("session", value, httpOnly = false)'
+use_instead:
+  - Set Secure and HttpOnly for session and authentication cookies.
+  - Use the framework session helper when it already sets the approved cookie flags.
+good_examples:
+  - 'response.set_cookie("session", value, secure=True, httponly=True, samesite="Lax")'
+bad_examples:
+  - 'response.set_cookie("session", value, secure=False)'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(set_cookie|Cookie)\\s*\\([^\\n]*(secure\\s*=\\s*(False|false)|httponly\\s*=\\s*False|httpOnly\\s*=\\s*false)"
+  languages: [python, scala, typescript, javascript, rust]
+owner: security-platform
+last_reviewed: 2026-07-01

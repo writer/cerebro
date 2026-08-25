@@ -1,0 +1,32 @@
+id: typescript.node.no-shell-exec
+title: Avoid shell execution in TypeScript tooling
+status: banned
+enforcement: blocking
+summary: Do not add child_process exec, execSync, or shell-enabled spawn calls in TypeScript or Node scripts.
+rationale: Shell execution makes argument boundaries hard to audit and can turn workspace values into commands.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [node]
+  paths:
+    include: ["src/**/*.ts", "scripts/**/*.mjs", "hooks/**/*.mjs"]
+    exclude: ["dist/**", "node_modules/**", "fixtures/**", "testdata/**"]
+applies_when:
+  intents: ["command", "process", "shell", "child process", "script"]
+  keywords: ["child_process", "exec(", "execSync", "spawn", "shell: true"]
+avoid:
+  - exec(command) or execSync(command) with a single shell string.
+  - 'spawn(command, args, { shell: true }) unless the owner accepts the command boundary.'
+use_instead:
+  - spawnSync or execFileSync with an argument array and fixed executable.
+  - Validate or enumerate any user-controlled argument before passing it to a process.
+good_examples:
+  - |
+    spawnSync("git", ["diff", "--name-only"], { encoding: "utf8" })
+bad_examples:
+  - execSync(`git checkout ${branch}`)
+semgrep:
+  severity: ERROR
+  pattern_regex: "(?<![.A-Za-z0-9_])(?:exec|execSync)\\s*\\(|\\b(?:child_process|childProcess|cp)\\.(?:exec|execSync)\\s*\\(|\\bshell\\s*:\\s*true"
+  languages: [typescript, javascript]
+owner: security-platform
+last_reviewed: 2026-07-01

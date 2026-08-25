@@ -11,15 +11,22 @@ import (
 )
 
 type workspaceManifest struct {
+	Name            string            `json:"name"`
 	Private         bool              `json:"private"`
+	License         string            `json:"license"`
 	PackageManager  string            `json:"packageManager"`
 	Workspaces      []string          `json:"workspaces"`
 	Scripts         map[string]string `json:"scripts"`
+	Repository      struct {
+		Type      string `json:"type"`
+		URL       string `json:"url"`
+		Directory string `json:"directory"`
+	} `json:"repository"`
 	Dependencies    map[string]string `json:"dependencies"`
 	DevDependencies map[string]string `json:"devDependencies"`
 }
 
-func TestRootWorkspaceOwnsPublicApplicationsAndTypeScriptSDK(t *testing.T) {
+func TestRootWorkspaceOwnsPublicApplicationsTypeScriptSDKAndPlugin(t *testing.T) {
 	root := repoRoot(t)
 	manifest := readWorkspaceManifest(t, filepath.Join(root, "package.json"))
 	if !manifest.Private {
@@ -28,7 +35,7 @@ func TestRootWorkspaceOwnsPublicApplicationsAndTypeScriptSDK(t *testing.T) {
 	if !strings.HasPrefix(manifest.PackageManager, "npm@") {
 		t.Fatalf("root package manager = %q, want a pinned npm version", manifest.PackageManager)
 	}
-	for _, workspace := range []string{"apps/*", "sdk/typescript"} {
+	for _, workspace := range []string{"apps/*", "plugins/practice-registry-mcp", "sdk/typescript"} {
 		if !slices.Contains(manifest.Workspaces, workspace) {
 			t.Fatalf("root package.json missing workspace %q", workspace)
 		}
@@ -43,6 +50,32 @@ func TestRootWorkspaceOwnsPublicApplicationsAndTypeScriptSDK(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "package-lock.json")); err != nil {
 		t.Fatalf("root npm workspace requires package-lock.json: %v", err)
+	}
+}
+
+func TestPracticeRegistryPluginIsOwnedByTheMonorepo(t *testing.T) {
+	root := repoRoot(t)
+	relative := "plugins/practice-registry-mcp"
+	manifest := readWorkspaceManifest(t, filepath.Join(root, relative, "package.json"))
+	if manifest.Name != "@writer/cerebro-practice-registry-mcp" {
+		t.Fatalf("practice registry package name = %q", manifest.Name)
+	}
+	if !manifest.Private {
+		t.Fatal("practice registry package must set private=true")
+	}
+	if manifest.License != "Apache-2.0" {
+		t.Fatalf("practice registry package license = %q, want Apache-2.0", manifest.License)
+	}
+	if manifest.Repository.Type != "git" || manifest.Repository.URL != "git+https://github.com/writer/cerebro.git" || manifest.Repository.Directory != relative {
+		t.Fatalf("practice registry repository metadata = %+v", manifest.Repository)
+	}
+	for _, script := range []string{"build", "check", "test"} {
+		if strings.TrimSpace(manifest.Scripts[script]) == "" {
+			t.Fatalf("practice registry package missing script %q", script)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, relative, "package-lock.json")); !os.IsNotExist(err) {
+		t.Fatal("practice registry must use the root package-lock.json")
 	}
 }
 

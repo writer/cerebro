@@ -1,0 +1,30 @@
+id: python.security.no-template-autoescape-off
+title: Keep template autoescape enabled
+status: banned
+enforcement: blocking
+summary: Do not disable template autoescape in Python web code.
+rationale: Autoescape is the default HTML output control that keeps untrusted values from becoming browser-executed markup.
+scope:
+  languages: [python]
+  frameworks: []
+  paths:
+    include: ["**/*.py"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/tests/**", "tests/**"]
+applies_when:
+  intents: ["template", "jinja", "html rendering", "autoescape"]
+  keywords: ["autoescape=False", "Environment(autoescape=False"]
+avoid:
+  - 'Environment(loader=loader, autoescape=False)'
+  - 'Template(source, autoescape=False)'
+use_instead:
+  - Keep autoescape enabled for HTML templates.
+  - Use explicit safe markup only at reviewed rendering boundaries.
+good_examples:
+  - 'env = Environment(loader=loader, autoescape=select_autoescape())'
+bad_examples:
+  - 'env = Environment(loader=loader, autoescape=False)'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(autoescape\\s*=\\s*False|Environment\\s*\\([^\\n]*autoescape\\s*=\\s*False)"
+owner: security-platform
+last_reviewed: 2026-07-01

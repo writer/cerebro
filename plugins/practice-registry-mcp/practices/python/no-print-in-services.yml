@@ -1,0 +1,30 @@
+id: python.logging.no-print-in-services
+title: Use structured logging in Python services
+status: discouraged
+enforcement: advisory
+summary: Do not add print statements to service code.
+rationale: Structured logs carry request, job, and tenant context through production log pipelines.
+scope:
+  languages: [python]
+  frameworks: [fastapi, flask, django]
+  paths:
+    include: ["services/**/*.py", "apps/**/*.py", "src/**/*.py"]
+    exclude: ["scripts/**", "notebooks/**", "legacy/**"]
+applies_when:
+  intents: ["logging", "debugging", "observability"]
+  keywords: ["print(", "logging", "logger", "debug", "stdout"]
+avoid:
+  - print calls in request handlers, workers, and shared packages
+use_instead:
+  - The module logger with structured fields.
+  - Existing request or job context helpers.
+good_examples:
+  - |
+    logger.info("user_sync_complete", extra={"user_id": user_id})
+bad_examples:
+  - print(f"Synced {user_id}")
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\bprint\\s*\\("
+owner: observability
+last_reviewed: 2026-06-30

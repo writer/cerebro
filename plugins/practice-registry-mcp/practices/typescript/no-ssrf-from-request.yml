@@ -1,0 +1,31 @@
+id: typescript.security.no-ssrf-from-request
+title: Do not fetch request-controlled URLs
+status: banned
+enforcement: blocking
+summary: Do not pass request parameters, query strings, or body fields directly into fetch or HTTP clients.
+rationale: Request-controlled outbound URLs can reach internal metadata services, private networks, or tenant data outside the caller's scope.
+scope:
+  languages: [typescript, javascript]
+  frameworks: [node, express, fastify, nextjs]
+  paths:
+    include: ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.mjs", "app/**/*.ts", "pages/**/*.ts"]
+    exclude: ["dist/**", "node_modules/**", "test/**", "tests/**", "fixtures/**"]
+applies_when:
+  intents: ["fetch url", "proxy", "webhook", "callback", "import from url", "ssrf"]
+  keywords: ["fetch", "axios", "got", "request", "req.query", "searchParams", "params.url", "body.url"]
+avoid:
+  - fetch(req.query.url), fetch(searchParams.get("url")), or axios.get(body.url).
+  - Proxy endpoints that accept arbitrary schemes or hosts.
+use_instead:
+  - Resolve requested resources through an allowlisted host or stored integration id.
+  - Validate scheme, host, port, and tenant ownership before the outbound request.
+good_examples:
+  - const endpoint = integrationRegistry.resolveUrl(integrationId); await fetch(endpoint, { signal })
+bad_examples:
+  - await fetch(req.query.url as string)
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(?:fetch|axios\\.get|got|request)\\s*\\(\\s*(?:req\\.|request\\.|ctx\\.request|searchParams\\.get|params\\.|body\\.)"
+  languages: [typescript, javascript]
+owner: security-platform
+last_reviewed: 2026-07-01

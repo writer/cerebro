@@ -1,0 +1,28 @@
+id: typescript.mcp.final-gate-correlates-plan
+title: Correlate final MCP gates with the matching plan
+status: preferred
+enforcement: advisory
+summary: Finalization gates should link to the relevant plan observation instead of accepting any recent passing check.
+rationale: A stale passing plan can otherwise approve a different final diff, especially when an agent changes files after planning.
+scope:
+  languages: [typescript]
+  frameworks: [mcp]
+  paths:
+    include: ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.mjs", "evals/**/*.json"]
+    exclude: ["dist/**", "node_modules/**"]
+applies_when:
+  intents: ["finalize", "final gate", "plan", "observation", "agent gate", "check_plan"]
+  keywords: ["finalize_change", "plan_observation_id", "observation_id", "passing_plan_found", "check_plan"]
+avoid:
+  - Treating any recent passing plan as proof for the final diff.
+  - Final gates that cannot explain which plan observation they used.
+use_instead:
+  - Match the final diff to the plan by explicit observation id, overlapping files, or inferred language.
+  - Return the matched observation id and reason in the final gate result.
+  - Add evals for stale-plan false positives.
+good_examples:
+  - finalize_change rejects a Python final diff when the only passing plan was for a Scala file.
+bad_examples:
+  - finalize_change passes because some unrelated plan in the same session returned follow_guidance.
+owner: agent-platform
+last_reviewed: 2026-07-01

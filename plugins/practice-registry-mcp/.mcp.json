@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "practice-registry": {
+      "command": "node",
+      "args": ["./dist/index.js"],
+      "cwd": ".",
+      "startup_timeout_sec": 10,
+      "tool_timeout_sec": 60
+    }
+  }
+}

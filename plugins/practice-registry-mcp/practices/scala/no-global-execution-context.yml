@@ -1,0 +1,29 @@
+id: scala.execution-context.no-global-in-services
+title: Use owned execution contexts in Scala services
+status: discouraged
+enforcement: advisory
+summary: Do not add scala.concurrent.ExecutionContext.global in service code.
+rationale: Owned execution contexts make blocking, CPU work, and request throughput visible and tunable.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["services/**/*.scala", "apps/**/*.scala", "src/**/*.scala", "server/src/**/*.scala", "server/src/**/*.sc"]
+    exclude: ["legacy/**", "scripts/**"]
+applies_when:
+  intents: ["execution context", "future", "thread", "async"]
+  keywords: ["ExecutionContext.global", "ExecutionContext.Implicits.global", "scala.concurrent.ExecutionContext.Implicits.global", "implicit ec", "given ExecutionContext", "Future"]
+avoid:
+  - Importing scala.concurrent.ExecutionContext.Implicits.global in services.
+use_instead:
+  - Inject the service execution context.
+  - Use the approved blocking execution context for blocking adapters.
+good_examples:
+  - "final class UserService(repo: UserRepo)(using ec: ExecutionContext)"
+bad_examples:
+  - import scala.concurrent.ExecutionContext.Implicits.global
+semgrep:
+  severity: WARNING
+  pattern_regex: "\\b(ExecutionContext\\.Implicits\\.global|ExecutionContext\\.global)\\b"
+owner: scala-platform
+last_reviewed: 2026-07-01

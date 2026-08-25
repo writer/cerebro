@@ -266,6 +266,16 @@ workspace-check: workspace-install ## Run declared checks in every npm workspace
 workspace-test: workspace-install ## Run declared tests in every npm workspace.
 	npm run test:workspaces
 
+practice-registry-check: workspace-install ## Validate the practice registry plugin, generated rules, and client integrations.
+	npm run generate-semgrep --workspace @writer/cerebro-practice-registry-mcp
+	git diff --exit-code plugins/practice-registry-mcp/semgrep/practice-rules.yml
+	npm run check --workspace @writer/cerebro-practice-registry-mcp
+	npm run smoke:cli-ux --workspace @writer/cerebro-practice-registry-mcp
+	npm run smoke:mcp --workspace @writer/cerebro-practice-registry-mcp
+	npm run smoke:hooks --workspace @writer/cerebro-practice-registry-mcp
+	npm run smoke:editor-config --workspace @writer/cerebro-practice-registry-mcp
+	npm run smoke:plugin-config --workspace @writer/cerebro-practice-registry-mcp
+
 sdk-dependency-audit: ## Audit SDK dependencies for known vulnerabilities.
 	$(PYTHON) -m unittest scripts.test_sdk_dependency_audit
 	$(PYTHON) -m venv "$(SDK_AUDIT_VENV)"
@@ -991,4 +1001,4 @@ check-arch: ## Run architectural guardrail tests.
 
 check-hook-integrity: check-arch ## Verify hook-integrity guardrails.
 
-verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.
+verify: build test test-race cover script-test sdk-test sdk-dependency-audit workspace-check practice-registry-check mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check connector-contract-check rust-deny graph-action-check rust-wasm-check finding-dsl-check policy-rule-check policy-mapping-check detection-catalog-check docs-drift-check readme-check oss-audit govulncheck release-smoke docker-smoke web-docker-smoke check-structural check-structural-test check-arch ## Run full CI-equivalent validation suite.

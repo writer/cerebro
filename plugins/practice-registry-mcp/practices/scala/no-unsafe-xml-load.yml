@@ -1,0 +1,30 @@
+id: scala.security.no-unsafe-xml-load
+title: Use hardened XML parsing in Scala
+status: banned
+enforcement: blocking
+summary: Do not parse untrusted XML with scala.xml.XML load helpers.
+rationale: Default XML load helpers can process attacker-controlled structures before application validation runs.
+scope:
+  languages: [scala]
+  frameworks: []
+  paths:
+    include: ["**/*.scala", "**/*.sc"]
+    exclude: ["legacy/**", "fixtures/**", "testdata/**", "**/test/**", "**/*Test.scala", "**/generated/**"]
+applies_when:
+  intents: ["xml", "xml parse", "feed parser", "document import"]
+  keywords: ["XML.loadString", "XML.loadFile", "scala.xml.XML.load"]
+avoid:
+  - 'XML.loadString(payload)'
+  - 'scala.xml.XML.load(url)'
+use_instead:
+  - Use the approved hardened XML parser wrapper.
+  - Prefer JSON or a typed schema when the integration does not require XML.
+good_examples:
+  - 'secureXmlParser.parse(payload)'
+bad_examples:
+  - 'val doc = XML.loadString(payload)'
+semgrep:
+  severity: ERROR
+  pattern_regex: "\\b(scala\\.xml\\.XML|XML)\\.(loadString|loadFile|load)\\s*\\("
+owner: security-platform
+last_reviewed: 2026-07-01

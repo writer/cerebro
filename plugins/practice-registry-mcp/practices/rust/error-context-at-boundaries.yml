@@ -1,0 +1,27 @@
+id: rust.errors.context-at-boundaries
+title: Preserve Rust error context at boundaries
+status: preferred
+enforcement: advisory
+summary: Return Result values that preserve the source error and name the failed operation at file, network, parsing, and service boundaries.
+rationale: Operation context and error sources let operators distinguish invalid input, unavailable dependencies, and internal failures without parsing an opaque string.
+scope:
+  languages: [rust]
+  frameworks: []
+  paths:
+    include: ["src/**/*.rs", "crates/**/*.rs", "services/**/*.rs", "apps/**/*.rs"]
+    exclude: ["target/**", "**/generated/**"]
+applies_when:
+  intents: ["error handling", "boundary", "parsing", "file io", "http client"]
+  keywords: ["Result", "anyhow::Context", "with_context", "thiserror::Error", "map_err", "source"]
+avoid:
+  - Replacing a source error with a generic message that drops the cause.
+  - Returning String errors from reusable library boundaries.
+use_instead:
+  - Use a typed error enum for domain and library failures.
+  - Add operation context at binary and operator boundaries while preserving the source error.
+good_examples:
+  - 'let config = load_config(path).with_context(|| format!("read config {}", path.display()))?;'
+bad_examples:
+  - 'let config = load_config(path).map_err(|_| anyhow!("failed"))?;'
+owner: backend-platform
+last_reviewed: 2026-07-16
