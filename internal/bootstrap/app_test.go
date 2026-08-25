@@ -1827,7 +1827,11 @@ func (s *stubGraphStore) ListVendorRegister(ctx context.Context, filter ports.Ve
 		if owner == "" {
 			ownerState = "missing"
 		}
-		result.Vendors = append(result.Vendors, ports.VendorRegisterRow{URN: entity.URN, Name: entity.Label, SourceID: entity.SourceID, RuntimeID: entity.RuntimeID, RiskLevel: risk, Owner: owner, OwnerState: ownerState, LifecycleState: "unknown", ReviewState: "not_scheduled", EvidenceFreshnessState: "missing", Attributes: entity.Attributes})
+		result.Vendors = append(result.Vendors, ports.VendorRegisterRow{
+			VendorRegisterIdentity:   ports.VendorRegisterIdentity{URN: entity.URN, Name: entity.Label, SourceID: entity.SourceID, RuntimeID: entity.RuntimeID},
+			VendorRegisterGovernance: ports.VendorRegisterGovernance{RiskLevel: risk, Owner: owner, OwnerState: ownerState, LifecycleState: "unknown", ReviewState: "not_scheduled", EvidenceFreshnessState: "missing"},
+			Attributes:               entity.Attributes,
+		})
 	}
 	result.Summary.TotalVendors = uint64(len(result.Vendors))
 	result.Summary.ActiveVendors = result.Summary.TotalVendors

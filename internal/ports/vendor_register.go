@@ -20,39 +20,55 @@ type VendorRegisterAction struct {
 	Label string `json:"label"`
 }
 
+type VendorRegisterIdentity struct {
+	URN              string `json:"urn"`
+	VendorID         string `json:"vendor_id,omitempty"`
+	Name             string `json:"name"`
+	SourceID         string `json:"source_id,omitempty"`
+	RuntimeID        string `json:"runtime_id,omitempty"`
+	Provider         string `json:"provider,omitempty"`
+	Status           string `json:"status,omitempty"`
+	Category         string `json:"category,omitempty"`
+	WebsiteURL       string `json:"website_url,omitempty"`
+	ServicesProvided string `json:"services_provided,omitempty"`
+}
+
+type VendorRegisterGovernance struct {
+	LifecycleState         string `json:"lifecycle_state"`
+	Owner                  string `json:"owner,omitempty"`
+	OwnerState             string `json:"owner_state"`
+	RiskLevel              string `json:"risk_level"`
+	RiskScore              int32  `json:"risk_score,omitempty"`
+	RiskScoreLevel         string `json:"risk_score_level,omitempty"`
+	ReviewState            string `json:"review_state"`
+	ReviewDueAt            string `json:"review_due_at,omitempty"`
+	EvidenceFreshnessState string `json:"evidence_freshness_state"`
+	PacketState            string `json:"packet_state,omitempty"`
+}
+
+type VendorRegisterEvidence struct {
+	ContractCount          uint64 `json:"contract_count"`
+	SecurityReviewCount    uint64 `json:"security_review_count"`
+	QuestionnaireCount     uint64 `json:"questionnaire_count"`
+	AssuranceDocumentCount uint64 `json:"assurance_document_count"`
+	OpenFindings           uint64 `json:"open_findings"`
+	CriticalFindings       uint64 `json:"critical_findings"`
+	HighFindings           uint64 `json:"high_findings"`
+	EvidenceItems          uint64 `json:"evidence_items"`
+}
+
+type VendorRegisterQueue struct {
+	RiskQueueRank int32                  `json:"risk_queue_rank,omitempty"`
+	QueueReasons  []string               `json:"queue_reasons,omitempty"`
+	NextActions   []VendorRegisterAction `json:"next_actions,omitempty"`
+}
+
 type VendorRegisterRow struct {
-	URN                    string                 `json:"urn"`
-	VendorID               string                 `json:"vendor_id,omitempty"`
-	Name                   string                 `json:"name"`
-	SourceID               string                 `json:"source_id,omitempty"`
-	RuntimeID              string                 `json:"runtime_id,omitempty"`
-	Provider               string                 `json:"provider,omitempty"`
-	Status                 string                 `json:"status,omitempty"`
-	Category               string                 `json:"category,omitempty"`
-	WebsiteURL             string                 `json:"website_url,omitempty"`
-	ServicesProvided       string                 `json:"services_provided,omitempty"`
-	LifecycleState         string                 `json:"lifecycle_state"`
-	Owner                  string                 `json:"owner,omitempty"`
-	OwnerState             string                 `json:"owner_state"`
-	RiskLevel              string                 `json:"risk_level"`
-	RiskScore              int32                  `json:"risk_score,omitempty"`
-	RiskScoreLevel         string                 `json:"risk_score_level,omitempty"`
-	ReviewState            string                 `json:"review_state"`
-	ReviewDueAt            string                 `json:"review_due_at,omitempty"`
-	EvidenceFreshnessState string                 `json:"evidence_freshness_state"`
-	PacketState            string                 `json:"packet_state,omitempty"`
-	ContractCount          uint64                 `json:"contract_count"`
-	SecurityReviewCount    uint64                 `json:"security_review_count"`
-	QuestionnaireCount     uint64                 `json:"questionnaire_count"`
-	AssuranceDocumentCount uint64                 `json:"assurance_document_count"`
-	OpenFindings           uint64                 `json:"open_findings"`
-	CriticalFindings       uint64                 `json:"critical_findings"`
-	HighFindings           uint64                 `json:"high_findings"`
-	EvidenceItems          uint64                 `json:"evidence_items"`
-	RiskQueueRank          int32                  `json:"risk_queue_rank,omitempty"`
-	QueueReasons           []string               `json:"queue_reasons,omitempty"`
-	NextActions            []VendorRegisterAction `json:"next_actions,omitempty"`
-	Attributes             map[string]string      `json:"attributes,omitempty"`
+	VendorRegisterIdentity
+	VendorRegisterGovernance
+	VendorRegisterEvidence
+	VendorRegisterQueue
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 type VendorRegisterSummary struct {
