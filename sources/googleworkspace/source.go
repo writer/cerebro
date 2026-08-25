@@ -38,6 +38,7 @@ const (
 )
 
 type Source struct {
+	googleworkspaceauth.SourceExecutionCredentialProvider
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
 	families             *sourcecdk.FamilyEngine[settings]
@@ -168,21 +169,6 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 
 func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
-}
-
-// SourceExecutionCredential derives the bearer token inside the trusted Go
-// host. The closed Rust kernel receives only an origin-restricted request and
-// never receives the static token, service-account key, or OAuth refresh data.
-func (s *Source) SourceExecutionCredential(ctx context.Context, cfg sourcecdk.Config) ([]byte, error) {
-	settings, err := parseSettings(cfg)
-	if err != nil {
-		return nil, err
-	}
-	token, err := googleworkspaceauth.BearerToken(ctx, settings.auth)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(token), nil
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {

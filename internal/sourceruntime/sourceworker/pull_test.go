@@ -303,7 +303,7 @@ func TestTrustedHostCredentialReferenceMatchesGoogleWorkspaceAuthMode(t *testing
 		want       string
 	}{
 		"static token": {
-			references: map[string]string{"token": "credential:google-workspace:token"},
+			references: map[string]string{"token": "credential:google-workspace:token"}, // #nosec G101 -- opaque reference fixture.
 			resolved:   map[string]string{"token": "static-token"},
 			want:       "credential:google-workspace:token",
 		},
@@ -326,7 +326,7 @@ func TestTrustedHostCredentialReferenceMatchesGoogleWorkspaceAuthMode(t *testing
 			want: "env:GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY",
 		},
 		"OAuth refresh token": {
-			references: map[string]string{"refresh_token": "credential:google-workspace:refresh-token"},
+			references: map[string]string{"refresh_token": "credential:google-workspace:refresh-token"}, // #nosec G101 -- opaque reference fixture.
 			resolved: map[string]string{
 				"client_id": "client-id", "client_secret": "client-secret", "refresh_token": "refresh-token",
 			},
@@ -337,7 +337,7 @@ func TestTrustedHostCredentialReferenceMatchesGoogleWorkspaceAuthMode(t *testing
 			resolved:   map[string]string{"private_key": "private-key-material"},
 		},
 		"other providers cannot use adapter": {
-			references: map[string]string{"token": "credential:other:token"},
+			references: map[string]string{"token": "credential:other:token"}, // #nosec G101 -- opaque reference fixture.
 			resolved:   map[string]string{"token": "token"},
 		},
 	} {

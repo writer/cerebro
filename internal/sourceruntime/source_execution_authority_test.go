@@ -1125,12 +1125,12 @@ func TestSourceExecutionHostCredentialKeepsGoogleWorkspaceSecretsInTrustedHost(t
 		runtimeAuthorityProbe: &runtimeAuthorityProbe{sourceID: "google_workspace"},
 		credential:            []byte("short-lived-access-token"),
 	}
-	references := map[string]string{
+	references := map[string]string{ // #nosec G101 -- synthetic opaque-reference fixtures.
 		"client_id":     "writer-client-id",
 		"client_secret": "env:GOOGLE_WORKSPACE_CLIENT_SECRET",
 		"refresh_token": sourceconfig.CredentialReferenceValue("google_workspace", "refresh_token"),
 	}
-	config := sourcecdk.NewConfig(map[string]string{
+	config := sourcecdk.NewConfig(map[string]string{ // #nosec G101 -- synthetic resolved credential fixtures.
 		"client_id": "writer-client-id", "client_secret": "host-client-secret", "refresh_token": "host-refresh-token",
 	})
 	reference, credential, err := sourceExecutionHostCredential(context.Background(), "google_workspace", source, references, config)

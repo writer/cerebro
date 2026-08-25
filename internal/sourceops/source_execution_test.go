@@ -1037,7 +1037,7 @@ func TestPreviewSourceExecutionCredentialUsesTrustedHostProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	credential, err := New(registry).previewSourceExecutionCredential(context.Background(), "google_workspace", map[string]string{
+	credential, err := New(registry).previewSourceExecutionCredential(context.Background(), "google_workspace", map[string]string{ // #nosec G101 -- synthetic host-only credential fixtures.
 		"client_secret": "host-client-secret", "refresh_token": "host-refresh-token",
 	})
 	if err != nil {
