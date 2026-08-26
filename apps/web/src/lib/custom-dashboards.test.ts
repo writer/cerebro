@@ -5,6 +5,7 @@ import {
   customDashboardFindingsPath,
   customDashboardFrameworksPath,
   customDashboardSummaryPath,
+  customDashboardScopedPath,
   customDashboardTemplateWidgets,
   customDashboardTrendPath,
   sortCustomDashboards,
@@ -15,6 +16,7 @@ import {
 const dashboard = (id: string, updated_at: string): CustomDashboard => ({
   id,
   tenant_id: "tenant-a",
+  workspace_id: "workspace-a",
   name: id,
   visibility: "private",
   schema_version: 1,
@@ -58,6 +60,7 @@ describe("custom dashboard helpers", () => {
     });
     expect(path).toContain("/grc/trends?");
     expect(path).toContain("tenant_id=tenant-a");
+    expect(path).toContain("workspace_id=workspace-a");
     expect(path).toContain("severity=HIGH");
     expect(path).toContain("interval=month");
     expect(path).not.toContain("compare=");
@@ -68,12 +71,38 @@ describe("custom dashboard helpers", () => {
     const summary = customDashboardSummaryPath(dash, { id: "s", type: "summary_metrics" });
     expect(summary).toContain("/grc/dashboard?");
     expect(summary).toContain("view=summary");
+    expect(summary).toContain("tenant_id=tenant-a");
+    expect(summary).toContain("workspace_id=workspace-a");
     const findings = customDashboardFindingsPath(dash, { id: "f", type: "findings_table", query: { params: { limit: 5 } } });
     expect(findings).toContain("/grc/findings?");
     expect(findings).toContain("severity=HIGH");
+    expect(findings).toContain("tenant_id=tenant-a");
+    expect(findings).toContain("workspace_id=workspace-a");
     expect(findings).toContain("status=open");
     expect(findings).toContain("limit=5");
-    expect(customDashboardFrameworksPath(dash, { id: "fw", type: "framework_progress" })).toContain("/grc/frameworks?");
+    const frameworks = customDashboardFrameworksPath(dash);
+    expect(frameworks).toContain("/grc/frameworks?");
+    expect(frameworks).toContain("tenant_id=tenant-a");
+    expect(frameworks).toContain("workspace_id=workspace-a");
+  });
+
+  it("uses immutable dashboard scope instead of mutable widget filters", () => {
+    const dash = dashboard("dash", "2026-06-23T00:00:00Z");
+    dash.filters.tenant_id = "tenant-other";
+    const path = customDashboardFindingsPath(dash, {
+      id: "f",
+      type: "findings_table",
+      query: { params: { tenant_id: "tenant-widget" } },
+    });
+    expect(path).toContain("tenant_id=tenant-a");
+    expect(path).toContain("workspace_id=workspace-a");
+    expect(path).not.toContain("tenant-other");
+    expect(path).not.toContain("tenant-widget");
+  });
+
+  it("preserves dashboard scope on drilldown links", () => {
+    const path = customDashboardScopedPath("/findings/finding-a", dashboard("dash", "2026-06-23T00:00:00Z"));
+    expect(path).toBe("/findings/finding-a?tenant_id=tenant-a&workspace_id=workspace-a");
   });
 
   it("resolves template widget sets with known widget types", () => {

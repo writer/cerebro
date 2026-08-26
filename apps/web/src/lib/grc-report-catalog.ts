@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApiKey } from "@/components/providers";
 import { fetchCerebro } from "@/lib/cerebro-client";
 import type { CustomDashboard, CustomDashboardWidget } from "@/lib/custom-dashboards";
-import { grcResponseErrorMessage, useGRCQuery } from "@/lib/grc-client";
+import { grcPath, grcResponseErrorMessage, useGRCQuery } from "@/lib/grc-client";
 
 export const REPORT_CATALOG_PATH = "/grc/report-catalog";
 export const REPORT_QUERY_PATH = "/grc/query";
@@ -46,6 +46,21 @@ export type WidgetReportQuery = {
   source_id: string;
   params?: Record<string, string>;
   limit?: number;
+};
+
+export type ReportQueryScope = {
+  tenantID?: string;
+  workspaceID?: string;
+};
+
+export const reportQueryPath = (scope: ReportQueryScope): string | null => {
+  const tenantID = scope.tenantID?.trim() ?? "";
+  const workspaceID = scope.workspaceID?.trim() ?? "";
+  if (tenantID === "") return null;
+  return grcPath(REPORT_QUERY_PATH, {
+    tenant_id: tenantID,
+    workspace_id: workspaceID || undefined,
+  });
 };
 
 export type ReportQueryResponse = { source_id: string; generated_at: string; data: unknown };
@@ -187,10 +202,10 @@ type CachedReportQueryResponse = Awaited<ReturnType<typeof fetchCerebro<ReportQu
 const reportQueryCache = new Map<string, { expiresAt: number; response: CachedReportQueryResponse }>();
 const reportQueryInflight = new Map<string, Promise<CachedReportQueryResponse>>();
 
-const reportQueryCacheKey = (body: string, apiKey?: string) => `${apiKey ?? ""}\n${body}`;
+export const reportQueryCacheKey = (path: string, body: string, apiKey?: string) => `${apiKey ?? ""}\n${path}\n${body}`;
 
-const reportQueryCached = (body: string, apiKey?: string) => {
-  const cached = reportQueryCache.get(reportQueryCacheKey(body, apiKey));
+const reportQueryCached = (path: string, body: string, apiKey?: string) => {
+  const cached = reportQueryCache.get(reportQueryCacheKey(path, body, apiKey));
   return cached && cached.expiresAt > Date.now() ? cached.response : null;
 };
 
@@ -198,9 +213,9 @@ const reportQueryCached = (body: string, apiKey?: string) => {
 // successful responses are cached briefly and concurrent identical queries are
 // de-duplicated, so a dashboard with many report widgets (or remounts) does not
 // multiply backend traffic. force bypasses both the cache and in-flight entry.
-const fetchCachedReportQuery = (body: string, apiKey: string | undefined, force: boolean): Promise<CachedReportQueryResponse> => {
-  const cacheKey = reportQueryCacheKey(body, apiKey);
-  const cached = reportQueryCached(body, apiKey);
+const fetchCachedReportQuery = (path: string, body: string, apiKey: string | undefined, force: boolean): Promise<CachedReportQueryResponse> => {
+  const cacheKey = reportQueryCacheKey(path, body, apiKey);
+  const cached = reportQueryCached(path, body, apiKey);
   if (!force && cached) {
     return Promise.resolve(cached);
   }
@@ -208,7 +223,7 @@ const fetchCachedReportQuery = (body: string, apiKey: string | undefined, force:
   if (!force && inflight) {
     return inflight;
   }
-  const request = fetchCerebro<ReportQueryResponse>(REPORT_QUERY_PATH, apiKey, {
+  const request = fetchCerebro<ReportQueryResponse>(path, apiKey, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,
@@ -233,45 +248,55 @@ const fetchCachedReportQuery = (body: string, apiKey: string | undefined, force:
 // useReportQuery runs one bounded report query through POST /grc/query. It
 // re-runs whenever the query body changes, shares the brief response cache
 // above, and ignores stale or post-unmount responses via a request counter.
-export const useReportQuery = (query: WidgetReportQuery | null) => {
+export const useReportQuery = (query: WidgetReportQuery | null, scope: ReportQueryScope) => {
   const { apiKey } = useApiKey();
   const [data, setData] = useState<ReportQueryResponse | null>(null);
+  const [dataKey, setDataKey] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState("");
   const [loading, setLoading] = useState(false);
   const requestID = useRef(0);
+  const path = reportQueryPath(scope);
   const key = query ? JSON.stringify(query) : "";
+  const requestKey = path && key ? `${path}\n${key}` : "";
 
   const load = useCallback(
     async (force = false) => {
-      if (key === "") {
+      if (key === "" || path === null) {
         setData(null);
-        setError(null);
+        setDataKey("");
+        setError(key === "" ? null : "Report query requires tenant scope.");
+        setErrorKey("");
         setLoading(false);
         return;
       }
       const currentRequestID = requestID.current + 1;
       requestID.current = currentRequestID;
-      setLoading(!(!force && reportQueryCached(key, apiKey)));
+      setLoading(!(!force && reportQueryCached(path, key, apiKey)));
       setError(null);
+      setErrorKey("");
       let response;
       try {
-        response = await fetchCachedReportQuery(key, apiKey, force);
+        response = await fetchCachedReportQuery(path, key, apiKey, force);
       } catch (err) {
         if (currentRequestID !== requestID.current) return;
-        setError(err instanceof Error ? err.message : grcResponseErrorMessage(REPORT_QUERY_PATH, 0, null));
+        setError(err instanceof Error ? err.message : grcResponseErrorMessage(path, 0, null));
+        setErrorKey(requestKey);
         setLoading(false);
         return;
       }
       if (currentRequestID !== requestID.current) return;
       if (!response.ok) {
-        setError(grcResponseErrorMessage(REPORT_QUERY_PATH, response.status, response.data));
+        setError(grcResponseErrorMessage(path, response.status, response.data));
+        setErrorKey(requestKey);
         setLoading(false);
         return;
       }
       setData(response.data);
+      setDataKey(requestKey);
       setLoading(false);
     },
-    [apiKey, key],
+    [apiKey, key, path, requestKey],
   );
 
   useEffect(() => {
@@ -283,5 +308,11 @@ export const useReportQuery = (query: WidgetReportQuery | null) => {
   }, [load]);
 
   const reload = useCallback(() => load(true), [load]);
-  return { data, error, loading, reload };
+  const visibleError = path === null && key !== "" ? "Report query requires tenant scope." : errorKey === requestKey ? error : null;
+  return {
+    data: dataKey === requestKey ? data : null,
+    error: visibleError,
+    loading: path !== null && key !== "" && dataKey !== requestKey ? true : loading,
+    reload,
+  };
 };
