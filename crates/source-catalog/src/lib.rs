@@ -3579,6 +3579,7 @@ mod tests {
             "fivetran",
             "increase",
             "jira",
+            "jumpcloud",
             "langchain",
             "openai",
             "twilio",
