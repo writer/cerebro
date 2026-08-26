@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod append_log_consumer;
+mod audit_events;
 mod ask_queries;
 mod cutover_command;
 mod graph_provenance;
@@ -632,6 +633,7 @@ async fn authenticate_oidc(
 fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
+        "/v1/audit-events" => "cerebro:read",
         "/v1/source-runtimes/health" | "/v1/source-runtimes/freshness" => "cerebro:read",
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
@@ -689,6 +691,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/action-dispatches" => "list_action_dispatches",
         "/v1/action-reconciliation-runs" => "run_action_reconciliation",
         "/v1/sources/summary" => "source_summary",
+        "/v1/audit-events" => "list_audit_events",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
         "/v1/graph/expand" => "expand",
@@ -2351,6 +2354,7 @@ fn router_with_backend(
             "/v1/source-runtimes/{runtime_id}/invalid-events",
             get(list_source_runtime_invalid_events),
         )
+        .route("/v1/audit-events", get(list_audit_events))
         .route(
             "/v1/projections/legacy-deltas",
             post(record_legacy_projection),
@@ -2919,6 +2923,66 @@ fn source_runtime_invalid_events_error(
             "source_runtime_invalid_events_unavailable",
             "Source-runtime invalid-event evidence is temporarily unavailable.",
         ),
+    }
+}
+
+/// Native REST parity route for `GET /platform/audit-events`: one bounded,
+/// tenant-scoped, deterministically paged read of the projected audit-event
+/// allowlist. Cursor contents never authorize anything; every page
+/// re-authorizes the tenant through the transport layer.
+async fn list_audit_events(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(params): Query<audit_events::AuditEventsRequestParams>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let ledger = state.runtime_ledger.clone().ok_or_else(|| {
+        service_unavailable(
+            "audit_events_unavailable",
+            "The Rust audit-event store is not configured.",
+        )
+    })?;
+    let tenant_id = match params
+        .tenant_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|requested| !requested.is_empty())
+    {
+        Some(requested) => authorized_tenant(&authenticated, requested.to_owned())?,
+        None => authenticated.0.clone(),
+    };
+    let query = audit_events::parse_request(&params, tenant_id.as_str(), OffsetDateTime::now_utc())
+        .map_err(audit_events_error)?;
+    let scope = audit_events::store_query(&query).map_err(audit_events_error)?;
+    let page = ledger.list_audit_events(&scope).await.map_err(|error| {
+        eprintln!("Rust audit-event read failed: {error}");
+        service_unavailable(
+            "audit_events_unavailable",
+            "Audit events are temporarily unavailable.",
+        )
+    })?;
+    let response = audit_events::build_page(&query, &page).map_err(audit_events_error)?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "private, no-store")],
+        Json(response),
+    ))
+}
+
+fn audit_events_error(
+    error: audit_events::AuditEventsFailure,
+) -> (StatusCode, Json<ErrorResponse>) {
+    use audit_events::AuditEventsFailureKind;
+
+    match error.kind() {
+        AuditEventsFailureKind::InvalidRequest => {
+            bad_request("invalid_audit_event_query", error.to_string())
+        }
+        AuditEventsFailureKind::Unavailable => {
+            eprintln!("Rust audit-event response failed: {error}");
+            service_unavailable(
+                "audit_events_unavailable",
+                "Audit events are temporarily unavailable.",
+            )
+        }
     }
 }
 
