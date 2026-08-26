@@ -56,6 +56,8 @@ mod panopticon;
 mod portable_ai;
 mod protocol;
 mod provider_failure;
+#[cfg(test)]
+mod qdrant_cloud_vertical_slice;
 mod runtime_config;
 mod runtime_health;
 mod sdk;
