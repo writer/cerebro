@@ -3566,9 +3566,15 @@ mod tests {
             "adobe_workfront",
             "aircall",
             "airfocus",
+            "akeyless",
             "beezup",
             "bitwarden",
+            "box",
+            "conjur",
             "deepseek",
+            "duo",
+            "fivetran",
+            "jira",
             "openai",
         ] {
             let source = catalog.get(source_id).unwrap();
