@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use std::process::Command;
+
 const DOCKERFILE: &str = include_str!("../../../Dockerfile.rust");
 const WORKFLOW: &str = include_str!("../../../.github/workflows/rust-only-candidate.yml");
 const REPLACEMENT_WORKFLOW: &str =
@@ -11,6 +13,7 @@ const WORKSPACE_LOCK: &str = include_str!("../../../Cargo.lock");
 const MAKEFILE: &str = include_str!("../../../Makefile");
 const RUST_CODEGEN: &str = include_str!("../../../buf.gen.rust.yaml");
 const QUALIFICATION_SCRIPT: &str = include_str!("../../../scripts/qualify-rust-graph.sh");
+const TENANT_AUTH_HELPER: &str = include_str!("../../../scripts/lib/rust-tenant-auth.sh");
 const CONNECTRPC_REVISION: &str = "8b3c3b05d3b54af547477a9e3b3a77d62f68e229";
 const BUFFA_VERSION: &str = "0.9.1";
 
@@ -124,8 +127,14 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
 fn graph_qualification_stays_on_retired_rust_authority_path() {
     for required in [
         "export CEREBRO_RUST_READ_MODE=authority",
+        "graph_url=\"${rust_graph_base}/platform/graph/neighborhood",
+        "assert_status 404 retired-go-graph-before",
         "cmp \"${output_dir}/authority-graph-response-after-restart.canonical.json\"",
-        "assert_status 503 graph-authority-without-rust",
+        "assert_status 503 readiness-authority-without-rust",
+        "assert_status 000 rust-graph-authority-without-rust",
+        "assert_status 404 retired-go-graph-without-rust",
+        "\"${graph_bearer}\" \"${graph_tenant}\"",
+        "--header \"X-Cerebro-Tenant: ${graph_tenant}\"",
     ] {
         assert!(
             QUALIFICATION_SCRIPT.contains(required),
@@ -144,12 +153,71 @@ fn graph_qualification_stays_on_retired_rust_authority_path() {
         "verified_canary_restart",
         "canary_legacy_isolation",
         "canary_rust_fail_closed",
+        "graph_url=\"http://127.0.0.1:8080",
+        "assert_status 503 graph-authority-without-rust",
     ] {
         assert!(
             !QUALIFICATION_SCRIPT.contains(forbidden),
             "Rust graph qualification retained removed Go canary setup {forbidden:?}"
         );
     }
+}
+
+#[test]
+fn graph_qualification_tenant_auth_matches_the_rust_contract() {
+    for required in [
+        "cerebro-organizational-graph/tenant/v1\\0",
+        "printf -v tenant_length_hex '%016x'",
+        "openssl dgst -sha256 -hmac",
+        "Rust graph shared secret must be at least 32 bytes",
+    ] {
+        assert!(
+            TENANT_AUTH_HELPER.contains(required),
+            "Rust graph qualification tenant auth is missing {required:?}"
+        );
+    }
+
+    let helper = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../scripts/lib/rust-tenant-auth.sh"
+    );
+    let valid = Command::new("bash")
+        .args([
+            "-c",
+            "source \"$1\"; cerebro_rust_tenant_bearer \"$2\" \"$3\"",
+            "tenant-auth-test",
+            helper,
+            "test-organizational-graph-secret-32-bytes",
+            "tenant-a",
+        ])
+        .output()
+        .expect("run Rust graph tenant auth helper");
+    assert!(
+        valid.status.success(),
+        "tenant auth helper failed: {}",
+        String::from_utf8_lossy(&valid.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(valid.stdout).unwrap().trim(),
+        "34b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d6"
+    );
+
+    let short_secret = Command::new("bash")
+        .args([
+            "-c",
+            "source \"$1\"; cerebro_rust_tenant_bearer \"$2\" \"$3\"",
+            "tenant-auth-test",
+            helper,
+            "too-short",
+            "tenant-a",
+        ])
+        .output()
+        .expect("run Rust graph tenant auth helper with short secret");
+    assert!(!short_secret.status.success());
+    assert_eq!(
+        String::from_utf8(short_secret.stderr).unwrap().trim(),
+        "Rust graph shared secret must be at least 32 bytes"
+    );
 }
 
 #[test]
