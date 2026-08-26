@@ -83,6 +83,12 @@ export const customDashboardPath = (dashboardID: string) => `/grc/dashboards/${e
 
 export const customDashboardClonePath = (dashboardID: string) => `${customDashboardPath(dashboardID)}/clone`;
 
+export const customDashboardScopedPath = (path: string, dashboard: CustomDashboard) =>
+  grcPath(path, {
+    tenant_id: stringParam(dashboard.tenant_id),
+    workspace_id: stringParam(dashboard.workspace_id),
+  });
+
 export const customDashboardTrendPath = (dashboard: CustomDashboard, widget: CustomDashboardWidget) => {
   const params = {
     ...dashboard.filters,
@@ -91,7 +97,8 @@ export const customDashboardTrendPath = (dashboard: CustomDashboard, widget: Cus
   return grcPath("/grc/trends", {
     interval: stringParam(params.interval, "week"),
     days: numberParam(params.days, 90),
-    tenant_id: stringParam(params.tenant_id),
+    tenant_id: stringParam(dashboard.tenant_id),
+    workspace_id: stringParam(dashboard.workspace_id),
     runtime_id: stringParam(params.runtime_id),
     source_id: stringParam(params.source_id),
     severity: stringParam(params.severity),
@@ -111,7 +118,8 @@ const mergedWidgetParams = (dashboard: CustomDashboard, widget: CustomDashboardW
 export const customDashboardSummaryPath = (dashboard: CustomDashboard, widget: CustomDashboardWidget) => {
   const params = mergedWidgetParams(dashboard, widget);
   return grcDashboardPath({
-    tenant_id: stringParam(params.tenant_id),
+    tenant_id: stringParam(dashboard.tenant_id),
+    workspace_id: stringParam(dashboard.workspace_id),
     limit: numberParam(params.limit, 100),
   });
 };
@@ -119,7 +127,8 @@ export const customDashboardSummaryPath = (dashboard: CustomDashboard, widget: C
 export const customDashboardFindingsPath = (dashboard: CustomDashboard, widget: CustomDashboardWidget) => {
   const params = mergedWidgetParams(dashboard, widget);
   return grcPath("/grc/findings", {
-    tenant_id: stringParam(params.tenant_id),
+    tenant_id: stringParam(dashboard.tenant_id),
+    workspace_id: stringParam(dashboard.workspace_id),
     runtime_id: stringParam(params.runtime_id),
     source_id: stringParam(params.source_id),
     severity: stringParam(params.severity),
@@ -129,10 +138,10 @@ export const customDashboardFindingsPath = (dashboard: CustomDashboard, widget: 
   });
 };
 
-export const customDashboardFrameworksPath = (dashboard: CustomDashboard, widget: CustomDashboardWidget) => {
-  const params = mergedWidgetParams(dashboard, widget);
+export const customDashboardFrameworksPath = (dashboard: CustomDashboard) => {
   return grcPath("/grc/frameworks", {
-    tenant_id: stringParam(params.tenant_id),
+    tenant_id: stringParam(dashboard.tenant_id),
+    workspace_id: stringParam(dashboard.workspace_id),
   });
 };
 
