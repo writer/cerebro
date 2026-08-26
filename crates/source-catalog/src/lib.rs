@@ -3573,6 +3573,7 @@ mod tests {
             "box",
             "conjur",
             "deepseek",
+            "digitalocean",
             "duo",
             "fivetran",
             "jira",
