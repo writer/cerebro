@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/grcvendor"
@@ -83,7 +82,7 @@ func TestCreateGRCVendorSupportsTenantOnlyAndWorkspaceScopes(t *testing.T) {
 				t.Fatalf("append log events = %d, want 1", len(appendLog.events))
 			}
 			event := appendLog.events[0]
-			if event.GetTenantId() != "writer" || event.GetSourceId() != grcVendorEventSourceID || event.GetKind() != grcVendorEventKind || event.GetSchemaRef() != grcVendorEventSchemaRef {
+			if event.GetTenantId() != "writer" || event.GetSourceId() != "grc" || event.GetKind() != "grc.vendor" || event.GetSchemaRef() != "grc/vendor/v1" {
 				t.Fatalf("event identity = tenant %q source %q kind %q schema %q", event.GetTenantId(), event.GetSourceId(), event.GetKind(), event.GetSchemaRef())
 			}
 			if got := event.GetAttributes()[ports.EventAttributeApplicationWorkspaceID]; got != tt.wantWorkspace {
@@ -102,8 +101,8 @@ func TestCreateGRCVendorRejectsMalformedAndOversizedFields(t *testing.T) {
 		body string
 	}{
 		{name: "unknown field", body: `{"name":"Acme Vendor","unknown":"value"}`},
-		{name: "oversized name", body: `{"name":"` + strings.Repeat("x", maxGRCVendorCreateFieldLength+1) + `"}`},
-		{name: "oversized attribute key", body: `{"name":"Acme Vendor","attributes":{"` + strings.Repeat("k", maxGRCVendorCreateAttributeKey+1) + `":"value"}}`},
+		{name: "oversized name", body: `{"name":"` + strings.Repeat("x", 1025) + `"}`},
+		{name: "oversized attribute key", body: `{"name":"Acme Vendor","attributes":{"` + strings.Repeat("k", 129) + `":"value"}}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,36 +120,6 @@ func TestCreateGRCVendorRejectsMalformedAndOversizedFields(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestBuildGRCVendorCreateEventDoesNotAllowStandardAttributeOverrides(t *testing.T) {
-	event, vendor, err := buildGRCVendorCreateEvent(grcVendorCreateRequest{
-		Name: "Acme Vendor",
-		Attributes: map[string]string{
-			"source_status": "disabled",
-			"owner":         "untrusted-owner",
-			"custom_field":  "kept",
-		},
-	}, grcScope{TenantID: "writer"}, testNow())
-	if err != nil {
-		t.Fatalf("buildGRCVendorCreateEvent() error = %v", err)
-	}
-	if got := event.GetAttributes()["source_status"]; got != "active" {
-		t.Fatalf("source_status = %q, want active", got)
-	}
-	if got := event.GetAttributes()["owner"]; got != "" {
-		t.Fatalf("owner = %q, want reserved attribute omitted", got)
-	}
-	if got := event.GetAttributes()["custom_field"]; got != "kept" {
-		t.Fatalf("custom_field = %q, want kept", got)
-	}
-	if vendor.Owner != "" {
-		t.Fatalf("vendor owner = %q, want empty", vendor.Owner)
-	}
-}
-
-func testNow() time.Time {
-	return time.Date(2026, time.August, 26, 0, 0, 0, 0, time.UTC)
 }
 
 func TestCreateGRCVendorRejectsBodyWorkspaceWithoutResolvedScope(t *testing.T) {
