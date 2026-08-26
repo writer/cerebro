@@ -1,2 +1,3 @@
 standard-source-plan-index/v1
 acunetix	reports,scanning_profiles,scans,targets,vulnerabilities
+deepseek	account_balances,model_catalog

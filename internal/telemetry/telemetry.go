@@ -5,10 +5,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -974,15 +972,7 @@ func emit(kind string, span *Span, attributes Attributes) {
 	for key, value := range attributes.values {
 		payload[key] = safeAttributeValue(key, value)
 	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("telemetry encode: %v", err)
-		return
-	}
-	encoded = append(encoded, '\n')
-	if _, err := os.Stderr.Write(encoded); err != nil {
-		log.Printf("telemetry write: %v", err)
-	}
+	wideEvents.enqueue(payload)
 }
 
 func safeAttributeValue(key string, value any) any {

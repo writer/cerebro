@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useApiKey } from "@/components/providers";
 import { fetchCachedGRC, grcDashboardPath, grcTimeoutMessage } from "@/lib/grc-client";
+import { grcScopeQuery, type GRCScope, useGRCScopeQueryState } from "@/lib/grc-scope";
 import {
   displayDate,
   GRCDashboard,
@@ -35,6 +36,7 @@ type LiveSearchState = {
 };
 
 type LiveSearchLoadState = {
+  scopeKey: string | null;
   dashboard: GRCDashboard | null;
   loading: boolean;
   error: string | null;
@@ -47,7 +49,7 @@ type DashboardCache = {
 };
 
 type SharedDashboardState = {
-  owner: string;
+  scopeKey: string;
   cache: DashboardCache | null;
   request: Promise<GRCDashboard> | null;
 };
@@ -66,6 +68,7 @@ const emptySearchState: LiveSearchState = {
 };
 
 const emptyLoadState: LiveSearchLoadState = {
+  scopeKey: null,
   dashboard: null,
   loading: false,
   error: null,
@@ -76,8 +79,17 @@ const LIVE_SEARCH_CACHE_TTL_MS = 60_000;
 export const LIVE_SEARCH_TIMEOUT_MS = 8_000;
 export const LIVE_SEARCH_UNAVAILABLE_COPY = "Page actions are ready. Live search is unavailable.";
 
+export const liveSearchDashboardPath = (scope: GRCScope) =>
+  grcDashboardPath({ limit: 100, ...grcScopeQuery(scope) });
+
+export const liveSearchScopeKey = (apiKey: string | undefined, scope: GRCScope) =>
+  JSON.stringify([apiKey ?? "", scope.tenantID.trim(), scope.workspaceID.trim()]);
+
+export const liveSearchScopeIsReady = (scope: GRCScope) =>
+  !scope.workspaceID.trim() || Boolean(scope.tenantID.trim());
+
 const fallbackSharedDashboard: SharedDashboardState = {
-  owner: "",
+  scopeKey: "",
   cache: null,
   request: null,
 };
@@ -86,7 +98,7 @@ const sharedDashboardState = () => {
   if (typeof window === "undefined") {
     return fallbackSharedDashboard;
   }
-  window.__cerebroLiveSearchDashboard ??= { owner: "", cache: null, request: null };
+  window.__cerebroLiveSearchDashboard ??= { scopeKey: "", cache: null, request: null };
   return window.__cerebroLiveSearchDashboard;
 };
 
@@ -300,8 +312,12 @@ const errorMessage = (data: unknown, status: number) =>
 
 export function useLiveSearchCommands(query: string, isOpen: boolean) {
   const { apiKey } = useApiKey();
+  const { tenantID, workspaceID } = useGRCScopeQueryState();
+  const scope = useMemo(() => ({ tenantID: tenantID.trim(), workspaceID: workspaceID.trim() }), [tenantID, workspaceID]);
+  const scopeKey = useMemo(() => liveSearchScopeKey(apiKey, scope), [apiKey, scope]);
+  const dashboardPath = useMemo(() => liveSearchDashboardPath(scope), [scope]);
   const trimmedQuery = query.trim();
-  const shouldSearch = isOpen && trimmedQuery.length >= 2;
+  const shouldSearch = isOpen && trimmedQuery.length >= 2 && liveSearchScopeIsReady(scope);
   const [loadState, setLoadState] = useState<LiveSearchLoadState>(emptyLoadState);
 
   useEffect(() => {
@@ -312,8 +328,8 @@ export function useLiveSearchCommands(query: string, isOpen: boolean) {
     let active = true;
     const timer = window.setTimeout(async () => {
       const shared = sharedDashboardState();
-      if (shared.owner !== apiKey) {
-        shared.owner = apiKey;
+      if (shared.scopeKey !== scopeKey) {
+        shared.scopeKey = scopeKey;
         shared.cache = null;
         shared.request = null;
       }
@@ -322,6 +338,7 @@ export function useLiveSearchCommands(query: string, isOpen: boolean) {
       const now = Date.now();
       if (cached && now - cached.fetchedAt < LIVE_SEARCH_CACHE_TTL_MS) {
         setLoadState({
+          scopeKey,
           dashboard: cached.data,
           loading: false,
           error: null,
@@ -330,20 +347,21 @@ export function useLiveSearchCommands(query: string, isOpen: boolean) {
         return;
       }
 
-      const requestOwner = apiKey;
+      const requestScopeKey = scopeKey;
       setLoadState((current) => ({
-        dashboard: current.dashboard,
+        scopeKey: requestScopeKey,
+        dashboard: current.scopeKey === requestScopeKey ? current.dashboard : null,
         loading: true,
         error: null,
-        fetchedAt: current.fetchedAt,
+        fetchedAt: current.scopeKey === requestScopeKey ? current.fetchedAt : null,
       }));
 
       if (!shared.request) {
         const controller = new AbortController();
         const timeout = window.setTimeout(() => controller.abort(), LIVE_SEARCH_TIMEOUT_MS);
         const request = fetchCachedGRC<GRCDashboard>(
-          grcDashboardPath({ limit: 100 }),
-          requestOwner,
+          dashboardPath,
+          apiKey,
           false,
           { signal: controller.signal },
         ).then((response) => {
@@ -372,7 +390,7 @@ export function useLiveSearchCommands(query: string, isOpen: boolean) {
         return error instanceof Error ? error : new Error("Live search failed");
       });
 
-      if (!active || shared.owner !== requestOwner) {
+      if (!active || shared.scopeKey !== requestScopeKey) {
         return;
       }
       if (!dashboard) {
@@ -380,10 +398,11 @@ export function useLiveSearchCommands(query: string, isOpen: boolean) {
       }
       if (dashboard instanceof Error) {
         setLoadState((current) => ({
-          dashboard: current.dashboard,
+          scopeKey: requestScopeKey,
+          dashboard: current.scopeKey === requestScopeKey ? current.dashboard : null,
           loading: false,
           error: LIVE_SEARCH_UNAVAILABLE_COPY,
-          fetchedAt: current.fetchedAt,
+          fetchedAt: current.scopeKey === requestScopeKey ? current.fetchedAt : null,
         }));
         return;
       }
@@ -391,6 +410,7 @@ export function useLiveSearchCommands(query: string, isOpen: boolean) {
       const fetchedAt = Date.now();
       shared.cache = { data: dashboard, fetchedAt };
       setLoadState({
+        scopeKey: requestScopeKey,
         dashboard,
         loading: false,
         error: null,
@@ -402,11 +422,13 @@ export function useLiveSearchCommands(query: string, isOpen: boolean) {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [apiKey, shouldSearch]);
+  }, [apiKey, dashboardPath, scopeKey, shouldSearch]);
+
+  const scopedLoadState = loadState.scopeKey === scopeKey ? loadState : emptyLoadState;
 
   const commands = useMemo(
-    () => shouldSearch && loadState.dashboard ? buildLiveSearchCommands(trimmedQuery, loadState.dashboard) : [],
-    [loadState.dashboard, shouldSearch, trimmedQuery],
+    () => shouldSearch && scopedLoadState.dashboard ? buildLiveSearchCommands(trimmedQuery, scopedLoadState.dashboard) : [],
+    [scopedLoadState.dashboard, shouldSearch, trimmedQuery],
   );
 
   return useMemo(() => {
@@ -415,9 +437,9 @@ export function useLiveSearchCommands(query: string, isOpen: boolean) {
     }
     return {
       commands,
-      loading: loadState.loading,
-      error: loadState.error,
-      searched: Boolean(loadState.dashboard || loadState.error),
+      loading: scopedLoadState.loading,
+      error: scopedLoadState.error,
+      searched: Boolean(scopedLoadState.dashboard || scopedLoadState.error),
     };
-  }, [commands, loadState.dashboard, loadState.error, loadState.loading, shouldSearch]);
+  }, [commands, scopedLoadState.dashboard, scopedLoadState.error, scopedLoadState.loading, shouldSearch]);
 }

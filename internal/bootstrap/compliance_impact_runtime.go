@@ -24,8 +24,8 @@ func (a *App) newComplianceImpactServices(jobs *platformjobs.Service, assessment
 	}
 
 	projectionStore, projectionOK := a.deps.GraphStore.(ports.ProjectionGraphStore)
-	queryStore := a.deps.GraphReads.RawCypher
-	if !projectionOK || isNilInterface(projectionStore) || isNilInterface(queryStore) {
+	impactReads := a.deps.GraphReads.ComplianceImpact
+	if !projectionOK || isNilInterface(projectionStore) || isNilInterface(impactReads) {
 		return monitorService, nil, nil
 	}
 	projector, err := complianceimpact.NewGraphProjector(projectionStore)
@@ -35,11 +35,7 @@ func (a *App) newComplianceImpactServices(jobs *platformjobs.Service, assessment
 	if monitorService == nil {
 		return nil, projector, nil
 	}
-	graph, err := complianceimpact.NewProjectedGraph(queryStore)
-	if err != nil {
-		return monitorService, projector, nil
-	}
-	analyzer, err := complianceimpact.NewAnalyzer(graph, complianceimpact.DefaultLimits())
+	analyzer, err := complianceimpact.NewAnalyzer(impactReads, complianceimpact.DefaultLimits())
 	if err != nil {
 		return monitorService, projector, nil
 	}

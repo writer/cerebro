@@ -1,26 +1,40 @@
 {
-  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
   "behavior_kind": "standard_source",
   "subject_id": "acunetix",
-  "ir_version": "standard-source/v1",
-  "ir_digest_sha256": "sha256:6096890211faa327b3fdbbd37827cc4ae6649179b6f7ef107cd4587454cd5b6b",
-  "go_facts_digest_sha256": "sha256:3f4dfca0811524fdcd73f40174e525489f6c3a81be156373b25a9264a6984d22",
+  "ir_version": "standard-source/v2",
+  "ir_digest_sha256": "sha256:d8b0c76b2a0aa9fc6ab8cc64e7be40fb4318f5500f25c2b9c40de40cba46ab8f",
+  "go_facts_digest_sha256": "sha256:7f84fbcfd77f656c28cb600da24c94327d41c1522f12a4a2a7cf42f75e9aa587",
   "rust_implementation_revision": "24a48b50fbf087eb9b484d31f984f98fcc6e325c",
   "eligible": false,
   "reason_codes": [
-    "active_go_registry_path",
-    "missing_parity_receipt"
+    "active_go_projection_path",
+    "missing_parity_receipt",
+    "missing_rust_runtime_fence",
+    "no_deletion_targets"
   ],
-  "paths": [
-    "internal/sourceregistry/worker_catalog.go"
+  "authority_gates": [
+    {
+      "kind": "projection_dispatch",
+      "satisfied": false,
+      "reason_code": "active_go_projection_path",
+      "path": "internal/sourceprojection/registry.go",
+      "symbol": "RegisterConnectorDefinitions",
+      "digest_sha256": "sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80"
+    },
+    {
+      "kind": "runtime_fence",
+      "satisfied": false,
+      "reason_code": "missing_rust_runtime_fence",
+      "path": "internal/sourceruntime/sourceworker/pull.go",
+      "symbol": "RustAuthoritativeFamily",
+      "digest_sha256": "sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861"
+    }
   ],
-  "imports": [
-    "github.com/writer/cerebro/sources/catalogruntime"
-  ],
-  "symbols": [
-    "catalogruntimesource.New(entry)"
-  ],
+  "paths": [],
+  "imports": [],
+  "symbols": [],
   "required_receipt_modes": [
     "fixed_fixture"
   ],

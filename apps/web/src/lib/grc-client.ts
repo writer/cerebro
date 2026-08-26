@@ -3,9 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useApiKey } from "@/components/providers";
+import { useApiKey, useCurrentUser } from "@/components/providers";
 import { fetchCerebro } from "@/lib/cerebro-client";
-import { cacheGRCMetadata } from "@/lib/grc-metadata-cache";
+import { cacheGRCMetadata, type GRCMetadataScope } from "@/lib/grc-metadata-cache";
 import { runtimeStateForQuery } from "@/lib/runtime-state";
 
 export const GRC_QUERY_CACHE_TTL_MS = 30_000;
@@ -28,16 +28,68 @@ type CachedGRCResponse = {
   response: Awaited<ReturnType<typeof fetchCerebro>>;
 };
 
+export type GRCQueryScope = {
+  actor: string;
+  tenantID?: string;
+  workspaceID?: string;
+};
+
 const grcQueryCache = new Map<string, CachedGRCResponse>();
 const grcQueryInflight = new Map<string, Promise<Awaited<ReturnType<typeof fetchCerebro>>>>();
 
-const grcQueryCacheKey = (path: string, apiKey?: string) => `${apiKey ?? ""}\n${path}`;
+const normalizedScopeValue = (value: string | undefined) => value?.trim() ?? "";
 
-export const grcQueryKey = (path: string | null, apiKey?: string) =>
-  ["grc", apiKey ?? "", path ?? "disabled"] as const;
+const hasActorScope = (scope: GRCQueryScope | undefined) => Boolean(scope?.actor.trim());
+export const isValidGRCQueryScope = (scope: GRCQueryScope | undefined) => {
+  const tenantID = normalizedScopeValue(scope?.tenantID);
+  const workspaceID = normalizedScopeValue(scope?.workspaceID);
+  return !workspaceID || Boolean(tenantID);
+};
 
-export const readCachedGRC = <T,>(path: string, apiKey?: string) => {
-  const cached = grcQueryCache.get(grcQueryCacheKey(path, apiKey));
+export const grcClientScopeKey = (scope: GRCQueryScope | undefined, apiKey?: string) => [
+  apiKey ?? "",
+  normalizedScopeValue(scope?.actor),
+  normalizedScopeValue(scope?.tenantID),
+  normalizedScopeValue(scope?.workspaceID),
+].join("\n");
+
+const grcQueryCacheKey = (path: string, apiKey?: string, scope?: GRCQueryScope) =>
+  `${grcClientScopeKey(scope, apiKey)}\n${path}`;
+
+const scopeForPath = (path: string | null, actor: string): GRCQueryScope => {
+  if (!path) return { actor };
+  try {
+    const query = new URL(path, "http://cerebro.local").searchParams;
+    return {
+      actor,
+      tenantID: query.get("tenant_id") ?? "",
+      workspaceID: query.get("workspace_id") ?? "",
+    };
+  } catch {
+    return { actor };
+  }
+};
+
+const metadataScopeFor = (scope: GRCQueryScope, apiKey?: string): GRCMetadataScope => ({
+  actor: scope.actor,
+  apiKey,
+  tenantID: scope.tenantID,
+  workspaceID: scope.workspaceID,
+});
+
+export const grcQueryKey = (path: string | null, apiKey?: string, scope?: GRCQueryScope) =>
+  [
+    "grc",
+    apiKey ?? "",
+    path ?? "disabled",
+    normalizedScopeValue(scope?.actor),
+    normalizedScopeValue(scope?.tenantID),
+    normalizedScopeValue(scope?.workspaceID),
+  ] as const;
+
+export const readCachedGRC = <T,>(path: string, apiKey?: string, scope?: GRCQueryScope) => {
+  if (!hasActorScope(scope)) return null;
+  const cached = grcQueryCache.get(grcQueryCacheKey(path, apiKey, scope));
   if (cached && cached.expiresAt > Date.now()) {
     return cached.response as Awaited<ReturnType<typeof fetchCerebro<T>>>;
   }
@@ -132,14 +184,16 @@ export const fetchCachedGRC = async <T,>(
   apiKey: string | undefined,
   force = false,
   init: RequestInit = {},
+  scope: GRCQueryScope = { actor: "" },
 ) => {
-  const key = grcQueryCacheKey(path, apiKey);
-  const cached = readCachedGRC<T>(path, apiKey);
+  const scoped = hasActorScope(scope);
+  const key = grcQueryCacheKey(path, apiKey, scope);
+  const cached = scoped ? readCachedGRC<T>(path, apiKey, scope) : null;
   if (!force && cached) {
     return cached;
   }
 
-  const inflight = grcQueryInflight.get(key);
+  const inflight = scoped ? grcQueryInflight.get(key) : undefined;
   if (!force && inflight) {
     return inflight as Promise<Awaited<ReturnType<typeof fetchCerebro<T>>>>;
   }
@@ -147,16 +201,16 @@ export const fetchCachedGRC = async <T,>(
   const requestInit = force ? withFreshCacheHeaders(init) : init.signal ? init : withoutAbortSignal(init);
   const request = fetchCerebro<T>(path, apiKey, requestInit).then((response) => {
     if (response.ok) {
-      writeGRCQueryCache(key, response);
-      cacheGRCMetadata(response.data);
+      if (scoped) writeGRCQueryCache(key, response);
+      cacheGRCMetadata(response.data, metadataScopeFor(scope, apiKey));
     }
     return response;
   }).finally(() => {
-    if (grcQueryInflight.get(key) === request) {
+    if (scoped && grcQueryInflight.get(key) === request) {
       grcQueryInflight.delete(key);
     }
   });
-  if (!force && !init.signal) {
+  if (scoped && !force && !init.signal) {
     grcQueryInflight.set(key, request);
   }
   return request;
@@ -172,6 +226,7 @@ const fetchGRCQueryPayload = async <T,>(
   path: string,
   apiKey: string | undefined,
   signal: AbortSignal | undefined,
+  scope: GRCQueryScope,
 ): Promise<GRCQueryPayload<T>> => {
   const startedAt = performance.now();
   const request = timedAbortSignal(signal, GRC_QUERY_TIMEOUT_MS);
@@ -181,7 +236,7 @@ const fetchGRCQueryPayload = async <T,>(
     if (!response.ok) {
       throw new Error(grcResponseErrorMessage(path, response.status, response.data, durationMs));
     }
-    cacheGRCMetadata(response.data);
+    cacheGRCMetadata(response.data, metadataScopeFor(scope, apiKey));
     return {
       data: response.data,
       durationMs,
@@ -350,25 +405,29 @@ export function useGRCFormMutation<T = unknown>({ timeoutMs = GRC_FORM_MUTATION_
 
 export function useGRCQuery<T>(path: string | null) {
   const { apiKey } = useApiKey();
+  const { actor, loading: currentUserLoading } = useCurrentUser();
+  const scope = scopeForPath(path, actor);
+  const enabled = Boolean(path && !currentUserLoading && hasActorScope(scope) && isValidGRCQueryScope(scope));
   const query = useQuery<GRCQueryPayload<T>, Error>({
-    enabled: Boolean(path),
-    queryFn: ({ signal }) => fetchGRCQueryPayload<T>(path ?? "", apiKey, signal),
-    queryKey: grcQueryKey(path, apiKey),
+    enabled,
+    queryFn: ({ signal }) => fetchGRCQueryPayload<T>(path ?? "", apiKey, signal, scope),
+    queryKey: grcQueryKey(path, apiKey, scope),
     staleTime: GRC_QUERY_CACHE_TTL_MS,
   });
-  const data = path ? query.data?.data ?? null : null;
-  const error = path && query.error ? query.error.message : null;
-  const loading = Boolean(path) && (query.isPending || query.isFetching);
-  const durationMs = path ? query.data?.durationMs ?? null : null;
-  const lastSuccessfulAt = path ? query.data?.successfulAt ?? null : null;
+  const data = enabled && path ? query.data?.data ?? null : null;
+  const error = enabled && path && query.error ? query.error.message : null;
+  const loading = enabled && (query.isPending || query.isFetching);
+  const durationMs = enabled && path ? query.data?.durationMs ?? null : null;
+  const lastSuccessfulAt = enabled && path ? query.data?.successfulAt ?? null : null;
   const { refetch } = query;
   const reload = useCallback(async () => {
+    if (!enabled) return;
     await refetch({ cancelRefetch: true });
-  }, [refetch]);
+  }, [enabled, refetch]);
 
   const state = runtimeStateForQuery({
     data,
-    enabled: Boolean(path),
+    enabled,
     error,
     loading,
   });

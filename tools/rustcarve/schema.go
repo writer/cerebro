@@ -2,21 +2,22 @@ package main
 
 import "sort"
 
-const schemaContractV1 = "cerebro.rustcarve.closed-schema/v1"
+const schemaContractV1 = "cerebro.rustcarve.closed-schema/v2"
 
 type closedSchemaContract struct {
-	SchemaVersion        string                  `json:"schema_version"`
-	ToolRevision         string                  `json:"tool_revision"`
-	RequestSchemaVersion string                  `json:"request_schema_version"`
-	EnvelopeVersion      string                  `json:"migration_ir_schema_version"`
-	UnknownFields        string                  `json:"unknown_fields"`
-	Scope                closedScopeSchema       `json:"scope"`
-	Variants             []closedVariantSchema   `json:"variants"`
-	GraphQuery           closedGraphQuerySchema  `json:"graph_query"`
-	FindingRule          closedFindingRuleSchema `json:"finding_rule"`
-	DifferentialReceipt  closedReceiptSchema     `json:"differential_receipt"`
-	DeletionManifest     closedDeletionSchema    `json:"deletion_manifest"`
-	ReasonCodes          []reasonCode            `json:"reason_codes"`
+	SchemaVersion        string                      `json:"schema_version"`
+	ToolRevision         string                      `json:"tool_revision"`
+	RequestSchemaVersion string                      `json:"request_schema_version"`
+	EnvelopeVersion      string                      `json:"migration_ir_schema_version"`
+	UnknownFields        string                      `json:"unknown_fields"`
+	Scope                closedScopeSchema           `json:"scope"`
+	Variants             []closedVariantSchema       `json:"variants"`
+	SourceAuthority      closedSourceAuthoritySchema `json:"source_authority"`
+	GraphQuery           closedGraphQuerySchema      `json:"graph_query"`
+	FindingRule          closedFindingRuleSchema     `json:"finding_rule"`
+	DifferentialReceipt  closedReceiptSchema         `json:"differential_receipt"`
+	DeletionManifest     closedDeletionSchema        `json:"deletion_manifest"`
+	ReasonCodes          []reasonCode                `json:"reason_codes"`
 }
 
 type closedScopeSchema struct {
@@ -48,6 +49,19 @@ type closedGraphQuerySchema struct {
 	DynamicQueryRule         string   `json:"dynamic_query_rule"`
 }
 
+type closedSourceAuthoritySchema struct {
+	CanonicalRequestType     string   `json:"canonical_request_type"`
+	CanonicalIRType          string   `json:"canonical_ir_type"`
+	RequiredGates            []string `json:"required_gates"`
+	ProjectionPath           string   `json:"projection_path"`
+	ProjectionRegisterSymbol string   `json:"projection_register_symbol"`
+	DynamicProjectorSymbol   string   `json:"dynamic_projector_symbol"`
+	RuntimeFencePath         string   `json:"runtime_fence_path"`
+	RuntimeFenceSymbol       string   `json:"runtime_fence_symbol"`
+	ProjectionRule           string   `json:"projection_rule"`
+	RuntimeFenceRule         string   `json:"runtime_fence_rule"`
+}
+
 type closedFindingRuleSchema struct {
 	CanonicalGoType          string   `json:"canonical_go_type"`
 	AllowedPredicates        []string `json:"allowed_predicates"`
@@ -65,9 +79,10 @@ type closedReceiptSchema struct {
 }
 
 type closedDeletionSchema struct {
-	SchemaVersion string   `json:"schema_version"`
-	ExactTargets  []string `json:"exact_targets"`
-	Eligibility   string   `json:"eligibility"`
+	SchemaVersion  string   `json:"schema_version"`
+	ExactTargets   []string `json:"exact_targets"`
+	AuthorityGates []string `json:"authority_gates"`
+	Eligibility    string   `json:"eligibility"`
 }
 
 func buildClosedSchemaContract() closedSchemaContract {
@@ -89,6 +104,18 @@ func buildClosedSchemaContract() closedSchemaContract {
 			{BehaviorKind: behaviorProviderSource, IRVersion: providerSourceIRVersion, RequiredReceiptModes: requiredReceiptModes(behaviorProviderSource), CanonicalGoType: "tools/rustcarve.standardSourceIR"},
 			{BehaviorKind: behaviorGraphQuery, IRVersion: graphQueryIRVersion, RequiredReceiptModes: requiredReceiptModes(behaviorGraphQuery), CanonicalGoType: "tools/rustcarve.graphQueryIR"},
 			{BehaviorKind: behaviorFindingRule, IRVersion: findingRuleIRVersion, RequiredReceiptModes: requiredReceiptModes(behaviorFindingRule), CanonicalGoType: "tools/rustcarve.findingRuleIR"},
+		},
+		SourceAuthority: closedSourceAuthoritySchema{
+			CanonicalRequestType:     "tools/rustcarve.sourceAuthorityRequest",
+			CanonicalIRType:          "tools/rustcarve.sourceAuthorityIR",
+			RequiredGates:            []string{"projection_dispatch", "runtime_fence"},
+			ProjectionPath:           sourceProjectionRegistryPath,
+			ProjectionRegisterSymbol: sourceProjectionRegisterSymbol,
+			DynamicProjectorSymbol:   sourceDynamicProjectorSymbol,
+			RuntimeFencePath:         sourceRuntimeFencePath,
+			RuntimeFenceSymbol:       sourceRuntimeFenceSymbol,
+			ProjectionRule:           "the named registration function must not call the named dynamic Go projector constructor",
+			RuntimeFenceRule:         "the named closed Rust authority function must unconditionally authorize every catalog runtime family for the exact source",
 		},
 		GraphQuery: closedGraphQuerySchema{
 			CanonicalGoType:          "tools/rustcarve.graphQueryIR",
@@ -120,9 +147,10 @@ func buildClosedSchemaContract() closedSchemaContract {
 			MismatchRule:   "mismatch_count must be zero and every digest/revision must match the generated IR",
 		},
 		DeletionManifest: closedDeletionSchema{
-			SchemaVersion: deletionManifestV1,
-			ExactTargets:  []string{"paths", "imports", "symbols"},
-			Eligibility:   "false unless Rust-only fail-closed authority and every required bound receipt pass",
+			SchemaVersion:  deletionManifestV1,
+			ExactTargets:   []string{"paths", "imports", "symbols"},
+			AuthorityGates: []string{"projection_dispatch", "runtime_fence"},
+			Eligibility:    "false unless Rust-only fail-closed authority, every source authority gate, and every required bound receipt pass",
 		},
 		ReasonCodes: reasons,
 	}

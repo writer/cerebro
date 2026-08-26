@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,8 @@ import (
 
 	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
 	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
+	"github.com/writer/cerebro/internal/compliance"
+	"github.com/writer/cerebro/internal/complianceintegration"
 	"github.com/writer/cerebro/internal/ports"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
@@ -40,6 +44,8 @@ type graphServiceStub struct {
 	expandBatch       func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
 	listEntities      func(context.Context, *connect.Request[cerebrographv1.ListEntitiesRequest]) (*connect.Response[cerebrographv1.ListEntitiesResponse], error)
 	countRelations    func(context.Context, *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error)
+	impactFact        func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error)
+	impactDependents  func(context.Context, *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error)
 	personAccess      func(context.Context, *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error)
 	vendorRegister    func(context.Context, *connect.Request[cerebrographv1.ListVendorRegisterRequest]) (*connect.Response[cerebrographv1.ListVendorRegisterResponse], error)
 	vendorDiscoveries func(context.Context, *connect.Request[cerebrographv1.ListVendorDiscoveriesRequest]) (*connect.Response[cerebrographv1.ListVendorDiscoveriesResponse], error)
@@ -59,6 +65,14 @@ func (s graphServiceStub) ExpandBatch(ctx context.Context, request *connect.Requ
 
 func (s graphServiceStub) CountRelations(ctx context.Context, request *connect.Request[cerebrographv1.CountRelationsRequest]) (*connect.Response[cerebrographv1.CountRelationsResponse], error) {
 	return s.countRelations(ctx, request)
+}
+
+func (s graphServiceStub) GetComplianceImpactFact(ctx context.Context, request *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+	return s.impactFact(ctx, request)
+}
+
+func (s graphServiceStub) ListComplianceImpactDependents(ctx context.Context, request *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error) {
+	return s.impactDependents(ctx, request)
 }
 
 func (s graphServiceStub) ListPersonAccessPaths(ctx context.Context, request *connect.Request[cerebrographv1.ListPersonAccessPathsRequest]) (*connect.Response[cerebrographv1.ListPersonAccessPathsResponse], error) {
@@ -82,6 +96,17 @@ func newGraphTestServer(t *testing.T, service graphServiceStub) *httptest.Server
 		w.WriteHeader(http.StatusOK)
 	})
 	return httptest.NewServer(mux)
+}
+
+func newComplianceImpactQueryStore(t *testing.T, service graphServiceStub) *QueryStore {
+	t.Helper()
+	server := newGraphTestServer(t, service)
+	t.Cleanup(server.Close)
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
 }
 
 func (s queryStoreStub) Ping(context.Context) error { return s.err }
@@ -109,6 +134,463 @@ func (s *assertionQueryStoreStub) CountProjectedLinksMissingAssertions(_ context
 func (s *assertionQueryStoreStub) MigrateProjectedLinkAssertions(_ context.Context, request ports.ProjectionAssertionMigrationRequest) (ports.ProjectionAssertionMigrationResult, error) {
 	s.migrationRequest = request
 	return ports.ProjectionAssertionMigrationResult{LinksMatched: 7, LinksMigrated: 6, LinksQuarantined: 1}, nil
+}
+
+func TestComplianceImpactTypedReadsPreserveTenantFactAndKeysetContract(t *testing.T) {
+	root := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-1", "plan-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
+	dependent := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-2", "plan-2-revision", 1, "c", time.Date(2026, time.August, 25, 12, 2, 0, 0, time.UTC))
+	rootKey := complianceImpactKey(t, root)
+	dependencyKey := complianceImpactKey(t, dependency)
+	dependentKey := complianceImpactKey(t, dependent)
+	server := newGraphTestServer(t, graphServiceStub{
+		impactFact: func(_ context.Context, request *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetAgentKey() != rootKey {
+				t.Fatalf("fact authority or key missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.GetComplianceImpactFactResponse{
+				TenantId: "tenant-a", GraphRevision: 41, Fact: complianceImpactEntity(t, root), DependencyCount: 1,
+				Dependencies: []*cerebrographv1.ComplianceImpactDependency{{Entity: complianceImpactEntity(t, dependency), Relation: "policy_input"}},
+			}), nil
+		},
+		impactDependents: func(_ context.Context, request *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetDependencyAgentKey() != dependencyKey || request.Msg.GetAfterAgentKey() != rootKey || request.Msg.GetLimit() != 1 {
+				t.Fatalf("dependent authority, cursor, or bound missing: headers=%v request=%#v", request.Header(), request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.ListComplianceImpactDependentsResponse{
+				TenantId: "tenant-a", GraphRevision: 41, Dependents: []*cerebrographv1.GraphEntity{complianceImpactEntity(t, dependent)}, Truncated: true, NextAfterAgentKey: dependentKey,
+			}), nil
+		},
+	})
+	defer server.Close()
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact, err := store.GetComplianceImpactFact(context.Background(), "tenant-a", complianceImpactPortRevision(t, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fact.Revision.AgentKey != rootKey || len(fact.Dependencies) != 1 || fact.Dependencies[0].Revision.AgentKey != dependencyKey || fact.Dependencies[0].Relation != "policy_input" {
+		t.Fatalf("fact = %#v", fact)
+	}
+	page, err := store.ListComplianceImpactDependents(context.Background(), ports.ComplianceImpactDependentRequest{
+		TenantID: "tenant-a", Dependency: complianceImpactPortRevision(t, dependency), AfterCursor: rootKey, Limit: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Complete || page.NextCursor != dependentKey || len(page.Dependents) != 1 || page.Dependents[0].AgentKey != dependentKey {
+		t.Fatalf("page = %#v", page)
+	}
+}
+
+func TestComplianceImpactTypedReadsFailClosedOnMalformedResponses(t *testing.T) {
+	root := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-1", "plan-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	valid := func() *cerebrographv1.GetComplianceImpactFactResponse {
+		return &cerebrographv1.GetComplianceImpactFactResponse{TenantId: "tenant-a", Fact: complianceImpactEntity(t, root)}
+	}
+	for name, mutate := range map[string]func(*cerebrographv1.GetComplianceImpactFactResponse){
+		"wrong tenant":   func(response *cerebrographv1.GetComplianceImpactFactResponse) { response.TenantId = "tenant-b" },
+		"count mismatch": func(response *cerebrographv1.GetComplianceImpactFactResponse) { response.DependencyCount = 1 },
+		"missing edge attribute": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.DependencyCount = 1
+			dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
+			response.Dependencies = []*cerebrographv1.ComplianceImpactDependency{{Entity: complianceImpactEntity(t, dependency)}}
+		},
+		"malformed properties": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.Properties["revision_version"] = "invalid"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := valid()
+			mutate(response)
+			server := newGraphTestServer(t, graphServiceStub{impactFact: func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+				return connect.NewResponse(response), nil
+			}})
+			defer server.Close()
+			store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.GetComplianceImpactFact(context.Background(), "tenant-a", complianceImpactPortRevision(t, root)); err == nil {
+				t.Fatal("malformed response accepted")
+			}
+		})
+	}
+}
+
+func canonicalComplianceRevision(t *testing.T, tenantID string, kind complianceintegration.FactKind, id, revisionID string, version uint64, digestByte string, lastModified time.Time) complianceintegration.RevisionRef {
+	t.Helper()
+	if len(digestByte) != 1 || !strings.Contains("0123456789abcdef", digestByte) {
+		t.Fatalf("digest byte %q is not a lowercase hexadecimal digit", digestByte)
+	}
+	revision, err := complianceintegration.AdaptRevisionRef(tenantID, "grc", kind, compliance.RevisionRef{
+		ID: id, RevisionID: revisionID, Version: version,
+		ContentDigest: compliance.ContentDigest("sha256:" + strings.Repeat(digestByte, 64)), LastModified: lastModified,
+	})
+	if err != nil {
+		t.Fatalf("canonical compliance revision: %v", err)
+	}
+	return revision
+}
+
+func complianceImpactKey(t *testing.T, revision complianceintegration.RevisionRef) string {
+	t.Helper()
+	key, err := revision.ImpactRevisionURN()
+	if err != nil {
+		t.Fatalf("canonical compliance impact key: %v", err)
+	}
+	return key
+}
+
+func complianceImpactPortRevision(t *testing.T, revision complianceintegration.RevisionRef) ports.ComplianceImpactRevisionRef {
+	t.Helper()
+	canonical := revision.Canonical()
+	return ports.ComplianceImpactRevisionRef{
+		AgentKey: complianceImpactKey(t, revision), TenantID: revision.TenantID(), Domain: revision.Domain(), Kind: string(revision.Kind()),
+		ID: revision.ID(), RevisionID: revision.RevisionID(), Version: revision.Version(), ContentDigest: string(canonical.ContentDigest), LastModified: canonical.LastModified,
+	}
+}
+
+func complianceImpactEntity(t *testing.T, revision complianceintegration.RevisionRef) *cerebrographv1.GraphEntity {
+	t.Helper()
+	key := complianceImpactKey(t, revision)
+	canonical := revision.Canonical()
+	return &cerebrographv1.GraphEntity{
+		AgentKey: key, EntityKind: "compliance.impact_revision", Label: revision.ID() + "@" + revision.RevisionID(),
+		Properties: map[string]string{
+			"entity_urn": key, "entity_type": "compliance.impact_revision", "source_id": "compliance",
+			"tenant_id": revision.TenantID(), "domain": revision.Domain(), "fact_kind": string(revision.Kind()), "stable_id": revision.ID(),
+			"revision_id": revision.RevisionID(), "revision_version": strconv.FormatUint(revision.Version(), 10), "content_digest": string(canonical.ContentDigest),
+			"last_modified": canonical.LastModified.Format(time.RFC3339Nano),
+		},
+	}
+}
+
+func TestComplianceImpactTypedReadsRejectNonCanonicalKeysAndMetadata(t *testing.T) {
+	root := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-1", "plan-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	rootKey := complianceImpactKey(t, root)
+	rootRef := complianceImpactPortRevision(t, root)
+	foreign := canonicalComplianceRevision(t, "tenant-b", complianceintegration.FactAssessmentPlan, "plan-foreign", "plan-foreign-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
+	foreignRef := complianceImpactPortRevision(t, foreign)
+
+	t.Run("malformed fact key", func(t *testing.T) {
+		calls := 0
+		store := newComplianceImpactQueryStore(t, graphServiceStub{impactFact: func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+			calls++
+			return connect.NewResponse(&cerebrographv1.GetComplianceImpactFactResponse{TenantId: "tenant-a", Fact: complianceImpactEntity(t, root)}), nil
+		}})
+		requested := rootRef
+		requested.AgentKey = rootKey + ":tampered"
+		if _, err := store.GetComplianceImpactFact(context.Background(), "tenant-a", requested); err == nil {
+			t.Fatal("malformed fact key accepted")
+		}
+		if calls != 0 {
+			t.Fatalf("malformed fact key reached Rust authority %d times", calls)
+		}
+	})
+
+	t.Run("cross tenant fact key", func(t *testing.T) {
+		calls := 0
+		store := newComplianceImpactQueryStore(t, graphServiceStub{impactFact: func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+			calls++
+			return connect.NewResponse(&cerebrographv1.GetComplianceImpactFactResponse{TenantId: "tenant-a", Fact: complianceImpactEntity(t, root)}), nil
+		}})
+		if _, err := store.GetComplianceImpactFact(context.Background(), "tenant-a", foreignRef); err == nil {
+			t.Fatal("cross-tenant fact key accepted")
+		}
+		if calls != 0 {
+			t.Fatalf("cross-tenant fact key reached Rust authority %d times", calls)
+		}
+	})
+
+	dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "c", time.Date(2026, time.August, 25, 12, 2, 0, 0, time.UTC))
+	dependencyKey := complianceImpactKey(t, dependency)
+	for name, request := range map[string]ports.ComplianceImpactDependentRequest{
+		"malformed dependency key": {TenantID: "tenant-a", Dependency: func() ports.ComplianceImpactRevisionRef {
+			ref := complianceImpactPortRevision(t, dependency)
+			ref.AgentKey = dependencyKey + ":tampered"
+			return ref
+		}(), Limit: 1},
+		"malformed after key":         {TenantID: "tenant-a", Dependency: complianceImpactPortRevision(t, dependency), AfterCursor: rootKey + ":tampered", Limit: 1},
+		"cross tenant dependency key": {TenantID: "tenant-a", Dependency: foreignRef, Limit: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			store := newComplianceImpactQueryStore(t, graphServiceStub{impactDependents: func(context.Context, *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error) {
+				calls++
+				return connect.NewResponse(&cerebrographv1.ListComplianceImpactDependentsResponse{TenantId: "tenant-a"}), nil
+			}})
+			if _, err := store.ListComplianceImpactDependents(context.Background(), request); err == nil {
+				t.Fatal("malformed or cross-tenant cursor accepted")
+			}
+			if calls != 0 {
+				t.Fatalf("invalid cursor reached Rust authority %d times", calls)
+			}
+		})
+	}
+
+	for name, mutate := range map[string]func(*cerebrographv1.GetComplianceImpactFactResponse){
+		"wrong response tenant": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.TenantId = "tenant-b"
+		},
+		"wrong entity tenant": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.Properties["tenant_id"] = "tenant-b"
+		},
+		"wrong entity kind": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.EntityKind = "compliance.impact_revision_legacy"
+		},
+		"wrong revision metadata": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.Properties["stable_id"] = root.ID() + "-replacement"
+		},
+		"canonical key metadata mismatch": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.AgentKey = rootKey + ":tampered"
+		},
+		"missing revision attribute": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			delete(response.Fact.Properties, "revision_id")
+		},
+		"malformed revision version": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.Properties["revision_version"] = "not-a-number"
+		},
+		"non-canonical revision version": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.Properties["revision_version"] = "01"
+		},
+		"malformed content digest": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.Properties["content_digest"] = strings.TrimSuffix(string(root.Canonical().ContentDigest), "a")
+		},
+		"malformed last modified": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.Properties["last_modified"] = "not-a-timestamp"
+		},
+		"non-canonical last modified": func(response *cerebrographv1.GetComplianceImpactFactResponse) {
+			response.Fact.Properties["last_modified"] = "2026-08-25T05:00:00-07:00"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := &cerebrographv1.GetComplianceImpactFactResponse{TenantId: "tenant-a", Fact: complianceImpactEntity(t, root)}
+			mutate(response)
+			store := newComplianceImpactQueryStore(t, graphServiceStub{impactFact: func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+				return connect.NewResponse(response), nil
+			}})
+			if _, err := store.GetComplianceImpactFact(context.Background(), "tenant-a", rootRef); err == nil {
+				t.Fatal("non-canonical response accepted")
+			}
+		})
+	}
+}
+
+func TestComplianceImpactTypedReadsClassifyInvalidLimits(t *testing.T) {
+	dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	store := newComplianceImpactQueryStore(t, graphServiceStub{})
+	for _, limit := range []uint32{0, ports.MaxCypherQueryRows} {
+		_, err := store.ListComplianceImpactDependents(context.Background(), ports.ComplianceImpactDependentRequest{TenantID: "tenant-a", Dependency: complianceImpactPortRevision(t, dependency), Limit: limit})
+		if !errors.Is(err, ports.ErrComplianceImpactInvalidProjection) {
+			t.Fatalf("limit %d error = %v, want ErrComplianceImpactInvalidProjection", limit, err)
+		}
+	}
+}
+
+func TestComplianceImpactTypedReadsRejectDependencyCountListMismatch(t *testing.T) {
+	root := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-1", "plan-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
+	for name, response := range map[string]*cerebrographv1.GetComplianceImpactFactResponse{
+		"nonzero count with empty list": {
+			TenantId: "tenant-a", Fact: complianceImpactEntity(t, root), DependencyCount: 1,
+		},
+		"zero count with nonempty list": {
+			TenantId: "tenant-a", Fact: complianceImpactEntity(t, root), DependencyCount: 0,
+			Dependencies: []*cerebrographv1.ComplianceImpactDependency{{Entity: complianceImpactEntity(t, dependency), Relation: "policy_input"}},
+		},
+		"count over maximum": {
+			TenantId: "tenant-a", Fact: complianceImpactEntity(t, root), DependencyCount: 3000,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := newComplianceImpactQueryStore(t, graphServiceStub{impactFact: func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+				return connect.NewResponse(response), nil
+			}})
+			if _, err := store.GetComplianceImpactFact(context.Background(), "tenant-a", complianceImpactPortRevision(t, root)); err == nil {
+				t.Fatal("dependency count/list mismatch accepted")
+			}
+		})
+	}
+}
+
+func TestComplianceImpactTypedReadsPreserveExactOrderedDependencyRelations(t *testing.T) {
+	root := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-1", "plan-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	left := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-left", "policy-left-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
+	right := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactProgram, "program-right", "program-right-revision", 1, "c", time.Date(2026, time.August, 25, 12, 2, 0, 0, time.UTC))
+	type dependencyFixture struct {
+		revision complianceintegration.RevisionRef
+		relation string
+		key      string
+	}
+	fixtures := []dependencyFixture{
+		{revision: left, relation: "policy_input", key: complianceImpactKey(t, left)},
+		{revision: right, relation: "program_control", key: complianceImpactKey(t, right)},
+	}
+	sort.Slice(fixtures, func(i, j int) bool {
+		return fixtures[i].key+"\x00"+fixtures[i].relation < fixtures[j].key+"\x00"+fixtures[j].relation
+	})
+	store := newComplianceImpactQueryStore(t, graphServiceStub{impactFact: func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+		return connect.NewResponse(&cerebrographv1.GetComplianceImpactFactResponse{
+			TenantId: "tenant-a", Fact: complianceImpactEntity(t, root), DependencyCount: 2,
+			Dependencies: []*cerebrographv1.ComplianceImpactDependency{
+				{Entity: complianceImpactEntity(t, fixtures[0].revision), Relation: fixtures[0].relation},
+				{Entity: complianceImpactEntity(t, fixtures[1].revision), Relation: fixtures[1].relation},
+			},
+		}), nil
+	}})
+	fact, err := store.GetComplianceImpactFact(context.Background(), "tenant-a", complianceImpactPortRevision(t, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fact.Dependencies) != len(fixtures) {
+		t.Fatalf("dependency count = %d, want %d", len(fact.Dependencies), len(fixtures))
+	}
+	for index, fixture := range fixtures {
+		got := fact.Dependencies[index]
+		if got.Revision.AgentKey != fixture.key || got.Relation != fixture.relation {
+			t.Fatalf("dependency[%d] = %#v, want key %q relation %q", index, got, fixture.key, fixture.relation)
+		}
+		if got.Relation == "compliance_depends_on" {
+			t.Fatalf("dependency[%d] returned the wrapper relation instead of the edge attribute", index)
+		}
+	}
+}
+
+func TestComplianceImpactTypedReadsRejectDuplicateDirectDependencies(t *testing.T) {
+	root := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-1", "plan-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
+	store := newComplianceImpactQueryStore(t, graphServiceStub{impactFact: func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
+		entity := complianceImpactEntity(t, dependency)
+		return connect.NewResponse(&cerebrographv1.GetComplianceImpactFactResponse{
+			TenantId: "tenant-a", Fact: complianceImpactEntity(t, root), DependencyCount: 2,
+			Dependencies: []*cerebrographv1.ComplianceImpactDependency{
+				{Entity: entity, Relation: "policy_input"},
+				{Entity: entity, Relation: "policy_input"},
+			},
+		}), nil
+	}})
+	if _, err := store.GetComplianceImpactFact(context.Background(), "tenant-a", complianceImpactPortRevision(t, root)); err == nil {
+		t.Fatal("duplicate direct dependency accepted")
+	}
+}
+
+func TestComplianceImpactTypedReadsRejectMalformedDependentCursors(t *testing.T) {
+	dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	first := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-a", "plan-a-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
+	second := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-b", "plan-b-revision", 2, "c", time.Date(2026, time.August, 25, 12, 2, 0, 0, time.UTC))
+	firstKey := complianceImpactKey(t, first)
+	secondKey := complianceImpactKey(t, second)
+	if secondKey < firstKey {
+		first, second = second, first
+		firstKey, secondKey = secondKey, firstKey
+	}
+
+	for name, mutate := range map[string]func(*cerebrographv1.ListComplianceImpactDependentsResponse){
+		"duplicate dependent identity": func(response *cerebrographv1.ListComplianceImpactDependentsResponse) {
+			response.Dependents = []*cerebrographv1.GraphEntity{complianceImpactEntity(t, first), complianceImpactEntity(t, first)}
+			response.Truncated = false
+			response.NextAfterAgentKey = ""
+		},
+		"descending dependent keys": func(response *cerebrographv1.ListComplianceImpactDependentsResponse) {
+			response.Dependents = []*cerebrographv1.GraphEntity{complianceImpactEntity(t, second), complianceImpactEntity(t, first)}
+			response.Truncated = false
+			response.NextAfterAgentKey = ""
+		},
+		"truncated without cursor": func(response *cerebrographv1.ListComplianceImpactDependentsResponse) {
+			response.Dependents = []*cerebrographv1.GraphEntity{complianceImpactEntity(t, first)}
+			response.Truncated = true
+			response.NextAfterAgentKey = ""
+		},
+		"truncated cursor not last": func(response *cerebrographv1.ListComplianceImpactDependentsResponse) {
+			response.Dependents = []*cerebrographv1.GraphEntity{complianceImpactEntity(t, first)}
+			response.Truncated = true
+			response.NextAfterAgentKey = secondKey
+		},
+		"complete page with cursor": func(response *cerebrographv1.ListComplianceImpactDependentsResponse) {
+			response.Dependents = []*cerebrographv1.GraphEntity{complianceImpactEntity(t, first)}
+			response.Truncated = false
+			response.NextAfterAgentKey = firstKey
+		},
+		"response exceeds requested limit": func(response *cerebrographv1.ListComplianceImpactDependentsResponse) {
+			response.Dependents = []*cerebrographv1.GraphEntity{complianceImpactEntity(t, first), complianceImpactEntity(t, second)}
+			response.Truncated = false
+			response.NextAfterAgentKey = ""
+		},
+		"dependent key metadata mismatch": func(response *cerebrographv1.ListComplianceImpactDependentsResponse) {
+			entity := complianceImpactEntity(t, first)
+			entity.AgentKey = firstKey + ":tampered"
+			response.Dependents = []*cerebrographv1.GraphEntity{entity}
+			response.Truncated = false
+			response.NextAfterAgentKey = ""
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := &cerebrographv1.ListComplianceImpactDependentsResponse{TenantId: "tenant-a"}
+			mutate(response)
+			limit := uint32(1)
+			if len(response.Dependents) == 2 && name != "response exceeds requested limit" {
+				limit = 2
+			}
+			store := newComplianceImpactQueryStore(t, graphServiceStub{impactDependents: func(context.Context, *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error) {
+				return connect.NewResponse(response), nil
+			}})
+			if _, err := store.ListComplianceImpactDependents(context.Background(), ports.ComplianceImpactDependentRequest{TenantID: "tenant-a", Dependency: complianceImpactPortRevision(t, dependency), Limit: limit}); err == nil {
+				t.Fatal("malformed dependent cursor response accepted")
+			}
+		})
+	}
+}
+
+func TestComplianceImpactTypedReadsRoundTripTwoDependentLimitPlusOnePages(t *testing.T) {
+	dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
+	first := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-a", "plan-a-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
+	second := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-b", "plan-b-revision", 1, "c", time.Date(2026, time.August, 25, 12, 2, 0, 0, time.UTC))
+	firstKey := complianceImpactKey(t, first)
+	secondKey := complianceImpactKey(t, second)
+	if secondKey < firstKey {
+		first, second = second, first
+		firstKey, secondKey = secondKey, firstKey
+	}
+	dependencyKey := complianceImpactKey(t, dependency)
+	calls := 0
+	store := newComplianceImpactQueryStore(t, graphServiceStub{impactDependents: func(_ context.Context, request *connect.Request[cerebrographv1.ListComplianceImpactDependentsRequest]) (*connect.Response[cerebrographv1.ListComplianceImpactDependentsResponse], error) {
+		if request.Header().Get(tenantAuthHeader) != "tenant-a" || request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetDependencyAgentKey() != dependencyKey || request.Msg.GetLimit() != 1 {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected dependent request"))
+		}
+		calls++
+		switch request.Msg.GetAfterAgentKey() {
+		case "":
+			return connect.NewResponse(&cerebrographv1.ListComplianceImpactDependentsResponse{
+				TenantId: "tenant-a", Dependents: []*cerebrographv1.GraphEntity{complianceImpactEntity(t, first)}, Truncated: true, NextAfterAgentKey: firstKey,
+			}), nil
+		case firstKey:
+			return connect.NewResponse(&cerebrographv1.ListComplianceImpactDependentsResponse{
+				TenantId: "tenant-a", Dependents: []*cerebrographv1.GraphEntity{complianceImpactEntity(t, second)}, Truncated: false,
+			}), nil
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected dependent cursor"))
+		}
+	}})
+	page1, err := store.ListComplianceImpactDependents(context.Background(), ports.ComplianceImpactDependentRequest{TenantID: "tenant-a", Dependency: complianceImpactPortRevision(t, dependency), Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page1.Complete || page1.NextCursor != firstKey || len(page1.Dependents) != 1 || page1.Dependents[0].AgentKey != firstKey {
+		t.Fatalf("first page = %#v", page1)
+	}
+	page2, err := store.ListComplianceImpactDependents(context.Background(), ports.ComplianceImpactDependentRequest{TenantID: "tenant-a", Dependency: complianceImpactPortRevision(t, dependency), AfterCursor: page1.NextCursor, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page2.Complete || page2.NextCursor != "" || len(page2.Dependents) != 1 || page2.Dependents[0].AgentKey != secondKey {
+		t.Fatalf("second page = %#v", page2)
+	}
+	if page1.Dependents[0].AgentKey == page2.Dependents[0].AgentKey || calls != 2 {
+		t.Fatalf("two-page round trip duplicated or skipped a dependent: page1=%#v page2=%#v calls=%d", page1, page2, calls)
+	}
 }
 
 func TestProductExposureCoverageEnforcesTenantBoundsAndCompleteness(t *testing.T) {

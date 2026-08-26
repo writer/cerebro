@@ -168,7 +168,6 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	}
 
 	for _, productionPath := range []string{
-		"internal/bootstrap/compliance_impact_runtime.go",
 		"internal/bootstrap/policy_candidates.go",
 		"cmd/cerebro/orchestrator.go",
 		"cmd/cerebro/finding_rule_graph_evaluate.go",
@@ -214,8 +213,11 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		t.Error("reports service restored full graph query dependency")
 	}
 	complianceImpactGraph := readText(t, filepath.Join(root, "internal/complianceimpact/projected_graph.go"))
-	if strings.Contains(complianceImpactGraph, "queries ports.GraphQueryStore") {
-		t.Error("compliance impact graph restored full graph query dependency")
+	complianceImpactBootstrap := readText(t, filepath.Join(root, "internal/bootstrap/compliance_impact_runtime.go"))
+	for _, source := range []string{complianceImpactGraph, complianceImpactBootstrap} {
+		if strings.Contains(source, "RawCypher") || strings.Contains(source, "ExecuteReadCypher") {
+			t.Error("compliance impact restored retired raw-Cypher reads")
+		}
 	}
 	policyCandidateService := readText(t, filepath.Join(root, "internal/policycandidate/service.go"))
 	if strings.Contains(policyCandidateService, "Graph       ports.GraphQueryStore") {

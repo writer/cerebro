@@ -7,6 +7,16 @@ pub struct ArtifactDigest {
     pub digest_sha256: &'static str,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AuthorityGate {
+    pub kind: &'static str,
+    pub satisfied: bool,
+    pub reason_code: Option<&'static str>,
+    pub path: &'static str,
+    pub symbol: &'static str,
+    pub digest_sha256: &'static str,
+}
+
 pub const FIXTURE_CORPUS: &[ArtifactDigest] = &[
     ArtifactDigest {
         path: "sources/acunetix/testdata/read_reports.json",
@@ -44,10 +54,33 @@ pub const PORT_TRACES: &[ArtifactDigest] = &[ArtifactDigest {
 pub const REQUIRED_RECEIPT_MODES: &[&str] = &["fixed_fixture"];
 pub const ACCEPTED_RECEIPTS: &[ArtifactDigest] = &[];
 pub const DELETION_ELIGIBLE: bool = false;
-pub const DELETION_REASON_CODES: &[&str] = &["active_go_registry_path", "missing_parity_receipt"];
+pub const DELETION_REASON_CODES: &[&str] = &[
+    "active_go_projection_path",
+    "missing_parity_receipt",
+    "missing_rust_runtime_fence",
+    "no_deletion_targets",
+];
+pub const AUTHORITY_GATES: &[AuthorityGate] = &[
+    AuthorityGate {
+        kind: "projection_dispatch",
+        satisfied: false,
+        reason_code: Some("active_go_projection_path"),
+        path: "internal/sourceprojection/registry.go",
+        symbol: "RegisterConnectorDefinitions",
+        digest_sha256: "sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80",
+    },
+    AuthorityGate {
+        kind: "runtime_fence",
+        satisfied: false,
+        reason_code: Some("missing_rust_runtime_fence"),
+        path: "internal/sourceruntime/sourceworker/pull.go",
+        symbol: "RustAuthoritativeFamily",
+        digest_sha256: "sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861",
+    },
+];
 
 pub const BEHAVIOR_KIND: &str = "standard_source";
-pub const BEHAVIOR_CONTRACT_JSON: &str = "{\"catalog_path\":\"sources/acunetix/catalog.yaml\",\"registration_shape\":\"generic_catalog_runtime\",\"execution_owner\":\"compiled_rust_source_plan\",\"fail_closed\":true,\"runtime_families\":[\"reports\",\"scanning_profiles\",\"scans\",\"targets\",\"vulnerabilities\"],\"event_contracts\":[{\"kind\":\"acunetix.targets\",\"schema_ref\":\"acunetix/targets/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"target_id\"]},{\"kind\":\"acunetix.scans\",\"schema_ref\":\"acunetix/scans/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"finding_id\",\"resource_urn\",\"status\"],\"required_payload_fields\":[\"scan_id\"]},{\"kind\":\"acunetix.vulnerabilities\",\"schema_ref\":\"acunetix/vulnerabilities/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"finding_id\",\"resource_urn\",\"severity\",\"status\"],\"required_payload_fields\":[\"vuln_id\"]},{\"kind\":\"acunetix.scanning_profiles\",\"schema_ref\":\"acunetix/scanning_profiles/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"policy_id\",\"policy_name\"],\"required_payload_fields\":[\"profile_id\"]},{\"kind\":\"acunetix.reports\",\"schema_ref\":\"acunetix/reports/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"report_id\"]}]}";
+pub const BEHAVIOR_CONTRACT_JSON: &str = "{\"catalog_path\":\"sources/acunetix/catalog.yaml\",\"plan_index_path\":\"internal/sourceregistry/standard_source_plan_index.txt\",\"plan_index_digest_sha256\":\"sha256:4ddfd8a7fc2f42898318c0c093ab72519480b79387ea48f94fcc39014033d719\",\"registration_shape\":\"compiled_plan_fail_closed_metadata\",\"execution_owner\":\"compiled_rust_source_plan\",\"fail_closed\":true,\"runtime_families\":[\"reports\",\"scanning_profiles\",\"scans\",\"targets\",\"vulnerabilities\"],\"event_contracts\":[{\"kind\":\"acunetix.targets\",\"schema_ref\":\"acunetix/targets/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"target_id\"]},{\"kind\":\"acunetix.scans\",\"schema_ref\":\"acunetix/scans/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"finding_id\",\"resource_urn\",\"status\"],\"required_payload_fields\":[\"scan_id\"]},{\"kind\":\"acunetix.vulnerabilities\",\"schema_ref\":\"acunetix/vulnerabilities/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"finding_id\",\"resource_urn\",\"severity\",\"status\"],\"required_payload_fields\":[\"vuln_id\"]},{\"kind\":\"acunetix.scanning_profiles\",\"schema_ref\":\"acunetix/scanning_profiles/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"policy_id\",\"policy_name\"],\"required_payload_fields\":[\"profile_id\"]},{\"kind\":\"acunetix.reports\",\"schema_ref\":\"acunetix/reports/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"report_id\"]}],\"authority\":{\"projection_dispatch\":{\"path\":\"internal/sourceprojection/registry.go\",\"register_symbol\":\"RegisterConnectorDefinitions\",\"dynamic_projector_symbol\":\"catalogRuntimeDefinitionProjectors\",\"go_file_digest_sha256\":\"sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80\",\"active_go_projection_path\":true},\"runtime_fence\":{\"path\":\"internal/sourceruntime/sourceworker/pull.go\",\"symbol\":\"RustAuthoritativeFamily\",\"go_file_digest_sha256\":\"sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861\",\"covered_runtime_families\":[],\"missing_runtime_families\":[\"reports\",\"scanning_profiles\",\"scans\",\"targets\",\"vulnerabilities\"]}}}";
 
 pub const RUNTIME_FAMILIES: &[&str] = &[
     "reports",

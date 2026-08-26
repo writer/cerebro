@@ -8,7 +8,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiKeyProvider } from "@/components/providers";
 
-import { downloadGRCExport, grcDashboardPath, grcEntityImpactPath, grcExportFilename, grcPath, grcProgramReadinessPath, grcQueryKey, GRC_QUERY_TIMEOUT_MS, grcResponseErrorMessage, grcTimeoutMessage, organizationalGraphNeighborhoodPath, useGRCMutation } from "./grc-client";
+import {
+  downloadGRCExport,
+  fetchCachedGRC,
+  grcDashboardPath,
+  grcEntityImpactPath,
+  grcExportFilename,
+  grcPath,
+  grcProgramReadinessPath,
+  grcQueryKey,
+  GRC_QUERY_TIMEOUT_MS,
+  grcResponseErrorMessage,
+  grcTimeoutMessage,
+  isValidGRCQueryScope,
+  organizationalGraphNeighborhoodPath,
+  readCachedGRC,
+  useGRCMutation,
+  type GRCQueryScope,
+} from "./grc-client";
 
 describe("grc client error copy", () => {
   it("includes status, endpoint, elapsed time, and upstream text", () => {
@@ -78,13 +95,69 @@ describe("grc client paths", () => {
 });
 
 describe("grc query keys", () => {
-  it("scopes TanStack Query cache entries by API key and path", () => {
-    expect(grcQueryKey("/grc/dashboard?limit=10", "key-a")).toEqual(["grc", "key-a", "/grc/dashboard?limit=10"]);
-    expect(grcQueryKey("/grc/dashboard?limit=10", "key-b")).not.toEqual(grcQueryKey("/grc/dashboard?limit=10", "key-a"));
+  const scopeA: GRCQueryScope = { actor: "actor-a", tenantID: "tenant-a", workspaceID: "workspace-a" };
+
+  it("rejects orphan workspace scopes before a query can run", () => {
+    expect(isValidGRCQueryScope({ actor: "actor-a", workspaceID: "workspace-a" })).toBe(false);
+    expect(isValidGRCQueryScope({ actor: "actor-a", tenantID: "tenant-a" })).toBe(true);
+    expect(isValidGRCQueryScope(scopeA)).toBe(true);
+  });
+
+  it("scopes TanStack Query cache entries by API key, actor, path, tenant, and workspace", () => {
+    const path = "/grc/dashboard?limit=10";
+    expect(grcQueryKey(path, "key-a", scopeA)).toEqual(["grc", "key-a", path, "actor-a", "tenant-a", "workspace-a"]);
+    expect(grcQueryKey(path, "key-b", scopeA)).not.toEqual(grcQueryKey(path, "key-a", scopeA));
+    expect(grcQueryKey(path, "key-a", { ...scopeA, actor: "actor-b" })).not.toEqual(grcQueryKey(path, "key-a", scopeA));
+    expect(grcQueryKey(path, "key-a", { ...scopeA, tenantID: "tenant-b" })).not.toEqual(grcQueryKey(path, "key-a", scopeA));
+    expect(grcQueryKey(path, "key-a", { ...scopeA, workspaceID: "workspace-b" })).not.toEqual(grcQueryKey(path, "key-a", scopeA));
   });
 
   it("uses a stable disabled key for inactive queries", () => {
-    expect(grcQueryKey(null)).toEqual(["grc", "", "disabled"]);
+    expect(grcQueryKey(null)).toEqual(["grc", "", "disabled", "", "", ""]);
+  });
+});
+
+describe("scoped GRC response cache", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("does not reuse a response when actor, API key, tenant, or workspace changes", async () => {
+    const path = "/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-a&cache_test=scope-transition";
+    const scopeA: GRCQueryScope = { actor: "actor-a", tenantID: "tenant-a", workspaceID: "workspace-a" };
+    const scopeB: GRCQueryScope = { actor: "actor-b", tenantID: "tenant-b", workspaceID: "workspace-b" };
+    let responseNumber = 0;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ value: `response-${++responseNumber}` }), {
+      headers: { "content-type": "application/json" },
+      status: 200,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchCachedGRC(path, "key-a", false, {}, scopeA);
+    await fetchCachedGRC(path, "key-a", false, {}, scopeA);
+    await fetchCachedGRC(path, "key-b", false, {}, scopeA);
+    await fetchCachedGRC(path, "key-a", false, {}, scopeB);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect((readCachedGRC<{ value: string }>(path, "key-a", scopeA))?.data).toEqual({ value: "response-1" });
+    expect((readCachedGRC<{ value: string }>(path, "key-b", scopeA))?.data).toEqual({ value: "response-2" });
+    expect((readCachedGRC<{ value: string }>(path, "key-a", scopeB))?.data).toEqual({ value: "response-3" });
+  });
+
+  it("does not cache or deduplicate a read while actor scope is unresolved", async () => {
+    const path = "/grc/dashboard?cache_test=unresolved-actor";
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ value: "uncached" }), {
+      headers: { "content-type": "application/json" },
+      status: 200,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchCachedGRC(path, "key-a");
+    await fetchCachedGRC(path, "key-a");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(readCachedGRC(path, "key-a")).toBeNull();
   });
 });
 

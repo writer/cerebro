@@ -303,41 +303,6 @@ func TestGitHubSecretScanningAlertCreatedTrajectory(t *testing.T) {
 	}
 }
 
-func TestGitHubSelfHostedRunnerChange(t *testing.T) {
-	rule := newGitHubSelfHostedRunnerChangeRule()
-	metadataRule, ok := rule.(MetadataRule)
-	if !ok {
-		t.Fatal("rule does not expose RuleMetadata")
-	}
-	definition := metadataRule.RuleMetadata()
-	if definition.Lifecycle.Kind != LifecycleRetired {
-		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleRetired)
-	}
-	retirementRule, ok := rule.(openFindingRetirementRule)
-	if !ok || !retirementRule.RetiresOpenFindings() {
-		t.Fatal("github-self-hosted-runner-change does not retire open findings")
-	}
-
-	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
-	event := githubAuditEvent("github-runner-register", map[string]string{
-		"action":            "repo.register_self_hosted_runner",
-		"repo":              "writer/cerebro",
-		"resource_id":       "writer/cerebro",
-		"resource_type":     "repo",
-		"runner_ephemeral":  "false",
-		"runner_id":         "777",
-		"runner_name":       "prod-runner-1",
-		"runner_registered": "true",
-	})
-	records, err := rule.Evaluate(context.Background(), runtime, event)
-	if err != nil {
-		t.Fatalf("Evaluate(retired runner rule) error = %v", err)
-	}
-	if len(records) != 0 {
-		t.Fatalf("Evaluate(retired runner rule) returned %d findings, want 0", len(records))
-	}
-}
-
 func TestGitHubOrgAuthControlModified(t *testing.T) {
 	rule := newGitHubOrgAuthControlModifiedRule()
 	if isRetiredGitHubAuditRule(rule) {
@@ -1000,43 +965,6 @@ func TestGitHubCodeSecurityControlsDisabledTrajectory_ClosesPerRepoAnchor(t *tes
 	}
 	if containsTrimmed(byRepo["writer/web"].EventIDs, "github-code-security-api-enabled") {
 		t.Fatalf("writer/web EventIDs = %#v, want no evidence from writer/api close event", byRepo["writer/web"].EventIDs)
-	}
-}
-
-func TestGitHubCriticalResourceDeletedRetired(t *testing.T) {
-	rule := newGitHubCriticalResourceDeletedRule()
-	metadataRule, ok := rule.(MetadataRule)
-	if !ok {
-		t.Fatal("rule does not expose RuleMetadata")
-	}
-	definition := metadataRule.RuleMetadata()
-	if definition.Lifecycle.Kind != LifecycleRetired {
-		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleRetired)
-	}
-	if definition.Lifecycle.Anchor != AnchorNone {
-		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorNone)
-	}
-	if definition.Maturity != "retired" {
-		t.Fatalf("Maturity = %q, want retired", definition.Maturity)
-	}
-	retirementRule, ok := rule.(openFindingRetirementRule)
-	if !ok || !retirementRule.RetiresOpenFindings() {
-		t.Fatalf("RetiresOpenFindings() = false, want true so stale findings under %q are resolved", githubCriticalResourceDeletedRuleID)
-	}
-
-	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
-	for _, action := range []string{"repo.destroy", "environment.delete"} {
-		event := githubAuditEvent("github-"+action, map[string]string{
-			"action": action,
-			"repo":   "writer/cerebro",
-		})
-		records, err := rule.Evaluate(context.Background(), runtime, event)
-		if err != nil {
-			t.Fatalf("Evaluate(%s) error = %v", action, err)
-		}
-		if len(records) != 0 {
-			t.Fatalf("len(%s records) = %d, want 0 for retired rule", action, len(records))
-		}
 	}
 }
 

@@ -18,6 +18,8 @@ use cerebro_organizational_store::{
     CloudAttackPathNode as StoreCloudAttackPathNode,
     CloudAttackPathOwnership as StoreCloudAttackPathOwnership,
     CloudAttackPathPage as StoreCloudAttackPathPage,
+    ComplianceImpactFact as StoreComplianceImpactFact,
+    ComplianceImpactPage as StoreComplianceImpactPage,
     EffectiveAccessPath as StoreEffectiveAccessPath,
     EffectiveAccessPathEdge as StoreEffectiveAccessPathEdge,
     EffectiveAccessPathPage as StoreEffectiveAccessPathPage,
@@ -1111,6 +1113,52 @@ impl OrganizationalGraphService for GraphRpc {
         Response::ok(catalog_relation_response(result))
     }
 
+    async fn get_compliance_impact_fact(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, GetComplianceImpactFactRequest>,
+    ) -> ServiceResult<GetComplianceImpactFactResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The compliance impact projection is not loaded.")
+        })?;
+        let fact = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.get_compliance_impact_fact(&tenant, request.agent_key),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Compliance impact read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?
+        .ok_or_else(|| ConnectError::not_found("Compliance impact fact was not found."))?;
+        Response::ok(compliance_impact_fact_response(fact))
+    }
+
+    async fn list_compliance_impact_dependents(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListComplianceImpactDependentsRequest>,
+    ) -> ServiceResult<ListComplianceImpactDependentsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The compliance impact projection is not loaded.")
+        })?;
+        let page = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.list_compliance_impact_dependents(
+                &tenant,
+                request.dependency_agent_key,
+                request.after_agent_key,
+                limit,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Compliance impact read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(compliance_impact_page_response(page))
+    }
+
     async fn get_source_summary(
         &self,
         context: RequestContext,
@@ -1749,6 +1797,9 @@ fn vendor_discovery_catalog_filter(
 
 fn catalog_store_error(error: StoreError) -> ConnectError {
     match error {
+        StoreError::Conflict(message) if message.starts_with("compliance impact") => {
+            ConnectError::failed_precondition(message)
+        }
         StoreError::Conflict(message)
             if message.starts_with("invalid entity catalog")
                 || message.contains("limit must")
@@ -2174,6 +2225,40 @@ fn catalog_relation_response(page: StoreCatalogRelationPage) -> ListEntityRelati
         next_after_agent_key: page.next_after_agent_key,
         next_after_relation: page.next_after_relation,
         next_after_direction: next_after_direction.into(),
+        ..Default::default()
+    }
+}
+
+fn compliance_impact_fact_response(
+    fact: StoreComplianceImpactFact,
+) -> GetComplianceImpactFactResponse {
+    GetComplianceImpactFactResponse {
+        tenant_id: fact.tenant_id,
+        graph_revision: fact.graph_revision,
+        fact: graph_entity(fact.fact).into(),
+        dependency_count: fact.dependency_count,
+        dependencies: fact
+            .dependencies
+            .into_iter()
+            .map(|dependency| ComplianceImpactDependency {
+                entity: graph_entity(dependency.entity).into(),
+                relation: dependency.relation,
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+fn compliance_impact_page_response(
+    page: StoreComplianceImpactPage,
+) -> ListComplianceImpactDependentsResponse {
+    ListComplianceImpactDependentsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        dependents: page.dependents.into_iter().map(graph_entity).collect(),
+        truncated: page.truncated,
+        next_after_agent_key: page.next_after_agent_key,
         ..Default::default()
     }
 }

@@ -37,15 +37,15 @@ provider_api:
   families:
     - id: droplets
       method: GET
-      path: /v2/droplets
+      path: /droplets
       operation: droplets_list
     - id: vpcs
       method: GET
-      path: /v2/vpcs
+      path: /vpcs
       operation: vpcs_list
     - id: firewalls
       method: GET
-      path: /v2/firewalls
+      path: /firewalls
       operation: firewalls_list
 coverage_contract:
   owner_domain: source_runtime

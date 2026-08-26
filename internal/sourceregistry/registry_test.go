@@ -3,6 +3,7 @@ package sourceregistry
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -34,6 +35,7 @@ func TestBuiltinWithCatalogOverridesUsesVerifiedDeepSeekCatalog(t *testing.T) {
 	if source.Spec().Name != "DeepSeek Pack" {
 		t.Fatalf("deepseek Spec().Name = %q", source.Spec().Name)
 	}
+	assertMetadataOnlySourceFailsClosed(t, "deepseek", "model_catalog", source)
 }
 
 func TestBuiltinWithCatalogOverridesRejectsInvalidDeepSeekCatalog(t *testing.T) {
@@ -228,11 +230,17 @@ func TestBuiltinCatalogSourcesPreservePortableSourceContracts(t *testing.T) {
 	for _, loader := range builtinSourceLoaders {
 		static[loader.name] = struct{}{}
 	}
-	workerCatalog := make(map[string]struct{}, len(workerCatalogSourceIDs)+1)
+	standardPlans, err := loadStandardSourcePlans()
+	if err != nil {
+		t.Fatalf("loadStandardSourcePlans() error = %v", err)
+	}
+	workerCatalog := make(map[string]struct{}, len(workerCatalogSourceIDs)+len(standardPlans))
 	for _, sourceID := range workerCatalogSourceIDs {
 		workerCatalog[sourceID] = struct{}{}
 	}
-	workerCatalog["acunetix"] = struct{}{}
+	for sourceID := range standardPlans {
+		workerCatalog[sourceID] = struct{}{}
+	}
 	var dynamicIDs []string
 	for _, entry := range analysis.Entries {
 		if entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
@@ -399,38 +407,47 @@ func TestBuiltinRetiresCoveredProviderGoLoaders(t *testing.T) {
 	}
 }
 
-func TestWorkerCatalogSourcesKeepMetadataAndFailClosedWithoutWorkerRouting(t *testing.T) {
+func TestRustOwnedCatalogSourcesKeepMetadataAndFailClosedWithoutWorkerRouting(t *testing.T) {
 	registry, err := Builtin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, sourceID := range append(append([]string(nil), workerCatalogSourceIDs...), "acunetix") {
+	standardPlans, err := loadStandardSourcePlans()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sourceID := range append(slices.Clone(workerCatalogSourceIDs), slices.Sorted(maps.Keys(standardPlans))...) {
 		source, ok := registry.Get(sourceID)
 		if !ok || source.Spec().GetId() != sourceID {
-			t.Fatalf("worker source %q is missing its portable catalog metadata", sourceID)
+			t.Fatalf("Rust-owned source %q is missing its portable catalog metadata", sourceID)
 		}
 		family := map[string]string{"asana": "users", "digitalocean": "droplets", "discord": "audit_log", "pagerduty": "user", "sentinelone": "threat"}[sourceID]
-		if sourceID == "acunetix" {
-			family = "reports"
+		if plan, ok := standardPlans[sourceID]; ok {
+			family = plan[0]
 		}
-		ctx := context.Background()
-		cfg := sourcecdk.NewConfig(map[string]string{"family": family})
-		for operation, err := range map[string]error{
-			"check":    func() error { return source.Check(ctx, cfg) }(),
-			"discover": func() error { _, err := source.Discover(ctx, cfg); return err }(),
-			"read":     func() error { _, err := source.Read(ctx, cfg, nil); return err }(),
-		} {
-			if !errors.Is(err, errAuthoritativeRuntimeRequired) {
-				t.Fatalf("worker source %q direct %s error = %v, want authoritative runtime requirement", sourceID, operation, err)
-			}
+		assertMetadataOnlySourceFailsClosed(t, sourceID, family, source)
+	}
+}
+
+func assertMetadataOnlySourceFailsClosed(t *testing.T, sourceID, family string, source sourcecdk.Source) {
+	t.Helper()
+	ctx := context.Background()
+	cfg := sourcecdk.NewConfig(map[string]string{"family": family})
+	for operation, err := range map[string]error{
+		"check":    func() error { return source.Check(ctx, cfg) }(),
+		"discover": func() error { _, err := source.Discover(ctx, cfg); return err }(),
+		"read":     func() error { _, err := source.Read(ctx, cfg, nil); return err }(),
+	} {
+		if !errors.Is(err, errAuthoritativeRuntimeRequired) {
+			t.Fatalf("Rust-owned source %q direct %s error = %v, want authoritative runtime requirement", sourceID, operation, err)
 		}
-		checkpointSource, ok := source.(sourcecdk.CheckpointAwareSource)
-		if !ok {
-			t.Fatalf("worker source %q is missing checkpoint compatibility", sourceID)
-		}
-		if _, err := checkpointSource.ReadWithCheckpoint(ctx, cfg, nil, nil); !errors.Is(err, errAuthoritativeRuntimeRequired) {
-			t.Fatalf("worker source %q checkpoint read error = %v, want authoritative runtime requirement", sourceID, err)
-		}
+	}
+	checkpointSource, ok := source.(sourcecdk.CheckpointAwareSource)
+	if !ok {
+		t.Fatalf("Rust-owned source %q is missing checkpoint compatibility", sourceID)
+	}
+	if _, err := checkpointSource.ReadWithCheckpoint(ctx, cfg, nil, nil); !errors.Is(err, errAuthoritativeRuntimeRequired) {
+		t.Fatalf("Rust-owned source %q checkpoint read error = %v, want authoritative runtime requirement", sourceID, err)
 	}
 }
 

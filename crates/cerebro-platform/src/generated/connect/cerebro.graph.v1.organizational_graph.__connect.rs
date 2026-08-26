@@ -156,6 +156,30 @@ pub type OwnedListEntityRelationsResponseView = ::buffa::view::OwnedView<
         'static,
     >,
 >;
+///Shorthand for `OwnedView<GetComplianceImpactFactRequestView<'static>>`.
+pub type OwnedGetComplianceImpactFactRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetComplianceImpactFactRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<GetComplianceImpactFactResponseView<'static>>`.
+pub type OwnedGetComplianceImpactFactResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetComplianceImpactFactResponseView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListComplianceImpactDependentsRequestView<'static>>`.
+pub type OwnedListComplianceImpactDependentsRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListComplianceImpactDependentsRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ListComplianceImpactDependentsResponseView<'static>>`.
+pub type OwnedListComplianceImpactDependentsResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListComplianceImpactDependentsResponseView<
+        'static,
+    >,
+>;
 ///Shorthand for `OwnedView<GetSourceSummaryRequestView<'static>>`.
 pub type OwnedGetSourceSummaryRequestView = ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetSourceSummaryRequestView<
@@ -771,6 +795,90 @@ for ::buffa::view::OwnedView<
     }
 }
 impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactResponse,
+>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetComplianceImpactFactResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetComplianceImpactFactResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsResponse,
+>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListComplianceImpactDependentsResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListComplianceImpactDependentsResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<
     crate::rpc::proto::cerebro::graph::v1::GetSourceSummaryResponse,
 >
 for crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetSourceSummaryResponseView<
@@ -1030,6 +1138,24 @@ pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_CLOUD_ATTACK_PATHS_SPEC: ::connectrp
 /// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
 pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITY_RELATIONS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/cerebro.graph.v1.OrganizationalGraphService/ListEntityRelations",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `GetComplianceImpactFact` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_GET_COMPLIANCE_IMPACT_FACT_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/GetComplianceImpactFact",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `ListComplianceImpactDependents` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_LIST_COMPLIANCE_IMPACT_DEPENDENTS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/ListComplianceImpactDependents",
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
@@ -1454,6 +1580,52 @@ pub trait OrganizationalGraphService: Send + Sync + 'static {
         Output = ::connectrpc::ServiceResult<
             impl ::connectrpc::Encodable<
                 crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// GetComplianceImpactFact resolves one exact compliance revision and its dependencies.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn get_compliance_impact_fact<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// ListComplianceImpactDependents returns one keyset-paged reverse-dependency page.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn list_compliance_impact_dependents<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsResponse,
             > + Send + use<'a, Self>,
         >,
     > + Send;
@@ -1995,6 +2167,66 @@ impl<S: OrganizationalGraphService> OrganizationalGraphServiceExt for S {
             .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITY_RELATIONS_SPEC)
             .route_view(
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "GetComplianceImpactFact",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetComplianceImpactFactRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.get_compliance_impact_fact(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_GET_COMPLIANCE_IMPACT_FACT_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListComplianceImpactDependents",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListComplianceImpactDependentsRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.list_compliance_impact_dependents(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(
+                ORGANIZATIONAL_GRAPH_SERVICE_LIST_COMPLIANCE_IMPACT_DEPENDENTS_SPEC,
+            )
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "GetSourceSummary",
                 {
                     let svc = ::std::sync::Arc::clone(&self);
@@ -2234,6 +2466,22 @@ for OrganizationalGraphServiceServer<T> {
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
                         .with_spec(
                             ORGANIZATIONAL_GRAPH_SERVICE_LIST_ENTITY_RELATIONS_SPEC,
+                        ),
+                )
+            }
+            "GetComplianceImpactFact" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(
+                            ORGANIZATIONAL_GRAPH_SERVICE_GET_COMPLIANCE_IMPACT_FACT_SPEC,
+                        ),
+                )
+            }
+            "ListComplianceImpactDependents" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(
+                            ORGANIZATIONAL_GRAPH_SERVICE_LIST_COMPLIANCE_IMPACT_DEPENDENTS_SPEC,
                         ),
                 )
             }
@@ -2602,6 +2850,50 @@ for OrganizationalGraphServiceServer<T> {
                         .await?
                         .encode::<
                             crate::rpc::proto::cerebro::graph::v1::ListEntityRelationsResponse,
+                        >(format)
+                })
+            }
+            "GetComplianceImpactFact" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetComplianceImpactFactRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactRequest,
+                    >::from_parts(&req, &body);
+                    svc.get_compliance_impact_fact(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactResponse,
+                        >(format)
+                })
+            }
+            "ListComplianceImpactDependents" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListComplianceImpactDependentsRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsRequest,
+                    >::from_parts(&req, &body);
+                    svc.list_compliance_impact_dependents(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsResponse,
                         >(format)
                 })
             }
@@ -3466,6 +3758,96 @@ where
                 &self.config,
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "ListEntityRelations",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the GetComplianceImpactFact RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/GetComplianceImpactFact.
+    pub async fn get_compliance_impact_fact(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetComplianceImpactFactResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.get_compliance_impact_fact_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the GetComplianceImpactFact RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn get_compliance_impact_fact_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::GetComplianceImpactFactRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetComplianceImpactFactResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "GetComplianceImpactFact",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the ListComplianceImpactDependents RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/ListComplianceImpactDependents.
+    pub async fn list_compliance_impact_dependents(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListComplianceImpactDependentsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.list_compliance_impact_dependents_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the ListComplianceImpactDependents RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn list_compliance_impact_dependents_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ListComplianceImpactDependentsRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ListComplianceImpactDependentsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ListComplianceImpactDependents",
                 request,
                 options,
             )

@@ -19559,6 +19559,1009 @@ pub const __COMPARE_EXPOSURE_COVERAGE_RESPONSE_JSON_ANY: ::buffa::type_registry:
     from_json: ::buffa::type_registry::any_from_json::<CompareExposureCoverageResponse>,
     is_wkt: false,
 };
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct GetComplianceImpactFactRequest {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `agent_key`
+    #[serde(
+        rename = "agentKey",
+        alias = "agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub agent_key: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for GetComplianceImpactFactRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("GetComplianceImpactFactRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("agent_key", &self.agent_key)
+            .finish()
+    }
+}
+impl GetComplianceImpactFactRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GetComplianceImpactFactRequest";
+}
+::buffa::impl_default_instance!(GetComplianceImpactFactRequest);
+impl ::buffa::MessageName for GetComplianceImpactFactRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "GetComplianceImpactFactRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.GetComplianceImpactFactRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GetComplianceImpactFactRequest";
+}
+impl ::buffa::Message for GetComplianceImpactFactRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.agent_key.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.agent_key) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.agent_key.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.agent_key, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.agent_key, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.agent_key.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for GetComplianceImpactFactRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.GetComplianceImpactFactRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for GetComplianceImpactFactRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __GET_COMPLIANCE_IMPACT_FACT_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.GetComplianceImpactFactRequest",
+    to_json: ::buffa::type_registry::any_to_json::<GetComplianceImpactFactRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<GetComplianceImpactFactRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ComplianceImpactDependency {
+    /// Field 1: `entity`
+    #[serde(
+        rename = "entity",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub entity: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 2: `relation`
+    #[serde(
+        rename = "relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub relation: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ComplianceImpactDependency {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ComplianceImpactDependency")
+            .field("entity", &self.entity)
+            .field("relation", &self.relation)
+            .finish()
+    }
+}
+impl ComplianceImpactDependency {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ComplianceImpactDependency";
+}
+::buffa::impl_default_instance!(ComplianceImpactDependency);
+impl ::buffa::MessageName for ComplianceImpactDependency {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ComplianceImpactDependency";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ComplianceImpactDependency";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ComplianceImpactDependency";
+}
+impl ::buffa::Message for ComplianceImpactDependency {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.entity.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.entity.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.relation.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.relation) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.entity.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.entity.write_to(__cache, buf);
+        }
+        if !self.relation.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.relation, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.entity.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.relation, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.entity = ::buffa::MessageField::none();
+        self.relation.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ComplianceImpactDependency {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ComplianceImpactDependency";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ComplianceImpactDependency {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __COMPLIANCE_IMPACT_DEPENDENCY_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ComplianceImpactDependency",
+    to_json: ::buffa::type_registry::any_to_json::<ComplianceImpactDependency>,
+    from_json: ::buffa::type_registry::any_from_json::<ComplianceImpactDependency>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct GetComplianceImpactFactResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `fact`
+    #[serde(
+        rename = "fact",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub fact: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 4: `dependency_count`
+    #[serde(
+        rename = "dependencyCount",
+        alias = "dependency_count",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub dependency_count: u32,
+    /// Field 5: `dependencies`
+    #[serde(
+        rename = "dependencies",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub dependencies: ::buffa::alloc::vec::Vec<ComplianceImpactDependency>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for GetComplianceImpactFactResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("GetComplianceImpactFactResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("fact", &self.fact)
+            .field("dependency_count", &self.dependency_count)
+            .field("dependencies", &self.dependencies)
+            .finish()
+    }
+}
+impl GetComplianceImpactFactResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GetComplianceImpactFactResponse";
+}
+::buffa::impl_default_instance!(GetComplianceImpactFactResponse);
+impl ::buffa::MessageName for GetComplianceImpactFactResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "GetComplianceImpactFactResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.GetComplianceImpactFactResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GetComplianceImpactFactResponse";
+}
+impl ::buffa::Message for GetComplianceImpactFactResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        if self.fact.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.fact.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.dependency_count != 0u32 {
+            size
+                += 1u64
+                    + ::buffa::types::uint32_encoded_len(self.dependency_count) as u64;
+        }
+        for v in &self.dependencies {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        if self.fact.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.fact.write_to(__cache, buf);
+        }
+        if self.dependency_count != 0u32 {
+            ::buffa::types::put_uint32_field(4u32, self.dependency_count, buf);
+        }
+        for v in &self.dependencies {
+            ::buffa::types::put_len_delimited_header(
+                5u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.fact.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.dependency_count = ::buffa::types::decode_uint32(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.dependencies.push(elem);
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.fact = ::buffa::MessageField::none();
+        self.dependency_count = 0u32;
+        self.dependencies.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for GetComplianceImpactFactResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.GetComplianceImpactFactResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for GetComplianceImpactFactResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __GET_COMPLIANCE_IMPACT_FACT_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.GetComplianceImpactFactResponse",
+    to_json: ::buffa::type_registry::any_to_json::<GetComplianceImpactFactResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<GetComplianceImpactFactResponse>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListComplianceImpactDependentsRequest {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `dependency_agent_key`
+    #[serde(
+        rename = "dependencyAgentKey",
+        alias = "dependency_agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub dependency_agent_key: ::buffa::alloc::string::String,
+    /// Field 3: `after_agent_key`
+    #[serde(
+        rename = "afterAgentKey",
+        alias = "after_agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub after_agent_key: ::buffa::alloc::string::String,
+    /// Field 4: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListComplianceImpactDependentsRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListComplianceImpactDependentsRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("dependency_agent_key", &self.dependency_agent_key)
+            .field("after_agent_key", &self.after_agent_key)
+            .field("limit", &self.limit)
+            .finish()
+    }
+}
+impl ListComplianceImpactDependentsRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListComplianceImpactDependentsRequest";
+}
+::buffa::impl_default_instance!(ListComplianceImpactDependentsRequest);
+impl ::buffa::MessageName for ListComplianceImpactDependentsRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListComplianceImpactDependentsRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListComplianceImpactDependentsRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListComplianceImpactDependentsRequest";
+}
+impl ::buffa::Message for ListComplianceImpactDependentsRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.dependency_agent_key.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.dependency_agent_key)
+                        as u64;
+        }
+        if !self.after_agent_key.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.after_agent_key) as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.dependency_agent_key.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.dependency_agent_key, buf);
+        }
+        if !self.after_agent_key.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.after_agent_key, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(4u32, self.limit, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.dependency_agent_key, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.after_agent_key, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.dependency_agent_key.clear();
+        self.after_agent_key.clear();
+        self.limit = 0u32;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListComplianceImpactDependentsRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListComplianceImpactDependentsRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListComplianceImpactDependentsRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_COMPLIANCE_IMPACT_DEPENDENTS_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListComplianceImpactDependentsRequest",
+    to_json: ::buffa::type_registry::any_to_json::<
+        ListComplianceImpactDependentsRequest,
+    >,
+    from_json: ::buffa::type_registry::any_from_json::<
+        ListComplianceImpactDependentsRequest,
+    >,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListComplianceImpactDependentsResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `dependents`
+    #[serde(
+        rename = "dependents",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub dependents: ::buffa::alloc::vec::Vec<GraphEntity>,
+    /// Field 4: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    /// Field 5: `next_after_agent_key`
+    #[serde(
+        rename = "nextAfterAgentKey",
+        alias = "next_after_agent_key",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub next_after_agent_key: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListComplianceImpactDependentsResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListComplianceImpactDependentsResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("dependents", &self.dependents)
+            .field("truncated", &self.truncated)
+            .field("next_after_agent_key", &self.next_after_agent_key)
+            .finish()
+    }
+}
+impl ListComplianceImpactDependentsResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListComplianceImpactDependentsResponse";
+}
+::buffa::impl_default_instance!(ListComplianceImpactDependentsResponse);
+impl ::buffa::MessageName for ListComplianceImpactDependentsResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListComplianceImpactDependentsResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListComplianceImpactDependentsResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListComplianceImpactDependentsResponse";
+}
+impl ::buffa::Message for ListComplianceImpactDependentsResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        for v in &self.dependents {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if !self.next_after_agent_key.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.next_after_agent_key)
+                        as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        for v in &self.dependents {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+        }
+        if !self.next_after_agent_key.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.next_after_agent_key, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.dependents.push(elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.next_after_agent_key, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.dependents.clear();
+        self.truncated = false;
+        self.next_after_agent_key.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListComplianceImpactDependentsResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListComplianceImpactDependentsResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListComplianceImpactDependentsResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_COMPLIANCE_IMPACT_DEPENDENTS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListComplianceImpactDependentsResponse",
+    to_json: ::buffa::type_registry::any_to_json::<
+        ListComplianceImpactDependentsResponse,
+    >,
+    from_json: ::buffa::type_registry::any_from_json::<
+        ListComplianceImpactDependentsResponse,
+    >,
+    is_wkt: false,
+};
 #[allow(
     non_camel_case_types,
     dead_code,
@@ -53870,6 +54873,1928 @@ pub mod __buffa {
                 ::serde::Serialize::serialize(&self.0, __s)
             }
         }
+        #[derive(Clone, Debug, Default)]
+        pub struct GetComplianceImpactFactRequestView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `agent_key`
+            pub agent_key: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for GetComplianceImpactFactRequestView<'a> {
+            type Owned = super::super::GetComplianceImpactFactRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.agent_key = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::GetComplianceImpactFactRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::GetComplianceImpactFactRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::GetComplianceImpactFactRequest {
+                    tenant_id: self.tenant_id.to_string(),
+                    agent_key: self.agent_key.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for GetComplianceImpactFactRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.agent_key) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.agent_key.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.agent_key, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for GetComplianceImpactFactRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.agent_key) {
+                    __map.serialize_entry("agentKey", self.agent_key)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for GetComplianceImpactFactRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "GetComplianceImpactFactRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.GetComplianceImpactFactRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GetComplianceImpactFactRequest";
+        }
+        ::buffa::impl_default_view_instance!(GetComplianceImpactFactRequestView);
+        ::buffa::impl_view_reborrow!(GetComplianceImpactFactRequestView);
+        /** Self-contained, `'static` owned view of a `GetComplianceImpactFactRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`GetComplianceImpactFactRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`GetComplianceImpactFactRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct GetComplianceImpactFactRequestOwnedView(
+            ::buffa::OwnedView<GetComplianceImpactFactRequestView<'static>>,
+        );
+        impl GetComplianceImpactFactRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GetComplianceImpactFactRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GetComplianceImpactFactRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::GetComplianceImpactFactRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GetComplianceImpactFactRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`GetComplianceImpactFactRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &GetComplianceImpactFactRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::GetComplianceImpactFactRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `agent_key`
+            #[must_use]
+            pub fn agent_key(&self) -> &'_ str {
+                self.0.reborrow().agent_key
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<GetComplianceImpactFactRequestView<'static>>,
+        > for GetComplianceImpactFactRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<GetComplianceImpactFactRequestView<'static>>,
+            ) -> Self {
+                GetComplianceImpactFactRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<GetComplianceImpactFactRequestOwnedView>
+        for ::buffa::OwnedView<GetComplianceImpactFactRequestView<'static>> {
+            fn from(wrapper: GetComplianceImpactFactRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<GetComplianceImpactFactRequestView<'static>>,
+        > for GetComplianceImpactFactRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<GetComplianceImpactFactRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::GetComplianceImpactFactRequest {
+            type View<'a> = GetComplianceImpactFactRequestView<'a>;
+            type ViewHandle = GetComplianceImpactFactRequestOwnedView;
+        }
+        impl ::serde::Serialize for GetComplianceImpactFactRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ComplianceImpactDependencyView<'a> {
+            /// Field 1: `entity`
+            pub entity: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 2: `relation`
+            pub relation: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ComplianceImpactDependencyView<'a> {
+            type Owned = super::super::ComplianceImpactDependency;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.entity.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.entity = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ComplianceImpactDependency,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ComplianceImpactDependency,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ComplianceImpactDependency {
+                    entity: match self.entity.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    relation: self.relation.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ComplianceImpactDependencyView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.entity.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.entity.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.relation) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.entity.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.entity.write_to(__cache, buf);
+                }
+                if !self.relation.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.relation, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ComplianceImpactDependencyView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.entity.as_option() {
+                        __map.serialize_entry("entity", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.relation) {
+                    __map.serialize_entry("relation", self.relation)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ComplianceImpactDependencyView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ComplianceImpactDependency";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ComplianceImpactDependency";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ComplianceImpactDependency";
+        }
+        ::buffa::impl_default_view_instance!(ComplianceImpactDependencyView);
+        ::buffa::impl_view_reborrow!(ComplianceImpactDependencyView);
+        /** Self-contained, `'static` owned view of a `ComplianceImpactDependency` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ComplianceImpactDependencyView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ComplianceImpactDependencyView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ComplianceImpactDependencyOwnedView(
+            ::buffa::OwnedView<ComplianceImpactDependencyView<'static>>,
+        );
+        impl ComplianceImpactDependencyOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ComplianceImpactDependencyOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ComplianceImpactDependencyOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ComplianceImpactDependency,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ComplianceImpactDependencyOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ComplianceImpactDependencyView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ComplianceImpactDependencyView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::ComplianceImpactDependency {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `entity`
+            #[must_use]
+            pub fn entity(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().entity
+            }
+            /// Field 2: `relation`
+            #[must_use]
+            pub fn relation(&self) -> &'_ str {
+                self.0.reborrow().relation
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ComplianceImpactDependencyView<'static>>,
+        > for ComplianceImpactDependencyOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ComplianceImpactDependencyView<'static>>,
+            ) -> Self {
+                ComplianceImpactDependencyOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ComplianceImpactDependencyOwnedView>
+        for ::buffa::OwnedView<ComplianceImpactDependencyView<'static>> {
+            fn from(wrapper: ComplianceImpactDependencyOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ComplianceImpactDependencyView<'static>>,
+        > for ComplianceImpactDependencyOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ComplianceImpactDependencyView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ComplianceImpactDependency {
+            type View<'a> = ComplianceImpactDependencyView<'a>;
+            type ViewHandle = ComplianceImpactDependencyOwnedView;
+        }
+        impl ::serde::Serialize for ComplianceImpactDependencyOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct GetComplianceImpactFactResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `fact`
+            pub fact: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 4: `dependency_count`
+            pub dependency_count: u32,
+            /// Field 5: `dependencies`
+            pub dependencies: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::ComplianceImpactDependencyView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for GetComplianceImpactFactResponseView<'a> {
+            type Owned = super::super::GetComplianceImpactFactResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.fact.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.fact = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.dependency_count = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::ComplianceImpactDependencyView,
+                            >(),
+                        )?;
+                        view.dependencies
+                            .push(
+                                <super::super::__buffa::view::ComplianceImpactDependencyView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::GetComplianceImpactFactResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::GetComplianceImpactFactResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::GetComplianceImpactFactResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    fact: match self.fact.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    dependency_count: self.dependency_count,
+                    dependencies: self
+                        .dependencies
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for GetComplianceImpactFactResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                if self.fact.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.fact.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.dependency_count != 0u32 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint32_encoded_len(self.dependency_count)
+                                as u64;
+                }
+                for v in &self.dependencies {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                if self.fact.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.fact.write_to(__cache, buf);
+                }
+                if self.dependency_count != 0u32 {
+                    ::buffa::types::put_uint32_field(4u32, self.dependency_count, buf);
+                }
+                for v in &self.dependencies {
+                    ::buffa::types::put_len_delimited_header(
+                        5u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for GetComplianceImpactFactResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.fact.as_option() {
+                        __map.serialize_entry("fact", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.dependency_count) {
+                    __map
+                        .serialize_entry(
+                            "dependencyCount",
+                            &::buffa::json_helpers::ProtoJson(&self.dependency_count),
+                        )?;
+                }
+                if !self.dependencies.is_empty() {
+                    __map.serialize_entry("dependencies", &*self.dependencies)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for GetComplianceImpactFactResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "GetComplianceImpactFactResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.GetComplianceImpactFactResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.GetComplianceImpactFactResponse";
+        }
+        ::buffa::impl_default_view_instance!(GetComplianceImpactFactResponseView);
+        ::buffa::impl_view_reborrow!(GetComplianceImpactFactResponseView);
+        /** Self-contained, `'static` owned view of a `GetComplianceImpactFactResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`GetComplianceImpactFactResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`GetComplianceImpactFactResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct GetComplianceImpactFactResponseOwnedView(
+            ::buffa::OwnedView<GetComplianceImpactFactResponseView<'static>>,
+        );
+        impl GetComplianceImpactFactResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GetComplianceImpactFactResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GetComplianceImpactFactResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::GetComplianceImpactFactResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    GetComplianceImpactFactResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`GetComplianceImpactFactResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &GetComplianceImpactFactResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::GetComplianceImpactFactResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `fact`
+            #[must_use]
+            pub fn fact(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().fact
+            }
+            /// Field 4: `dependency_count`
+            #[must_use]
+            pub fn dependency_count(&self) -> u32 {
+                self.0.reborrow().dependency_count
+            }
+            /// Field 5: `dependencies`
+            #[must_use]
+            pub fn dependencies(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::ComplianceImpactDependencyView<'_>,
+            > {
+                &self.0.reborrow().dependencies
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<GetComplianceImpactFactResponseView<'static>>,
+        > for GetComplianceImpactFactResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<GetComplianceImpactFactResponseView<'static>>,
+            ) -> Self {
+                GetComplianceImpactFactResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<GetComplianceImpactFactResponseOwnedView>
+        for ::buffa::OwnedView<GetComplianceImpactFactResponseView<'static>> {
+            fn from(wrapper: GetComplianceImpactFactResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<GetComplianceImpactFactResponseView<'static>>,
+        > for GetComplianceImpactFactResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<GetComplianceImpactFactResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::GetComplianceImpactFactResponse {
+            type View<'a> = GetComplianceImpactFactResponseView<'a>;
+            type ViewHandle = GetComplianceImpactFactResponseOwnedView;
+        }
+        impl ::serde::Serialize for GetComplianceImpactFactResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListComplianceImpactDependentsRequestView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `dependency_agent_key`
+            pub dependency_agent_key: &'a str,
+            /// Field 3: `after_agent_key`
+            pub after_agent_key: &'a str,
+            /// Field 4: `limit`
+            pub limit: u32,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a>
+        for ListComplianceImpactDependentsRequestView<'a> {
+            type Owned = super::super::ListComplianceImpactDependentsRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.dependency_agent_key = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.after_agent_key = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListComplianceImpactDependentsRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListComplianceImpactDependentsRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListComplianceImpactDependentsRequest {
+                    tenant_id: self.tenant_id.to_string(),
+                    dependency_agent_key: self.dependency_agent_key.to_string(),
+                    after_agent_key: self.after_agent_key.to_string(),
+                    limit: self.limit,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a>
+        for ListComplianceImpactDependentsRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.dependency_agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.dependency_agent_key,
+                            ) as u64;
+                }
+                if !self.after_agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.after_agent_key)
+                                as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.dependency_agent_key.is_empty() {
+                    ::buffa::types::put_string_field(
+                        2u32,
+                        &self.dependency_agent_key,
+                        buf,
+                    );
+                }
+                if !self.after_agent_key.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.after_agent_key, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(4u32, self.limit, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize
+        for ListComplianceImpactDependentsRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.dependency_agent_key,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "dependencyAgentKey",
+                            self.dependency_agent_key,
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.after_agent_key) {
+                    __map.serialize_entry("afterAgentKey", self.after_agent_key)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListComplianceImpactDependentsRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListComplianceImpactDependentsRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListComplianceImpactDependentsRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListComplianceImpactDependentsRequest";
+        }
+        ::buffa::impl_default_view_instance!(ListComplianceImpactDependentsRequestView);
+        ::buffa::impl_view_reborrow!(ListComplianceImpactDependentsRequestView);
+        /** Self-contained, `'static` owned view of a `ListComplianceImpactDependentsRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListComplianceImpactDependentsRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListComplianceImpactDependentsRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListComplianceImpactDependentsRequestOwnedView(
+            ::buffa::OwnedView<ListComplianceImpactDependentsRequestView<'static>>,
+        );
+        impl ListComplianceImpactDependentsRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListComplianceImpactDependentsRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListComplianceImpactDependentsRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListComplianceImpactDependentsRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListComplianceImpactDependentsRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListComplianceImpactDependentsRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListComplianceImpactDependentsRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListComplianceImpactDependentsRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `dependency_agent_key`
+            #[must_use]
+            pub fn dependency_agent_key(&self) -> &'_ str {
+                self.0.reborrow().dependency_agent_key
+            }
+            /// Field 3: `after_agent_key`
+            #[must_use]
+            pub fn after_agent_key(&self) -> &'_ str {
+                self.0.reborrow().after_agent_key
+            }
+            /// Field 4: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListComplianceImpactDependentsRequestView<'static>>,
+        > for ListComplianceImpactDependentsRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<
+                    ListComplianceImpactDependentsRequestView<'static>,
+                >,
+            ) -> Self {
+                ListComplianceImpactDependentsRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListComplianceImpactDependentsRequestOwnedView>
+        for ::buffa::OwnedView<ListComplianceImpactDependentsRequestView<'static>> {
+            fn from(wrapper: ListComplianceImpactDependentsRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListComplianceImpactDependentsRequestView<'static>>,
+        > for ListComplianceImpactDependentsRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<
+                ListComplianceImpactDependentsRequestView<'static>,
+            > {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView
+        for super::super::ListComplianceImpactDependentsRequest {
+            type View<'a> = ListComplianceImpactDependentsRequestView<'a>;
+            type ViewHandle = ListComplianceImpactDependentsRequestOwnedView;
+        }
+        impl ::serde::Serialize for ListComplianceImpactDependentsRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListComplianceImpactDependentsResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `dependents`
+            pub dependents: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 4: `truncated`
+            pub truncated: bool,
+            /// Field 5: `next_after_agent_key`
+            pub next_after_agent_key: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a>
+        for ListComplianceImpactDependentsResponseView<'a> {
+            type Owned = super::super::ListComplianceImpactDependentsResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.next_after_agent_key = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::GraphEntityView,
+                            >(),
+                        )?;
+                        view.dependents
+                            .push(
+                                <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListComplianceImpactDependentsResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListComplianceImpactDependentsResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListComplianceImpactDependentsResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    dependents: self
+                        .dependents
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    truncated: self.truncated,
+                    next_after_agent_key: self.next_after_agent_key.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a>
+        for ListComplianceImpactDependentsResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                for v in &self.dependents {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if !self.next_after_agent_key.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.next_after_agent_key,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                for v in &self.dependents {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+                }
+                if !self.next_after_agent_key.is_empty() {
+                    ::buffa::types::put_string_field(
+                        5u32,
+                        &self.next_after_agent_key,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize
+        for ListComplianceImpactDependentsResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !self.dependents.is_empty() {
+                    __map.serialize_entry("dependents", &*self.dependents)?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.next_after_agent_key,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "nextAfterAgentKey",
+                            self.next_after_agent_key,
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName
+        for ListComplianceImpactDependentsResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListComplianceImpactDependentsResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListComplianceImpactDependentsResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListComplianceImpactDependentsResponse";
+        }
+        ::buffa::impl_default_view_instance!(ListComplianceImpactDependentsResponseView);
+        ::buffa::impl_view_reborrow!(ListComplianceImpactDependentsResponseView);
+        /** Self-contained, `'static` owned view of a `ListComplianceImpactDependentsResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListComplianceImpactDependentsResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListComplianceImpactDependentsResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListComplianceImpactDependentsResponseOwnedView(
+            ::buffa::OwnedView<ListComplianceImpactDependentsResponseView<'static>>,
+        );
+        impl ListComplianceImpactDependentsResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListComplianceImpactDependentsResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListComplianceImpactDependentsResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListComplianceImpactDependentsResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListComplianceImpactDependentsResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListComplianceImpactDependentsResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListComplianceImpactDependentsResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListComplianceImpactDependentsResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `dependents`
+            #[must_use]
+            pub fn dependents(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().dependents
+            }
+            /// Field 4: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+            /// Field 5: `next_after_agent_key`
+            #[must_use]
+            pub fn next_after_agent_key(&self) -> &'_ str {
+                self.0.reborrow().next_after_agent_key
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListComplianceImpactDependentsResponseView<'static>>,
+        > for ListComplianceImpactDependentsResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<
+                    ListComplianceImpactDependentsResponseView<'static>,
+                >,
+            ) -> Self {
+                ListComplianceImpactDependentsResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListComplianceImpactDependentsResponseOwnedView>
+        for ::buffa::OwnedView<ListComplianceImpactDependentsResponseView<'static>> {
+            fn from(wrapper: ListComplianceImpactDependentsResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListComplianceImpactDependentsResponseView<'static>>,
+        > for ListComplianceImpactDependentsResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<
+                ListComplianceImpactDependentsResponseView<'static>,
+            > {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView
+        for super::super::ListComplianceImpactDependentsResponse {
+            type View<'a> = ListComplianceImpactDependentsResponseView<'a>;
+            type ViewHandle = ListComplianceImpactDependentsResponseOwnedView;
+        }
+        impl ::serde::Serialize for ListComplianceImpactDependentsResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
     }
     /// Register this package's `Any` type entries and extension entries.
     pub fn register_types(reg: &mut ::buffa::type_registry::TypeRegistry) {
@@ -53948,6 +56873,15 @@ pub mod __buffa {
         reg.register_json_any(super::__EXPOSURE_COVERAGE_ACCOUNT_JSON_ANY);
         reg.register_json_any(super::__EXPOSURE_COVERAGE_COMPLETENESS_JSON_ANY);
         reg.register_json_any(super::__COMPARE_EXPOSURE_COVERAGE_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__GET_COMPLIANCE_IMPACT_FACT_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__COMPLIANCE_IMPACT_DEPENDENCY_JSON_ANY);
+        reg.register_json_any(super::__GET_COMPLIANCE_IMPACT_FACT_RESPONSE_JSON_ANY);
+        reg.register_json_any(
+            super::__LIST_COMPLIANCE_IMPACT_DEPENDENTS_REQUEST_JSON_ANY,
+        );
+        reg.register_json_any(
+            super::__LIST_COMPLIANCE_IMPACT_DEPENDENTS_RESPONSE_JSON_ANY,
+        );
     }
 }
 #[doc(inline)]
@@ -54250,5 +57184,25 @@ pub use self::__buffa::view::ExposureCoverageCompletenessOwnedView;
 pub use self::__buffa::view::CompareExposureCoverageResponseView;
 #[doc(inline)]
 pub use self::__buffa::view::CompareExposureCoverageResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::GetComplianceImpactFactRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::GetComplianceImpactFactRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ComplianceImpactDependencyView;
+#[doc(inline)]
+pub use self::__buffa::view::ComplianceImpactDependencyOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::GetComplianceImpactFactResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::GetComplianceImpactFactResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListComplianceImpactDependentsRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ListComplianceImpactDependentsRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListComplianceImpactDependentsResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ListComplianceImpactDependentsResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::register_types;

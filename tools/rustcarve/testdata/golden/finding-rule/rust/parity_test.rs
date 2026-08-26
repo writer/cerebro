@@ -7,11 +7,11 @@ use super::{
 
 #[test]
 fn generated_contract_is_closed_and_revision_bound() {
-    assert_eq!(RUSTCARVE_TOOL_REVISION, "cerebro.rustcarve/v1");
+    assert_eq!(RUSTCARVE_TOOL_REVISION, "cerebro.rustcarve/v2");
     assert_eq!(MIGRATION_IR_VERSION, "finding-rule/v1");
     assert_eq!(
         MIGRATION_IR_DIGEST_SHA256,
-        "sha256:5ac4f7373b29b022169314155601c663dd646f4d8dd7f54c72ee412a82283bd0"
+        "sha256:cab6fdd1e13b86d5b0b9ceb52c24858f901ce167e65d4f33d7cbf168219bedc5"
     );
     assert_eq!(
         RUST_IMPLEMENTATION_REVISION,
@@ -24,5 +24,6 @@ fn generated_contract_is_closed_and_revision_bound() {
     assert_eq!(contracts::ACCEPTED_RECEIPTS.len(), 0);
     assert_eq!(contracts::DELETION_ELIGIBLE, false);
     assert_eq!(contracts::DELETION_REASON_CODES.len(), 1);
+    assert_eq!(contracts::AUTHORITY_GATES.len(), 0);
     // This scaffold is intentionally not deletion-eligible without exact differential receipts.
 }

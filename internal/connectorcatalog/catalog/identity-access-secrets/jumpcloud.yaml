@@ -351,6 +351,8 @@ entries:
               - id
             schema_ref: jumpcloud/audit_events/v1
             urn_kind: jumpcloud_audit_events
+          config:
+            base_url: https://api.jumpcloud.com/insights/directory/v1
           id: audit_events
           id_field: id
           label: Directory Insights events

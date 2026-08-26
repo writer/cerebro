@@ -34,10 +34,13 @@ func loadStandardSourcePlans() (map[string][]string, error) {
 	return plans, nil
 }
 
-func newMetadataOnlyCatalogSource(sourceID string) (sourcecdk.Source, error) {
-	payload, err := sourcecatalogs.BuiltinCatalog(sourceID)
-	if err != nil {
-		return nil, err
+func newMetadataOnlyCatalogSource(sourceID string, payload []byte) (sourcecdk.Source, error) {
+	if len(payload) == 0 {
+		var err error
+		payload, err = sourcecatalogs.BuiltinCatalog(sourceID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	catalog, err := sourcecdk.LoadSourceCatalog(payload)
 	if err != nil {
