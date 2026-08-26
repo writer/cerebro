@@ -2747,6 +2747,214 @@ LIMIT $3
         transaction.commit().await?;
         Ok(())
     }
+
+    /// Upserts one saved ask query, mirroring the Go store's SQL semantics.
+    ///
+    /// The `ON CONFLICT` update is additionally fenced on the tenant so a
+    /// colliding identifier can never move a row across tenants.
+    pub async fn put_ask_query(&self, query: &AskQueryWrite<'_>) -> Result<(), StoreError> {
+        let id = query.id.trim();
+        let tenant_id = query.tenant_id.trim();
+        let name = query.name.trim();
+        let question = query.question.trim();
+        if id.is_empty() || tenant_id.is_empty() || name.is_empty() || question.is_empty() {
+            return Err(StoreError::Conflict(
+                "ask query id, tenant_id, name, and question are required".to_owned(),
+            ));
+        }
+        self.client
+            .lock()
+            .await
+            .execute(
+                "INSERT INTO ask_queries (id, tenant_id, name, question, scope_urn, model, pinned)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 ON CONFLICT (id) DO UPDATE SET
+                   name = EXCLUDED.name,
+                   question = EXCLUDED.question,
+                   scope_urn = EXCLUDED.scope_urn,
+                   model = EXCLUDED.model,
+                   pinned = EXCLUDED.pinned,
+                   updated_at = NOW()
+                 WHERE ask_queries.tenant_id = EXCLUDED.tenant_id",
+                &[
+                    &id,
+                    &tenant_id,
+                    &name,
+                    &question,
+                    &query.scope_urn.trim(),
+                    &query.model.trim(),
+                    &query.pinned,
+                ],
+            )
+            .await
+            .map_err(StoreError::Postgres)?;
+        Ok(())
+    }
+
+    /// Loads one saved ask query within the tenant scope.
+    ///
+    /// A missing `ask_queries` relation maps to `Ok(None)`: the Go store
+    /// auto-creates the table on first use, so its steady-state answer for an
+    /// unknown identifier is "not found".
+    pub async fn get_ask_query(
+        &self,
+        tenant_id: &str,
+        query_id: &str,
+    ) -> Result<Option<AskQueryRecord>, StoreError> {
+        let id = query_id.trim();
+        let tenant_id = tenant_id.trim();
+        if id.is_empty() || tenant_id.is_empty() {
+            return Err(StoreError::Conflict(
+                "ask query id and tenant_id are required".to_owned(),
+            ));
+        }
+        let row = self
+            .client
+            .lock()
+            .await
+            .query_opt(
+                &format!(
+                    "SELECT {ASK_QUERY_COLUMNS} FROM ask_queries WHERE id = $1 AND tenant_id = $2"
+                ),
+                &[&id, &tenant_id],
+            )
+            .await;
+        match row {
+            Ok(Some(row)) => Ok(Some(scan_ask_query(&row)?)),
+            Ok(None) => Ok(None),
+            Err(error) if undefined_ask_query_table(&error) => Ok(None),
+            Err(error) => Err(StoreError::Postgres(error)),
+        }
+    }
+
+    /// Returns saved ask queries for one tenant, pinned first then
+    /// newest-first, mirroring the Go store's ordering and limit bounds.
+    pub async fn list_ask_queries(
+        &self,
+        tenant_id: &str,
+        limit: u32,
+    ) -> Result<Vec<AskQueryRecord>, StoreError> {
+        let tenant_id = tenant_id.trim();
+        if tenant_id.is_empty() {
+            return Err(StoreError::Conflict(
+                "ask query tenant_id is required".to_owned(),
+            ));
+        }
+        let rows = self
+            .client
+            .lock()
+            .await
+            .query(
+                &format!(
+                    "SELECT {ASK_QUERY_COLUMNS} FROM ask_queries
+                     WHERE tenant_id = $1
+                     ORDER BY pinned DESC, created_at DESC
+                     LIMIT $2"
+                ),
+                &[&tenant_id, &ask_query_list_limit(limit)],
+            )
+            .await;
+        match rows {
+            Ok(rows) => rows.iter().map(scan_ask_query).collect(),
+            Err(error) if undefined_ask_query_table(&error) => Ok(Vec::new()),
+            Err(error) => Err(StoreError::Postgres(error)),
+        }
+    }
+
+    /// Removes one saved ask query within the tenant scope. Returns whether a
+    /// row was deleted; a missing relation reads as "nothing to delete".
+    pub async fn delete_ask_query(
+        &self,
+        tenant_id: &str,
+        query_id: &str,
+    ) -> Result<bool, StoreError> {
+        let id = query_id.trim();
+        let tenant_id = tenant_id.trim();
+        if id.is_empty() || tenant_id.is_empty() {
+            return Err(StoreError::Conflict(
+                "ask query id and tenant_id are required".to_owned(),
+            ));
+        }
+        let deleted = self
+            .client
+            .lock()
+            .await
+            .execute(
+                "DELETE FROM ask_queries WHERE id = $1 AND tenant_id = $2",
+                &[&id, &tenant_id],
+            )
+            .await;
+        match deleted {
+            Ok(count) => Ok(count > 0),
+            Err(error) if undefined_ask_query_table(&error) => Ok(false),
+            Err(error) => Err(StoreError::Postgres(error)),
+        }
+    }
+}
+
+/// One stored saved ask query, timestamps already rendered as the RFC 3339
+/// UTC strings the product surface serves.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AskQueryRecord {
+    pub id: String,
+    pub tenant_id: String,
+    pub name: String,
+    pub question: String,
+    pub scope_urn: String,
+    pub model: String,
+    pub pinned: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Write-side view of one saved ask query. Timestamps are owned by Postgres.
+#[derive(Clone, Copy, Debug)]
+pub struct AskQueryWrite<'a> {
+    pub id: &'a str,
+    pub tenant_id: &'a str,
+    pub name: &'a str,
+    pub question: &'a str,
+    pub scope_urn: &'a str,
+    pub model: &'a str,
+    pub pinned: bool,
+}
+
+/// Column list shared by ask-query reads. Timestamps are rendered in SQL so
+/// the wire format matches Go's `time.RFC3339` (second precision, `Z` suffix).
+const ASK_QUERY_COLUMNS: &str = "id, tenant_id, name, question, scope_urn, model, pinned, \
+     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), \
+     to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')";
+
+/// Mirrors the Go store's list bounds: default 100, hard cap 500.
+fn ask_query_list_limit(limit: u32) -> i64 {
+    const DEFAULT_LIMIT: i64 = 100;
+    const MAX_LIMIT: i64 = 500;
+    match i64::from(limit) {
+        0 => DEFAULT_LIMIT,
+        value if value > MAX_LIMIT => MAX_LIMIT,
+        value => value,
+    }
+}
+
+/// The Go store creates `ask_queries` on first use; until a Go write has run,
+/// the relation may not exist. SQLSTATE 42P01 therefore maps to the Go
+/// steady-state read result instead of an error.
+fn undefined_ask_query_table(error: &tokio_postgres::Error) -> bool {
+    error.code() == Some(&tokio_postgres::error::SqlState::UNDEFINED_TABLE)
+}
+
+fn scan_ask_query(row: &tokio_postgres::Row) -> Result<AskQueryRecord, StoreError> {
+    Ok(AskQueryRecord {
+        id: row.get(0),
+        tenant_id: row.get(1),
+        name: row.get(2),
+        question: row.get(3),
+        scope_urn: row.get(4),
+        model: row.get(5),
+        pinned: row.get(6),
+        created_at: row.get(7),
+        updated_at: row.get(8),
+    })
 }
 
 async fn upsert_identity_binding(
@@ -3668,6 +3876,37 @@ mod tests {
     use tokio_postgres::NoTls;
 
     use super::*;
+
+    #[test]
+    fn ask_query_list_limit_mirrors_go_bounds() {
+        assert_eq!(ask_query_list_limit(0), 100, "default when unset");
+        assert_eq!(ask_query_list_limit(1), 1);
+        assert_eq!(ask_query_list_limit(100), 100);
+        assert_eq!(ask_query_list_limit(500), 500);
+        assert_eq!(ask_query_list_limit(501), 500, "hard cap");
+        assert_eq!(ask_query_list_limit(u32::MAX), 500, "hard cap");
+    }
+
+    #[test]
+    fn ask_query_statements_stay_tenant_scoped() {
+        let source = include_str!("postgres.rs");
+        assert!(
+            source.contains("WHERE ask_queries.tenant_id = EXCLUDED.tenant_id"),
+            "the upsert must fence its conflict update on the tenant"
+        );
+        assert!(
+            source.contains("FROM ask_queries WHERE id = $1 AND tenant_id = $2"),
+            "reads must stay tenant-scoped"
+        );
+        assert!(
+            source.contains("DELETE FROM ask_queries WHERE id = $1 AND tenant_id = $2"),
+            "deletes must stay tenant-scoped"
+        );
+        assert!(
+            ASK_QUERY_COLUMNS.contains("YYYY-MM-DD\"T\"HH24:MI:SS\"Z\""),
+            "timestamps must render as second-precision RFC 3339 UTC, matching Go"
+        );
+    }
 
     #[test]
     fn schema_enforces_tenant_scope_identity_uniqueness_and_outbox() {

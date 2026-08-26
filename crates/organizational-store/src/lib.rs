@@ -55,11 +55,12 @@ pub use parity::{
     SemanticMismatch, SemanticSnapshot,
 };
 pub use postgres::{
-    AuditEventPageQuery, ConsumerFamilyProgress, ConsumerMessageOutcome, ConsumerRunFence,
-    ConsumerRunInspection, ConsumerRunProgress, ConsumerRunReceiptState, ConsumerSkipCategory,
-    LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt,
-    SourceEventReceipt, SourceRuntimeCollectionObservation, SourceRuntimeObservation,
-    StoredAuditEvent, StoredAuditEventPage, StoredSourceRuntime,
+    AskQueryRecord, AskQueryWrite, AuditEventPageQuery, ConsumerFamilyProgress,
+    ConsumerMessageOutcome, ConsumerRunFence, ConsumerRunInspection, ConsumerRunProgress,
+    ConsumerRunReceiptState, ConsumerSkipCategory, LegacyProjectionReceipt, POSTGRES_SCHEMA,
+    PostgresLedger, SourceCollectionReceipt, SourceEventReceipt,
+    SourceRuntimeCollectionObservation, SourceRuntimeObservation, StoredAuditEvent,
+    StoredAuditEventPage, StoredSourceRuntime,
 };
 
 use std::{error::Error, fmt};
