@@ -131,17 +131,25 @@ func distill(root string, request carveRequest) (carveResult, error) {
 
 	switch request.BehaviorKind {
 	case behaviorStandardSource, behaviorProviderSource:
-		expectedCall := "catalogruntimesource.New"
-		if request.Options.ExpectedRegistrationShape == "worker_fail_closed_metadata" {
-			expectedCall = "newWorkerCatalogSource"
-		}
-		if !containsString(facts.Calls, expectedCall) {
-			return unsupportedResult(request, []reasonCode{reasonUnsupportedRegistration}, []string{"owner facts do not contain " + expectedCall}), nil
+		expectedCalls := map[string][]string{
+			"generic_catalog_runtime":            {"catalogruntimesource.New"},
+			"worker_fail_closed_metadata":        {"newWorkerCatalogSource"},
+			"compiled_plan_fail_closed_metadata": {"loadStandardSourcePlans", "newMetadataOnlyCatalogSource", "sourcecdk.NewFixtureSource", "sourcecdk.WrapSourceError"},
+		}[request.Options.ExpectedRegistrationShape]
+		for _, expectedCall := range expectedCalls {
+			if !containsString(facts.Calls, expectedCall) {
+				return unsupportedResult(request, []reasonCode{reasonUnsupportedRegistration}, []string{"owner facts do not contain " + expectedCall}), nil
+			}
 		}
 		standard, standardReasons, standardDetails := distillSourceCatalog(root, request)
 		if len(standardReasons) != 0 {
 			return unsupportedResult(request, standardReasons, standardDetails), nil
 		}
+		authority, authorityReasons, authorityDetails := analyzeSourceAuthority(root, request, standard.RuntimeFamilies)
+		if len(authorityDetails) != 0 {
+			return unsupportedResult(request, authorityReasons, authorityDetails), nil
+		}
+		standard.Authority = authority
 		if request.BehaviorKind == behaviorStandardSource {
 			ir.Standard = &standard
 		} else {
@@ -193,6 +201,10 @@ func validateRequest(request carveRequest) ([]reasonCode, []string) {
 		reasons = append(reasons, reasonReceiptBindingMismatch)
 		details = append(details, "Rust implementation revision is required")
 	}
+	if !validAuthorityState(request.BehaviorKind, request.Subject.AuthorityState) {
+		reasons = append(reasons, reasonWrongScope)
+		details = append(details, "authority_state is not valid for the behavior kind")
+	}
 	if scopeReasons := reasonsForScope(request.Scope); len(scopeReasons) != 0 {
 		reasons = append(reasons, scopeReasons...)
 		details = append(details, "scope is not explicitly tenant/workspace bound")
@@ -201,7 +213,29 @@ func validateRequest(request carveRequest) ([]reasonCode, []string) {
 		reasons = append(reasons, reasonUnboundedShape)
 		details = append(details, "max_input_bytes must be 0..8388608")
 	}
+	if request.BehaviorKind == behaviorStandardSource || request.BehaviorKind == behaviorProviderSource {
+		if request.SourceAuthority == nil {
+			reasons = append(reasons, reasonMissingAuthorityEvidence)
+			details = append(details, "source variants require projection-dispatch and runtime-fence evidence")
+		}
+	} else if request.SourceAuthority != nil {
+		reasons = append(reasons, reasonWrongScope)
+		details = append(details, "source_authority is only valid for source variants")
+	}
 	return uniqueReasons(reasons), details
+}
+
+func validAuthorityState(kind behaviorKind, state string) bool {
+	switch kind {
+	case behaviorStandardSource, behaviorProviderSource:
+		return stringSetOf("go_registry_active", "registry_retired_authority_unproven", "rust_authoritative_no_go_writer", "rust_only_fail_closed")[state]
+	case behaviorGraphQuery:
+		return stringSetOf("go_raw_query_active", "rust_only_fail_closed")[state]
+	case behaviorFindingRule:
+		return state == "rust_authoritative_no_go_writer"
+	default:
+		return false
+	}
 }
 
 func reasonsForScope(scope scopeContract) []reasonCode {
@@ -326,17 +360,248 @@ func distillSourceCatalog(root string, request carveRequest) (standardSourceIR, 
 		return standardSourceIR{}, []reasonCode{reasonAmbiguousGoOwner}, []string{"catalog identity, runtime families, or event contracts are incomplete"}
 	}
 	registration := request.Options.ExpectedRegistrationShape
-	if registration != "generic_catalog_runtime" && registration != "worker_fail_closed_metadata" {
-		return standardSourceIR{}, []reasonCode{reasonUnsupportedRegistration}, []string{"only generic catalog or fail-closed worker registration can be distilled"}
+	if registration != "generic_catalog_runtime" && registration != "worker_fail_closed_metadata" && registration != "compiled_plan_fail_closed_metadata" {
+		return standardSourceIR{}, []reasonCode{reasonUnsupportedRegistration}, []string{"only generic catalog, fail-closed worker, or compiled-plan metadata registration can be distilled"}
+	}
+	planIndexDigest := ""
+	if registration == "compiled_plan_fail_closed_metadata" {
+		indexedFamilies, digest, reason, detail := loadCompiledPlanFamilies(root, request)
+		if reason != "" {
+			return standardSourceIR{}, []reasonCode{reason}, []string{detail}
+		}
+		if !equalStrings(sortedCopy(indexedFamilies), sortedCopy(catalog.RuntimeFamilies)) {
+			return standardSourceIR{}, []reasonCode{reasonUnsupportedRegistration}, []string{"compiled plan families do not exactly match the catalog runtime families"}
+		}
+		planIndexDigest = digest
 	}
 	return standardSourceIR{
-		CatalogPath:     request.Subject.CatalogPath,
-		Registration:    registration,
-		ExecutionOwner:  "compiled_rust_source_plan",
-		FailClosed:      true,
-		RuntimeFamilies: append([]string(nil), catalog.RuntimeFamilies...),
-		EventContracts:  append([]eventContract(nil), catalog.EventContracts...),
+		CatalogPath:           request.Subject.CatalogPath,
+		PlanIndexPath:         request.Subject.PlanIndexPath,
+		PlanIndexDigestSHA256: planIndexDigest,
+		Registration:          registration,
+		ExecutionOwner:        "compiled_rust_source_plan",
+		FailClosed:            true,
+		RuntimeFamilies:       append([]string(nil), catalog.RuntimeFamilies...),
+		EventContracts:        append([]eventContract(nil), catalog.EventContracts...),
 	}, nil, nil
+}
+
+func loadCompiledPlanFamilies(root string, request carveRequest) ([]string, string, reasonCode, string) {
+	if strings.TrimSpace(request.Subject.PlanIndexPath) == "" {
+		return nil, "", reasonUnsupportedRegistration, "compiled-plan registration requires plan_index_path"
+	}
+	payload, _, err := readRepoFile(root, request.Subject.PlanIndexPath, request.Options.MaxInputBytes)
+	if err != nil {
+		return nil, "", reasonUnsupportedRegistration, err.Error()
+	}
+	lines := strings.Split(strings.TrimSuffix(string(payload), "\n"), "\n")
+	if len(lines) < 2 || lines[0] != "standard-source-plan-index/v1" {
+		return nil, "", reasonUnsupportedRegistration, "compiled plan index version is unsupported"
+	}
+	for _, line := range lines[1:] {
+		columns := strings.Split(line, "\t")
+		if len(columns) != 2 || columns[0] == "" || columns[1] == "" {
+			return nil, "", reasonUnsupportedRegistration, "compiled plan index row is invalid"
+		}
+		if columns[0] == request.Subject.ID {
+			return strings.Split(columns[1], ","), digestBytes(payload), "", ""
+		}
+	}
+	return nil, "", reasonUnsupportedRegistration, "compiled plan index does not contain the source"
+}
+
+func analyzeSourceAuthority(root string, request carveRequest, runtimeFamilies []string) (sourceAuthorityIR, []reasonCode, []string) {
+	if request.SourceAuthority == nil {
+		return sourceAuthorityIR{}, []reasonCode{reasonMissingAuthorityEvidence}, []string{"source authority evidence is required"}
+	}
+	projectionRequest := request.SourceAuthority.ProjectionDispatch
+	if projectionRequest.Path != sourceProjectionRegistryPath || projectionRequest.RegisterSymbol != sourceProjectionRegisterSymbol || projectionRequest.DynamicProjectorSymbol != sourceDynamicProjectorSymbol {
+		return sourceAuthorityIR{}, []reasonCode{reasonMissingAuthorityEvidence}, []string{"projection-dispatch evidence does not match the closed shared registry gate"}
+	}
+	projectionPayload, projectionFile, projectionFunction, err := readGoFunction(root, projectionRequest.Path, projectionRequest.RegisterSymbol, request.Options.MaxInputBytes)
+	if err != nil {
+		return sourceAuthorityIR{}, []reasonCode{reasonMissingAuthorityEvidence}, []string{err.Error()}
+	}
+	projectionCalls := transitiveFileFunctionCalls(projectionFile, projectionFunction)
+	projection := projectionDispatchFact{
+		Path:                   projectionRequest.Path,
+		RegisterSymbol:         projectionRequest.RegisterSymbol,
+		DynamicProjectorSymbol: projectionRequest.DynamicProjectorSymbol,
+		GoFileDigestSHA256:     digestBytes(projectionPayload),
+		ActiveGoProjectionPath: containsString(projectionCalls, projectionRequest.DynamicProjectorSymbol),
+	}
+
+	runtimeRequest := request.SourceAuthority.RuntimeFence
+	if runtimeRequest.Path != sourceRuntimeFencePath || runtimeRequest.Symbol != sourceRuntimeFenceSymbol {
+		return sourceAuthorityIR{}, []reasonCode{reasonMissingAuthorityEvidence}, []string{"runtime-fence evidence does not match the closed shared runtime gate"}
+	}
+	runtimePayload, _, runtimeFunction, err := readGoFunction(root, runtimeRequest.Path, runtimeRequest.Symbol, request.Options.MaxInputBytes)
+	if err != nil {
+		return sourceAuthorityIR{}, []reasonCode{reasonMissingAuthorityEvidence}, []string{err.Error()}
+	}
+	covered := coveredRuntimeFamilies(runtimeFunction, request.Subject.ID, runtimeFamilies)
+	coveredSet := stringSetOf(covered...)
+	missing := make([]string, 0)
+	for _, family := range runtimeFamilies {
+		if !coveredSet[family] {
+			missing = append(missing, family)
+		}
+	}
+	runtime := runtimeFenceFact{
+		Path:                   runtimeRequest.Path,
+		Symbol:                 runtimeRequest.Symbol,
+		GoFileDigestSHA256:     digestBytes(runtimePayload),
+		CoveredRuntimeFamilies: sortedCopy(covered),
+		MissingRuntimeFamilies: sortedCopy(missing),
+	}
+	return sourceAuthorityIR{ProjectionDispatch: projection, RuntimeFence: runtime}, nil, nil
+}
+
+func readGoFunction(root, relative, symbol string, maxBytes int64) ([]byte, *ast.File, *ast.FuncDecl, error) {
+	payload, absolute, err := readRepoFile(root, relative, maxBytes)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), absolute, payload, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("parse authority evidence %s: %w", relative, err)
+	}
+	var found *ast.FuncDecl
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != symbol {
+			continue
+		}
+		if found != nil {
+			return nil, nil, nil, fmt.Errorf("authority symbol %s resolves more than once in %s", symbol, relative)
+		}
+		found = function
+	}
+	if found == nil || found.Body == nil {
+		return nil, nil, nil, fmt.Errorf("authority symbol %s is missing from %s", symbol, relative)
+	}
+	return payload, file, found, nil
+}
+
+func functionCalls(function *ast.FuncDecl) []string {
+	calls := map[string]bool{}
+	ast.Inspect(function.Body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if ok {
+			if name := callName(call.Fun); name != "" {
+				calls[name] = true
+			}
+		}
+		return true
+	})
+	return sortedKeys(calls)
+}
+
+func transitiveFileFunctionCalls(file *ast.File, root *ast.FuncDecl) []string {
+	functions := map[string]*ast.FuncDecl{}
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && function.Body != nil {
+			functions[function.Name.Name] = function
+		}
+	}
+	seen := map[string]bool{}
+	calls := map[string]bool{}
+	queue := []*ast.FuncDecl{root}
+	for len(queue) > 0 {
+		function := queue[0]
+		queue = queue[1:]
+		if seen[function.Name.Name] {
+			continue
+		}
+		seen[function.Name.Name] = true
+		for _, call := range functionCalls(function) {
+			calls[call] = true
+			localName := call
+			if separator := strings.LastIndexByte(localName, '.'); separator >= 0 {
+				localName = localName[separator+1:]
+			}
+			if nested := functions[localName]; nested != nil && !seen[localName] {
+				queue = append(queue, nested)
+			}
+		}
+	}
+	return sortedKeys(calls)
+}
+
+func coveredRuntimeFamilies(function *ast.FuncDecl, sourceID string, runtimeFamilies []string) []string {
+	covered := map[string]bool{}
+	ast.Inspect(function.Body, func(node ast.Node) bool {
+		switchStatement, ok := node.(*ast.SwitchStmt)
+		if !ok || callName(switchStatement.Tag) != "sourceID" {
+			return true
+		}
+		for _, statement := range switchStatement.Body.List {
+			clause, ok := statement.(*ast.CaseClause)
+			if !ok || !caseContainsString(clause, sourceID) {
+				continue
+			}
+			if caseReturnsAuthoritative(clause) {
+				for _, family := range runtimeFamilies {
+					covered[family] = true
+				}
+			}
+		}
+		return false
+	})
+	return sortedKeys(covered)
+}
+
+func caseContainsString(clause *ast.CaseClause, expected string) bool {
+	for _, expression := range clause.List {
+		literal, ok := expression.(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING {
+			continue
+		}
+		value, err := strconv.Unquote(literal.Value)
+		if err == nil && value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func caseReturnsAuthoritative(clause *ast.CaseClause) bool {
+	for index, statement := range clause.Body {
+		if condition, ok := statement.(*ast.IfStmt); ok && defaultFamilyAssignment(condition) {
+			continue
+		}
+		returned, ok := statement.(*ast.ReturnStmt)
+		if !ok || index != len(clause.Body)-1 || len(returned.Results) != 2 {
+			return false
+		}
+		family, familyOK := returned.Results[0].(*ast.Ident)
+		authoritative, authorityOK := returned.Results[1].(*ast.Ident)
+		return familyOK && family.Name == "familyID" && authorityOK && authoritative.Name == "true"
+	}
+	return false
+}
+
+func defaultFamilyAssignment(statement *ast.IfStmt) bool {
+	if statement.Else != nil || len(statement.Body.List) != 1 {
+		return false
+	}
+	condition, ok := statement.Cond.(*ast.BinaryExpr)
+	if !ok || condition.Op != token.EQL {
+		return false
+	}
+	family, ok := condition.X.(*ast.Ident)
+	empty, literalOK := condition.Y.(*ast.BasicLit)
+	if !ok || family.Name != "familyID" || !literalOK || empty.Kind != token.STRING || empty.Value != `""` {
+		return false
+	}
+	assignment, ok := statement.Body.List[0].(*ast.AssignStmt)
+	if !ok || len(assignment.Lhs) != 1 || len(assignment.Rhs) != 1 {
+		return false
+	}
+	target, ok := assignment.Lhs[0].(*ast.Ident)
+	value, valueOK := assignment.Rhs[0].(*ast.BasicLit)
+	return ok && target.Name == "familyID" && valueOK && value.Kind == token.STRING
 }
 
 func digestArtifacts(root string, requests []artifactRequest, maxBytes int64) ([]artifactDigest, []reasonCode, []string) {
@@ -362,15 +627,45 @@ func buildDeletionManifest(root string, request carveRequest, ir migrationIR) (d
 		return deletionManifest{}, err
 	}
 	reasons := append([]reasonCode(nil), receiptReasons...)
+	authorityGates := make([]authorityGateResult, 0, 2)
+	if source := sourceIR(ir); source != nil {
+		projection := source.Authority.ProjectionDispatch
+		projectionGate := authorityGateResult{
+			Kind:         "projection_dispatch",
+			Satisfied:    !projection.ActiveGoProjectionPath,
+			Path:         projection.Path,
+			Symbol:       projection.RegisterSymbol,
+			DigestSHA256: projection.GoFileDigestSHA256,
+		}
+		if !projectionGate.Satisfied {
+			projectionGate.ReasonCode = reasonActiveGoProjectionPath
+			reasons = append(reasons, reasonActiveGoProjectionPath)
+		}
+		authorityGates = append(authorityGates, projectionGate)
+
+		runtime := source.Authority.RuntimeFence
+		runtimeGate := authorityGateResult{
+			Kind:         "runtime_fence",
+			Satisfied:    len(runtime.MissingRuntimeFamilies) == 0,
+			Path:         runtime.Path,
+			Symbol:       runtime.Symbol,
+			DigestSHA256: runtime.GoFileDigestSHA256,
+		}
+		if !runtimeGate.Satisfied {
+			runtimeGate.ReasonCode = reasonMissingRustRuntimeFence
+			reasons = append(reasons, reasonMissingRustRuntimeFence)
+		}
+		authorityGates = append(authorityGates, runtimeGate)
+	}
 	if len(request.Deletion.Paths)+len(request.Deletion.Imports)+len(request.Deletion.Symbols) == 0 {
 		reasons = append(reasons, reasonNoDeletionTargets)
 	}
-	if request.Subject.AuthorityState != "rust_only_fail_closed" && request.Subject.AuthorityState != "rust_authoritative_no_go_writer" {
-		if request.BehaviorKind == behaviorStandardSource || request.BehaviorKind == behaviorProviderSource {
-			reasons = append(reasons, reasonActiveGoRegistryPath)
-		} else {
-			reasons = append(reasons, reasonActiveGoExecutionPath)
-		}
+	switch request.Subject.AuthorityState {
+	case "rust_only_fail_closed", "rust_authoritative_no_go_writer", "registry_retired_authority_unproven":
+	case "go_registry_active":
+		reasons = append(reasons, reasonActiveGoRegistryPath)
+	default:
+		reasons = append(reasons, reasonActiveGoExecutionPath)
 	}
 	manifest := deletionManifest{
 		SchemaVersion:              deletionManifestV1,
@@ -382,6 +677,7 @@ func buildDeletionManifest(root string, request carveRequest, ir migrationIR) (d
 		GoFactsDigestSHA256:        ir.GoFacts.DigestSHA256,
 		RustImplementationRevision: request.Subject.RustImplementationRevision,
 		ReasonCodes:                uniqueReasons(reasons),
+		AuthorityGates:             authorityGates,
 		Paths:                      sortedCopy(request.Deletion.Paths),
 		Imports:                    sortedCopy(request.Deletion.Imports),
 		Symbols:                    sortedCopy(request.Deletion.Symbols),

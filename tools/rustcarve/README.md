@@ -21,7 +21,7 @@ The canonical closed types are:
 - stable rejection codes: `tools/rustcarve/reason.go`
 - AST fact extraction, digest binding, scope validation, and receipt gates: `tools/rustcarve/analyze.go`
 
-The JSON decoder rejects unknown request fields. Every IR variant has its own version. The outer envelope is `cerebro.rustcarve.migration-ir/v1`, and receipts bind the converter revision `cerebro.rustcarve/v1`.
+The JSON decoder rejects unknown request fields. Every IR variant has its own version. The outer envelope is `cerebro.rustcarve.migration-ir/v2`, and receipts bind the converter revision `cerebro.rustcarve/v2`.
 
 ## Generated artifacts
 
@@ -41,16 +41,18 @@ Unsupported behavior produces only `unsupported.json` and exits with status 2.
 
 Generation is not deletion authority. A deletion manifest is eligible only when:
 
-1. the request declares a Rust-only, fail-closed authority state;
-2. every required differential receipt is present;
-3. every receipt matches the converter revision, subject, behavior kind, Go-facts digest, IR version and digest, Rust implementation revision, evidence digests, input digest, fixture or graph revision, normalized-row output digest, and ordered cursor digest;
-4. every receipt reports zero mismatches.
+1. the request declares a Rust-only, fail-closed authority state or a registry-retired state whose remaining authority is still unproven;
+2. source variants prove that dynamic Go projection cannot preempt the static fail-closed path;
+3. source variants prove that the closed Rust runtime fence covers every catalog runtime family;
+4. every required differential receipt is present;
+5. every receipt matches the converter revision, subject, behavior kind, Go-facts digest, IR version and digest, Rust implementation revision, evidence digests, input digest, fixture or graph revision, normalized-row output digest, and ordered cursor digest;
+6. every receipt reports zero mismatches.
 
 Source variants require a `fixed_fixture` receipt. Graph-query variants require both `fixed_fixture` and `live_safe_local_graph` receipts. Finding rules require an exact `replay` receipt. Adding receipt paths does not change the IR digest, so a first run can produce the digest that later receipts bind.
 
 ## Closed variants
 
-`standard_source/v1` and `provider_source/v1` accept only a declared catalog-runtime registration or a fail-closed metadata registration. The catalog supplies the closed family and event-contract sets. Acunetix and DeepSeek requests are provided under `tools/rustcarve/testdata`.
+`standard-source/v2` and `provider-source/v2` accept only a declared catalog-runtime registration, fail-closed worker registration, or compiled-plan fail-closed metadata registration. The catalog supplies the closed family and event-contract sets. Source requests bind the fixed `internal/sourceprojection/registry.go:RegisterConnectorDefinitions` projection gate and `internal/sourceruntime/sourceworker/pull.go:RustAuthoritativeFamily` runtime gate by file digest; alternate paths or symbols fail closed. The projection check follows same-file helper calls, and the runtime check accepts only an exact source arm that authorizes every catalog family without a restrictive branch. The current Acunetix request models its merged compiled plan; its registry deletion is already complete, while shared projection and runtime-fence gates remain explicit. DeepSeek remains bound to its canonical fixtures and provider oracle.
 
 `graph-query/v1` accepts typed tenant/workspace scope, per-node and per-relationship typed scope bindings, whitelisted relationship kinds, named closed predicates, finite directed hops, normalized UNION outputs, explicit aggregate and limit contracts, typed keyset/graph-revision semantics, deterministic order/dedupe, exact row and public response shapes, fixtures, and exact deletion symbols. Raw or interpolated Cypher is not a field in the IR. Dynamic, unbounded, shape-mismatched, or unknown forms fail closed. Concrete requests cover `complianceimpact.ProjectedGraph`, `policycandidate.grounding`, and the fixed-depth effective-access UNION; their production callers remain outside this tool's ownership.
 
@@ -62,7 +64,7 @@ The effective-access preset accepts exactly five identity arms and three access 
 
 The initial closed set includes:
 
-`active_go_execution_path`, `active_go_registry_path`, `ambiguous_go_owner`, `dynamic_go_callback`, `dynamic_query`, `interpolated_cypher`, `invalid_cursor`, `invalid_limit`, `malformed_json`, `missing_parity_receipt`, `missing_replay_corpus`, `no_deletion_targets`, `nondeterministic_time`, `receipt_binding_mismatch`, `replay_mismatch`, `response_shape_mismatch`, `secret_material`, `side_effecting_matcher`, `unbound_tenant_scope`, `unbound_workspace_scope`, `unbounded_result_limit`, `unbounded_scan`, `unbounded_shape`, `unbounded_traversal`, `union_shape_mismatch`, `unknown_behavior_kind`, `unsupported_aggregate`, `unsupported_graph_anchor`, `unsupported_lifecycle`, `unsupported_predicate`, `unsupported_relation`, `unsupported_registration_shape`, `unsupported_ttl`, `unstable_fingerprint`, and `wrong_scope`.
+`active_go_execution_path`, `active_go_projection_path`, `active_go_registry_path`, `ambiguous_go_owner`, `dynamic_go_callback`, `dynamic_query`, `interpolated_cypher`, `invalid_cursor`, `invalid_limit`, `malformed_json`, `missing_authority_evidence`, `missing_parity_receipt`, `missing_replay_corpus`, `missing_rust_runtime_fence`, `no_deletion_targets`, `nondeterministic_time`, `receipt_binding_mismatch`, `replay_mismatch`, `response_shape_mismatch`, `secret_material`, `side_effecting_matcher`, `unbound_tenant_scope`, `unbound_workspace_scope`, `unbounded_result_limit`, `unbounded_scan`, `unbounded_shape`, `unbounded_traversal`, `union_shape_mismatch`, `unknown_behavior_kind`, `unsupported_aggregate`, `unsupported_graph_anchor`, `unsupported_lifecycle`, `unsupported_predicate`, `unsupported_relation`, `unsupported_registration_shape`, `unsupported_ttl`, `unstable_fingerprint`, and `wrong_scope`.
 
 ## Ownership boundary
 

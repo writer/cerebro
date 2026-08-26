@@ -1,16 +1,21 @@
 package main
 
 const (
-	requestSchemaVersion     = "cerebro.rustcarve.request/v1"
-	migrationIRSchemaVersion = "cerebro.rustcarve.migration-ir/v1"
-	standardSourceIRVersion  = "standard-source/v1"
-	providerSourceIRVersion  = "provider-source/v1"
-	graphQueryIRVersion      = "graph-query/v1"
-	findingRuleIRVersion     = "finding-rule/v1"
-	differentialReceiptV1    = "cerebro.rustcarve.differential-receipt/v1"
-	deletionManifestV1       = "cerebro.rustcarve.deletion-manifest/v1"
-	unsupportedReportV1      = "cerebro.rustcarve.unsupported/v1"
-	rustcarveToolRevision    = "cerebro.rustcarve/v1"
+	requestSchemaVersion           = "cerebro.rustcarve.request/v2"
+	migrationIRSchemaVersion       = "cerebro.rustcarve.migration-ir/v2"
+	standardSourceIRVersion        = "standard-source/v2"
+	providerSourceIRVersion        = "provider-source/v2"
+	graphQueryIRVersion            = "graph-query/v1"
+	findingRuleIRVersion           = "finding-rule/v1"
+	differentialReceiptV1          = "cerebro.rustcarve.differential-receipt/v1"
+	deletionManifestV1             = "cerebro.rustcarve.deletion-manifest/v2"
+	unsupportedReportV1            = "cerebro.rustcarve.unsupported/v1"
+	rustcarveToolRevision          = "cerebro.rustcarve/v2"
+	sourceProjectionRegistryPath   = "internal/sourceprojection/registry.go"
+	sourceProjectionRegisterSymbol = "RegisterConnectorDefinitions"
+	sourceDynamicProjectorSymbol   = "catalogRuntimeDefinitionProjectors"
+	sourceRuntimeFencePath         = "internal/sourceruntime/sourceworker/pull.go"
+	sourceRuntimeFenceSymbol       = "RustAuthoritativeFamily"
 )
 
 type behaviorKind string
@@ -23,23 +28,25 @@ const (
 )
 
 type carveRequest struct {
-	SchemaVersion string              `json:"schema_version"`
-	BehaviorKind  behaviorKind        `json:"behavior_kind"`
-	Subject       subjectRequest      `json:"subject"`
-	Scope         scopeContract       `json:"scope"`
-	FixtureCorpus []artifactRequest   `json:"fixture_corpus"`
-	PortTraces    []artifactRequest   `json:"port_traces"`
-	Receipts      []artifactRequest   `json:"differential_receipts"`
-	Deletion      deletionRequest     `json:"deletion"`
-	GraphQuery    *graphQueryIR       `json:"graph_query,omitempty"`
-	FindingRule   *findingRuleIR      `json:"finding_rule,omitempty"`
-	Options       distillationOptions `json:"options"`
+	SchemaVersion   string                  `json:"schema_version"`
+	BehaviorKind    behaviorKind            `json:"behavior_kind"`
+	Subject         subjectRequest          `json:"subject"`
+	Scope           scopeContract           `json:"scope"`
+	FixtureCorpus   []artifactRequest       `json:"fixture_corpus"`
+	PortTraces      []artifactRequest       `json:"port_traces"`
+	Receipts        []artifactRequest       `json:"differential_receipts"`
+	Deletion        deletionRequest         `json:"deletion"`
+	SourceAuthority *sourceAuthorityRequest `json:"source_authority,omitempty"`
+	GraphQuery      *graphQueryIR           `json:"graph_query,omitempty"`
+	FindingRule     *findingRuleIR          `json:"finding_rule,omitempty"`
+	Options         distillationOptions     `json:"options"`
 }
 
 type subjectRequest struct {
 	ID                         string   `json:"id"`
 	PackageDir                 string   `json:"package_dir"`
 	CatalogPath                string   `json:"catalog_path"`
+	PlanIndexPath              string   `json:"plan_index_path,omitempty"`
 	GoFiles                    []string `json:"go_files"`
 	OwnerSymbols               []string `json:"owner_symbols"`
 	RustImplementationRevision string   `json:"rust_implementation_revision"`
@@ -66,6 +73,22 @@ type deletionRequest struct {
 	Paths   []string `json:"paths"`
 	Imports []string `json:"imports"`
 	Symbols []string `json:"symbols"`
+}
+
+type sourceAuthorityRequest struct {
+	ProjectionDispatch projectionDispatchRequest `json:"projection_dispatch"`
+	RuntimeFence       runtimeFenceRequest       `json:"runtime_fence"`
+}
+
+type projectionDispatchRequest struct {
+	Path                   string `json:"path"`
+	RegisterSymbol         string `json:"register_symbol"`
+	DynamicProjectorSymbol string `json:"dynamic_projector_symbol"`
+}
+
+type runtimeFenceRequest struct {
+	Path   string `json:"path"`
+	Symbol string `json:"symbol"`
 }
 
 type typedInput struct {
@@ -118,12 +141,45 @@ type evidenceContract struct {
 }
 
 type standardSourceIR struct {
-	CatalogPath     string          `json:"catalog_path"`
-	Registration    string          `json:"registration_shape"`
-	ExecutionOwner  string          `json:"execution_owner"`
-	FailClosed      bool            `json:"fail_closed"`
-	RuntimeFamilies []string        `json:"runtime_families"`
-	EventContracts  []eventContract `json:"event_contracts"`
+	CatalogPath           string            `json:"catalog_path"`
+	PlanIndexPath         string            `json:"plan_index_path,omitempty"`
+	PlanIndexDigestSHA256 string            `json:"plan_index_digest_sha256,omitempty"`
+	Registration          string            `json:"registration_shape"`
+	ExecutionOwner        string            `json:"execution_owner"`
+	FailClosed            bool              `json:"fail_closed"`
+	RuntimeFamilies       []string          `json:"runtime_families"`
+	EventContracts        []eventContract   `json:"event_contracts"`
+	Authority             sourceAuthorityIR `json:"authority"`
+}
+
+type sourceAuthorityIR struct {
+	ProjectionDispatch projectionDispatchFact `json:"projection_dispatch"`
+	RuntimeFence       runtimeFenceFact       `json:"runtime_fence"`
+}
+
+type projectionDispatchFact struct {
+	Path                   string `json:"path"`
+	RegisterSymbol         string `json:"register_symbol"`
+	DynamicProjectorSymbol string `json:"dynamic_projector_symbol"`
+	GoFileDigestSHA256     string `json:"go_file_digest_sha256"`
+	ActiveGoProjectionPath bool   `json:"active_go_projection_path"`
+}
+
+type runtimeFenceFact struct {
+	Path                   string   `json:"path"`
+	Symbol                 string   `json:"symbol"`
+	GoFileDigestSHA256     string   `json:"go_file_digest_sha256"`
+	CoveredRuntimeFamilies []string `json:"covered_runtime_families"`
+	MissingRuntimeFamilies []string `json:"missing_runtime_families"`
+}
+
+type authorityGateResult struct {
+	Kind         string     `json:"kind"`
+	Satisfied    bool       `json:"satisfied"`
+	ReasonCode   reasonCode `json:"reason_code,omitempty"`
+	Path         string     `json:"path"`
+	Symbol       string     `json:"symbol"`
+	DigestSHA256 string     `json:"digest_sha256"`
 }
 
 type eventContract struct {
@@ -134,21 +190,22 @@ type eventContract struct {
 }
 
 type deletionManifest struct {
-	SchemaVersion              string           `json:"schema_version"`
-	ToolRevision               string           `json:"tool_revision"`
-	BehaviorKind               behaviorKind     `json:"behavior_kind"`
-	SubjectID                  string           `json:"subject_id"`
-	IRVersion                  string           `json:"ir_version"`
-	IRDigestSHA256             string           `json:"ir_digest_sha256"`
-	GoFactsDigestSHA256        string           `json:"go_facts_digest_sha256"`
-	RustImplementationRevision string           `json:"rust_implementation_revision"`
-	Eligible                   bool             `json:"eligible"`
-	ReasonCodes                []reasonCode     `json:"reason_codes"`
-	Paths                      []string         `json:"paths"`
-	Imports                    []string         `json:"imports"`
-	Symbols                    []string         `json:"symbols"`
-	RequiredReceiptModes       []string         `json:"required_receipt_modes"`
-	AcceptedReceipts           []artifactDigest `json:"accepted_receipts"`
+	SchemaVersion              string                `json:"schema_version"`
+	ToolRevision               string                `json:"tool_revision"`
+	BehaviorKind               behaviorKind          `json:"behavior_kind"`
+	SubjectID                  string                `json:"subject_id"`
+	IRVersion                  string                `json:"ir_version"`
+	IRDigestSHA256             string                `json:"ir_digest_sha256"`
+	GoFactsDigestSHA256        string                `json:"go_facts_digest_sha256"`
+	RustImplementationRevision string                `json:"rust_implementation_revision"`
+	Eligible                   bool                  `json:"eligible"`
+	ReasonCodes                []reasonCode          `json:"reason_codes"`
+	AuthorityGates             []authorityGateResult `json:"authority_gates"`
+	Paths                      []string              `json:"paths"`
+	Imports                    []string              `json:"imports"`
+	Symbols                    []string              `json:"symbols"`
+	RequiredReceiptModes       []string              `json:"required_receipt_modes"`
+	AcceptedReceipts           []artifactDigest      `json:"accepted_receipts"`
 }
 
 type unsupportedReport struct {

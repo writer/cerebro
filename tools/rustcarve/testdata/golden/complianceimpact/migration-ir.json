@@ -1,8 +1,8 @@
 {
-  "schema_version": "cerebro.rustcarve.migration-ir/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
+  "schema_version": "cerebro.rustcarve.migration-ir/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
   "ir_version": "graph-query/v1",
-  "digest_sha256": "sha256:e19d490e27fc09e80f5f902dff3d8fef92ad027cb544a0df20bbf6c205f2d088",
+  "digest_sha256": "sha256:4100c589fefac5a5a3c66a2c9b0c3aed6328693b0858553978d282d8efd6e261",
   "behavior_kind": "graph_query",
   "subject": {
     "id": "complianceimpact.projected_graph",

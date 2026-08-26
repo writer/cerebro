@@ -1,10 +1,10 @@
 {
-  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
   "behavior_kind": "graph_query",
   "subject_id": "policycandidate.grounding",
   "ir_version": "graph-query/v1",
-  "ir_digest_sha256": "sha256:94ac4617fb44bd4b6ab9063ffb09dd2d8e9cf58cd986ff171974f8408983d76c",
+  "ir_digest_sha256": "sha256:15830b42b702c0ad8140752a6278ab590904ff40768ec0ac3cca2b0893b4dce7",
   "go_facts_digest_sha256": "sha256:40e6217afd81a508bf6b6b9ccb7fda026abaaf3d21888e9e3c2bb807a9931161",
   "rust_implementation_revision": "unimplemented",
   "eligible": false,
@@ -12,6 +12,7 @@
     "active_go_execution_path",
     "missing_parity_receipt"
   ],
+  "authority_gates": [],
   "paths": [
     "internal/policycandidate/grounding.go"
   ],

@@ -1,8 +1,8 @@
 {
-  "schema_version": "cerebro.rustcarve.closed-schema/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
-  "request_schema_version": "cerebro.rustcarve.request/v1",
-  "migration_ir_schema_version": "cerebro.rustcarve.migration-ir/v1",
+  "schema_version": "cerebro.rustcarve.closed-schema/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
+  "request_schema_version": "cerebro.rustcarve.request/v2",
+  "migration_ir_schema_version": "cerebro.rustcarve.migration-ir/v2",
   "unknown_fields": "reject",
   "scope": {
     "tenant_input": {
@@ -24,7 +24,7 @@
   "variants": [
     {
       "behavior_kind": "standard_source",
-      "ir_version": "standard-source/v1",
+      "ir_version": "standard-source/v2",
       "required_receipt_modes": [
         "fixed_fixture"
       ],
@@ -32,7 +32,7 @@
     },
     {
       "behavior_kind": "provider_source",
-      "ir_version": "provider-source/v1",
+      "ir_version": "provider-source/v2",
       "required_receipt_modes": [
         "fixed_fixture"
       ],
@@ -56,6 +56,21 @@
       "canonical_go_type": "tools/rustcarve.findingRuleIR"
     }
   ],
+  "source_authority": {
+    "canonical_request_type": "tools/rustcarve.sourceAuthorityRequest",
+    "canonical_ir_type": "tools/rustcarve.sourceAuthorityIR",
+    "required_gates": [
+      "projection_dispatch",
+      "runtime_fence"
+    ],
+    "projection_path": "internal/sourceprojection/registry.go",
+    "projection_register_symbol": "RegisterConnectorDefinitions",
+    "dynamic_projector_symbol": "catalogRuntimeDefinitionProjectors",
+    "runtime_fence_path": "internal/sourceruntime/sourceworker/pull.go",
+    "runtime_fence_symbol": "RustAuthoritativeFamily",
+    "projection_rule": "the named registration function must not call the named dynamic Go projector constructor",
+    "runtime_fence_rule": "the named closed Rust authority function must unconditionally authorize every catalog runtime family for the exact source"
+  },
   "graph_query": {
     "canonical_go_type": "tools/rustcarve.graphQueryIR",
     "allowed_node_kinds": [
@@ -179,16 +194,21 @@
     "mismatch_rule": "mismatch_count must be zero and every digest/revision must match the generated IR"
   },
   "deletion_manifest": {
-    "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
+    "schema_version": "cerebro.rustcarve.deletion-manifest/v2",
     "exact_targets": [
       "paths",
       "imports",
       "symbols"
     ],
-    "eligibility": "false unless Rust-only fail-closed authority and every required bound receipt pass"
+    "authority_gates": [
+      "projection_dispatch",
+      "runtime_fence"
+    ],
+    "eligibility": "false unless Rust-only fail-closed authority, every source authority gate, and every required bound receipt pass"
   },
   "reason_codes": [
     "active_go_execution_path",
+    "active_go_projection_path",
     "active_go_registry_path",
     "ambiguous_go_owner",
     "dynamic_go_callback",
@@ -197,8 +217,10 @@
     "invalid_cursor",
     "invalid_limit",
     "malformed_json",
+    "missing_authority_evidence",
     "missing_parity_receipt",
     "missing_replay_corpus",
+    "missing_rust_runtime_fence",
     "no_deletion_targets",
     "nondeterministic_time",
     "receipt_binding_mismatch",
