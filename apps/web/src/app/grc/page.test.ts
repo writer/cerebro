@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GRCControl, GRCProgramReadiness, GRCProgramReadinessSummary } from "@/lib/grc";
 
 const mocks = vi.hoisted(() => ({
-  reload: vi.fn(),
+  dashboardReload: vi.fn(),
+  readinessReload: vi.fn(),
   useGRCQuery: vi.fn(),
   useSearchParams: vi.fn(),
 }));
@@ -171,7 +172,8 @@ describe("GRC page loading", () => {
   let root: Root;
 
   beforeEach(() => {
-    mocks.reload.mockReset().mockResolvedValue(undefined);
+    mocks.dashboardReload.mockReset().mockResolvedValue(undefined);
+    mocks.readinessReload.mockReset().mockResolvedValue(undefined);
     mocks.useSearchParams.mockReset().mockReturnValue(new URLSearchParams());
     mocks.useGRCQuery.mockReset().mockImplementation((path: string | null) => ({
       data: null,
@@ -179,7 +181,7 @@ describe("GRC page loading", () => {
       error: null,
       lastSuccessfulAt: null,
       loading: Boolean(path),
-      reload: mocks.reload,
+      reload: path?.includes("program-readiness") ? mocks.readinessReload : mocks.dashboardReload,
       state: path ? "loading" : "empty",
     }));
     reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
@@ -207,6 +209,15 @@ describe("GRC page loading", () => {
       grcDashboardPath({ limit: 12, tenant_id: "tenant-a", workspace_id: "workspace-a" }),
       grcProgramReadinessPath({ tenant_id: "tenant-a", workspace_id: "workspace-a" }),
     ]);
+
+    const refresh = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Refresh");
+    expect(refresh).toBeDefined();
+    await act(async () => {
+      refresh?.click();
+    });
+    expect(mocks.dashboardReload).toHaveBeenCalledOnce();
+    expect(mocks.readinessReload).toHaveBeenCalledOnce();
   });
 
   it("does not issue GRC reads for a workspace without an explicit tenant", async () => {
@@ -218,5 +229,11 @@ describe("GRC page loading", () => {
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([null, null]);
     expect(container.textContent).toContain("Select a tenant before loading a workspace.");
+    const refresh = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Refresh");
+    expect(refresh?.disabled).toBe(true);
+    refresh?.click();
+    expect(mocks.dashboardReload).not.toHaveBeenCalled();
+    expect(mocks.readinessReload).not.toHaveBeenCalled();
   });
 });

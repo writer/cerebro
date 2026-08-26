@@ -493,7 +493,14 @@ export default function GRCPage() {
         description={pageDescription}
         action={
           <div className="flex items-center gap-2">
-            <button type="button" onClick={reload} className="secondary-button px-3 py-1.5 text-[13px]">Refresh</button>
+            <button
+              type="button"
+              onClick={reload}
+              disabled={invalidWorkspaceScope}
+              className="secondary-button px-3 py-1.5 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Refresh
+            </button>
           </div>
         }
       />
