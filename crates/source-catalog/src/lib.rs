@@ -3567,6 +3567,7 @@ mod tests {
             "aircall",
             "airfocus",
             "akeyless",
+            "backstage",
             "beezup",
             "bitwarden",
             "box",
@@ -3575,6 +3576,7 @@ mod tests {
             "duo",
             "fivetran",
             "jira",
+            "langchain",
             "openai",
         ] {
             let source = catalog.get(source_id).unwrap();
