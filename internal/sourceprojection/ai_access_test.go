@@ -10,176 +10,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestProjectOpenAIProjectAccessEdges(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	occurred := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
-
-	events := []*cerebrov1.EventEnvelope{
-		{
-			Id:         "openai-project",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.project",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"family":     "project",
-				"project_id": "proj_123",
-				"name":       "Production",
-				"status":     "active",
-			},
-		},
-		{
-			Id:         "openai-project-user-owner",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.project_user",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"email":      "alice@example.com",
-				"family":     "project_user",
-				"name":       "Alice Example",
-				"project_id": "proj_123",
-				"role":       "owner",
-				"user_id":    "user_123",
-			},
-		},
-		{
-			Id:         "openai-project-key",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.project_api_key",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"api_key_id":    "fixture_123",
-				"family":        "project_api_key",
-				"name":          "prod-key",
-				"owner_user_id": "user_123",
-				"project_id":    "proj_123",
-			},
-		},
-		{
-			Id:         "openai-project-models",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.project_model_permission",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"family":     "project_model_permission",
-				"model_ids":  "gpt-4.1,gpt-4o",
-				"project_id": "proj_123",
-			},
-		},
-	}
-	for _, event := range events {
-		if _, err := service.Project(context.Background(), event); err != nil {
-			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
-		}
-	}
-
-	userURN := "urn:cerebro:writer:openai_user:user_123"
-	projectURN := "urn:cerebro:writer:openai_project:proj_123"
-	credentialURN := "urn:cerebro:writer:openai_credential:fixture_123" // #nosec G101 -- test credential URN fixture, not credential material.
-	identityURN := "urn:cerebro:writer:identity:email:alice@example.com"
-	modelURN := "urn:cerebro:writer:openai_model:gpt-4.1"
-
-	if entity := state.entities[projectURN]; entity == nil || entity.EntityType != "openai.project" {
-		t.Fatalf("project entity missing or wrong: %#v", entity)
-	}
-	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
-	assertProjectedLink(t, state, userURN, relationCanAdmin, projectURN)
-	assertProjectedLink(t, state, userURN, relationAssignedTo, credentialURN)
-	assertProjectedLink(t, state, credentialURN, relationCanPerform, projectURN)
-	assertProjectedLink(t, state, projectURN, relationCanPerform, modelURN)
-}
-
-func TestProjectOpenAIAuditDeepAccessEvidence(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-	occurred := time.Date(2026, time.June, 18, 12, 5, 0, 0, time.UTC)
-
-	events := []*cerebrov1.EventEnvelope{
-		{
-			Id:         "openai-audit-api-key",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.audit_log",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"actor_api_key_id":         "key_actor",
-				"actor_service_account_id": "sa_123",
-				"api_key_id":               "key_target",
-				"event_type":               "api_key.updated",
-				"family":                   "audit_log",
-			},
-		},
-		{
-			Id:         "openai-audit-role-assignment",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.audit_log",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"actor_email":    "admin@example.com",
-				"actor_user_id":  "user_admin",
-				"event_type":     "role.assignment.created",
-				"family":         "audit_log",
-				"principal_id":   "group_123",
-				"principal_type": "group",
-				"resource_id":    "proj_456",
-				"resource_type":  "project",
-			},
-		},
-		{
-			Id:         "openai-audit-group",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.audit_log",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"actor_email":   "admin@example.com",
-				"actor_user_id": "user_admin",
-				"event_type":    "group.updated",
-				"family":        "audit_log",
-				"group_id":      "group_999",
-				"group_name":    "Engineering",
-			},
-		},
-	}
-	for _, event := range events {
-		if _, err := service.Project(context.Background(), event); err != nil {
-			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
-		}
-	}
-
-	actorCredentialURN := "urn:cerebro:writer:openai_credential:key_actor"   // #nosec G101 -- test credential URN fixture, not credential material.
-	targetCredentialURN := "urn:cerebro:writer:openai_credential:key_target" // #nosec G101 -- test credential URN fixture, not credential material.
-	serviceAccountURN := "urn:cerebro:writer:openai_service_account:sa_123"
-	userURN := "urn:cerebro:writer:openai_user:user_admin"
-	projectURN := "urn:cerebro:writer:openai_project:proj_456"
-	groupURN := "urn:cerebro:writer:openai_group:group_123"
-	identityURN := "urn:cerebro:writer:identity:email:admin@example.com"
-
-	assertProjectedLink(t, state, serviceAccountURN, relationAssignedTo, actorCredentialURN)
-	assertProjectedLink(t, state, actorCredentialURN, relationActedOn, targetCredentialURN)
-	assertProjectedLink(t, state, userURN, relationRepresentsIdentity, identityURN)
-	assertProjectedLink(t, state, userURN, relationActedOn, projectURN)
-	assertProjectedLink(t, state, userURN, relationActedOn, groupURN)
-	if got := state.entities[actorCredentialURN].Attributes["actor_service_account_id"]; got != "sa_123" {
-		t.Fatalf("actor credential actor_service_account_id = %q, want sa_123", got)
-	}
-	if got := state.entities[targetCredentialURN].Attributes["actor_service_account_id"]; got != "" {
-		t.Fatalf("target credential actor_service_account_id = %q, want empty", got)
-	}
-	link := state.links[actorCredentialURN+"|"+relationActedOn+"|"+targetCredentialURN]
-	if got := link.Attributes["event_type"]; got != "api_key.updated" {
-		t.Fatalf("acted_on event_type = %q, want api_key.updated", got)
-	}
-	if got := link.Attributes["actor_type"]; got != "credential" {
-		t.Fatalf("acted_on actor_type = %q, want credential", got)
-	}
-}
-
 func TestProjectAnthropicComplianceActivityResourceEvidence(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -250,13 +80,13 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 
 	events := []*cerebrov1.EventEnvelope{
 		{
-			Id:         "openai-pending-invite",
+			Id:         "anthropic-pending-invite-with-projects",
 			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.invite",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.invite",
 			OccurredAt: timestamppb.New(occurred),
 			Payload: []byte(`{
-				"id": "invite_openai_123",
+				"id": "invite_anthropic_pending_projects",
 				"email": "future-owner@example.com",
 				"role": "owner",
 				"status": "pending",
@@ -268,7 +98,7 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 			Attributes: map[string]string{
 				"email":      "future-owner@example.com",
 				"family":     "invite",
-				"invite_id":  "invite_openai_123",
+				"invite_id":  "invite_anthropic_pending_projects",
 				"role":       "owner",
 				"status":     "pending",
 				"created_at": "2026-06-18T12:10:00Z",
@@ -276,13 +106,13 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 			},
 		},
 		{
-			Id:         "openai-expired-invite",
+			Id:         "anthropic-expired-invite-with-projects",
 			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.invite",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.invite",
 			OccurredAt: timestamppb.New(occurred),
 			Payload: []byte(`{
-				"id": "invite_openai_expired",
+				"id": "invite_anthropic_expired_projects",
 				"email": "expired-owner@example.com",
 				"role": "owner",
 				"status": "expired",
@@ -293,19 +123,19 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 			Attributes: map[string]string{
 				"email":     "expired-owner@example.com",
 				"family":    "invite",
-				"invite_id": "invite_openai_expired",
+				"invite_id": "invite_anthropic_expired_projects",
 				"role":      "owner",
 				"status":    "expired",
 			},
 		},
 		{
-			Id:         "openai-accepted-invite",
+			Id:         "anthropic-accepted-invite-with-projects",
 			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.invite",
+			SourceId:   "anthropic",
+			Kind:       "anthropic.invite",
 			OccurredAt: timestamppb.New(occurred),
 			Payload: []byte(`{
-				"id": "invite_openai_accepted",
+				"id": "invite_anthropic_accepted_projects",
 				"email": "accepted-member@example.com",
 				"role": "member",
 				"status": "accepted",
@@ -316,7 +146,7 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 			Attributes: map[string]string{
 				"email":       "accepted-member@example.com",
 				"family":      "invite",
-				"invite_id":   "invite_openai_accepted",
+				"invite_id":   "invite_anthropic_accepted_projects",
 				"role":        "member",
 				"status":      "accepted",
 				"accepted_at": "2026-06-18T12:12:00Z",
@@ -359,52 +189,51 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 		}
 	}
 
-	openAIInviteURN := "urn:cerebro:writer:openai_invite:invite_openai_123"
-	openAIExpiredInviteURN := "urn:cerebro:writer:openai_invite:invite_openai_expired"
-	openAIOrgURN := "urn:cerebro:writer:openai_org:openai"
-	openAIRoleURN := "urn:cerebro:writer:openai_role:organization:owner"
-	openAIProjectOwnerRoleURN := "urn:cerebro:writer:openai_role:project:owner"
-	openAIProjectMemberRoleURN := "urn:cerebro:writer:openai_role:project:member"
-	openAIProjectOwnerURN := "urn:cerebro:writer:openai_project:proj_123"
-	openAIProjectMemberURN := "urn:cerebro:writer:openai_project:proj_456"
-	openAIExpiredProjectURN := "urn:cerebro:writer:openai_project:proj_expired"
-	openAIAcceptedInviteURN := "urn:cerebro:writer:openai_invite:invite_openai_accepted"
-	openAIAcceptedProjectURN := "urn:cerebro:writer:openai_project:proj_accepted"
+	pendingProjectsInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_pending_projects"
+	expiredProjectsInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_expired_projects"
+	orgURN := "urn:cerebro:writer:anthropic_org:anthropic"
+	ownerRoleURN := "urn:cerebro:writer:anthropic_role:organization:owner"
+	projectOwnerRoleURN := "urn:cerebro:writer:anthropic_role:project:owner"
+	projectMemberRoleURN := "urn:cerebro:writer:anthropic_role:project:member"
+	projectOwnerURN := "urn:cerebro:writer:anthropic_project:proj_123"
+	projectMemberURN := "urn:cerebro:writer:anthropic_project:proj_456"
+	expiredProjectURN := "urn:cerebro:writer:anthropic_project:proj_expired"
+	acceptedInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_accepted_projects"
+	acceptedProjectURN := "urn:cerebro:writer:anthropic_project:proj_accepted"
 	anthropicInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_123"
 	anthropicExpiredInviteURN := "urn:cerebro:writer:anthropic_invite:invite_anthropic_expired"
-	anthropicOrgURN := "urn:cerebro:writer:anthropic_org:anthropic"
 	anthropicRoleURN := "urn:cerebro:writer:anthropic_role:organization:developer"
-	openAIIdentityURN := "urn:cerebro:writer:identity:email:future-owner@example.com"
+	pendingProjectsIdentityURN := "urn:cerebro:writer:identity:email:future-owner@example.com"
 	anthropicIdentityURN := "urn:cerebro:writer:identity:email:future-dev@example.com"
 
-	if entity := state.entities[openAIInviteURN]; entity == nil || entity.EntityType != "openai.invite" || entity.Attributes["access_state"] != "invited" {
-		t.Fatalf("openai invite entity missing or wrong: %#v", entity)
+	if entity := state.entities[pendingProjectsInviteURN]; entity == nil || entity.EntityType != "anthropic.invite" || entity.Attributes["access_state"] != "invited" {
+		t.Fatalf("pending invite entity missing or wrong: %#v", entity)
 	}
 	if entity := state.entities[anthropicExpiredInviteURN]; entity == nil || entity.Attributes["access_state"] != "expired" {
 		t.Fatalf("expired invite entity missing or wrong: %#v", entity)
 	}
-	if entity := state.entities[openAIAcceptedInviteURN]; entity == nil || entity.Attributes["access_state"] != "accepted" {
+	if entity := state.entities[acceptedInviteURN]; entity == nil || entity.Attributes["access_state"] != "accepted" {
 		t.Fatalf("accepted invite entity missing or wrong: %#v", entity)
 	}
-	assertProjectedLink(t, state, openAIInviteURN, relationBelongsTo, openAIOrgURN)
-	assertProjectedLink(t, state, openAIInviteURN, relationRepresentsIdentity, openAIIdentityURN)
-	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIRoleURN)
-	assertProjectedLink(t, state, openAIRoleURN, relationGrantsEntitlement, openAIOrgURN)
-	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIOrgURN)
-	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIProjectOwnerRoleURN)
-	assertProjectedLink(t, state, openAIProjectOwnerRoleURN, relationGrantsEntitlement, openAIProjectOwnerURN)
-	assertProjectedLink(t, state, openAIInviteURN, relationCanAdmin, openAIProjectOwnerURN)
-	assertProjectedLink(t, state, openAIInviteURN, relationAssignedTo, openAIProjectMemberRoleURN)
-	assertProjectedLink(t, state, openAIProjectMemberRoleURN, relationGrantsEntitlement, openAIProjectMemberURN)
-	assertProjectedLink(t, state, openAIInviteURN, relationCanPerform, openAIProjectMemberURN)
-	assertProjectedLinkMissing(t, state, openAIExpiredInviteURN, relationCanAdmin, openAIExpiredProjectURN)
-	assertProjectedLink(t, state, openAIAcceptedInviteURN, relationCanPerform, openAIOrgURN)
-	assertProjectedLink(t, state, openAIAcceptedInviteURN, relationCanPerform, openAIAcceptedProjectURN)
-	assertProjectedLink(t, state, anthropicInviteURN, relationBelongsTo, anthropicOrgURN)
+	assertProjectedLink(t, state, pendingProjectsInviteURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, pendingProjectsInviteURN, relationRepresentsIdentity, pendingProjectsIdentityURN)
+	assertProjectedLink(t, state, pendingProjectsInviteURN, relationCanAdmin, ownerRoleURN)
+	assertProjectedLink(t, state, ownerRoleURN, relationGrantsEntitlement, orgURN)
+	assertProjectedLink(t, state, pendingProjectsInviteURN, relationCanAdmin, orgURN)
+	assertProjectedLink(t, state, pendingProjectsInviteURN, relationCanAdmin, projectOwnerRoleURN)
+	assertProjectedLink(t, state, projectOwnerRoleURN, relationGrantsEntitlement, projectOwnerURN)
+	assertProjectedLink(t, state, pendingProjectsInviteURN, relationCanAdmin, projectOwnerURN)
+	assertProjectedLink(t, state, pendingProjectsInviteURN, relationAssignedTo, projectMemberRoleURN)
+	assertProjectedLink(t, state, projectMemberRoleURN, relationGrantsEntitlement, projectMemberURN)
+	assertProjectedLink(t, state, pendingProjectsInviteURN, relationCanPerform, projectMemberURN)
+	assertProjectedLinkMissing(t, state, expiredProjectsInviteURN, relationCanAdmin, expiredProjectURN)
+	assertProjectedLink(t, state, acceptedInviteURN, relationCanPerform, orgURN)
+	assertProjectedLink(t, state, acceptedInviteURN, relationCanPerform, acceptedProjectURN)
+	assertProjectedLink(t, state, anthropicInviteURN, relationBelongsTo, orgURN)
 	assertProjectedLink(t, state, anthropicInviteURN, relationRepresentsIdentity, anthropicIdentityURN)
 	assertProjectedLink(t, state, anthropicInviteURN, relationAssignedTo, anthropicRoleURN)
-	assertProjectedLink(t, state, anthropicInviteURN, relationCanPerform, anthropicOrgURN)
-	assertProjectedLinkMissing(t, state, anthropicExpiredInviteURN, relationCanAdmin, anthropicOrgURN)
+	assertProjectedLink(t, state, anthropicInviteURN, relationCanPerform, orgURN)
+	assertProjectedLinkMissing(t, state, anthropicExpiredInviteURN, relationCanAdmin, orgURN)
 }
 
 func TestProjectAnthropicProjectCollaboratorAccessEdges(t *testing.T) {
@@ -517,21 +346,6 @@ func TestProjectAIGovernanceControlEdges(t *testing.T) {
 
 	events := []*cerebrov1.EventEnvelope{
 		{
-			Id:         "openai-project-rate-limit",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.project_rate_limit",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"family":                       "project_rate_limit",
-				"max_requests_per_1_minute":    "500",
-				"model":                        "gpt-4o",
-				"project_id":                   "proj_123",
-				"rate_limit_id":                "rl_123",
-				"batch_1_day_max_input_tokens": "1000000",
-			},
-		},
-		{
 			Id:         "anthropic-workspace-rate-limit",
 			TenantId:   "writer",
 			SourceId:   "anthropic",
@@ -574,33 +388,6 @@ func TestProjectAIGovernanceControlEdges(t *testing.T) {
 				"setting_value":     "false",
 			},
 		},
-		{
-			Id:         "openai-data-retention",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.data_retention",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"family":          "data_retention",
-				"object":          "chat",
-				"organization_id": "org_123",
-				"retention_type":  "30d",
-			},
-		},
-		{
-			Id:         "openai-data-retention-with-org-uuid",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.data_retention",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"family":            "data_retention",
-				"object":            "chat",
-				"organization_id":   "org_123",
-				"organization_uuid": "org_uuid_123",
-				"retention_type":    "30d",
-			},
-		},
 	}
 	for _, event := range events {
 		if _, err := service.Project(context.Background(), event); err != nil {
@@ -608,35 +395,19 @@ func TestProjectAIGovernanceControlEdges(t *testing.T) {
 		}
 	}
 
-	openAIControlURN := "urn:cerebro:writer:openai_project_rate_limit:proj_123:rl_123:gpt-4o"
-	openAIProjectURN := "urn:cerebro:writer:openai_project:proj_123"
-	openAIModelURN := "urn:cerebro:writer:openai_model:gpt-4o"
 	anthropicRateLimitURN := "urn:cerebro:writer:anthropic_workspace_rate_limit:ws_123:rl_456:claude-sonnet-4-20250514"
 	anthropicWorkspaceURN := "urn:cerebro:writer:anthropic_workspace:ws_123"
 	anthropicModelURN := "urn:cerebro:writer:anthropic_model:claude-sonnet-4-20250514"
 	anthropicSettingURN := "urn:cerebro:writer:anthropic_compliance_organization_setting:org-uuid-1:data_retention"
 	anthropicUnstableSettingURN := "urn:cerebro:writer:anthropic_compliance_organization_setting:org-uuid-1:org-id-1:data_retention"
 	anthropicOrgURN := "urn:cerebro:writer:anthropic_org:org-uuid-1"
-	openAIDataRetentionURN := "urn:cerebro:writer:openai_data_retention:org_123:30d:chat"
-	openAIUnstableDataRetentionURN := "urn:cerebro:writer:openai_data_retention:org_123:org_uuid_123:30d:chat"
 
-	if entity := state.entities[openAIControlURN]; entity == nil || entity.EntityType != "openai.project_rate_limit" || entity.Attributes["control_type"] != "rate_limit" || entity.Attributes["scope_kind"] != "project" {
-		t.Fatalf("openai control entity missing or wrong: %#v", entity)
-	}
 	if entity := state.entities[anthropicSettingURN]; entity == nil || entity.EntityType != "anthropic.compliance_organization_setting" || entity.Attributes["control_type"] != "setting" {
 		t.Fatalf("anthropic setting entity missing or wrong: %#v", entity)
 	}
 	if entity := state.entities[anthropicUnstableSettingURN]; entity != nil {
 		t.Fatalf("anthropic setting projected unstable dual-org URN: %#v", entity)
 	}
-	if entity := state.entities[openAIDataRetentionURN]; entity == nil || entity.EntityType != "openai.data_retention" || entity.Attributes["control_type"] != "data_retention" {
-		t.Fatalf("openai data retention entity missing or wrong: %#v", entity)
-	}
-	if entity := state.entities[openAIUnstableDataRetentionURN]; entity != nil {
-		t.Fatalf("openai data retention projected unstable dual-org URN: %#v", entity)
-	}
-	assertProjectedLink(t, state, openAIControlURN, relationBelongsTo, openAIProjectURN)
-	assertProjectedLink(t, state, openAIControlURN, relationAssociatedWith, openAIModelURN)
 	assertProjectedLink(t, state, anthropicRateLimitURN, relationBelongsTo, anthropicWorkspaceURN)
 	assertProjectedLink(t, state, anthropicRateLimitURN, relationAssociatedWith, anthropicModelURN)
 	assertProjectedLink(t, state, anthropicSettingURN, relationBelongsTo, anthropicOrgURN)
@@ -648,26 +419,6 @@ func TestProjectAIUsageAndCostMetricEdges(t *testing.T) {
 	occurred := time.Date(2026, time.June, 18, 12, 45, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
-		{
-			Id:         "openai-usage-completion",
-			TenantId:   "writer",
-			SourceId:   "openai",
-			Kind:       "openai.usage_completion",
-			OccurredAt: timestamppb.New(occurred),
-			Attributes: map[string]string{
-				"api_key_id":         "fixture_123",
-				"end_time":           "2026-06-18T13:00:00Z",
-				"family":             "usage_completion",
-				"id":                 "usage_123",
-				"input_tokens":       "1200",
-				"model":              "gpt-4o",
-				"num_model_requests": "5",
-				"output_tokens":      "320",
-				"project_id":         "proj_123",
-				"start_time":         "2026-06-18T12:00:00Z",
-				"user_id":            "user_123",
-			},
-		},
 		{
 			Id:         "anthropic-cost-report",
 			TenantId:   "writer",
@@ -694,12 +445,6 @@ func TestProjectAIUsageAndCostMetricEdges(t *testing.T) {
 		}
 	}
 
-	openAIMetricURN := "urn:cerebro:writer:openai_usage_completion:usage_123"
-	openAIOrgURN := "urn:cerebro:writer:openai_org:openai"
-	openAIProjectURN := "urn:cerebro:writer:openai_project:proj_123"
-	openAIUserURN := "urn:cerebro:writer:openai_user:user_123"
-	openAICredentialURN := "urn:cerebro:writer:openai_credential:fixture_123" // #nosec G101 -- test credential URN fixture, not credential material.
-	openAIModelURN := "urn:cerebro:writer:openai_model:gpt-4o"
 	anthropicMetricURN := "urn:cerebro:writer:anthropic_cost_report:cost_123"
 	anthropicOrgURN := "urn:cerebro:writer:anthropic_org:org_123"
 	anthropicWorkspaceURN := "urn:cerebro:writer:anthropic_workspace:ws_123"
@@ -707,17 +452,9 @@ func TestProjectAIUsageAndCostMetricEdges(t *testing.T) {
 	anthropicCredentialURN := "urn:cerebro:writer:anthropic_credential:fixture_456" // #nosec G101 -- test credential URN fixture, not credential material.
 	anthropicModelURN := "urn:cerebro:writer:anthropic_model:claude-sonnet-4-20250514"
 
-	if entity := state.entities[openAIMetricURN]; entity == nil || entity.EntityType != "openai.usage_completion" || entity.Attributes["metric_type"] != "usage" {
-		t.Fatalf("openai usage metric entity missing or wrong: %#v", entity)
-	}
 	if entity := state.entities[anthropicMetricURN]; entity == nil || entity.EntityType != "anthropic.cost_report" || entity.Attributes["metric_type"] != "cost" {
 		t.Fatalf("anthropic cost metric entity missing or wrong: %#v", entity)
 	}
-	assertProjectedLink(t, state, openAIMetricURN, relationBelongsTo, openAIOrgURN)
-	assertProjectedLink(t, state, openAIMetricURN, relationObservedOn, openAIProjectURN)
-	assertProjectedLink(t, state, openAIMetricURN, relationObservedOn, openAIUserURN)
-	assertProjectedLink(t, state, openAIMetricURN, relationObservedOn, openAICredentialURN)
-	assertProjectedLink(t, state, openAIMetricURN, relationAssociatedWith, openAIModelURN)
 	assertProjectedLink(t, state, anthropicMetricURN, relationBelongsTo, anthropicOrgURN)
 	assertProjectedLink(t, state, anthropicMetricURN, relationObservedOn, anthropicWorkspaceURN)
 	assertProjectedLink(t, state, anthropicMetricURN, relationObservedOn, anthropicUserURN)

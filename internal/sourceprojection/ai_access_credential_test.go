@@ -15,28 +15,27 @@ func TestProjectAIUsageMetricNormalizesCredentialRuntimeUsage(t *testing.T) {
 	occurred := time.Date(2026, time.June, 18, 12, 45, 0, 0, time.UTC)
 
 	event := &cerebrov1.EventEnvelope{
-		Id:         "openai-usage-runtime-credential",
+		Id:         "anthropic-usage-runtime-credential",
 		TenantId:   "writer",
-		SourceId:   "openai",
-		Kind:       "openai.usage_completion",
+		SourceId:   "anthropic",
+		Kind:       "anthropic.cost_report",
 		OccurredAt: timestamppb.New(occurred),
 		Attributes: map[string]string{
-			"api_key_id":         "usage_runtime_key",
-			"end_time":           "2026-06-18T13:00:00Z",
-			"family":             "usage_completion",
-			"id":                 "usage_runtime_1",
-			"input_tokens":       "1200",
-			"model":              "gpt-4o",
-			"num_model_requests": "5",
-			"project_id":         "proj_runtime",
-			"start_time":         "2026-06-18T12:00:00Z",
+			"api_key_id": "usage_runtime_key",
+			"cost_usd":   "1.20",
+			"end_time":   "2026-06-18T13:00:00Z",
+			"family":     "cost_report",
+			"id":         "usage_runtime_1",
+			"model":      "claude-sonnet-4-20250514",
+			"project_id": "proj_runtime",
+			"start_time": "2026-06-18T12:00:00Z",
 		},
 	}
 	if _, err := service.Project(context.Background(), event); err != nil {
 		t.Fatalf("Project(%q) error = %v", event.GetId(), err)
 	}
 
-	credentialURN := "urn:cerebro:writer:openai_credential:usage_runtime_key" // #nosec G101 -- test credential identifier, not credential material.
+	credentialURN := "urn:cerebro:writer:anthropic_credential:usage_runtime_key" // #nosec G101 -- test credential identifier, not credential material.
 	credential := state.entities[credentialURN]
 	if credential == nil {
 		t.Fatalf("credential entity %q missing", credentialURN)

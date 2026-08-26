@@ -18,15 +18,10 @@ type aiInviteProjectMembership struct {
 }
 
 var (
-	openAIAccessProfile    = aiAccessProfile{Provider: "openai"}
 	anthropicAccessProfile = aiAccessProfile{Provider: "anthropic"}
 	langChainAccessProfile = aiAccessProfile{Provider: "langchain"}
 	langfuseAccessProfile  = aiAccessProfile{Provider: "langfuse"}
 )
-
-func openAIUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiUserProjections(event, openAIAccessProfile)
-}
 
 func anthropicUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiUserProjections(event, anthropicAccessProfile)
@@ -34,10 +29,6 @@ func anthropicUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 
 func langChainOrganizationMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiUserProjections(event, langChainAccessProfile)
-}
-
-func openAIProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiProjectProjections(event, openAIAccessProfile)
 }
 
 func anthropicProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -68,10 +59,6 @@ func langChainOrganizationProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	return aiOrganizationProjections(event, langChainAccessProfile)
 }
 
-func openAIInviteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiInviteProjections(event, openAIAccessProfile)
-}
-
 func anthropicInviteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiInviteProjections(event, anthropicAccessProfile)
 }
@@ -82,18 +69,6 @@ func anthropicWorkspaceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 
 func langChainWorkspaceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiWorkspaceProjections(event, langChainAccessProfile)
-}
-
-func openAIGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGroupProjections(event, openAIAccessProfile)
-}
-
-func openAIGroupUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGroupMembershipProjections(event, openAIAccessProfile)
-}
-
-func openAIProjectUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiScopedUserAccessProjections(event, openAIAccessProfile, "project")
 }
 
 func anthropicWorkspaceMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -112,20 +87,12 @@ func anthropicComplianceGroupMemberProjections(event *cerebrov1.EventEnvelope) (
 	return aiGroupMembershipProjections(event, anthropicAccessProfile)
 }
 
-func openAIServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiServiceAccountProjections(event, openAIAccessProfile, "project")
-}
-
 func anthropicServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiServiceAccountProjections(event, anthropicAccessProfile, "organization")
 }
 
 func langChainServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiServiceAccountProjections(event, langChainAccessProfile, "organization")
-}
-
-func openAICredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiCredentialProjections(event, openAIAccessProfile)
 }
 
 func anthropicCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -140,10 +107,6 @@ func langfuseCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	return aiCredentialProjections(event, langfuseAccessProfile)
 }
 
-func openAIRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiRoleProjections(event, openAIAccessProfile)
-}
-
 func anthropicComplianceRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiScopedRoleProjections(event, anthropicAccessProfile)
 }
@@ -156,44 +119,12 @@ func anthropicComplianceRolePermissionProjections(event *cerebrov1.EventEnvelope
 	return aiRolePermissionProjections(event, anthropicAccessProfile)
 }
 
-func openAIUserRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiSubjectRoleProjections(event, openAIAccessProfile, "user", "organization")
-}
-
-func openAIGroupRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiSubjectRoleProjections(event, openAIAccessProfile, "group", "organization")
-}
-
-func openAIProjectUserRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiSubjectRoleProjections(event, openAIAccessProfile, "user", "project")
-}
-
-func openAIProjectGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiScopedGroupAccessProjections(event, openAIAccessProfile, "project")
-}
-
-func openAIProjectGroupRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiSubjectRoleProjections(event, openAIAccessProfile, "group", "project")
-}
-
-func openAIProjectEntitlementProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiProjectEntitlementProjections(event, openAIAccessProfile)
-}
-
-func openAIGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGovernanceControlProjections(event, openAIAccessProfile)
-}
-
 func anthropicGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiGovernanceControlProjections(event, anthropicAccessProfile)
 }
 
 func langChainGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiGovernanceControlProjections(event, langChainAccessProfile)
-}
-
-func openAIUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiUsageMetricProjections(event, openAIAccessProfile)
 }
 
 func anthropicUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -214,10 +145,6 @@ func anthropicFederationIssuerProjections(event *cerebrov1.EventEnvelope) ([]*po
 
 func anthropicFederationRuleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiFederationRuleProjections(event, anthropicAccessProfile)
-}
-
-func openAIAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiAuditProjections(event, openAIAccessProfile)
 }
 
 func anthropicComplianceActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -404,22 +331,6 @@ func aiWorkspaceProjections(event *cerebrov1.EventEnvelope, profile aiAccessProf
 	return identityProjectionResult(entities, links)
 }
 
-func aiGroupProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
-	if err != nil {
-		return nil, nil, err
-	}
-	attrs := event.GetAttributes()
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	orgURN := aiEnsureOrganization(entities, tenantID, event.GetSourceId(), profile, attrs)
-	groupURN := aiEnsureGroup(entities, tenantID, event.GetSourceId(), profile, attrs)
-	if groupURN != "" && orgURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), groupURN, orgURN, relationBelongsTo, aiEventLinkAttributes(event, "group_organization")))
-	}
-	return identityProjectionResult(entities, links)
-}
-
 func aiGroupMembershipProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -451,20 +362,6 @@ func aiScopedUserAccessProjections(event *cerebrov1.EventEnvelope, profile aiAcc
 	email := strings.TrimSpace(attrs["email"])
 	userURN := aiEnsureUser(entities, links, tenantID, event, profile, userID, email, attrs["name"], attrs["role"])
 	aiLinkPrincipalToScope(links, tenantID, event, userURN, scopeURN, firstNonEmpty(attrs["workspace_role"], attrs["role"]), scopeKind+"_membership")
-	return identityProjectionResult(entities, links)
-}
-
-func aiScopedGroupAccessProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile, scopeKind string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
-	if err != nil {
-		return nil, nil, err
-	}
-	attrs := event.GetAttributes()
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	scopeURN := aiEnsureScope(entities, tenantID, event.GetSourceId(), profile, scopeKind, attrs)
-	groupURN := aiEnsureGroup(entities, tenantID, event.GetSourceId(), profile, attrs)
-	aiLinkPrincipalToScope(links, tenantID, event, groupURN, scopeURN, attrs["role"], scopeKind+"_group_membership")
 	return identityProjectionResult(entities, links)
 }
 
@@ -548,17 +445,6 @@ func aiCredentialProjections(event *cerebrov1.EventEnvelope, profile aiAccessPro
 	return identityProjectionResult(entities, links)
 }
 
-func aiRoleProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
-	if err != nil {
-		return nil, nil, err
-	}
-	attrs := event.GetAttributes()
-	entities := map[string]*ports.ProjectedEntity{}
-	aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, attrs, aiRoleScopeKind(attrs, event.GetKind()))
-	return identityProjectionResult(entities, nil)
-}
-
 func aiScopedRoleProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -574,36 +460,6 @@ func aiScopedRoleProjections(event *cerebrov1.EventEnvelope, profile aiAccessPro
 	if roleURN != "" && scopeURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, scopeURN, relationBelongsTo, aiEventLinkAttributes(event, "role_scope_container")))
 	}
-	return identityProjectionResult(entities, links)
-}
-
-func aiSubjectRoleProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile, subjectKind string, scopeKind string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
-	if err != nil {
-		return nil, nil, err
-	}
-	attrs := event.GetAttributes()
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	scopeURN := aiEnsureScope(entities, tenantID, event.GetSourceId(), profile, scopeKind, attrs)
-	roleURN := aiEnsureRole(entities, tenantID, event.GetSourceId(), profile, attrs, scopeKind)
-	subjectURN := ""
-	switch subjectKind {
-	case "group":
-		subjectURN = aiEnsureGroup(entities, tenantID, event.GetSourceId(), profile, attrs)
-	default:
-		subjectURN = aiEnsureUser(entities, links, tenantID, event, profile, attrs["user_id"], attrs["email"], attrs["name"], attrs["role"])
-	}
-	if subjectURN != "" && roleURN != "" {
-		role := aiRoleID(attrs)
-		relation := relationAssignedTo
-		if aiRoleIsAdmin(role) {
-			relation = relationCanAdmin
-		}
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relation, aiEventLinkAttributes(event, subjectKind+"_role")))
-	}
-	aiLinkRoleToScope(links, tenantID, event, roleURN, scopeURN, aiRoleID(attrs), "role_scope")
-	aiLinkPrincipalToScope(links, tenantID, event, subjectURN, scopeURN, aiRoleID(attrs), subjectKind+"_"+scopeKind+"_role_access")
 	return identityProjectionResult(entities, links)
 }
 
@@ -722,51 +578,6 @@ func aiProjectCollaboratorProjections(event *cerebrov1.EventEnvelope, profile ai
 	}
 	aiLinkRoleToScope(links, tenantID, event, roleURN, projectURN, firstNonEmpty(roleName, roleID), "project_collaborator_role_scope")
 	aiLinkPrincipalToScope(links, tenantID, event, principalURN, projectURN, firstNonEmpty(roleName, roleID), "project_collaborator_project_access")
-	return identityProjectionResult(entities, links)
-}
-
-func aiProjectEntitlementProjections(event *cerebrov1.EventEnvelope, profile aiAccessProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	tenantID, err := tenantID(event)
-	if err != nil {
-		return nil, nil, err
-	}
-	attrs := event.GetAttributes()
-	entities := map[string]*ports.ProjectedEntity{}
-	links := map[string]*ports.ProjectedLink{}
-	projectURN := aiEnsureProject(entities, tenantID, event.GetSourceId(), profile, attrs)
-	switch strings.TrimSpace(attrs["family"]) {
-	case "project_model_permission":
-		for _, modelID := range splitAttributeList(attrs["model_ids"]) {
-			modelURN := projectionURN(tenantID, profile.Provider+"_model", modelID)
-			addEntity(entities, &ports.ProjectedEntity{
-				URN:        modelURN,
-				TenantID:   tenantID,
-				SourceID:   event.GetSourceId(),
-				EntityType: profile.Provider + ".model",
-				Label:      modelID,
-				Attributes: map[string]string{"model_id": modelID},
-			})
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), projectURN, modelURN, relationCanPerform, aiEventLinkAttributes(event, "project_model_permission")))
-		}
-	case "project_hosted_tool_permission":
-		for _, tool := range []string{"code_interpreter", "file_search", "image_generation", "mcp", "web_search"} {
-			if !projectionBool(attrs[tool+"_enabled"]) {
-				continue
-			}
-			toolURN := projectionURN(tenantID, profile.Provider+"_hosted_tool", tool)
-			addEntity(entities, &ports.ProjectedEntity{
-				URN:        toolURN,
-				TenantID:   tenantID,
-				SourceID:   event.GetSourceId(),
-				EntityType: profile.Provider + ".hosted_tool",
-				Label:      strings.ReplaceAll(tool, "_", " "),
-				Attributes: map[string]string{"tool": tool, "enabled": "true"},
-			})
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), projectURN, toolURN, relationCanPerform, aiEventLinkAttributes(event, "project_hosted_tool_permission")))
-		}
-	default:
-		return genericInventoryProjections(event)
-	}
 	return identityProjectionResult(entities, links)
 }
 
