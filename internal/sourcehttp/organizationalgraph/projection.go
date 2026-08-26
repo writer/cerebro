@@ -26,6 +26,8 @@ const (
 var (
 	ErrSourceCollectionNotFound           = errors.New("source collection receipt not found")
 	ErrSourceCollectionProvenanceMismatch = errors.New("source collection receipt provenance mismatch")
+	ErrProjectionAuthorityUnavailable     = errors.New("rust projection authority client is required")
+	ErrProjectionAuthorityScopeMismatch   = errors.New("rust projection authority response scope does not match the request")
 )
 
 // ProjectionClient talks only to the Rust projection authority boundary.
@@ -151,7 +153,12 @@ type sourceCollectionResponse struct {
 type sourceCollectionManifestResponse = sourceCollectionRequest
 
 type authorityResponse struct {
-	Authority string `json:"authority"`
+	TenantID         string `json:"tenant_id"`
+	SourceID         string `json:"source_id"`
+	FamilyID         string `json:"family_id"`
+	Authority        string `json:"authority"`
+	EvidenceDigest   string `json:"evidence_digest"`
+	PromotedAtUnixMS *int64 `json:"promoted_at_unix_ms"`
 }
 
 func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *cerebrov1.EventEnvelope, delta ports.SourceProjectionDelta) error {
@@ -325,9 +332,11 @@ func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.Event
 	if err != nil {
 		return "", err
 	}
+	tenantID := strings.TrimSpace(event.GetTenantId())
+	sourceID := strings.TrimSpace(event.GetSourceId())
 	query := url.Values{
-		"tenant_id": {strings.TrimSpace(event.GetTenantId())},
-		"source_id": {strings.TrimSpace(event.GetSourceId())},
+		"tenant_id": {tenantID},
+		"source_id": {sourceID},
 		"family_id": {familyID},
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/projections/authority?"+query.Encode(), nil)
@@ -340,6 +349,11 @@ func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.Event
 	var response authorityResponse
 	if err := c.doJSON(request, &response); err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(response.TenantID) != tenantID ||
+		strings.TrimSpace(response.SourceID) != sourceID ||
+		strings.TrimSpace(response.FamilyID) != familyID {
+		return "", ErrProjectionAuthorityScopeMismatch
 	}
 	if response.Authority != projectionAuthorityLegacy && response.Authority != projectionAuthorityRust {
 		return "", fmt.Errorf("rust projection returned invalid authority %q", response.Authority)
@@ -374,11 +388,18 @@ func (c *ProjectionClient) doJSON(request *http.Request, target any) (err error)
 // delta. Rust-authoritative events are consumed and projected directly from
 // JetStream by the Rust runtime; this path cannot submit their payload.
 type AppendLogProjector struct {
-	legacy ports.SourceProjector
-	rust   *ProjectionClient
+	legacy            ports.SourceProjector
+	rust              *ProjectionClient
+	recordLegacyDelta bool
 }
 
 func NewAppendLogProjector(legacy ports.SourceProjector, rust *ProjectionClient) *AppendLogProjector {
+	return &AppendLogProjector{legacy: legacy, rust: rust, recordLegacyDelta: true}
+}
+
+// NewLegacyWriteGuard prevents replay/refetch jobs from restoring a Go write
+// path after a family has moved to Rust, without recording another parity delta.
+func NewLegacyWriteGuard(legacy ports.SourceProjector, rust *ProjectionClient) *AppendLogProjector {
 	return &AppendLogProjector{legacy: legacy, rust: rust}
 }
 
@@ -392,6 +413,9 @@ func (p *AppendLogProjector) RecordSourceCollection(ctx context.Context, manifes
 }
 
 func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
+	if p == nil || p.rust == nil {
+		return ports.ProjectionResult{}, ErrProjectionAuthorityUnavailable
+	}
 	authority, err := p.rust.authority(ctx, event)
 	if err != nil {
 		return ports.ProjectionResult{}, err
@@ -402,7 +426,7 @@ func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.Event
 	if p.legacy == nil {
 		return ports.ProjectionResult{}, nil
 	}
-	if projector, ok := p.legacy.(ports.SourceProjectorWithDelta); ok {
+	if projector, ok := p.legacy.(ports.SourceProjectorWithDelta); ok && p.recordLegacyDelta {
 		result, delta, err := projector.ProjectWithDelta(ctx, event)
 		if err != nil {
 			return ports.ProjectionResult{}, err
@@ -411,31 +435,6 @@ func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.Event
 			return ports.ProjectionResult{}, err
 		}
 		return result, nil
-	}
-	return p.legacy.Project(ctx, event)
-}
-
-// LegacyWriteGuard prevents replay/refetch jobs from restoring a Go write path
-// after a family has moved to Rust.
-type LegacyWriteGuard struct {
-	legacy ports.SourceProjector
-	rust   *ProjectionClient
-}
-
-func NewLegacyWriteGuard(legacy ports.SourceProjector, rust *ProjectionClient) *LegacyWriteGuard {
-	return &LegacyWriteGuard{legacy: legacy, rust: rust}
-}
-
-func (p *LegacyWriteGuard) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
-	authority, err := p.rust.authority(ctx, event)
-	if err != nil {
-		return ports.ProjectionResult{}, err
-	}
-	if authority == projectionAuthorityRust {
-		return ports.ProjectionResult{}, nil
-	}
-	if p.legacy == nil {
-		return ports.ProjectionResult{}, nil
 	}
 	return p.legacy.Project(ctx, event)
 }

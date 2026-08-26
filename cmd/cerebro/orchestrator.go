@@ -483,13 +483,11 @@ func newOrchestratorSyncProjector(
 	stateStore ports.StateStore,
 	projectors ...*organizationalgraph.ProjectionClient,
 ) ports.SourceProjector {
-	// Source sync runs after append-log commit. The persisted family authority
-	// selects either the compatibility state projector or the Rust writer.
-	legacy := sourceProjector(stateStore, nil)
-	if len(projectors) == 0 || projectors[0] == nil {
-		return legacy
+	var authority *organizationalgraph.ProjectionClient
+	if len(projectors) > 0 {
+		authority = projectors[0]
 	}
-	return organizationalgraph.NewAppendLogProjector(legacy, projectors[0])
+	return organizationalgraph.NewAppendLogProjector(sourceProjector(stateStore, nil), authority)
 }
 
 func orchestratorGraphPageLimit(configured uint32, syncedPages uint32) uint32 {
