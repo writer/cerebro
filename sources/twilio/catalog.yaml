@@ -5,6 +5,32 @@ emitted_kinds:
   - twilio.accounts
   - twilio.keys
   - twilio.audit_events
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-08-25T00:00:00Z
+  transport: rest
+  auth: basic
+  auth_mechanics: http_basic_account_sid_auth_token_header
+  base_url: https://api.twilio.com
+  spec_url: https://www.twilio.com/docs/iam/api/account
+  spec_kind: api_reference_html
+  references:
+    - https://www.twilio.com/docs/iam/api/account
+    - https://www.twilio.com/docs/iam/api-keys/key-resource-v2010
+    - https://www.twilio.com/docs/usage/monitor-events
+  auth_evidence:
+    - https://www.twilio.com/docs/iam/api/account
+  families:
+    - id: accounts
+      method: GET
+      path: /2010-04-01/Accounts.json
+    - id: keys
+      method: GET
+      path: /2010-04-01/Accounts/${config.account_sid}/Keys.json
+    - id: audit_events
+      method: GET
+      path: /v1/Events
 runtime_families:
   - accounts
   - audit_events

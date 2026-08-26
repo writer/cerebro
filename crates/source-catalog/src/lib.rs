@@ -3580,6 +3580,7 @@ mod tests {
             "jira",
             "langchain",
             "openai",
+            "twilio",
         ] {
             let source = catalog.get(source_id).unwrap();
             assert_eq!(
