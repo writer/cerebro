@@ -635,6 +635,7 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
         "/v1/graph/provenance" => "cerebro:read",
+        "/platform/graph/provenance" => "cerebro:read",
         "/v1/ask-queries" if method == Method::GET => "cerebro:read",
         "/v1/ask-queries" => "cerebro:write",
         _ if path.starts_with("/v1/ask-queries/") => "cerebro:write",
@@ -693,6 +694,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
         "/v1/graph/provenance" => "graph_provenance",
+        "/platform/graph/provenance" => "graph_provenance",
         "/v1/security/lifecycle" => "security_lifecycle",
         "/v1/ask-queries" if method == Method::GET => "list_ask_queries",
         "/v1/ask-queries" => "create_ask_query",
@@ -2322,6 +2324,7 @@ fn router_with_backend(
         .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/graph/provenance", get(graph_provenance_route))
+        .route("/platform/graph/provenance", get(graph_provenance_route))
         .route("/v1/security/lifecycle", get(security_lifecycle))
         .route(
             "/v1/ask-queries",

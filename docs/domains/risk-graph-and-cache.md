@@ -7,7 +7,6 @@ It complements [Findings Platform Architecture](findings-platform-architecture.m
 ## Packages Covered
 
 - `internal/riskplan` — risk-action plan generation and scoring
-- `internal/graphprovenance` — graph entity provenance lookup
 - `internal/querycache` — versioned cache abstraction with fresh/stale/miss semantics
 
 ## riskplan — Risk-Action Planning
@@ -64,38 +63,6 @@ The planner is exposed to MCP clients through read-only tools:
 
 `analyst` (risk scoring, dashboards), `finding_manager` (findings, risk scoring), `grc_reviewer` (risk scoring, dashboards)
 
-## graphprovenance — Graph Entity Provenance
-
-`internal/graphprovenance` provides graph entity provenance lookup by URN via Cypher queries. It returns entity metadata, projection classification, source URNs, citation status, and freshness signals.
-
-### Key Types
-
-- `Service` — provenance service wrapping a `ports.GraphQueryStore`
-- `Request` — URN lookup request
-- `Response` — full provenance response with entity details
-- `Provenance` — surface, scope, source URNs, citation status, and freshness signals
-
-### Key Exports
-
-- `New(store)` — constructor
-- `Service.Get()` — queries the graph for entity provenance by URN
-- `TenantIDFromURN()` — extracts tenant ID from a Cerebro URN
-
-### Boundaries
-
-- Provenance query and response shaping stay behind this package
-- Graph query execution is delegated to `ports.GraphQueryStore`
-- Projection metadata is sourced from `internal/projectionmeta`
-- Requires Neo4j/Aura graph store to be configured
-
-### Dependencies
-
-`graphquery`, `ports`, `projectionmeta`
-
-### RBAC Ownership
-
-`viewer` (cosmo security read), `analyst` (investigation)
-
 ## querycache — Versioned Cache Abstraction
 
 `internal/querycache` provides a versioned cache abstraction with fresh, stale, and miss TTL semantics. It offers both an in-memory implementation (with LRU eviction) and a Redis implementation (with telemetry instrumentation).
@@ -147,7 +114,6 @@ Version tracking allows callers to invalidate all entries for a namespace by bum
 - `internal/riskplan/generators.go` — built-in candidate generators
 - `internal/riskplan/types.go` — plan, candidate, and scoring types
 - `internal/riskplan/diff.go` — plan diffing
-- `internal/graphprovenance/provenance.go` — provenance lookup service
 - `internal/querycache/cache.go` — cache interface and entry types
 - `internal/querycache/memory.go` — in-memory cache implementation
 - `internal/querycache/redis.go` — Redis cache implementation

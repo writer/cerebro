@@ -200,10 +200,6 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	if strings.Contains(knowledgeService, "func New(query ports.RawCypherQueryStore") {
 		t.Error("knowledge writer restored unused graph query dependency")
 	}
-	provenanceService := readText(t, filepath.Join(root, "internal/graphprovenance/provenance.go"))
-	if strings.Contains(provenanceService, "store ports.GraphQueryStore") {
-		t.Error("graph provenance restored full graph query dependency")
-	}
 	grcPolicyLifecycle := readText(t, filepath.Join(root, "internal/grcpolicylifecycle/lifecycle.go"))
 	if strings.Contains(grcPolicyLifecycle, "func Build(ctx context.Context, store ports.GraphQueryStore") {
 		t.Error("GRC policy lifecycle restored full graph query dependency")
