@@ -247,6 +247,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/inventory/assets", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.assets", 2*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssets))
 	registerHTTPRoute(mux, "GET /grc/inventory/assets/detail", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("inventory.asset.detail", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeInventory, grcCacheScopeFindings, grcCacheScopeEvidence), app.handleGRCInventoryAssetDetail))
 	registerHTTPRoute(mux, "GET /grc/vendors", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("vendors", 2*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCVendors))
+	registerHTTPRoute(mux, "POST /grc/vendors", routeSurfacePlatformHTTP, app.handleCreateGRCVendor)
 	registerHTTPRoute(mux, "POST /grc/vendors/uploads", routeSurfacePlatformHTTP, app.grcUploadHandler(grcupload.TargetVendor).ServeHTTP)
 	registerHTTPRoute(mux, "POST /grc/vendors/uploads/{uploadID}/replay", routeSurfacePlatformHTTP, app.grcUploadReplayHandler().ServeHTTP)
 	registerHTTPRoute(mux, "GET /grc/vendors/{vendorID}", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("vendor.detail", 5*time.Minute, grcCacheScopeGraph, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCVendorDetail))

@@ -4863,6 +4863,37 @@ paths:
               schema:
                 $ref: '#/components/schemas/GRCQuestionnaireRunResponse'
   /grc/vendors:
+    post:
+      summary: Create a vendor
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: workspace_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GRCVendorCreateRequest'
+      responses:
+        '201':
+          description: Vendor event appended and projected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCVendorCreateResponse'
+        '400':
+          description: Invalid vendor or scope request.
+        '403':
+          description: The caller is not authorized for the tenant or workspace.
+        '503':
+          description: The append-log or projection runtime is unavailable.
     get:
       summary: Vendors
       tags:
@@ -17234,6 +17265,101 @@ components:
           type: integer
         projection_failures:
           type: integer
+    GRCVendorCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        tenant_id:
+          type: string
+        workspace_id:
+          type: string
+        name:
+          type: string
+        vendor_id:
+          type: string
+        source_id:
+          type: string
+        runtime_id:
+          type: string
+        provider:
+          type: string
+        status:
+          type: string
+        category:
+          type: string
+        website_url:
+          type: string
+        services_provided:
+          type: string
+        owner:
+          type: string
+        security_owner_user_id:
+          type: string
+        business_owner_user_id:
+          type: string
+        lifecycle_state:
+          type: string
+        review_state:
+          type: string
+        risk_level:
+          type: string
+        discovery_urn:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    GRCVendorCreateResponse:
+      type: object
+      required:
+        - vendor
+        - generated_at
+      properties:
+        vendor:
+          type: object
+          required:
+            - urn
+            - name
+          additionalProperties: true
+          properties:
+            urn:
+              type: string
+            vendor_id:
+              type: string
+            name:
+              type: string
+            source_id:
+              type: string
+            runtime_id:
+              type: string
+            provider:
+              type: string
+            status:
+              type: string
+            category:
+              type: string
+            website_url:
+              type: string
+            services_provided:
+              type: string
+            lifecycle_state:
+              type: string
+            owner:
+              type: string
+            owner_state:
+              type: string
+            risk_level:
+              type: string
+            review_state:
+              type: string
+            attributes:
+              type: object
+              additionalProperties:
+                type: string
+        generated_at:
+          type: string
+          format: date-time
     GRCQuestionnaireRunSummary:
       type: object
       properties:
