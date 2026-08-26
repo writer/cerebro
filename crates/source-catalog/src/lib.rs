@@ -3611,6 +3611,7 @@ mod tests {
             "duo",
             "elevenlabs",
             "fivetran",
+            "gitguardian",
             "gitlab",
             "google_vertex_ai",
             "increase",
