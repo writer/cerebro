@@ -34,27 +34,30 @@ func TestBuiltinRegistryRegistersGenerateableCatalogProjectors(t *testing.T) {
 }
 
 func TestGeneratedCatalogAssetProjectorMaterializesGraphAsset(t *testing.T) {
-	projector := BuiltinRegistry().projectors["akeneo.asset"]
+	// akeneo.asset was retired to Rust authority (fails closed in Go); this
+	// oracle now runs on dropbox_business.content_assets, which uses the same
+	// generic asset projection template and is not in a retirement lane.
+	projector := BuiltinRegistry().projectors["dropbox_business.content_assets"]
 	if projector == nil {
-		t.Fatal("BuiltinRegistry() missing akeneo.asset projector")
+		t.Fatal("BuiltinRegistry() missing dropbox_business.content_assets projector")
 	}
 	entities, links, err := projector(&cerebrov1.EventEnvelope{
-		Id:       "event-akeneo-asset-1",
+		Id:       "event-dropbox-business-content-assets-1",
 		TenantId: "tenant",
-		SourceId: "akeneo",
-		Kind:     "akeneo.asset",
+		SourceId: "dropbox_business",
+		Kind:     "dropbox_business.content_assets",
 		Attributes: map[string]string{
 			"resource_id":                       "asset-123",
 			"resource_name":                     "Laptop fleet",
 			"resource_type":                     "asset",
-			ports.EventAttributeSourceRuntimeID: "akeneo-runtime",
+			ports.EventAttributeSourceRuntimeID: "dropbox-business-runtime",
 		},
 	})
 	if err != nil {
-		t.Fatalf("akeneo asset projector error = %v", err)
+		t.Fatalf("dropbox_business content_assets projector error = %v", err)
 	}
 	if len(links) != 0 {
-		t.Fatalf("akeneo asset projector links = %#v, want none without evidence", links)
+		t.Fatalf("dropbox_business content_assets projector links = %#v, want none without evidence", links)
 	}
 	wantURN := "urn:cerebro:tenant:runtime_asset:asset-123"
 	var got *ports.ProjectedEntity
@@ -70,8 +73,8 @@ func TestGeneratedCatalogAssetProjectorMaterializesGraphAsset(t *testing.T) {
 	if got.EntityType != "runtime.asset" {
 		t.Fatalf("entity type = %q, want runtime.asset", got.EntityType)
 	}
-	if got.Attributes[ports.EventAttributeSourceRuntimeID] != "akeneo-runtime" {
-		t.Fatalf("source runtime attr = %q, want akeneo-runtime", got.Attributes[ports.EventAttributeSourceRuntimeID])
+	if got.Attributes[ports.EventAttributeSourceRuntimeID] != "dropbox-business-runtime" {
+		t.Fatalf("source runtime attr = %q, want dropbox-business-runtime", got.Attributes[ports.EventAttributeSourceRuntimeID])
 	}
 }
 
