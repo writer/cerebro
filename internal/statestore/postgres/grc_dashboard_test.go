@@ -13,18 +13,26 @@ import (
 func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T) {
 	query, args, err := grcDashboardAggregateQuery(ports.GRCDashboardAggregateRequest{
 		FindingRequest: ports.ListFindingsRequest{
-			TenantID:   "example",
-			RuntimeIDs: []string{"tenant-runtime-a", "tenant-runtime-b"},
-			Status:     "open",
+			TenantID: "example",
+			Status:   "open",
 		},
 		PreviewFindingIDs: []string{"finding-a", "finding-b"},
+		RuntimeScope: &ports.SourceRuntimeFilter{
+			TenantID:               "example",
+			ApplicationWorkspaceID: "workspace-a",
+		},
 	})
 	if err != nil {
 		t.Fatalf("grcDashboardAggregateQuery() error = %v", err)
 	}
 	for _, fragment := range []string{
-		"WITH finding_scope AS",
+		"runtime_scope AS",
+		"FROM source_runtimes",
+		"tenant_id = $1",
+		"application_workspace_id = $2",
+		"finding_scope AS",
 		"SELECT id, runtime_id, status,",
+		"runtime_id = ANY(ARRAY(SELECT id FROM runtime_scope))",
 		"COUNT(*) FILTER (WHERE LOWER(status) = 'open') AS open_findings",
 		"JOIN finding_control_refs AS ref ON ref.finding_id = finding.id",
 		"jsonb_build_object('framework_name', framework_name, 'control_id', control_id)",
@@ -33,7 +41,7 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 		"jsonb_object_agg(finding.id, counts.evidence_count)",
 		"JOIN finding_evidence_counts AS counts",
 		"counts.runtime_id = finding.runtime_id",
-		"finding.id IN ($5, $6)",
+		"finding.id IN ($4, $5)",
 	} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("aggregate query missing %q:\n%s", fragment, query)
@@ -46,8 +54,11 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 			t.Fatalf("aggregate query must not contain %q:\n%s", forbidden, query)
 		}
 	}
-	if len(args) != 6 {
-		t.Fatalf("aggregate query args len = %d, want 6 (%v)", len(args), args)
+	if len(args) != 5 {
+		t.Fatalf("aggregate query args len = %d, want 5 (%v)", len(args), args)
+	}
+	if args[0] != "example" || args[1] != "workspace-a" || args[2] != "open" {
+		t.Fatalf("aggregate query scope args = %#v, want tenant/workspace/status first", args)
 	}
 }
 
@@ -108,11 +119,14 @@ func TestGRCDashboardAggregatePlanUsesMaterializedEvidenceCountsPostgresIntegrat
 	}
 	query, args, err := grcDashboardAggregateQuery(ports.GRCDashboardAggregateRequest{
 		FindingRequest: ports.ListFindingsRequest{
-			TenantID:   "dashboard-plan-tenant",
-			RuntimeIDs: []string{"dashboard-plan-runtime"},
-			Status:     "open",
+			TenantID: "dashboard-plan-tenant",
+			Status:   "open",
 		},
 		PreviewFindingIDs: []string{"dashboard-plan-finding"},
+		RuntimeScope: &ports.SourceRuntimeFilter{
+			TenantID:               "dashboard-plan-tenant",
+			ApplicationWorkspaceID: "dashboard-plan-workspace",
+		},
 	})
 	if err != nil {
 		t.Fatalf("grcDashboardAggregateQuery() error = %v", err)
@@ -126,5 +140,18 @@ func TestGRCDashboardAggregatePlanUsesMaterializedEvidenceCountsPostgresIntegrat
 	}
 	if strings.Contains(plan, `"Relation Name": "finding_evidence"`) {
 		t.Fatalf("dashboard aggregate plan scans raw finding evidence: %s", plan)
+	}
+	if !strings.Contains(plan, `"Relation Name": "source_runtimes"`) {
+		t.Fatalf("dashboard aggregate plan does not resolve normalized runtime scope: %s", plan)
+	}
+}
+
+func TestGRCDashboardAggregateScopeRejectsTenantWorkspaceMismatch(t *testing.T) {
+	_, _, err := grcDashboardAggregateQuery(ports.GRCDashboardAggregateRequest{
+		FindingRequest: ports.ListFindingsRequest{TenantID: "tenant-a", Status: "open"},
+		RuntimeScope:   &ports.SourceRuntimeFilter{TenantID: "tenant-b", ApplicationWorkspaceID: "workspace-a"},
+	})
+	if err == nil {
+		t.Fatal("grcDashboardAggregateQuery() error = nil, want tenant mismatch")
 	}
 }

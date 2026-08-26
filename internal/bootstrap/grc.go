@@ -183,7 +183,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		var err error
 		return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.aggregate", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}), func(ctx context.Context) (telemetry.Attributes, error) {
 			request := r.WithContext(ctx)
-			aggregate, err = a.grcDashboardAggregate(request, runtimes, grcFindingFilter{Status: "open"}, findingIDs)
+			aggregate, err = a.grcDashboardAggregate(request, scope, runtimes, grcFindingFilter{Status: "open"}, findingIDs)
 			if err == nil && aggregate == nil {
 				findingSummary, err = a.grcFindingSummary(request, runtimes, grcFindingFilter{Status: "open"})
 				if err == nil {
@@ -1202,10 +1202,31 @@ func (a *App) grcEvidenceCountsByFindingID(r *http.Request, runtimes []*cerebrov
 	return counts, true, nil
 }
 
-func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.SourceRuntime, findingFilter grcFindingFilter, previewFindingIDs []string) (*ports.GRCDashboardAggregate, error) {
+func (a *App) grcDashboardAggregate(r *http.Request, scope grcScope, runtimes []*cerebrov1.SourceRuntime, findingFilter grcFindingFilter, previewFindingIDs []string) (*ports.GRCDashboardAggregate, error) {
 	provider, ok := a.deps.StateStore.(ports.GRCDashboardAggregateStore)
 	if !ok {
 		return nil, nil
+	}
+	if len(runtimes) == 0 {
+		aggregate := ports.GRCDashboardAggregate{}
+		return &aggregate, nil
+	}
+	if tenantID := strings.TrimSpace(scope.TenantID); tenantID != "" {
+		aggregate, err := provider.SummarizeGRCDashboard(r.Context(), ports.GRCDashboardAggregateRequest{
+			FindingRequest:    grcdashboard.AggregateFindingRequest(tenantID, nil, findingFilter),
+			PreviewFindingIDs: previewFindingIDs,
+			RuntimeScope: &ports.SourceRuntimeFilter{
+				RuntimeID:              scope.RuntimeID,
+				RuntimeIDs:             scope.RuntimeIDs,
+				TenantID:               tenantID,
+				ApplicationWorkspaceID: scope.ApplicationWorkspaceID,
+				SourceID:               scope.SourceID,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &aggregate, nil
 	}
 	runtimeIDsByTenant := map[string][]string{}
 	for _, runtime := range runtimes {
@@ -1228,26 +1249,7 @@ func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.Sourc
 	controlKeys := map[string]struct{}{}
 	for tenantID, runtimeIDs := range runtimeIDsByTenant {
 		item, err := provider.SummarizeGRCDashboard(r.Context(), ports.GRCDashboardAggregateRequest{
-			FindingRequest: ports.ListFindingsRequest{
-				TenantID:            tenantID,
-				RuntimeIDs:          runtimeIDs,
-				FindingID:           findingFilter.FindingID,
-				RuleID:              findingFilter.RuleID,
-				Severity:            findingFilter.Severity,
-				Status:              findingFilter.Status,
-				ResourceURN:         findingFilter.ResourceURN,
-				ResourceURNs:        findingFilter.ResourceURNs,
-				EventID:             findingFilter.EventID,
-				PolicyID:            findingFilter.PolicyID,
-				Framework:           findingFilter.Framework,
-				FirstObservedFrom:   findingFilter.FirstObservedFrom,
-				FirstObservedBefore: findingFilter.FirstObservedBefore,
-				StatusUpdatedFrom:   findingFilter.StatusUpdatedFrom,
-				StatusUpdatedBefore: findingFilter.StatusUpdatedBefore,
-				MinAgeDays:          findingFilter.MinAgeDays,
-				MaxAgeDays:          findingFilter.MaxAgeDays,
-				SLAStatus:           findingFilter.SLAStatus,
-			},
+			FindingRequest:    grcdashboard.AggregateFindingRequest(tenantID, runtimeIDs, findingFilter),
 			PreviewFindingIDs: previewFindingIDs,
 		})
 		if err != nil {

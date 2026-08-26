@@ -94,8 +94,11 @@ func TestFindingEvidenceInputSnapshotClausesEnforceRuntimeTenant(t *testing.T) {
 	}
 	clauses, args := findingEvidenceInputSnapshotScopeClauses(request)
 	joined := strings.Join(clauses, " AND ")
-	if !strings.Contains(joined, "input_runtime.runtime_json->>'tenant_id' = $1") {
+	if !strings.Contains(joined, "input_runtime.tenant_id = $1") {
 		t.Fatalf("clauses do not enforce tenant: %s", joined)
+	}
+	if strings.Contains(joined, "runtime_json->") {
+		t.Fatalf("clauses re-parse runtime scope JSON: %s", joined)
 	}
 	if len(args) != 3 || args[0] != "tenant-a" || args[1] != "runtime-a" || args[2] != "runtime-b" {
 		t.Fatalf("args = %#v", args)

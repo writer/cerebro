@@ -39,6 +39,11 @@ func (s *Store) SummarizeGRCDashboard(ctx context.Context, request ports.GRCDash
 	if err := s.ensureFindingEvidenceTables(ctx); err != nil {
 		return ports.GRCDashboardAggregate{}, err
 	}
+	if request.RuntimeScope != nil {
+		if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+			return ports.GRCDashboardAggregate{}, err
+		}
+	}
 	query, args, err := grcDashboardAggregateQuery(request)
 	if err != nil {
 		return ports.GRCDashboardAggregate{}, err
@@ -114,12 +119,11 @@ func decodeGRCDashboardEvidenceCounts(evidenceCountsJSON string) (map[string]int
 }
 
 func grcDashboardAggregateQuery(request ports.GRCDashboardAggregateRequest) (string, []any, error) {
-	findingClauses, findingArgs, err := findingFilterClauses(request.FindingRequest)
+	runtimeScopeCTE, findingClauses, args, err := grcDashboardScopeClauses(request)
 	if err != nil {
 		return "", nil, err
 	}
 	whereFindings := strings.Join(findingClauses, " AND ")
-	args := append([]any{}, findingArgs...)
 	previewClauses := []string{"FALSE"}
 	previewFindingIDs := normalizedNonEmptyStrings(request.PreviewFindingIDs)
 	if len(previewFindingIDs) > 0 {
@@ -129,7 +133,7 @@ func grcDashboardAggregateQuery(request ports.GRCDashboardAggregateRequest) (str
 	wherePreview := strings.Join(previewClauses, " AND ")
 	effectiveSeverity := findingEffectiveSeveritySQL()
 	query := `
-WITH finding_scope AS (
+WITH ` + runtimeScopeCTE + `finding_scope AS (
   SELECT id, runtime_id, status, ` + effectiveSeverity + ` AS effective_severity, due_at, assignee
   FROM findings
   WHERE ` + whereFindings + `
@@ -177,4 +181,47 @@ FROM summary
 CROSS JOIN evidence_summary
 CROSS JOIN preview_evidence_counts`
 	return query, args, nil
+}
+
+func grcDashboardScopeClauses(request ports.GRCDashboardAggregateRequest) (string, []string, []any, error) {
+	if request.RuntimeScope == nil {
+		clauses, args, err := findingFilterClauses(request.FindingRequest)
+		return "", clauses, args, err
+	}
+	tenantID := strings.TrimSpace(request.FindingRequest.TenantID)
+	scopeTenantID := strings.TrimSpace(request.RuntimeScope.TenantID)
+	if tenantID == "" || scopeTenantID == "" || tenantID != scopeTenantID {
+		return "", nil, nil, errors.New("dashboard runtime scope must match finding tenant")
+	}
+	applicationWorkspaceID, err := ports.ValidateApplicationWorkspaceScope(scopeTenantID, request.RuntimeScope.ApplicationWorkspaceID)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("dashboard runtime scope: %w", err)
+	}
+	if strings.TrimSpace(request.FindingRequest.RuntimeID) != "" || len(normalizedNonEmptyStrings(request.FindingRequest.RuntimeIDs)) > 0 {
+		return "", nil, nil, errors.New("dashboard finding runtime ids must be carried by runtime scope")
+	}
+	args := []any{tenantID}
+	runtimeClauses := []string{"tenant_id = $1"}
+	runtimeIDs := append([]string(nil), request.RuntimeScope.RuntimeIDs...)
+	runtimeIDs = normalizedNonEmptyStrings(append(runtimeIDs, request.RuntimeScope.RuntimeID))
+	addStringInFilter(&runtimeClauses, &args, "id", runtimeIDs)
+	if sourceID := strings.TrimSpace(request.RuntimeScope.SourceID); sourceID != "" {
+		args = append(args, sourceID)
+		runtimeClauses = append(runtimeClauses, fmt.Sprintf("source_id = $%d", len(args)))
+	}
+	if applicationWorkspaceID != "" {
+		args = append(args, applicationWorkspaceID)
+		runtimeClauses = append(runtimeClauses, fmt.Sprintf("application_workspace_id = $%d", len(args)))
+	}
+	findingClauses := []string{"tenant_id = $1", "runtime_id = ANY(ARRAY(SELECT id FROM runtime_scope))"}
+	if err := appendFindingFilterClauses(&findingClauses, &args, request.FindingRequest); err != nil {
+		return "", nil, nil, err
+	}
+	runtimeScopeCTE := `runtime_scope AS (
+  SELECT id
+  FROM source_runtimes
+  WHERE ` + strings.Join(runtimeClauses, " AND ") + `
+),
+`
+	return runtimeScopeCTE, findingClauses, args, nil
 }

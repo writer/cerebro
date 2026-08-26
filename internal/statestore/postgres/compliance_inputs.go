@@ -170,7 +170,7 @@ func (s *Store) ScanSourceRuntimeSnapshot(ctx context.Context, request ports.Inp
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	scopeClauses, scopeArgs := inputSnapshotScopeClauses(normalized, "runtime_json->>'tenant_id'", "id")
+	scopeClauses, scopeArgs := inputSnapshotScopeClauses(normalized, "tenant_id", "id")
 	total, watermark, err := measureInputSnapshot(ctx, tx, "source_runtimes", scopeClauses, scopeArgs)
 	if err != nil {
 		return ports.InputSnapshotPage[*cerebrov1.SourceRuntime]{}, err
@@ -259,7 +259,7 @@ func inputSnapshotScopeClauses(request ports.InputSnapshotRequest, tenantColumn 
 
 func findingEvidenceInputSnapshotScopeClauses(request ports.InputSnapshotRequest) ([]string, []any) {
 	args := []any{request.TenantID}
-	clauses := []string{"EXISTS (SELECT 1 FROM source_runtimes input_runtime WHERE input_runtime.id = finding_evidence.runtime_id AND input_runtime.runtime_json->>'tenant_id' = $1)"}
+	clauses := []string{"EXISTS (SELECT 1 FROM source_runtimes input_runtime WHERE input_runtime.id = finding_evidence.runtime_id AND input_runtime.tenant_id = $1)"}
 	placeholders := make([]string, 0, len(request.RuntimeIDs))
 	for _, runtimeID := range request.RuntimeIDs {
 		args = append(args, runtimeID)

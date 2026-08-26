@@ -1474,32 +1474,39 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	clauses := []string{"tenant_id = $1"}
 	args := []any{tenantID}
 	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
-	addFindingFilter(&clauses, &args, "id", request.FindingID)
-	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
-	if err := addFindingProfilePredicate(&clauses, &args, request.ProfilePredicate.RuleIDs, request.ProfilePredicate.ControlRefs); err != nil {
-		return nil, nil, err
-	}
-	addFindingSeverityFilter(&clauses, &args, request.Severity)
-	addFindingFilter(&clauses, &args, "status", request.Status)
-	addFindingFilter(&clauses, &args, "policy_id", request.PolicyID)
-	addFindingFrameworkFilter(&clauses, &args, request.Framework)
-	addFindingTimeLowerBoundFilter(&clauses, &args, "first_observed_at", request.FirstObservedFrom)
-	addFindingTimeUpperBoundFilter(&clauses, &args, "first_observed_at", request.FirstObservedBefore)
-	addFindingTimeLowerBoundFilter(&clauses, &args, "status_updated_at", request.StatusUpdatedFrom)
-	addFindingTimeUpperBoundFilter(&clauses, &args, "status_updated_at", request.StatusUpdatedBefore)
-	if !request.LastObservedBefore.IsZero() {
-		args = append(args, request.LastObservedBefore.UTC())
-		clauses = append(clauses, fmt.Sprintf("last_observed_at < $%d", len(args)))
-	}
-	addFindingAgeFilter(&clauses, &args, request.MinAgeDays, request.MaxAgeDays)
-	addFindingSLAStatusFilter(&clauses, &args, request.SLAStatus)
-	if err := addFindingArrayContainsAnyFilter(&clauses, &args, "resource_urns_json", append([]string{request.ResourceURN}, request.ResourceURNs...)); err != nil {
-		return nil, nil, err
-	}
-	if err := addFindingArrayContainsFilter(&clauses, &args, "event_ids_json", request.EventID); err != nil {
+	if err := appendFindingFilterClauses(&clauses, &args, request); err != nil {
 		return nil, nil, err
 	}
 	return clauses, args, nil
+}
+
+func appendFindingFilterClauses(clauses *[]string, args *[]any, request ports.ListFindingsRequest) error {
+	addFindingFilter(clauses, args, "id", request.FindingID)
+	addFindingFilter(clauses, args, "rule_id", request.RuleID)
+	if err := addFindingProfilePredicate(clauses, args, request.ProfilePredicate.RuleIDs, request.ProfilePredicate.ControlRefs); err != nil {
+		return err
+	}
+	addFindingSeverityFilter(clauses, args, request.Severity)
+	addFindingFilter(clauses, args, "status", request.Status)
+	addFindingFilter(clauses, args, "policy_id", request.PolicyID)
+	addFindingFrameworkFilter(clauses, args, request.Framework)
+	addFindingTimeLowerBoundFilter(clauses, args, "first_observed_at", request.FirstObservedFrom)
+	addFindingTimeUpperBoundFilter(clauses, args, "first_observed_at", request.FirstObservedBefore)
+	addFindingTimeLowerBoundFilter(clauses, args, "status_updated_at", request.StatusUpdatedFrom)
+	addFindingTimeUpperBoundFilter(clauses, args, "status_updated_at", request.StatusUpdatedBefore)
+	if !request.LastObservedBefore.IsZero() {
+		*args = append(*args, request.LastObservedBefore.UTC())
+		*clauses = append(*clauses, fmt.Sprintf("last_observed_at < $%d", len(*args)))
+	}
+	addFindingAgeFilter(clauses, args, request.MinAgeDays, request.MaxAgeDays)
+	addFindingSLAStatusFilter(clauses, args, request.SLAStatus)
+	if err := addFindingArrayContainsAnyFilter(clauses, args, "resource_urns_json", append([]string{request.ResourceURN}, request.ResourceURNs...)); err != nil {
+		return err
+	}
+	if err := addFindingArrayContainsFilter(clauses, args, "event_ids_json", request.EventID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func addFindingProfilePredicate(clauses *[]string, args *[]any, ruleIDs []string, controlRefs []ports.FindingControlRef) error {
