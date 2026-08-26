@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
 mod append_log_consumer;
-mod audit_events;
 mod ask_queries;
+mod audit_events;
 mod cutover_command;
 mod graph_provenance;
 mod oidc;
