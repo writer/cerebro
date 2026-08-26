@@ -16,7 +16,7 @@ provider_api:
   transport: rest
   auth: api_key
   auth_mechanics: authorization_token_header
-  base_url: https://api.gitguardian.com/v1
+  base_url: https://api.gitguardian.com
   spec_url: https://docs.gitguardian.com/api-docs/api-reference
   spec_kind: openapi_embedded_html
   references:
@@ -31,13 +31,13 @@ provider_api:
   families:
     - id: audit_events
       method: GET
-      path: /audit_logs
+      path: /v1/audit_logs
     - id: incidents
       method: GET
-      path: /incidents/secrets
+      path: /v1/incidents/secrets
     - id: members
       method: GET
-      path: /members
+      path: /v1/members
 kind_lifecycle:
   - kind: gitguardian.incidents
     status: active
