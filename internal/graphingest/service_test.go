@@ -1834,6 +1834,38 @@ func TestFinishRunClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 }
 
+func TestFinishRunClassifiesRateLimitsWithoutRawProviderError(t *testing.T) {
+	tests := map[string]error{
+		"source error": sourcecdk.WrapSourceError(
+			sourcecdk.ErrorKindRateLimited,
+			"example",
+			"asset",
+			errors.New("provider throttled credential=fake-sensitive-value"),
+		),
+		"http status": fmt.Errorf(
+			"provider request failed: %w",
+			&sourcecdk.HTTPStatusError{Code: 429, Message: "credential=fake-sensitive-value"},
+		),
+	}
+
+	for name, runErr := range tests {
+		t.Run(name, func(t *testing.T) {
+			finished := finishRun(
+				graphstore.IngestRun{ID: "run-1", Status: graphstore.IngestRunStatusRunning},
+				nil,
+				graphstore.IngestRunStatusFailed,
+				runErr,
+			)
+			if finished.Error != "rate_limited" {
+				t.Fatalf("finishRun error = %q, want rate_limited", finished.Error)
+			}
+			if strings.Contains(finished.Error, "fake-sensitive-value") || strings.Contains(finished.Error, "credential=") {
+				t.Fatalf("finishRun leaked raw error: %q", finished.Error)
+			}
+		})
+	}
+}
+
 func TestFinishRunPreservesCheckpointTerminalState(t *testing.T) {
 	result := &IngestResult{
 		CheckpointID:        "checkpoint-1",
