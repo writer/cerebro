@@ -124,3 +124,31 @@ func TestRouteParityIsBidirectional(t *testing.T) {
 		}
 	}
 }
+
+func TestRegisteredRustAuthorityRoutesRequiresTheNativeHandler(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "main.rs")
+	if err := os.WriteFile(sourcePath, []byte(`
+Router::new().route(
+    "/platform/graph/neighborhood",
+    get(product_neighborhood_route),
+)
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	routes, err := registeredRustAuthorityRoutes(sourcePath)
+	if err != nil {
+		t.Fatalf("registeredRustAuthorityRoutes() error = %v", err)
+	}
+	want := route{Method: "get", Path: "/platform/graph/neighborhood"}
+	if len(routes) != 1 || routes[0] != want {
+		t.Fatalf("registeredRustAuthorityRoutes() = %#v, want %#v", routes, []route{want})
+	}
+
+	if err := os.WriteFile(sourcePath, []byte(`Router::new()`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if _, err := registeredRustAuthorityRoutes(sourcePath); err == nil {
+		t.Fatal("registeredRustAuthorityRoutes() error = nil, want missing handler error")
+	}
+}

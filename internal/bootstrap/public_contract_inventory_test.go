@@ -295,7 +295,9 @@ func buildPlatformContractInventory(t *testing.T, root string) platformContractI
 	t.Helper()
 	openAPI := openAPIHTTPMethods(t, root)
 	entries := registeredHTTPContractEntries(t, root, openAPI)
+	entries = append(entries, rustAuthorityHTTPContractEntries(t, root, openAPI)...)
 	entries = append(entries, bootstrapConnectContractEntries(t, root)...)
+	assertUniqueContractEntries(t, entries)
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].Kind == entries[j].Kind {
 			return entries[i].Identity < entries[j].Identity
@@ -304,9 +306,10 @@ func buildPlatformContractInventory(t *testing.T, root string) platformContractI
 	})
 	inventory := platformContractInventory{
 		SchemaVersion: 1,
-		Description:   "Deterministic public platform contract inventory for Go compatibility and Rust authority transition gates.",
+		Description:   "Deterministic public platform contract inventory for Go compatibility and Rust authority routes.",
 		GeneratedFrom: []string{
 			"internal/bootstrap/routes.go",
+			"crates/cerebro-platform/src/main.rs",
 			"api/openapi.yaml",
 			"proto/cerebro/v1/bootstrap.proto",
 			"gen/cerebro/v1/cerebrov1connect/bootstrap.connect.go",
@@ -315,6 +318,57 @@ func buildPlatformContractInventory(t *testing.T, root string) platformContractI
 	}
 	inventory.Summary = summarizePlatformContractInventory(entries)
 	return inventory
+}
+
+func rustAuthorityHTTPContractEntries(t *testing.T, root string, openAPI map[string]map[string]struct{}) []platformContractEntry {
+	t.Helper()
+	// #nosec G304 -- fixed repo-relative guardrail path derived from runtime.Caller.
+	body, err := os.ReadFile(filepath.Join(root, "crates", "cerebro-platform", "src", "main.rs"))
+	if err != nil {
+		t.Fatalf("read Rust platform router: %v", err)
+	}
+	routes := []struct {
+		method string
+		path   string
+		marker string
+	}{
+		{method: http.MethodGet, path: "/platform/graph/neighborhood", marker: "get(product_neighborhood_route)"},
+	}
+	entries := make([]platformContractEntry, 0, len(routes))
+	for _, route := range routes {
+		if !strings.Contains(string(body), `"`+route.path+`"`) || !strings.Contains(string(body), route.marker) {
+			t.Fatalf("Rust platform router is missing %s %s", route.method, route.path)
+		}
+		methods := openAPI[route.path]
+		if _, ok := methods[strings.ToLower(route.method)]; !ok {
+			t.Fatalf("Rust authority route %s %s is missing from OpenAPI", route.method, route.path)
+		}
+		entries = append(entries, platformContractEntry{
+			Identity:        route.method + " " + route.path,
+			Kind:            "http",
+			Method:          route.method,
+			Path:            route.path,
+			Surface:         "rust-authority",
+			AuthorityOwner:  "rust-authority",
+			Owner:           contractOwnerForPath(route.path),
+			AuthClass:       "api-key-or-bearer",
+			TenantScopeRule: "tenant-id-required",
+			ContractSource:  "OpenAPI",
+		})
+	}
+	return entries
+}
+
+func assertUniqueContractEntries(t *testing.T, entries []platformContractEntry) {
+	t.Helper()
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		key := entry.Kind + " " + entry.Identity
+		if _, ok := seen[key]; ok {
+			t.Fatalf("duplicate public contract entry %s", key)
+		}
+		seen[key] = struct{}{}
+	}
 }
 
 func registeredHTTPContractEntries(t *testing.T, root string, openAPI map[string]map[string]struct{}) []platformContractEntry {

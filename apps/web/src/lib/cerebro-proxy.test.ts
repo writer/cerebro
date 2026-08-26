@@ -132,11 +132,14 @@ describe("cerebro proxy cache headers", () => {
     expect(new Set([unscoped, workspaceA, workspaceB]).size).toBe(3);
   });
 
-  it("routes only runtime health to the configured Rust platform origin", () => {
+  it("routes only Rust-owned public reads to the configured Rust platform origin", () => {
     vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
 
     expect(buildCerebroUrl("/v1/source-runtimes/health", "?limit=500").toString()).toBe(
       "http://rust-platform.internal:8080/v1/source-runtimes/health?limit=500",
+    );
+    expect(buildCerebroUrl("/platform/graph/neighborhood", "?root_urn=urn%3Acerebro%3Atenant-a%3Aasset%3Aone&limit=50").toString()).toBe(
+      "http://rust-platform.internal:8080/platform/graph/neighborhood?root_urn=urn%3Acerebro%3Atenant-a%3Aasset%3Aone&limit=50",
     );
     expect(buildCerebroUrl("/grc/dashboard").origin).not.toBe("http://rust-platform.internal:8080");
   });
@@ -153,21 +156,27 @@ describe("cerebro proxy cache headers", () => {
     );
   });
 
-  it("uses only server-owned Rust tenant auth for runtime health", () => {
+  it.each([
+    "v1/source-runtimes/health",
+    "platform/graph/neighborhood",
+  ])("uses only server-owned Rust tenant auth for %s", (path) => {
     vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
     vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", "tenant-a");
     vi.stubEnv(
       "CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET",
       "test-organizational-graph-secret-32-bytes",
     );
-    const headers = new Headers(authHeadersFor(new NextRequest("http://localhost"), "v1/source-runtimes/health"));
+    const headers = new Headers(authHeadersFor(new NextRequest("http://localhost"), path));
 
     expect(headers.get("x-cerebro-tenant")).toBe("tenant-a");
     expect(headers.get("authorization")).toMatch(/^Bearer [0-9a-f]{64}$/);
     expect(headers.get("x-cerebro-api-key")).toBeNull();
   });
 
-  it("rejects a runtime health selector that conflicts with the server-owned tenant", () => {
+  it.each([
+    "v1/source-runtimes/health",
+    "platform/graph/neighborhood",
+  ])("rejects a %s selector that conflicts with the server-owned tenant", (path) => {
     vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
     vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", "tenant-a");
     vi.stubEnv(
@@ -178,7 +187,7 @@ describe("cerebro proxy cache headers", () => {
       headers: { "X-Cerebro-Tenant": "tenant-b" },
     });
 
-    expect(() => authHeadersFor(request, "v1/source-runtimes/health")).toThrow(
+    expect(() => authHeadersFor(request, path)).toThrow(
       "does not match the active Cerebro authority",
     );
   });

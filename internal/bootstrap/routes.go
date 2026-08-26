@@ -355,7 +355,6 @@ func (app *App) registerAuditEventRoutes(mux *http.ServeMux) {
 
 func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/runtime-freshness", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("runtime.freshness", 30*time.Second, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeFindings), app.handleListRuntimeFreshness))
-	registerHTTPRoute(mux, "GET /platform/graph/neighborhood", routeSurfacePlatformHTTP, app.handleGetEntityNeighborhood)
 	registerHTTPRoute(mux, "POST /platform/graph/actions", routeSurfacePlatformHTTP, app.handleExecuteGraphAction)
 	registerHTTPRoute(mux, "POST /platform/graph/actions/reconcile", routeSurfacePlatformHTTP, app.handleReconcileGraphAction)
 	registerHTTPRoute(mux, "GET /platform/graph/provenance", routeSurfacePlatformHTTP, app.handleGetGraphProvenance)

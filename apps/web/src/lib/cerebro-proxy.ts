@@ -10,6 +10,7 @@ const API_BASE =
   "http://localhost:8080";
 
 const RUST_RUNTIME_HEALTH_PATH = "v1/source-runtimes/health";
+const RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH = "platform/graph/neighborhood";
 const RUST_TENANT_AUTH_CONTEXT = Buffer.from(
   "cerebro-organizational-graph/tenant/v1\0",
   "utf8",
@@ -79,7 +80,7 @@ export const configuredRustPlatformApiBase = (
 export const rustTenantAuthHeaders = (tenantID: string, sharedSecret: string): HeadersInit => {
   const tenant = configuredOrganizationalGraphTenant(tenantID);
   if (!tenant) {
-    throw new Error("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID is required for Rust runtime health");
+    throw new Error("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID is required for Rust platform authentication");
   }
   if (Buffer.byteLength(sharedSecret, "utf8") < MIN_RUST_SHARED_SECRET_BYTES) {
     throw new Error(
@@ -100,12 +101,15 @@ export const rustTenantAuthHeaders = (tenantID: string, sharedSecret: string): H
   };
 };
 
-const isRustRuntimeHealthPath = (path: string) =>
-  normalizeProxyPath(path) === RUST_RUNTIME_HEALTH_PATH;
+const isRustPlatformPath = (path: string) => {
+  const normalizedPath = normalizeProxyPath(path);
+  return normalizedPath === RUST_RUNTIME_HEALTH_PATH
+    || normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH;
+};
 
 const usesOrganizationalGraphTenant = (path: string) => {
   const normalizedPath = normalizeProxyPath(path);
-  return normalizedPath === "platform/graph/neighborhood" || normalizedPath.startsWith("grc/");
+  return normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH || normalizedPath.startsWith("grc/");
 };
 
 const forwardRequestAuth =
@@ -243,7 +247,7 @@ export const rustOwnsWebAuthority = () =>
 export const buildCerebroUrl = (path: string, search = "") => {
   const normalizedPath = normalizeProxyPath(path);
   const rustPlatformBase = configuredRustPlatformApiBase();
-  const apiBase = rustPlatformBase && normalizedPath === RUST_RUNTIME_HEALTH_PATH
+  const apiBase = rustPlatformBase && isRustPlatformPath(normalizedPath)
     ? rustPlatformBase
     : API_BASE;
   const base = new URL(apiBase.endsWith("/") ? apiBase : `${apiBase}/`);
@@ -266,7 +270,7 @@ export const authHeadersFor = (request: NextRequest, upstreamPath = ""): Headers
     Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
     ...scope.headers,
   };
-  if (configuredRustPlatformApiBase() && isRustRuntimeHealthPath(upstreamPath)) {
+  if (configuredRustPlatformApiBase() && isRustPlatformPath(upstreamPath)) {
     const configuredTenantID = configuredOrganizationalGraphTenant();
     if (scope.tenantID && scope.tenantID !== configuredTenantID) {
       throw new CerebroProxyError("The requested tenant does not match the active Cerebro authority.", 400);
