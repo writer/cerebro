@@ -509,7 +509,7 @@ function createMockApi({ bounded, recordCount: count, stats }) {
         return sendJSON(response, stats, normalizedPath, homeProgramReadinessFixture(data));
       }
       if (normalizedPath === "connectors/coverage") {
-        return sendJSON(response, stats, normalizedPath, homeCoverageFixture(data));
+        return sendJSON(response, stats, normalizedPath, homeCoverageFixture());
       }
       if (normalizedPath === "identity/orgs") {
         const organizations = boundedList(filterIdentityOrganizations(data.identityOrganizations, url.searchParams), url.searchParams, bounded);
