@@ -47,7 +47,7 @@ fn one_authoritative_claim_cannot_create_two_canonical_identities() {
     );
     let claim_kind = IdentityClaimKind::EmployeeId;
     let claim_value = "employee-1".to_owned();
-    let existing_canonical_identity = match &first.assertions()[0] {
+    let person_one_canonical_identity = match &first.assertions()[0] {
         GraphAssertion::IdentityBinding(binding) => binding.canonical_identity().clone(),
         _ => panic!("identity delta must contain an identity binding"),
     };
@@ -57,21 +57,28 @@ fn one_authoritative_claim_cannot_create_two_canonical_identities() {
         IdentityBindingState::Confirmed,
         Some(IdentityClaim::employee_id("employee-1").unwrap()),
     );
-    let requested_canonical_identity = match &second.assertions()[0] {
+    let person_two_canonical_identity = match &second.assertions()[0] {
         GraphAssertion::IdentityBinding(binding) => binding.canonical_identity().clone(),
         _ => panic!("identity delta must contain an identity binding"),
     };
     graph.apply(first).unwrap();
     let revision = graph.graph_revision(&TenantId::parse("tenant-a").unwrap());
-    assert_eq!(
-        graph.apply(second),
-        Err(GraphError::IdentityClaimAlreadyBound {
-            claim_kind,
-            claim_value,
-            existing_canonical_identity,
-            requested_canonical_identity,
-        })
-    );
+    let Err(GraphError::IdentityClaimAlreadyBound {
+        claim_kind: actual_claim_kind,
+        claim_value: actual_claim_value,
+        existing_canonical_identity,
+        requested_canonical_identity,
+    }) = graph.apply(second)
+    else {
+        panic!("duplicate authoritative claim must fail with its typed conflict");
+    };
+    assert_eq!(actual_claim_kind, claim_kind);
+    assert_eq!(actual_claim_value, claim_value);
+    let mut actual_identities = [existing_canonical_identity, requested_canonical_identity];
+    actual_identities.sort();
+    let mut expected_identities = [person_one_canonical_identity, person_two_canonical_identity];
+    expected_identities.sort();
+    assert_eq!(actual_identities, expected_identities);
     let tenant = TenantId::parse("tenant-a").unwrap();
     assert_eq!(graph.graph_revision(&tenant), revision);
     assert_eq!(graph.assertions(&tenant).len(), 1);
