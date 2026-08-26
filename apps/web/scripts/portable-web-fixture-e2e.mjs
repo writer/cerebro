@@ -756,15 +756,40 @@ async function waitForExitUntil(exited, expiresAt) {
   }
 }
 
+function processGroupExists(pid) {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    if (error?.code === "EPERM") return true;
+    throw error;
+  }
+}
+
+async function waitForProcessGroupExit(pid, expiresAt, platform) {
+  if (platform === "win32") return true;
+  while (processGroupExists(pid)) {
+    const remainingMs = expiresAt - Date.now();
+    if (remainingMs <= 0) return false;
+    await new Promise((resolve) => {
+      setTimeout(resolve, Math.min(25, remainingMs));
+    });
+  }
+  return true;
+}
+
 export async function stopProcessTree(child, options = {}) {
   if (typeof options === "number") options = { graceMs: options };
-  if (!child || !child.pid || child.exitCode !== null || child.signalCode !== null) return;
   const graceMs = options.graceMs ?? 5_000;
   const deadlineAt = options.deadlineAt ?? Date.now() + graceMs + 5_000;
   const platform = options.platform ?? process.platform;
+  if (!child || !child.pid || (platform === "win32" && (child.exitCode !== null || child.signalCode !== null))) return;
   const taskkillProcess = options.taskkillProcess ?? taskkill;
   const signalProcessGroup = options.signalProcessGroup ?? ((pid, signal) => process.kill(-pid, signal));
-  const exited = new Promise((resolve) => child.once("exit", resolve));
+  const exited = child.exitCode !== null || child.signalCode !== null
+    ? Promise.resolve()
+    : new Promise((resolve) => child.once("exit", resolve));
   const signal = async (force, signalDeadlineAt) => {
     if (platform === "win32") {
       try {
@@ -784,10 +809,15 @@ export async function stopProcessTree(child, options = {}) {
     }
   };
   const graceDeadline = Math.min(deadlineAt, Date.now() + graceMs);
+  const waitForTreeExit = async (expiresAt) => {
+    const childExited = await waitForExitUntil(exited, expiresAt);
+    const groupExited = await waitForProcessGroupExit(child.pid, expiresAt, platform);
+    return childExited && groupExited;
+  };
   await signal(false, graceDeadline);
-  if (await waitForExitUntil(exited, graceDeadline)) return;
+  if (await waitForTreeExit(graceDeadline)) return;
   await signal(true, deadlineAt);
-  if (!await waitForExitUntil(exited, deadlineAt)) {
+  if (!await waitForTreeExit(deadlineAt)) {
     throw timeoutError("forced fixture process-tree termination");
   }
 }
