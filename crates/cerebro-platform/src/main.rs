@@ -2,6 +2,7 @@
 
 mod append_log_consumer;
 mod cutover_command;
+mod graph_provenance;
 mod oidc;
 mod parity_command;
 mod rpc;
@@ -630,6 +631,7 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         "/v1/source-runtimes/health" => "cerebro:read",
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
+        "/v1/graph/provenance" => "cerebro:read",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
         "/v1/action-dispatches" => ACTION_EXECUTE_SCOPE,
@@ -684,6 +686,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/graph/expand" => "expand",
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
+        "/v1/graph/provenance" => "graph_provenance",
         "/v1/security/lifecycle" => "security_lifecycle",
         "/v1/source-runtimes" => "list_source_runtimes",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/invalid-events") => {
@@ -2251,6 +2254,7 @@ fn router_with_backend(
         .route("/v1/graph/expand", post(expand))
         .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
+        .route("/v1/graph/provenance", get(graph_provenance_route))
         .route("/v1/security/lifecycle", get(security_lifecycle))
         .route("/v1/source-runtimes", get(list_source_runtimes))
         .route("/v1/source-runtimes/health", get(source_runtime_health))
@@ -3734,6 +3738,49 @@ async fn search(
         .await
         .map(Json)
         .map_err(context_error)
+}
+
+#[derive(Deserialize)]
+struct GraphProvenanceQuery {
+    urn: Option<String>,
+    root_urn: Option<String>,
+}
+
+/// Native REST parity for the Go `GET /platform/graph/provenance` route: one
+/// exact-key entity read plus the pure derivation in [`graph_provenance`].
+async fn graph_provenance_route(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(query): Query<GraphProvenanceQuery>,
+) -> Result<Json<graph_provenance::GraphProvenanceResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let urn = [query.urn.as_deref(), query.root_urn.as_deref()]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .unwrap_or_default()
+        .to_owned();
+    let tenant = graph_provenance::tenant_id_from_urn(&urn).ok_or_else(|| {
+        bad_request(
+            "invalid_graph_request",
+            "urn must be a tenant-scoped Cerebro URN.",
+        )
+    })?;
+    let tenant_id = authorized_tenant(&authenticated, tenant.to_owned())?;
+    let entity = state
+        .graph
+        .resolve(&tenant_id, &urn)
+        .await
+        .map_err(context_error)?;
+    if entity.agent_key != urn {
+        // `resolve` also accepts native entity IDs; provenance is exact-key
+        // only, mirroring the Go `ExactAgentKey` catalog filter.
+        return Err(context_error(ContextError::EntityNotFound));
+    }
+    Ok(Json(graph_provenance::provenance_response(
+        tenant_id.as_str(),
+        &entity,
+    )))
 }
 
 async fn security_lifecycle(
@@ -6296,6 +6343,118 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(cross_tenant.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn graph_provenance_route_is_served_entirely_by_rust() {
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/graph/provenance"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/graph/provenance"),
+            "graph_provenance"
+        );
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let root_urn = format!("urn:cerebro:tenant-demo:organizational_entity:{root_id}");
+        let response = router(graph)
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri(format!("/v1/graph/provenance?urn={root_urn}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["urn"], root_urn);
+        assert_eq!(body["tenant_id"], "tenant-demo");
+        assert_eq!(body["projection_class"], "durable_state");
+        assert_eq!(body["projection_reason"], "projected_current_state");
+        assert_eq!(body["provenance"]["surface"], "graph-provenance");
+        assert_eq!(body["provenance"]["scope"], "tenant-demo");
+        assert_eq!(body["provenance"]["citation_status"], "valid");
+        assert_eq!(body["provenance"]["source_urns"][0], root_urn);
+    }
+
+    #[tokio::test]
+    async fn graph_provenance_route_accepts_the_root_urn_query_alias() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let root_urn = format!("urn:cerebro:tenant-demo:organizational_entity:{root_id}");
+        let response = router(graph)
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri(format!("/v1/graph/provenance?root_urn={root_urn}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn graph_provenance_route_rejects_bad_auth_bad_urns_and_missing_entities() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let root_urn = format!("urn:cerebro:tenant-demo:organizational_entity:{root_id}");
+        let app = router(graph);
+
+        let missing_auth = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/graph/provenance?urn={root_urn}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_auth.status(), StatusCode::UNAUTHORIZED);
+
+        let cross_tenant = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-other")
+                    .uri(format!("/v1/graph/provenance?urn={root_urn}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cross_tenant.status(), StatusCode::FORBIDDEN);
+
+        for invalid in ["", "urn=urn:cerebro:tenant-demo:asset", "urn=not-a-urn"] {
+            let response = app
+                .clone()
+                .oneshot(
+                    authenticated(Request::builder(), "tenant-demo")
+                        .uri(format!("/v1/graph/provenance?{invalid}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "query {invalid:?} was accepted"
+            );
+        }
+
+        let missing_entity = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri("/v1/graph/provenance?urn=urn:cerebro:tenant-demo:okta.user:missing")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_entity.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
