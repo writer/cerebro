@@ -3571,6 +3571,7 @@ mod tests {
             "beezup",
             "bitwarden",
             "box",
+            "cloudflare",
             "conjur",
             "deepseek",
             "duo",
