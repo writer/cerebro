@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod append_log_consumer;
+mod ask_queries;
 mod cutover_command;
 mod graph_provenance;
 mod oidc;
@@ -42,7 +43,7 @@ use axum::{
     http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, patch, post},
 };
 use cerebro_action_catalog::{
     ActionCatalogError, definitions as action_definitions, lookup as lookup_action,
@@ -634,6 +635,9 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
         "/v1/graph/provenance" => "cerebro:read",
+        "/v1/ask-queries" if method == Method::GET => "cerebro:read",
+        "/v1/ask-queries" => "cerebro:write",
+        _ if path.starts_with("/v1/ask-queries/") => "cerebro:write",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
         "/v1/action-dispatches" => ACTION_EXECUTE_SCOPE,
@@ -690,6 +694,10 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/graph/paths" => "paths",
         "/v1/graph/provenance" => "graph_provenance",
         "/v1/security/lifecycle" => "security_lifecycle",
+        "/v1/ask-queries" if method == Method::GET => "list_ask_queries",
+        "/v1/ask-queries" => "create_ask_query",
+        _ if path.starts_with("/v1/ask-queries/") && method == Method::DELETE => "delete_ask_query",
+        _ if path.starts_with("/v1/ask-queries/") => "update_ask_query",
         "/v1/source-runtimes" => "list_source_runtimes",
         "/v1/source-runtimes/freshness" => "runtime_freshness",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/invalid-events") => {
@@ -2315,6 +2323,14 @@ fn router_with_backend(
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/graph/provenance", get(graph_provenance_route))
         .route("/v1/security/lifecycle", get(security_lifecycle))
+        .route(
+            "/v1/ask-queries",
+            get(ask_queries::list_ask_queries).post(ask_queries::create_ask_query),
+        )
+        .route(
+            "/v1/ask-queries/{query_id}",
+            patch(ask_queries::update_ask_query).delete(ask_queries::delete_ask_query),
+        )
         .route("/v1/source-runtimes", get(list_source_runtimes))
         .route("/v1/source-runtimes/health", get(source_runtime_health))
         .route("/v1/source-runtimes/freshness", get(runtime_freshness))
@@ -6900,6 +6916,100 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn ask_query_routes_are_scoped_and_bounded() {
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/ask-queries"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/ask-queries"),
+            "cerebro:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::PATCH, "/v1/ask-queries/ask-query-1"),
+            "cerebro:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::DELETE, "/v1/ask-queries/ask-query-1"),
+            "cerebro:write"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/ask-queries"),
+            "list_ask_queries"
+        );
+        assert_eq!(
+            bounded_operation(&Method::POST, "/v1/ask-queries"),
+            "create_ask_query"
+        );
+        assert_eq!(
+            bounded_operation(&Method::PATCH, "/v1/ask-queries/ask-query-1"),
+            "update_ask_query"
+        );
+        assert_eq!(
+            bounded_operation(&Method::DELETE, "/v1/ask-queries/ask-query-1"),
+            "delete_ask_query"
+        );
+    }
+
+    #[tokio::test]
+    async fn ask_query_routes_are_tenant_authenticated_and_fail_closed() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let app = router_with_backend(
+            Arc::new(MemoryAgentGraph::new(graph)),
+            None,
+            None,
+            PlatformStores::default(),
+            ActionBackends::default(),
+            TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+            None,
+        );
+
+        let unauthenticated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/ask-queries")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+
+        // Without a configured Postgres ledger the routes fail closed, like the
+        // Go handlers do when no ask-query store is configured.
+        let no_store = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri("/v1/ask-queries")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(no_store.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let create_without_store = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/v1/ask-queries")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name":"Weekly risk","question":"Who owns S3?"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            create_without_store.status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     #[test]
