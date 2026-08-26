@@ -447,12 +447,7 @@ func githubAuditFindingPhrases() []string {
 
 func githubAuditSOTARuleIDs() []string {
 	return []string{
-		"github-secret-scanning-disabled",
-		"github-push-protection-disabled",
-		"github-branch-protection-disabled",
-		"github-repository-made-public",
 		"github-secret-scanning-alert-created",
-		"github-self-hosted-runner-change",
 		"github-repository-collaborator-added",
 		"github-organization-owner-added",
 		"github-code-security-controls-disabled",
@@ -460,9 +455,7 @@ func githubAuditSOTARuleIDs() []string {
 		"github-org-ip-allow-list-modified",
 		"github-app-integration-installed",
 		"github-personal-access-token-created",
-		"github-protected-branch-policy-override",
 		"github-repository-ruleset-modified",
-		"github-critical-resource-deleted",
 		"github-webhook-modified",
 		"github-private-repository-forking-enabled",
 	}

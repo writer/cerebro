@@ -81,12 +81,7 @@ func (r *githubAuditCounterEventRule) CounterEventStates(event Event) []CounterE
 }
 
 const (
-	githubSecretScanningDisabledRuleID          = "github-secret-scanning-disabled" // #nosec G101 -- finding rule identifier, not a secret.
-	githubPushProtectionDisabledRuleID          = "github-push-protection-disabled"
-	githubBranchProtectionDisabledRuleID        = "github-branch-protection-disabled"
-	githubRepositoryMadePublicRuleID            = "github-repository-made-public"
 	githubSecretScanningAlertCreatedRuleID      = "github-secret-scanning-alert-created" // #nosec G101 -- finding rule identifier, not a secret.
-	githubSelfHostedRunnerChangeRuleID          = "github-self-hosted-runner-change"
 	githubRepositoryCollaboratorAddedRuleID     = "github-repository-collaborator-added"
 	githubOrganizationOwnerAddedRuleID          = "github-organization-owner-added"
 	githubCodeSecurityControlsDisabledRuleID    = "github-code-security-controls-disabled"
@@ -94,9 +89,7 @@ const (
 	githubOrgIPAllowListModifiedRuleID          = "github-org-ip-allow-list-modified"
 	githubAppIntegrationInstalledRuleID         = "github-app-integration-installed"
 	githubPersonalAccessTokenCreatedRuleID      = "github-personal-access-token-created"
-	githubProtectedBranchPolicyOverrideRuleID   = "github-protected-branch-policy-override"
 	githubRepositoryRulesetModifiedRuleID       = "github-repository-ruleset-modified"
-	githubCriticalResourceDeletedRuleID         = "github-critical-resource-deleted"
 	githubWebhookModifiedRuleID                 = "github-webhook-modified"
 	githubPrivateRepositoryForkingEnabledRuleID = "github-private-repository-forking-enabled"
 )
@@ -113,82 +106,6 @@ var githubAuditControlRefs = []ports.FindingControlRef{
 }
 
 var githubAuditSignalKindMatcher = eventKindMatcher("github.audit")
-
-var githubSecretScanningDisabledDefinition = RuleDefinition{
-	ID:                 githubSecretScanningDisabledRuleID,
-	Name:               "GitHub Secret Scanning Disabled",
-	Description:        "Detect GitHub audit events where secret scanning is disabled for an enterprise, organization, or repository.",
-	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_secret_scanning_disabled",
-	Severity:           "HIGH",
-	Status:             findingStatusOpen,
-	Maturity:           "test",
-	Tags:               []string{"github", "secret-scanning", "defense-evasion", "attack.t1562.001"},
-	References:         []string{"https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_secret_scanning_feature_disabled.yml", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/defense_evasion_secret_scanning_disabled.toml"},
-	FalsePositives:     []string{"Approved repository migration or temporary maintenance by authorized administrators."},
-	Runbook:            "Verify the actor and change request, re-enable secret scanning and push protection, then review commits and workflow runs during the exposure window.",
-	RequiredAttributes: []string{"action"},
-	FingerprintFields:  []string{"repo", "resource_id", "action"},
-	ControlRefs:        githubAuditControlRefs,
-}
-
-var githubPushProtectionDisabledDefinition = RuleDefinition{
-	ID:                 githubPushProtectionDisabledRuleID,
-	Name:               "GitHub Push Protection Disabled",
-	Description:        "Detect GitHub audit events where secret scanning push protection is disabled.",
-	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_push_protection_disabled",
-	Severity:           "HIGH",
-	Status:             findingStatusOpen,
-	Maturity:           "test",
-	Tags:               []string{"github", "push-protection", "secret-scanning", "defense-evasion", "attack.t1562.001"},
-	References:         []string{"https://docs.github.com/en/code-security/secret-scanning/push-protection-for-repositories-and-organizations", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_push_protection_disabled.yml"},
-	FalsePositives:     []string{"Approved administrative testing or controlled rollout changes."},
-	Runbook:            "Confirm whether push protection was intentionally disabled; re-enable enforcement and inspect nearby pushes for exposed credentials.",
-	RequiredAttributes: []string{"action"},
-	FingerprintFields:  []string{"repo", "resource_id", "action"},
-	ControlRefs:        githubAuditControlRefs,
-}
-
-var githubBranchProtectionDisabledDefinition = RuleDefinition{
-	ID:                 githubBranchProtectionDisabledRuleID,
-	Name:               "GitHub Branch Protection Disabled",
-	Description:        "Detect removal of GitHub protected branch rules.",
-	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_branch_protection_disabled",
-	Severity:           "HIGH",
-	Status:             findingStatusOpen,
-	Maturity:           "test",
-	Tags:               []string{"github", "branch-protection", "supply-chain", "initial-access", "attack.t1195"},
-	References:         []string{"https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_branch_protection_disabled.yml"},
-	FalsePositives:     []string{"Approved repository administration during migration or branch policy redesign."},
-	Runbook:            "Validate the actor and ticket, restore branch protections, and review protected-branch pushes or force-push attempts after the change.",
-	RequiredAttributes: []string{"action", "repo"},
-	FingerprintFields:  []string{"repo", "action"},
-	ControlRefs:        githubAuditControlRefs,
-}
-
-var githubRepositoryMadePublicDefinition = RuleDefinition{
-	ID:                 githubRepositoryMadePublicRuleID,
-	Name:               "GitHub Repository Made Public",
-	Description:        "Detect private GitHub repositories changed to public visibility.",
-	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_repository_made_public",
-	Severity:           "HIGH",
-	Status:             findingStatusOpen,
-	Maturity:           "test",
-	Tags:               []string{"github", "repository", "exfiltration", "impact", "attack.t1567.001"},
-	References:         []string{"https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/exfiltration_github_private_repository_turned_public.toml"},
-	FalsePositives:     []string{"Approved open-source release of a sanitized repository."},
-	Runbook:            "Confirm the visibility change, revert if unauthorized, enumerate forks/downloads, and rotate secrets exposed in repository history.",
-	RequiredAttributes: []string{"action", "repo", "previous_visibility", "visibility"},
-	FingerprintFields:  []string{"repo", "action"},
-	ControlRefs:        githubAuditControlRefs,
-}
 
 var githubSecretScanningAlertCreatedDefinition = RuleDefinition{
 	ID:                 githubSecretScanningAlertCreatedRuleID,
@@ -208,26 +125,6 @@ var githubSecretScanningAlertCreatedDefinition = RuleDefinition{
 	FingerprintFields:  []string{"repo", "number"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
-}
-
-var githubSelfHostedRunnerChangeDefinition = RuleDefinition{
-	ID:                 githubSelfHostedRunnerChangeRuleID,
-	Name:               "GitHub Self-Hosted Runner Change",
-	Description:        "Detect GitHub audit events that register or modify self-hosted runner configuration.",
-	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_self_hosted_runner_change",
-	Severity:           "MEDIUM",
-	Status:             findingStatusOpen,
-	Maturity:           "test",
-	Tags:               []string{"github", "actions", "self-hosted-runner", "supply-chain", "attack.t1195"},
-	References:         []string{"https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_self_hosted_runner_changes_detected.yml", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/initial_access_github_register_self_hosted_runner.toml"},
-	FalsePositives:     []string{"Approved runner maintenance, ephemeral runner churn, or expected runner group administration."},
-	Runbook:            "Validate the runner owner and host, inspect recent workflows assigned to it, and isolate the runner if authorization is unclear.",
-	RequiredAttributes: []string{"scope", "runner_id"},
-	FingerprintFields:  []string{"scope", "runner_id"},
-	ControlRefs:        githubAuditControlRefs,
-	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubRepositoryCollaboratorAddedDefinition = RuleDefinition{
@@ -369,25 +266,6 @@ var githubPersonalAccessTokenCreatedDefinition = RuleDefinition{
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
-var githubProtectedBranchPolicyOverrideDefinition = RuleDefinition{
-	ID:                 githubProtectedBranchPolicyOverrideRuleID,
-	Name:               "GitHub Protected Branch Policy Override",
-	Description:        "Detect GitHub protected branch policy overrides.",
-	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_protected_branch_policy_override",
-	Severity:           "HIGH",
-	Status:             findingStatusOpen,
-	Maturity:           "test",
-	Tags:               []string{"github", "branch-protection", "policy-override", "supply-chain", "impact", "attack.t1195"},
-	References:         []string{"https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_branch_policy_override.yml"},
-	FalsePositives:     []string{"Emergency production fix by authorized repository administrator."},
-	Runbook:            "Validate override approval, inspect commits or force-pushes made under the override, and restore protections.",
-	RequiredAttributes: []string{"action", "repo"},
-	FingerprintFields:  []string{"repo", "branch", "action"},
-	ControlRefs:        githubAuditControlRefs,
-}
-
 var githubRepositoryRulesetModifiedDefinition = RuleDefinition{
 	ID:                 githubRepositoryRulesetModifiedRuleID,
 	Name:               "GitHub Repository Ruleset Modified",
@@ -406,25 +284,6 @@ var githubRepositoryRulesetModifiedDefinition = RuleDefinition{
 	FingerprintFields:  []string{"repo", "ruleset_id"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
-}
-
-var githubCriticalResourceDeletedDefinition = RuleDefinition{
-	ID:                 githubCriticalResourceDeletedRuleID,
-	Name:               "GitHub Critical Resource Deleted",
-	Description:        "Detect deletion of critical GitHub resources such as repositories, environments, projects, or codespaces.",
-	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_critical_resource_deleted",
-	Severity:           "HIGH",
-	Status:             findingStatusOpen,
-	Maturity:           "test",
-	Tags:               []string{"github", "destructive-action", "impact", "attack.t1485"},
-	References:         []string{"https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_delete_action_invoked.yml", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/impact_github_repository_deleted.toml"},
-	FalsePositives:     []string{"Approved repository or environment decommissioning."},
-	Runbook:            "Validate the deletion, recover the resource if unauthorized, and review actor access plus adjacent destructive events.",
-	RequiredAttributes: []string{"action"},
-	FingerprintFields:  []string{"repo", "resource_id", "action"},
-	ControlRefs:        githubAuditControlRefs,
 }
 
 var githubWebhookModifiedDefinition = RuleDefinition{
@@ -512,44 +371,6 @@ var githubCodeSecurityControlsDisabledConfig = githubAuditSignalConfig{
 	},
 }
 
-// githubProtectedBranchPolicyOverrideConfig and the other retired mirror
-// configs were removed with the per-event finding implementations; durable
-// coverage lives in graph/current-state rules while retired wrappers keep
-// stale findings resolvable.
-
-// newGitHubSecretScanningDisabledRule is retired. The mirror produced one
-// finding per audit event, which collapses repeated tampering on the same
-// repo into noise instead of one durable "secret scanning disabled" finding
-// keyed by repo. Posture coverage moves to a future graph rule over the
-// projected `github.code.repository` entity. The wrapper stays registered so any open
-// mirror findings are auto-resolved by the existing stale-finding sweep on
-// the next replay.
-func newGitHubSecretScanningDisabledRule() Rule {
-	return newRetiredGitHubAuditRule(githubSecretScanningDisabledDefinition)
-}
-
-// newGitHubPushProtectionDisabledRule is retired. See
-// `newGitHubSecretScanningDisabledRule` for the retirement rationale; the
-// durable replacement is a graph rule over repos missing push protection.
-func newGitHubPushProtectionDisabledRule() Rule {
-	return newRetiredGitHubAuditRule(githubPushProtectionDisabledDefinition)
-}
-
-// newGitHubBranchProtectionDisabledRule is retired. The durable replacement
-// is a graph rule that reports protected-branch coverage gaps over
-// `github.code.repository` -> `github.branch` paths.
-func newGitHubBranchProtectionDisabledRule() Rule {
-	return newRetiredGitHubAuditRule(githubBranchProtectionDisabledDefinition)
-}
-
-// newGitHubRepositoryMadePublicRule is retired. The durable replacement is
-// a graph rule reporting public repos that violate the org's visibility
-// policy; the visibility-change audit event becomes evidence on that
-// finding rather than an independent mirror finding.
-func newGitHubRepositoryMadePublicRule() Rule {
-	return newRetiredGitHubAuditRule(githubRepositoryMadePublicDefinition)
-}
-
 func newGitHubSecretScanningAlertCreatedRule() Rule {
 	return &githubAuditCounterEventRule{
 		Rule: newEventRule(eventRuleConfig{
@@ -563,10 +384,6 @@ func newGitHubSecretScanningAlertCreatedRule() Rule {
 		openAnchor:  githubSecretScanningAlertAnchor,
 		closeAnchor: githubSecretScanningAlertCloseAnchor,
 	}
-}
-
-func newGitHubSelfHostedRunnerChangeRule() Rule {
-	return newRetiredGitHubAuditRule(githubSelfHostedRunnerChangeDefinition)
 }
 
 func newGitHubRepositoryCollaboratorAddedRule() Rule {
@@ -597,20 +414,8 @@ func newGitHubPersonalAccessTokenCreatedRule() Rule {
 	return newRetiredGitHubAuditRule(githubPersonalAccessTokenCreatedDefinition)
 }
 
-// newGitHubProtectedBranchPolicyOverrideRule is retired. Per-event overrides
-// turn into evidence on the durable "protected branch policy degraded"
-// posture finding (future graph rule) rather than a standalone mirror
-// finding per override event.
-func newGitHubProtectedBranchPolicyOverrideRule() Rule {
-	return newRetiredGitHubAuditRule(githubProtectedBranchPolicyOverrideDefinition)
-}
-
 func newGitHubRepositoryRulesetModifiedRule() Rule {
 	return newRetiredGitHubAuditRule(githubRepositoryRulesetModifiedDefinition)
-}
-
-func newGitHubCriticalResourceDeletedRule() Rule {
-	return newRetiredGitHubAuditRule(githubCriticalResourceDeletedDefinition)
 }
 
 func newGitHubWebhookModifiedRule() Rule {

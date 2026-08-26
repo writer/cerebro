@@ -1648,7 +1648,7 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 }
 
 func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow(t *testing.T) {
-	registry, err := NewRegistry(newGitHubSecretScanningDisabledRule())
+	registry, err := NewRegistry(newGitHubAppIntegrationInstalledRule())
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
@@ -1657,11 +1657,11 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 		Fingerprint:     "old-github-mirror-finding",
 		TenantID:        "writer",
 		RuntimeID:       "writer-github-audit",
-		RuleID:          githubSecretScanningDisabledRuleID,
-		Title:           "GitHub Secret Scanning Disabled",
+		RuleID:          githubAppIntegrationInstalledRuleID,
+		Title:           "GitHub App Integration Installed",
 		Severity:        "HIGH",
 		Status:          "open",
-		Summary:         "secret scanning was disabled by an old audit event",
+		Summary:         "a GitHub App was installed by an old audit event",
 		ResourceURNs:    []string{"urn:cerebro:writer:github_code_repository:writer/cerebro"},
 		EventIDs:        []string{"github-old-event-outside-replay"},
 		FirstObservedAt: time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
@@ -1691,7 +1691,7 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
 		RuntimeID: "writer-github-audit",
-		RuleID:    githubSecretScanningDisabledRuleID,
+		RuleID:    githubAppIntegrationInstalledRuleID,
 	})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
