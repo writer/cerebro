@@ -1,38 +1,27 @@
 package sourceprojection
 
 import (
+	"errors"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestAbuseipdbFindingProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abuseipdb", Kind: "abuseipdb.reports", Attributes: map[string]string{"finding_id": "finding-1", "title": "Finding One", "severity": "high", "status": "open", "resource_urn": "urn:cerebro:tenant:runtime_asset:asset-1", "evidence_id": "evidence-1"}}
-	entities, links, err := abuseipdbReportsProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected finding")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected finding links")
-	}
-	if !hasProjectedEntityType(entities, "runtime_evidence") {
-		t.Fatal("expected projected runtime evidence entity")
-	}
-}
-
-func TestAbuseipdbAssetProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "abuseipdb", Kind: "abuseipdb.ip_addresses", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := abuseipdbIpAddressesProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
-	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected entities")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
+func TestAbuseipdbGoProjectionFailsClosedForRustAuthoritativeFamilies(t *testing.T) {
+	for _, kind := range []string{"abuseipdb.ip_addresses", "abuseipdb.reports"} {
+		t.Run(kind, func(t *testing.T) {
+			entities, links, err := ProjectEvent(&cerebrov1.EventEnvelope{
+				Id:       "event-1",
+				TenantId: "tenant",
+				SourceId: "abuseipdb",
+				Kind:     kind,
+			})
+			if !errors.Is(err, errAbuseipdbRustProjectionRequired) {
+				t.Fatalf("ProjectEvent() error = %v", err)
+			}
+			if len(entities) != 0 || len(links) != 0 {
+				t.Fatalf("Go projection produced entities=%d links=%d", len(entities), len(links))
+			}
+		})
 	}
 }
