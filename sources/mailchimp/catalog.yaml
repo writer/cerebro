@@ -92,7 +92,6 @@ event_contracts:
   - kind: mailchimp.lists
     schema_ref: mailchimp/lists/v1
     required_attributes:
-      - tenant_id
       - source_event_id
       - group_id
     required_payload_fields:
@@ -100,7 +99,6 @@ event_contracts:
   - kind: mailchimp.members
     schema_ref: mailchimp/members/v1
     required_attributes:
-      - tenant_id
       - source_event_id
       - user_id
     required_payload_fields:
@@ -108,7 +106,6 @@ event_contracts:
   - kind: mailchimp.audit_events
     schema_ref: mailchimp/audit_events/v1
     required_attributes:
-      - tenant_id
       - source_event_id
       - event_type
       - actor_id

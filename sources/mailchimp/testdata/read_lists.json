@@ -182,8 +182,7 @@
       "resource_name": "example-57a6d1b3",
       "source_event_id": "example-2e767a40",
       "source_provider": "mailchimp",
-      "source_system": "mailchimp",
-      "tenant_id": "tenant"
+      "source_system": "mailchimp"
     }
   }
 ]
