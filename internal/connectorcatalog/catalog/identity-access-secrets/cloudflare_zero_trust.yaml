@@ -14,9 +14,9 @@ entries:
         - saas
         - identity_access_secrets
       config_fields:
-        - help: Tenant or regional API base URL.
-          key: base_url
-          label: API base URL
+        - help: Cloudflare account ID that owns the Zero Trust Access users, groups, policies, applications, and audit logs.
+          key: account_id
+          label: Account ID
           required: true
       description: Collects users, groups, roles, applications, and audit events from Cloudflare Zero Trust and projects them into the Cerebro graph as users, groups, policies, assets, and audit events for identity, access, device, and secret context.
       display_name: Cloudflare Zero Trust
@@ -49,12 +49,13 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            inject_first_page: true
+            page_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/users
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/{account_id}/access/users
           projection:
             fields:
               display_name: name
@@ -62,7 +63,7 @@ entries:
               status: status
               user_id: id
             template: identity_user
-          record_selector: $.data[*]
+          record_selector: $.result[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -88,18 +89,19 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            inject_first_page: true
+            page_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/groups
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/{account_id}/access/groups
           projection:
             fields:
               group_id: id
               group_name: name
             template: identity_group
-          record_selector: $.data[*]
+          record_selector: $.result[*]
         - coverage:
             - control_domains:
                 - access_review
@@ -125,12 +127,13 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            inject_first_page: true
+            page_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/roles
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/{account_id}/access/policies
           projection:
             fields:
               policy_id: id
@@ -138,7 +141,7 @@ entries:
               policy_status: status
               policy_type: role
             template: policy
-          record_selector: $.data[*]
+          record_selector: $.result[*]
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -164,12 +167,13 @@ entries:
           method: GET
           name_field: name
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            inject_first_page: true
+            page_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/applications
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/{account_id}/access/apps
           projection:
             fields:
               id: id
@@ -178,7 +182,7 @@ entries:
               resource_name: name
               resource_type: application
             template: asset
-          record_selector: $.data[*]
+          record_selector: $.result[*]
         - coverage:
             - control_domains:
                 - logging_monitoring
@@ -199,34 +203,35 @@ entries:
             schema_ref: cloudflare_zero_trust/audit_events/v1
             urn_kind: cloudflare_zero_trust_audit_events
           id: audit_events
-          id_field: id
+          id_field: ray_id
           label: Audit events
           method: GET
-          name_field: name
+          name_field: app_domain
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
+            inject_first_page: true
+            page_param: page
             page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/audit_events
+            page_size_param: per_page
+            start_page: 1
+            type: page
+          path: /accounts/{account_id}/access/logs/access_requests
           projection:
             fields:
-              actor_email: actor_email
-              actor_id: actor_id
-              event_type: event_type
-              id: id
-              resource_id: resource_id
-              resource_type: resource_type
+              actor_email: user_email
+              actor_id: user_email
+              event_type: action
+              id: ray_id
+              resource_id: app_uid
+              resource_type: application
             template: audit_event
-          record_selector: $.data[*]
+          record_selector: $.result[*]
       schema_version: cerebro.integration/v1
       source_id: cloudflare_zero_trust
       tenant_id: builtin_catalog
       transport:
-        base_url: ${config.base_url}
+        base_url: https://api.cloudflare.com/client/v4
         verification:
           expect_status:
             - 200
           method: GET
-          path: /v1/me
+          path: /accounts

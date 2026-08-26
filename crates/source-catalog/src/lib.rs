@@ -3602,6 +3602,7 @@ mod tests {
             "box",
             "cloudflare",
             "cloudflare_workers_ai",
+            "cloudflare_zero_trust",
             "cohere",
             "conjur",
             "datadog",
