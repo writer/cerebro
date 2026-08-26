@@ -2,7 +2,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, readFileSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -21,7 +21,9 @@ const frameworkErrorPattern = /This page could not be found|Next\.js.*error|Chun
 const defaultTimeoutMs = 180_000;
 const perRequestTimeoutMs = 15_000;
 const apiRouteTimeoutMs = 5_000;
-const routeBugbashTimeoutMs = 420_000;
+const routeSettleTimeoutMs = 750;
+const routeBugbashTimeoutMs = 600_000;
+const maxCleanupReserveMs = 30_000;
 const maxBugbashRoutes = 500;
 const defaultHomeSamples = 5;
 const defaultHomeP95Ms = 1_000;
@@ -429,13 +431,33 @@ export async function validateBrowserContracts(baseUrl, contracts, deadline) {
 }
 
 async function waitForRouteSettled(page, deadline, route) {
-  const waitMs = Math.max(1, Math.min(apiRouteTimeoutMs, deadline.remaining()));
+  const waitMs = routeSettleWaitMs(deadline.remaining());
   try {
     await page.waitForLoadState("networkidle", { timeout: waitMs });
   } catch (error) {
     if (error?.name !== "TimeoutError") throw error;
   }
   await deadline.run(page.waitForTimeout(50), `${route} render settlement`);
+}
+
+export function routeSettleWaitMs(remainingMs) {
+  return Math.max(1, Math.min(routeSettleTimeoutMs, remainingMs));
+}
+
+export function cleanupReserveMs(timeoutMs) {
+  return Math.min(maxCleanupReserveMs, Math.max(25, Math.floor(timeoutMs / 10)), Math.floor(timeoutMs / 2));
+}
+
+export function fixtureFinalizationError(primaryError, cleanupErrors, result, passed) {
+  if (cleanupErrors.length === 0) return primaryError;
+  const error = new AggregateError(
+    primaryError ? [primaryError, ...cleanupErrors] : cleanupErrors,
+    primaryError?.message ?? (passed
+      ? "Portable fixture E2E cleanup failed after route validation passed"
+      : "Portable fixture E2E cleanup failed"),
+  );
+  if (result !== undefined) error.validationResult = result;
+  return error;
 }
 
 function observeAPIRequest(request) {
@@ -790,20 +812,53 @@ async function waitForExitUntil(exited, expiresAt) {
   }
 }
 
-function processGroupExists(pid) {
+export function linuxProcessStatsHaveLiveGroupMember(stats, processGroupID) {
+  for (const stat of stats) {
+    const commandEnd = stat.lastIndexOf(")");
+    if (commandEnd === -1) continue;
+    const fields = stat.slice(commandEnd + 1).trim().split(/\s+/);
+    if (fields.length < 3) continue;
+    const [state, , group] = fields;
+    if (Number.parseInt(group, 10) === processGroupID && state !== "Z") return true;
+  }
+  return false;
+}
+
+function linuxProcessGroupHasLiveMembers(processGroupID) {
+  let entries;
+  try {
+    entries = readdirSync("/proc", { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const stats = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !/^\d+$/.test(entry.name)) continue;
+    try {
+      stats.push(readFileSync(`/proc/${entry.name}/stat`, "utf8"));
+    } catch {}
+  }
+  return linuxProcessStatsHaveLiveGroupMember(stats, processGroupID);
+}
+
+function processGroupExists(pid, platform) {
   try {
     process.kill(-pid, 0);
-    return true;
   } catch (error) {
     if (error?.code === "ESRCH") return false;
     if (error?.code === "EPERM") return true;
     throw error;
   }
+  if (platform === "linux") {
+    const hasLiveMembers = linuxProcessGroupHasLiveMembers(pid);
+    if (hasLiveMembers !== null) return hasLiveMembers;
+  }
+  return true;
 }
 
 async function waitForProcessGroupExit(pid, expiresAt, platform) {
   if (platform === "win32") return true;
-  while (processGroupExists(pid)) {
+  while (processGroupExists(pid, platform)) {
     const remainingMs = expiresAt - Date.now();
     if (remainingMs <= 0) return false;
     await new Promise((resolve) => {
@@ -874,8 +929,7 @@ export async function closeLogStream(stream, deadlineAt) {
 export async function runPortableWebFixtureE2E(options = {}) {
   const timeoutMs = options.timeoutMs ?? options.readyTimeoutMs ?? defaultTimeoutMs;
   const overallDeadline = createDeadline(timeoutMs);
-  const cleanupReserveMs = Math.min(10_000, Math.max(25, Math.floor(timeoutMs / 10)), Math.floor(timeoutMs / 2));
-  const validationDeadline = createDeadlineAt(overallDeadline.expiresAt - cleanupReserveMs);
+  const validationDeadline = createDeadlineAt(overallDeadline.expiresAt - cleanupReserveMs(timeoutMs));
   const webRoot = options.webRoot ?? defaultWebRoot;
   const runNonce = randomUUID();
   const workDir = await overallDeadline.run(mkdtemp(path.join(os.tmpdir(), "cerebro-web-local-e2e-")), "temporary directory creation");
@@ -962,10 +1016,7 @@ export async function runPortableWebFixtureE2E(options = {}) {
       }
     }
     if (cleanupErrors.length > 0) {
-      primaryError = new AggregateError(
-        primaryError ? [primaryError, ...cleanupErrors] : cleanupErrors,
-        primaryError?.message ?? "Portable fixture E2E cleanup failed",
-      );
+      primaryError = fixtureFinalizationError(primaryError, cleanupErrors, result, passed);
     }
   }
   if (primaryError) throw primaryError;
@@ -996,6 +1047,9 @@ async function runCli() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   runCli().catch((error) => {
+    if (error.validationResult) {
+      console.error(`[e2e:web:fixtures] validation-receipt ${JSON.stringify(error.validationResult)}`);
+    }
     console.error(`[e2e:web:fixtures] failed: ${error.stack || error.message}`);
     process.exitCode = error.exitCode ?? 1;
   });
