@@ -1,0 +1,32 @@
+{
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "behavior_kind": "graph_query",
+  "subject_id": "policycandidate.grounding",
+  "ir_version": "graph-query/v1",
+  "ir_digest_sha256": "sha256:94ac4617fb44bd4b6ab9063ffb09dd2d8e9cf58cd986ff171974f8408983d76c",
+  "go_facts_digest_sha256": "sha256:40e6217afd81a508bf6b6b9ccb7fda026abaaf3d21888e9e3c2bb807a9931161",
+  "rust_implementation_revision": "unimplemented",
+  "eligible": false,
+  "reason_codes": [
+    "active_go_execution_path",
+    "missing_parity_receipt"
+  ],
+  "paths": [
+    "internal/policycandidate/grounding.go"
+  ],
+  "imports": [
+    "github.com/writer/cerebro/internal/ports.RawCypherQueryStore"
+  ],
+  "symbols": [
+    "currentGroundingEdges",
+    "currentGroundingNodes",
+    "groundingEdgesQuery",
+    "groundingNodesQuery"
+  ],
+  "required_receipt_modes": [
+    "fixed_fixture",
+    "live_safe_local_graph"
+  ],
+  "accepted_receipts": []
+}

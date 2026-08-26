@@ -2,6 +2,7 @@ package sourceprojection
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ import (
 
 func TestProjectOpenAIKeyOwnershipAndPostureEnrichment(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -164,6 +165,25 @@ func TestRegistryRoutesOpenAIDeclaredKinds(t *testing.T) {
 	}
 }
 
+func TestOpenAIGoProjectionFailsClosedForRustAuthoritativeFamilies(t *testing.T) {
+	for kind := range openAIOracleProjectors {
+		t.Run(kind, func(t *testing.T) {
+			entities, links, err := ProjectEvent(&cerebrov1.EventEnvelope{
+				Id:       "event-1",
+				TenantId: "writer",
+				SourceId: "openai",
+				Kind:     kind,
+			})
+			if !errors.Is(err, errOpenAIRustProjectionRequired) {
+				t.Fatalf("ProjectEvent() error = %v", err)
+			}
+			if len(entities) != 0 || len(links) != 0 {
+				t.Fatalf("Go projection produced entities=%d links=%d", len(entities), len(links))
+			}
+		})
+	}
+}
+
 func TestProjectOpenAIDeclaredKindsProduceGraphEntities(t *testing.T) {
 	occurred := time.Date(2026, time.June, 18, 13, 30, 0, 0, time.UTC)
 	cases := []struct {
@@ -215,7 +235,7 @@ func TestProjectOpenAIDeclaredKindsProduceGraphEntities(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &projectionRecorder{}
-			service := New(state, nil)
+			service := newOpenAIOracleService(t, state)
 			attrs := openAIProjectionCoverageAttributes(tc.family)
 			event := &cerebrov1.EventEnvelope{
 				Id:         "openai-" + tc.name,

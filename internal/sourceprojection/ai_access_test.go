@@ -12,7 +12,7 @@ import (
 
 func TestProjectOpenAIProjectAccessEdges(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -95,7 +95,7 @@ func TestProjectOpenAIProjectAccessEdges(t *testing.T) {
 
 func TestProjectOpenAIAuditDeepAccessEvidence(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 5, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -182,7 +182,7 @@ func TestProjectOpenAIAuditDeepAccessEvidence(t *testing.T) {
 
 func TestProjectAnthropicComplianceActivityResourceEvidence(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 7, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -245,7 +245,7 @@ func TestProjectAnthropicComplianceActivityResourceEvidence(t *testing.T) {
 
 func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 10, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -409,7 +409,7 @@ func TestProjectAIOrganizationInviteAccessIntent(t *testing.T) {
 
 func TestProjectAnthropicProjectCollaboratorAccessEdges(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 15, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -512,7 +512,7 @@ func TestProjectAnthropicProjectCollaboratorAccessEdges(t *testing.T) {
 
 func TestProjectAIGovernanceControlEdges(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 30, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -644,7 +644,7 @@ func TestProjectAIGovernanceControlEdges(t *testing.T) {
 
 func TestProjectAIUsageAndCostMetricEdges(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 45, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -727,7 +727,7 @@ func TestProjectAIUsageAndCostMetricEdges(t *testing.T) {
 
 func TestProjectAnthropicWorkspaceCredentialFederationAndComplianceEdges(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 13, 0, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -828,7 +828,7 @@ func TestProjectAnthropicWorkspaceCredentialFederationAndComplianceEdges(t *test
 
 func TestProjectAnthropicComplianceDirectoryGroupMembership(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 14, 0, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -1280,7 +1280,7 @@ func TestProjectAnthropicRemainingRuntimeFamilies(t *testing.T) {
 func projectAnthropicInventoryEvent(t *testing.T, event *cerebrov1.EventEnvelope) *projectionRecorder {
 	t.Helper()
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	if _, err := service.Project(context.Background(), event); err != nil {
 		t.Fatalf("Project(%q) error = %v", event.GetId(), err)
 	}

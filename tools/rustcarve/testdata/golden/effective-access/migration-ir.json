@@ -1,0 +1,854 @@
+{
+  "schema_version": "cerebro.rustcarve.migration-ir/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "ir_version": "graph-query/v1",
+  "digest_sha256": "sha256:768ad831ffe223913a3f631eee787caf66d5326e56ab17bdc0ca4c77648fc693",
+  "behavior_kind": "graph_query",
+  "subject": {
+    "id": "graphquery.effective_access",
+    "rust_implementation_revision": "4c553a2d7e80c93d387eb281eae9bec0527b08c3",
+    "authority_state": "rust_only_fail_closed"
+  },
+  "scope": {
+    "tenant": {
+      "name": "tenant_id",
+      "type": "tenant_id",
+      "required": true
+    },
+    "workspace_policy": "forbidden"
+  },
+  "go_facts": {
+    "package_name": "graphquery",
+    "files": [
+      "internal/graphquery/effective_access.go"
+    ],
+    "file_digests": [
+      {
+        "path": "internal/graphquery/effective_access.go",
+        "role": "go_source",
+        "digest_sha256": "sha256:8ff2a6540c8dd23fb2a6ee0be7d88157a14fc3715ee56665f265e914ed9115a9"
+      }
+    ],
+    "imports": [
+      "context",
+      "crypto/sha256",
+      "encoding/hex",
+      "encoding/json",
+      "fmt",
+      "github.com/writer/cerebro/internal/ports",
+      "net/url",
+      "sort",
+      "strconv",
+      "strings",
+      "time"
+    ],
+    "owner_symbols": [
+      "GetEffectiveAccessPaths"
+    ],
+    "calls": [
+      "append",
+      "effectiveAccessPathCounts",
+      "effectiveAccessPathFromTyped",
+      "fmt.Errorf",
+      "len",
+      "make",
+      "normalizeEffectiveAccessPathLimit",
+      "normalizeEffectiveCapabilityID",
+      "strings.HasPrefix",
+      "strings.ToLower",
+      "strings.TrimSpace",
+      "typedStore.ListEffectiveAccessPaths",
+      "validateOptionalTenantURN"
+    ],
+    "digest_sha256": "sha256:9e89c6c801c0e18835be1e9042f4544180550b461e405f8ad447020f928f8e95"
+  },
+  "evidence": {
+    "fixtures": [
+      {
+        "path": "crates/organizational-store/src/neo4j.rs",
+        "role": "live_safe_local_graph_fixture",
+        "digest_sha256": "sha256:2ddd9f36b057eae013a0f0d1acc49c51cf30730585fdf30f789bd58a922ceb6f"
+      },
+      {
+        "path": "internal/graphquery/effective_access_test.go",
+        "role": "fixed_go_compat_fixture",
+        "digest_sha256": "sha256:82bf3e05b707c39f2d904df6cbae27e3bc877620a807c1d69cd5314b0c133b78"
+      }
+    ],
+    "traces": [
+      {
+        "path": "crates/cerebro-platform/src/rpc.rs",
+        "role": "public_response_contract",
+        "digest_sha256": "sha256:b64e2f5046e294460a501a35ec740d15b3c9e4e03787cb5681d91abfafebc0ad"
+      },
+      {
+        "path": "internal/graphquery/effective_access.go",
+        "role": "go_query_contract",
+        "digest_sha256": "sha256:8ff2a6540c8dd23fb2a6ee0be7d88157a14fc3715ee56665f265e914ed9115a9"
+      }
+    ]
+  },
+  "graph_query": {
+    "family": "graph_query",
+    "ir_version": "graph-query/v1",
+    "caller": "internal/graphquery.Service.GetEffectiveAccessPaths",
+    "dynamic": false,
+    "scope": {
+      "tenant": {
+        "name": "tenant_id",
+        "type": "tenant_id",
+        "required": true
+      },
+      "workspace_policy": "forbidden"
+    },
+    "node_roles": [
+      {
+        "role": "subject",
+        "kind": "identity",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "identity",
+        "kind": "identity",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "principal",
+        "kind": "principal",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "group",
+        "kind": "group",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "application",
+        "kind": "application",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "role",
+        "kind": "role",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "entitlement",
+        "kind": "entitlement",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "capability",
+        "kind": "capability",
+        "tenant_input": "tenant_id"
+      }
+    ],
+    "relationships": [
+      {
+        "role": "incoming_identity",
+        "kind": "",
+        "allowed_kinds": [
+          "represents_identity",
+          "same_actor"
+        ],
+        "direction": "inbound",
+        "from_role": "principal",
+        "to_role": "subject",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "outgoing_same_actor",
+        "kind": "same_actor",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "subject",
+        "to_role": "principal",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "subject_represents",
+        "kind": "represents_identity",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "subject",
+        "to_role": "identity",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "principal_represents",
+        "kind": "represents_identity",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "principal",
+        "to_role": "identity",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "subject_same_actor",
+        "kind": "same_actor",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "subject",
+        "to_role": "identity",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "direct_assignment",
+        "kind": "assigned_to",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "principal",
+        "to_role": "application",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "group_membership",
+        "kind": "member_of",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "principal",
+        "to_role": "group",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "group_assignment",
+        "kind": "assigned_to",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "group",
+        "to_role": "application",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "role_assignment",
+        "kind": "",
+        "allowed_kinds": [
+          "assigned_to",
+          "can_admin"
+        ],
+        "direction": "outbound",
+        "from_role": "principal",
+        "to_role": "role",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "application_grant",
+        "kind": "grants_entitlement",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "application",
+        "to_role": "entitlement",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "role_grant",
+        "kind": "grants_entitlement",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "role",
+        "to_role": "entitlement",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "entitlement_capability",
+        "kind": "confers_capability",
+        "allowed_kinds": [],
+        "direction": "outbound",
+        "from_role": "entitlement",
+        "to_role": "capability",
+        "tenant_input": "tenant_id"
+      }
+    ],
+    "operations": [
+      {
+        "name": "effective_access",
+        "predicates": [
+          {
+            "kind": "exact",
+            "target": "subject.tenant_id",
+            "value_input": "tenant_id"
+          },
+          {
+            "kind": "bounded_substring",
+            "target": "subject.urn",
+            "value_input": "identity_query",
+            "case_behavior": "unicode_casefold",
+            "max_needle_bytes": 512,
+            "max_field_bytes": 65536,
+            "max_scanned_values": 100,
+            "boolean_group": "identity_search",
+            "group_operator": "any"
+          },
+          {
+            "kind": "bounded_substring",
+            "target": "subject.label",
+            "value_input": "identity_query",
+            "case_behavior": "unicode_casefold",
+            "max_needle_bytes": 512,
+            "max_field_bytes": 65536,
+            "max_scanned_values": 100,
+            "boolean_group": "identity_search",
+            "group_operator": "any"
+          },
+          {
+            "kind": "bounded_substring",
+            "target": "subject.attributes_json",
+            "value_input": "identity_query",
+            "case_behavior": "unicode_casefold",
+            "max_needle_bytes": 512,
+            "max_field_bytes": 65536,
+            "max_scanned_values": 100,
+            "boolean_group": "identity_search",
+            "group_operator": "any"
+          }
+        ],
+        "traversals": [],
+        "union_branches": [
+          {
+            "name": "identity_self",
+            "phase": "identity",
+            "predicates": [
+              {
+                "kind": "exact",
+                "target": "subject.tenant_id",
+                "value_input": "tenant_id"
+              }
+            ],
+            "traversals": [],
+            "output_fields": [
+              {
+                "name": "path",
+                "type": "effective_access_path",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "identity_incoming_represents_or_same_actor",
+            "phase": "identity",
+            "predicates": [
+              {
+                "kind": "fixed_relation",
+                "target": "incoming_identity.kind",
+                "value_input": "represents_identity|same_actor"
+              }
+            ],
+            "traversals": [
+              {
+                "relationship_role": "incoming_identity",
+                "direction": "inbound",
+                "min_hops": 1,
+                "max_hops": 1
+              }
+            ],
+            "output_fields": [
+              {
+                "name": "path",
+                "type": "effective_access_path",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "identity_outgoing_same_actor",
+            "phase": "identity",
+            "predicates": [
+              {
+                "kind": "fixed_relation",
+                "target": "outgoing_same_actor.kind",
+                "value_input": "same_actor"
+              }
+            ],
+            "traversals": [
+              {
+                "relationship_role": "outgoing_same_actor",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              }
+            ],
+            "output_fields": [
+              {
+                "name": "path",
+                "type": "effective_access_path",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "identity_two_hop_represents_bridge",
+            "phase": "identity",
+            "predicates": [
+              {
+                "kind": "fixed_relation",
+                "target": "subject_represents.kind",
+                "value_input": "represents_identity"
+              },
+              {
+                "kind": "fixed_relation",
+                "target": "principal_represents.kind",
+                "value_input": "represents_identity"
+              }
+            ],
+            "traversals": [
+              {
+                "relationship_role": "subject_represents",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "principal_represents",
+                "direction": "inbound",
+                "min_hops": 1,
+                "max_hops": 1
+              }
+            ],
+            "output_fields": [
+              {
+                "name": "path",
+                "type": "effective_access_path",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "identity_two_hop_same_actor_represents_bridge",
+            "phase": "identity",
+            "predicates": [
+              {
+                "kind": "fixed_relation",
+                "target": "subject_same_actor.kind",
+                "value_input": "same_actor"
+              },
+              {
+                "kind": "fixed_relation",
+                "target": "principal_represents.kind",
+                "value_input": "represents_identity"
+              }
+            ],
+            "traversals": [
+              {
+                "relationship_role": "subject_same_actor",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "principal_represents",
+                "direction": "inbound",
+                "min_hops": 1,
+                "max_hops": 1
+              }
+            ],
+            "output_fields": [
+              {
+                "name": "path",
+                "type": "effective_access_path",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "access_direct_application",
+            "phase": "access",
+            "predicates": [
+              {
+                "kind": "fixed_relation",
+                "target": "direct_assignment.kind",
+                "value_input": "assigned_to"
+              }
+            ],
+            "traversals": [
+              {
+                "relationship_role": "direct_assignment",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "application_grant",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "entitlement_capability",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              }
+            ],
+            "output_fields": [
+              {
+                "name": "path",
+                "type": "effective_access_path",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "access_group_mediated_application",
+            "phase": "access",
+            "predicates": [
+              {
+                "kind": "fixed_relation",
+                "target": "group_membership.kind",
+                "value_input": "member_of"
+              },
+              {
+                "kind": "fixed_relation",
+                "target": "group_assignment.kind",
+                "value_input": "assigned_to"
+              }
+            ],
+            "traversals": [
+              {
+                "relationship_role": "group_membership",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "group_assignment",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "application_grant",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "entitlement_capability",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              }
+            ],
+            "output_fields": [
+              {
+                "name": "path",
+                "type": "effective_access_path",
+                "required": true
+              }
+            ]
+          },
+          {
+            "name": "access_role_or_admin",
+            "phase": "access",
+            "predicates": [
+              {
+                "kind": "fixed_relation",
+                "target": "role_assignment.kind",
+                "value_input": "assigned_to|can_admin"
+              }
+            ],
+            "traversals": [
+              {
+                "relationship_role": "role_assignment",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "role_grant",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              },
+              {
+                "relationship_role": "entitlement_capability",
+                "direction": "outbound",
+                "min_hops": 1,
+                "max_hops": 1
+              }
+            ],
+            "output_fields": [
+              {
+                "name": "path",
+                "type": "effective_access_path",
+                "required": true
+              }
+            ]
+          }
+        ],
+        "limit": {
+          "request_min": 1,
+          "request_max": 100,
+          "internal_expression": "exact"
+        },
+        "cursor": {
+          "kind": "none",
+          "graph_revision_input": "graph_revision",
+          "foreign_rejected": false
+        },
+        "order": [
+          {
+            "target": "identity.label",
+            "direction": "ascending",
+            "canonical": true
+          },
+          {
+            "target": "principal.label",
+            "direction": "ascending",
+            "canonical": true
+          },
+          {
+            "target": "assignment_kind",
+            "direction": "ascending",
+            "canonical": true
+          },
+          {
+            "target": "application.label",
+            "direction": "ascending",
+            "canonical": true
+          },
+          {
+            "target": "entitlement.label",
+            "direction": "ascending",
+            "canonical": true
+          },
+          {
+            "target": "capability.label",
+            "direction": "ascending",
+            "canonical": true
+          }
+        ],
+        "dedupe": "distinct_normalized_rows",
+        "response_shape_ref": "effective_access_paths",
+        "public_response_shape_ref": "effective_access_response",
+        "subject_pre_limit": {
+          "request_min": 1,
+          "request_max": 100,
+          "internal_expression": "exact"
+        },
+        "subject_pre_order": [
+          {
+            "target": "subject.label",
+            "direction": "ascending",
+            "canonical": true
+          },
+          {
+            "target": "subject.urn",
+            "direction": "ascending",
+            "canonical": true
+          }
+        ]
+      }
+    ],
+    "entity_shapes": [
+      {
+        "name": "graph_entity",
+        "fields": [
+          {
+            "name": "urn",
+            "type": "urn",
+            "required": true
+          },
+          {
+            "name": "entity_type",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "graph_edge",
+        "fields": [
+          {
+            "name": "from",
+            "type": "graph_entity",
+            "required": true
+          },
+          {
+            "name": "relation",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "to",
+            "type": "graph_entity",
+            "required": true
+          },
+          {
+            "name": "source_id",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "runtime_id",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "attributes_json",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "effective_access_path",
+        "fields": [
+          {
+            "name": "identity",
+            "type": "graph_entity",
+            "required": true
+          },
+          {
+            "name": "principal",
+            "type": "graph_entity",
+            "required": true
+          },
+          {
+            "name": "mediator",
+            "type": "graph_entity",
+            "required": false
+          },
+          {
+            "name": "target",
+            "type": "graph_entity",
+            "required": true
+          },
+          {
+            "name": "entitlement",
+            "type": "graph_entity",
+            "required": true
+          },
+          {
+            "name": "capability",
+            "type": "graph_entity",
+            "required": true
+          },
+          {
+            "name": "assignment_kind",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "identity_relation_chain",
+            "type": "array\u003cstring\u003e",
+            "required": true
+          },
+          {
+            "name": "identity_edges",
+            "type": "array\u003cgraph_edge\u003e",
+            "required": true
+          },
+          {
+            "name": "relation_chain",
+            "type": "array\u003cstring\u003e",
+            "required": true
+          },
+          {
+            "name": "edges",
+            "type": "array\u003cgraph_edge\u003e",
+            "required": true
+          }
+        ]
+      }
+    ],
+    "normalized_outputs": [
+      {
+        "name": "effective_access_paths",
+        "fields": [
+          {
+            "name": "path",
+            "type": "effective_access_path",
+            "required": true
+          }
+        ],
+        "cardinality": "bounded_list",
+        "truncation": "result_limit_sets_truncated_metadata"
+      },
+      {
+        "name": "effective_access_response",
+        "fields": [
+          {
+            "name": "tenant_id",
+            "type": "tenant_id",
+            "required": true
+          },
+          {
+            "name": "graph_revision",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "truncated",
+            "type": "boolean",
+            "required": true
+          },
+          {
+            "name": "paths",
+            "type": "array\u003ceffective_access_path\u003e",
+            "required": true
+          }
+        ],
+        "cardinality": "exactly_one",
+        "truncation": "truncated_is_true_only_when_final_result_limit_discards_rows"
+      }
+    ],
+    "fixture_cases": [
+      {
+        "name": "six_node_five_edge_group_mediated",
+        "production_helpers": [],
+        "expected_rows": 1,
+        "expected_cursor": ""
+      },
+      {
+        "name": "direct_application",
+        "production_helpers": [],
+        "expected_rows": 1,
+        "expected_cursor": ""
+      },
+      {
+        "name": "role_and_admin_variants",
+        "production_helpers": [],
+        "expected_rows": 2,
+        "expected_cursor": ""
+      },
+      {
+        "name": "cross_tenant_rejected",
+        "production_helpers": [],
+        "expected_rows": 0,
+        "expected_cursor": "typed_scope_error"
+      },
+      {
+        "name": "malformed_chain_rejected",
+        "production_helpers": [],
+        "expected_rows": 0,
+        "expected_cursor": "typed_shape_error"
+      },
+      {
+        "name": "raw_only_go_store_fails_closed",
+        "production_helpers": [],
+        "expected_rows": 0,
+        "expected_cursor": "no_cypher_execution"
+      }
+    ],
+    "unsupported_shapes": [
+      {
+        "caller": "dynamic or variable-length effective access query",
+        "reason_code": "dynamic_query"
+      },
+      {
+        "caller": "unbounded effective access traversal",
+        "reason_code": "unbounded_shape"
+      }
+    ],
+    "deletion": {
+      "paths": [],
+      "constants": [],
+      "helpers": []
+    }
+  }
+}

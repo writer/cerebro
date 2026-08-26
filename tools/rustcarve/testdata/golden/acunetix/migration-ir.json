@@ -1,0 +1,211 @@
+{
+  "schema_version": "cerebro.rustcarve.migration-ir/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "ir_version": "standard-source/v1",
+  "digest_sha256": "sha256:6096890211faa327b3fdbbd37827cc4ae6649179b6f7ef107cd4587454cd5b6b",
+  "behavior_kind": "standard_source",
+  "subject": {
+    "id": "acunetix",
+    "rust_implementation_revision": "24a48b50fbf087eb9b484d31f984f98fcc6e325c",
+    "authority_state": "go_registry_active"
+  },
+  "scope": {
+    "tenant": {
+      "name": "tenant_id",
+      "type": "tenant_id",
+      "required": true
+    },
+    "workspace_policy": "forbidden"
+  },
+  "go_facts": {
+    "package_name": "sourceregistry",
+    "files": [
+      "internal/sourceregistry/registry.go"
+    ],
+    "file_digests": [
+      {
+        "path": "internal/sourceregistry/registry.go",
+        "role": "go_source",
+        "digest_sha256": "sha256:96de2ec23d07429f2458c58ed6e35a0d94df09f27b96283e8dde58beeeafa933"
+      }
+    ],
+    "imports": [
+      "context",
+      "fmt",
+      "github.com/writer/cerebro/internal/connectorcatalog",
+      "github.com/writer/cerebro/internal/connectordefinitions",
+      "github.com/writer/cerebro/internal/sourcecdk",
+      "github.com/writer/cerebro/sources/anthropic",
+      "github.com/writer/cerebro/sources/archetype",
+      "github.com/writer/cerebro/sources/aurelius",
+      "github.com/writer/cerebro/sources/auth0",
+      "github.com/writer/cerebro/sources/aws",
+      "github.com/writer/cerebro/sources/azure",
+      "github.com/writer/cerebro/sources/catalogruntime",
+      "github.com/writer/cerebro/sources/cerebro",
+      "github.com/writer/cerebro/sources/cosmo",
+      "github.com/writer/cerebro/sources/emaildomainhealth",
+      "github.com/writer/cerebro/sources/evidencecas",
+      "github.com/writer/cerebro/sources/gcp",
+      "github.com/writer/cerebro/sources/github",
+      "github.com/writer/cerebro/sources/google_drive",
+      "github.com/writer/cerebro/sources/googleworkspace",
+      "github.com/writer/cerebro/sources/grc",
+      "github.com/writer/cerebro/sources/kandji",
+      "github.com/writer/cerebro/sources/kolide",
+      "github.com/writer/cerebro/sources/kubernetes",
+      "github.com/writer/cerebro/sources/langfuse",
+      "github.com/writer/cerebro/sources/linode",
+      "github.com/writer/cerebro/sources/okta",
+      "github.com/writer/cerebro/sources/onelogin",
+      "github.com/writer/cerebro/sources/panopticon",
+      "github.com/writer/cerebro/sources/sailpoint_identitynow",
+      "github.com/writer/cerebro/sources/sdk",
+      "github.com/writer/cerebro/sources/securitytoolingmap",
+      "github.com/writer/cerebro/sources/snyk",
+      "github.com/writer/cerebro/sources/trivy",
+      "github.com/writer/cerebro/sources/trustedendpoint",
+      "github.com/writer/cerebro/sources/vulnview",
+      "github.com/writer/cerebro/sources/writer"
+    ],
+    "owner_symbols": [
+      "BuiltinWithCatalogOverrides"
+    ],
+    "calls": [
+      "append",
+      "catalogruntimesource.New",
+      "catalogruntimesource.NewWithCatalog",
+      "connectorcatalog.BuiltinRuntime",
+      "fmt.Errorf",
+      "len",
+      "loader.load",
+      "make",
+      "newWorkerCatalogSource",
+      "registry.WithBuiltinDefinitionCatalog",
+      "source.Spec",
+      "sourcecdk.NewRegistry"
+    ],
+    "digest_sha256": "sha256:3f4dfca0811524fdcd73f40174e525489f6c3a81be156373b25a9264a6984d22"
+  },
+  "evidence": {
+    "fixtures": [
+      {
+        "path": "sources/acunetix/testdata/read_reports.json",
+        "role": "provider_fixture",
+        "digest_sha256": "sha256:92ca4d7e2d9de15dc2a86507758a142b6fb809f9259002a5ce2c96646d9ad5e4"
+      },
+      {
+        "path": "sources/acunetix/testdata/read_scanning_profiles.json",
+        "role": "provider_fixture",
+        "digest_sha256": "sha256:c7f0c8d896c0bc4ed27cff570f9017c313f246de88140db82fbf2d690d3d815e"
+      },
+      {
+        "path": "sources/acunetix/testdata/read_scans.json",
+        "role": "provider_fixture",
+        "digest_sha256": "sha256:5f0a1c45f61e434fcb3bfd2f88fba27b1f11aba146f8fda8d69f1b346950760e"
+      },
+      {
+        "path": "sources/acunetix/testdata/read_targets.json",
+        "role": "provider_fixture",
+        "digest_sha256": "sha256:a29d34c30bb5f5849d4c80c20da3f764fc5249158c3cf90ded66b342815624b2"
+      },
+      {
+        "path": "sources/acunetix/testdata/read_vulnerabilities.json",
+        "role": "provider_fixture",
+        "digest_sha256": "sha256:5e774112ee444c02de2399fde6b4ea04d795ae937b4d8a1b503f0b69b1bd7db9"
+      }
+    ],
+    "traces": [
+      {
+        "path": "crates/source-runtime-next/src/acunetix/tests.rs",
+        "role": "rust_parity_contract",
+        "digest_sha256": "sha256:314cf577b1a1185104c1a7b1b53c77644d5071776a190ca1899396e2fbf5216b"
+      }
+    ]
+  },
+  "standard_source": {
+    "catalog_path": "sources/acunetix/catalog.yaml",
+    "registration_shape": "generic_catalog_runtime",
+    "execution_owner": "compiled_rust_source_plan",
+    "fail_closed": true,
+    "runtime_families": [
+      "reports",
+      "scanning_profiles",
+      "scans",
+      "targets",
+      "vulnerabilities"
+    ],
+    "event_contracts": [
+      {
+        "kind": "acunetix.targets",
+        "schema_ref": "acunetix/targets/v1",
+        "required_attributes": [
+          "tenant_id",
+          "source_event_id",
+          "resource_urn",
+          "resource_type",
+          "resource_id"
+        ],
+        "required_payload_fields": [
+          "target_id"
+        ]
+      },
+      {
+        "kind": "acunetix.scans",
+        "schema_ref": "acunetix/scans/v1",
+        "required_attributes": [
+          "tenant_id",
+          "source_event_id",
+          "finding_id",
+          "resource_urn",
+          "status"
+        ],
+        "required_payload_fields": [
+          "scan_id"
+        ]
+      },
+      {
+        "kind": "acunetix.vulnerabilities",
+        "schema_ref": "acunetix/vulnerabilities/v1",
+        "required_attributes": [
+          "tenant_id",
+          "source_event_id",
+          "finding_id",
+          "resource_urn",
+          "severity",
+          "status"
+        ],
+        "required_payload_fields": [
+          "vuln_id"
+        ]
+      },
+      {
+        "kind": "acunetix.scanning_profiles",
+        "schema_ref": "acunetix/scanning_profiles/v1",
+        "required_attributes": [
+          "tenant_id",
+          "source_event_id",
+          "policy_id",
+          "policy_name"
+        ],
+        "required_payload_fields": [
+          "profile_id"
+        ]
+      },
+      {
+        "kind": "acunetix.reports",
+        "schema_ref": "acunetix/reports/v1",
+        "required_attributes": [
+          "tenant_id",
+          "source_event_id",
+          "resource_urn",
+          "resource_type",
+          "resource_id"
+        ],
+        "required_payload_fields": [
+          "report_id"
+        ]
+      }
+    ]
+  }
+}

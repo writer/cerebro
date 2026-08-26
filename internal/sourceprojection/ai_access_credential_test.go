@@ -11,7 +11,7 @@ import (
 
 func TestProjectAIUsageMetricNormalizesCredentialRuntimeUsage(t *testing.T) {
 	state := &projectionRecorder{}
-	service := New(state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 45, 0, 0, time.UTC)
 
 	event := &cerebrov1.EventEnvelope{

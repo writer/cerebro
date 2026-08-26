@@ -1,0 +1,363 @@
+{
+  "schema_version": "cerebro.rustcarve.migration-ir/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "ir_version": "graph-query/v1",
+  "digest_sha256": "sha256:94ac4617fb44bd4b6ab9063ffb09dd2d8e9cf58cd986ff171974f8408983d76c",
+  "behavior_kind": "graph_query",
+  "subject": {
+    "id": "policycandidate.grounding",
+    "rust_implementation_revision": "unimplemented",
+    "authority_state": "go_raw_query_active"
+  },
+  "scope": {
+    "tenant": {
+      "name": "tenant_id",
+      "type": "tenant_id",
+      "required": true
+    },
+    "workspace_policy": "forbidden"
+  },
+  "go_facts": {
+    "package_name": "policycandidate",
+    "files": [
+      "internal/policycandidate/grounding.go"
+    ],
+    "file_digests": [
+      {
+        "path": "internal/policycandidate/grounding.go",
+        "role": "go_source",
+        "digest_sha256": "sha256:cfae0611b456e2dce0ab2b811dcbc28e5dbda7b2461cd256040a6dc7cc16d1b5"
+      }
+    ],
+    "imports": [
+      "context",
+      "encoding/json",
+      "fmt",
+      "github.com/writer/cerebro/internal/ports",
+      "github.com/writer/cerebro/internal/testauthor/policy",
+      "strconv",
+      "strings",
+      "time"
+    ],
+    "owner_symbols": [
+      "groundGraphEvidence"
+    ],
+    "calls": [
+      "currentGroundingEdges",
+      "currentGroundingNodes",
+      "fmt.Errorf",
+      "graph.ExecuteReadCypher",
+      "groundingEdgeKey",
+      "len",
+      "newID",
+      "now",
+      "requireGroundedAttributes",
+      "strings.TrimPrefix",
+      "strings.TrimSpace",
+      "validateGroundingBindings",
+      "validateMultiHopEvidence"
+    ],
+    "digest_sha256": "sha256:40e6217afd81a508bf6b6b9ccb7fda026abaaf3d21888e9e3c2bb807a9931161"
+  },
+  "evidence": {
+    "fixtures": [
+      {
+        "path": "internal/policycandidate/service_test.go",
+        "role": "grounding_fixture",
+        "digest_sha256": "sha256:b563354b57e86ae6d2cd9c1488ad2ed57b7df0cb445202955fe451b5a46a32dc"
+      }
+    ],
+    "traces": [
+      {
+        "path": "internal/policycandidate/grounding.go",
+        "role": "go_query_contract",
+        "digest_sha256": "sha256:cfae0611b456e2dce0ab2b811dcbc28e5dbda7b2461cd256040a6dc7cc16d1b5"
+      }
+    ]
+  },
+  "graph_query": {
+    "family": "graph_query",
+    "ir_version": "graph-query/v1",
+    "caller": "internal/policycandidate.groundGraphEvidence",
+    "dynamic": false,
+    "scope": {
+      "tenant": {
+        "name": "tenant_id",
+        "type": "tenant_id",
+        "required": true
+      },
+      "workspace_policy": "forbidden"
+    },
+    "node_roles": [
+      {
+        "role": "node",
+        "kind": "evidence_declared_node",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "source",
+        "kind": "evidence_declared_node",
+        "tenant_input": "tenant_id"
+      },
+      {
+        "role": "target",
+        "kind": "evidence_declared_node",
+        "tenant_input": "tenant_id"
+      }
+    ],
+    "relationships": [
+      {
+        "role": "evidence_edge",
+        "kind": "evidence_declared_relation",
+        "allowed_kinds": null,
+        "direction": "outbound",
+        "from_role": "source",
+        "to_role": "target",
+        "tenant_input": "tenant_id",
+        "domain_edge_property": "relation"
+      }
+    ],
+    "operations": [
+      {
+        "name": "grounding_nodes",
+        "predicates": [
+          {
+            "kind": "exact",
+            "target": "node.tenant_id",
+            "value_input": "tenant_id"
+          },
+          {
+            "kind": "exact_set",
+            "target": "node.agent_key",
+            "value_input": "bound_node_urns"
+          }
+        ],
+        "traversals": [],
+        "union_branches": [],
+        "limit": {
+          "request_min": 3,
+          "request_max": 16,
+          "internal_expression": "fixed",
+          "internal_max": 17
+        },
+        "cursor": {
+          "kind": "none",
+          "graph_revision_input": "fixture_graph_revision",
+          "foreign_rejected": true
+        },
+        "order": [
+          {
+            "target": "node.agent_key",
+            "direction": "ascending",
+            "canonical": true
+          }
+        ],
+        "dedupe": "none",
+        "response_shape_ref": "grounding_nodes",
+        "public_response_shape_ref": "grounding_nodes",
+        "subject_pre_order": []
+      },
+      {
+        "name": "grounding_relations",
+        "predicates": [
+          {
+            "kind": "exact",
+            "target": "evidence_edge.tenant_id",
+            "value_input": "tenant_id"
+          },
+          {
+            "kind": "exact_set",
+            "target": "source.agent_key",
+            "value_input": "bound_node_urns"
+          },
+          {
+            "kind": "exact_set",
+            "target": "target.agent_key",
+            "value_input": "bound_node_urns"
+          },
+          {
+            "kind": "exact_set",
+            "target": "evidence_edge.kind",
+            "value_input": "declared_evidence_relations"
+          }
+        ],
+        "traversals": [
+          {
+            "relationship_role": "evidence_edge",
+            "direction": "outbound",
+            "min_hops": 1,
+            "max_hops": 1
+          }
+        ],
+        "union_branches": [],
+        "limit": {
+          "request_min": 2,
+          "request_max": 32,
+          "internal_expression": "fixed",
+          "internal_max": 512
+        },
+        "cursor": {
+          "kind": "none",
+          "graph_revision_input": "fixture_graph_revision",
+          "foreign_rejected": true
+        },
+        "order": [
+          {
+            "target": "source.agent_key",
+            "direction": "ascending",
+            "canonical": true
+          },
+          {
+            "target": "target.agent_key",
+            "direction": "ascending",
+            "canonical": true
+          },
+          {
+            "target": "evidence_edge.kind",
+            "direction": "ascending",
+            "canonical": true
+          }
+        ],
+        "dedupe": "none",
+        "response_shape_ref": "grounding_relations",
+        "public_response_shape_ref": "grounding_relations",
+        "subject_pre_order": []
+      }
+    ],
+    "entity_shapes": [
+      {
+        "name": "grounding_node",
+        "fields": [
+          {
+            "name": "agent_key",
+            "type": "urn",
+            "required": true
+          },
+          {
+            "name": "entity_type",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "source_id",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "required_attributes",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "grounding_relation",
+        "fields": [
+          {
+            "name": "from_agent_key",
+            "type": "urn",
+            "required": true
+          },
+          {
+            "name": "to_agent_key",
+            "type": "urn",
+            "required": true
+          },
+          {
+            "name": "relation",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "source_id",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "required_attributes",
+            "type": "string",
+            "required": true
+          }
+        ]
+      }
+    ],
+    "normalized_outputs": [
+      {
+        "name": "grounding_nodes",
+        "fields": [
+          {
+            "name": "nodes",
+            "type": "array\u003cgrounding_node\u003e",
+            "required": true
+          }
+        ],
+        "cardinality": "bounded_list",
+        "truncation": "row_17_is_typed_truncation_error"
+      },
+      {
+        "name": "grounding_relations",
+        "fields": [
+          {
+            "name": "relations",
+            "type": "array\u003cgrounding_relation\u003e",
+            "required": true
+          }
+        ],
+        "cardinality": "bounded_list",
+        "truncation": "row_512_is_typed_truncation_error"
+      }
+    ],
+    "fixture_cases": [
+      {
+        "name": "minimum_three_nodes_two_edges",
+        "production_helpers": [
+          "validateMultiHopEvidence",
+          "validateGroundingBindings"
+        ],
+        "expected_rows": 5,
+        "expected_cursor": ""
+      },
+      {
+        "name": "maximum_sixteen_nodes_thirty_two_edges",
+        "production_helpers": [
+          "validateMultiHopEvidence",
+          "validateGroundingBindings"
+        ],
+        "expected_rows": 48,
+        "expected_cursor": ""
+      },
+      {
+        "name": "exact_node_and_edge_set_mismatch",
+        "production_helpers": [
+          "validateMultiHopEvidence",
+          "validateGroundingBindings"
+        ],
+        "expected_rows": 0,
+        "expected_cursor": "typed_mismatch"
+      }
+    ],
+    "unsupported_shapes": [
+      {
+        "caller": "internal/policycandidate.Service.Shadow rule.Spec.Graph.Query",
+        "reason_code": "dynamic_query"
+      },
+      {
+        "caller": "internal/policycandidate.Service.EvaluateCurrentExperiment rule.Spec.Graph.Query",
+        "reason_code": "dynamic_query"
+      }
+    ],
+    "deletion": {
+      "paths": [
+        "internal/policycandidate/grounding.go"
+      ],
+      "constants": [
+        "groundingNodesQuery",
+        "groundingEdgesQuery"
+      ],
+      "helpers": [
+        "currentGroundingNodes",
+        "currentGroundingEdges"
+      ]
+    }
+  }
+}

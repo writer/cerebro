@@ -279,6 +279,16 @@ impl CatalogGraphMapper {
             if self.source.id() == "okta" && family.id() == "application" {
                 normalize_okta_application_labels(&mut projected, &record.provider_id);
             }
+            if self.source.id() == "openai"
+                && matches!(family.id(), "api_key" | "admin_api_key" | "project_api_key")
+            {
+                normalize_openai_api_key_posture(
+                    &mut projected,
+                    batch.scope.receipt().tenant_id().as_str(),
+                    family.id(),
+                    &record.provider_id,
+                );
+            }
             match family.projection().template() {
                 "group_membership" | "identity_group_membership" => {
                     let provenance = self.assertion_provenance(batch, record)?;
@@ -709,6 +719,36 @@ fn normalize_okta_application_labels(projected: &mut BTreeMap<String, String>, f
     }
 }
 
+fn normalize_openai_api_key_posture(
+    projected: &mut BTreeMap<String, String>,
+    tenant_id: &str,
+    family: &str,
+    fallback_id: &str,
+) {
+    let credential_id = first(projected, &["api_key_id", "external_id", "id"])
+        .unwrap_or(fallback_id)
+        .to_owned();
+    let privileged = family == "admin_api_key"
+        || first(projected, &["privileged"]).is_some_and(|value| value == "true")
+        || first(projected, &["key_class"])
+            .is_some_and(|value| value.eq_ignore_ascii_case("admin"));
+    let has_owner = first(
+        projected,
+        &["owner_user_id", "owner_service_account_id", "owner_id"],
+    )
+    .is_some_and(|value| !value.trim().is_empty());
+    projected.insert("privileged".to_owned(), privileged.to_string());
+    projected.insert("has_owner".to_owned(), has_owner.to_string());
+    projected.insert(
+        "orphaned_owner".to_owned(),
+        (privileged && !has_owner).to_string(),
+    );
+    projected.insert(
+        "resource_urn".to_owned(),
+        format!("urn:cerebro:{tenant_id}:openai_credential:{credential_id}"),
+    );
+}
+
 fn first_valid_entity_label<'a>(
     values: &'a BTreeMap<String, String>,
     keys: &[&str],
@@ -786,6 +826,136 @@ mod tests {
             Err(CatalogMapperError::ReservedField(field))
                 if field == "application_workspace_id"
         ));
+    }
+
+    #[test]
+    fn openai_admin_api_keys_keep_tenant_scoped_ownership_posture() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("openai").unwrap().clone();
+        let collection = CompleteCollection::new(
+            TenantId::parse("writer").unwrap(),
+            SourceRuntimeId::parse("openai-prod").unwrap(),
+            CollectionId::parse("collection-openai-admin-keys").unwrap(),
+            "openai.admin_api_key",
+            10,
+        )
+        .unwrap();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(collection),
+            records: vec![
+                SourceRecord {
+                    observation_id: ObservationId::parse("observation-openai-owned").unwrap(),
+                    family: "admin_api_key".to_owned(),
+                    provider_kind: "openai.admin_api_key".to_owned(),
+                    provider_id: "admin-owned".to_owned(),
+                    fields: BTreeMap::from([
+                        ("api_key_id".to_owned(), "admin-owned".to_owned()),
+                        ("key_class".to_owned(), "admin".to_owned()),
+                        ("name".to_owned(), "Owned admin key".to_owned()),
+                        ("owner_id".to_owned(), "user-1".to_owned()),
+                    ]),
+                    payload: serde_json::json!({"id": "admin-owned"}),
+                },
+                SourceRecord {
+                    observation_id: ObservationId::parse("observation-openai-orphaned").unwrap(),
+                    family: "admin_api_key".to_owned(),
+                    provider_kind: "openai.admin_api_key".to_owned(),
+                    provider_id: "admin-orphaned".to_owned(),
+                    fields: BTreeMap::from([
+                        ("api_key_id".to_owned(), "admin-orphaned".to_owned()),
+                        ("key_class".to_owned(), "admin".to_owned()),
+                        ("name".to_owned(), "Orphaned admin key".to_owned()),
+                    ]),
+                    payload: serde_json::json!({"id": "admin-orphaned"}),
+                },
+            ],
+            next_cursor: None,
+        };
+
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+
+        assert_eq!(delta.entities().len(), 2);
+        let owned = delta
+            .entities()
+            .iter()
+            .find(|entity| {
+                entity
+                    .properties()
+                    .get("api_key_id")
+                    .is_some_and(|value| value == "admin-owned")
+            })
+            .unwrap();
+        assert_eq!(
+            owned.agent_key(),
+            "urn:cerebro:writer:openai_credential:admin-owned"
+        );
+        assert_eq!(
+            owned.properties().get("privileged").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            owned.properties().get("has_owner").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            owned.properties().get("orphaned_owner").map(String::as_str),
+            Some("false")
+        );
+
+        let orphaned = delta
+            .entities()
+            .iter()
+            .find(|entity| {
+                entity
+                    .properties()
+                    .get("api_key_id")
+                    .is_some_and(|value| value == "admin-orphaned")
+            })
+            .unwrap();
+        assert_eq!(
+            orphaned.agent_key(),
+            "urn:cerebro:writer:openai_credential:admin-orphaned"
+        );
+        assert_eq!(
+            orphaned
+                .properties()
+                .get("orphaned_owner")
+                .map(String::as_str),
+            Some("true")
+        );
+    }
+
+    #[test]
+    fn openai_project_api_key_owner_is_not_marked_privileged_or_orphaned() {
+        let mut projected = BTreeMap::from([
+            ("api_key_id".to_owned(), "project-key".to_owned()),
+            (
+                "owner_service_account_id".to_owned(),
+                "service-account-1".to_owned(),
+            ),
+        ]);
+        normalize_openai_api_key_posture(&mut projected, "writer", "project_api_key", "fallback");
+        assert_eq!(
+            projected.get("privileged").map(String::as_str),
+            Some("false")
+        );
+        assert_eq!(projected.get("has_owner").map(String::as_str), Some("true"));
+        assert_eq!(
+            projected.get("orphaned_owner").map(String::as_str),
+            Some("false")
+        );
+        assert_eq!(
+            projected.get("resource_urn").map(String::as_str),
+            Some("urn:cerebro:writer:openai_credential:project-key")
+        );
     }
 
     #[test]

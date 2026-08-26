@@ -1,0 +1,2 @@
+standard-source-plan-index/v1
+deepseek	account_balances,model_catalog

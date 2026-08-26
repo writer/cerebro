@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -50,6 +51,15 @@ func (s *sourceProjectorStub) callCount() int {
 	return s.calls
 }
 
+func projectionAuthorityResponse(authority string) authorityResponse {
+	return authorityResponse{
+		TenantID:  "tenant-a",
+		SourceID:  "box",
+		FamilyID:  "content_assets",
+		Authority: authority,
+	}
+}
+
 func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 	var authority = projectionAuthorityLegacy
 	var authorityRequests int
@@ -64,7 +74,7 @@ func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 			http.Error(w, "event payload handoff is retired", http.StatusGone)
 		case "/v1/projections/authority":
 			authorityRequests++
-			_ = json.NewEncoder(w).Encode(authorityResponse{Authority: authority})
+			_ = json.NewEncoder(w).Encode(projectionAuthorityResponse(authority))
 		default:
 			http.NotFound(w, r)
 		}
@@ -92,6 +102,68 @@ func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 	}
 }
 
+func TestAppendLogProjectorAuthorityReadIsTenantScopedUnderRace(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tenantID := r.URL.Query().Get("tenant_id")
+		if r.URL.Path != "/v1/projections/authority" ||
+			r.Header.Get(tenantAuthHeader) != tenantID ||
+			(tenantID != "tenant-a" && tenantID != "tenant-b") {
+			http.Error(w, "authority scope mismatch", http.StatusBadRequest)
+			return
+		}
+		authority := projectionAuthorityRust
+		if tenantID == "tenant-a" {
+			authority = projectionAuthorityLegacy
+		}
+		_ = json.NewEncoder(w).Encode(authorityResponse{
+			TenantID:  tenantID,
+			SourceID:  r.URL.Query().Get("source_id"),
+			FamilyID:  r.URL.Query().Get("family_id"),
+			Authority: authority,
+		})
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	legacy := &sourceProjectorStub{}
+	projector := NewAppendLogProjector(legacy, client)
+
+	const iterations = 32
+	errorsByCall := make(chan error, iterations*2)
+	var wait sync.WaitGroup
+	for _, tenantID := range []string{"tenant-a", "tenant-b"} {
+		for range iterations {
+			wait.Add(1)
+			go func(tenantID string) {
+				defer wait.Done()
+				event := projectionEvent()
+				event.TenantId = tenantID
+				result, err := projector.Project(context.Background(), event)
+				if err != nil {
+					errorsByCall <- fmt.Errorf("tenant %s: %w", tenantID, err)
+					return
+				}
+				if tenantID == "tenant-a" && result.EntitiesProjected != 7 {
+					errorsByCall <- fmt.Errorf("tenant-a result = %#v, want legacy projection", result)
+				}
+				if tenantID == "tenant-b" && result != (ports.ProjectionResult{}) {
+					errorsByCall <- fmt.Errorf("tenant-b result = %#v, want Rust authority", result)
+				}
+			}(tenantID)
+		}
+	}
+	wait.Wait()
+	close(errorsByCall)
+	for err := range errorsByCall {
+		t.Error(err)
+	}
+	if calls := legacy.callCount(); calls != iterations {
+		t.Fatalf("legacy calls = %d, want exactly tenant-a calls %d", calls, iterations)
+	}
+}
+
 func TestProjectionClientRequiresAFixedHTTPOrigin(t *testing.T) {
 	for _, value := range []string{
 		"",
@@ -112,7 +184,7 @@ func TestAppendLogProjectorRecordsExactLegacyDelta(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/projections/authority":
-			_ = json.NewEncoder(w).Encode(authorityResponse{Authority: projectionAuthorityLegacy})
+			_ = json.NewEncoder(w).Encode(projectionAuthorityResponse(projectionAuthorityLegacy))
 		case "/v1/projections/legacy-deltas":
 			deltaRequests++
 			var request legacyProjectionRequest
@@ -309,7 +381,7 @@ func TestProjectionClientRejectsMismatchedSourceCollectionProvenance(t *testing.
 
 func TestLegacyWriteGuardSuppressesGoAfterPromotion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(authorityResponse{Authority: projectionAuthorityRust})
+		_ = json.NewEncoder(w).Encode(projectionAuthorityResponse(projectionAuthorityRust))
 	}))
 	defer server.Close()
 	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
@@ -336,6 +408,24 @@ func TestRustAuthorityFailureDoesNotFallBackToGo(t *testing.T) {
 	_, err = NewAppendLogProjector(legacy, client).Project(context.Background(), projectionEvent())
 	if err == nil || legacy.callCount() != 0 {
 		t.Fatalf("Project() error = %v calls=%d", err, legacy.callCount())
+	}
+}
+
+func TestRustAuthorityScopeMismatchDoesNotFallBackToGo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		response := projectionAuthorityResponse(projectionAuthorityLegacy)
+		response.TenantID = "tenant-b"
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	legacy := &sourceProjectorStub{err: errors.New("must not run")}
+	_, err = NewAppendLogProjector(legacy, client).Project(context.Background(), projectionEvent())
+	if !errors.Is(err, ErrProjectionAuthorityScopeMismatch) || legacy.callCount() != 0 {
+		t.Fatalf("Project() error = %v calls=%d, want scope rejection without Go fallback", err, legacy.callCount())
 	}
 }
 

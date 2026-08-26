@@ -3566,9 +3566,15 @@ mod tests {
             "adobe_workfront",
             "aircall",
             "airfocus",
+            "akeyless",
             "beezup",
             "bitwarden",
+            "box",
+            "conjur",
             "deepseek",
+            "duo",
+            "fivetran",
+            "jira",
             "openai",
         ] {
             let source = catalog.get(source_id).unwrap();
@@ -3592,6 +3598,51 @@ mod tests {
                 "{source_id} contains a non-authoritative projection family"
             );
         }
+    }
+
+    #[test]
+    fn standard_source_plan_index_matches_the_compiled_acunetix_plan() {
+        let root = repository_root();
+        let index =
+            fs::read_to_string(root.join("internal/sourceregistry/standard_source_plan_index.txt"))
+                .unwrap();
+        let mut lines = index.lines();
+        assert_eq!(lines.next(), Some("standard-source-plan-index/v1"));
+        let entries = lines
+            .map(|line| {
+                let (source_id, families) = line.split_once('\t').unwrap();
+                (source_id, families.split(',').collect::<Vec<_>>())
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(entries.keys().copied().collect::<Vec<_>>(), ["acunetix"]);
+
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("acunetix").unwrap();
+        assert_eq!(source.authority(), CollectionAuthority::Authoritative);
+        assert!(
+            source
+                .families()
+                .iter()
+                .all(CompiledFamily::is_authoritative)
+        );
+        assert!(
+            source
+                .families()
+                .iter()
+                .all(CompiledFamily::is_projection_authoritative)
+        );
+        assert_eq!(
+            entries["acunetix"],
+            source
+                .families()
+                .iter()
+                .map(CompiledFamily::id)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
