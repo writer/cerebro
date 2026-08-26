@@ -118,6 +118,10 @@ const PROXY_CACHE_TTL_MS = parseNonNegativeMs(process.env.CEREBRO_PROXY_CACHE_TT
 const PROXY_CACHE_STALE_MS = parseNonNegativeMs(process.env.CEREBRO_PROXY_CACHE_STALE_MS, 300000);
 const PROXY_CACHE_MAX_ENTRIES = 400;
 const RETRY_STATUSES = new Set([502, 504]);
+const CEREBRO_TENANT_HEADER = "X-Cerebro-Tenant";
+const CEREBRO_WORKSPACE_HEADER = "X-Cerebro-Workspace";
+const MAX_TENANT_ID_BYTES = 256;
+const MAX_WORKSPACE_ID_BYTES = 128;
 
 export const shouldRetryUpstreamResponse = (response: Response) =>
   RETRY_STATUSES.has(response.status)
@@ -144,7 +148,7 @@ const USER_STAMP_HEADERS = [
   "x-cerebro-user-subject",
 ] as const;
 
-class CerebroProxyError extends Error {
+export class CerebroProxyError extends Error {
   status: number;
 
   constructor(message: string, status: number) {
@@ -152,6 +156,74 @@ class CerebroProxyError extends Error {
     this.status = status;
   }
 }
+
+export type CerebroProxyScope =
+  | {
+      ok: true;
+      headers: Record<string, string>;
+      tenantID: string;
+      workspaceID: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+const invalidScope = (): CerebroProxyScope => ({
+  ok: false,
+  error: "Provide one matching tenant and workspace selector. A workspace requires an explicit tenant.",
+});
+
+const validScopeID = (value: string, maxBytes: number) =>
+  value !== "*"
+  && !value.includes(",")
+  && Buffer.byteLength(value, "utf8") <= maxBytes
+  && !/[\u0000-\u001f\u007f]/.test(value);
+
+const selectScopeID = (
+  request: NextRequest,
+  queryName: string,
+  headerName: string,
+  maxBytes: number,
+) => {
+  const queryValues = request.nextUrl.searchParams.getAll(queryName);
+  if (queryValues.length > 1) return null;
+  const queryValue = queryValues[0]?.trim() ?? "";
+  const headerValue = request.headers.get(headerName)?.trim() ?? "";
+  if (
+    (queryValue !== "" && !validScopeID(queryValue, maxBytes))
+    || (headerValue !== "" && !validScopeID(headerValue, maxBytes))
+    || (queryValue !== "" && headerValue !== "" && queryValue !== headerValue)
+  ) {
+    return null;
+  }
+  return queryValue || headerValue;
+};
+
+// cerebroProxyScopeFor reconciles the public selector forms before the proxy
+// can drop a header, inject a tenant, or construct a shared cache key.
+export const cerebroProxyScopeFor = (request: NextRequest): CerebroProxyScope => {
+  const tenantID = selectScopeID(request, "tenant_id", CEREBRO_TENANT_HEADER, MAX_TENANT_ID_BYTES);
+  const workspaceID = selectScopeID(request, "workspace_id", CEREBRO_WORKSPACE_HEADER, MAX_WORKSPACE_ID_BYTES);
+  if (tenantID === null || workspaceID === null || (workspaceID !== "" && tenantID === "")) {
+    return invalidScope();
+  }
+  const headers: Record<string, string> = {};
+  if (tenantID) headers[CEREBRO_TENANT_HEADER] = tenantID;
+  if (workspaceID) headers[CEREBRO_WORKSPACE_HEADER] = workspaceID;
+  return { ok: true, headers, tenantID, workspaceID };
+};
+
+const requiredCerebroProxyScope = (request: NextRequest) => {
+  const scope = cerebroProxyScopeFor(request);
+  if (!scope.ok) {
+    throw new CerebroProxyError(scope.error, 400);
+  }
+  return scope;
+};
+
+export const supportsApplicationWorkspaceScope = (path: string) =>
+  normalizeProxyPath(path).startsWith("grc/");
 
 export const getCerebroProxyConfig = () => ({
   apiBase: API_BASE,
@@ -186,12 +258,23 @@ export const buildCerebroUrl = (path: string, search = "") => {
 };
 
 export const authHeadersFor = (request: NextRequest, upstreamPath = ""): HeadersInit => {
-  const headers: Record<string, string> = { Accept: "application/json, text/plain;q=0.9, */*;q=0.8" };
+  const scope = requiredCerebroProxyScope(request);
+  if (scope.workspaceID && !supportsApplicationWorkspaceScope(upstreamPath)) {
+    throw new CerebroProxyError("Workspace scope is not supported for this Cerebro route.", 400);
+  }
+  const headers: Record<string, string> = {
+    Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+    ...scope.headers,
+  };
   if (configuredRustPlatformApiBase() && isRustRuntimeHealthPath(upstreamPath)) {
+    const configuredTenantID = configuredOrganizationalGraphTenant();
+    if (scope.tenantID && scope.tenantID !== configuredTenantID) {
+      throw new CerebroProxyError("The requested tenant does not match the active Cerebro authority.", 400);
+    }
     return {
       ...headers,
       ...rustTenantAuthHeaders(
-        process.env.CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID ?? "",
+        configuredTenantID ?? "",
         process.env.CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET ?? "",
       ),
     };
@@ -216,17 +299,22 @@ export const authHeadersFor = (request: NextRequest, upstreamPath = ""): Headers
   if (
     organizationalGraphTenant &&
     usesOrganizationalGraphTenant(upstreamPath) &&
-    !request.nextUrl.searchParams.get("tenant_id")?.trim()
+    !scope.tenantID
   ) {
-    headers["X-Cerebro-Tenant"] = organizationalGraphTenant;
+    headers[CEREBRO_TENANT_HEADER] = organizationalGraphTenant;
   }
 
   return headers;
 };
 
 export const signedIdentityHeadersFor = (request: NextRequest): HeadersInit => {
+  const scope = requiredCerebroProxyScope(request);
+  if (scope.workspaceID) {
+    throw new CerebroProxyError("Workspace scope is not supported by the active Cerebro authority.", 400);
+  }
   const headers: Record<string, string> = {
     Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+    ...scope.headers,
   };
   const authorization = request.headers.get("authorization");
   if (authorization) {

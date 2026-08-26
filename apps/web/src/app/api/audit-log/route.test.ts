@@ -126,6 +126,24 @@ describe("audit events API", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("rejects an unsupported workspace selector before fixture or upstream reads", async () => {
+    vi.mocked(isCerebroFixtureMode).mockReturnValue(true);
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/audit-log?tenant_id=tenant-a&workspace_id=workspace-a",
+      { headers: { "x-user-email": "reader@example.com" } },
+    ));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Workspace scope is not supported for this Cerebro route.",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("does not expose upstream response details", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(
       "provider-specific failure detail",

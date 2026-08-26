@@ -4,6 +4,7 @@ import {
   authHeadersFor,
   buildCerebroUrl,
   cachedResponseHeaders,
+  cerebroProxyScopeFor,
   cerebroProxyCacheKey,
   fetchCerebro,
   isCacheableCerebroPath,
@@ -15,6 +16,7 @@ import {
   rustOwnsWebAuthority,
   signedIdentityHeadersFor,
   shouldBypassCerebroProxyCache,
+  supportsApplicationWorkspaceScope,
   trackCerebroProxyInflight,
   withCerebroCacheBypassHeader,
   writeCerebroProxyCache,
@@ -67,6 +69,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return tracedAuthorizationError(decision, span);
     }
   }
+  const scopeError = tracedProxyScopeError(request, path, rustAuthority, span);
+  if (scopeError) return scopeError;
   const url = new URL(request.url);
   const fixture = tracedFixtureResponse("GET", path, request, span);
   if (fixture) {
@@ -268,6 +272,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     console.warn("cerebro proxy post denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
     return tracedAuthorizationError(decision, span);
   }
+  const scopeError = tracedProxyScopeError(request, path, rustAuthority, span);
+  if (scopeError) return scopeError;
   const url = new URL(request.url);
   let body: string | ArrayBuffer;
   const acceptsEventStream = (request.headers.get("accept") ?? "").includes("text/event-stream");
@@ -383,6 +389,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     console.warn("cerebro proxy write denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
     return tracedAuthorizationError(decision, span);
   }
+  const scopeError = tracedProxyScopeError(request, path, false, span);
+  if (scopeError) return scopeError;
   const requestBody = await request.text();
   const url = new URL(request.url);
   let body = requestBody;
@@ -448,6 +456,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     console.warn("cerebro proxy put denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
     return tracedAuthorizationError(decision, span);
   }
+  const scopeError = tracedProxyScopeError(request, path, false, span);
+  if (scopeError) return scopeError;
   const requestBody = await request.text();
   const url = new URL(request.url);
   const body = stampCurrentUserOnWriteBody(
@@ -512,6 +522,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     console.warn("cerebro proxy delete denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
     return tracedAuthorizationError(decision, span);
   }
+  const scopeError = tracedProxyScopeError(request, path, false, span);
+  if (scopeError) return scopeError;
   const url = new URL(request.url);
   const fixture = tracedFixtureResponse("DELETE", path, request, span);
   if (fixture) {
@@ -631,6 +643,26 @@ function tracedAuthorizationError(decision: AuthorizationDecision, span: WebSpan
   span.end("completed", {
     ...authorizationDecisionAttributes(decision),
     ...responseSpanAttributes(response.status, Object.fromEntries(response.headers.entries())),
+    "http.response.status_code": response.status,
+  });
+  return response;
+}
+
+function tracedProxyScopeError(request: NextRequest, path: string, rustAuthority: boolean, span: WebSpan) {
+  const scope = cerebroProxyScopeFor(request);
+  let error = scope.ok ? "" : scope.error;
+  if (scope.ok && scope.workspaceID && !supportsApplicationWorkspaceScope(path)) {
+    error = "Workspace scope is not supported for this Cerebro route.";
+  }
+  if (scope.ok && scope.workspaceID && rustAuthority) {
+    error = "Workspace scope is not supported by the active Cerebro authority.";
+  }
+  if (!error) return null;
+  const response = NextResponse.json({ error }, { status: 400 });
+  response.headers.set("cache-control", "private, no-store");
+  response.headers.set("x-cerebro-web-trace-id", span.traceId);
+  span.end("completed", {
+    proxy_scope_valid: false,
     "http.response.status_code": response.status,
   });
   return response;

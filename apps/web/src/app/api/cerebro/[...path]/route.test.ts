@@ -69,6 +69,97 @@ describe("Cerebro proxy route", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("forwards header-selected tenant and workspace scope into the upstream cache boundary", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    let upstreamHeaders = new Headers();
+    const fetchMock = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      upstreamHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ findings: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cerebro/grc/findings?scope_contract=header", {
+        headers: {
+          "X-Cerebro-Tenant": "tenant-a",
+          "X-Cerebro-Workspace": "workspace-a",
+        },
+      }),
+      { params: Promise.resolve({ path: ["grc", "findings"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamHeaders.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(upstreamHeaders.get("x-cerebro-workspace")).toBe("workspace-a");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["orphan workspace", "http://localhost/api/cerebro/grc/dashboard?workspace_id=workspace-a", {}],
+    ["mismatched workspace", "http://localhost/api/cerebro/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-a", { "X-Cerebro-Workspace": "workspace-b" }],
+  ])("rejects %s without an upstream read", async (_name, url, headers) => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(
+      new NextRequest(url, { headers }),
+      { params: Promise.resolve({ path: ["grc", "dashboard"] }) },
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Provide one matching tenant and workspace selector. A workspace requires an explicit tenant.",
+    });
+  });
+
+  it("passes a tenant-workspace authorization failure through without an unscoped fallback", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ code: "forbidden" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cerebro/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-b&scope_contract=forbidden"),
+      { params: Promise.resolve({ path: ["grc", "dashboard"] }) },
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toEqual({ code: "forbidden" });
+  });
+
+  it.each([
+    ["POST", POST],
+    ["PATCH", PATCH],
+    ["PUT", PUT],
+  ] as const)("does not read a %s body for an invalid workspace scope", async (method, handler) => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest("http://localhost/api/cerebro/grc/findings?workspace_id=workspace-a", {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "resolved" }),
+    });
+    const readBody = vi.spyOn(request, "text");
+
+    const response = await handler(request, {
+      params: Promise.resolve({ path: ["grc", "findings"] }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(readBody).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["GET", GET],
     ["POST", POST],
