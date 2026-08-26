@@ -371,6 +371,16 @@ func TestFindingEvidenceSchemaPersistsEnrichedEvidence(t *testing.T) {
 		"finding_evidence_runtime_rule_observed_idx",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_rule_observed_idx",
 		"runtime_id, rule_id, last_observed_at DESC, created_at DESC, id",
+		"CREATE TABLE IF NOT EXISTS finding_evidence_counts",
+		"PRIMARY KEY (runtime_id, finding_id)",
+		"CREATE OR REPLACE FUNCTION sync_finding_evidence_count()",
+		"CREATE TRIGGER finding_evidence_count_sync",
+		"AFTER INSERT OR UPDATE OF runtime_id, finding_id OR DELETE ON finding_evidence",
+		"CREATE TABLE IF NOT EXISTS finding_evidence_count_migrations",
+		"pg_advisory_xact_lock",
+		"LOCK TABLE finding_evidence IN SHARE ROW EXCLUSIVE MODE",
+		"GROUP BY runtime_id, finding_id",
+		"INSERT INTO finding_evidence_count_migrations (id) VALUES ('backfill-v1')",
 	} {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("finding evidence schema missing %q:\n%s", fragment, joined)
@@ -452,6 +462,15 @@ func TestRuntimeTopNQueriesPostgresIntegration(t *testing.T) {
 		}
 		if err := store.PutFindingEvidence(ctx, evidence); err != nil {
 			t.Fatalf("PutFindingEvidence(%q) error = %v", evidence.GetId(), err)
+		}
+	}
+	for _, runtimeID := range runtimeIDs {
+		var count int
+		if err := store.db.QueryRowContext(ctx, `SELECT evidence_count FROM finding_evidence_counts WHERE runtime_id = $1 AND finding_id = 'finding-a'`, runtimeID).Scan(&count); err != nil {
+			t.Fatalf("query materialized evidence count for %q: %v", runtimeID, err)
+		}
+		if count != 2 {
+			t.Fatalf("materialized evidence count for %q = %d, want 2", runtimeID, count)
 		}
 	}
 	evidence, err := store.ListGRCFindingEvidence(ctx, ports.ListFindingEvidenceRequest{

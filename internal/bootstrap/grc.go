@@ -183,7 +183,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		var err error
 		return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.aggregate", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}), func(ctx context.Context) (telemetry.Attributes, error) {
 			request := r.WithContext(ctx)
-			aggregate, err = a.grcDashboardAggregate(request, runtimes, grcFindingFilter{Status: "open"}, grcEvidenceFilter{})
+			aggregate, err = a.grcDashboardAggregate(request, runtimes, grcFindingFilter{Status: "open"}, findingIDs)
 			if err == nil && aggregate == nil {
 				findingSummary, err = a.grcFindingSummary(request, runtimes, grcFindingFilter{Status: "open"})
 				if err == nil {
@@ -889,10 +889,11 @@ func grcLimitFromRequest(r *http.Request) (uint32, error) {
 
 func (a *App) grcListRuntimes(r *http.Request, scope grcScope) ([]*cerebrov1.SourceRuntime, error) {
 	runtimes, err := a.runtimeService().List(r.Context(), ports.SourceRuntimeFilter{
-		RuntimeID:  scope.RuntimeID,
-		RuntimeIDs: scope.RuntimeIDs,
-		TenantID:   scope.TenantID,
-		SourceID:   scope.SourceID,
+		RuntimeID:              scope.RuntimeID,
+		RuntimeIDs:             scope.RuntimeIDs,
+		TenantID:               scope.TenantID,
+		ApplicationWorkspaceID: scope.ApplicationWorkspaceID,
+		SourceID:               scope.SourceID,
 		// Runtime scope is independent from the response row limit. Otherwise a
 		// small page can silently exclude findings from later runtimes.
 		Limit: grcRuntimeScopeFetchLimit,
@@ -912,11 +913,12 @@ func (a *App) grcReportScopeRuntimes(r *http.Request, scope grcScope, fallback [
 		return grccontrol.ReportScopeRuntimeSnapshots(fallback)
 	}
 	runtimes, err := store.ListSourceRuntimes(r.Context(), ports.SourceRuntimeFilter{
-		RuntimeID:  scope.RuntimeID,
-		RuntimeIDs: scope.RuntimeIDs,
-		TenantID:   scope.TenantID,
-		SourceID:   scope.SourceID,
-		Limit:      grcMaxRuntimeScope,
+		RuntimeID:              scope.RuntimeID,
+		RuntimeIDs:             scope.RuntimeIDs,
+		TenantID:               scope.TenantID,
+		ApplicationWorkspaceID: scope.ApplicationWorkspaceID,
+		SourceID:               scope.SourceID,
+		Limit:                  grcMaxRuntimeScope,
 	})
 	if err != nil {
 		return grccontrol.ReportScopeRuntimeSnapshots(fallback)
@@ -1200,14 +1202,10 @@ func (a *App) grcEvidenceCountsByFindingID(r *http.Request, runtimes []*cerebrov
 	return counts, true, nil
 }
 
-func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.SourceRuntime, findingFilter grcFindingFilter, evidenceFilter grcEvidenceFilter) (*ports.GRCDashboardAggregate, error) {
+func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.SourceRuntime, findingFilter grcFindingFilter, previewFindingIDs []string) (*ports.GRCDashboardAggregate, error) {
 	provider, ok := a.deps.StateStore.(ports.GRCDashboardAggregateStore)
 	if !ok {
 		return nil, nil
-	}
-	if evidenceFilter.FindingIDs != nil && strings.TrimSpace(evidenceFilter.FindingID) == "" && len(grcNonEmptyFindingIDs(evidenceFilter.FindingIDs)) == 0 {
-		aggregate := ports.GRCDashboardAggregate{}
-		return &aggregate, nil
 	}
 	runtimeIDsByTenant := map[string][]string{}
 	for _, runtime := range runtimes {
@@ -1250,15 +1248,7 @@ func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.Sourc
 				MaxAgeDays:          findingFilter.MaxAgeDays,
 				SLAStatus:           findingFilter.SLAStatus,
 			},
-			EvidenceRequest: ports.ListFindingEvidenceRequest{
-				RuntimeIDs:   runtimeIDs,
-				FindingID:    evidenceFilter.FindingID,
-				FindingIDs:   evidenceFilter.FindingIDs,
-				RunID:        evidenceFilter.RunID,
-				RuleID:       evidenceFilter.RuleID,
-				GraphRootURN: evidenceFilter.GraphRootURN,
-				Limit:        0,
-			},
+			PreviewFindingIDs: previewFindingIDs,
 		})
 		if err != nil {
 			return nil, err

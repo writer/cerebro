@@ -945,6 +945,9 @@ func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.So
 		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
 			continue
 		}
+		if filter.ApplicationWorkspaceID != "" && strings.TrimSpace(runtime.GetConfig()[ports.SourceRuntimeApplicationWorkspaceIDConfigKey]) != filter.ApplicationWorkspaceID {
+			continue
+		}
 		if filter.SourceID != "" && runtime.GetSourceId() != filter.SourceID {
 			continue
 		}

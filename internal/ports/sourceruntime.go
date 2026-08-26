@@ -120,11 +120,12 @@ type SourceRuntimeFencedPageCommitter interface {
 
 // SourceRuntimeFilter scopes persisted source runtime listing.
 type SourceRuntimeFilter struct {
-	RuntimeID  string
-	RuntimeIDs []string
-	TenantID   string
-	SourceID   string
-	Limit      uint32
+	RuntimeID              string
+	RuntimeIDs             []string
+	TenantID               string
+	ApplicationWorkspaceID string
+	SourceID               string
+	Limit                  uint32
 }
 
 // SourceRuntimeListStore lists persisted source runtime definitions.

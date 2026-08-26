@@ -7,6 +7,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestPutSourceRuntimeRejectsNilRuntime(t *testing.T) {
@@ -75,6 +76,8 @@ func TestSourceRuntimeSchemaIndexesDashboardFilters(t *testing.T) {
 		"source_runtimes_tenant_source_updated_idx",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_source_updated_idx",
 		"(runtime_json->>'tenant_id'), (runtime_json->>'source_id'), updated_at ASC, id ASC",
+		"source_runtimes_tenant_workspace_updated_idx",
+		"(runtime_json->>'tenant_id'), (runtime_json->'config'->>'application_workspace_id'), updated_at ASC, id ASC",
 	} {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("source runtime schema missing %q:\n%s", fragment, joined)
@@ -82,5 +85,30 @@ func TestSourceRuntimeSchemaIndexesDashboardFilters(t *testing.T) {
 	}
 	if strings.Contains(joined, "source_runtimes_lease_expiry_idx") {
 		t.Fatalf("source runtime schema includes unused lease expiry index:\n%s", joined)
+	}
+}
+
+func TestSourceRuntimeListQueryScopesTenantAndApplicationWorkspace(t *testing.T) {
+	query, args, err := sourceRuntimeListQuery(ports.SourceRuntimeFilter{
+		TenantID:               "tenant-a",
+		ApplicationWorkspaceID: "workspace-a",
+		SourceID:               "okta",
+		Limit:                  13,
+	})
+	if err != nil {
+		t.Fatalf("sourceRuntimeListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"runtime_json->>'tenant_id' = $1",
+		"runtime_json->'config'->>'application_workspace_id' = $2",
+		"runtime_json->>'source_id' = $3",
+		"LIMIT $4",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("source runtime query missing %q:\n%s", fragment, query)
+		}
+	}
+	if len(args) != 4 || args[0] != "tenant-a" || args[1] != "workspace-a" || args[2] != "okta" || args[3] != uint32(13) {
+		t.Fatalf("source runtime query args = %#v, want tenant/workspace/source/limit", args)
 	}
 }
