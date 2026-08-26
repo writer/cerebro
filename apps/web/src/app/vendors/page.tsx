@@ -8,7 +8,6 @@ import {
   GitMerge,
   Link2,
   PanelRightOpen,
-  Play,
   Plus,
   RefreshCw,
   Search,
@@ -37,7 +36,6 @@ import {
   GRCVendorDiscoveriesResponse,
   GRCVendorDiscovery,
   GRCVendorDiscoverySignal,
-  GRCVendorDiscoverySyncResponse,
   GRCVendorDiscoverySourceSummary,
   GRCVendorsResponse,
   humanize,
@@ -497,18 +495,14 @@ function DiscoverySignals({ signals }: { signals?: GRCVendorDiscoverySignal[] })
 function DiscoverySourceSummary({
   loading,
   onRefresh,
-  onRunSource,
   onSelectSource,
-  runSaving,
   selectedSourceID,
   sources,
   summary,
 }: {
   loading: boolean;
   onRefresh: () => void;
-  onRunSource: (sourceID?: string) => void;
   onSelectSource: (sourceID: string) => void;
-  runSaving: boolean;
   selectedSourceID: string;
   sources: GRCVendorDiscoverySourceSummary[];
   summary?: GRCVendorDiscoveriesResponse["summary"];
@@ -534,13 +528,9 @@ function DiscoverySourceSummary({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => onRunSource()} disabled={runSaving} className="primary-button inline-flex items-center gap-2 px-3 py-1.5 text-[13px] disabled:opacity-50">
-            <Play className="h-3.5 w-3.5" aria-hidden="true" />
-            Run discovery
-          </button>
-          <button type="button" onClick={onRefresh} disabled={loading} className="secondary-button inline-flex items-center gap-2 px-3 py-1.5 text-[13px] disabled:opacity-50">
+          <button type="button" onClick={onRefresh} disabled={loading} className="primary-button inline-flex items-center gap-2 px-3 py-1.5 text-[13px] disabled:opacity-50">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
-            Refresh
+            Refresh sources
           </button>
         </div>
       </div>
@@ -580,9 +570,6 @@ function DiscoverySourceSummary({
                   <div className="flex gap-2">
                     <button type="button" onClick={() => onSelectSource(selected ? "" : source.source_id)} className="font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">
                       {selected ? "Clear filter" : "Filter"}
-                    </button>
-                    <button type="button" onClick={() => onRunSource(source.source_id)} disabled={runSaving} className="font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)] disabled:opacity-50">
-                      Run
                     </button>
                   </div>
                 </div>
@@ -1669,7 +1656,6 @@ export default function VendorsPage() {
   const [bulkDraft, setBulkDraft] = useState<BulkDiscoveryDraft>(() => defaultBulkDiscoveryDraft());
   const [bulkSaving, setBulkSaving] = useState(false);
   const [selectedDiscoveryURNs, setSelectedDiscoveryURNs] = useState<Set<string>>(() => new Set());
-  const [syncMessage, setSyncMessage] = useState("");
   const [quickActionMessage, setQuickActionMessage] = useState("");
   const [quickActionDraft, setQuickActionDraft] = useState<VendorQuickActionDraft>(() => defaultVendorQuickActionDraft());
   const uploadPanelRef = useRef<HTMLDivElement>(null);
@@ -1727,7 +1713,6 @@ export default function VendorsPage() {
     error: createError,
     setError: setCreateError,
   } = useGRCMutation<GRCVendorCreateResponse>();
-  const { mutate: mutateDiscoverySync, saving: syncSaving, error: syncError } = useGRCMutation<GRCVendorDiscoverySyncResponse>();
   const { mutate: mutateVendorAction, saving: quickActionSaving, error: quickActionError } = useGRCMutation<GRCVendorActionResponse>();
 
   const vendorRows = useMemo(() => boundedVendorRows(vendorsQuery.data, GRC_WORKLIST_LIMIT), [vendorsQuery.data]);
@@ -2001,18 +1986,6 @@ export default function VendorsPage() {
     }
   }, [bulkDraft.linkedVendorURN, bulkDraft.owner, bulkDraft.reason, bulkDraft.riskLevel, createVendorFromDiscovery, discoveries, selectedDiscoveryURNs, setDiscoveryDecision]);
 
-  const runDiscoverySync = useCallback(async (runSourceID?: string) => {
-    const response = await mutateDiscoverySync(grcPath("/grc/vendor-discoveries/sync", grcScopeQuery({ tenantID, workspaceID })), {
-      ...grcScopeQuery({ tenantID, workspaceID }),
-      source_id: runSourceID,
-    });
-    const sourceName = runSourceID
-      ? discoverySources.find((source) => source.source_id === runSourceID)?.provider || humanize(runSourceID)
-      : "All sources";
-    setSyncMessage(`${sourceName} discovery ${response.status}.`);
-    await discoveriesQuery.reload();
-  }, [discoveriesQuery, discoverySources, mutateDiscoverySync, tenantID, workspaceID]);
-
   const runVendorQuickAction = useCallback(async (action: "assign_owner" | "change_lifecycle" | "start_review") => {
     if (!selectedVendorURN) return;
     const response = await mutateVendorAction(grcPath(`/grc/vendors/${encodeURIComponent(selectedVendorURN)}/actions`, grcScopeQuery({ tenantID, workspaceID })), {
@@ -2175,12 +2148,6 @@ export default function VendorsPage() {
           recoveryDetail="Discovery decisions need GRC inventory write access."
         />
       )}
-      {syncError && (
-        <ErrorBlock
-          error={syncError}
-          recoveryDetail="Discovery run was not started."
-        />
-      )}
       {createError && !createOpen && (
         <ErrorBlock
           error={createError}
@@ -2190,11 +2157,6 @@ export default function VendorsPage() {
       {quickActionMessage && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-[13px] font-semibold text-emerald-700 dark:text-emerald-200">
           {quickActionMessage}
-        </div>
-      )}
-      {syncMessage && (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-[13px] font-semibold text-emerald-700 dark:text-emerald-200">
-          {syncMessage}
         </div>
       )}
       {createMessage && (
@@ -2473,9 +2435,7 @@ export default function VendorsPage() {
           <DiscoverySourceSummary
             loading={discoveriesQuery.loading && !discoveriesQuery.data}
             onRefresh={() => { void discoveriesQuery.reload(); }}
-            onRunSource={(runSourceID) => { void runDiscoverySync(runSourceID).catch(() => undefined); }}
             onSelectSource={setSourceID}
-            runSaving={syncSaving}
             selectedSourceID={sourceID}
             sources={discoverySources}
             summary={discoverySummary}
