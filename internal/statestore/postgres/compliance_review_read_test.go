@@ -102,7 +102,7 @@ func benchmarkComplianceWorkItemBodies(b *testing.B, childCount int) ([]byte, []
 			SubjectID: "subject-a", Reason: complianceassessment.ReasonActiveFinding, SourceID: "source-a",
 		},
 		State: complianceassessment.WorkOpen, OwnerID: "owner-a", DueAt: now.Add(24 * time.Hour),
-		Priority: "high", Version: uint64(childCount), UpdatedAt: now,
+		Priority: "high", Version: 1, UpdatedAt: now,
 	}
 	childBodies := make([][]byte, 0, childCount)
 	for index := range childCount {
