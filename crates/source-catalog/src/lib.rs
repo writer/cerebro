@@ -3592,6 +3592,7 @@ mod tests {
             "apigee",
             "apollo",
             "appwrite",
+            "authentik_cloud",
             "aws_bedrock",
             "azure_openai",
             "backstage",
