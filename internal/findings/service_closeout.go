@@ -100,7 +100,7 @@ type counterAnchorLatestEvent struct {
 	eventIDs   []string
 }
 
-func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, counterRule CounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, counterRule ContextCounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
 	if counterRule == nil || runtime == nil || rule == nil || len(evaluatedEvents) == 0 {
 		return nil, nil
 	}
@@ -137,7 +137,11 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 		if finding.Tombstoned {
 			continue
 		}
-		openAnchor := strings.TrimSpace(counterRule.OpenAnchor(finding.Attributes))
+		openAnchor, err := counterRule.OpenAnchorContext(ctx, finding.Attributes)
+		if err != nil {
+			return nil, fmt.Errorf("derive counter-event open anchor for finding %q: %w", strings.TrimSpace(finding.ID), err)
+		}
+		openAnchor = strings.TrimSpace(openAnchor)
 		if openAnchor == "" {
 			continue
 		}
@@ -166,8 +170,8 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 	return resolved, nil
 }
 
-func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, counterRule CounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) (map[string]counterAnchorLatestEvent, error) {
-	if aggregateRule, ok := counterRule.(AggregateCounterEventRule); ok {
+func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, counterRule ContextCounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) (map[string]counterAnchorLatestEvent, error) {
+	if aggregateRule, ok := rule.(AggregateCounterEventRule); ok {
 		if latestByAnchor, handled := latestAggregateCounterAnchorEvents(aggregateRule, evaluatedEvents); handled {
 			return latestByAnchor, nil
 		}
@@ -190,7 +194,11 @@ func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRun
 			if record == nil {
 				continue
 			}
-			openAnchor := strings.TrimSpace(counterRule.OpenAnchor(record.Attributes))
+			openAnchor, err := counterRule.OpenAnchorContext(ctx, record.Attributes)
+			if err != nil {
+				return nil, fmt.Errorf("derive counter-event chronology open anchor for rule %q event %q: %w", ruleID, strings.TrimSpace(event.GetId()), err)
+			}
+			openAnchor = strings.TrimSpace(openAnchor)
 			if openAnchor == "" {
 				continue
 			}
@@ -199,7 +207,10 @@ func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRun
 				sequence:   sequence,
 			})
 		}
-		anchor, closes := counterRule.CloseOnEvent(event)
+		anchor, closes, err := counterRule.CloseOnEventContext(ctx, event)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate counter-event close for rule %q event %q: %w", ruleID, strings.TrimSpace(event.GetId()), err)
+		}
 		anchor = strings.TrimSpace(anchor)
 		if closes && anchor != "" {
 			eventIDs := []string(nil)
@@ -347,7 +358,7 @@ func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov
 	}
 	if rule.SupportsRuntime(runtime) {
 		var resolvedCounterFindings []*ports.FindingRecord
-		if counterRule, ok := durableStateCounterEventRule(rule); ok {
+		if counterRule, ok := durableStateContextCounterEventRule(rule); ok {
 			resolved, err := s.resolveCounterEventOpenFindings(ctx, runtime, rule, counterRule, evaluatedEvents)
 			if err != nil {
 				return nil, err
@@ -437,6 +448,37 @@ func durableStateCounterEventRule(rule Rule) (CounterEventRule, bool) {
 		return nil, false
 	}
 	return counterRule, true
+}
+
+type legacyCounterEventRuleContextAdapter struct {
+	CounterEventRule
+}
+
+func (r legacyCounterEventRuleContextAdapter) OpenAnchorContext(_ context.Context, attributes map[string]string) (string, error) {
+	return r.OpenAnchor(attributes), nil
+}
+
+func (r legacyCounterEventRuleContextAdapter) CloseOnEventContext(_ context.Context, event Event) (string, bool, error) {
+	anchor, closes := r.CloseOnEvent(event)
+	return anchor, closes, nil
+}
+
+func durableStateContextCounterEventRule(rule Rule) (ContextCounterEventRule, bool) {
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		return nil, false
+	}
+	lifecycleKind := LifecycleKind(strings.TrimSpace(string(metadataRule.RuleMetadata().Lifecycle.Kind)))
+	if lifecycleKind != LifecycleDurableState {
+		return nil, false
+	}
+	if counterRule, ok := rule.(ContextCounterEventRule); ok {
+		return counterRule, true
+	}
+	if counterRule, ok := rule.(CounterEventRule); ok {
+		return legacyCounterEventRuleContextAdapter{CounterEventRule: counterRule}, true
+	}
+	return nil, false
 }
 
 func counterEventCloseLookupRuntimeScoped(rule Rule) bool {
