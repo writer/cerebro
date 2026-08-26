@@ -32,6 +32,10 @@ const response = (state, summary = { open_findings: 3 }) => ({
   status: 200,
 });
 
+const routeInventory = (...entries) => ({
+  entries: entries.map(([path, authority_owner, method = "GET"]) => ({ authority_owner, kind: "http", method, path })),
+});
+
 describe("real-service E2E options", () => {
   it("requires Chromium and a hard overall deadline by default", () => {
     expect(parseArgs([])).toEqual({ artifactRoot: undefined, browser: true, timeoutMs: 900_000 });
@@ -170,17 +174,47 @@ describe("real-service E2E isolation", () => {
 });
 
 describe("real-service E2E contracts", () => {
-  it("materializes every OpenAPI path for runtime 404 probing", () => {
+  it("classifies every OpenAPI path for its Go or Rust listener probe", () => {
     expect(openAPIRouteProbePaths({ paths: {
+      "/bridge": { get: {} },
       "/health": { get: {} },
       "/grc/entities/{entityID}/impact": { get: {} },
-    } })).toEqual([
-      { concrete: "/grc/entities/route-probe/impact", template: "/grc/entities/{entityID}/impact" },
-      { concrete: "/health", template: "/health" },
+      "/platform/graph/neighborhood": { get: {} },
+    } }, routeInventory(
+      ["/bridge", "bridged-to-rust-authority"],
+      ["/grc/entities/{entityID}/impact", "go-compatibility"],
+      ["/health", "go-compatibility"],
+      ["/platform/graph/neighborhood", "rust-authority"],
+    ))).toEqual([
+      { concrete: "/bridge", listener: "go", template: "/bridge" },
+      { concrete: "/grc/entities/route-probe/impact", listener: "go", template: "/grc/entities/{entityID}/impact" },
+      { concrete: "/health", listener: "go", template: "/health" },
+      { concrete: "/platform/graph/neighborhood", listener: "rust", template: "/platform/graph/neighborhood" },
     ]);
-    expect(() => openAPIRouteProbePaths({})).toThrow("no paths object");
-    expect(() => openAPIRouteProbePaths({ paths: { relative: {} } })).toThrow("not absolute");
-    expect(() => openAPIRouteProbePaths({ paths: { "/broken/{id": {} } })).toThrow("invalid template");
+  });
+
+  it("keeps mixed-authority paths in the Go runtime probe", () => {
+    expect(openAPIRouteProbePaths({ paths: { "/mixed": { get: {}, post: {} } } }, routeInventory(
+      ["/mixed", "rust-authority"],
+      ["/mixed", "go-compatibility", "POST"],
+    ))).toEqual([{ concrete: "/mixed", listener: "go", template: "/mixed" }]);
+  });
+
+  it("fails closed when the route authority inventory cannot classify an OpenAPI path", () => {
+    const validInventory = routeInventory(["/health", "go-compatibility"]);
+    expect(() => openAPIRouteProbePaths({}, validInventory)).toThrow("no paths object");
+    expect(() => openAPIRouteProbePaths({ paths: { relative: {} } }, validInventory)).toThrow("not absolute");
+    expect(() => openAPIRouteProbePaths({ paths: { "/broken/{id": {} } }, validInventory)).toThrow("invalid template");
+    expect(() => openAPIRouteProbePaths({ paths: { "/health": {} } }, {})).toThrow("no entries array");
+    expect(() => openAPIRouteProbePaths({ paths: { "/health": {} } }, routeInventory(["relative", "go-compatibility"]))).toThrow("invalid HTTP path");
+    expect(() => openAPIRouteProbePaths({ paths: { "/health": {} } }, routeInventory(["/health", ""]))).toThrow("no authority owner");
+    expect(() => openAPIRouteProbePaths({ paths: { "/health": {} } }, routeInventory(["/health", "future-authority"]))).toThrow("unknown authority owner");
+    expect(() => openAPIRouteProbePaths({ paths: { "/health": {} } }, routeInventory(["/health", "go-compatibility", "get"]))).toThrow("invalid HTTP method");
+    expect(() => openAPIRouteProbePaths({ paths: { "/health": {} } }, routeInventory(
+      ["/health", "go-compatibility"],
+      ["/health", "rust-authority"],
+    ))).toThrow("duplicate ownership for GET /health");
+    expect(() => openAPIRouteProbePaths({ paths: { "/ghost": {} } }, validInventory)).toThrow("no HTTP entry for /ghost");
   });
 
   it("fails only when a documented runtime path resolves as unregistered", () => {
@@ -191,6 +225,12 @@ describe("real-service E2E contracts", () => {
     expect(() => assertRegisteredOpenAPIRouteResponses([
       { status: 404, template: "/ghost" },
     ])).toThrow("OpenAPI route /ghost is not registered");
+    expect(() => assertRegisteredOpenAPIRouteResponses([
+      { allow: "GET,HEAD", listener: "rust", status: 405, template: "/platform/graph/neighborhood" },
+    ])).not.toThrow();
+    expect(() => assertRegisteredOpenAPIRouteResponses([
+      { listener: "rust", status: 401, template: "/platform/graph/neighborhood" },
+    ])).toThrow("Rust OpenAPI route /platform/graph/neighborhood is not registered for GET");
   });
 
   it("requires every declared health component to report ready", () => {
