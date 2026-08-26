@@ -1,0 +1,225 @@
+{
+  "schema_version": "cerebro.rustcarve.request/v1",
+  "behavior_kind": "graph_query",
+  "subject": {
+    "id": "complianceimpact.projected_graph",
+    "package_dir": "internal/complianceimpact",
+    "catalog_path": "",
+    "go_files": ["internal/complianceimpact/projected_graph.go"],
+    "owner_symbols": ["GetComplianceImpactFact", "ListComplianceImpactDependents"],
+    "rust_implementation_revision": "unimplemented",
+    "authority_state": "go_raw_query_active"
+  },
+  "scope": {
+    "tenant": {"name": "tenant_id", "type": "tenant_id", "required": true},
+    "workspace_policy": "forbidden"
+  },
+  "fixture_corpus": [
+    {"path": "internal/complianceimpact/projected_graph_test.go", "role": "fixed_fixture"}
+  ],
+  "port_traces": [
+    {"path": "internal/complianceimpact/projected_graph.go", "role": "go_query_contract"}
+  ],
+  "differential_receipts": [],
+  "deletion": {
+    "paths": ["internal/complianceimpact/projected_graph.go"],
+    "imports": ["github.com/writer/cerebro/internal/ports.RawCypherQueryStore"],
+    "symbols": [
+      "getImpactFactQuery",
+      "countImpactDependenciesQuery",
+      "listImpactDependenciesQuery",
+      "listImpactDependentsQuery",
+      "impactRevisionFromRow",
+      "decodeGraphAttributes",
+      "nonnegativeInt"
+    ]
+  },
+  "graph_query": {
+    "family": "graph_query",
+    "ir_version": "graph-query/v1",
+    "caller": "internal/complianceimpact.ProjectedGraph",
+    "dynamic": false,
+    "scope": {
+      "tenant": {"name": "tenant_id", "type": "tenant_id", "required": true},
+      "workspace_policy": "forbidden"
+    },
+    "node_roles": [
+      {"role": "fact", "kind": "compliance.impact_revision", "tenant_input": "tenant_id"},
+      {"role": "dependency", "kind": "compliance.impact_revision", "tenant_input": "tenant_id"},
+      {"role": "dependent", "kind": "compliance.impact_revision", "tenant_input": "tenant_id"}
+    ],
+    "relationships": [
+      {
+        "role": "fact_dependency",
+        "kind": "compliance_depends_on",
+        "direction": "outbound",
+        "from_role": "fact",
+        "to_role": "dependency",
+        "tenant_input": "tenant_id",
+        "domain_edge_property": "dependency_relation"
+      },
+      {
+        "role": "dependent_dependency",
+        "kind": "compliance_depends_on",
+        "direction": "outbound",
+        "from_role": "dependent",
+        "to_role": "dependency",
+        "tenant_input": "tenant_id",
+        "domain_edge_property": "dependency_relation"
+      }
+    ],
+    "operations": [
+      {
+        "name": "get_fact",
+        "predicates": [
+          {"kind": "exact", "target": "fact.tenant_id", "value_input": "tenant_id"},
+          {"kind": "exact", "target": "fact.agent_key", "value_input": "fact_agent_key"},
+          {"kind": "exact", "target": "fact.kind", "value_input": "compliance.impact_revision"}
+        ],
+        "traversals": [],
+        "union_branches": [],
+        "limit": {"request_min": 2, "request_max": 2, "internal_expression": "exact"},
+        "cursor": {"kind": "none", "graph_revision_input": "fixture_graph_revision", "foreign_rejected": true},
+        "order": [{"target": "fact.agent_key", "direction": "ascending", "canonical": true}],
+        "dedupe": "none",
+        "response_shape_ref": "fact",
+        "public_response_shape_ref": "fact",
+        "subject_pre_order": []
+      },
+      {
+        "name": "count_dependencies",
+        "predicates": [
+          {"kind": "exact", "target": "fact.tenant_id", "value_input": "tenant_id"},
+          {"kind": "exact", "target": "fact.agent_key", "value_input": "fact_agent_key"},
+          {"kind": "exact", "target": "fact.kind", "value_input": "compliance.impact_revision"},
+          {"kind": "fixed_relation", "target": "fact_dependency.kind", "value_input": "compliance_depends_on"},
+          {"kind": "exact", "target": "dependency.kind", "value_input": "compliance.impact_revision"}
+        ],
+        "traversals": [{"relationship_role": "fact_dependency", "direction": "outbound", "min_hops": 1, "max_hops": 1}],
+        "union_branches": [],
+        "aggregate": {"kind": "count_edge", "target": "fact_dependency", "min": 0, "max": 2999},
+        "limit": {"request_min": 1, "request_max": 1, "internal_expression": "exact"},
+        "cursor": {"kind": "none", "graph_revision_input": "fixture_graph_revision", "foreign_rejected": true},
+        "order": [],
+        "dedupe": "none",
+        "response_shape_ref": "dependency_count",
+        "public_response_shape_ref": "dependency_count",
+        "subject_pre_order": []
+      },
+      {
+        "name": "list_dependencies",
+        "predicates": [
+          {"kind": "exact", "target": "fact.tenant_id", "value_input": "tenant_id"},
+          {"kind": "exact", "target": "fact.agent_key", "value_input": "fact_agent_key"},
+          {"kind": "exact", "target": "fact.kind", "value_input": "compliance.impact_revision"},
+          {"kind": "fixed_relation", "target": "fact_dependency.kind", "value_input": "compliance_depends_on"},
+          {"kind": "exact", "target": "dependency.kind", "value_input": "compliance.impact_revision"}
+        ],
+        "traversals": [{"relationship_role": "fact_dependency", "direction": "outbound", "min_hops": 1, "max_hops": 1}],
+        "union_branches": [],
+        "limit": {"request_min": 1, "request_max": 2999, "internal_expression": "prior_exact_count"},
+        "cursor": {"kind": "none", "graph_revision_input": "fixture_graph_revision", "foreign_rejected": true},
+        "order": [
+          {"target": "dependency.agent_key", "direction": "ascending", "canonical": true},
+          {"target": "fact_dependency.attributes", "direction": "ascending", "canonical": true}
+        ],
+        "dedupe": "none",
+        "response_shape_ref": "dependencies",
+        "public_response_shape_ref": "dependencies",
+        "count_binding": {"prior_operation": "count_dependencies", "execute_when_nonzero": true, "exact_row_count": true},
+        "subject_pre_order": []
+      },
+      {
+        "name": "list_dependents",
+        "predicates": [
+          {"kind": "exact", "target": "dependency.tenant_id", "value_input": "tenant_id"},
+          {"kind": "exact", "target": "dependency.agent_key", "value_input": "dependency_agent_key"},
+          {"kind": "exact", "target": "dependency.kind", "value_input": "compliance.impact_revision"},
+          {"kind": "fixed_relation", "target": "dependent_dependency.kind", "value_input": "compliance_depends_on"},
+          {"kind": "exact", "target": "dependent.kind", "value_input": "compliance.impact_revision"},
+          {"kind": "keyset_gt", "target": "dependent.agent_key", "value_input": "after_agent_key"}
+        ],
+        "traversals": [{"relationship_role": "dependent_dependency", "direction": "outbound", "min_hops": 1, "max_hops": 1}],
+        "union_branches": [],
+        "limit": {"request_min": 1, "request_max": 2999, "internal_expression": "request_plus_one"},
+        "cursor": {
+          "kind": "keyset",
+          "input": "after_agent_key",
+          "output": "next_after_agent_key",
+          "graph_revision_input": "fixture_graph_revision",
+          "foreign_rejected": true
+        },
+        "order": [{"target": "dependent.agent_key", "direction": "ascending", "canonical": true}],
+        "dedupe": "distinct_normalized_rows",
+        "response_shape_ref": "dependents_page",
+        "public_response_shape_ref": "dependents_page",
+        "subject_pre_order": []
+      }
+    ],
+    "entity_shapes": [
+      {
+        "name": "compliance_impact_entity",
+        "fields": [
+          {"name": "agent_key", "type": "urn", "required": true},
+          {"name": "kind", "type": "string", "required": true},
+          {"name": "tenant_id", "type": "tenant_id", "required": true},
+          {"name": "domain", "type": "string", "required": true},
+          {"name": "fact_kind", "type": "string", "required": true},
+          {"name": "stable_id", "type": "string", "required": true},
+          {"name": "revision_id", "type": "string", "required": true},
+          {"name": "revision_version", "type": "integer", "required": true},
+          {"name": "content_digest", "type": "string", "required": true},
+          {"name": "last_modified", "type": "timestamp", "required": true}
+        ]
+      }
+    ],
+    "normalized_outputs": [
+      {
+        "name": "fact",
+        "fields": [{"name": "fact", "type": "compliance_impact_entity", "required": true}],
+        "cardinality": "zero_or_one",
+        "truncation": "second_row_is_ambiguous_error"
+      },
+      {
+        "name": "dependency_count",
+        "fields": [{"name": "count", "type": "integer", "required": true}],
+        "cardinality": "exactly_one_scalar",
+        "truncation": "outside_0_2999_is_error"
+      },
+      {
+        "name": "dependencies",
+        "fields": [
+          {"name": "dependency", "type": "compliance_impact_entity", "required": true},
+          {"name": "dependency_relation", "type": "string", "required": true}
+        ],
+        "cardinality": "bounded_list",
+        "truncation": "row_count_must_equal_prior_count"
+      },
+      {
+        "name": "dependents_page",
+        "fields": [
+          {"name": "dependents", "type": "array<compliance_impact_entity>", "required": true},
+          {"name": "truncated", "type": "boolean", "required": true},
+          {"name": "next_after_agent_key", "type": "urn", "required": false},
+          {"name": "graph_revision", "type": "string", "required": true}
+        ],
+        "cardinality": "paged_list",
+        "truncation": "limit_plus_one"
+      }
+    ],
+    "fixture_cases": [
+      {"name": "zero_dependencies", "production_helpers": ["projectedImpactEntity", "impactRevisionURN"], "expected_rows": 1, "expected_cursor": ""},
+      {"name": "one_or_more_dependencies", "production_helpers": ["projectedImpactEntity", "impactRevisionURN"], "expected_rows": 2, "expected_cursor": ""},
+      {"name": "multi_page_dependents", "production_helpers": ["projectedImpactEntity", "impactRevisionURN"], "expected_rows": 2, "expected_cursor": "last_returned_agent_key_only_when_truncated"}
+    ],
+    "deletion": {
+      "paths": ["internal/complianceimpact/projected_graph.go"],
+      "constants": ["getImpactFactQuery", "countImpactDependenciesQuery", "listImpactDependenciesQuery", "listImpactDependentsQuery"],
+      "helpers": ["impactRevisionFromRow", "decodeGraphAttributes", "nonnegativeInt"]
+    }
+  },
+  "options": {
+    "expected_registration_shape": "",
+    "max_input_bytes": 4194304
+  }
+}

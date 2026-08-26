@@ -1,0 +1,37 @@
+{
+  "schema_version": "cerebro.rustcarve.request/v1",
+  "behavior_kind": "standard_source",
+  "subject": {
+    "id": "acunetix",
+    "package_dir": "internal/sourceregistry",
+    "catalog_path": "sources/acunetix/catalog.yaml",
+    "go_files": ["internal/sourceregistry/registry.go"],
+    "owner_symbols": ["BuiltinWithCatalogOverrides"],
+    "rust_implementation_revision": "24a48b50fbf087eb9b484d31f984f98fcc6e325c",
+    "authority_state": "go_registry_active"
+  },
+  "scope": {
+    "tenant": {"name": "tenant_id", "type": "tenant_id", "required": true},
+    "workspace_policy": "forbidden"
+  },
+  "fixture_corpus": [
+    {"path": "sources/acunetix/testdata/read_reports.json", "role": "provider_fixture"},
+    {"path": "sources/acunetix/testdata/read_scanning_profiles.json", "role": "provider_fixture"},
+    {"path": "sources/acunetix/testdata/read_scans.json", "role": "provider_fixture"},
+    {"path": "sources/acunetix/testdata/read_targets.json", "role": "provider_fixture"},
+    {"path": "sources/acunetix/testdata/read_vulnerabilities.json", "role": "provider_fixture"}
+  ],
+  "port_traces": [
+    {"path": "crates/source-runtime-next/src/acunetix/tests.rs", "role": "rust_parity_contract"}
+  ],
+  "differential_receipts": [],
+  "deletion": {
+    "paths": ["internal/sourceregistry/worker_catalog.go"],
+    "imports": ["github.com/writer/cerebro/sources/catalogruntime"],
+    "symbols": ["catalogruntimesource.New(entry)"]
+  },
+  "options": {
+    "expected_registration_shape": "generic_catalog_runtime",
+    "max_input_bytes": 4194304
+  }
+}

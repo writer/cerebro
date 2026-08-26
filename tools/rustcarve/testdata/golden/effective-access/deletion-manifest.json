@@ -1,0 +1,23 @@
+{
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "behavior_kind": "graph_query",
+  "subject_id": "graphquery.effective_access",
+  "ir_version": "graph-query/v1",
+  "ir_digest_sha256": "sha256:768ad831ffe223913a3f631eee787caf66d5326e56ab17bdc0ca4c77648fc693",
+  "go_facts_digest_sha256": "sha256:9e89c6c801c0e18835be1e9042f4544180550b461e405f8ad447020f928f8e95",
+  "rust_implementation_revision": "4c553a2d7e80c93d387eb281eae9bec0527b08c3",
+  "eligible": false,
+  "reason_codes": [
+    "missing_parity_receipt",
+    "no_deletion_targets"
+  ],
+  "paths": [],
+  "imports": [],
+  "symbols": [],
+  "required_receipt_modes": [
+    "fixed_fixture",
+    "live_safe_local_graph"
+  ],
+  "accepted_receipts": []
+}

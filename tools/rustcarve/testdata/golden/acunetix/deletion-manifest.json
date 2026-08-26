@@ -1,0 +1,28 @@
+{
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "behavior_kind": "standard_source",
+  "subject_id": "acunetix",
+  "ir_version": "standard-source/v1",
+  "ir_digest_sha256": "sha256:6096890211faa327b3fdbbd37827cc4ae6649179b6f7ef107cd4587454cd5b6b",
+  "go_facts_digest_sha256": "sha256:3f4dfca0811524fdcd73f40174e525489f6c3a81be156373b25a9264a6984d22",
+  "rust_implementation_revision": "24a48b50fbf087eb9b484d31f984f98fcc6e325c",
+  "eligible": false,
+  "reason_codes": [
+    "active_go_registry_path",
+    "missing_parity_receipt"
+  ],
+  "paths": [
+    "internal/sourceregistry/worker_catalog.go"
+  ],
+  "imports": [
+    "github.com/writer/cerebro/sources/catalogruntime"
+  ],
+  "symbols": [
+    "catalogruntimesource.New(entry)"
+  ],
+  "required_receipt_modes": [
+    "fixed_fixture"
+  ],
+  "accepted_receipts": []
+}

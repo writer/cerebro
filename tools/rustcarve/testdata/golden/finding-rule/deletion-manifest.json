@@ -1,0 +1,26 @@
+{
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "behavior_kind": "finding_rule",
+  "subject_id": "tailscale-tailnet-device-approval-disabled",
+  "ir_version": "finding-rule/v1",
+  "ir_digest_sha256": "sha256:5ac4f7373b29b022169314155601c663dd646f4d8dd7f54c72ee412a82283bd0",
+  "go_facts_digest_sha256": "sha256:eeead0d93f482fafaeac7efd391bb34217571e497b326652a1c1ccf7a0a25467",
+  "rust_implementation_revision": "9a0d21b5b87996019ac78aec5a426129e6114558",
+  "eligible": false,
+  "reason_codes": [
+    "missing_parity_receipt"
+  ],
+  "paths": [
+    "internal/findings/tailscale_tailnet_device_approval_disabled_rule.go"
+  ],
+  "imports": [],
+  "symbols": [
+    "retiredTailscaleGoOracle",
+    "tailscaleTailnetDeviceApprovalDisabledRule"
+  ],
+  "required_receipt_modes": [
+    "replay"
+  ],
+  "accepted_receipts": []
+}
