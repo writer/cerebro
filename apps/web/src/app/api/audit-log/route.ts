@@ -7,7 +7,7 @@ import {
   createHttpAuditLogReader,
 } from "@/lib/audit-log-reader";
 import { authorizationErrorResponse, authorizeCurrentUser } from "@/lib/authorization";
-import { authHeadersFor, buildCerebroUrl } from "@/lib/cerebro-proxy";
+import { authHeadersFor, buildCerebroUrl, CerebroProxyError } from "@/lib/cerebro-proxy";
 import { isCerebroFixtureMode } from "@/lib/cerebro-fixtures";
 import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
 import {
@@ -46,6 +46,24 @@ export async function GET(request: NextRequest) {
     return authorizationErrorResponse(decision);
   }
 
+  let upstreamAuthHeaders: HeadersInit;
+  try {
+    upstreamAuthHeaders = authHeadersFor(request);
+  } catch (error) {
+    if (!(error instanceof CerebroProxyError)) throw error;
+    span.end("failed", {
+      audit_event_page_state: "invalid_scope",
+      "http.response.status_code": error.status,
+    });
+    return NextResponse.json(
+      { error: error.message },
+      {
+        headers: responseHeadersWithTrace({ "cache-control": "private, no-store" }, span),
+        status: error.status,
+      },
+    );
+  }
+
   if (isCerebroFixtureMode()) {
     span.end("completed", {
       audit_event_count: 0,
@@ -73,7 +91,7 @@ export async function GET(request: NextRequest) {
   const query = auditLogQueryFromSearchParams(request.nextUrl.searchParams);
   const reader = createHttpAuditLogReader({
     endpoint: buildCerebroUrl(AUDIT_EVENT_CONTRACT_PATH),
-    headers: headersWithTrace(authHeadersFor(request), span),
+    headers: headersWithTrace(upstreamAuthHeaders, span),
   });
 
   try {

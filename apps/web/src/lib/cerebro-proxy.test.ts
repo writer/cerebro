@@ -5,6 +5,7 @@ import {
   authHeadersFor,
   buildCerebroUrl,
   cachedResponseHeaders,
+  cerebroProxyScopeFor,
   cerebroProxyCacheKey,
   configuredOrganizationalGraphTenant,
   configuredRustPlatformApiBase,
@@ -14,6 +15,7 @@ import {
   responseHeadersFor,
   rustTenantAuthHeaders,
   rustOwnsWebAuthority,
+  signedIdentityHeadersFor,
   shouldRetryUpstreamResponse,
   shouldBypassCerebroProxyCache,
   warmCerebroProxyCache,
@@ -75,8 +77,59 @@ describe("cerebro proxy cache headers", () => {
 
     const selectedTenantRequest = new NextRequest("http://localhost/api/cerebro/grc/vendors?tenant_id=tenant-selected");
 
-    expect(new Headers(authHeadersFor(selectedTenantRequest, "grc/vendors")).get("x-cerebro-tenant")).toBeNull();
-    expect(new Headers(authHeadersFor(selectedTenantRequest, "user/preferences")).get("x-cerebro-tenant")).toBeNull();
+    expect(new Headers(authHeadersFor(selectedTenantRequest, "grc/vendors")).get("x-cerebro-tenant")).toBe("tenant-selected");
+    expect(new Headers(authHeadersFor(selectedTenantRequest, "user/preferences")).get("x-cerebro-tenant")).toBe("tenant-selected");
+  });
+
+  it("reconciles and forwards matching tenant and workspace selectors", () => {
+    const request = new NextRequest(
+      "http://localhost/api/cerebro/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-a",
+      { headers: { "X-Cerebro-Tenant": "tenant-a", "X-Cerebro-Workspace": "workspace-a" } },
+    );
+
+    expect(cerebroProxyScopeFor(request)).toMatchObject({
+      ok: true,
+      tenantID: "tenant-a",
+      workspaceID: "workspace-a",
+    });
+    const headers = new Headers(authHeadersFor(request, "grc/dashboard"));
+    expect(headers.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(headers.get("x-cerebro-workspace")).toBe("workspace-a");
+  });
+
+  it.each([
+    "http://localhost/api/cerebro/grc/dashboard?workspace_id=workspace-a",
+    "http://localhost/api/cerebro/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-a&workspace_id=workspace-a",
+  ])("rejects orphan or repeated workspace selectors: %s", (url) => {
+    expect(cerebroProxyScopeFor(new NextRequest(url)).ok).toBe(false);
+  });
+
+  it("rejects mismatched query and header selectors", () => {
+    const request = new NextRequest(
+      "http://localhost/api/cerebro/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-a",
+      { headers: { "X-Cerebro-Workspace": "workspace-b" } },
+    );
+
+    expect(cerebroProxyScopeFor(request).ok).toBe(false);
+    expect(() => authHeadersFor(request, "grc/dashboard")).toThrow("Provide one matching tenant and workspace selector");
+  });
+
+  it("keeps workspace scope out of unsupported and Rust-authority routes", () => {
+    const request = new NextRequest(
+      "http://localhost/api/cerebro/platform/graph/neighborhood?tenant_id=tenant-a&workspace_id=workspace-a",
+    );
+
+    expect(() => authHeadersFor(request, "platform/graph/neighborhood")).toThrow("Workspace scope is not supported");
+    expect(() => signedIdentityHeadersFor(request)).toThrow("active Cerebro authority");
+  });
+
+  it("partitions cache keys by canonical workspace headers", () => {
+    const target = new URL("https://api.example.com/grc/dashboard?tenant_id=tenant-a");
+    const unscoped = cerebroProxyCacheKey(target, { authorization: "Bearer shared" });
+    const workspaceA = cerebroProxyCacheKey(target, { authorization: "Bearer shared", "X-Cerebro-Workspace": "workspace-a" });
+    const workspaceB = cerebroProxyCacheKey(target, { authorization: "Bearer shared", "X-Cerebro-Workspace": "workspace-b" });
+
+    expect(new Set([unscoped, workspaceA, workspaceB]).size).toBe(3);
   });
 
   it("routes only runtime health to the configured Rust platform origin", () => {
@@ -112,6 +165,22 @@ describe("cerebro proxy cache headers", () => {
     expect(headers.get("x-cerebro-tenant")).toBe("tenant-a");
     expect(headers.get("authorization")).toMatch(/^Bearer [0-9a-f]{64}$/);
     expect(headers.get("x-cerebro-api-key")).toBeNull();
+  });
+
+  it("rejects a runtime health selector that conflicts with the server-owned tenant", () => {
+    vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
+    vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", "tenant-a");
+    vi.stubEnv(
+      "CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET",
+      "test-organizational-graph-secret-32-bytes",
+    );
+    const request = new NextRequest("http://localhost", {
+      headers: { "X-Cerebro-Tenant": "tenant-b" },
+    });
+
+    expect(() => authHeadersFor(request, "v1/source-runtimes/health")).toThrow(
+      "does not match the active Cerebro authority",
+    );
   });
 
   it("rejects an invalid server-owned tenant header", () => {

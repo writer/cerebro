@@ -78,7 +78,8 @@ describe("server-authenticated Cerebro cache warming", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
     expect(observedTarget).toBe(`https://api.example.com/grc/dashboard${search}`);
     expect(observedHeaders.get("x-cerebro-api-key")).toBe("server-owned-test-key");
-    expect(observedHeaders.get("x-cerebro-tenant")).toBeNull();
+    expect(observedHeaders.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(observedHeaders.get("x-cerebro-workspace")).toBe("workspace-a");
   });
 
   it("does not warm legacy service credentials while Rust owns web authority", async () => {

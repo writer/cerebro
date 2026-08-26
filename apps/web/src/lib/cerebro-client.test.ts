@@ -35,4 +35,24 @@ describe("fetchCerebro", () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     expect(init?.cache).toBe("no-store");
   });
+
+  it("preserves caller-supplied tenant and workspace selectors", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock.mockResolvedValue(new Response("{}", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchCerebro("/grc/dashboard", undefined, {
+      headers: {
+        "X-Cerebro-Tenant": "tenant-a",
+        "X-Cerebro-Workspace": "workspace-a",
+      },
+    });
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(headers.get("x-cerebro-workspace")).toBe("workspace-a");
+  });
 });
