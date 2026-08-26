@@ -41,8 +41,8 @@ pub const ACCEPTED_RECEIPTS: &[ArtifactDigest] = &[];
 pub const DELETION_ELIGIBLE: bool = false;
 pub const DELETION_REASON_CODES: &[&str] = &[
     "active_go_projection_path",
-    "active_go_registry_path",
     "missing_parity_receipt",
+    "no_deletion_targets",
 ];
 pub const AUTHORITY_GATES: &[AuthorityGate] = &[
     AuthorityGate {
@@ -63,8 +63,8 @@ pub const AUTHORITY_GATES: &[AuthorityGate] = &[
     },
 ];
 
-pub const BEHAVIOR_KIND: &str = "provider_source";
-pub const BEHAVIOR_CONTRACT_JSON: &str = "{\"catalog_path\":\"sources/deepseek/catalog.yaml\",\"registration_shape\":\"generic_catalog_runtime\",\"execution_owner\":\"compiled_rust_source_plan\",\"fail_closed\":true,\"runtime_families\":[\"account_balances\",\"model_catalog\"],\"event_contracts\":[{\"kind\":\"deepseek.model_catalog\",\"schema_ref\":\"deepseek/model_catalog/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"id\"]},{\"kind\":\"deepseek.account_balances\",\"schema_ref\":\"deepseek/account_balances/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"currency\"]}],\"authority\":{\"projection_dispatch\":{\"path\":\"internal/sourceprojection/registry.go\",\"register_symbol\":\"RegisterConnectorDefinitions\",\"dynamic_projector_symbol\":\"catalogRuntimeDefinitionProjectors\",\"go_file_digest_sha256\":\"sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80\",\"active_go_projection_path\":true},\"runtime_fence\":{\"path\":\"internal/sourceruntime/sourceworker/pull.go\",\"symbol\":\"RustAuthoritativeFamily\",\"go_file_digest_sha256\":\"sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861\",\"covered_runtime_families\":[\"account_balances\",\"model_catalog\"],\"missing_runtime_families\":[]}}}";
+pub const BEHAVIOR_KIND: &str = "standard_source";
+pub const BEHAVIOR_CONTRACT_JSON: &str = "{\"catalog_path\":\"sources/deepseek/catalog.yaml\",\"plan_index_path\":\"internal/sourceregistry/standard_source_plan_index.txt\",\"plan_index_digest_sha256\":\"sha256:4ddfd8a7fc2f42898318c0c093ab72519480b79387ea48f94fcc39014033d719\",\"registration_shape\":\"compiled_plan_fail_closed_metadata\",\"execution_owner\":\"compiled_rust_source_plan\",\"fail_closed\":true,\"runtime_families\":[\"account_balances\",\"model_catalog\"],\"event_contracts\":[{\"kind\":\"deepseek.model_catalog\",\"schema_ref\":\"deepseek/model_catalog/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"id\"]},{\"kind\":\"deepseek.account_balances\",\"schema_ref\":\"deepseek/account_balances/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"currency\"]}],\"authority\":{\"projection_dispatch\":{\"path\":\"internal/sourceprojection/registry.go\",\"register_symbol\":\"RegisterConnectorDefinitions\",\"dynamic_projector_symbol\":\"catalogRuntimeDefinitionProjectors\",\"go_file_digest_sha256\":\"sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80\",\"active_go_projection_path\":true},\"runtime_fence\":{\"path\":\"internal/sourceruntime/sourceworker/pull.go\",\"symbol\":\"RustAuthoritativeFamily\",\"go_file_digest_sha256\":\"sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861\",\"covered_runtime_families\":[\"account_balances\",\"model_catalog\"],\"missing_runtime_families\":[]}}}";
 
 pub const RUNTIME_FAMILIES: &[&str] = &["account_balances", "model_catalog"];
 

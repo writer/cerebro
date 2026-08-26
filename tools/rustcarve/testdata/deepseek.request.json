@@ -1,14 +1,15 @@
 {
   "schema_version": "cerebro.rustcarve.request/v2",
-  "behavior_kind": "provider_source",
+  "behavior_kind": "standard_source",
   "subject": {
     "id": "deepseek",
     "package_dir": "internal/sourceregistry",
     "catalog_path": "sources/deepseek/catalog.yaml",
-    "go_files": ["internal/sourceregistry/registry.go"],
-    "owner_symbols": ["BuiltinWithCatalogOverrides"],
+    "plan_index_path": "internal/sourceregistry/standard_source_plan_index.txt",
+    "go_files": ["internal/sourceregistry/registry.go", "internal/sourceregistry/standard_source_plan_index.go"],
+    "owner_symbols": ["BuiltinWithCatalogOverrides", "newMetadataOnlyCatalogSource"],
     "rust_implementation_revision": "5ff8021ab1a2d971e772fd6bf7f3275ff596aa6b",
-    "authority_state": "go_registry_active"
+    "authority_state": "registry_retired_authority_unproven"
   },
   "scope": {
     "tenant": {"name": "tenant_id", "type": "tenant_id", "required": true},
@@ -34,12 +35,12 @@
     }
   },
   "deletion": {
-    "paths": ["internal/sourceregistry/registry.go"],
-    "imports": ["github.com/writer/cerebro/sources/catalogruntime"],
-    "symbols": ["catalogruntimesource.New(entry)"]
+    "paths": [],
+    "imports": [],
+    "symbols": []
   },
   "options": {
-    "expected_registration_shape": "generic_catalog_runtime",
+    "expected_registration_shape": "compiled_plan_fail_closed_metadata",
     "max_input_bytes": 4194304
   }
 }

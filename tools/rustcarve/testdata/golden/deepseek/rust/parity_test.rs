@@ -8,10 +8,10 @@ use super::{
 #[test]
 fn generated_contract_is_closed_and_revision_bound() {
     assert_eq!(RUSTCARVE_TOOL_REVISION, "cerebro.rustcarve/v2");
-    assert_eq!(MIGRATION_IR_VERSION, "provider-source/v2");
+    assert_eq!(MIGRATION_IR_VERSION, "standard-source/v2");
     assert_eq!(
         MIGRATION_IR_DIGEST_SHA256,
-        "sha256:82c2d471afa88404539b9411c9088bb2ef7abb2e09ed802d1d808d3c95f319c7"
+        "sha256:9dbb4f6e73c89af8ee2c071178ac42a8a04a0c94f9dcc0e44e93fa4f2afdd026"
     );
     assert_eq!(
         RUST_IMPLEMENTATION_REVISION,

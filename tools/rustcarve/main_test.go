@@ -28,16 +28,16 @@ func TestDeepSeekDistillationIsDeterministicAndDeletionFailsClosed(t *testing.T)
 	if !reflect.DeepEqual(first, second) {
 		t.Fatal("distillation is not deterministic")
 	}
-	if first.IR.Provider == nil || first.IR.Provider.Registration != "generic_catalog_runtime" {
-		t.Fatalf("provider IR = %#v", first.IR.Provider)
+	if first.IR.Standard == nil || first.IR.Standard.Registration != "compiled_plan_fail_closed_metadata" || !validSHA256Digest(first.IR.Standard.PlanIndexDigestSHA256) {
+		t.Fatalf("standard source IR = %#v", first.IR.Standard)
 	}
-	if got := first.IR.Provider.RuntimeFamilies; !reflect.DeepEqual(got, []string{"account_balances", "model_catalog"}) {
+	if got := first.IR.Standard.RuntimeFamilies; !reflect.DeepEqual(got, []string{"account_balances", "model_catalog"}) {
 		t.Fatalf("runtime families = %v", got)
 	}
 	if first.Manifest.Eligible {
-		t.Fatal("DeepSeek deletion became eligible while the generic Go registry path is active")
+		t.Fatal("DeepSeek deletion became eligible without projection and parity authority")
 	}
-	wantReasons := []reasonCode{reasonActiveGoProjectionPath, reasonActiveGoRegistryPath, reasonMissingParityReceipt}
+	wantReasons := []reasonCode{reasonActiveGoProjectionPath, reasonMissingParityReceipt, reasonNoDeletionTargets}
 	if !reflect.DeepEqual(first.Manifest.ReasonCodes, wantReasons) {
 		t.Fatalf("manifest reasons = %v, want %v", first.Manifest.ReasonCodes, wantReasons)
 	}
