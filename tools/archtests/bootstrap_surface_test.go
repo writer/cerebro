@@ -176,7 +176,10 @@ import (
 // tenant authorization, dependency wiring, response mapping, and cache
 // invalidation. Resolver mapping, receipt verification, and closure decisions
 // remain in internal/securitylifecyclefindings and internal/findings.
-const bootstrapProductionGoLineBudget = 29817
+// Manual GRC vendor creation adds bounded request decoding, resolved-scope
+// authorization, event-envelope mapping, append/projection wiring, and response
+// mapping. Portable vendor state and read behavior remain in internal/grcvendor.
+const bootstrapProductionGoLineBudget = 30143
 
 type bootstrapFileLineCount struct {
 	path  string
