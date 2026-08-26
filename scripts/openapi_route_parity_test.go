@@ -131,6 +131,9 @@ func TestRegisteredRustAuthorityRoutesRequiresTheNativeHandler(t *testing.T) {
 Router::new().route(
     "/platform/graph/neighborhood",
     get(product_neighborhood_route),
+).route(
+    "/platform/graph/provenance",
+    get(graph_provenance_route),
 )
 `), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -140,9 +143,17 @@ Router::new().route(
 	if err != nil {
 		t.Fatalf("registeredRustAuthorityRoutes() error = %v", err)
 	}
-	want := route{Method: "get", Path: "/platform/graph/neighborhood"}
-	if len(routes) != 1 || routes[0] != want {
-		t.Fatalf("registeredRustAuthorityRoutes() = %#v, want %#v", routes, []route{want})
+	want := []route{
+		{Method: "get", Path: "/platform/graph/neighborhood"},
+		{Method: "get", Path: "/platform/graph/provenance"},
+	}
+	if len(routes) != len(want) {
+		t.Fatalf("registeredRustAuthorityRoutes() = %#v, want %#v", routes, want)
+	}
+	for index := range want {
+		if routes[index] != want[index] {
+			t.Fatalf("registeredRustAuthorityRoutes()[%d] = %#v, want %#v", index, routes[index], want[index])
+		}
 	}
 
 	if err := os.WriteFile(sourcePath, []byte(`Router::new()`), 0o600); err != nil {
