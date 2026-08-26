@@ -1083,7 +1083,7 @@ func (s *QueryStore) GetComplianceImpactFact(ctx context.Context, tenantID strin
 			return ports.ComplianceImpactDomainFact{}, ports.ErrComplianceImpactRevisionNotFound
 		}
 		if connect.CodeOf(err) == connect.CodeFailedPrecondition {
-			return ports.ComplianceImpactDomainFact{}, fmt.Errorf("%w: %v", ports.ErrComplianceImpactInvalidProjection, err)
+			return ports.ComplianceImpactDomainFact{}, fmt.Errorf("%w: %s", ports.ErrComplianceImpactInvalidProjection, err.Error())
 		}
 		return ports.ComplianceImpactDomainFact{}, graphRPCError("get compliance impact fact", err)
 	}
@@ -1142,7 +1142,7 @@ func (s *QueryStore) ListComplianceImpactDependents(ctx context.Context, request
 	response, err := s.graph.ListComplianceImpactDependents(ctx, message)
 	if err != nil {
 		if connect.CodeOf(err) == connect.CodeFailedPrecondition {
-			return ports.ComplianceImpactDependentPage{}, fmt.Errorf("%w: %v", ports.ErrComplianceImpactInvalidProjection, err)
+			return ports.ComplianceImpactDependentPage{}, fmt.Errorf("%w: %s", ports.ErrComplianceImpactInvalidProjection, err.Error())
 		}
 		return ports.ComplianceImpactDependentPage{}, graphRPCError("list compliance impact dependents", err)
 	}

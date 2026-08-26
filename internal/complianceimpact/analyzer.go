@@ -219,7 +219,7 @@ func (a *Analyzer) listDependents(ctx context.Context, tenantID string, current 
 
 func impactGraphError(err error) error {
 	if errors.Is(err, ports.ErrComplianceImpactInvalidProjection) {
-		return fmt.Errorf("%w: %s", ErrInvalidGraph, err)
+		return fmt.Errorf("%w: %s", ErrInvalidGraph, err.Error())
 	}
 	return err
 }
