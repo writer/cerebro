@@ -45,6 +45,30 @@ describe("Cerebro proxy route", () => {
     expect(new Headers(upstreamInit?.headers).get("cache-control")).toBeNull();
   });
 
+  it("distinguishes cold, warm, tenant, and workspace dashboard reads", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    const fetchMock = vi.fn(async (url: URL | RequestInfo) => new Response(
+      JSON.stringify({ target: url.toString() }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const context = { params: Promise.resolve({ path: ["grc", "dashboard"] }) };
+    const request = (tenant: string, workspace: string) => new NextRequest(
+      `http://localhost/api/cerebro/grc/dashboard?cache_contract=cold-warm-scope&tenant_id=${tenant}&workspace_id=${workspace}`,
+    );
+
+    const cold = await GET(request("tenant-a", "workspace-a"), context);
+    const warm = await GET(request("tenant-a", "workspace-a"), context);
+    const otherTenant = await GET(request("tenant-b", "workspace-a"), context);
+    const otherWorkspace = await GET(request("tenant-a", "workspace-b"), context);
+
+    expect(cold.headers.get("x-cerebro-web-cache")).toBe("miss");
+    expect(warm.headers.get("x-cerebro-web-cache")).toBe("hit");
+    expect(otherTenant.headers.get("x-cerebro-web-cache")).toBe("miss");
+    expect(otherWorkspace.headers.get("x-cerebro-web-cache")).toBe("miss");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it.each([
     ["GET", GET],
     ["POST", POST],
