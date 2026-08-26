@@ -54,7 +54,7 @@ entries:
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/users
+          path: /users
           projection:
             fields:
               display_name: name
