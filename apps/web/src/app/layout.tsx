@@ -51,7 +51,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                               <div className="flex h-screen max-w-full overflow-hidden bg-[var(--app-bg)]">
                                 <Sidebar />
                                 <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
-                                  <Topbar />
+                                  <Suspense fallback={null}>
+                                    <Topbar />
+                                  </Suspense>
                                   <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-[var(--app-bg)] px-8 py-6 max-md:px-4">
                                     <Suspense fallback={null}>{children}</Suspense>
                                   </main>
