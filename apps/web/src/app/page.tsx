@@ -23,9 +23,32 @@ import {
   shortEntity,
 } from "@/lib/grc";
 import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcPath, grcProgramReadinessPath, useGRCQuery } from "@/lib/grc-client";
+import { grcScopeQuery, type GRCScope, useGRCScopeQueryState } from "@/lib/grc-scope";
 import { normalizeLegacyControlHref } from "@/lib/navigation";
 
 const HOME_DASHBOARD_FINDING_LIMIT = DASHBOARD_FINDING_LIMIT;
+
+export const homeGRCPaths = (scope: GRCScope) => {
+  const query = grcScopeQuery(scope);
+  if (query.workspace_id && !query.tenant_id) {
+    return { coverage: null, dashboard: null, readiness: null };
+  }
+  return {
+    coverage: grcPath("/connectors/coverage", {
+      coverage_scope: "configured",
+      coverage_view: "page",
+      blind_spots_only: "true",
+      page_size: 3,
+      ...query,
+    }),
+    dashboard: grcDashboardPath({
+      limit: HOME_DASHBOARD_FINDING_LIMIT,
+      enrichments: "deferred",
+      ...query,
+    }),
+    readiness: grcProgramReadinessPath(query),
+  };
+};
 
 type WorkChipTone = "danger" | "warning" | "success" | "neutral";
 
@@ -443,13 +466,16 @@ function ProgramHealthPanel({
 
 export default function Home() {
   const { preferences } = useUserPreferences();
+  const { tenantID, workspaceID } = useGRCScopeQueryState();
   const visibleSections = preferences.homepage.sections;
   const compactHome = preferences.display.density === "compact";
-  const dashboard = useGRCQuery<GRCDashboard>(grcDashboardPath({ limit: HOME_DASHBOARD_FINDING_LIMIT, enrichments: "deferred" }));
+  const paths = homeGRCPaths({ tenantID, workspaceID });
+  const invalidWorkspaceScope = Boolean(workspaceID.trim() && !tenantID.trim());
+  const dashboard = useGRCQuery<GRCDashboard>(paths.dashboard);
   const data = dashboard.data;
-  const readinessQuery = useGRCQuery<GRCProgramReadiness>(grcProgramReadinessPath());
+  const readinessQuery = useGRCQuery<GRCProgramReadiness>(paths.readiness);
   const coverageQuery = useGRCQuery<{ blind_spots?: GRCSourceCoverageRecord[]; records?: GRCSourceCoverageRecord[] }>(
-    grcPath("/connectors/coverage", { coverage_scope: "configured", coverage_view: "page", blind_spots_only: "true", page_size: 3 }),
+    paths.coverage,
   );
   const readiness = readinessQuery.data?.summary;
   const priorityFindings = useMemo(() => (data?.findings ?? []).slice().sort(riskSort), [data?.findings]);
@@ -503,6 +529,7 @@ export default function Home() {
   const readinessLabel = "Control readiness";
 
   const reload = () => {
+    if (invalidWorkspaceScope) return;
     void dashboard.reload();
     void readinessQuery.reload();
     void coverageQuery.reload();
@@ -524,12 +551,14 @@ export default function Home() {
       />
 
       <DataStateBanner
-        state={dashboard.state}
+        state={invalidWorkspaceScope ? "permission-denied" : dashboard.state}
         subject="Graph data"
         error={dashboard.error}
         lastSuccessfulAt={dashboard.lastSuccessfulAt}
-        onRetry={() => void dashboard.reload()}
-        detail={dashboard.state === "loading" ? "Loading risks, controls, evidence, and sources." : undefined}
+        onRetry={invalidWorkspaceScope ? undefined : () => void dashboard.reload()}
+        detail={invalidWorkspaceScope
+          ? "Select a tenant before loading a workspace."
+          : dashboard.state === "loading" ? "Loading risks, controls, evidence, and sources." : undefined}
       />
 
       {data && summary && homeMetrics && (

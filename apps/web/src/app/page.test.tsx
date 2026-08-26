@@ -11,6 +11,7 @@ import { defaultUserPreferences } from "@/lib/user-preferences";
 const mocks = vi.hoisted(() => ({
   reload: vi.fn(),
   useGRCQuery: vi.fn(),
+  useGRCScopeQueryState: vi.fn(),
   useUserPreferences: vi.fn(),
 }));
 
@@ -20,6 +21,10 @@ vi.mock("@/components/providers", () => ({
 vi.mock("@/lib/grc-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/grc-client")>();
   return { ...actual, useGRCQuery: mocks.useGRCQuery };
+});
+vi.mock("@/lib/grc-scope", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/grc-scope")>();
+  return { ...actual, useGRCScopeQueryState: mocks.useGRCScopeQueryState };
 });
 
 import { grcDashboardPath, grcPath, grcProgramReadinessPath } from "@/lib/grc-client";
@@ -36,6 +41,12 @@ describe("Home review links", () => {
 
   beforeEach(() => {
     mocks.reload.mockReset().mockResolvedValue(undefined);
+    mocks.useGRCScopeQueryState.mockReset().mockReturnValue({
+      tenantID: "",
+      workspaceID: "",
+      setTenantID: vi.fn(),
+      setWorkspaceID: vi.fn(),
+    });
     mocks.useUserPreferences.mockReset().mockReturnValue({ preferences: defaultUserPreferences });
     mocks.useGRCQuery.mockReset().mockImplementation((path: string | null) => ({
       data: null,
@@ -99,6 +110,126 @@ describe("Home review links", () => {
         page_size: 3,
       }),
     ]);
+  });
+
+  it("preserves tenant-only Home reads when no workspace is active", async () => {
+    mocks.useGRCScopeQueryState.mockReturnValue({
+      tenantID: "tenant-a",
+      workspaceID: "",
+      setTenantID: vi.fn(),
+      setWorkspaceID: vi.fn(),
+    });
+
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
+      grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a" }),
+      grcProgramReadinessPath({ tenant_id: "tenant-a" }),
+      grcPath("/connectors/coverage", {
+        coverage_scope: "configured",
+        coverage_view: "page",
+        blind_spots_only: "true",
+        page_size: 3,
+        tenant_id: "tenant-a",
+      }),
+    ]);
+  });
+
+  it("keeps all Home reads isolated when the active workspace changes", async () => {
+    mocks.useGRCScopeQueryState.mockReturnValue({
+      tenantID: "tenant-a",
+      workspaceID: "workspace-a",
+      setTenantID: vi.fn(),
+      setWorkspaceID: vi.fn(),
+    });
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
+      grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-a" }),
+      grcProgramReadinessPath({ tenant_id: "tenant-a", workspace_id: "workspace-a" }),
+      grcPath("/connectors/coverage", {
+        coverage_scope: "configured",
+        coverage_view: "page",
+        blind_spots_only: "true",
+        page_size: 3,
+        tenant_id: "tenant-a",
+        workspace_id: "workspace-a",
+      }),
+    ]);
+
+    mocks.useGRCQuery.mockClear();
+    mocks.useGRCScopeQueryState.mockReturnValue({
+      tenantID: "tenant-a",
+      workspaceID: "workspace-b",
+      setTenantID: vi.fn(),
+      setWorkspaceID: vi.fn(),
+    });
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
+      grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-b" }),
+      grcProgramReadinessPath({ tenant_id: "tenant-a", workspace_id: "workspace-b" }),
+      grcPath("/connectors/coverage", {
+        coverage_scope: "configured",
+        coverage_view: "page",
+        blind_spots_only: "true",
+        page_size: 3,
+        tenant_id: "tenant-a",
+        workspace_id: "workspace-b",
+      }),
+    ]);
+  });
+
+  it("fails closed when the backend rejects a tenant and workspace pairing", async () => {
+    mocks.useGRCScopeQueryState.mockReturnValue({
+      tenantID: "tenant-a",
+      workspaceID: "workspace-b",
+      setTenantID: vi.fn(),
+      setWorkspaceID: vi.fn(),
+    });
+    mocks.useGRCQuery.mockImplementation((path: string | null) => ({
+      data: null,
+      durationMs: null,
+      error: path ? "Cerebro request failed (403): forbidden" : null,
+      lastSuccessfulAt: null,
+      loading: false,
+      reload: mocks.reload,
+      state: path ? "permission-denied" : "empty",
+    }));
+
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    expect(mocks.useGRCQuery).toHaveBeenCalledTimes(3);
+    for (const [path] of mocks.useGRCQuery.mock.calls) {
+      expect(path).toContain("tenant_id=tenant-a");
+      expect(path).toContain("workspace_id=workspace-b");
+    }
+    expect(container.textContent).toContain("Graph data access unavailable");
+    expect(container.textContent).not.toContain("Open work queue");
+  });
+
+  it("does not issue Home reads for a workspace without an explicit tenant", async () => {
+    mocks.useGRCScopeQueryState.mockReturnValue({
+      tenantID: "",
+      workspaceID: "workspace-a",
+      setTenantID: vi.fn(),
+      setWorkspaceID: vi.fn(),
+    });
+
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([null, null, null]);
+    expect(container.textContent).toContain("Select a tenant before loading a workspace.");
   });
 
   it("renders dashboard work while both secondary queries are still pending", async () => {
