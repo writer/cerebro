@@ -12,13 +12,17 @@ import {
   assertPageContract,
   assertPublicConfig,
   closeLogStream,
+  cleanupReserveMs,
   createDeadline,
   discoverPageRoutes,
+  fixtureFinalizationError,
   isExpectedLocal404,
   isExpectedRouteRedirect,
+  linuxProcessStatsHaveLiveGroupMember,
   parseArgs,
   parseFixtureReadyLine,
   routeBugbashFindings,
+  routeSettleWaitMs,
   routeWithScope,
   runPortableWebFixtureE2E,
   sameOriginApplicationRoute,
@@ -63,9 +67,16 @@ describe("portable web fixture E2E options", () => {
         homeSamples: 5,
         maxHomeP95Ms: 1_000,
         port: 0,
-        timeoutMs: 420_000,
+        timeoutMs: 600_000,
       });
     expect(parseArgs(["--timeout-ms=1200", "--all-routes"]).timeoutMs).toBe(1200);
+  });
+
+  it("bounds route settlement and reserves cleanup time inside exhaustive runs", () => {
+    expect(routeSettleWaitMs(5_000)).toBe(750);
+    expect(routeSettleWaitMs(250)).toBe(250);
+    expect(cleanupReserveMs(600_000)).toBe(30_000);
+    expect(cleanupReserveMs(2_000)).toBe(200);
   });
 
   it("keeps the former readiness flag as an overall-timeout alias", () => {
@@ -323,6 +334,33 @@ const waitForProcessExit = async (pid, timeoutMs = 2_000) => {
 };
 
 describe("portable web fixture E2E cleanup", () => {
+  it("treats defunct Linux workers as exited while retaining live group members", () => {
+    const zombie = "20 (MainThread) Z 1 13 13 0 -1 0";
+    const live = "21 (next-server) S 1 13 13 0 -1 0";
+
+    expect(linuxProcessStatsHaveLiveGroupMember([zombie], 13)).toBe(false);
+    expect(linuxProcessStatsHaveLiveGroupMember([zombie, live], 13)).toBe(true);
+    expect(linuxProcessStatsHaveLiveGroupMember([live], 99)).toBe(false);
+  });
+
+  it("retains the successful route receipt when fixture cleanup exhausts the deadline", () => {
+    const result = {
+      routeBugbash: {
+        discoveredRouteCount: 358,
+        scopedRouteCount: 192,
+        tenantOnlyRouteCount: 96,
+      },
+      routeCount: 48,
+    };
+    const cleanupError = new Error("forced fixture process-tree termination timed out");
+    const error = fixtureFinalizationError(undefined, [cleanupError], result, true);
+
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error.message).toBe("Portable fixture E2E cleanup failed after route validation passed");
+    expect(error.errors).toEqual([cleanupError]);
+    expect(error.validationResult).toBe(result);
+  });
+
   it.runIf(process.platform !== "win32")("owns fixture cleanup when the log stream fails before readiness", async () => {
     let child;
     const createLogStream = () => {
