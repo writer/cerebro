@@ -97,6 +97,31 @@ describe("Cerebro proxy route", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("forwards tenant and workspace scope for connector coverage", async () => {
+    delete process.env.CEREBRO_WEB_FIXTURE_MODE;
+    let upstreamHeaders = new Headers();
+    const fetchMock = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      upstreamHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ records: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/cerebro/connectors/coverage?tenant_id=tenant-a&workspace_id=workspace-a",
+      ),
+      { params: Promise.resolve({ path: ["connectors", "coverage"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamHeaders.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(upstreamHeaders.get("x-cerebro-workspace")).toBe("workspace-a");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["orphan workspace", "http://localhost/api/cerebro/grc/dashboard?workspace_id=workspace-a", {}],
     ["mismatched workspace", "http://localhost/api/cerebro/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-a", { "X-Cerebro-Workspace": "workspace-b" }],
