@@ -39,6 +39,7 @@ describe("fixture development launcher", () => {
     expect(environment).toMatchObject({
       CEREBRO_API_BASE: "fixture://local",
       CEREBRO_E2E_RUN_NONCE: "run-a",
+      CEREBRO_TRUSTED_IDENTITY_HEADERS: "x-user-email",
       CEREBRO_WEB_FIXTURE_MODE: "1",
       HOME: "/tmp/test-home",
       PATH: "/test-bin",
