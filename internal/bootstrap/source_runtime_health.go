@@ -166,24 +166,38 @@ func (a *App) handleListRuntimeFreshness(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, runtimeFreshnessFromHealth(health))
 }
 func (a *App) handleGetConnectorCoverage(w http.ResponseWriter, r *http.Request) {
-	health, err := a.listSourceRuntimeHealth(r)
-	if err != nil {
-		writeSourceRuntimeError(w, err)
-		return
-	}
-	coverage := health.coverageRecords
-	if coverage == nil {
-		coverage = health.Coverage
-	}
-	report := sourcecoverage.BuildScopedReport(coverage, r.URL.Query().Get("tenant_id"), r.URL.Query().Get("source_id"), health.GeneratedAt)
-	emitSourceCoverageGateTelemetry(r.Context(), report)
-	response := nhicoverage.WithSourceCoverage(report)
-	view, err := coverageview.FromRequest(r)
+	coverageScope, err := responseview.CoverageScopeForRequest(r)
 	if err != nil {
 		writeSourceRuntimeError(w, errors.Join(sourceruntime.ErrInvalidRequest, err))
 		return
 	}
-	switch view {
+	filter, empty, err := a.sourceRuntimeHealthFilterFromRequest(r)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	generatedAt, coverage := time.Now().UTC(), []sourcecoverage.Record(nil)
+	if !empty {
+		runtimes, err := a.listVisibleSourceRuntimes(r, filter)
+		if err != nil {
+			writeSourceRuntimeError(w, err)
+			return
+		}
+		coverage, err = a.sourceCoverageRecordsScoped(r.Context(), runtimes, filter, generatedAt, coverageScope)
+		if err != nil {
+			writeSourceRuntimeError(w, err)
+			return
+		}
+	}
+	report := sourcecoverage.BuildScopedReport(coverage, filter.TenantID, filter.SourceID, generatedAt.Format(time.RFC3339Nano))
+	emitSourceCoverageGateTelemetry(r.Context(), report)
+	response := nhicoverage.WithSourceCoverage(report)
+	coverageView, err := coverageview.FromRequest(r)
+	if err != nil {
+		writeSourceRuntimeError(w, errors.Join(sourceruntime.ErrInvalidRequest, err))
+		return
+	}
+	switch coverageView {
 	case coverageview.Expanded:
 		writeJSON(w, http.StatusOK, response)
 	case coverageview.Summary:
@@ -206,74 +220,18 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, errors.Join(sourceruntime.ErrInvalidRequest, err)
 	}
-	limit, err := uint32QueryParam(r, "limit")
+	filter, empty, err := a.sourceRuntimeHealthFilterFromRequest(r)
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, err
 	}
-	filter := ports.SourceRuntimeFilter{
-		RuntimeID:  strings.TrimSpace(r.URL.Query().Get("runtime_id")),
-		RuntimeIDs: csvQueryValues(r.URL.Query().Get("runtime_ids")),
-		TenantID:   strings.TrimSpace(r.URL.Query().Get("tenant_id")),
-		SourceID:   strings.TrimSpace(r.URL.Query().Get("source_id")),
-		Limit:      limit,
+	if empty {
+		return sourceRuntimeHealthResponse{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)}, nil
 	}
-	if filter.TenantID == "" {
-		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {
-			filter.TenantID = strings.TrimSpace(auth.principal.TenantID)
-		}
-	}
-	if filter.TenantID == "" {
-		filter.TenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
-	}
-	if filter.TenantID == "" && filter.RuntimeID != "" && requiresTenantFilter(r.Context()) {
-		store := sourceRuntimeStore(a.deps.StateStore)
-		if store == nil {
-			return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
-		}
-		runtime, err := store.GetSourceRuntime(r.Context(), filter.RuntimeID)
-		if errors.Is(err, ports.ErrSourceRuntimeNotFound) {
-			return sourceRuntimeHealthResponse{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)}, nil
-		}
-		if err != nil {
-			return sourceRuntimeHealthResponse{}, err
-		}
-		if !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
-			return sourceRuntimeHealthResponse{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)}, nil
-		}
-		filter.TenantID = strings.TrimSpace(runtime.GetTenantId())
-	}
-	if filter.TenantID == "" && filter.RuntimeID == "" && len(filter.RuntimeIDs) == 0 && requiresTenantFilter(r.Context()) {
-		return sourceRuntimeHealthResponse{}, errTenantForbidden
-	}
-	if err := authorizeTenantID(r.Context(), filter.TenantID); err != nil {
-		return sourceRuntimeHealthResponse{}, err
-	}
-	store := sourceRuntimeStore(a.deps.StateStore)
-	if store == nil {
-		return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
-	}
-	lister, ok := store.(ports.SourceRuntimeListStore)
-	if !ok {
-		return sourceRuntimeHealthResponse{}, sourceruntime.ErrRuntimeUnavailable
-	}
-	if filter.Limit == 0 {
-		filter.Limit = 100
-	}
-	runtimes, err := lister.ListSourceRuntimes(r.Context(), filter)
+	visibleRuntimes, err := a.listVisibleSourceRuntimes(r, filter)
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, err
 	}
 	generatedAt := time.Now().UTC()
-	visibleRuntimes := make([]*cerebrov1.SourceRuntime, 0, len(runtimes))
-	for _, runtime := range runtimes {
-		if runtime == nil {
-			continue
-		}
-		if requiresTenantFilter(r.Context()) && !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
-			continue
-		}
-		visibleRuntimes = append(visibleRuntimes, runtime)
-	}
 	records, err := a.sourceRuntimeHealthRecords(r.Context(), visibleRuntimes, generatedAt)
 	if err != nil {
 		return sourceRuntimeHealthResponse{}, err
@@ -295,6 +253,75 @@ func (a *App) listSourceRuntimeHealth(r *http.Request) (sourceRuntimeHealthRespo
 		view:            view,
 		coverageRecords: coverage,
 	}, nil
+}
+
+func (a *App) sourceRuntimeHealthFilterFromRequest(r *http.Request) (ports.SourceRuntimeFilter, bool, error) {
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		return ports.SourceRuntimeFilter{}, false, err
+	}
+	workspaceID, err := requestApplicationWorkspaceSelector(r)
+	if err != nil {
+		return ports.SourceRuntimeFilter{}, false, err
+	}
+	explicitTenantID := strings.TrimSpace(r.URL.Query().Get("tenant_id"))
+	if explicitTenantID == "" {
+		explicitTenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
+	}
+	if workspaceID != "" && explicitTenantID == "" {
+		return ports.SourceRuntimeFilter{}, false, fmt.Errorf("%w: tenant_id is required with workspace_id", errInvalidHTTPRequest)
+	}
+	filter := ports.SourceRuntimeFilter{
+		RuntimeID: strings.TrimSpace(r.URL.Query().Get("runtime_id")), RuntimeIDs: csvQueryValues(r.URL.Query().Get("runtime_ids")),
+		TenantID: strings.TrimSpace(r.URL.Query().Get("tenant_id")), ApplicationWorkspaceID: workspaceID,
+		SourceID: strings.TrimSpace(r.URL.Query().Get("source_id")), Limit: limit,
+	}
+	if filter.TenantID == "" {
+		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok {
+			filter.TenantID = strings.TrimSpace(auth.principal.TenantID)
+		}
+	}
+	if filter.TenantID == "" {
+		filter.TenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
+	}
+	if filter.TenantID == "" && filter.RuntimeID != "" && requiresTenantFilter(r.Context()) {
+		store := sourceRuntimeStore(a.deps.StateStore)
+		if store == nil {
+			return ports.SourceRuntimeFilter{}, false, sourceruntime.ErrRuntimeUnavailable
+		}
+		runtime, err := store.GetSourceRuntime(r.Context(), filter.RuntimeID)
+		if errors.Is(err, ports.ErrSourceRuntimeNotFound) || (err == nil && !tenantAllowedByContext(r.Context(), runtime.GetTenantId())) {
+			return filter, true, nil
+		}
+		if err != nil {
+			return ports.SourceRuntimeFilter{}, false, err
+		}
+		filter.TenantID = strings.TrimSpace(runtime.GetTenantId())
+	}
+	if filter.TenantID == "" && filter.RuntimeID == "" && len(filter.RuntimeIDs) == 0 && requiresTenantFilter(r.Context()) {
+		return ports.SourceRuntimeFilter{}, false, errTenantForbidden
+	}
+	if err := authorizeTenantID(r.Context(), filter.TenantID); err != nil {
+		return ports.SourceRuntimeFilter{}, false, err
+	}
+	if err := authorizeApplicationWorkspaceID(r.Context(), filter.TenantID, filter.ApplicationWorkspaceID); err != nil {
+		return ports.SourceRuntimeFilter{}, false, err
+	}
+	if filter.Limit == 0 {
+		filter.Limit = 100
+	}
+	return filter, false, nil
+}
+
+func (a *App) listVisibleSourceRuntimes(r *http.Request, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	store := sourceRuntimeStore(a.deps.StateStore)
+	lister, ok := store.(ports.SourceRuntimeListStore)
+	if !ok || isNilInterface(lister) {
+		return nil, sourceruntime.ErrRuntimeUnavailable
+	}
+	return sourceruntime.ListVisibleRuntimes(r.Context(), lister, filter, func(tenantID string) bool {
+		return !requiresTenantFilter(r.Context()) || tenantAllowedByContext(r.Context(), tenantID)
+	})
 }
 
 func emptySourceRuntimeHealthResponse() sourceRuntimeHealthResponse {
@@ -341,37 +368,12 @@ func (a *App) sourceCoverageRecords(ctx context.Context, runtimes []*cerebrov1.S
 }
 
 func (a *App) sourceCoverageRecordsScoped(ctx context.Context, runtimes []*cerebrov1.SourceRuntime, filter ports.SourceRuntimeFilter, generatedAt time.Time, scope responseview.CoverageScope) ([]sourcecoverage.Record, error) {
-	if a == nil || a.sources == nil {
-		return nil, nil
-	}
-	contracts := sourcecoverage.ContractsFromRegistry(a.sources)
-	if scope == responseview.CoverageConfigured {
-		configuredSources := make(map[string]struct{}, len(runtimes))
-		for _, runtime := range runtimes {
-			if runtime == nil {
-				continue
-			}
-			if sourceID := strings.TrimSpace(runtime.GetSourceId()); sourceID != "" {
-				configuredSources[sourceID] = struct{}{}
-			}
-		}
-		configuredContracts := contracts[:0]
-		for _, contract := range contracts {
-			if _, ok := configuredSources[strings.TrimSpace(contract.SourceID)]; ok {
-				configuredContracts = append(configuredContracts, contract)
-			}
-		}
-		contracts = configuredContracts
-	}
-	if len(contracts) == 0 {
-		return nil, nil
-	}
-	observations := sourcecoverage.ObservationsFromRuntimes(runtimes, func(runtime *cerebrov1.SourceRuntime) string {
-		return runtimeHealthStatus(runtime, generatedAt)
-	})
-	records, err := sourcecoverage.Evaluate(ctx, contracts, observations, sourcecoverage.Options{
-		TenantID: strings.TrimSpace(filter.TenantID),
-		SourceID: strings.TrimSpace(filter.SourceID),
+	records, err := sourcecoverage.EvaluateRuntimes(ctx, a.sources, runtimes, sourcecoverage.RuntimeEvaluationOptions{
+		Options:        sourcecoverage.Options{TenantID: strings.TrimSpace(filter.TenantID), SourceID: strings.TrimSpace(filter.SourceID)},
+		ConfiguredOnly: scope == responseview.CoverageConfigured,
+		Status: func(runtime *cerebrov1.SourceRuntime) string {
+			return runtimeHealthStatus(runtime, generatedAt)
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: evaluate source coverage: %w", sourceruntime.ErrRuntimeUnavailable, err)

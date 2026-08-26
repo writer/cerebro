@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/writer/cerebro/internal/grcdashboard"
 	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/grcprogram"
 	"github.com/writer/cerebro/internal/ports"
@@ -31,6 +32,11 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
 		return
 	}
+	enrichments, err := grcdashboard.ParseEnrichments(r.URL.Query())
+	if err != nil {
+		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
+		return
+	}
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
 		writeGRCError(w, err)
@@ -47,10 +53,10 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	generatedAt := time.Now().UTC()
-	coverage, sourceSummaries, err := grcprogram.RunReadinessEnrichments(r.Context(), grcRuntimeHealthEnrichmentTimeout, func(ctx context.Context) ([]sourcecoverage.Record, error) {
+	coverage, sourceSummaries, err := grcprogram.RunReadinessEnrichments(r.Context(), grcRuntimeHealthEnrichmentTimeout, enrichments != grcdashboard.EnrichmentsDeferred, func(ctx context.Context) ([]sourcecoverage.Record, error) {
 		return a.sourceCoverageRecordsScoped(ctx, runtimes, ports.SourceRuntimeFilter{
 			RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID,
-			SourceID: scope.SourceID, Limit: scope.Limit,
+			ApplicationWorkspaceID: scope.ApplicationWorkspaceID, SourceID: scope.SourceID, Limit: scope.Limit,
 		}, generatedAt, coverageScope)
 	}, func(ctx context.Context) ([]sourceRuntimeHealthSummary, error) {
 		return a.grcSourceRuntimeHealthSummaries(ctx, runtimes, generatedAt)

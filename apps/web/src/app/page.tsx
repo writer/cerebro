@@ -46,7 +46,7 @@ export const homeGRCPaths = (scope: GRCScope) => {
       enrichments: "deferred",
       ...query,
     }),
-    readiness: grcProgramReadinessPath(query),
+    readiness: grcProgramReadinessPath({ enrichments: "deferred", ...query }),
   };
 };
 

@@ -26,6 +26,12 @@ type Options struct {
 	SourceID string
 }
 
+type RuntimeEvaluationOptions struct {
+	Options
+	ConfiguredOnly bool
+	Status         func(*cerebrov1.SourceRuntime) string
+}
+
 type RuntimeObservation struct {
 	RuntimeID           string
 	SourceID            string
@@ -139,6 +145,34 @@ func ObservationsFromRuntimes(runtimes []*cerebrov1.SourceRuntime, status func(*
 
 func Evaluate(ctx context.Context, contracts []sourcecdk.CoverageContract, observations []RuntimeObservation, options Options) ([]Record, error) {
 	return evaluateCoverage(ctx, contracts, observations, options)
+}
+
+// EvaluateRuntimes evaluates catalog contracts against visible runtime state.
+func EvaluateRuntimes(ctx context.Context, registry *sourcecdk.Registry, runtimes []*cerebrov1.SourceRuntime, options RuntimeEvaluationOptions) ([]Record, error) {
+	contracts := ContractsFromRegistry(registry)
+	if options.ConfiguredOnly {
+		configuredSources := make(map[string]struct{}, len(runtimes))
+		for _, runtime := range runtimes {
+			if runtime != nil && strings.TrimSpace(runtime.GetSourceId()) != "" {
+				configuredSources[strings.TrimSpace(runtime.GetSourceId())] = struct{}{}
+			}
+		}
+		configuredContracts := make([]sourcecdk.CoverageContract, 0, len(contracts))
+		for _, contract := range contracts {
+			if _, ok := configuredSources[strings.TrimSpace(contract.SourceID)]; ok {
+				configuredContracts = append(configuredContracts, contract)
+			}
+		}
+		contracts = configuredContracts
+	}
+	if len(contracts) == 0 {
+		return nil, nil
+	}
+	status := options.Status
+	if status == nil {
+		status = func(*cerebrov1.SourceRuntime) string { return "" }
+	}
+	return Evaluate(ctx, contracts, ObservationsFromRuntimes(runtimes, status), options.Options)
 }
 
 func runtimeCertificationTier(value string) CertificationTier {

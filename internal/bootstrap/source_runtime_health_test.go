@@ -12,6 +12,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/nhicoverage"
 	"github.com/writer/cerebro/internal/ports"
@@ -23,6 +24,19 @@ import (
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type unfilteredRuntimeListStore struct {
+	*stubRuntimeStore
+}
+
+func (s *unfilteredRuntimeListStore) ListSourceRuntimes(_ context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	s.sourceRuntimeListFilter = filter
+	runtimes := make([]*cerebrov1.SourceRuntime, 0, len(s.runtimes))
+	for _, runtime := range s.runtimes {
+		runtimes = append(runtimes, runtime)
+	}
+	return runtimes, nil
+}
 
 func TestSourceRuntimeHealthRecordIncludesScheduleReceipt(t *testing.T) {
 	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
@@ -641,7 +655,7 @@ func TestSourceRuntimeHealthRecordsBatchLatestRunQueries(t *testing.T) {
 	}
 }
 
-func TestConnectorCoverageReportUsesAuthenticatedTenantAndBlindSpotTotals(t *testing.T) {
+func TestConnectorCoverageReportUsesAuthenticatedTenantWithoutRuntimeHealthLookups(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
@@ -663,7 +677,10 @@ func TestConnectorCoverageReportUsesAuthenticatedTenantAndBlindSpotTotals(t *tes
 			Config:       map[string]string{"family": "application"},
 		},
 	}}
-	app := &App{deps: Dependencies{StateStore: store}, sources: registry}
+	app := &App{deps: Dependencies{
+		StateStore: store,
+		GraphStore: &stubGraphStore{err: errors.New("connector coverage must not query runtime health")},
+	}, sources: registry}
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/connectors/coverage?source_id=okta", nil)
 	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
@@ -704,6 +721,129 @@ func TestConnectorCoverageReportUsesAuthenticatedTenantAndBlindSpotTotals(t *tes
 		if record.TenantID == "other" || record.RuntimeID == "other-okta-application" {
 			t.Fatalf("report leaked other tenant record: %#v", record)
 		}
+	}
+	if got := store.findingEvaluationRunListRequest; got.LatestByRuntime || len(got.RuntimeIDs) != 0 {
+		t.Fatalf("connector coverage queried finding runtime health: %#v", got)
+	}
+}
+
+func TestConnectorCoverageResolvesAuthorizedTenantFromRuntimeID(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-okta-user": {
+			Id: "writer-okta-user", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "user"},
+		},
+	}}
+	app := &App{deps: Dependencies{StateStore: store}, sources: registry}
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/connectors/coverage?runtime_id=writer-okta-user", nil)
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{AllowedTenants: []string{"writer"}},
+	}))
+
+	app.handleGetConnectorCoverage(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if got := store.sourceRuntimeListFilter; got.TenantID != "writer" || got.RuntimeID != "writer-okta-user" {
+		t.Fatalf("runtime filter = %#v, want resolved writer runtime", got)
+	}
+	var report nhicoverage.SourceCoverageResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
+		t.Fatalf("decode report: %v", err)
+	}
+	if report.TenantID != "writer" {
+		t.Fatalf("report tenant = %q, want writer", report.TenantID)
+	}
+}
+
+func TestConnectorCoverageFiltersRuntimesByAuthorizedApplicationWorkspace(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	baseStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-okta-user": {
+			Id:       "writer-okta-user",
+			SourceId: "okta",
+			TenantId: "writer",
+			Config: map[string]string{
+				"family": "user",
+				ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-a",
+			},
+		},
+		"writer-okta-application": {
+			Id:       "writer-okta-application",
+			SourceId: "okta",
+			TenantId: "writer",
+			Config: map[string]string{
+				"family": "application",
+				ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-b",
+			},
+		},
+		"other-okta-user": {
+			Id:       "other-okta-user",
+			SourceId: "okta",
+			TenantId: "other",
+			Config: map[string]string{
+				"family": "user",
+				ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-a",
+			},
+		},
+	}}
+	store := &unfilteredRuntimeListStore{stubRuntimeStore: baseStore}
+	app := &App{deps: Dependencies{StateStore: store}, sources: registry}
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/connectors/coverage?tenant_id=writer&workspace_id=workspace-a&source_id=okta", nil)
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{
+			AllowedTenants: []string{"writer"},
+			ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{{
+				TenantID: "writer", ApplicationWorkspaceIDs: []string{"workspace-a"},
+			}},
+		},
+	}))
+
+	app.handleGetConnectorCoverage(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if got := store.sourceRuntimeListFilter; got.TenantID != "writer" || got.ApplicationWorkspaceID != "workspace-a" {
+		t.Fatalf("runtime filter = %#v, want writer/workspace-a", got)
+	}
+	var report nhicoverage.SourceCoverageResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
+		t.Fatalf("decode report: %v", err)
+	}
+	for _, record := range report.Records {
+		if record.RuntimeID == "writer-okta-application" || record.RuntimeID == "other-okta-user" {
+			t.Fatalf("coverage leaked runtime outside writer/workspace-a: %#v", record)
+		}
+	}
+}
+
+func TestConnectorCoverageRejectsApplicationWorkspaceOutsidePrincipalGrant(t *testing.T) {
+	app := &App{deps: Dependencies{StateStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{}}}}
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/connectors/coverage?tenant_id=writer&workspace_id=workspace-b", nil)
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{
+			AllowedTenants: []string{"writer"},
+			ApplicationWorkspaceGrants: []config.ApplicationWorkspaceGrant{{
+				TenantID: "writer", ApplicationWorkspaceIDs: []string{"workspace-a"},
+			}},
+		},
+	}))
+
+	app.handleGetConnectorCoverage(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusForbidden, recorder.Body.String())
 	}
 }
 
