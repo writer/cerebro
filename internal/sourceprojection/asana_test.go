@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"errors"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -20,14 +21,18 @@ func TestAsanaAssetProjection(t *testing.T) {
 	}
 }
 
-func TestAsanaIdentityUserProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "asana", Kind: "asana.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
-	entities, _, err := asanaUsersProjections(event)
-	if err != nil {
-		t.Fatalf("projection error = %v", err)
+func TestAsanaUsersGoProjectionFailsClosedForRustAuthoritativeFamily(t *testing.T) {
+	entities, links, err := ProjectEvent(&cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "tenant",
+		SourceId: "asana",
+		Kind:     "asana.users",
+	})
+	if !errors.Is(err, errAsanaUsersRustProjectionRequired) {
+		t.Fatalf("ProjectEvent() error = %v", err)
 	}
-	if len(entities) == 0 {
-		t.Fatal("expected projected identity user")
+	if len(entities) != 0 || len(links) != 0 {
+		t.Fatalf("Go projection produced entities=%d links=%d", len(entities), len(links))
 	}
 }
 
