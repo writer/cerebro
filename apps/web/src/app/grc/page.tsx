@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 
 import { AttentionBanner, Badge, DataStateBanner, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
@@ -20,6 +21,11 @@ import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcProgramReadinessPath, use
 import { frameworkRouteSegment } from "@/lib/grc-frameworks";
 import { normalizeLegacyControlHref } from "@/lib/navigation";
 import type { RuntimeState } from "@/lib/runtime-state";
+
+type GRCScope = {
+  tenantID: string;
+  workspaceID: string;
+};
 
 type IssueQueueItem = {
   action: string;
@@ -45,6 +51,22 @@ type ReadinessCheck = {
   status: string;
   tone: "danger" | "warning" | "success" | "neutral";
   value: string;
+};
+
+export const grcOverviewPaths = (scope: GRCScope) => {
+  const tenantID = scope.tenantID.trim();
+  const workspaceID = scope.workspaceID.trim();
+  const query = {
+    tenant_id: tenantID || undefined,
+    workspace_id: workspaceID || undefined,
+  };
+  if (query.workspace_id && !query.tenant_id) {
+    return { dashboard: null, readiness: null };
+  }
+  return {
+    dashboard: grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT, ...query }),
+    readiness: grcProgramReadinessPath(query),
+  };
 };
 
 const controlHref = (control: GRCControl) =>
@@ -434,8 +456,13 @@ function FrameworkPosturePanel({ frameworks }: { frameworks: GRCProgramFramework
 }
 
 export default function GRCPage() {
-  const dashboard = useGRCQuery<GRCDashboard>(grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT }));
-  const readinessQuery = useGRCQuery<GRCProgramReadiness>(dashboard.data ? grcProgramReadinessPath() : null);
+  const searchParams = useSearchParams();
+  const tenantID = searchParams.get("tenant_id") ?? "";
+  const workspaceID = searchParams.get("workspace_id") ?? "";
+  const paths = grcOverviewPaths({ tenantID, workspaceID });
+  const invalidWorkspaceScope = Boolean(workspaceID.trim() && !tenantID.trim());
+  const dashboard = useGRCQuery<GRCDashboard>(paths.dashboard);
+  const readinessQuery = useGRCQuery<GRCProgramReadiness>(paths.readiness);
   const dashboardControls = useMemo(() => dashboard.data?.controls ?? [], [dashboard.data?.controls]);
   const fallbackSummary = useMemo(() => controlSummaryFromDashboard(dashboardControls), [dashboardControls]);
   const summary = readinessQuery.data?.summary ?? fallbackSummary;
@@ -453,6 +480,7 @@ export default function GRCPage() {
     : "Open control issues, packet status, evidence gaps, and source freshness.";
 
   const reload = () => {
+    if (invalidWorkspaceScope) return;
     void dashboard.reload();
     void readinessQuery.reload();
   };
@@ -465,18 +493,27 @@ export default function GRCPage() {
         description={pageDescription}
         action={
           <div className="flex items-center gap-2">
-            <button type="button" onClick={reload} className="secondary-button px-3 py-1.5 text-[13px]">Refresh</button>
+            <button
+              type="button"
+              onClick={reload}
+              disabled={invalidWorkspaceScope}
+              className="secondary-button px-3 py-1.5 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Refresh
+            </button>
           </div>
         }
       />
 
       <DataStateBanner
-        state={dashboard.state}
+        state={invalidWorkspaceScope ? "permission-denied" : dashboard.state}
         subject="Compliance data"
         error={dashboard.error}
         lastSuccessfulAt={dashboard.lastSuccessfulAt}
-        onRetry={() => void dashboard.reload()}
-        detail={dashboard.state === "loading" ? "Loading controls, findings, evidence, and sources." : undefined}
+        onRetry={invalidWorkspaceScope ? undefined : () => void dashboard.reload()}
+        detail={invalidWorkspaceScope
+          ? "Select a tenant before loading a workspace."
+          : dashboard.state === "loading" ? "Loading controls, findings, evidence, and sources." : undefined}
       />
 
       {readinessQuery.error && dashboard.data && (
