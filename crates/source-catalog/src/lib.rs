@@ -3574,6 +3574,7 @@ mod tests {
             "cloudflare",
             "conjur",
             "deepseek",
+            "digitalocean",
             "duo",
             "fivetran",
             "jira",
