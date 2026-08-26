@@ -1,0 +1,227 @@
+{
+  "schema_version": "cerebro.rustcarve.closed-schema/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "request_schema_version": "cerebro.rustcarve.request/v1",
+  "migration_ir_schema_version": "cerebro.rustcarve.migration-ir/v1",
+  "unknown_fields": "reject",
+  "scope": {
+    "tenant_input": {
+      "name": "tenant_id",
+      "type": "tenant_id",
+      "required": true
+    },
+    "workspace_policy": [
+      "forbidden",
+      "optional",
+      "required"
+    ],
+    "workspace_input": {
+      "name": "workspace_id",
+      "type": "workspace_id",
+      "required": false
+    }
+  },
+  "variants": [
+    {
+      "behavior_kind": "standard_source",
+      "ir_version": "standard-source/v1",
+      "required_receipt_modes": [
+        "fixed_fixture"
+      ],
+      "canonical_go_type": "tools/rustcarve.standardSourceIR"
+    },
+    {
+      "behavior_kind": "provider_source",
+      "ir_version": "provider-source/v1",
+      "required_receipt_modes": [
+        "fixed_fixture"
+      ],
+      "canonical_go_type": "tools/rustcarve.standardSourceIR"
+    },
+    {
+      "behavior_kind": "graph_query",
+      "ir_version": "graph-query/v1",
+      "required_receipt_modes": [
+        "fixed_fixture",
+        "live_safe_local_graph"
+      ],
+      "canonical_go_type": "tools/rustcarve.graphQueryIR"
+    },
+    {
+      "behavior_kind": "finding_rule",
+      "ir_version": "finding-rule/v1",
+      "required_receipt_modes": [
+        "replay"
+      ],
+      "canonical_go_type": "tools/rustcarve.findingRuleIR"
+    }
+  ],
+  "graph_query": {
+    "canonical_go_type": "tools/rustcarve.graphQueryIR",
+    "allowed_node_kinds": [
+      "application",
+      "asset",
+      "capability",
+      "compliance.impact_revision",
+      "control",
+      "entitlement",
+      "evidence",
+      "evidence_declared_node",
+      "finding",
+      "group",
+      "identity",
+      "person",
+      "policy",
+      "principal",
+      "resource",
+      "role",
+      "workspace"
+    ],
+    "allowed_relationship_kinds": [
+      "assigned_to",
+      "can_admin",
+      "compliance_depends_on",
+      "confers_capability",
+      "depends_on",
+      "evidence_declared_relation",
+      "evidence_for",
+      "grants_entitlement",
+      "has_access",
+      "member_of",
+      "owns",
+      "represents_identity",
+      "same_actor",
+      "supports"
+    ],
+    "allowed_operations": [
+      "count_dependencies",
+      "effective_access",
+      "get_fact",
+      "grounding_nodes",
+      "grounding_relations",
+      "list_dependencies",
+      "list_dependents"
+    ],
+    "allowed_predicates": [
+      "bounded_substring",
+      "exact",
+      "exact_set",
+      "fixed_relation",
+      "keyset_gt"
+    ],
+    "allowed_directions": [
+      "inbound",
+      "outbound"
+    ],
+    "allowed_cursor_kinds": [
+      "keyset",
+      "none"
+    ],
+    "allowed_limit_expressions": [
+      "exact",
+      "fixed",
+      "prior_exact_count",
+      "request_plus_one"
+    ],
+    "scope_binding_rule": "every node and relationship names the typed tenant input and, when present, the typed workspace input",
+    "union_output_rule": "every typed branch must equal one normalized output field sequence; dedupe and final order are explicit",
+    "public_response_rule": "every operation names an exact normalized public response shape",
+    "traversal_rule": "direction and finite positive minimum and maximum hops are required; effective_access requires exact one-hop segments",
+    "dynamic_query_rule": "raw, interpolated, dynamic, or unbounded Cypher is not representable and is rejected"
+  },
+  "finding_rule": {
+    "canonical_go_type": "tools/rustcarve.findingRuleIR",
+    "allowed_predicates": [
+      "absent",
+      "bool_is",
+      "equals",
+      "in_set",
+      "present"
+    ],
+    "allowed_missing_behavior": [
+      "default_false",
+      "no_match",
+      "reject"
+    ],
+    "allowed_lifecycle_states": [
+      "close",
+      "open",
+      "reopen",
+      "update"
+    ],
+    "allowed_expiry_modes": [
+      "none",
+      "ttl"
+    ],
+    "fingerprint_normalization": [
+      "utf8_nfc_lowercase_trim",
+      "utf8_trim"
+    ],
+    "replay_rule": "exact replay parity bound to the same IR, corpus, tool, and Rust revisions"
+  },
+  "differential_receipt": {
+    "schema_version": "cerebro.rustcarve.differential-receipt/v1",
+    "required_fields": [
+      "tool_revision",
+      "behavior_kind",
+      "subject_id",
+      "go_facts_digest_sha256",
+      "ir_version",
+      "ir_digest_sha256",
+      "rust_implementation_revision",
+      "evidence_digests_sha256",
+      "input_digest_sha256",
+      "fixture_or_graph_revision",
+      "normalized_rows_digest_sha256",
+      "order_cursor_digest_sha256",
+      "mismatch_count"
+    ],
+    "mismatch_rule": "mismatch_count must be zero and every digest/revision must match the generated IR"
+  },
+  "deletion_manifest": {
+    "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
+    "exact_targets": [
+      "paths",
+      "imports",
+      "symbols"
+    ],
+    "eligibility": "false unless Rust-only fail-closed authority and every required bound receipt pass"
+  },
+  "reason_codes": [
+    "active_go_execution_path",
+    "active_go_registry_path",
+    "ambiguous_go_owner",
+    "dynamic_go_callback",
+    "dynamic_query",
+    "interpolated_cypher",
+    "invalid_cursor",
+    "invalid_limit",
+    "malformed_json",
+    "missing_parity_receipt",
+    "missing_replay_corpus",
+    "no_deletion_targets",
+    "nondeterministic_time",
+    "receipt_binding_mismatch",
+    "replay_mismatch",
+    "response_shape_mismatch",
+    "secret_material",
+    "side_effecting_matcher",
+    "unbound_tenant_scope",
+    "unbound_workspace_scope",
+    "unbounded_result_limit",
+    "unbounded_scan",
+    "unbounded_shape",
+    "unbounded_traversal",
+    "union_shape_mismatch",
+    "unknown_behavior_kind",
+    "unstable_fingerprint",
+    "unsupported_aggregate",
+    "unsupported_graph_anchor",
+    "unsupported_lifecycle",
+    "unsupported_predicate",
+    "unsupported_registration_shape",
+    "unsupported_relation",
+    "unsupported_ttl",
+    "wrong_scope"
+  ]
+}

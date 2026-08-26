@@ -1,0 +1,311 @@
+{
+  "schema_version": "cerebro.rustcarve.migration-ir/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "ir_version": "finding-rule/v1",
+  "digest_sha256": "sha256:5ac4f7373b29b022169314155601c663dd646f4d8dd7f54c72ee412a82283bd0",
+  "behavior_kind": "finding_rule",
+  "subject": {
+    "id": "tailscale-tailnet-device-approval-disabled",
+    "rust_implementation_revision": "9a0d21b5b87996019ac78aec5a426129e6114558",
+    "authority_state": "rust_authoritative_no_go_writer"
+  },
+  "scope": {
+    "tenant": {
+      "name": "tenant_id",
+      "type": "tenant_id",
+      "required": true
+    },
+    "workspace_policy": "optional",
+    "workspace": {
+      "name": "workspace_id",
+      "type": "workspace_id",
+      "required": false
+    }
+  },
+  "go_facts": {
+    "package_name": "findings",
+    "files": [
+      "internal/findings/rust_tailscale_tailnet_rule.go"
+    ],
+    "file_digests": [
+      {
+        "path": "internal/findings/rust_tailscale_tailnet_rule.go",
+        "role": "go_source",
+        "digest_sha256": "sha256:53f3e4b7edb2c161c34f9b337c6779c0ffcd0eeffbac28a78ed3428e089a160d"
+      }
+    ],
+    "imports": [
+      "context",
+      "crypto/sha256",
+      "embed",
+      "encoding/json",
+      "fmt",
+      "github.com/writer/cerebro/gen/cerebro/v1",
+      "github.com/writer/cerebro/internal/ports",
+      "github.com/writer/cerebro/internal/wasmjson",
+      "strings",
+      "time"
+    ],
+    "owner_symbols": [
+      "newTailscaleTailnetDeviceApprovalDisabledRule"
+    ],
+    "calls": [],
+    "digest_sha256": "sha256:eeead0d93f482fafaeac7efd391bb34217571e497b326652a1c1ccf7a0a25467"
+  },
+  "evidence": {
+    "fixtures": [
+      {
+        "path": "internal/findings/tailscale_tailnet_device_approval_disabled_rule_test.go",
+        "role": "retired_go_oracle",
+        "digest_sha256": "sha256:b71e855a3e8bcb06994ec6e9c21b5d3e5753aae71a40cb38c877e42571dc8928"
+      },
+      {
+        "path": "internal/findings/testdata/rules/tailscale-tailnet-device-approval-disabled.json",
+        "role": "rule_fixture",
+        "digest_sha256": "sha256:a4706f3accee3b171e70d96866a5ab99209a2983e5388348caa62b55f6dd0383"
+      }
+    ],
+    "traces": [
+      {
+        "path": "crates/finding-rule-kernel/src/evaluation.rs",
+        "role": "rust_authority_contract",
+        "digest_sha256": "sha256:217b0bf0e06480c7bbe769e764217fae006337290ea059cae9961995e0399413"
+      }
+    ]
+  },
+  "finding_rule": {
+    "ir_version": "finding-rule/v1",
+    "rule": {
+      "rule_id": "tailscale-tailnet-device-approval-disabled",
+      "family": "tailscale.tailnet",
+      "catalog_revision": "af1b1d2e11b9cc726ffe44a2d4c46e5e898e45c01da9e1b414fc2b6b56a09f8b"
+    },
+    "scope": {
+      "tenant": {
+        "name": "tenant_id",
+        "type": "tenant_id",
+        "required": true
+      },
+      "workspace_policy": "optional",
+      "workspace": {
+        "name": "workspace_id",
+        "type": "workspace_id",
+        "required": false
+      }
+    },
+    "matcher": {
+      "input_fields": [
+        {
+          "name": "runtime_tenant_id",
+          "type": "tenant_id"
+        },
+        {
+          "name": "runtime_workspace_id",
+          "type": "workspace_id"
+        },
+        {
+          "name": "event_tenant_id",
+          "type": "tenant_id"
+        },
+        {
+          "name": "event_source_id",
+          "type": "string"
+        },
+        {
+          "name": "event_kind",
+          "type": "string"
+        },
+        {
+          "name": "occurred_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "tailnet",
+          "type": "string"
+        },
+        {
+          "name": "devices_approval_on",
+          "type": "boolean"
+        }
+      ],
+      "predicates": [
+        {
+          "kind": "equals",
+          "target": "runtime_tenant_id",
+          "input": "event_tenant_id"
+        },
+        {
+          "kind": "equals",
+          "target": "event_source_id",
+          "input": "tailscale"
+        },
+        {
+          "kind": "equals",
+          "target": "event_kind",
+          "input": "tailscale.tailnet"
+        },
+        {
+          "kind": "bool_is",
+          "target": "devices_approval_on",
+          "input": "false"
+        }
+      ],
+      "required_attributes": [
+        {
+          "name": "tailnet",
+          "type": "string",
+          "missing_behavior": "no_match"
+        },
+        {
+          "name": "devices_approval_on",
+          "type": "boolean",
+          "missing_behavior": "no_match"
+        }
+      ]
+    },
+    "fingerprint": {
+      "domain_separator": "tailscale-tailnet-device-approval-disabled\\u0000",
+      "fields": [
+        "rule_id",
+        "tailscale_tailnet_urn"
+      ],
+      "normalization": "utf8_trim",
+      "hash": "sha256"
+    },
+    "lifecycle": {
+      "states": [
+        "open",
+        "update",
+        "close",
+        "reopen"
+      ],
+      "transitions": [
+        {
+          "from": "open",
+          "to": "update",
+          "condition": "matching_event"
+        },
+        {
+          "from": "open",
+          "to": "close",
+          "condition": "devices_approval_on_true"
+        },
+        {
+          "from": "close",
+          "to": "reopen",
+          "condition": "devices_approval_on_false"
+        },
+        {
+          "from": "reopen",
+          "to": "update",
+          "condition": "matching_event"
+        }
+      ],
+      "close_condition": "same_tailnet_and_devices_approval_on_true",
+      "observed_at_source": "event.occurred_at"
+    },
+    "graph_anchors": [
+      {
+        "entity_kind": "tailscale.tailnet",
+        "id_field": "tailscale_tailnet_urn",
+        "tenant_binding": "tenant_id",
+        "workspace_binding": "workspace_id_optional",
+        "relationship_role": "finding_subject"
+      }
+    ],
+    "expiry": {
+      "mode": "none",
+      "ttl_seconds": 0,
+      "clock": "observed_at",
+      "expiry_source": ""
+    },
+    "output": {
+      "schema_version": "cerebro.public-finding/v1",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "fingerprint",
+          "type": "string"
+        },
+        {
+          "name": "tenant_id",
+          "type": "tenant_id"
+        },
+        {
+          "name": "runtime_id",
+          "type": "string"
+        },
+        {
+          "name": "rule_id",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "severity",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "summary",
+          "type": "string"
+        },
+        {
+          "name": "resource_urns",
+          "type": "array\u003curn\u003e"
+        },
+        {
+          "name": "event_ids",
+          "type": "array\u003cstring\u003e"
+        },
+        {
+          "name": "first_observed_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "last_observed_at",
+          "type": "timestamp"
+        }
+      ]
+    },
+    "replay_corpus": [
+      {
+        "path": "internal/findings/testdata/rules/tailscale-tailnet-device-approval-disabled.json",
+        "role": "rule_fixture"
+      },
+      {
+        "path": "internal/findings/tailscale_tailnet_device_approval_disabled_rule_test.go",
+        "role": "retired_go_oracle"
+      }
+    ],
+    "counterexamples": [
+      {
+        "path": "internal/findings/tailscale_tailnet_device_approval_disabled_rule_test.go",
+        "role": "cross_scope_and_fail_closed_cases"
+      }
+    ],
+    "authority": {
+      "required_authority": "rust_finding_rule_kernel",
+      "fail_closed": true,
+      "replay_parity": "exact"
+    },
+    "deletion": {
+      "paths": [
+        "internal/findings/tailscale_tailnet_device_approval_disabled_rule.go"
+      ],
+      "imports": [],
+      "symbols": [
+        "tailscaleTailnetDeviceApprovalDisabledRule",
+        "retiredTailscaleGoOracle"
+      ]
+    }
+  }
+}

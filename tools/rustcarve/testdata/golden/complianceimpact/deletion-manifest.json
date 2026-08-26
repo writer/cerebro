@@ -1,0 +1,35 @@
+{
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "behavior_kind": "graph_query",
+  "subject_id": "complianceimpact.projected_graph",
+  "ir_version": "graph-query/v1",
+  "ir_digest_sha256": "sha256:e19d490e27fc09e80f5f902dff3d8fef92ad027cb544a0df20bbf6c205f2d088",
+  "go_facts_digest_sha256": "sha256:decbaa19ea331a0a7af29d9aff738895873b1f70d6c014ced8b7b6e22750c1ec",
+  "rust_implementation_revision": "unimplemented",
+  "eligible": false,
+  "reason_codes": [
+    "active_go_execution_path",
+    "missing_parity_receipt"
+  ],
+  "paths": [
+    "internal/complianceimpact/projected_graph.go"
+  ],
+  "imports": [
+    "github.com/writer/cerebro/internal/ports.RawCypherQueryStore"
+  ],
+  "symbols": [
+    "countImpactDependenciesQuery",
+    "decodeGraphAttributes",
+    "getImpactFactQuery",
+    "impactRevisionFromRow",
+    "listImpactDependenciesQuery",
+    "listImpactDependentsQuery",
+    "nonnegativeInt"
+  ],
+  "required_receipt_modes": [
+    "fixed_fixture",
+    "live_safe_local_graph"
+  ],
+  "accepted_receipts": []
+}

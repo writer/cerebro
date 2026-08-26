@@ -1,0 +1,151 @@
+{
+  "schema_version": "cerebro.rustcarve.migration-ir/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "ir_version": "provider-source/v1",
+  "digest_sha256": "sha256:5c54836bc6e28ae59038178ac30fa6f61ce7624427725f526b938b05b7b0b402",
+  "behavior_kind": "provider_source",
+  "subject": {
+    "id": "deepseek",
+    "rust_implementation_revision": "5ff8021ab1a2d971e772fd6bf7f3275ff596aa6b",
+    "authority_state": "go_registry_active"
+  },
+  "scope": {
+    "tenant": {
+      "name": "tenant_id",
+      "type": "tenant_id",
+      "required": true
+    },
+    "workspace_policy": "forbidden"
+  },
+  "go_facts": {
+    "package_name": "sourceregistry",
+    "files": [
+      "internal/sourceregistry/registry.go"
+    ],
+    "file_digests": [
+      {
+        "path": "internal/sourceregistry/registry.go",
+        "role": "go_source",
+        "digest_sha256": "sha256:96de2ec23d07429f2458c58ed6e35a0d94df09f27b96283e8dde58beeeafa933"
+      }
+    ],
+    "imports": [
+      "context",
+      "fmt",
+      "github.com/writer/cerebro/internal/connectorcatalog",
+      "github.com/writer/cerebro/internal/connectordefinitions",
+      "github.com/writer/cerebro/internal/sourcecdk",
+      "github.com/writer/cerebro/sources/anthropic",
+      "github.com/writer/cerebro/sources/archetype",
+      "github.com/writer/cerebro/sources/aurelius",
+      "github.com/writer/cerebro/sources/auth0",
+      "github.com/writer/cerebro/sources/aws",
+      "github.com/writer/cerebro/sources/azure",
+      "github.com/writer/cerebro/sources/catalogruntime",
+      "github.com/writer/cerebro/sources/cerebro",
+      "github.com/writer/cerebro/sources/cosmo",
+      "github.com/writer/cerebro/sources/emaildomainhealth",
+      "github.com/writer/cerebro/sources/evidencecas",
+      "github.com/writer/cerebro/sources/gcp",
+      "github.com/writer/cerebro/sources/github",
+      "github.com/writer/cerebro/sources/google_drive",
+      "github.com/writer/cerebro/sources/googleworkspace",
+      "github.com/writer/cerebro/sources/grc",
+      "github.com/writer/cerebro/sources/kandji",
+      "github.com/writer/cerebro/sources/kolide",
+      "github.com/writer/cerebro/sources/kubernetes",
+      "github.com/writer/cerebro/sources/langfuse",
+      "github.com/writer/cerebro/sources/linode",
+      "github.com/writer/cerebro/sources/okta",
+      "github.com/writer/cerebro/sources/onelogin",
+      "github.com/writer/cerebro/sources/panopticon",
+      "github.com/writer/cerebro/sources/sailpoint_identitynow",
+      "github.com/writer/cerebro/sources/sdk",
+      "github.com/writer/cerebro/sources/securitytoolingmap",
+      "github.com/writer/cerebro/sources/snyk",
+      "github.com/writer/cerebro/sources/trivy",
+      "github.com/writer/cerebro/sources/trustedendpoint",
+      "github.com/writer/cerebro/sources/vulnview",
+      "github.com/writer/cerebro/sources/writer"
+    ],
+    "owner_symbols": [
+      "BuiltinWithCatalogOverrides"
+    ],
+    "calls": [
+      "append",
+      "catalogruntimesource.New",
+      "catalogruntimesource.NewWithCatalog",
+      "connectorcatalog.BuiltinRuntime",
+      "fmt.Errorf",
+      "len",
+      "loader.load",
+      "make",
+      "newWorkerCatalogSource",
+      "registry.WithBuiltinDefinitionCatalog",
+      "source.Spec",
+      "sourcecdk.NewRegistry"
+    ],
+    "digest_sha256": "sha256:3f4dfca0811524fdcd73f40174e525489f6c3a81be156373b25a9264a6984d22"
+  },
+  "evidence": {
+    "fixtures": [
+      {
+        "path": "sources/deepseek/testdata/read_account_balances.json",
+        "role": "provider_fixture",
+        "digest_sha256": "sha256:93e42cbf394915a1d6034154b9db56cd48a6d4be175b318396921b7490d869d5"
+      },
+      {
+        "path": "sources/deepseek/testdata/read_model_catalog.json",
+        "role": "provider_fixture",
+        "digest_sha256": "sha256:2b337d4a7dfdaacf33a197c3fdece74d94165169ebccd24b60614e72bac964dd"
+      }
+    ],
+    "traces": [
+      {
+        "path": "crates/source-runtime-next/src/deepseek/fixtures/projection_oracle.json",
+        "role": "projection_oracle",
+        "digest_sha256": "sha256:c0822c8125cbdd62a4dd39db2c24114ea32bb49dd5ad13e83e7f9492fc91d88a"
+      }
+    ]
+  },
+  "provider_source": {
+    "catalog_path": "sources/deepseek/catalog.yaml",
+    "registration_shape": "generic_catalog_runtime",
+    "execution_owner": "compiled_rust_source_plan",
+    "fail_closed": true,
+    "runtime_families": [
+      "account_balances",
+      "model_catalog"
+    ],
+    "event_contracts": [
+      {
+        "kind": "deepseek.model_catalog",
+        "schema_ref": "deepseek/model_catalog/v1",
+        "required_attributes": [
+          "tenant_id",
+          "source_event_id",
+          "resource_urn",
+          "resource_type",
+          "resource_id"
+        ],
+        "required_payload_fields": [
+          "id"
+        ]
+      },
+      {
+        "kind": "deepseek.account_balances",
+        "schema_ref": "deepseek/account_balances/v1",
+        "required_attributes": [
+          "tenant_id",
+          "source_event_id",
+          "resource_urn",
+          "resource_type",
+          "resource_id"
+        ],
+        "required_payload_fields": [
+          "currency"
+        ]
+      }
+    ]
+  }
+}

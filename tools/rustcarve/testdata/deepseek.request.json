@@ -1,0 +1,34 @@
+{
+  "schema_version": "cerebro.rustcarve.request/v1",
+  "behavior_kind": "provider_source",
+  "subject": {
+    "id": "deepseek",
+    "package_dir": "internal/sourceregistry",
+    "catalog_path": "sources/deepseek/catalog.yaml",
+    "go_files": ["internal/sourceregistry/registry.go"],
+    "owner_symbols": ["BuiltinWithCatalogOverrides"],
+    "rust_implementation_revision": "5ff8021ab1a2d971e772fd6bf7f3275ff596aa6b",
+    "authority_state": "go_registry_active"
+  },
+  "scope": {
+    "tenant": {"name": "tenant_id", "type": "tenant_id", "required": true},
+    "workspace_policy": "forbidden"
+  },
+  "fixture_corpus": [
+    {"path": "sources/deepseek/testdata/read_model_catalog.json", "role": "provider_fixture"},
+    {"path": "sources/deepseek/testdata/read_account_balances.json", "role": "provider_fixture"}
+  ],
+  "port_traces": [
+    {"path": "crates/source-runtime-next/src/deepseek/fixtures/projection_oracle.json", "role": "projection_oracle"}
+  ],
+  "differential_receipts": [],
+  "deletion": {
+    "paths": ["internal/sourceregistry/registry.go"],
+    "imports": ["github.com/writer/cerebro/sources/catalogruntime"],
+    "symbols": ["catalogruntimesource.New(entry)"]
+  },
+  "options": {
+    "expected_registration_shape": "generic_catalog_runtime",
+    "max_input_bytes": 4194304
+  }
+}

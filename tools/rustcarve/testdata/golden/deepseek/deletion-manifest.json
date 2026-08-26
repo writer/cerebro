@@ -1,0 +1,28 @@
+{
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
+  "tool_revision": "cerebro.rustcarve/v1",
+  "behavior_kind": "provider_source",
+  "subject_id": "deepseek",
+  "ir_version": "provider-source/v1",
+  "ir_digest_sha256": "sha256:5c54836bc6e28ae59038178ac30fa6f61ce7624427725f526b938b05b7b0b402",
+  "go_facts_digest_sha256": "sha256:3f4dfca0811524fdcd73f40174e525489f6c3a81be156373b25a9264a6984d22",
+  "rust_implementation_revision": "5ff8021ab1a2d971e772fd6bf7f3275ff596aa6b",
+  "eligible": false,
+  "reason_codes": [
+    "active_go_registry_path",
+    "missing_parity_receipt"
+  ],
+  "paths": [
+    "internal/sourceregistry/registry.go"
+  ],
+  "imports": [
+    "github.com/writer/cerebro/sources/catalogruntime"
+  ],
+  "symbols": [
+    "catalogruntimesource.New(entry)"
+  ],
+  "required_receipt_modes": [
+    "fixed_fixture"
+  ],
+  "accepted_receipts": []
+}
