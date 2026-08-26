@@ -126,44 +126,56 @@ func TestRouteParityIsBidirectional(t *testing.T) {
 }
 
 func TestRegisteredRustAuthorityRoutesRequiresTheNativeHandler(t *testing.T) {
-	sourcePath := filepath.Join(t.TempDir(), "main.rs")
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "main.rs")
+	ledgerPath := filepath.Join(dir, "rust-authority-routes.json")
 	if err := os.WriteFile(sourcePath, []byte(`
 Router::new().route(
-    "/platform/graph/neighborhood",
-    get(product_neighborhood_route),
-).route(
-    "/platform/graph/provenance",
-    get(graph_provenance_route),
-).route(
-    "/v1/security/lifecycle",
-    get(security_lifecycle),
+    "/v1/example",
+    get(example_route),
 )
 `), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+	if err := os.WriteFile(ledgerPath, []byte(`[
+  {"method": "GET", "path": "/v1/example", "marker": "get(example_route)"}
+]`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
 
-	routes, err := registeredRustAuthorityRoutes(sourcePath)
+	routes, err := registeredRustAuthorityRoutes(sourcePath, ledgerPath)
 	if err != nil {
 		t.Fatalf("registeredRustAuthorityRoutes() error = %v", err)
 	}
-	want := []route{
-		{Method: "get", Path: "/platform/graph/neighborhood"},
-		{Method: "get", Path: "/platform/graph/provenance"},
-		{Method: "get", Path: "/v1/security/lifecycle"},
-	}
-	if len(routes) != len(want) {
+	want := []route{{Method: "get", Path: "/v1/example"}}
+	if len(routes) != len(want) || routes[0] != want[0] {
 		t.Fatalf("registeredRustAuthorityRoutes() = %#v, want %#v", routes, want)
-	}
-	for index := range want {
-		if routes[index] != want[index] {
-			t.Fatalf("registeredRustAuthorityRoutes()[%d] = %#v, want %#v", index, routes[index], want[index])
-		}
 	}
 
 	if err := os.WriteFile(sourcePath, []byte(`Router::new()`), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	if _, err := registeredRustAuthorityRoutes(sourcePath); err == nil {
+	if _, err := registeredRustAuthorityRoutes(sourcePath, ledgerPath); err == nil {
 		t.Fatal("registeredRustAuthorityRoutes() error = nil, want missing handler error")
+	}
+
+	if err := os.WriteFile(ledgerPath, []byte(`[{"method": "GET", "path": "/v1/example"}]`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if _, err := registeredRustAuthorityRoutes(sourcePath, ledgerPath); err == nil {
+		t.Fatal("registeredRustAuthorityRoutes() error = nil, want incomplete ledger entry error")
+	}
+}
+
+func TestRustAuthorityLedgerMatchesCheckedInRouter(t *testing.T) {
+	routes, err := registeredRustAuthorityRoutes(
+		filepath.Join("..", "crates", "cerebro-platform", "src", "main.rs"),
+		filepath.Join("..", rustAuthorityLedgerPath),
+	)
+	if err != nil {
+		t.Fatalf("registeredRustAuthorityRoutes() error = %v", err)
+	}
+	if len(routes) == 0 {
+		t.Fatal("rust authority ledger is empty")
 	}
 }

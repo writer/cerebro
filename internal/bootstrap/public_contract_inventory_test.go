@@ -327,32 +327,39 @@ func rustAuthorityHTTPContractEntries(t *testing.T, root string, openAPI map[str
 	if err != nil {
 		t.Fatalf("read Rust platform router: %v", err)
 	}
-	routes := []struct {
-		method string
-		path   string
-		marker string
-	}{
-		{method: http.MethodGet, path: "/platform/graph/neighborhood", marker: "get(product_neighborhood_route)"},
-		{method: http.MethodGet, path: "/platform/graph/provenance", marker: "get(graph_provenance_route)"},
-		{method: http.MethodGet, path: "/v1/security/lifecycle", marker: "get(security_lifecycle)"},
+	// #nosec G304 -- fixed repo-relative guardrail path derived from runtime.Caller.
+	ledgerPayload, err := os.ReadFile(filepath.Join(root, "docs", "contracts", "rust-authority-routes.json"))
+	if err != nil {
+		t.Fatalf("read rust authority route ledger: %v", err)
+	}
+	var routes []struct {
+		Method string `json:"method"`
+		Path   string `json:"path"`
+		Marker string `json:"marker"`
+	}
+	if err := json.Unmarshal(ledgerPayload, &routes); err != nil {
+		t.Fatalf("parse rust authority route ledger: %v", err)
+	}
+	if len(routes) == 0 {
+		t.Fatal("rust authority route ledger is empty")
 	}
 	entries := make([]platformContractEntry, 0, len(routes))
 	for _, route := range routes {
-		if !strings.Contains(string(body), `"`+route.path+`"`) || !strings.Contains(string(body), route.marker) {
-			t.Fatalf("Rust platform router is missing %s %s", route.method, route.path)
+		if !strings.Contains(string(body), `"`+route.Path+`"`) || !strings.Contains(string(body), route.Marker) {
+			t.Fatalf("Rust platform router is missing %s %s", route.Method, route.Path)
 		}
-		methods := openAPI[route.path]
-		if _, ok := methods[strings.ToLower(route.method)]; !ok {
-			t.Fatalf("Rust authority route %s %s is missing from OpenAPI", route.method, route.path)
+		methods := openAPI[route.Path]
+		if _, ok := methods[strings.ToLower(route.Method)]; !ok {
+			t.Fatalf("Rust authority route %s %s is missing from OpenAPI", route.Method, route.Path)
 		}
 		entries = append(entries, platformContractEntry{
-			Identity:        route.method + " " + route.path,
+			Identity:        route.Method + " " + route.Path,
 			Kind:            "http",
-			Method:          route.method,
-			Path:            route.path,
+			Method:          route.Method,
+			Path:            route.Path,
 			Surface:         "rust-authority",
 			AuthorityOwner:  "rust-authority",
-			Owner:           contractOwnerForPath(route.path),
+			Owner:           contractOwnerForPath(route.Path),
 			AuthClass:       "api-key-or-bearer",
 			TenantScopeRule: "tenant-id-required",
 			ContractSource:  "OpenAPI",
