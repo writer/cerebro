@@ -1004,26 +1004,34 @@ func TestBuiltinRegistryAppliesDeclaredCatalogRelationships(t *testing.T) {
 		}
 	})
 
-	t.Run("hashicorp_vault secrets belongs_to vault", func(t *testing.T) {
-		projector := registry.projectors["hashicorp_vault.secrets"]
+	// hashicorp_vault secrets belongs_to vault was covered here before
+	// hashicorp_vault.secrets became fully Rust-authoritative and its Go
+	// projection writer was retired (writer/cerebro#2822), at which point
+	// the registered projector always fails closed and can no longer reach
+	// this relationship-augmentation layer. pagerduty.integration is a
+	// still-live provider exercising the identical single-event,
+	// relationship-synthesizes-the-target-entity semantics.
+	t.Run("pagerduty integration belongs_to service", func(t *testing.T) {
+		projector := registry.projectors["pagerduty.integration"]
 		if projector == nil {
-			t.Fatal("missing registered projector for hashicorp_vault.secrets")
+			t.Fatal("missing registered projector for pagerduty.integration")
 		}
 		_, links, err := projector(&cerebrov1.EventEnvelope{
 			Id:       "event-1",
 			TenantId: "tenant",
-			SourceId: "hashicorp_vault",
-			Kind:     "hashicorp_vault.secrets",
+			SourceId: "pagerduty",
+			Kind:     "pagerduty.integration",
 			Attributes: map[string]string{
-				"secret_id":   "secret-1",
-				"secret_name": "kv/db",
-				"vault_id":    "kv",
+				"integration_id": "integration-1",
+				"name":           "Datadog",
+				"service_id":     "service-1",
+				"service_name":   "API",
 			},
 		})
 		if err != nil {
-			t.Fatalf("hashicorp_vault.secrets projector error = %v", err)
+			t.Fatalf("pagerduty.integration projector error = %v", err)
 		}
-		if !projectedLinksContain(links, "urn:cerebro:tenant:secret:secret-1", relationBelongsTo, "urn:cerebro:tenant:hashicorp_vault_vault:kv") {
+		if !projectedLinksContain(links, "urn:cerebro:tenant:pagerduty_integration:integration-1", relationBelongsTo, "urn:cerebro:tenant:pagerduty_service:service-1") {
 			t.Fatalf("declared belongs_to edge not emitted by registered projector: %#v", links)
 		}
 	})
