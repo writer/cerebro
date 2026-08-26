@@ -50,7 +50,7 @@ type builtinSourceLoader struct {
 	load func() (sourcecdk.Source, error)
 }
 
-var workerCatalogSourceIDs = []string{"asana", "digitalocean", "discord", "pagerduty", "sentinelone"}
+var workerCatalogSourceIDs = []string{"asana", "discord", "pagerduty", "sentinelone"}
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
