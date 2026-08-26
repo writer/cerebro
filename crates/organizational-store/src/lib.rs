@@ -30,11 +30,9 @@ mod neo4j;
 mod page_publication;
 mod parity;
 mod postgres;
+mod promotion;
 
-pub use cutover::{
-    CutoverDecision, CutoverGate, CutoverPolicy, ProjectionAuthority, ProjectionAuthorityRecord,
-    ProjectionPromotionRequest,
-};
+pub use cutover::{CutoverGate, CutoverPolicy};
 pub use neo4j::{
     CloudAttackPath, CloudAttackPathCounts, CloudAttackPathEdge, CloudAttackPathNode,
     CloudAttackPathOwnership, CloudAttackPathPage, ComplianceImpactDependency,
@@ -61,6 +59,9 @@ pub use postgres::{
     PostgresLedger, SourceCollectionReceipt, SourceEventReceipt,
     SourceRuntimeCollectionObservation, SourceRuntimeObservation, StoredAuditEvent,
     StoredAuditEventPage, StoredSourceRuntime,
+};
+pub use promotion::{
+    CutoverDecision, ProjectionAuthority, ProjectionAuthorityRecord, ProjectionPromotionRequest,
 };
 
 use std::{error::Error, fmt};

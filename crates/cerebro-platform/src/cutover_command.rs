@@ -1,20 +1,30 @@
 use std::{
     env,
     error::Error,
+    path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use cerebro_organizational_store::{CutoverPolicy, PostgresLedger, ProjectionPromotionRequest};
+use cerebro_source_catalog::AuthorityQualificationEvidence;
 use cerebro_source_catalog::SourceCatalog;
 use serde::Serialize;
 
-use crate::{CatalogFamilyFilter, catalog_family_records, load_catalog, required_env};
+use crate::{
+    CatalogFamilyFilter, catalog_family_records,
+    cutover_evidence::{
+        authority_qualification_root, load_family_authority_qualification,
+        load_single_authority_qualification,
+    },
+    load_catalog, required_env,
+};
 
 fn promotion_request(
     tenant_id: String,
     source_id: String,
     family_id: String,
     promoted_at_unix_ms: i64,
+    qualification: AuthorityQualificationEvidence,
 ) -> Result<ProjectionPromotionRequest, Box<dyn Error>> {
     Ok(ProjectionPromotionRequest::new(
         tenant_id,
@@ -23,6 +33,7 @@ fn promotion_request(
         CutoverPolicy::new(3, 0)?,
         0,
         promoted_at_unix_ms,
+        qualification,
     )?)
 }
 
@@ -85,9 +96,16 @@ async fn ledger_and_request() -> Result<(PostgresLedger, ProjectionPromotionRequ
     ledger.migrate().await?;
     let evaluated_at_unix_ms =
         i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+    let qualification = load_single_authority_qualification()?;
     Ok((
         ledger,
-        promotion_request(tenant_id, source_id, family_id, evaluated_at_unix_ms)?,
+        promotion_request(
+            tenant_id,
+            source_id,
+            family_id,
+            evaluated_at_unix_ms,
+            qualification,
+        )?,
     ))
 }
 
@@ -217,6 +235,7 @@ async fn evaluate_one_family(
     family_id: &str,
     evaluated_at_unix_ms: i64,
     promote_ready: bool,
+    qualification_root: &Path,
 ) -> FamilyCutoverOutcome {
     let mut outcome = FamilyCutoverOutcome {
         source_id: source_id.to_owned(),
@@ -227,11 +246,20 @@ async fn evaluate_one_family(
         evidence_digest: None,
         error: None,
     };
+    let qualification =
+        match load_family_authority_qualification(qualification_root, source_id, family_id) {
+            Ok(qualification) => qualification,
+            Err(error) => {
+                outcome.error = Some(error.to_string());
+                return outcome;
+            }
+        };
     let request = match promotion_request(
         tenant_id.to_owned(),
         source_id.to_owned(),
         family_id.to_owned(),
         evaluated_at_unix_ms,
+        qualification,
     ) {
         Ok(request) => request,
         Err(error) => {
@@ -280,6 +308,7 @@ pub(crate) async fn evaluate_all_families() -> Result<(), Box<dyn Error>> {
     ledger.migrate().await?;
     let evaluated_at_unix_ms =
         i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+    let qualification_root = authority_qualification_root()?;
 
     let scopes = catalog_family_scopes(&catalog, &args.filter);
     let stdout = std::io::stdout();
@@ -294,6 +323,7 @@ pub(crate) async fn evaluate_all_families() -> Result<(), Box<dyn Error>> {
             &family_id,
             evaluated_at_unix_ms,
             args.promote_ready,
+            &qualification_root,
         )
         .await;
         summary.record(&outcome);
@@ -307,21 +337,6 @@ pub(crate) async fn evaluate_all_families() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn promotion_request_keeps_the_production_gate_strict() {
-        let request = promotion_request(
-            "tenant-a".to_owned(),
-            "box".to_owned(),
-            "users".to_owned(),
-            1,
-        )
-        .unwrap();
-        assert_eq!(request.tenant_id(), "tenant-a");
-        assert_eq!(request.source_id(), "box");
-        assert_eq!(request.family_id(), "users");
-        assert_eq!(request.projection_lag(), 0);
-    }
 
     #[test]
     fn family_scope_identifier_prefers_argument_then_environment() {

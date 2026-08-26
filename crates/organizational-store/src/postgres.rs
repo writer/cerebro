@@ -2307,10 +2307,12 @@ LIMIT $3
         let decision = CutoverGate::new(request.policy())
             .evaluate(
                 catalog,
+                request.tenant_id(),
                 request.source_id(),
                 request.family_id(),
                 &receipts,
                 request.projection_lag(),
+                request.qualification(),
             )
             .map_err(|error| StoreError::Conflict(error.to_string()))?;
         Ok(decision)
@@ -2322,6 +2324,11 @@ LIMIT $3
         decision: &CutoverDecision,
         promoted_at_unix_ms: i64,
     ) -> Result<ProjectionAuthorityRecord, StoreError> {
+        if decision.tenant_id() != tenant_id {
+            return Err(StoreError::Conflict(
+                "projection promotion tenant does not match decision evidence".to_owned(),
+            ));
+        }
         if !decision.is_allowed() {
             return Err(StoreError::Conflict(format!(
                 "projection cutover is blocked: {}",

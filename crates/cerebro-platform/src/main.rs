@@ -4,6 +4,7 @@ mod append_log_consumer;
 mod ask_queries;
 mod audit_events;
 mod cutover_command;
+mod cutover_evidence;
 mod graph_provenance;
 mod oidc;
 mod parity_command;
@@ -8239,7 +8240,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires disposable PostgreSQL and Neo4j instances"]
-    async fn promoted_box_family_projects_only_through_rust() {
+    async fn promoted_asana_family_projects_only_through_rust() {
         let postgres_dsn = env::var("CEREBRO_TEST_POSTGRES_DSN").unwrap();
         let authority = PostgresLedger::connect_tls(&postgres_dsn).await.unwrap();
         authority.migrate().await.unwrap();
@@ -8258,15 +8259,15 @@ mod tests {
             .unwrap()
             .as_nanos()
             .to_string();
-        let tenant_id = format!("platform-cutover-{suffix}");
+        let tenant_id = format!("platform-promotion-evidence-{suffix}");
         for index in 1..=3 {
             authority
                 .record_parity(
                     &cerebro_organizational_store::ParityReceipt::compare_scoped(
                         tenant_id.clone(),
-                        "box-runtime",
-                        "box",
-                        "content_assets",
+                        "asana-runtime",
+                        "asana",
+                        "users",
                         format!("corpus-{suffix}-{index}"),
                         "sha256:equal",
                         "sha256:equal",
@@ -8279,16 +8280,23 @@ mod tests {
                 .unwrap();
         }
         let catalog = load_catalog().unwrap();
+        let qualification = cutover_evidence::authority_qualification_fixture(
+            &catalog,
+            "asana",
+            "users",
+            &format!("corpus-{suffix}-3"),
+        );
         authority
             .evaluate_and_promote_projection_authority(
                 &catalog,
                 &cerebro_organizational_store::ProjectionPromotionRequest::new(
                     tenant_id.clone(),
-                    "box",
-                    "content_assets",
+                    "asana",
+                    "users",
                     cerebro_organizational_store::CutoverPolicy::new(3, 0).unwrap(),
                     0,
                     100,
+                    qualification,
                 )
                 .unwrap(),
             )
@@ -8299,30 +8307,27 @@ mod tests {
             authority,
             store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
         });
-        let resource_urn = format!("urn:cerebro:{tenant_id}:runtime_file:asset-1");
         let response = runtime
             .project_committed_with_intent(
                 CommittedSourceEvent::from_input(
                     cerebro_source_runtime_next::CommittedSourceInput {
                         tenant_id: TenantId::parse(tenant_id.clone()).unwrap(),
-                        source_runtime_id: SourceRuntimeId::parse("box-runtime").unwrap(),
+                        source_runtime_id: SourceRuntimeId::parse("asana-runtime").unwrap(),
                         observation_id: ObservationId::parse("event-1").unwrap(),
-                        source_id: "box".to_owned(),
-                        family_id: "content_assets".to_owned(),
-                        event_kind: "box.content_assets".to_owned(),
-                        schema_ref: "box/content_assets/v1".to_owned(),
+                        source_id: "asana".to_owned(),
+                        family_id: "users".to_owned(),
+                        event_kind: "asana.users".to_owned(),
+                        schema_ref: "asana/users/v1".to_owned(),
                         observed_at_unix_ms: 100,
                         attributes: BTreeMap::from([
-                            ("resource_id".to_owned(), "asset-1".to_owned()),
-                            ("resource_name".to_owned(), "Architecture".to_owned()),
-                            ("resource_type".to_owned(), "file".to_owned()),
-                            ("resource_urn".to_owned(), resource_urn.clone()),
+                            ("tenant_id".to_owned(), tenant_id.clone()),
+                            ("source_event_id".to_owned(), "event-1".to_owned()),
+                            ("user_id".to_owned(), "user-1".to_owned()),
                         ]),
                         payload: serde_json::json!({
-                            "id": "asset-1",
-                            "name": "Architecture",
-                            "type": "file",
-                            "resource_urn": resource_urn.clone()
+                            "gid": "user-1",
+                            "name": "Person One",
+                            "email": "person@example.test"
                         }),
                     },
                 )
@@ -8333,9 +8338,23 @@ mod tests {
             .unwrap();
         assert!(response.projected);
         let tenant = TenantId::parse(tenant_id).unwrap();
-        let entity = graph.resolve(&tenant, &resource_urn).await.unwrap();
-        assert_eq!(entity.label, "Architecture");
-        assert_eq!(entity.properties.get("resource_urn"), Some(&resource_urn));
+        let provider = ProviderIdentity::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("asana-runtime").unwrap(),
+            ProviderKind::parse("asana.identity_user").unwrap(),
+            "user-1",
+            "Person One",
+        )
+        .unwrap();
+        let entity = graph
+            .resolve(&tenant, provider.entity().id().as_str())
+            .await
+            .unwrap();
+        assert_eq!(entity.label, "Person One");
+        assert_eq!(
+            entity.properties.get("email").map(String::as_str),
+            Some("person@example.test")
+        );
     }
 
     #[test]

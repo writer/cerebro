@@ -17,7 +17,7 @@ use cerebro_organizational_store::{
     CutoverPolicy, DurableGraphStore, Neo4jProjector, ParityReceipt, PostgresLedger,
     ProjectionAuthority, ProjectionPromotionRequest,
 };
-use cerebro_source_catalog::SourceCatalog;
+use cerebro_source_catalog::{AuthorityQualificationEvidence, SourceCatalog};
 use cerebro_source_runtime_next::{CollectedBatch, CollectedScope, GraphSink, SourceRecord};
 use hmac::{Hmac, KeyInit, Mac};
 use prost::Message;
@@ -737,6 +737,15 @@ fn promotion_request(
     family: &str,
     promoted_at: i64,
 ) -> Result<ProjectionPromotionRequest, Box<dyn Error>> {
+    let evidence_root = PathBuf::from(env::var("CEREBRO_AUTHORITY_EVIDENCE_DIR")?);
+    let evidence_path = evidence_root.join(source).join(format!("{family}.json"));
+    let qualification: AuthorityQualificationEvidence =
+        serde_json::from_slice(&fs::read(&evidence_path).map_err(|error| {
+            format!(
+                "read authority evidence {}: {error}",
+                evidence_path.to_string_lossy()
+            )
+        })?)?;
     Ok(ProjectionPromotionRequest::new(
         TENANT,
         source,
@@ -744,6 +753,7 @@ fn promotion_request(
         CutoverPolicy::new(3, 0)?,
         0,
         promoted_at,
+        qualification,
     )?)
 }
 
