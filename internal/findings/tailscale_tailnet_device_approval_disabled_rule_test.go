@@ -2,6 +2,9 @@ package findings
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -89,5 +92,103 @@ func TestTailscaleTailnetDeviceApprovalReopensOnRecurrence(t *testing.T) {
 	}
 	if got := strings.TrimSpace(reopened.ID); got != strings.TrimSpace(opened.ID) {
 		t.Fatalf("recurrence finding id = %q, want stable %q", got, strings.TrimSpace(opened.ID))
+	}
+}
+
+func TestTailscaleTailnetRustAuthorityMatchesRetiredGoOracle(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "writer-tailscale-tailnet",
+		SourceId: "tailscale",
+		TenantId: "writer",
+		Config:   map[string]string{"family": "tailnet"},
+	}
+	event := tailscaleTailnetEvent("tailscale-tailnet-approval-off", "false", time.Date(2026, 4, 23, 12, 5, 0, 0, time.UTC))
+
+	got, err := newTailscaleTailnetDeviceApprovalDisabledRule().Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []*ports.FindingRecord{retiredTailscaleGoOracle(event, runtime.GetId())}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Rust authority changed the public finding contract\nRust: %#v\nGo oracle: %#v", got, want)
+	}
+}
+
+func TestTailscaleTailnetRustAuthorityFailsClosedWithoutGoFallback(t *testing.T) {
+	evaluator := &recordingFindingRuleEvaluator{err: errors.New("kernel unavailable")}
+	rule := &rustTailscaleRule{evaluator: evaluator}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-a", SourceId: "tailscale", TenantId: "tenant-a"}
+	event := tailscaleTailnetEvent("event-a", "false", time.Date(2026, 4, 23, 12, 5, 0, 0, time.UTC))
+	event.TenantId = "tenant-a"
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err == nil {
+		t.Fatal("failed Rust authority unexpectedly fell back")
+	}
+	if len(records) != 0 || evaluator.calls != 1 {
+		t.Fatalf("failed Rust authority returned records or invoked another path: records=%#v calls=%d", records, evaluator.calls)
+	}
+}
+
+func TestTailscaleTailnetRustAuthorityRejectsCrossScopeReplay(t *testing.T) {
+	rule := newTailscaleTailnetDeviceApprovalDisabledRule()
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "runtime-a",
+		SourceId: "tailscale",
+		TenantId: "tenant-a",
+		Config:   map[string]string{ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-a"},
+	}
+	event := tailscaleTailnetEvent("event-a", "false", time.Date(2026, 4, 23, 12, 5, 0, 0, time.UTC))
+	event.TenantId = "tenant-b"
+	event.Attributes["cerebro_application_workspace_id"] = "workspace-b"
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err == nil {
+		t.Fatal("cross-tenant and cross-workspace replay unexpectedly succeeded")
+	}
+	if len(records) != 0 {
+		t.Fatalf("cross-scope replay returned findings: %#v", records)
+	}
+}
+
+type recordingFindingRuleEvaluator struct {
+	calls int
+	err   error
+}
+
+func (e *recordingFindingRuleEvaluator) Evaluate(context.Context, []byte) ([]byte, error) {
+	e.calls++
+	return nil, e.err
+}
+
+func retiredTailscaleGoOracle(event *cerebrov1.EventEnvelope, runtimeID string) *ports.FindingRecord {
+	attributes := event.GetAttributes()
+	tailnet := strings.TrimSpace(attributes["tailnet"])
+	tenantID := strings.TrimSpace(event.GetTenantId())
+	tailnetURN := fmt.Sprintf("urn:cerebro:%s:tailscale_tailnet:%s", tenantID, tailnet)
+	findingAttributes := map[string]string{
+		"tailscale_tailnet_urn":   tailnetURN,
+		"tailnet":                 tailnet,
+		"devices_approval_on":     strings.TrimSpace(attributes["devices_approval_on"]),
+		"users_approval_on":       strings.TrimSpace(attributes["users_approval_on"]),
+		"network_flow_logging_on": strings.TrimSpace(attributes["network_flow_logging_on"]),
+		"event_id":                strings.TrimSpace(event.GetId()),
+		"source_runtime_id":       strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
+		"primary_resource_urn":    tailnetURN,
+	}
+	for key, value := range tailscaleTailnetDeviceApprovalDisabledDefinition.AttributeMap() {
+		findingAttributes["rule_"+key] = value
+	}
+	trimEmptyAttributes(findingAttributes)
+	observedAt := event.GetOccurredAt().AsTime().UTC()
+	fingerprint := hashFindingFingerprint(tailscaleTailnetDeviceApprovalDisabledRuleID, tailnetURN)
+	return &ports.FindingRecord{
+		ID: fingerprint, Fingerprint: fingerprint, TenantID: tenantID, RuntimeID: strings.TrimSpace(runtimeID),
+		RuleID: tailscaleTailnetDeviceApprovalDisabledRuleID, Title: "Tailscale Tailnet Device Approval Disabled",
+		Severity: "MEDIUM", Status: findingStatusOpen, Summary: fmt.Sprintf("Tailscale tailnet %s has device approval disabled", tailnet),
+		ResourceURNs: []string{tailnetURN}, EventIDs: []string{strings.TrimSpace(event.GetId())},
+		CheckID: "tailscale-tailnet-device-approval-disabled-current", CheckName: "Tailscale Tailnet Device Approval Disabled (current state)",
+		ControlRefs: cloneFindingControlRefs(tailscaleTailnetDeviceApprovalDisabledDefinition.ControlRefs), Attributes: findingAttributes,
+		FirstObservedAt: observedAt, LastObservedAt: observedAt,
 	}
 }

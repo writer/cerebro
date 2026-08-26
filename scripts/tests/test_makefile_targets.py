@@ -82,6 +82,7 @@ class MakefileTargetTests(unittest.TestCase):
             "mitre-context-evaluator",
             "sourceruntime-event-admission",
             "sourceruntime-record-kernel",
+            "finding-rule-evaluator",
         )
         for module in targets:
             with self.subTest(module=module):

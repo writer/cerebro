@@ -130,6 +130,13 @@ var moduleSpecs = []ModuleSpec{
 		MaxSizeBytes: 200_000,
 	},
 	{
+		Name:         "finding-rule-evaluator",
+		ArtifactPath: "internal/findings/findingrule.wasm",
+		SourcePath:   "crates/finding-rule-kernel/src/evaluation.rs",
+		ABIVersion:   1,
+		MaxSizeBytes: 250_000,
+	},
+	{
 		Name:         "security-path-evaluator",
 		ArtifactPath: "internal/securitypathdelta/evaluator.wasm",
 		SourcePath:   "crates/security-path-kernel/src/evaluation.rs",
