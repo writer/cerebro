@@ -147,6 +147,11 @@ func captureJetstreamTelemetry(t *testing.T, fn func()) string {
 		_ = reader.Close()
 	}()
 	fn()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := telemetry.FlushWideEvents(ctx); err != nil {
+		t.Fatalf("flush telemetry: %v", err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close stderr pipe: %v", err)
 	}

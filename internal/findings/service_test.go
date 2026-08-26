@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/findingevidence"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/securityevents"
+	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -6720,6 +6721,11 @@ func captureFindingStderr(t *testing.T, fn func()) string {
 		os.Stderr = oldStderr
 	}()
 	fn()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := telemetry.FlushWideEvents(ctx); err != nil {
+		t.Fatalf("flush telemetry: %v", err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close stderr writer: %v", err)
 	}

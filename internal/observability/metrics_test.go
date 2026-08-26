@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -343,6 +344,11 @@ func captureObservabilityOutput(t *testing.T, fn func()) string {
 	}()
 
 	fn()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := telemetry.FlushWideEvents(ctx); err != nil {
+		t.Fatalf("flush telemetry: %v", err)
+	}
 	if err := stdoutWriter.Close(); err != nil {
 		t.Fatalf("close stdout writer: %v", err)
 	}
