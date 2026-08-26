@@ -309,6 +309,51 @@ describe("Cerebro proxy route", () => {
     expect(upstreamHeaders.get("x-cerebro-api-key")).toBeNull();
   });
 
+  it("routes the graph neighborhood product response directly to Rust", async () => {
+    vi.stubEnv("CEREBRO_RUST_PLATFORM_API_BASE", "http://rust-platform.internal:8080");
+    vi.stubEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TENANT_ID", "tenant-a");
+    vi.stubEnv(
+      "CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET",
+      "test-organizational-graph-secret-32-bytes",
+    );
+    const rootUrn = "urn:cerebro:tenant-a:asset:one";
+    const neighborhood = {
+      root: { urn: rootUrn, entity_type: "asset", label: "one" },
+      neighbors: [{ urn: "urn:cerebro:tenant-a:user:alice", entity_type: "user", label: "Alice" }],
+      relations: [{ from_urn: rootUrn, relation: "owned_by", to_urn: "urn:cerebro:tenant-a:user:alice" }],
+    };
+    let upstreamURL = "";
+    let upstreamHeaders = new Headers();
+    vi.stubGlobal("fetch", vi.fn(async (url: URL | RequestInfo, init?: RequestInit) => {
+      upstreamURL = url.toString();
+      upstreamHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify(neighborhood), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }));
+
+    const response = await GET(
+      new NextRequest(
+        `http://localhost/api/cerebro/platform/graph/neighborhood?root_urn=${encodeURIComponent(rootUrn)}&limit=50`,
+        { headers: { "cache-control": "no-cache" } },
+      ),
+      { params: Promise.resolve({ path: ["platform", "graph", "neighborhood"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(neighborhood);
+    expect(upstreamURL).toBe(
+      `http://rust-platform.internal:8080/platform/graph/neighborhood?root_urn=${encodeURIComponent(rootUrn)}&limit=50`,
+    );
+    expect(upstreamHeaders.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(upstreamHeaders.get("authorization")).toBe(
+      "Bearer 34b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d6",
+    );
+    expect(upstreamHeaders.get("x-cerebro-api-key")).toBeNull();
+    expect(upstreamHeaders.get("x-cerebro-workspace")).toBeNull();
+  });
+
   it("relays signed Rust-authority writes without authorizing or stamping in Next", async () => {
     process.env.CEREBRO_AUTHORITY_MODE = "rust";
     process.env.CEREBRO_IDENTITY_REQUIRED = "true";

@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
-  "description": "Deterministic public platform contract inventory for Go compatibility and Rust authority transition gates.",
+  "description": "Deterministic public platform contract inventory for Go compatibility and Rust authority routes.",
   "generated_from": [
     "internal/bootstrap/routes.go",
+    "crates/cerebro-platform/src/main.rs",
     "api/openapi.yaml",
     "proto/cerebro/v1/bootstrap.proto",
     "gen/cerebro/v1/cerebrov1connect/bootstrap.connect.go"
@@ -12,13 +13,15 @@
     "connect_mounts": 1,
     "connect_rpcs": 47,
     "by_surface": {
-      "bridged-to-rust-authority": 23,
+      "bridged-to-rust-authority": 22,
       "protected": 285,
-      "public-exempt": 15
+      "public-exempt": 15,
+      "rust-authority": 1
     },
     "by_authority_owner": {
-      "bridged-to-rust-authority": 23,
-      "go-compatibility": 300
+      "bridged-to-rust-authority": 22,
+      "go-compatibility": 300,
+      "rust-authority": 1
     },
     "by_auth_class": {
       "api-key-bearer-or-oauth": 2,
@@ -2041,8 +2044,8 @@
       "kind": "http",
       "method": "GET",
       "path": "/platform/graph/neighborhood",
-      "surface": "bridged-to-rust-authority",
-      "authority_owner": "bridged-to-rust-authority",
+      "surface": "rust-authority",
+      "authority_owner": "rust-authority",
       "owner": "graph",
       "auth_class": "api-key-or-bearer",
       "tenant_scope_rule": "tenant-id-required",

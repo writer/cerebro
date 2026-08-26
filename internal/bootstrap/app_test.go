@@ -2972,7 +2972,6 @@ func TestAccessAuditOperationClassifiesFamiliesAndSensitiveActions(t *testing.T)
 	}{
 		{method: http.MethodGet, path: "/sources/github/read", route: "GET /sources/{sourceID}/read", family: "source", operationType: "read", sensitive: true},
 		{method: http.MethodPost, path: "/source-runtimes/runtime-1/sync", route: "POST /source-runtimes/{runtimeID}/sync", family: "source_runtime", operationType: "write", sensitive: true},
-		{method: http.MethodGet, path: "/platform/graph/neighborhood", route: "GET /platform/graph/neighborhood", family: "graph", operationType: "read", sensitive: false},
 		{method: http.MethodPost, path: "/cerebro.v1.BootstrapService/SyncSourceRuntime", route: "/cerebro.v1.BootstrapService/{Procedure}", family: "source_runtime", operationType: "write", sensitive: true},
 		{method: http.MethodPost, path: "/cerebro.v1.BootstrapService/GetEntityNeighborhood", route: "/cerebro.v1.BootstrapService/{Procedure}", family: "graph", operationType: "read", sensitive: false},
 	} {
@@ -3024,7 +3023,6 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 
 	for _, path := range []string{
 		"/sources",
-		"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app",
 		"/platform/graph/crown-jewel-rankings?tenant_id=writer",
 		"/source-runtimes/writer-runtime",
 	} {
@@ -3041,20 +3039,6 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GET %s status = %d, want %d", path, resp.StatusCode, http.StatusOK)
 		}
-	}
-
-	otherTenantReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:other:asset:app", nil)
-	if err != nil {
-		t.Fatalf("NewRequest other tenant: %v", err)
-	}
-	otherTenantReq.Header.Set("Authorization", "Bearer scoped-token")
-	otherTenantResp, err := server.Client().Do(otherTenantReq)
-	if err != nil {
-		t.Fatalf("GET other tenant graph error = %v", err)
-	}
-	_ = otherTenantResp.Body.Close()
-	if otherTenantResp.StatusCode != http.StatusForbidden {
-		t.Fatalf("GET other tenant graph status = %d, want %d", otherTenantResp.StatusCode, http.StatusForbidden)
 	}
 
 	for _, tt := range []struct {
@@ -3304,7 +3288,7 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 		"client_id":     "cosmo",
 		"credential_id": "cosmo-capability",
 	})
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/sources", nil)
 	if err != nil {
 		t.Fatalf("NewRequest authorized: %v", err)
 	}
@@ -3326,7 +3310,7 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 		"scopes":    []string{scopeCosmoSecurityRead},
 		"groups":    []string{"engineering"},
 	})
-	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/sources", nil)
 	if err != nil {
 		t.Fatalf("NewRequest forbidden: %v", err)
 	}
@@ -3348,7 +3332,7 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 		"scopes":    []string{scopeCosmoSecurityRead},
 		"groups":    []string{"security"},
 	})
-	expiredReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	expiredReq, err := http.NewRequest(http.MethodGet, server.URL+"/sources", nil)
 	if err != nil {
 		t.Fatalf("NewRequest expired: %v", err)
 	}
@@ -3369,7 +3353,7 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 		"tenant_id": "writer",
 		"groups":    []string{"security"},
 	})
-	noScopesReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	noScopesReq, err := http.NewRequest(http.MethodGet, server.URL+"/sources", nil)
 	if err != nil {
 		t.Fatalf("NewRequest no scopes: %v", err)
 	}
@@ -4114,7 +4098,7 @@ func TestAuthMiddlewareEnforcesTenantOnReportRunLookups(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareEnforcesTenantOnGraphRootURN(t *testing.T) {
+func TestConnectAuthMiddlewareEnforcesTenantOnGraphRootURN(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",
 		ShutdownTimeout: time.Second,
@@ -4129,20 +4113,6 @@ func TestAuthMiddlewareEnforcesTenantOnGraphRootURN(t *testing.T) {
 	app := New(cfg, Dependencies{GraphStore: &stubGraphStore{}}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
-
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:other:github_user:alice", nil)
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer writer-key")
-	resp, err := server.Client().Do(req)
-	if err != nil {
-		t.Fatalf("GET /platform/graph/neighborhood error = %v", err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("GET /platform/graph/neighborhood status = %d, want %d", resp.StatusCode, http.StatusForbidden)
-	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	neighborhoodReq := connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
@@ -5903,14 +5873,12 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 	assertBootstrapProjectedLink(t, graphStore, findingURN, "affects", repoURN)
 	assertBootstrapProjectedLink(t, graphStore, noteURN, "belongs_to", scanURN)
 
-	neighborhoodResp, err := server.Client().Get(server.URL + "/platform/graph/neighborhood?root_urn=" + url.QueryEscape(findingURN) + "&limit=10")
+	neighborhood, err := graphStore.GetEntityNeighborhood(context.Background(), findingURN, 10)
 	if err != nil {
-		t.Fatalf("GET /platform/graph/neighborhood error = %v", err)
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
 	}
-	defer func() { _ = neighborhoodResp.Body.Close() }()
-	if neighborhoodResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(neighborhoodResp.Body)
-		t.Fatalf("graph neighborhood status = %d, want 200: %s", neighborhoodResp.StatusCode, body)
+	if neighborhood.Root == nil || neighborhood.Root.URN != findingURN {
+		t.Fatalf("graph neighborhood root = %#v, want %q", neighborhood.Root, findingURN)
 	}
 	if graphStore.neighborhoodRootURN != findingURN {
 		t.Fatalf("graph neighborhood root = %q, want %q", graphStore.neighborhoodRootURN, findingURN)
@@ -8109,7 +8077,7 @@ func TestWriteClaimsReplaceExistingReportsRetractedClaims(t *testing.T) {
 	}
 }
 
-func TestGraphNeighborhoodEndpoints(t *testing.T) {
+func TestConnectGraphNeighborhoodEndpoint(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
@@ -8139,37 +8107,6 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
-
-	resp, err := server.Client().Get(server.URL + "/platform/graph/neighborhood?root_urn=urn:cerebro:writer:github_pull_request:writer/cerebro%23447&limit=5")
-	if err != nil {
-		t.Fatalf("GET /platform/graph/neighborhood error = %v", err)
-	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			t.Fatalf("close /platform/graph/neighborhood response body: %v", closeErr)
-		}
-	}()
-	var payload map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode /platform/graph/neighborhood response: %v", err)
-	}
-	rootPayload, ok := payload["root"].(map[string]any)
-	if !ok {
-		t.Fatalf("graph root payload = %#v, want object", payload["root"])
-	}
-	if got := rootPayload["entity_type"]; got != "github.pull_request" {
-		t.Fatalf("graph root entity_type = %#v, want github.pull_request", got)
-	}
-	neighborsPayload, ok := payload["neighbors"].([]any)
-	if !ok || len(neighborsPayload) != 2 {
-		t.Fatalf("graph neighbors payload = %#v, want 2 entries", payload["neighbors"])
-	}
-	if graphStore.neighborhoodRootURN != "urn:cerebro:writer:github_pull_request:writer/cerebro#447" {
-		t.Fatalf("graph neighborhood root urn = %q, want pull request urn", graphStore.neighborhoodRootURN)
-	}
-	if graphStore.neighborhoodLimit != 5 {
-		t.Fatalf("graph neighborhood limit = %d, want 5", graphStore.neighborhoodLimit)
-	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	neighborhoodResp, err := client.GetEntityNeighborhood(context.Background(), connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{

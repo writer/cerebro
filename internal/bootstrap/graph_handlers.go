@@ -140,37 +140,6 @@ func (a *App) handleReplayWorkflowEvents(w http.ResponseWriter, r *http.Request)
 	writeProtoJSON(w, http.StatusOK, workflowReplayResponse(result))
 }
 
-func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request) {
-	ctx, err := withParityCorrelation(r)
-	if err != nil {
-		writeGraphQueryError(w, fmt.Errorf("%w: %w", graphquery.ErrInvalidRequest, err))
-		return
-	}
-	r = r.WithContext(ctx) //nolint:contextcheck // ctx is derived from the inbound request context after validating parity headers.
-	request := &cerebrov1.GetEntityNeighborhoodRequest{}
-	if limit := r.URL.Query().Get("limit"); limit != "" {
-		body := []byte(`{"limit":` + limit + `}`)
-		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
-			writeGraphQueryError(w, err)
-			return
-		}
-	}
-	request.RootUrn = r.URL.Query().Get("root_urn")
-	if err := authorizeCerebroURNTenant(r.Context(), request.GetRootUrn()); err != nil { //nolint:contextcheck // r carries the validated parity context above.
-		writeGraphQueryError(w, err)
-		return
-	}
-	response, err := a.graphQueryService().GetEntityNeighborhood(r.Context(), graphquery.NeighborhoodRequest{ //nolint:contextcheck // r carries the validated parity context above.
-		RootURN: request.GetRootUrn(),
-		Limit:   request.GetLimit(),
-	})
-	if err != nil {
-		writeGraphQueryError(w, err)
-		return
-	}
-	writeProtoJSON(w, http.StatusOK, graphNeighborhoodResponse(response))
-}
-
 func (a *App) handleGetVulnerabilityImpact(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	if err := authorizeTenantID(r.Context(), tenantID); err != nil {

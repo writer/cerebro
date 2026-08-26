@@ -33,6 +33,11 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+	rustRoutes, err := registeredRustAuthorityRoutes("crates/cerebro-platform/src/main.rs")
+	if err != nil {
+		fail(err)
+	}
+	routes = append(routes, rustRoutes...)
 	paths, methods, err := openAPIPaths(openAPIPath)
 	if err != nil {
 		fail(err)
@@ -59,6 +64,27 @@ func main() {
 		fmt.Fprintf(os.Stderr, "OpenAPI route is not registered: %s %s\n", strings.ToUpper(route.Method), route.Path)
 	}
 	os.Exit(1)
+}
+
+func registeredRustAuthorityRoutes(path string) ([]route, error) {
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	routes := []struct {
+		route  route
+		marker string
+	}{
+		{route: route{Method: "get", Path: "/platform/graph/neighborhood"}, marker: "get(product_neighborhood_route)"},
+	}
+	registered := make([]route, 0, len(routes))
+	for _, candidate := range routes {
+		if !bytes.Contains(payload, []byte(`"`+candidate.route.Path+`"`)) || !bytes.Contains(payload, []byte(candidate.marker)) {
+			return nil, fmt.Errorf("Rust authority route is not registered: %s %s", strings.ToUpper(candidate.route.Method), candidate.route.Path)
+		}
+		registered = append(registered, candidate.route)
+	}
+	return registered, nil
 }
 
 func missingOpenAPIRoutes(routes []route, paths map[string]bool, methods map[route]bool) []route {
