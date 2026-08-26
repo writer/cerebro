@@ -20,7 +20,9 @@ export async function register() {
     }
   };
 
-  await warm();
+  // Start the first warm immediately without making server readiness depend on
+  // the dashboard backend. The existing interval keeps the cache lifecycle.
+  void warm();
   const shared = globalThis as WarmerGlobal;
   if (!shared.__cerebroProxyCacheWarmer) {
     shared.__cerebroProxyCacheWarmer = setInterval(() => void warm(), WARM_INTERVAL_MS);

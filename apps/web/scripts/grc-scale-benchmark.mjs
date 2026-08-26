@@ -43,7 +43,7 @@ const allRouteSpecs = [
   {
     route: "/",
     label: "Home",
-    readySelector: "text=Compliance overview",
+    readySelector: "text=Open work queue",
     usableThresholdMs: 1000,
   },
   {
@@ -502,6 +502,15 @@ function createMockApi({ bounded, recordCount: count, stats }) {
       if (normalizedPath === "user/preferences") {
         return sendJSON(response, stats, normalizedPath, { tenant_id: tenantID, user_id: "scale-benchmark", preferences: {}, generated_at: generatedAt });
       }
+      if (normalizedPath === "grc/dashboard") {
+        return sendJSON(response, stats, normalizedPath, homeDashboardFixture(data, url.searchParams));
+      }
+      if (normalizedPath === "grc/program-readiness") {
+        return sendJSON(response, stats, normalizedPath, homeProgramReadinessFixture(data));
+      }
+      if (normalizedPath === "connectors/coverage") {
+        return sendJSON(response, stats, normalizedPath, homeCoverageFixture(data));
+      }
       if (normalizedPath === "identity/orgs") {
         const organizations = boundedList(filterIdentityOrganizations(data.identityOrganizations, url.searchParams), url.searchParams, bounded);
         return sendJSON(response, stats, normalizedPath, {
@@ -724,6 +733,70 @@ function makeScaleData(count) {
   const identityOrganizations = Array.from({ length: count }, (_, index) => makeIdentityOrganization(index));
   const identityUsers = Array.from({ length: count }, (_, index) => makeIdentityUser(index));
   return { vendors, vendorDiscoveries, evidence, findings, policies, documents, riskRegister, governanceGaps, workQueue, documentWorkQueue, inventoryAssets, lifecycleRecords, connectors, connectorRuntimes, connectorDefinitions, identityOrganizations, identityUsers };
+}
+
+function homeDashboardFixture(data, searchParams) {
+  const limit = Math.max(1, Math.min(12, positiveInteger(searchParams.get("limit"), 12)));
+  const findings = data.findings.slice(0, limit);
+  const controls = controlPacketsFixture(data, new URLSearchParams(`limit=${limit}`), true).controls;
+  const connectors = data.connectorRuntimes.slice(0, limit).map((runtime) => ({
+    runtime_id: runtime.runtime_id,
+    source_id: runtime.source_id,
+    status: runtime.status,
+    freshness: runtime.health === "healthy" ? "fresh" : "stale",
+    watermark_lag_seconds: runtime.watermark_lag_seconds,
+  }));
+  return {
+    summary: {
+      open_findings: data.findings.length,
+      critical_findings: data.findings.filter((finding) => finding.severity === "critical").length,
+      high_findings: data.findings.filter((finding) => finding.severity === "high").length,
+      overdue_findings: data.findings.filter((finding) => finding.sla_status === "overdue").length,
+      unassigned: data.findings.filter((finding) => !finding.owner).length,
+      controls_failing: controls.filter((control) => control.status === "failing").length,
+      evidence_items: data.evidence.length,
+      connectors: data.connectorRuntimes.length,
+      stale_connectors: data.connectorRuntimes.filter((runtime) => runtime.health !== "healthy").length,
+    },
+    findings,
+    controls,
+    evidence: data.evidence.slice(0, limit),
+    connectors,
+    generated_at: generatedAt,
+  };
+}
+
+function homeProgramReadinessFixture(data) {
+  const controls = controlPacketsFixture(data, new URLSearchParams("limit=12"), true).controls;
+  const passing = controls.filter((control) => control.status === "passing").length;
+  return {
+    summary: {
+      controls: controls.length,
+      passing_controls: passing,
+      missing_evidence_items: controls.reduce((total, control) => total + (control.missing_evidence_items ?? 0), 0),
+      stale_evidence_items: controls.reduce((total, control) => total + (control.stale_evidence_items ?? 0), 0),
+      coverage_blind_spots: 1,
+    },
+    frameworks: [{ framework_name: "SOC 2", controls: controls.length, passing_controls: passing }],
+    controls,
+    work_items: [],
+    connectors: data.connectorRuntimes.slice(0, 12),
+    coverage_summaries: [{ source_id: "source-0", blind_spots: 1 }],
+    generated_at: generatedAt,
+  };
+}
+
+function homeCoverageFixture() {
+  const blindSpot = {
+    source_id: "source-0",
+    dimension_id: "coverage-gap-0",
+    dimension_type: "resource",
+    support_level: "partial",
+    state: "partial",
+    title: "Resource coverage",
+    high_value: true,
+  };
+  return { blind_spots: [blindSpot], records: [blindSpot], generated_at: generatedAt };
 }
 
 function inventoryAssetDetail(asset) {

@@ -84,19 +84,24 @@ describe("Home review links", () => {
     expect(links.map((link) => link.getAttribute("href"))).toContain("/controls?framework=SOC%202&control=CC6.6");
   });
 
-  it("starts the dashboard before secondary Home queries", async () => {
+  it("starts all independent Home queries on the initial render", async () => {
     await act(async () => {
       root.render(<Home />);
     });
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
       grcDashboardPath({ limit: 12, enrichments: "deferred" }),
-      null,
-      null,
+      grcProgramReadinessPath(),
+      grcPath("/connectors/coverage", {
+        coverage_scope: "configured",
+        coverage_view: "page",
+        blind_spots_only: "true",
+        page_size: 3,
+      }),
     ]);
   });
 
-  it("starts secondary Home queries after dashboard data arrives", async () => {
+  it("renders dashboard work while both secondary queries are still pending", async () => {
     const dashboardPath = grcDashboardPath({ limit: 12, enrichments: "deferred" });
     const dashboardData = {
       summary: {
@@ -120,26 +125,17 @@ describe("Home review links", () => {
       data: path === dashboardPath ? dashboardData : null,
       durationMs: null,
       error: null,
-      lastSuccessfulAt: null,
-      loading: Boolean(path),
+      lastSuccessfulAt: path === dashboardPath ? Date.parse(dashboardData.generated_at) : null,
+      loading: path !== dashboardPath,
       reload: mocks.reload,
-      state: path ? "loading" : "empty",
+      state: path === dashboardPath ? "ready" : "loading",
     }));
 
     await act(async () => {
       root.render(<Home />);
     });
 
-    expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
-      dashboardPath,
-      grcProgramReadinessPath(),
-      grcPath("/connectors/coverage", {
-        coverage_scope: "configured",
-        coverage_view: "page",
-        blind_spots_only: "true",
-        page_size: 3,
-      }),
-    ]);
+    expect(container.textContent).toContain("Open work queue");
     expect(container.textContent).toContain("Loading source coverage.");
   });
 
