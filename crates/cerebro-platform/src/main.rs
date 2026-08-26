@@ -88,8 +88,10 @@ use cerebro_source_catalog::{
 };
 use cerebro_source_runtime_next::{
     AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CommittedSourceEvent,
-    GraphMapper, GraphSink, ResolvedAuth, RuntimeHealthEvidence, RuntimeReadiness,
-    SourceRuntimeLeaseFence, evaluate_runtime_readiness,
+    GraphMapper, GraphSink, ResolvedAuth, RuntimeFreshnessDigest, RuntimeFreshnessEvidence,
+    RuntimeFreshnessRollup, RuntimeHealthEvidence, RuntimeReadiness, SourceRuntimeLeaseFence,
+    evaluate_runtime_freshness, evaluate_runtime_readiness, runtime_freshness_status,
+    summarize_runtime_freshness,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -627,7 +629,7 @@ async fn authenticate_oidc(
 fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
-        "/v1/source-runtimes/health" => "cerebro:read",
+        "/v1/source-runtimes/health" | "/v1/source-runtimes/freshness" => "cerebro:read",
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
         "/v1/finding-validations" => "cerebro:write",
@@ -686,6 +688,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/graph/paths" => "paths",
         "/v1/security/lifecycle" => "security_lifecycle",
         "/v1/source-runtimes" => "list_source_runtimes",
+        "/v1/source-runtimes/freshness" => "runtime_freshness",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/invalid-events") => {
             "list_source_runtime_invalid_events"
         }
@@ -1308,6 +1311,62 @@ struct RustSourceRuntimeHealthResponse {
     generated_at: String,
     runtimes: Vec<RustSourceRuntimeHealthView>,
     source_summaries: Vec<RustSourceRuntimeHealthSummary>,
+}
+
+/// Go-parity `runtimeFreshnessRecord` view served from the Rust ledger.
+///
+/// Field names and serialization semantics mirror the Go
+/// `runtimeFreshnessResponse` contract. `family`, `checkpoint_watermark`, and
+/// `watermark_lag_seconds` are omitted-when-empty on the Go side and are not
+/// observable from the Rust ledger, so they are always absent here.
+#[derive(Serialize)]
+struct RustRuntimeFreshnessRecord {
+    runtime_id: String,
+    source_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    tenant_id: String,
+    lifecycle_state: &'static str,
+    schedule_state: &'static str,
+    freshness_state: &'static str,
+    source_sync_state: &'static str,
+    graph_ingest_state: String,
+    finding_evaluation_state: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    failure_class: String,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    failure_reason: &'static str,
+    backfill_eligible: bool,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    backfill_eligibility_reason: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_synced_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync_lag_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_graph_run: Option<SourceRuntimeGraphObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    graph_lag_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_finding_evaluation: Option<RustFindingEvaluationHealthView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_cadence_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stale_after_seconds: Option<u64>,
+    generated_at: String,
+    next_action: &'static str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    recommended_workflow: &'static str,
+    cursor_pending: bool,
+    checkpoint_cursor_present: bool,
+    schedule_context_configured: bool,
+}
+
+#[derive(Serialize)]
+struct RustRuntimeFreshnessResponse {
+    generated_at: String,
+    status: &'static str,
+    runtimes: Vec<RustRuntimeFreshnessRecord>,
+    summaries: Vec<RuntimeFreshnessRollup>,
 }
 
 #[derive(Deserialize)]
@@ -2254,6 +2313,7 @@ fn router_with_backend(
         .route("/v1/security/lifecycle", get(security_lifecycle))
         .route("/v1/source-runtimes", get(list_source_runtimes))
         .route("/v1/source-runtimes/health", get(source_runtime_health))
+        .route("/v1/source-runtimes/freshness", get(runtime_freshness))
         .route(
             "/v1/source-runtimes/{runtime_id}",
             get(get_source_runtime).put(put_source_runtime),
@@ -2962,6 +3022,164 @@ async fn source_runtime_health(
     }))
 }
 
+async fn runtime_freshness(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(query): Query<SourceRuntimeHealthQuery>,
+) -> Result<Json<RustRuntimeFreshnessResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let limit = query.limit.unwrap_or(500);
+    if limit == 0 || limit > 500 {
+        return Err(bad_request(
+            "invalid_source_runtime_limit",
+            "Source runtime freshness limit must be between 1 and 500.",
+        ));
+    }
+    let ledger = state.runtime_ledger.as_ref().ok_or_else(|| {
+        service_unavailable(
+            "source_runtime_freshness_unavailable",
+            "The Rust source-runtime ledger is not configured.",
+        )
+    })?;
+    let graph = state.lifecycle_projection.as_ref().ok_or_else(|| {
+        service_unavailable(
+            "source_runtime_freshness_unavailable",
+            "The Rust graph projection is not configured.",
+        )
+    })?;
+    let source_id = query.source_id.as_deref().unwrap_or_default().trim();
+    let records = ledger
+        .source_runtime_observations(authenticated.0.as_str(), source_id, limit)
+        .await
+        .map_err(|_| {
+            service_unavailable(
+                "source_runtime_freshness_unavailable",
+                "Source-runtime evidence is temporarily unavailable.",
+            )
+        })?;
+    let runtime_ids = records
+        .iter()
+        .map(|record| record.runtime_id.clone())
+        .collect::<Vec<_>>();
+    let graph_records = graph
+        .source_runtime_graph_observations(&runtime_ids)
+        .await
+        .map_err(|_| {
+            service_unavailable(
+                "source_runtime_freshness_unavailable",
+                "Graph-ingest evidence is temporarily unavailable.",
+            )
+        })?
+        .into_iter()
+        .map(|record| (record.runtime_id.clone(), record))
+        .collect::<BTreeMap<_, _>>();
+    let now = OffsetDateTime::now_utc();
+    let generated_at = now.format(&Rfc3339).map_err(|_| {
+        service_unavailable(
+            "source_runtime_freshness_unavailable",
+            "Source-runtime freshness time is unavailable.",
+        )
+    })?;
+    let runtimes = records
+        .into_iter()
+        .map(|record| {
+            let graph_record = graph_records.get(&record.runtime_id).cloned();
+            rust_runtime_freshness_record(
+                record,
+                graph_record,
+                authenticated.0.as_str(),
+                now,
+                generated_at.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let status = runtime_freshness_status(runtimes.iter().map(|record| record.freshness_state));
+    let digests = runtimes
+        .iter()
+        .map(|record| RuntimeFreshnessDigest {
+            source_id: &record.source_id,
+            freshness_state: record.freshness_state,
+            backfill_eligible: record.backfill_eligible,
+        })
+        .collect::<Vec<_>>();
+    let summaries = summarize_runtime_freshness(&digests);
+    Ok(Json(RustRuntimeFreshnessResponse {
+        generated_at,
+        status,
+        runtimes,
+        summaries,
+    }))
+}
+
+fn rust_runtime_freshness_record(
+    record: SourceRuntimeObservation,
+    graph: Option<SourceRuntimeGraphObservation>,
+    tenant_id: &str,
+    now: OffsetDateTime,
+    generated_at: String,
+) -> RustRuntimeFreshnessRecord {
+    let source_status = rust_source_status(&record, now);
+    let graph_state = rust_graph_state(graph.as_ref(), record.stale_after_seconds, now);
+    let finding_state = rust_finding_state(record.latest_finding_evaluation_status.as_deref());
+    let schedule_context_configured =
+        record.stale_after_seconds.is_some() || record.expected_cadence_seconds.is_some();
+    let freshness = evaluate_runtime_freshness(RuntimeFreshnessEvidence {
+        enabled_state: &record.enabled_state,
+        source_status,
+        last_failure_category: record.last_failure_category.as_deref().unwrap_or_default(),
+        graph_ingest_state: graph_state,
+        finding_evaluation_state: finding_state,
+        schedule_context_configured,
+    });
+    let sync_lag_seconds = rust_lag_seconds(
+        record
+            .last_synced_at
+            .as_deref()
+            .and_then(|value| OffsetDateTime::parse(value.trim(), &Rfc3339).ok()),
+        now,
+    );
+    let graph_lag_seconds = rust_lag_seconds(graph.as_ref().and_then(rust_graph_observed_at), now);
+    RustRuntimeFreshnessRecord {
+        runtime_id: record.runtime_id,
+        source_id: record.source_id,
+        tenant_id: tenant_id.to_owned(),
+        lifecycle_state: freshness.lifecycle_state,
+        schedule_state: freshness.schedule_state,
+        freshness_state: freshness.freshness_state,
+        source_sync_state: freshness.source_sync_state,
+        graph_ingest_state: freshness.graph_ingest_state,
+        finding_evaluation_state: freshness.finding_evaluation_state,
+        failure_class: freshness.failure_class,
+        failure_reason: freshness.failure_reason,
+        backfill_eligible: freshness.backfill_eligible,
+        backfill_eligibility_reason: freshness.backfill_eligibility_reason,
+        last_synced_at: record.last_synced_at,
+        sync_lag_seconds,
+        latest_graph_run: graph,
+        graph_lag_seconds,
+        latest_finding_evaluation: record
+            .latest_finding_evaluation_status
+            .map(|status| RustFindingEvaluationHealthView { status }),
+        expected_cadence_seconds: record.expected_cadence_seconds,
+        stale_after_seconds: record.stale_after_seconds,
+        generated_at,
+        next_action: freshness.next_action,
+        recommended_workflow: freshness.recommended_workflow,
+        cursor_pending: record.cursor_pending,
+        checkpoint_cursor_present: record.checkpoint_cursor_present,
+        schedule_context_configured,
+    }
+}
+
+fn rust_lag_seconds(observed: Option<OffsetDateTime>, now: OffsetDateTime) -> Option<i64> {
+    observed.map(|observed| (now - observed).whole_seconds().max(0))
+}
+
+fn rust_graph_observed_at(graph: &SourceRuntimeGraphObservation) -> Option<OffsetDateTime> {
+    [&graph.finished_at, &graph.started_at]
+        .into_iter()
+        .find_map(|value| OffsetDateTime::parse(value.trim(), &Rfc3339).ok())
+}
+
 fn rust_source_runtime_health_view(
     record: SourceRuntimeObservation,
     graph: Option<SourceRuntimeGraphObservation>,
@@ -3044,9 +3262,7 @@ fn rust_graph_state(
     if !graph.checkpoint_cursor.trim().is_empty() || graph.checkpoint_complete == Some(false) {
         return "behind";
     }
-    let graph_time = [&graph.finished_at, &graph.started_at]
-        .into_iter()
-        .find_map(|value| OffsetDateTime::parse(value.trim(), &Rfc3339).ok());
+    let graph_time = rust_graph_observed_at(graph);
     if stale_after_seconds
         .zip(graph_time)
         .is_some_and(|(threshold, observed)| {
@@ -6525,6 +6741,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn runtime_freshness_route_is_read_scoped_and_bounded() {
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/source-runtimes/freshness"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/source-runtimes/freshness"),
+            "runtime_freshness"
+        );
     }
 
     #[tokio::test]
