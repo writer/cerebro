@@ -22,6 +22,7 @@ import {
   routeWithScope,
   runPortableWebFixtureE2E,
   sameOriginApplicationRoute,
+  scopedRouteVariants,
   stopProcessTree,
   validateHttpContracts,
   waitForFixtureEndpoint,
@@ -130,6 +131,20 @@ describe("portable web fixture route bug bash", () => {
   it("adds tenant and application workspace scope without dropping route state", () => {
     expect(routeWithScope("/inventory?owner=unassigned#table", "tenant-a", "workspace-a"))
       .toBe("/inventory?owner=unassigned&tenant_id=tenant-a&workspace_id=workspace-a");
+  });
+
+  it("adds tenant-only scope without inventing an application workspace", () => {
+    expect(routeWithScope("/inventory?owner=unassigned&workspace_id=stale#table", "tenant-a", null))
+      .toBe("/inventory?owner=unassigned&tenant_id=tenant-a");
+  });
+
+  it("builds two tenant-only and four tenant-workspace route variants", () => {
+    const routes = scopedRouteVariants("/vendors");
+    expect(routes.filter((route) => !route.includes("workspace_id="))).toEqual([
+      "/vendors?tenant_id=tenant-a",
+      "/vendors?tenant_id=tenant-b",
+    ]);
+    expect(routes.filter((route) => route.includes("workspace_id="))).toHaveLength(4);
   });
 
   it("keeps only same-origin application routes for the browser crawl", () => {

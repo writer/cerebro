@@ -39,6 +39,14 @@ const homepageAPIPaths = Object.freeze({
   dashboard: "/api/cerebro/grc/dashboard",
   readiness: "/api/cerebro/grc/program-readiness",
 });
+const tenantOnlyRouteScopes = Object.freeze([
+  { tenantID: "tenant-a" },
+  { tenantID: "tenant-b" },
+]);
+const routeScopeVariants = Object.freeze([
+  ...tenantOnlyRouteScopes,
+  ...routeScopeMatrix,
+]);
 const routeParameterSamples = Object.freeze({
   dashboardID: "fixture-program-overview",
   frameworkID: "soc2",
@@ -152,8 +160,14 @@ export async function discoverPageRoutes(webRoot = defaultWebRoot) {
 export function routeWithScope(route, tenantID = fixtureTenantID, workspaceID = fixtureWorkspaceID) {
   const url = new URL(route, "http://cerebro.local");
   url.searchParams.set("tenant_id", tenantID);
-  url.searchParams.set("workspace_id", workspaceID);
+  if (workspaceID) url.searchParams.set("workspace_id", workspaceID);
+  else url.searchParams.delete("workspace_id");
   return `${url.pathname}${url.search}`;
+}
+
+export function scopedRouteVariants(route) {
+  return routeScopeVariants.map((scope) =>
+    routeWithScope(route, scope.tenantID, scope.workspaceID ?? null));
 }
 
 export function sameOriginApplicationRoute(href, baseUrl) {
@@ -572,9 +586,7 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
     const discoveredRoutes = await deadline.run(discoverPageRoutes(webRoot), "application route discovery");
     for (const route of discoveredRoutes) {
       enqueue(route);
-      for (const scope of routeScopeMatrix) {
-        enqueue(routeWithScope(route, scope.tenantID, scope.workspaceID));
-      }
+      for (const scopedRoute of scopedRouteVariants(route)) enqueue(scopedRoute);
     }
 
     const context = await deadline.run(browser.newContext({
@@ -590,7 +602,9 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
     let currentResponseFailures = [];
     const observedAPIRoutes = new Set();
     const scopedAPIRequests = new Set();
+    const tenantOnlyAPIRequests = new Set();
     const observedScopes = new Set();
+    const observedTenantOnlyScopes = new Set();
     let redirectLifecycleAbortCount = 0;
     page.on("console", (message) => {
       if (message.type() !== "error") return;
@@ -609,6 +623,9 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
       if (tenantID && workspaceID) {
         scopedAPIRequests.add(`${url.pathname}${url.search}`);
         observedScopes.add(`${tenantID}:${workspaceID}`);
+      } else if (tenantID) {
+        tenantOnlyAPIRequests.add(`${url.pathname}${url.search}`);
+        observedTenantOnlyScopes.add(tenantID);
       }
     });
     page.on("requestfailed", (request) => {
@@ -681,6 +698,20 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
     if (missingScopes.length > 0) {
       throw new Error(`Local route bug bash did not observe scoped API requests for ${missingScopes.map((scope) => `${scope.tenantID}/${scope.workspaceID}`).join(", ")}`);
     }
+    const missingTenantOnlyScopes = tenantOnlyRouteScopes.filter((scope) =>
+      !observedTenantOnlyScopes.has(scope.tenantID));
+    if (missingTenantOnlyScopes.length > 0) {
+      throw new Error(`Local route bug bash did not observe tenant-only API requests for ${missingTenantOnlyScopes.map((scope) => scope.tenantID).join(", ")}`);
+    }
+    const tenantOnlyRouteCount = [...auditedRoutes].filter((route) =>
+      route.includes("tenant_id=") && !route.includes("workspace_id=")).length;
+    const scopedRouteCount = [...auditedRoutes].filter((route) => route.includes("workspace_id=")).length;
+    if (tenantOnlyRouteCount < discoveredRoutes.length * tenantOnlyRouteScopes.length) {
+      throw new Error("Local route bug bash did not crawl every tenant-only route variant");
+    }
+    if (scopedRouteCount < discoveredRoutes.length * routeScopeMatrix.length) {
+      throw new Error("Local route bug bash did not crawl every tenant and workspace route variant");
+    }
     const homepagePerformance = await measureHomepageDataReady(context, baseUrl, deadline, options);
     return {
       apiRouteCount: observedAPIRoutes.size,
@@ -691,8 +722,11 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
       homepageEndpointP95Ms: homepagePerformance.endpointP95Ms,
       redirectLifecycleAbortCount,
       routeTemplateCount: discoveredRoutes.length,
-      scopedRouteCount: [...auditedRoutes].filter((route) => route.includes("workspace_id=")).length,
+      scopedRouteCount,
       scopedAPIRequestCount: scopedAPIRequests.size,
+      tenantOnlyAPIRequestCount: tenantOnlyAPIRequests.size,
+      tenantOnlyRouteCount,
+      tenantOnlyScopeCount: observedTenantOnlyScopes.size,
       tenantWorkspaceScopeCount: observedScopes.size,
     };
   } finally {
@@ -914,9 +948,12 @@ async function runCli() {
   console.log(`[e2e:web:fixtures] passed ${result.routeCount} route contracts${browser}`);
   if (result.routeBugbash) {
     console.log(`[e2e:web:fixtures] bug-bashed ${result.routeBugbash.discoveredRouteCount} local routes from ${result.routeBugbash.routeTemplateCount} page templates`);
+    console.log(`[e2e:web:fixtures] checked ${result.routeBugbash.tenantOnlyRouteCount} tenant-only route variants`);
     console.log(`[e2e:web:fixtures] checked ${result.routeBugbash.scopedRouteCount} tenant and workspace route variants`);
+    console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.tenantOnlyAPIRequestCount} tenant-only scoped API requests`);
     console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.scopedAPIRequestCount} tenant and workspace scoped API requests`);
     console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.apiRouteCount} same-origin API routes`);
+    console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.tenantOnlyScopeCount} tenant-only scopes`);
     console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.tenantWorkspaceScopeCount} tenant and workspace scope pairs`);
     console.log(`[e2e:web:fixtures] classified ${result.routeBugbash.redirectLifecycleAbortCount} redirect lifecycle-aborted API requests`);
     console.log(`[e2e:web:fixtures] homepage data-ready samples ${result.routeBugbash.homepageDataReadyDurationsMs.join(",")}ms; p95 ${result.routeBugbash.homepageDataReadyP95Ms}ms`);
