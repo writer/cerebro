@@ -1,0 +1,139 @@
+{
+  "schema_version": "cerebro.rustcarve.request/v2",
+  "behavior_kind": "finding_rule",
+  "subject": {
+    "id": "policy-event-audit-evidence-catalog",
+    "package_dir": "internal/findings",
+    "catalog_path": "",
+    "go_files": ["internal/findings/policy_rule.go"],
+    "owner_symbols": ["newPolicyCatalogRules", "newPolicyCatalogRule", "normalizePolicyRuleConfig", "policyRuleEventMatchesDefinition", "policyRuleEventFailed"],
+    "rust_implementation_revision": "9a0d21b5b87996019ac78aec5a426129e6114558",
+    "authority_state": "go_evaluator_active"
+  },
+  "scope": {
+    "tenant": {"name": "tenant_id", "type": "tenant_id", "required": true},
+    "workspace_policy": "required",
+    "workspace": {"name": "workspace_id", "type": "workspace_id", "required": true}
+  },
+  "fixture_corpus": [
+    {"path": "internal/findings/policy_rule_catalog_gen.go", "role": "generated_rule_catalog"},
+    {"path": "internal/findings/policy_rule_test.go", "role": "go_evaluator_oracle"},
+    {"path": "internal/findings/rulepack_audit_test.go", "role": "lifecycle_replay_contract"}
+  ],
+  "port_traces": [
+    {"path": "crates/finding-rule-kernel/src/evaluation.rs", "role": "rust_authority_contract"}
+  ],
+  "differential_receipts": [],
+  "deletion": {
+    "paths": [],
+    "imports": [],
+    "symbols": []
+  },
+  "finding_rule": {
+    "ir_version": "finding-rule/v1",
+    "rule": {
+      "rule_id": "policy-event-audit-evidence-catalog",
+      "family": "policy.event",
+      "catalog_revision": "sha256:32fe570ac78bccfd99fc71de3eb4ca6a1bb5892778bde700772dee5a9ba0b7b7"
+    },
+    "scope": {
+      "tenant": {"name": "tenant_id", "type": "tenant_id", "required": true},
+      "workspace_policy": "required",
+      "workspace": {"name": "workspace_id", "type": "workspace_id", "required": true}
+    },
+    "matcher": {
+      "input_fields": [
+        {"name": "runtime_tenant_id", "type": "tenant_id"},
+        {"name": "runtime_workspace_id", "type": "workspace_id"},
+        {"name": "event_tenant_id", "type": "tenant_id"},
+        {"name": "event_workspace_id", "type": "workspace_id"},
+        {"name": "event_source_id", "type": "string"},
+        {"name": "event_kind", "type": "string"},
+        {"name": "event_id", "type": "string"},
+        {"name": "occurred_at", "type": "timestamp"},
+        {"name": "policy_id", "type": "string"},
+        {"name": "result", "type": "string"},
+        {"name": "runtime_id", "type": "string"},
+        {"name": "resource_or_event_id", "type": "string"}
+      ],
+      "predicates": [
+        {"kind": "equals", "target": "runtime_tenant_id", "input": "event_tenant_id"},
+        {"kind": "equals", "target": "runtime_workspace_id", "input": "event_workspace_id"},
+        {"kind": "equals", "target": "event_source_id", "input": "policy"},
+        {"kind": "in_set", "target": "event_kind", "input": "policy.evidence|policy.result"},
+        {"kind": "equals", "target": "policy_id", "input": "catalog_rule_id"},
+        {"kind": "in_set", "target": "result", "input": "failed|error|noncompliant"}
+      ],
+      "required_attributes": [
+        {"name": "policy_id", "type": "string", "missing_behavior": "no_match"},
+        {"name": "result", "type": "string", "missing_behavior": "no_match"}
+      ]
+    },
+    "fingerprint": {
+      "domain_separator": "policy-event-audit-evidence-catalog\\u0000",
+      "fields": ["rule_id", "tenant_id", "runtime_id", "resource_or_event_id"],
+      "normalization": "utf8_trim",
+      "hash": "sha256"
+    },
+    "lifecycle": {
+      "states": ["open"],
+      "transitions": [],
+      "close_condition": "",
+      "observed_at_source": "event.occurred_at"
+    },
+    "graph_anchors": [],
+    "expiry": {
+      "mode": "none",
+      "ttl_seconds": 0,
+      "clock": "observed_at",
+      "expiry_source": ""
+    },
+    "output": {
+      "schema_version": "cerebro.public-finding/v1",
+      "fields": [
+        {"name": "id", "type": "string"},
+        {"name": "fingerprint", "type": "string"},
+        {"name": "tenant_id", "type": "tenant_id"},
+        {"name": "runtime_id", "type": "string"},
+        {"name": "rule_id", "type": "string"},
+        {"name": "title", "type": "string"},
+        {"name": "severity", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "summary", "type": "string"},
+        {"name": "resource_urns", "type": "array<urn>"},
+        {"name": "event_ids", "type": "array<string>"},
+        {"name": "observed_policy_ids", "type": "array<string>"},
+        {"name": "policy_id", "type": "string"},
+        {"name": "policy_name", "type": "string"},
+        {"name": "check_id", "type": "string"},
+        {"name": "check_name", "type": "string"},
+        {"name": "control_refs", "type": "array<finding_control_ref>"},
+        {"name": "attributes", "type": "map<string,string>"},
+        {"name": "first_observed_at", "type": "timestamp"},
+        {"name": "last_observed_at", "type": "timestamp"}
+      ]
+    },
+    "replay_corpus": [
+      {"path": "internal/findings/policy_rule_catalog_gen.go", "role": "generated_rule_catalog"},
+      {"path": "internal/findings/policy_rule_test.go", "role": "go_evaluator_oracle"},
+      {"path": "internal/findings/rulepack_audit_test.go", "role": "lifecycle_replay_contract"}
+    ],
+    "counterexamples": [
+      {"path": "internal/findings/policy_rule_test.go", "role": "scope_match_and_no_match_cases"}
+    ],
+    "authority": {
+      "required_authority": "rust_finding_rule_kernel",
+      "fail_closed": true,
+      "replay_parity": "exact"
+    },
+    "deletion": {
+      "paths": [],
+      "imports": [],
+      "symbols": []
+    }
+  },
+  "options": {
+    "expected_registration_shape": "",
+    "max_input_bytes": 4194304
+  }
+}

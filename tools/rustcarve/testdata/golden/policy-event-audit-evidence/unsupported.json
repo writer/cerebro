@@ -1,0 +1,12 @@
+{
+  "schema_version": "cerebro.rustcarve.unsupported/v1",
+  "behavior_kind": "finding_rule",
+  "subject_id": "policy-event-audit-evidence-catalog",
+  "reason_codes": [
+    "unsupported_graph_anchor",
+    "unsupported_lifecycle"
+  ],
+  "details": [
+    "finding rule failed closed validation"
+  ]
+}
