@@ -1,14 +1,17 @@
 package sourceprojection
 
 import (
+	"errors"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func asanaUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, identityProjectionProfile{Provider: "asana"})
+var errAsanaUsersRustProjectionRequired = errors.New("asana users projection requires Rust authority")
+
+func asanaUsersProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errAsanaUsersRustProjectionRequired
 }
 
 func asanaProjectsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
