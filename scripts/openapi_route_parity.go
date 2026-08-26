@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -18,7 +19,10 @@ var (
 	componentsLine = []byte("\ncomponents:\n")
 )
 
-const openAPIPath = "api/openapi.yaml"
+const (
+	openAPIPath             = "api/openapi.yaml"
+	rustAuthorityLedgerPath = "docs/contracts/rust-authority-routes.json"
+)
 
 type route struct {
 	Method string
@@ -33,7 +37,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	rustRoutes, err := registeredRustAuthorityRoutes("crates/cerebro-platform/src/main.rs")
+	rustRoutes, err := registeredRustAuthorityRoutes("crates/cerebro-platform/src/main.rs", rustAuthorityLedgerPath)
 	if err != nil {
 		fail(err)
 	}
@@ -66,25 +70,44 @@ func main() {
 	os.Exit(1)
 }
 
-func registeredRustAuthorityRoutes(path string) ([]route, error) {
+type rustAuthorityLedgerEntry struct {
+	Method string `json:"method"`
+	Path   string `json:"path"`
+	Marker string `json:"marker"`
+}
+
+func rustAuthorityLedger(path string) ([]rustAuthorityLedgerEntry, error) {
 	payload, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	routes := []struct {
-		route  route
-		marker string
-	}{
-		{route: route{Method: "get", Path: "/platform/graph/neighborhood"}, marker: "get(product_neighborhood_route)"},
-		{route: route{Method: "get", Path: "/platform/graph/provenance"}, marker: "get(graph_provenance_route)"},
-		{route: route{Method: "get", Path: "/v1/security/lifecycle"}, marker: "get(security_lifecycle)"},
+	var entries []rustAuthorityLedgerEntry
+	if err := json.Unmarshal(payload, &entries); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	registered := make([]route, 0, len(routes))
-	for _, candidate := range routes {
-		if !bytes.Contains(payload, []byte(`"`+candidate.route.Path+`"`)) || !bytes.Contains(payload, []byte(candidate.marker)) {
-			return nil, fmt.Errorf("Rust authority route is not registered: %s %s", strings.ToUpper(candidate.route.Method), candidate.route.Path)
+	for _, entry := range entries {
+		if entry.Method == "" || entry.Path == "" || entry.Marker == "" {
+			return nil, fmt.Errorf("%s: every entry requires method, path, and marker", path)
 		}
-		registered = append(registered, candidate.route)
+	}
+	return entries, nil
+}
+
+func registeredRustAuthorityRoutes(path string, ledgerPath string) ([]route, error) {
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := rustAuthorityLedger(ledgerPath)
+	if err != nil {
+		return nil, err
+	}
+	registered := make([]route, 0, len(entries))
+	for _, entry := range entries {
+		if !bytes.Contains(payload, []byte(`"`+entry.Path+`"`)) || !bytes.Contains(payload, []byte(entry.Marker)) {
+			return nil, fmt.Errorf("Rust authority route is not registered: %s %s", strings.ToUpper(entry.Method), entry.Path)
+		}
+		registered = append(registered, route{Method: strings.ToLower(entry.Method), Path: entry.Path})
 	}
 	return registered, nil
 }
