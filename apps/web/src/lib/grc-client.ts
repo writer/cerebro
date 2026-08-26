@@ -40,6 +40,11 @@ const grcQueryInflight = new Map<string, Promise<Awaited<ReturnType<typeof fetch
 const normalizedScopeValue = (value: string | undefined) => value?.trim() ?? "";
 
 const hasActorScope = (scope: GRCQueryScope | undefined) => Boolean(scope?.actor.trim());
+export const isValidGRCQueryScope = (scope: GRCQueryScope | undefined) => {
+  const tenantID = normalizedScopeValue(scope?.tenantID);
+  const workspaceID = normalizedScopeValue(scope?.workspaceID);
+  return !workspaceID || Boolean(tenantID);
+};
 
 export const grcClientScopeKey = (scope: GRCQueryScope | undefined, apiKey?: string) => [
   apiKey ?? "",
@@ -402,7 +407,7 @@ export function useGRCQuery<T>(path: string | null) {
   const { apiKey } = useApiKey();
   const { actor, loading: currentUserLoading } = useCurrentUser();
   const scope = scopeForPath(path, actor);
-  const enabled = Boolean(path && !currentUserLoading && hasActorScope(scope));
+  const enabled = Boolean(path && !currentUserLoading && hasActorScope(scope) && isValidGRCQueryScope(scope));
   const query = useQuery<GRCQueryPayload<T>, Error>({
     enabled,
     queryFn: ({ signal }) => fetchGRCQueryPayload<T>(path ?? "", apiKey, signal, scope),
@@ -416,8 +421,9 @@ export function useGRCQuery<T>(path: string | null) {
   const lastSuccessfulAt = enabled && path ? query.data?.successfulAt ?? null : null;
   const { refetch } = query;
   const reload = useCallback(async () => {
+    if (!enabled) return;
     await refetch({ cancelRefetch: true });
-  }, [refetch]);
+  }, [enabled, refetch]);
 
   const state = runtimeStateForQuery({
     data,

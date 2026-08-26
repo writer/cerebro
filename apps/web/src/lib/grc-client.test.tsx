@@ -20,6 +20,7 @@ import {
   GRC_QUERY_TIMEOUT_MS,
   grcResponseErrorMessage,
   grcTimeoutMessage,
+  isValidGRCQueryScope,
   organizationalGraphNeighborhoodPath,
   readCachedGRC,
   useGRCMutation,
@@ -95,6 +96,12 @@ describe("grc client paths", () => {
 
 describe("grc query keys", () => {
   const scopeA: GRCQueryScope = { actor: "actor-a", tenantID: "tenant-a", workspaceID: "workspace-a" };
+
+  it("rejects orphan workspace scopes before a query can run", () => {
+    expect(isValidGRCQueryScope({ actor: "actor-a", workspaceID: "workspace-a" })).toBe(false);
+    expect(isValidGRCQueryScope({ actor: "actor-a", tenantID: "tenant-a" })).toBe(true);
+    expect(isValidGRCQueryScope(scopeA)).toBe(true);
+  });
 
   it("scopes TanStack Query cache entries by API key, actor, path, tenant, and workspace", () => {
     const path = "/grc/dashboard?limit=10";

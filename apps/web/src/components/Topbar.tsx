@@ -49,6 +49,9 @@ export default function Topbar() {
   const { openCommandPalette } = useCommandPalette();
   const { actor, error: userError, loading: userLoading, user } = useCurrentUser();
   const searchParams = useSearchParams();
+  const notificationTenantID = searchParams.get("tenant_id")?.trim() ?? "";
+  const notificationWorkspaceID = searchParams.get("workspace_id")?.trim() ?? "";
+  const invalidNotificationScope = Boolean(notificationWorkspaceID && !notificationTenantID);
   const { theme, setTheme, toggleTheme } = useTheme();
   const {
     error: preferencesError,
@@ -151,20 +154,29 @@ export default function Topbar() {
   }, [shareStatus, shareURL]);
 
   const notificationsQuery = useGRCQuery<GRCDashboard>(
-    notificationsRequested ? grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT }) : null,
+    notificationsRequested && !invalidNotificationScope
+      ? grcDashboardPath({
+        limit: DASHBOARD_FINDING_LIMIT,
+        tenant_id: notificationTenantID || undefined,
+        workspace_id: notificationWorkspaceID || undefined,
+      })
+      : null,
   );
   const reportRunsQuery = useGRCQuery<ReportRunListResponse>(
-    notificationsRequested ? grcPath("/report-runs", { limit: 5 }) : null,
+    notificationsRequested && !invalidNotificationScope
+      ? grcPath("/report-runs", {
+        limit: 5,
+        tenant_id: notificationTenantID || undefined,
+        workspace_id: notificationWorkspaceID || undefined,
+      })
+      : null,
   );
-  const notificationStorageKey = useMemo(
-    () => notificationReadStorageKey({
-      actor,
-      apiKey,
-      tenantID: searchParams.get("tenant_id") ?? "",
-      workspaceID: searchParams.get("workspace_id") ?? "",
-    }),
-    [actor, apiKey, searchParams],
-  );
+  const notificationStorageKey = notificationReadStorageKey({
+    actor,
+    apiKey,
+    tenantID: notificationTenantID,
+    workspaceID: notificationWorkspaceID,
+  });
   const getReadSignaturesSnapshot = useCallback(
     () => window.localStorage.getItem(notificationStorageKey) ?? "[]",
     [notificationStorageKey],
@@ -196,7 +208,7 @@ export default function Topbar() {
     setShowConnection(false);
     setShowIdentity(false);
     setShowNotifications(false);
-  }, []);
+  }, [setShowConnection, setShowIdentity, setShowNotifications]);
   usePopoverDismissal({ containerRef: topbarRef, enabled: popoverOpen, onDismiss: closePopovers });
 
   return (

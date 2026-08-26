@@ -30,6 +30,7 @@ import {
   removeExploreNode,
   toGRCGraph,
 } from "@/lib/graph-explore";
+import { grcScopeQuery, useGRCScopeQueryState } from "@/lib/grc-scope";
 import { useQueryParamState } from "@/lib/query-params";
 import { metricValueForState, runtimeStateForError, type RuntimeState } from "@/lib/runtime-state";
 
@@ -41,8 +42,11 @@ const EXPLORE_NODE_LIMIT = 200;
 const inputClass = "mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400/30";
 const labelClass = "text-[11px] font-medium uppercase tracking-wider text-slate-500";
 
-const neighborhoodPath = (urn: string) =>
-  organizationalGraphNeighborhoodPath(urn, { limit: NEIGHBORS_PER_EXPAND });
+const neighborhoodPath = (urn: string, tenantID = "", workspaceID = "") =>
+  organizationalGraphNeighborhoodPath(urn, {
+    ...grcScopeQuery({ tenantID, workspaceID }),
+    limit: NEIGHBORS_PER_EXPAND,
+  });
 
 const isLikelyEntityURN = (value: string) => /^urn:[^\s:]+:.+/.test(value.trim());
 
@@ -52,14 +56,28 @@ const graphNodeURNs = (graph: GRCGraph | undefined) =>
 export default function ExplorePage() {
   const { apiKey } = useApiKey();
   const { actor, loading: userLoading } = useCurrentUser();
-  const scope = useMemo<GRCQueryScope>(() => ({ actor }), [actor]);
+  const { tenantID, workspaceID } = useGRCScopeQueryState();
+  const normalizedTenantID = tenantID.trim();
+  const normalizedWorkspaceID = workspaceID.trim();
+  const invalidWorkspaceScope = Boolean(normalizedWorkspaceID && !normalizedTenantID);
+  const scope = useMemo<GRCQueryScope>(() => ({
+    actor,
+    tenantID: normalizedTenantID,
+    workspaceID: normalizedWorkspaceID,
+  }), [actor, normalizedTenantID, normalizedWorkspaceID]);
   const activeScopeKey = useMemo(() => grcClientScopeKey(scope, apiKey), [apiKey, scope]);
   const [rootURN, setRootURN] = useQueryParamState("root_urn");
   const debouncedRootURN = useDebouncedValue(rootURN.trim());
   const needsFallbackRoot = debouncedRootURN === "";
 
   const fallbackFindings = useGRCQuery<FindingsResponse>(
-    needsFallbackRoot ? grcPath("/grc/findings", { status: "open", limit: 10 }) : null,
+    needsFallbackRoot && !invalidWorkspaceScope
+      ? grcPath("/grc/findings", {
+        ...grcScopeQuery({ tenantID: normalizedTenantID, workspaceID: normalizedWorkspaceID }),
+        status: "open",
+        limit: 10,
+      })
+      : null,
   );
   const fallbackRoot = fallbackFindings.data?.findings?.find((finding) => finding.entity || finding.resource_urns?.[0])?.entity ?? fallbackFindings.data?.findings?.find((finding) => finding.resource_urns?.[0])?.resource_urns?.[0] ?? "";
   const seedValidation = debouncedRootURN && !isLikelyEntityURN(debouncedRootURN) ? "Use a full entity URN, for example urn:cerebro:tenant:asset:id." : "";
@@ -122,7 +140,7 @@ export default function ExplorePage() {
       setSeedLoading(true);
       setError(null);
       setExpandNotice(null);
-      const path = neighborhoodPath(seed);
+      const path = neighborhoodPath(seed, normalizedTenantID, normalizedWorkspaceID);
       try {
         const response = await fetchNeighborhood(path, force, signal);
         if (isCancelled()) return;
@@ -143,7 +161,7 @@ export default function ExplorePage() {
         if (!isCancelled()) setSeedLoading(false);
       }
     },
-    [activeScopeKey, fetchNeighborhood],
+    [activeScopeKey, fetchNeighborhood, normalizedTenantID, normalizedWorkspaceID],
   );
 
   useEffect(() => {
@@ -151,7 +169,7 @@ export default function ExplorePage() {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       if (cancelled) return;
-      if (userLoading || !actor.trim()) {
+      if (userLoading || !actor.trim() || invalidWorkspaceScope) {
         loadKeyRef.current = "";
         clearSeed();
         return;
@@ -171,7 +189,7 @@ export default function ExplorePage() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [activeScopeKey, actor, clearSeed, loadSeed, reloadToken, selectedSeed, userLoading]);
+  }, [activeScopeKey, actor, clearSeed, invalidWorkspaceScope, loadSeed, reloadToken, selectedSeed, userLoading]);
 
   const scopedState = loadedScopeKey !== "" && loadedScopeKey === activeScopeKey ? state : null;
 
@@ -182,7 +200,7 @@ export default function ExplorePage() {
     setExpandingURN(target);
     setError(null);
     setExpandNotice(null);
-    const path = neighborhoodPath(target);
+    const path = neighborhoodPath(target, normalizedTenantID, normalizedWorkspaceID);
     const controller = new AbortController();
     try {
       const response = await fetchNeighborhood(path, false, controller.signal);
@@ -211,7 +229,7 @@ export default function ExplorePage() {
     } finally {
       setExpandingURN(null);
     }
-  }, [fetchNeighborhood, scopedState]);
+  }, [fetchNeighborhood, normalizedTenantID, normalizedWorkspaceID, scopedState]);
 
   const removeNode = useCallback((urn: string) => {
     setState((current) => (current ? removeExploreNode(current, urn) : current));
@@ -228,10 +246,10 @@ export default function ExplorePage() {
 
   const retryExplore = useCallback(() => {
     resetExploration();
-    if (!selectedSeed) {
+    if (!selectedSeed && !invalidWorkspaceScope && !userLoading && actor.trim()) {
       void fallbackFindings.reload();
     }
-  }, [fallbackFindings, resetExploration, selectedSeed]);
+  }, [actor, fallbackFindings, invalidWorkspaceScope, resetExploration, selectedSeed, userLoading]);
 
   const graph = useMemo(() => (scopedState ? toGRCGraph(scopedState) : undefined), [scopedState]);
   const expandedURNs = useMemo(() => new Set(scopedState ? Object.keys(scopedState.expanded) : []), [scopedState]);

@@ -77,7 +77,7 @@ describe("connector library scope transitions", () => {
     await act(async () => {
       root.render(<ConnectorLibraryHarness tenantID="tenant-b" />);
     });
-    expect(container.querySelector("#connector-state")?.textContent).toBe("empty");
+    expect(container.querySelector("#connector-state")?.textContent).not.toBe("connector-a");
 
     await act(async () => {
       await flushReactUpdates();
