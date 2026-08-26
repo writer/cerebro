@@ -1,8 +1,27 @@
-import { describe, expect, it } from "vitest";
+/**
+ * @vitest-environment jsdom
+ */
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GRCControl, GRCProgramReadiness, GRCProgramReadinessSummary } from "@/lib/grc";
 
-import { buildIssueQueue, buildReadinessChecks } from "./page";
+const mocks = vi.hoisted(() => ({
+  reload: vi.fn(),
+  useGRCQuery: vi.fn(),
+  useSearchParams: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({ useSearchParams: mocks.useSearchParams }));
+vi.mock("@/lib/grc-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/grc-client")>();
+  return { ...actual, useGRCQuery: mocks.useGRCQuery };
+});
+
+import { grcDashboardPath, grcProgramReadinessPath } from "@/lib/grc-client";
+
+import GRCPage, { buildIssueQueue, buildReadinessChecks } from "./page";
 
 const summary = (patch: Partial<GRCProgramReadinessSummary> = {}): GRCProgramReadinessSummary => ({
   status: "needs_attention",
@@ -140,5 +159,64 @@ describe("GRC page helpers", () => {
         value: "Clear",
       }),
     ]);
+  });
+});
+
+const reactActEnvironment = globalThis as typeof globalThis & {
+  IS_REACT_ACT_ENVIRONMENT?: boolean;
+};
+
+describe("GRC page loading", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    mocks.reload.mockReset().mockResolvedValue(undefined);
+    mocks.useSearchParams.mockReset().mockReturnValue(new URLSearchParams());
+    mocks.useGRCQuery.mockReset().mockImplementation((path: string | null) => ({
+      data: null,
+      durationMs: null,
+      error: null,
+      lastSuccessfulAt: null,
+      loading: Boolean(path),
+      reload: mocks.reload,
+      state: path ? "loading" : "empty",
+    }));
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("starts scoped dashboard and readiness reads together", async () => {
+    mocks.useSearchParams.mockReturnValue(new URLSearchParams({
+      tenant_id: "tenant-a",
+      workspace_id: "workspace-a",
+    }));
+
+    await act(async () => {
+      root.render(createElement(GRCPage));
+    });
+
+    expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
+      grcDashboardPath({ limit: 12, tenant_id: "tenant-a", workspace_id: "workspace-a" }),
+      grcProgramReadinessPath({ tenant_id: "tenant-a", workspace_id: "workspace-a" }),
+    ]);
+  });
+
+  it("does not issue GRC reads for a workspace without an explicit tenant", async () => {
+    mocks.useSearchParams.mockReturnValue(new URLSearchParams({ workspace_id: "workspace-a" }));
+
+    await act(async () => {
+      root.render(createElement(GRCPage));
+    });
+
+    expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([null, null]);
+    expect(container.textContent).toContain("Select a tenant before loading a workspace.");
   });
 });
