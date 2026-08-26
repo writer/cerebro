@@ -37,6 +37,10 @@ service OrganizationalGraphService {
   rpc ListCloudAttackPaths(ListCloudAttackPathsRequest) returns (ListCloudAttackPathsResponse);
   // ListEntityRelations returns filtered direct relations for one catalog entity.
   rpc ListEntityRelations(ListEntityRelationsRequest) returns (ListEntityRelationsResponse);
+  // GetComplianceImpactFact resolves one exact compliance revision and its dependencies.
+  rpc GetComplianceImpactFact(GetComplianceImpactFactRequest) returns (GetComplianceImpactFactResponse);
+  // ListComplianceImpactDependents returns one keyset-paged reverse-dependency page.
+  rpc ListComplianceImpactDependents(ListComplianceImpactDependentsRequest) returns (ListComplianceImpactDependentsResponse);
   // GetSourceSummary returns the catalog coverage compiled into the running Rust service.
   rpc GetSourceSummary(GetSourceSummaryRequest) returns (GetSourceSummaryResponse);
   // ListVendorRegister returns the product-ready vendor register at one graph revision.
@@ -748,4 +752,37 @@ message CompareExposureCoverageResponse {
   repeated ExposureCoverageCorroboratingOnly corroborating_only = 7;
   repeated ExposureCoverageAccount accounts = 8;
   ExposureCoverageCompleteness completeness = 9;
+}
+
+message GetComplianceImpactFactRequest {
+  string tenant_id = 1;
+  string agent_key = 2;
+}
+
+message ComplianceImpactDependency {
+  GraphEntity entity = 1;
+  string relation = 2;
+}
+
+message GetComplianceImpactFactResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  GraphEntity fact = 3;
+  uint32 dependency_count = 4;
+  repeated ComplianceImpactDependency dependencies = 5;
+}
+
+message ListComplianceImpactDependentsRequest {
+  string tenant_id = 1;
+  string dependency_agent_key = 2;
+  string after_agent_key = 3;
+  uint32 limit = 4;
+}
+
+message ListComplianceImpactDependentsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated GraphEntity dependents = 3;
+  bool truncated = 4;
+  string next_after_agent_key = 5;
 }

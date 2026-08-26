@@ -11,7 +11,9 @@ use cerebro_agent_context::{
     QueryDirection, QueryMatch, QueryResult, validate_bounds, validate_root_keys,
 };
 use cerebro_organizational_graph::GraphWriteReceipt;
-use cerebro_organizational_model::{AssertionId, EntityId, GraphDelta, TenantId};
+use cerebro_organizational_model::{
+    AssertionId, EntityId, EntityKind, GraphDelta, RelationKind, TenantId,
+};
 use cerebro_security_lifecycle::{
     IndexedLifecyclePage, KeysetDirection, LifecycleAggregates, LifecycleState, PolicyState,
     PolicyStateCount, PreparedLifecycleQuery, ProjectedResource, StateCount, SubjectKind,
@@ -142,6 +144,73 @@ endpoint.entity_type STARTS WITH $primary_kind_prefix
   AND ($account_id = '' OR account.label = $account_id OR account.urn CONTAINS $account_id OR coalesce(endpoint.attributes_json, '') CONTAINS ('"domain":"' + $account_id + '"'))
   AND ($region = '' OR endpoint.urn CONTAINS (':' + $region + ':') OR coalesce(endpoint.attributes_json, '') CONTAINS ('"' + $region + '"'))
   AND ($search = '' OR toLower(coalesce(endpoint.urn, '') + ' ' + coalesce(endpoint.label, '') + ' ' + coalesce(account.urn, '') + ' ' + coalesce(account.label, '')) CONTAINS $search)
+"#;
+
+const COMPLIANCE_IMPACT_FACT_STATEMENT: &str = r#"
+MATCH (fact:Entity {
+  tenant_id: $tenant_id,
+  urn: $agent_key,
+  entity_type: $entity_kind
+})
+RETURN fact.urn AS entity_key,
+       coalesce(fact.attributes_json, '{}') AS entity_properties
+LIMIT 2
+"#;
+
+const COMPLIANCE_IMPACT_REVISION_URN_KIND: &str = "compliance_impact_revision";
+
+const COMPLIANCE_IMPACT_DEPENDENCY_COUNT_STATEMENT: &str = r#"
+MATCH (fact:Entity {
+  tenant_id: $tenant_id,
+  urn: $agent_key,
+  entity_type: $entity_kind
+})
+OPTIONAL MATCH (fact)-[edge:RELATION {
+  tenant_id: $tenant_id,
+  relation: $relation
+}]->(dependency:Entity {
+  tenant_id: $tenant_id,
+  entity_type: $entity_kind
+})
+RETURN count(edge) AS dependency_count
+"#;
+
+const COMPLIANCE_IMPACT_DEPENDENCIES_STATEMENT: &str = r#"
+MATCH (fact:Entity {
+  tenant_id: $tenant_id,
+  urn: $agent_key,
+  entity_type: $entity_kind
+})-[edge:RELATION {
+  tenant_id: $tenant_id,
+  relation: $relation
+}]->(dependency:Entity {
+  tenant_id: $tenant_id,
+  entity_type: $entity_kind
+})
+RETURN dependency.urn AS entity_key,
+       coalesce(dependency.attributes_json, '{}') AS entity_properties,
+       coalesce(edge.attributes_json, '{}') AS edge_properties
+ORDER BY dependency.urn, edge.attributes_json
+LIMIT $row_limit
+"#;
+
+const COMPLIANCE_IMPACT_DEPENDENTS_STATEMENT: &str = r#"
+MATCH (dependent:Entity {
+  tenant_id: $tenant_id,
+  entity_type: $entity_kind
+})-[edge:RELATION {
+  tenant_id: $tenant_id,
+  relation: $relation
+}]->(dependency:Entity {
+  tenant_id: $tenant_id,
+  urn: $dependency_key,
+  entity_type: $entity_kind
+})
+WHERE dependent.urn > $after_key
+RETURN DISTINCT dependent.urn AS entity_key,
+       coalesce(dependent.attributes_json, '{}') AS entity_properties
+ORDER BY entity_key
+LIMIT $row_limit
 "#;
 
 fn exposure_counts_statement() -> String {
@@ -569,6 +638,45 @@ pub struct EntityCatalogPage {
     pub next_after_agent_key: String,
     /// Complete grouped relation counts for the returned page.
     pub relation_counts: Vec<EntityCatalogRelationCount>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One exact compliance revision and its direct dependency relations.
+pub struct ComplianceImpactFact {
+    /// Tenant whose fact was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the fact and dependencies.
+    pub graph_revision: u64,
+    /// Exact immutable fact revision.
+    pub fact: ContextEntity,
+    /// Scalar dependency count read before the dependency list.
+    pub dependency_count: u32,
+    /// Ordered dependency revisions.
+    pub dependencies: Vec<ComplianceImpactDependency>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One exact compliance dependency plus its domain relation property.
+pub struct ComplianceImpactDependency {
+    /// Exact dependency revision.
+    pub entity: ContextEntity,
+    /// Domain-level dependency relation stored on the fixed graph edge.
+    pub relation: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One keyset-paged reverse compliance-dependency result.
+pub struct ComplianceImpactPage {
+    /// Tenant whose graph was read.
+    pub tenant_id: String,
+    /// Graph revision shared by the page.
+    pub graph_revision: u64,
+    /// Exact dependent revisions in key order.
+    pub dependents: Vec<ContextEntity>,
+    /// Whether another dependent exists.
+    pub truncated: bool,
+    /// Key after which the next page begins.
+    pub next_after_agent_key: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1233,6 +1341,185 @@ ORDER BY runtime_id
             truncated,
             next_after_agent_key,
             relation_counts,
+        })
+    }
+
+    /// Resolves one exact compliance revision and its direct dependencies.
+    pub async fn get_compliance_impact_fact(
+        &self,
+        tenant_id: &TenantId,
+        agent_key: &str,
+    ) -> Result<Option<ComplianceImpactFact>, StoreError> {
+        validate_compliance_impact_key(tenant_id, "agent_key", agent_key, true)?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        let mut fact_rows = transaction
+            .execute(
+                compliance_impact_query(COMPLIANCE_IMPACT_FACT_STATEMENT, tenant_id)
+                    .param("agent_key", agent_key),
+            )
+            .await?;
+        let mut facts = Vec::new();
+        while let Some(row) = fact_rows.next(transaction.handle()).await? {
+            facts.push(compliance_impact_entity(tenant_id, &row)?);
+        }
+        drop(fact_rows);
+        if facts.is_empty() {
+            let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+            transaction.commit().await?;
+            require_same_catalog_revision(revision, end_revision)?;
+            return Ok(None);
+        }
+        if facts.len() != 1 {
+            return Err(StoreError::Conflict(
+                "compliance impact exact revision is ambiguous".to_owned(),
+            ));
+        }
+
+        let mut count_rows = transaction
+            .execute(
+                compliance_impact_query(COMPLIANCE_IMPACT_DEPENDENCY_COUNT_STATEMENT, tenant_id)
+                    .param("agent_key", agent_key),
+            )
+            .await?;
+        let count_row = count_rows
+            .next(transaction.handle())
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict("compliance impact dependency count is unavailable".to_owned())
+            })?;
+        let dependency_count = catalog_row_u64(&count_row, "dependency_count")?;
+        if count_rows.next(transaction.handle()).await?.is_some() || dependency_count > 2_999 {
+            return Err(StoreError::Conflict(
+                "compliance impact dependency count is invalid".to_owned(),
+            ));
+        }
+        drop(count_rows);
+
+        let mut dependencies = Vec::with_capacity(dependency_count as usize);
+        if let Some(dependency_row_limit) = compliance_impact_dependency_row_limit(dependency_count)
+        {
+            let mut identities = BTreeSet::new();
+            let mut last_order_key = None;
+            let mut dependency_rows = transaction
+                .execute(
+                    compliance_impact_query(COMPLIANCE_IMPACT_DEPENDENCIES_STATEMENT, tenant_id)
+                        .param("agent_key", agent_key)
+                        .param("row_limit", dependency_row_limit),
+                )
+                .await?;
+            while let Some(row) = dependency_rows.next(transaction.handle()).await? {
+                let entity = compliance_impact_entity(tenant_id, &row)?;
+                let edge_properties_json = catalog_row_string(&row, "edge_properties")?;
+                let edge_properties: BTreeMap<String, String> =
+                    parse_json(&edge_properties_json)
+                        .map_err(|error| StoreError::Conflict(error.to_string()))?;
+                let canonical_edge_properties = serde_json::to_string(&edge_properties)
+                    .map_err(|error| StoreError::Conflict(error.to_string()))?;
+                if canonical_edge_properties != edge_properties_json {
+                    return Err(StoreError::Conflict(
+                        "compliance impact dependency attributes are not canonical".to_owned(),
+                    ));
+                }
+                let relation = edge_properties
+                    .get("dependency_relation")
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        StoreError::Conflict(
+                            "compliance impact dependency relation is missing".to_owned(),
+                        )
+                    })?
+                    .to_owned();
+                let identity = (entity.agent_key.clone(), relation.clone());
+                if !identities.insert(identity) {
+                    return Err(StoreError::Conflict(
+                        "compliance impact dependency rows contain a duplicate".to_owned(),
+                    ));
+                }
+                let order_key = (entity.agent_key.clone(), canonical_edge_properties);
+                if last_order_key
+                    .as_ref()
+                    .is_some_and(|last| last >= &order_key)
+                {
+                    return Err(StoreError::Conflict(
+                        "compliance impact dependency rows are not strictly ordered".to_owned(),
+                    ));
+                }
+                last_order_key = Some(order_key);
+                dependencies.push(ComplianceImpactDependency { entity, relation });
+            }
+            drop(dependency_rows);
+            if dependencies.len() != dependency_count as usize {
+                return Err(StoreError::Conflict(
+                    "compliance impact dependency count changed during the read".to_owned(),
+                ));
+            }
+        }
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        Ok(Some(ComplianceImpactFact {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            fact: facts.remove(0),
+            dependency_count: u32::try_from(dependency_count).unwrap_or(u32::MAX),
+            dependencies,
+        }))
+    }
+
+    /// Lists one keyset-paged reverse compliance-dependency page.
+    pub async fn list_compliance_impact_dependents(
+        &self,
+        tenant_id: &TenantId,
+        dependency_key: &str,
+        after_agent_key: &str,
+        limit: usize,
+    ) -> Result<ComplianceImpactPage, StoreError> {
+        validate_compliance_impact_key(tenant_id, "dependency_key", dependency_key, true)?;
+        validate_compliance_impact_key(tenant_id, "after_agent_key", after_agent_key, false)?;
+        if !(1..=2_999).contains(&limit) {
+            return Err(StoreError::Conflict(
+                "compliance impact dependent limit must be between 1 and 2999".to_owned(),
+            ));
+        }
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        let mut rows = transaction
+            .execute(
+                compliance_impact_query(COMPLIANCE_IMPACT_DEPENDENTS_STATEMENT, tenant_id)
+                    .param("dependency_key", dependency_key)
+                    .param("after_key", after_agent_key)
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut dependents = Vec::new();
+        let mut last_key = after_agent_key.to_owned();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            let entity = compliance_impact_entity(tenant_id, &row)?;
+            if entity.agent_key <= last_key {
+                return Err(StoreError::Conflict(
+                    "compliance impact dependent cursor is not strictly monotonic".to_owned(),
+                ));
+            }
+            last_key.clone_from(&entity.agent_key);
+            dependents.push(entity);
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut dependents, limit);
+        let next_after_agent_key = truncated
+            .then(|| dependents.last().map(|entity| entity.agent_key.clone()))
+            .flatten()
+            .unwrap_or_default();
+        Ok(ComplianceImpactPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            dependents,
+            truncated,
+            next_after_agent_key,
         })
     }
 
@@ -4475,6 +4762,288 @@ fn validate_catalog_list(name: &str, values: &[String], max: usize) -> Result<()
     Ok(())
 }
 
+fn compliance_impact_query(statement: &'static str, tenant_id: &TenantId) -> Query {
+    query(statement)
+        .param("tenant_id", tenant_id.as_str())
+        .param("entity_kind", EntityKind::ComplianceImpactRevision.as_str())
+        .param("relation", RelationKind::ComplianceDependsOn.as_str())
+}
+
+fn compliance_impact_dependency_row_limit(dependency_count: u64) -> Option<i64> {
+    (dependency_count != 0).then(|| i64::try_from(dependency_count).unwrap_or(i64::MAX))
+}
+
+fn validate_compliance_impact_key(
+    tenant_id: &TenantId,
+    name: &str,
+    value: &str,
+    required: bool,
+) -> Result<(), StoreError> {
+    validate_catalog_text(name, value, 4096, required)?;
+    if value.is_empty() {
+        return Ok(());
+    }
+    let parts = value.split(':').collect::<Vec<_>>();
+    let valid_identity = parts.len() == 9
+        && parts[0] == "urn"
+        && parts[1] == "cerebro"
+        && parts[2] == tenant_id.as_str()
+        && parts[3] == COMPLIANCE_IMPACT_REVISION_URN_KIND
+        && parts[8].len() == 35
+        && parts[8].starts_with("id-")
+        && parts[8][3..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+    if !valid_identity {
+        return Err(StoreError::Conflict(format!(
+            "compliance impact {name} is not a canonical revision key"
+        )));
+    }
+    let domain = decode_compliance_impact_segment(parts[4])?;
+    let fact_kind = decode_compliance_impact_segment(parts[5])?;
+    for part in &parts[6..8] {
+        let decoded = decode_compliance_impact_segment(part)?;
+        validate_catalog_text(name, &decoded, 4096, true)?;
+    }
+    if !valid_compliance_impact_domain(&domain) || !valid_compliance_impact_fact_kind(&fact_kind) {
+        return Err(StoreError::Conflict(format!(
+            "compliance impact {name} has invalid authority segments"
+        )));
+    }
+    Ok(())
+}
+
+fn compliance_impact_entity(tenant_id: &TenantId, row: &Row) -> Result<ContextEntity, StoreError> {
+    let agent_key = catalog_row_string(row, "entity_key")?;
+    validate_compliance_impact_key(tenant_id, "result key", &agent_key, true)?;
+    let entity = legacy_context_entity(
+        tenant_id,
+        &agent_key,
+        EntityKind::ComplianceImpactRevision.as_str().to_owned(),
+        agent_key.clone(),
+        catalog_row_string(row, "entity_properties")?,
+        "compliance".to_owned(),
+        String::new(),
+    )
+    .map_err(|error| StoreError::Conflict(error.to_string()))?;
+    if canonical_compliance_impact_key(tenant_id, &entity.properties)? != agent_key {
+        return Err(StoreError::Conflict(
+            "compliance impact revision key does not match canonical properties".to_owned(),
+        ));
+    }
+    Ok(entity)
+}
+
+fn canonical_compliance_impact_key(
+    tenant_id: &TenantId,
+    properties: &BTreeMap<String, String>,
+) -> Result<String, StoreError> {
+    let required = |name: &str| {
+        let value = properties.get(name).ok_or_else(|| {
+            StoreError::Conflict(format!(
+                "compliance impact revision property {name} is missing"
+            ))
+        })?;
+        validate_catalog_text(name, value, 4096, true)?;
+        Ok::<&str, StoreError>(value)
+    };
+    if required("tenant_id")? != tenant_id.as_str() {
+        return Err(StoreError::Conflict(
+            "compliance impact revision tenant is invalid".to_owned(),
+        ));
+    }
+    let domain = required("domain")?;
+    let fact_kind = required("fact_kind")?;
+    let stable_id = required("stable_id")?;
+    let revision_id = required("revision_id")?;
+    let revision_version = required("revision_version")?;
+    let content_digest = required("content_digest")?;
+    let last_modified = required("last_modified")?;
+    if !valid_compliance_impact_domain(domain)
+        || !valid_compliance_impact_fact_kind(fact_kind)
+        || !valid_compliance_impact_digest(content_digest)
+    {
+        return Err(StoreError::Conflict(
+            "compliance impact revision properties are invalid".to_owned(),
+        ));
+    }
+    let version = revision_version.parse::<u64>().map_err(|_| {
+        StoreError::Conflict("compliance impact revision version is invalid".to_owned())
+    })?;
+    if version == 0 || version.to_string() != revision_version {
+        return Err(StoreError::Conflict(
+            "compliance impact revision version is not canonical".to_owned(),
+        ));
+    }
+    let parsed = time::OffsetDateTime::parse(
+        last_modified,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .map_err(|_| {
+        StoreError::Conflict("compliance impact revision timestamp is invalid".to_owned())
+    })?;
+    if parsed.offset() != time::UtcOffset::UTC
+        || parsed.nanosecond() % 1_000_000 != 0
+        || canonical_compliance_impact_timestamp(parsed) != last_modified
+    {
+        return Err(StoreError::Conflict(
+            "compliance impact revision timestamp is not canonical".to_owned(),
+        ));
+    }
+    let exact_key = format!(
+        "{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
+        tenant_id.as_str(),
+        domain,
+        fact_kind,
+        stable_id,
+        revision_id,
+        version,
+        content_digest,
+        last_modified
+    );
+    let digest = Sha256::digest(exact_key.as_bytes());
+    let mut external_id = String::from("id-");
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    for byte in &digest[..16] {
+        external_id.push(HEX[(byte >> 4) as usize] as char);
+        external_id.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    Ok(format!(
+        "urn:cerebro:{}:{}:{}:{}:{}:{}:{}",
+        tenant_id.as_str(),
+        COMPLIANCE_IMPACT_REVISION_URN_KIND,
+        encode_compliance_impact_segment(domain),
+        encode_compliance_impact_segment(fact_kind),
+        encode_compliance_impact_segment(stable_id),
+        encode_compliance_impact_segment(revision_id),
+        external_id
+    ))
+}
+
+fn canonical_compliance_impact_timestamp(value: time::OffsetDateTime) -> String {
+    let month = u8::from(value.month());
+    let mut result = format!(
+        "{:04}-{month:02}-{:02}T{:02}:{:02}:{:02}",
+        value.year(),
+        value.day(),
+        value.hour(),
+        value.minute(),
+        value.second()
+    );
+    let nanosecond = value.nanosecond();
+    if nanosecond != 0 {
+        let fraction = format!("{nanosecond:09}");
+        result.push('.');
+        result.push_str(fraction.trim_end_matches('0'));
+    }
+    result.push('Z');
+    result
+}
+
+fn valid_compliance_impact_domain(value: &str) -> bool {
+    value.len() <= 128
+        && value
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_lowercase())
+        && value.bytes().skip(1).all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'.' | b'-')
+        })
+}
+
+fn valid_compliance_impact_fact_kind(value: &str) -> bool {
+    matches!(
+        value,
+        "catalog"
+            | "mapping"
+            | "source_coverage"
+            | "inventory"
+            | "policy"
+            | "vendor"
+            | "claim"
+            | "finding"
+            | "program"
+            | "assessment_plan"
+            | "objective"
+            | "audit_package"
+            | "work_item"
+            | "projection"
+            | "questionnaire_answer"
+    )
+}
+
+fn valid_compliance_impact_digest(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn encode_compliance_impact_segment(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(value.len());
+    for &byte in value.as_bytes() {
+        if byte.is_ascii_alphanumeric()
+            || matches!(
+                byte,
+                b'-' | b'.' | b'_' | b'~' | b'$' | b'&' | b'+' | b'=' | b'@'
+            )
+        {
+            encoded.push(byte as char);
+        } else {
+            encoded.push('%');
+            encoded.push(HEX[(byte >> 4) as usize] as char);
+            encoded.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+    }
+    encoded
+}
+
+fn decode_compliance_impact_segment(value: &str) -> Result<String, StoreError> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            decoded.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        if index + 2 >= bytes.len() {
+            return Err(StoreError::Conflict(
+                "compliance impact revision key has an invalid escape".to_owned(),
+            ));
+        }
+        let high = decode_hex(bytes[index + 1]).ok_or_else(|| {
+            StoreError::Conflict("compliance impact revision key has an invalid escape".to_owned())
+        })?;
+        let low = decode_hex(bytes[index + 2]).ok_or_else(|| {
+            StoreError::Conflict("compliance impact revision key has an invalid escape".to_owned())
+        })?;
+        decoded.push((high << 4) | low);
+        index += 3;
+    }
+    let decoded = String::from_utf8(decoded).map_err(|_| {
+        StoreError::Conflict("compliance impact revision key is not UTF-8".to_owned())
+    })?;
+    if decoded.trim() != decoded || encode_compliance_impact_segment(&decoded) != value {
+        return Err(StoreError::Conflict(
+            "compliance impact revision key is not round-trippable".to_owned(),
+        ));
+    }
+    Ok(decoded)
+}
+
+fn decode_hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 fn validate_catalog_text(
     name: &str,
     value: &str,
@@ -5669,6 +6238,101 @@ mod tests {
         assert!(truncate_to_limit(&mut overflow, 2));
         assert_eq!(overflow, [1, 2]);
         assert_eq!(row_limit(500), 501);
+    }
+
+    #[test]
+    fn compliance_impact_queries_are_fixed_tenant_scoped_and_bounded() {
+        assert!(COMPLIANCE_IMPACT_FACT_STATEMENT.contains("LIMIT 2"));
+        assert!(COMPLIANCE_IMPACT_FACT_STATEMENT.contains("tenant_id: $tenant_id"));
+        assert!(COMPLIANCE_IMPACT_FACT_STATEMENT.contains("entity_type: $entity_kind"));
+
+        assert!(COMPLIANCE_IMPACT_DEPENDENCY_COUNT_STATEMENT.contains("count(edge)"));
+        assert!(COMPLIANCE_IMPACT_DEPENDENCY_COUNT_STATEMENT.contains("relation: $relation"));
+        assert!(COMPLIANCE_IMPACT_DEPENDENCIES_STATEMENT.contains("edge.attributes_json"));
+        assert!(COMPLIANCE_IMPACT_DEPENDENCIES_STATEMENT.contains("ORDER BY dependency.urn"));
+        assert!(COMPLIANCE_IMPACT_DEPENDENCIES_STATEMENT.contains("LIMIT $row_limit"));
+
+        assert!(COMPLIANCE_IMPACT_DEPENDENTS_STATEMENT.contains("RETURN DISTINCT dependent.urn"));
+        assert!(COMPLIANCE_IMPACT_DEPENDENTS_STATEMENT.contains("dependent.urn > $after_key"));
+        assert!(COMPLIANCE_IMPACT_DEPENDENTS_STATEMENT.contains("ORDER BY entity_key"));
+        assert!(COMPLIANCE_IMPACT_DEPENDENTS_STATEMENT.contains("LIMIT $row_limit"));
+
+        let tenant = TenantId::parse("tenant-a").expect("tenant");
+        let properties = BTreeMap::from([
+            ("tenant_id".to_owned(), "tenant-a".to_owned()),
+            ("domain".to_owned(), "grc".to_owned()),
+            ("fact_kind".to_owned(), "assessment_plan".to_owned()),
+            ("stable_id".to_owned(), "plan:1".to_owned()),
+            ("revision_id".to_owned(), "plan/1 revision".to_owned()),
+            ("revision_version".to_owned(), "3".to_owned()),
+            (
+                "content_digest".to_owned(),
+                format!("sha256:{}", "a".repeat(64)),
+            ),
+            (
+                "last_modified".to_owned(),
+                "2026-08-25T12:00:00.123Z".to_owned(),
+            ),
+        ]);
+        let canonical_key =
+            canonical_compliance_impact_key(&tenant, &properties).expect("canonical key");
+        assert_eq!(
+            canonical_key,
+            "urn:cerebro:tenant-a:compliance_impact_revision:grc:assessment_plan:plan%3A1:plan%2F1%20revision:id-8f17cc1b53746447564d0ce320463097"
+        );
+        assert!(validate_compliance_impact_key(&tenant, "agent_key", &canonical_key, true).is_ok());
+        assert!(
+            validate_compliance_impact_key(
+                &tenant,
+                "agent_key",
+                &canonical_key.replacen("tenant-a", "tenant-b", 1),
+                true,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_compliance_impact_key(
+                &tenant,
+                "agent_key",
+                &canonical_key.replace("%3A", "%3a"),
+                true,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_compliance_impact_key(
+                &tenant,
+                "agent_key",
+                "urn:cerebro:tenant-a:compliance_impact_revision:one",
+                true,
+            )
+            .is_err()
+        );
+        let mut invalid_properties = properties.clone();
+        invalid_properties.insert(
+            "content_digest".to_owned(),
+            format!("sha256:{}", "A".repeat(64)),
+        );
+        assert!(canonical_compliance_impact_key(&tenant, &invalid_properties).is_err());
+        invalid_properties = properties.clone();
+        invalid_properties.insert(
+            "last_modified".to_owned(),
+            "2026-08-25T12:00:00.123400Z".to_owned(),
+        );
+        assert!(canonical_compliance_impact_key(&tenant, &invalid_properties).is_err());
+        assert!(validate_compliance_impact_key(&tenant, "agent_key", "", true).is_err());
+        assert!(validate_compliance_impact_key(&tenant, "after_agent_key", "", false).is_ok());
+        assert_eq!(row_limit(2_999), 3_000);
+    }
+
+    #[test]
+    fn compliance_impact_zero_dependency_fact_skips_dependency_list_query() {
+        let mut dependency_list_queries = 0;
+        if compliance_impact_dependency_row_limit(0).is_some() {
+            dependency_list_queries += 1;
+        }
+        assert_eq!(dependency_list_queries, 0);
+        assert_eq!(compliance_impact_dependency_row_limit(2_999), Some(2_999));
     }
 
     #[test]

@@ -10,6 +10,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
+	"github.com/writer/cerebro/internal/compliance"
+	"github.com/writer/cerebro/internal/complianceintegration"
 	"github.com/writer/cerebro/internal/ports"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
@@ -1062,6 +1065,168 @@ func (s *QueryStore) ListEntityRelations(ctx context.Context, request ports.Enti
 		return nil, errors.New("rust entity relations returned an invalid continuation")
 	}
 	return page, nil
+}
+
+func (s *QueryStore) GetComplianceImpactFact(ctx context.Context, tenantID string, requested ports.ComplianceImpactRevisionRef) (ports.ComplianceImpactDomainFact, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	agentKey, err := complianceImpactRevisionKey(tenantID, requested)
+	if err != nil {
+		return ports.ComplianceImpactDomainFact{}, err
+	}
+	message := connect.NewRequest(&cerebrographv1.GetComplianceImpactFactRequest{TenantId: tenantID, AgentKey: agentKey})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return ports.ComplianceImpactDomainFact{}, err
+	}
+	response, err := s.graph.GetComplianceImpactFact(ctx, message)
+	if err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return ports.ComplianceImpactDomainFact{}, ports.ErrComplianceImpactRevisionNotFound
+		}
+		if connect.CodeOf(err) == connect.CodeFailedPrecondition {
+			return ports.ComplianceImpactDomainFact{}, fmt.Errorf("%w: %v", ports.ErrComplianceImpactInvalidProjection, err)
+		}
+		return ports.ComplianceImpactDomainFact{}, graphRPCError("get compliance impact fact", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || response.Msg.GetFact() == nil || response.Msg.GetDependencyCount() > 2999 || len(response.Msg.GetDependencies()) != int(response.Msg.GetDependencyCount()) {
+		return ports.ComplianceImpactDomainFact{}, fmt.Errorf("%w: invalid count or tenant", ports.ErrComplianceImpactInvalidProjection)
+	}
+	fact, err := complianceImpactRevisionFromProto(tenantID, response.Msg.GetFact())
+	if err != nil || productEntityKey(response.Msg.GetFact()) != agentKey {
+		return ports.ComplianceImpactDomainFact{}, fmt.Errorf("%w: different exact revision", ports.ErrComplianceImpactInvalidProjection)
+	}
+	result := ports.ComplianceImpactDomainFact{Revision: fact, Dependencies: make([]ports.ComplianceImpactDependencyRef, 0, response.Msg.GetDependencyCount())}
+	seen := make(map[string]struct{}, response.Msg.GetDependencyCount())
+	lastOrderKey := ""
+	for _, dependency := range response.Msg.GetDependencies() {
+		if dependency == nil || strings.TrimSpace(dependency.GetRelation()) == "" {
+			return ports.ComplianceImpactDomainFact{}, fmt.Errorf("%w: invalid dependency", ports.ErrComplianceImpactInvalidProjection)
+		}
+		revision, err := complianceImpactRevisionFromProto(tenantID, dependency.GetEntity())
+		if err != nil {
+			return ports.ComplianceImpactDomainFact{}, err
+		}
+		relation := strings.TrimSpace(dependency.GetRelation())
+		identity := revision.AgentKey + "\x00" + relation
+		if _, duplicate := seen[identity]; duplicate {
+			return ports.ComplianceImpactDomainFact{}, fmt.Errorf("%w: duplicate dependency", ports.ErrComplianceImpactInvalidProjection)
+		}
+		if lastOrderKey != "" && identity <= lastOrderKey {
+			return ports.ComplianceImpactDomainFact{}, fmt.Errorf("%w: dependencies are not strictly ordered", ports.ErrComplianceImpactInvalidProjection)
+		}
+		seen[identity] = struct{}{}
+		lastOrderKey = identity
+		result.Dependencies = append(result.Dependencies, ports.ComplianceImpactDependencyRef{Revision: revision, Relation: relation})
+	}
+	return result, nil
+}
+
+func (s *QueryStore) ListComplianceImpactDependents(ctx context.Context, request ports.ComplianceImpactDependentRequest) (ports.ComplianceImpactDependentPage, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	dependencyKey, err := complianceImpactRevisionKey(tenantID, request.Dependency)
+	if err != nil {
+		return ports.ComplianceImpactDependentPage{}, err
+	}
+	afterKey := request.AfterCursor
+	if afterKey != "" {
+		if err := complianceintegration.ValidateImpactRevisionURN(tenantID, afterKey); err != nil {
+			return ports.ComplianceImpactDependentPage{}, fmt.Errorf("compliance impact after key: %w", err)
+		}
+	}
+	if request.Limit == 0 || request.Limit >= ports.MaxCypherQueryRows {
+		return ports.ComplianceImpactDependentPage{}, fmt.Errorf("%w: dependent limit must be between 1 and 2999", ports.ErrComplianceImpactInvalidProjection)
+	}
+	message := connect.NewRequest(&cerebrographv1.ListComplianceImpactDependentsRequest{TenantId: tenantID, DependencyAgentKey: dependencyKey, AfterAgentKey: afterKey, Limit: request.Limit})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return ports.ComplianceImpactDependentPage{}, err
+	}
+	response, err := s.graph.ListComplianceImpactDependents(ctx, message)
+	if err != nil {
+		if connect.CodeOf(err) == connect.CodeFailedPrecondition {
+			return ports.ComplianceImpactDependentPage{}, fmt.Errorf("%w: %v", ports.ErrComplianceImpactInvalidProjection, err)
+		}
+		return ports.ComplianceImpactDependentPage{}, graphRPCError("list compliance impact dependents", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetDependents()) > int(request.Limit) {
+		return ports.ComplianceImpactDependentPage{}, fmt.Errorf("%w: invalid tenant or bound", ports.ErrComplianceImpactInvalidProjection)
+	}
+	page := ports.ComplianceImpactDependentPage{Complete: !response.Msg.GetTruncated(), NextCursor: response.Msg.GetNextAfterAgentKey()}
+	lastKey := afterKey
+	for _, entity := range response.Msg.GetDependents() {
+		revision, err := complianceImpactRevisionFromProto(tenantID, entity)
+		if err != nil {
+			return ports.ComplianceImpactDependentPage{}, err
+		}
+		key := productEntityKey(entity)
+		if key <= lastKey {
+			return ports.ComplianceImpactDependentPage{}, fmt.Errorf("%w: dependent cursor is not strictly monotonic", ports.ErrComplianceImpactInvalidProjection)
+		}
+		lastKey = key
+		page.Dependents = append(page.Dependents, revision)
+	}
+	if response.Msg.GetTruncated() {
+		if len(page.Dependents) != int(request.Limit) || page.NextCursor == "" || page.NextCursor != lastKey {
+			return ports.ComplianceImpactDependentPage{}, fmt.Errorf("%w: invalid continuation", ports.ErrComplianceImpactInvalidProjection)
+		}
+	} else if page.NextCursor != "" {
+		return ports.ComplianceImpactDependentPage{}, fmt.Errorf("%w: unexpected continuation", ports.ErrComplianceImpactInvalidProjection)
+	}
+	return page, nil
+}
+
+func complianceImpactRevisionKey(tenantID string, ref ports.ComplianceImpactRevisionRef) (string, error) {
+	revision, err := complianceintegration.AdaptRevisionRef(ref.TenantID, ref.Domain, complianceintegration.FactKind(ref.Kind), compliance.RevisionRef{
+		ID: ref.ID, RevisionID: ref.RevisionID, Version: ref.Version,
+		ContentDigest: compliance.ContentDigest(ref.ContentDigest), LastModified: ref.LastModified,
+	})
+	if err != nil || revision.TenantID() != tenantID {
+		return "", fmt.Errorf("%w: invalid requested revision", ports.ErrComplianceImpactInvalidProjection)
+	}
+	key, err := revision.ImpactRevisionURN()
+	if err != nil || (ref.AgentKey != "" && ref.AgentKey != key) {
+		return "", fmt.Errorf("%w: requested revision key does not match metadata", ports.ErrComplianceImpactInvalidProjection)
+	}
+	return key, nil
+}
+
+func complianceImpactRevisionFromProto(tenantID string, entity *cerebrographv1.GraphEntity) (ports.ComplianceImpactRevisionRef, error) {
+	catalog, err := catalogEntity(tenantID, entity)
+	if err != nil || catalog.EntityType != "compliance.impact_revision" || catalog.Attributes["tenant_id"] != tenantID {
+		return ports.ComplianceImpactRevisionRef{}, fmt.Errorf("%w: invalid revision tenant or kind", ports.ErrComplianceImpactInvalidProjection)
+	}
+	version, err := strconv.ParseUint(catalog.Attributes["revision_version"], 10, 64)
+	if err != nil {
+		return ports.ComplianceImpactRevisionRef{}, fmt.Errorf("%w: invalid revision version", ports.ErrComplianceImpactInvalidProjection)
+	}
+	lastModified, err := time.Parse(time.RFC3339Nano, catalog.Attributes["last_modified"])
+	if err != nil {
+		return ports.ComplianceImpactRevisionRef{}, fmt.Errorf("%w: invalid revision last_modified", ports.ErrComplianceImpactInvalidProjection)
+	}
+	revision, err := complianceintegration.AdaptRevisionRef(tenantID, catalog.Attributes["domain"], complianceintegration.FactKind(catalog.Attributes["fact_kind"]), compliance.RevisionRef{
+		ID: catalog.Attributes["stable_id"], RevisionID: catalog.Attributes["revision_id"], Version: version,
+		ContentDigest: compliance.ContentDigest(catalog.Attributes["content_digest"]), LastModified: lastModified,
+	})
+	if err != nil {
+		return ports.ComplianceImpactRevisionRef{}, fmt.Errorf("%w: revision metadata is invalid", ports.ErrComplianceImpactInvalidProjection)
+	}
+	canonical := revision.Canonical()
+	if catalog.Attributes["domain"] != revision.Domain() ||
+		catalog.Attributes["fact_kind"] != string(revision.Kind()) ||
+		catalog.Attributes["stable_id"] != revision.ID() ||
+		catalog.Attributes["revision_id"] != revision.RevisionID() ||
+		catalog.Attributes["revision_version"] != strconv.FormatUint(revision.Version(), 10) ||
+		catalog.Attributes["content_digest"] != string(canonical.ContentDigest) ||
+		catalog.Attributes["last_modified"] != canonical.LastModified.Format(time.RFC3339Nano) {
+		return ports.ComplianceImpactRevisionRef{}, fmt.Errorf("%w: revision metadata is not canonical", ports.ErrComplianceImpactInvalidProjection)
+	}
+	expectedKey, err := revision.ImpactRevisionURN()
+	if err != nil || catalog.URN != expectedKey {
+		return ports.ComplianceImpactRevisionRef{}, fmt.Errorf("%w: revision key does not match canonical metadata", ports.ErrComplianceImpactInvalidProjection)
+	}
+	return ports.ComplianceImpactRevisionRef{
+		AgentKey: expectedKey, TenantID: revision.TenantID(), Domain: revision.Domain(), Kind: string(revision.Kind()),
+		ID: revision.ID(), RevisionID: revision.RevisionID(), Version: revision.Version(),
+		ContentDigest: string(canonical.ContentDigest), LastModified: canonical.LastModified,
+	}, nil
 }
 
 func cloudAttackPathFromProto(path *cerebrographv1.CloudAttackPath) ports.CloudAttackPath {

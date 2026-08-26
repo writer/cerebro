@@ -51,6 +51,24 @@ func TestRevisionAndFactAdaptersNormalizeAndRemainImmutable(t *testing.T) {
 	}
 }
 
+func TestImpactRevisionURNMatchesOrganizationalStoreVector(t *testing.T) {
+	revision, err := AdaptRevisionRef("tenant-a", "grc", FactAssessmentPlan, compliance.RevisionRef{
+		ID: "plan:1", RevisionID: "plan/1 revision", Version: 3,
+		ContentDigest: compliance.ContentDigest("sha256:" + strings.Repeat("a", 64)),
+		LastModified:  time.Date(2026, time.August, 25, 12, 0, 0, 123000000, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const expected = "urn:cerebro:tenant-a:compliance_impact_revision:grc:assessment_plan:plan%3A1:plan%2F1%20revision:id-8f17cc1b53746447564d0ce320463097"
+	if key, err := revision.ImpactRevisionURN(); err != nil || key != expected {
+		t.Fatalf("ImpactRevisionURN() = %q, %v; want %q", key, err, expected)
+	}
+	if err := ValidateImpactRevisionURN("tenant-a", expected); err != nil {
+		t.Fatalf("ValidateImpactRevisionURN() error = %v", err)
+	}
+}
+
 func TestDomainFactRejectsCrossTenantDependency(t *testing.T) {
 	owner := testRevision(t, "tenant-a", FactProgram, "program-1", 1)
 	foreign := testRevision(t, "tenant-b", FactPolicy, "policy-1", 1)

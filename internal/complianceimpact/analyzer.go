@@ -130,7 +130,7 @@ func (a *Analyzer) getFact(ctx context.Context, tenantID string, ref compliancei
 		if errors.Is(err, ports.ErrComplianceImpactRevisionNotFound) {
 			return complianceintegration.DomainFact{}, fmt.Errorf("%w: %s/%s@%s", ErrRevisionMissing, ref.Domain(), ref.ID(), ref.RevisionID())
 		}
-		return complianceintegration.DomainFact{}, err
+		return complianceintegration.DomainFact{}, impactGraphError(err)
 	}
 	fact, err := adaptPortFact(rawFact)
 	if err != nil {
@@ -154,7 +154,7 @@ func (a *Analyzer) listDependents(ctx context.Context, tenantID string, current 
 	if current.distance >= a.limits.MaxDepth {
 		page, err := a.graph.ListComplianceImpactDependents(ctx, ports.ComplianceImpactDependentRequest{TenantID: tenantID, Dependency: portRevision(current.fact.Revision()), Limit: 1})
 		if err != nil {
-			return nil, 0, nil, false, err
+			return nil, 0, nil, false, impactGraphError(err)
 		}
 		if len(page.Dependents) > 1 {
 			return nil, 0, nil, false, fmt.Errorf("%w: dependent page exceeds requested limit", ErrInvalidGraph)
@@ -182,7 +182,7 @@ func (a *Analyzer) listDependents(ctx context.Context, tenantID string, current 
 		limit := min(a.limits.PageSize, remaining)
 		page, err := a.graph.ListComplianceImpactDependents(ctx, ports.ComplianceImpactDependentRequest{TenantID: tenantID, Dependency: portRevision(current.fact.Revision()), AfterCursor: cursor, Limit: limit})
 		if err != nil {
-			return nil, 0, nil, false, err
+			return nil, 0, nil, false, impactGraphError(err)
 		}
 		// #nosec G115 -- NewAnalyzer bounds PageSize, and limit cannot exceed it.
 		if len(page.Dependents) > int(limit) {
@@ -215,6 +215,13 @@ func (a *Analyzer) listDependents(ctx context.Context, tenantID string, current 
 		cursor = page.NextCursor
 	}
 	return result, edges, nil, true, nil
+}
+
+func impactGraphError(err error) error {
+	if errors.Is(err, ports.ErrComplianceImpactInvalidProjection) {
+		return fmt.Errorf("%w: %v", ErrInvalidGraph, err)
+	}
+	return err
 }
 
 func explicitRelations(fact complianceintegration.DomainFact, dependency complianceintegration.RevisionRef) ([]string, error) {
