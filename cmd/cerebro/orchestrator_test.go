@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
@@ -19,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehealth"
+	"github.com/writer/cerebro/internal/sourcehttp/organizationalgraph"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -418,7 +421,7 @@ func commandTelemetryPayloads(t *testing.T, stderr string, kind string, name str
 	return payloads
 }
 
-func TestNewOrchestratorRuntimeServiceProjectsSourceSyncToStateOnly(t *testing.T) {
+func TestNewOrchestratorRuntimeServiceProjectsAfterTenantBoundRustAuthority(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
@@ -432,8 +435,51 @@ func TestNewOrchestratorRuntimeServiceProjectsSourceSyncToStateOnly(t *testing.T
 	}
 	eventLog := &orchestratorEventLog{}
 	stateStore := newGraphTestStore()
+	var authorityRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/projections/authority":
+			authorityRequests++
+			if r.Header.Get("X-Cerebro-Tenant") != "writer" ||
+				r.URL.Query().Get("tenant_id") != "writer" ||
+				r.URL.Query().Get("source_id") != "github" ||
+				r.URL.Query().Get("family_id") != "pull_request" {
+				http.Error(w, "authority scope mismatch", http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"tenant_id":           "writer",
+				"source_id":           "github",
+				"family_id":           "pull_request",
+				"authority":           "legacy",
+				"evidence_digest":     "",
+				"promoted_at_unix_ms": nil,
+			})
+		case "/v1/projections/legacy-deltas":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"recorded":     true,
+				"delta_digest": strings.Repeat("a", 64),
+			})
+		case "/v1/projections/collections":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"recorded":        true,
+				"manifest_digest": strings.Repeat("b", 64),
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	authority, err := organizationalgraph.NewProjectionClient(
+		server.URL,
+		"orchestrator-authority-test-secret-32-bytes",
+		time.Second,
+	)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
 
-	service := newOrchestratorRuntimeService(registry, store, eventLog, stateStore, "")
+	service := newOrchestratorRuntimeService(registry, store, eventLog, stateStore, "", authority)
 	result, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-1", PageLimit: 1})
 	if err != nil {
 		t.Fatalf("Sync() error = %v", err)
@@ -447,11 +493,30 @@ func TestNewOrchestratorRuntimeServiceProjectsSourceSyncToStateOnly(t *testing.T
 	if len(stateStore.entities) == 0 || len(stateStore.links) == 0 {
 		t.Fatalf("state projections not stored: entities=%d links=%d", len(stateStore.entities), len(stateStore.links))
 	}
+	if authorityRequests != 1 {
+		t.Fatalf("authority requests = %d, want 1", authorityRequests)
+	}
 }
 
-func TestNewOrchestratorSyncProjectorDoesNotCreateGraphOnlyProjector(t *testing.T) {
-	if projector := newOrchestratorSyncProjector(nil); projector != nil {
-		t.Fatalf("newOrchestratorSyncProjector(nil) = %#v, want nil", projector)
+func TestNewOrchestratorRuntimeServiceDoesNotFallBackWithoutRustAuthority(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{runtime: &cerebrov1.SourceRuntime{
+		Id:       "runtime-1",
+		SourceId: "github",
+		TenantId: "writer",
+	}}
+	stateStore := newGraphTestStore()
+	service := newOrchestratorRuntimeService(registry, store, &orchestratorEventLog{}, stateStore, "")
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-1", PageLimit: 1})
+	if err == nil || !strings.Contains(err.Error(), "rust projection authority client is required") {
+		t.Fatalf("Sync() error = %v, want missing Rust authority", err)
+	}
+	if len(stateStore.entities) != 0 || len(stateStore.links) != 0 {
+		t.Fatalf("Go projection ran without Rust authority: entities=%d links=%d", len(stateStore.entities), len(stateStore.links))
 	}
 }
 
