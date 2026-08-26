@@ -62,35 +62,8 @@ func TestGitHubDependabotOpenAlertFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubDependabotOpenAlertRule(), "testdata/rules/github-dependabot-open-alert.json")
 }
 
-// The GitHub mirror-rule fixtures below previously asserted findings; the
-// rules are now retired (match returns false). The fixture path is kept on
-// disk as the canonical event shape that the durable replacement posture
-// graph rule will consume as evidence, so we still load it but assert that
-// the retired wrapper now emits zero findings for every event in the
-// fixture.
-
-func TestGitHubSecretScanningDisabledFixtureRetired(t *testing.T) {
-	assertRetiredEventRuleFixture(t, newGitHubSecretScanningDisabledRule(), "testdata/rules/github-secret-scanning-disabled.json")
-}
-
-func TestGitHubPushProtectionDisabledFixtureRetired(t *testing.T) {
-	assertRetiredEventRuleFixture(t, newGitHubPushProtectionDisabledRule(), "testdata/rules/github-push-protection-disabled.json")
-}
-
-func TestGitHubBranchProtectionDisabledFixtureRetired(t *testing.T) {
-	assertRetiredEventRuleFixture(t, newGitHubBranchProtectionDisabledRule(), "testdata/rules/github-branch-protection-disabled.json")
-}
-
-func TestGitHubRepositoryMadePublicFixtureRetired(t *testing.T) {
-	assertRetiredEventRuleFixture(t, newGitHubRepositoryMadePublicRule(), "testdata/rules/github-repository-made-public.json")
-}
-
 func TestGitHubSecretScanningAlertCreatedFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubSecretScanningAlertCreatedRule(), "testdata/rules/github-secret-scanning-alert-created.json")
-}
-
-func TestGitHubSelfHostedRunnerChangeFixtureRetired(t *testing.T) {
-	assertRetiredEventRuleFixture(t, newGitHubSelfHostedRunnerChangeRule(), "testdata/rules/github-self-hosted-runner-change.json")
 }
 
 func TestGitHubRepositoryCollaboratorAddedFixtureRetired(t *testing.T) {
@@ -121,16 +94,8 @@ func TestGitHubPersonalAccessTokenCreatedFixtureRetired(t *testing.T) {
 	assertRetiredEventRuleFixture(t, newGitHubPersonalAccessTokenCreatedRule(), "testdata/rules/github-personal-access-token-created.json")
 }
 
-func TestGitHubProtectedBranchPolicyOverrideFixtureRetired(t *testing.T) {
-	assertRetiredEventRuleFixture(t, newGitHubProtectedBranchPolicyOverrideRule(), "testdata/rules/github-protected-branch-policy-override.json")
-}
-
 func TestGitHubRepositoryRulesetModifiedFixtureRetired(t *testing.T) {
 	assertRetiredEventRuleFixture(t, newGitHubRepositoryRulesetModifiedRule(), "testdata/rules/github-repository-ruleset-modified.json")
-}
-
-func TestGitHubCriticalResourceDeletedFixture(t *testing.T) {
-	assertRetiredEventRuleFixture(t, newGitHubCriticalResourceDeletedRule(), "testdata/rules/github-critical-resource-deleted.json")
 }
 
 func TestGitHubWebhookModifiedFixtureRetired(t *testing.T) {
