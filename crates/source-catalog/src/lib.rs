@@ -3591,6 +3591,7 @@ mod tests {
             "apideck",
             "apollo",
             "appwrite",
+            "authentik_cloud",
             "aws_bedrock",
             "azure_openai",
             "backstage",
