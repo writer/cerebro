@@ -64,8 +64,8 @@ export const grcOverviewPaths = (scope: GRCScope) => {
     return { dashboard: null, readiness: null };
   }
   return {
-    dashboard: grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT, ...query }),
-    readiness: grcProgramReadinessPath(query),
+    dashboard: grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT, enrichments: "deferred", ...query }),
+    readiness: grcProgramReadinessPath({ enrichments: "deferred", ...query }),
   };
 };
 

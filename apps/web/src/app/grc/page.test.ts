@@ -22,7 +22,7 @@ vi.mock("@/lib/grc-client", async (importOriginal) => {
 
 import { grcDashboardPath, grcProgramReadinessPath } from "@/lib/grc-client";
 
-import GRCPage, { buildIssueQueue, buildReadinessChecks } from "./page";
+import GRCPage, { buildIssueQueue, buildReadinessChecks, grcOverviewPaths } from "./page";
 
 const summary = (patch: Partial<GRCProgramReadinessSummary> = {}): GRCProgramReadinessSummary => ({
   status: "needs_attention",
@@ -46,6 +46,13 @@ const summary = (patch: Partial<GRCProgramReadinessSummary> = {}): GRCProgramRea
 });
 
 describe("GRC page helpers", () => {
+  it("defers optional graph enrichments for the overview reads", () => {
+    expect(grcOverviewPaths({ tenantID: "", workspaceID: "" })).toEqual({
+      dashboard: "/grc/dashboard?limit=12&enrichments=deferred&view=summary",
+      readiness: "/grc/program-readiness?enrichments=deferred&view=summary",
+    });
+  });
+
   it("builds issue queue rows with owner, assignee, due date, SLA, and source", () => {
     const readinessData = {
       work_items: [
@@ -206,8 +213,8 @@ describe("GRC page loading", () => {
     });
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
-      grcDashboardPath({ limit: 12, tenant_id: "tenant-a", workspace_id: "workspace-a" }),
-      grcProgramReadinessPath({ tenant_id: "tenant-a", workspace_id: "workspace-a" }),
+      grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-a" }),
+      grcProgramReadinessPath({ enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-a" }),
     ]);
 
     const refresh = [...container.querySelectorAll("button")]

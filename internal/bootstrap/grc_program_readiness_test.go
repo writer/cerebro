@@ -12,6 +12,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -94,6 +95,9 @@ func TestGRCProgramReadinessEndpointReturnsProofBundleWorkQueue(t *testing.T) {
 	if len(payload.ProductAreas) == 0 {
 		t.Fatalf("product areas = 0, want backend product area taxonomy")
 	}
+	if len(payload.SourceSummaries) != 1 || payload.SourceSummaries[0].SourceID != "okta" {
+		t.Fatalf("source summaries = %#v, want default inline runtime health", payload.SourceSummaries)
+	}
 	if payload.ProductAreas[0].ID != "compliance" || payload.ProductAreas[0].Status == "" {
 		t.Fatalf("first product area = %+v, want compliance area with status", payload.ProductAreas[0])
 	}
@@ -142,5 +146,74 @@ func TestGRCProgramReadinessReturnsCoreDataWhenRuntimeHealthUnavailable(t *testi
 
 	if !strings.Contains(stderr, `"name":"sourcehealth.latest_graph_runs"`) {
 		t.Fatalf("runtime health failure telemetry missing: %s", stderr)
+	}
+}
+
+func TestGRCProgramReadinessDefersRuntimeHealthLookup(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(sourceCoverageHealthSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta": {
+				Id:       "writer-okta",
+				SourceId: "okta",
+				TenantId: "writer",
+				Config:   map[string]string{"family": "user"},
+			},
+		},
+		findings:        map[string]*ports.FindingRecord{},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{},
+	}
+	app := New(
+		config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second},
+		Dependencies{
+			StateStore: store,
+			GraphStore: &stubGraphStore{err: errors.New("deferred runtime health graph read must not run")},
+		},
+		registry,
+	)
+	server := httptest.NewServer(app.Handler())
+
+	stderr := captureBootstrapStderr(t, func() {
+		defer server.Close()
+		resp, err := server.Client().Get(server.URL + "/grc/program-readiness?tenant_id=writer&limit=1&enrichments=deferred")
+		if err != nil {
+			t.Fatalf("GET /grc/program-readiness error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /grc/program-readiness status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+		var payload grcProgramReadinessResponse
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode /grc/program-readiness: %v", err)
+		}
+		if len(payload.SourceSummaries) != 0 {
+			t.Fatalf("source summaries = %#v, want deferred enrichment omitted", payload.SourceSummaries)
+		}
+		if len(payload.CoverageSummaries) == 0 || len(payload.ProductAreas) == 0 {
+			t.Fatalf("required coverage summaries/product areas = %d/%d, want populated", len(payload.CoverageSummaries), len(payload.ProductAreas))
+		}
+	})
+
+	if strings.Contains(stderr, `"name":"sourcehealth.latest_graph_runs"`) {
+		t.Fatalf("deferred runtime health lookup ran: %s", stderr)
+	}
+}
+
+func TestGRCProgramReadinessRejectsInvalidEnrichments(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/program-readiness?enrichments=eventually")
+	if err != nil {
+		t.Fatalf("GET /grc/program-readiness error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /grc/program-readiness status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
 	}
 }

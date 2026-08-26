@@ -40,4 +40,7 @@ func TestViewRejectsUnsupportedValues(t *testing.T) {
 	if _, err := FromRequest(request); err == nil {
 		t.Fatal("FromRequest() error = nil, want invalid view")
 	}
+	if _, err := CoverageScopeForRequest(request); err == nil {
+		t.Fatal("CoverageScopeForRequest() error = nil, want invalid view")
+	}
 }

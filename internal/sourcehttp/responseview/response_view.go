@@ -60,6 +60,14 @@ func CoverageScopeFromRequest(r *http.Request, view View) (CoverageScope, error)
 	}
 }
 
+func CoverageScopeForRequest(r *http.Request) (CoverageScope, error) {
+	view, err := FromRequest(r)
+	if err != nil {
+		return CoverageCatalog, err
+	}
+	return CoverageScopeFromRequest(r, view)
+}
+
 func CompactProductAreas(views []grcproductareas.View) []grcproductareas.View {
 	for index := range views {
 		views[index].BlindSpots = nil

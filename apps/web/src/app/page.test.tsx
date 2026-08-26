@@ -102,7 +102,7 @@ describe("Home review links", () => {
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
       grcDashboardPath({ limit: 12, enrichments: "deferred" }),
-      grcProgramReadinessPath(),
+      grcProgramReadinessPath({ enrichments: "deferred" }),
       grcPath("/connectors/coverage", {
         coverage_scope: "configured",
         coverage_view: "page",
@@ -126,7 +126,7 @@ describe("Home review links", () => {
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
       grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a" }),
-      grcProgramReadinessPath({ tenant_id: "tenant-a" }),
+      grcProgramReadinessPath({ enrichments: "deferred", tenant_id: "tenant-a" }),
       grcPath("/connectors/coverage", {
         coverage_scope: "configured",
         coverage_view: "page",
@@ -150,7 +150,7 @@ describe("Home review links", () => {
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
       grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-a" }),
-      grcProgramReadinessPath({ tenant_id: "tenant-a", workspace_id: "workspace-a" }),
+      grcProgramReadinessPath({ enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-a" }),
       grcPath("/connectors/coverage", {
         coverage_scope: "configured",
         coverage_view: "page",
@@ -174,7 +174,7 @@ describe("Home review links", () => {
 
     expect(mocks.useGRCQuery.mock.calls.map(([path]) => path)).toEqual([
       grcDashboardPath({ limit: 12, enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-b" }),
-      grcProgramReadinessPath({ tenant_id: "tenant-a", workspace_id: "workspace-b" }),
+      grcProgramReadinessPath({ enrichments: "deferred", tenant_id: "tenant-a", workspace_id: "workspace-b" }),
       grcPath("/connectors/coverage", {
         coverage_scope: "configured",
         coverage_view: "page",
@@ -304,7 +304,7 @@ describe("Home review links", () => {
       connectors: [],
     };
     mocks.useGRCQuery.mockImplementation((path: string | null) => ({
-      data: path === dashboardPath ? dashboardData : path === grcProgramReadinessPath() ? readinessData : null,
+      data: path === dashboardPath ? dashboardData : path === grcProgramReadinessPath({ enrichments: "deferred" }) ? readinessData : null,
       durationMs: null,
       error: null,
       lastSuccessfulAt: null,

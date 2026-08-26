@@ -9,9 +9,14 @@ import (
 
 // RunReadinessEnrichments runs required enrichment alongside bounded optional
 // enrichment. Optional failure degrades the response; required failure stops it.
-func RunReadinessEnrichments[Required, Optional any](ctx context.Context, optionalTimeout time.Duration, required func(context.Context) (Required, error), optional func(context.Context) (Optional, error)) (Required, Optional, error) {
+// Callers can defer optional work when the response does not need it inline.
+func RunReadinessEnrichments[Required, Optional any](ctx context.Context, optionalTimeout time.Duration, includeOptional bool, required func(context.Context) (Required, error), optional func(context.Context) (Optional, error)) (Required, Optional, error) {
 	var requiredResult Required
 	var optionalResult Optional
+	if !includeOptional {
+		requiredResult, err := required(ctx)
+		return requiredResult, optionalResult, err
+	}
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
 		var err error
