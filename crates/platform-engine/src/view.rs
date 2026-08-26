@@ -34,3 +34,43 @@ pub fn materialize_view(
         ))?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use cerebro_platform_sdk::{FactQuery, QueryNode, ViewId};
+
+    use super::*;
+
+    #[test]
+    fn materialization_rejects_results_from_another_tenant() {
+        let definition = MaterializedViewDefinition {
+            view_id: ViewId::parse("view:test").unwrap(),
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            name: "Repositories".to_owned(),
+            query: FactQuery::new(
+                vec![QueryNode {
+                    variable: "repository".to_owned(),
+                    kinds: vec!["repository".to_owned()],
+                    keys: Vec::new(),
+                }],
+                Vec::new(),
+                Vec::new(),
+                10,
+            )
+            .unwrap(),
+            max_rows: 10,
+            definition_digest: ContentDigest::of_bytes("definition"),
+        };
+        let result = QueryResult {
+            tenant_id: TenantId::parse("tenant-b").unwrap(),
+            graph_revision: 1,
+            matches: Vec::new(),
+            truncated: false,
+        };
+
+        assert_eq!(
+            materialize_view(&definition, &result, 10),
+            Err(SdkError::Invalid("materialized view tenant"))
+        );
+    }
+}

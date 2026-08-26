@@ -316,3 +316,25 @@ pub fn transition_action(
     next.validate()?;
     Ok(next)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::valid_provider_status;
+
+    #[test]
+    fn provider_status_is_a_bounded_machine_token() {
+        for status in ["queued", "in-progress", "succeeded.v1", "retry_2"] {
+            assert!(
+                valid_provider_status(status),
+                "expected valid status: {status}"
+            );
+        }
+        for status in ["", " queued", "queued ", "provider status", "queued/2"] {
+            assert!(
+                !valid_provider_status(status),
+                "expected rejected status: {status:?}"
+            );
+        }
+        assert!(!valid_provider_status(&"x".repeat(65)));
+    }
+}

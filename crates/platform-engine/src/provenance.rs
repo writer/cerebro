@@ -38,3 +38,26 @@ pub fn assemble_provenance(
     explanation.validate()?;
     Ok(explanation)
 }
+
+#[cfg(test)]
+mod tests {
+    use cerebro_platform_sdk::{EntityId, GraphRevision};
+
+    use super::*;
+
+    #[test]
+    fn provenance_requires_at_least_one_evidence_reference() {
+        let quality = EvidenceQuality::new(100, 100, 100, 100, 100, false).unwrap();
+        assert_eq!(
+            assemble_provenance(
+                TenantId::parse("tenant-a").unwrap(),
+                GraphRevision::new(1).unwrap(),
+                Some(EntityId::parse("repository:one").unwrap()),
+                None,
+                Vec::new(),
+                quality,
+            ),
+            Err(SdkError::Empty("provenance evidence"))
+        );
+    }
+}
