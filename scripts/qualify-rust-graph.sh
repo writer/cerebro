@@ -10,6 +10,10 @@ readonly repository_root="${CEREBRO_REPOSITORY_ROOT:-$(pwd)}"
 readonly output_dir="${CEREBRO_QUALIFICATION_OUTPUT:-${repository_root}/.dist/pr-rust-graph}"
 readonly compose_project="${COMPOSE_PROJECT_NAME:-cerebro-rust-graph-${RANDOM}}"
 readonly soak_seconds="${SOAK_SECONDS:-60}"
+readonly rust_graph_port="${CEREBRO_RUST_PORT:-18081}"
+readonly rust_graph_base="http://127.0.0.1:${rust_graph_port}"
+readonly go_api_base="http://127.0.0.1:8080"
+readonly graph_tenant="rust-e2e"
 graph_secret="$(openssl rand -hex 32)"
 readonly graph_secret
 readonly auth_header_name="Authorization"
@@ -20,6 +24,10 @@ readonly qualification_receipt="${output_dir}/receipt.json"
 readonly service_logs="${output_dir}/service-logs.txt"
 readonly compose_files=(-f "${repository_root}/docker-compose.yml" -f "${repository_root}/docker-compose.rust.yml")
 
+source "${repository_root}/scripts/lib/rust-tenant-auth.sh"
+graph_bearer="$(cerebro_rust_tenant_bearer "${graph_secret}" "${graph_tenant}")"
+readonly graph_bearer
+
 if ! [[ "${CEREBRO_QUALIFICATION_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "CEREBRO_QUALIFICATION_SHA must be an exact 40-character commit" >&2
   exit 1
@@ -28,12 +36,18 @@ if ! [[ "${soak_seconds}" =~ ^[0-9]+$ ]] || ((soak_seconds < 60 || soak_seconds 
   echo "SOAK_SECONDS must be between 60 and 1800" >&2
   exit 1
 fi
+if ! [[ "${rust_graph_port}" =~ ^[0-9]+$ ]] ||
+  ((rust_graph_port < 1 || rust_graph_port > 65535)); then
+  echo "CEREBRO_RUST_PORT must be a valid TCP port" >&2
+  exit 1
+fi
 
 mkdir -p "${output_dir}"
 export COMPOSE_PROJECT_NAME="${compose_project}"
 export CEREBRO_RUST_COMMAND=serve-neo4j-consumer
 export CEREBRO_RUST_READ_MODE=authority
 export CEREBRO_RUST_GRAPH_SECRET="${graph_secret}"
+export CEREBRO_RUST_PORT="${rust_graph_port}"
 
 cleanup() {
   local exit_code=$?
@@ -59,7 +73,7 @@ run_harness() {
   CEREBRO_TEST_NEO4J_USERNAME=neo4j \
   CEREBRO_TEST_NEO4J_PASSWORD=local-password \
   CEREBRO_TEST_NATS_URL='nats://127.0.0.1:4222' \
-  CEREBRO_TEST_GRAPH_URL='http://127.0.0.1:18081' \
+  CEREBRO_TEST_GRAPH_URL="${rust_graph_base}" \
   CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET="${graph_secret}" \
   CEREBRO_TEST_COMMIT="${CEREBRO_QUALIFICATION_SHA}" \
   CEREBRO_TEST_IMAGE="${CEREBRO_RUST_IMAGE}" \
@@ -93,7 +107,8 @@ validate_entity_id canonical_identity_id "${canonical_id}"
 root_urn="urn:cerebro:rust-e2e:organizational_entity:${root_id}"
 canonical_urn="urn:cerebro:rust-e2e:organizational_entity:${canonical_id}"
 encoded_root="$(jq -rn --arg value "${root_urn}" '$value|@uri')"
-graph_url="http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=${encoded_root}&limit=10"
+graph_url="${rust_graph_base}/platform/graph/neighborhood?root_urn=${encoded_root}&limit=10"
+retired_go_graph_url="${go_api_base}/platform/graph/neighborhood?root_urn=${encoded_root}&limit=10"
 
 neo4j_container="$(docker compose "${compose_files[@]}" ps -q neo4j)"
 test -n "${neo4j_container}"
@@ -116,9 +131,15 @@ request_status() {
   local output="$1"
   local url="$2"
   local api_key="${3:-local-dev-key}"
+  local tenant="${4:-}"
+  local headers=(--header "${auth_header_name}: ${auth_scheme} ${api_key}")
+  if [[ -n "${tenant}" ]]; then
+    headers+=(--header "X-Cerebro-Tenant: ${tenant}")
+  fi
+  : >"${output}"
   curl --max-time 10 --silent --show-error --output "${output}" \
     --write-out '%{http_code} %{time_total}' \
-    --header "${auth_header_name}: ${auth_scheme} ${api_key}" \
+    "${headers[@]}" \
     "${url}"
 }
 
@@ -128,8 +149,9 @@ assert_status() {
   local output="$3"
   local url="$4"
   local api_key="${5:-local-dev-key}"
+  local tenant="${6:-}"
   local observed
-  observed="$(request_status "${output}" "${url}" "${api_key}" || true)"
+  observed="$(request_status "${output}" "${url}" "${api_key}" "${tenant}" || true)"
   echo "${label}: ${observed}"
   if [[ "${observed%% *}" != "${expected}" ]]; then
     cat "${output}" >&2 || true
@@ -137,8 +159,11 @@ assert_status() {
   fi
 }
 
-assert_status 200 readiness-before "${output_dir}/readiness.json" http://127.0.0.1:8080/health
-assert_status 200 graph-before "${output_dir}/graph-response.json" "${graph_url}"
+assert_status 200 readiness-before "${output_dir}/readiness.json" "${go_api_base}/health"
+assert_status 404 retired-go-graph-before "${output_dir}/retired-go-graph-response.txt" \
+  "${retired_go_graph_url}"
+assert_status 200 graph-before "${output_dir}/graph-response.json" "${graph_url}" \
+  "${graph_bearer}" "${graph_tenant}"
 jq -e --arg root "${root_urn}" '
   .root.urn == $root
   and ([.relations[] | select(.relation == "represents")] | length) >= 1
@@ -155,7 +180,8 @@ while ((SECONDS < deadline)); do
     --show-error \
     --output /dev/null \
     --write-out '%{http_code}\n' \
-    --header "${auth_header_name}: ${auth_scheme} local-dev-key" \
+    --header "${auth_header_name}: ${auth_scheme} ${graph_bearer}" \
+    --header "X-Cerebro-Tenant: ${graph_tenant}" \
     "${graph_url}" >>"${output_dir}/authority-statuses.txt" || true
   request_count=$((request_count + 2))
   sleep 1
@@ -175,8 +201,10 @@ for attempt in $(seq 1 36); do
   test "${attempt}" -lt 36
   sleep 5
 done
-assert_status 200 readiness-after-restart "${output_dir}/readiness.json" http://127.0.0.1:8080/health
-assert_status 200 graph-after-restart "${output_dir}/authority-graph-response-after-restart.json" "${graph_url}"
+assert_status 200 readiness-after-restart "${output_dir}/readiness.json" "${go_api_base}/health"
+assert_status 200 graph-after-restart \
+  "${output_dir}/authority-graph-response-after-restart.json" "${graph_url}" \
+  "${graph_bearer}" "${graph_tenant}"
 jq -S . "${output_dir}/authority-graph-response-after-restart.json" \
   >"${output_dir}/authority-graph-response-after-restart.canonical.json"
 cmp "${output_dir}/authority-graph-response.json" \
@@ -190,8 +218,9 @@ test "$(jq '[.checks[] | select(.status == "passed")] | length' "${organizationa
 
 export CEREBRO_RUST_READ_MODE=authority
 docker compose "${compose_files[@]}" up -d --force-recreate --wait cerebro
-assert_status 200 readiness-authority "${output_dir}/readiness.json" http://127.0.0.1:8080/health
-assert_status 200 graph-authority "${output_dir}/authority-graph-response.json" "${graph_url}"
+assert_status 200 readiness-authority "${output_dir}/readiness.json" "${go_api_base}/health"
+assert_status 200 graph-authority "${output_dir}/authority-graph-response.json" "${graph_url}" \
+  "${graph_bearer}" "${graph_tenant}"
 jq -S . "${output_dir}/authority-graph-response.json" \
   >"${output_dir}/authority-graph-response.canonical.json"
 cmp "${output_dir}/authority-graph-response-after-restart.canonical.json" \
@@ -201,9 +230,11 @@ rust_container="$(docker compose "${compose_files[@]}" ps -q rust-platform)"
 test -n "${rust_container}"
 docker stop "${rust_container}" >/dev/null
 assert_status 503 readiness-authority-without-rust \
-  "${output_dir}/readiness.json" http://127.0.0.1:8080/health
-assert_status 503 graph-authority-without-rust \
-  "${output_dir}/graph-response.json" "${graph_url}"
+  "${output_dir}/readiness.json" "${go_api_base}/health"
+assert_status 000 rust-graph-authority-without-rust \
+  "${output_dir}/graph-response.json" "${graph_url}" "${graph_bearer}" "${graph_tenant}"
+assert_status 404 retired-go-graph-without-rust \
+  "${output_dir}/retired-go-graph-response.txt" "${retired_go_graph_url}"
 
 jq \
   --arg schema_version "cerebro.pr-rust-graph/v1" \
@@ -214,17 +245,17 @@ jq \
        {
          name: "rust_authority_soak",
          status: "passed",
-         evidence: (($authority_requests | tostring) + " Rust-authority product graph reads returned 200")
+         evidence: (($authority_requests | tostring) + " direct Rust-authority product graph reads returned 200")
        },
        {
          name: "rust_authority_restart",
          status: "passed",
-         evidence: "the Rust-authority product response remained identical after a Rust process restart"
+         evidence: "the direct Rust product response remained identical after a Rust process restart"
        },
        {
          name: "authority_fail_closed",
          status: "passed",
-         evidence: "API readiness and product graph reads returned 503 when Rust authority was stopped"
+         evidence: "Go readiness returned 503, the Rust product listener was unavailable, and the retired Go graph route remained 404 when Rust authority was stopped"
        }
      ]' "${organizational_receipt}" >"${qualification_receipt}"
 
