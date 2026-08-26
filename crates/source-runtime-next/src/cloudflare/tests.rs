@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, str::FromStr};
 
 use cerebro_source_catalog::{AuthModel, CollectionAuthority, Pagination, SourceCatalog};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use super::*;
 
@@ -153,7 +153,7 @@ fn checked_in_catalog_compiles_the_closed_cloudflare_runtime() {
     .unwrap();
     let source = catalog.get("cloudflare").unwrap();
     assert_eq!(source.auth(), &AuthModel::BearerToken);
-    assert_eq!(source.authority(), CollectionAuthority::ShadowOnly);
+    assert_eq!(source.authority(), CollectionAuthority::Authoritative);
     let compiled = source
         .families()
         .iter()
@@ -165,7 +165,7 @@ fn checked_in_catalog_compiles_the_closed_cloudflare_runtime() {
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(compiled, expected);
     for family in source.families() {
-        assert!(!family.is_authoritative(), "{} collection", family.id());
+        assert!(family.is_authoritative(), "{} collection", family.id());
         assert!(
             family.is_projection_authoritative(),
             "{} projection",
