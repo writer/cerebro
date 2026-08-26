@@ -11,6 +11,7 @@ const API_BASE =
 
 const RUST_RUNTIME_HEALTH_PATH = "v1/source-runtimes/health";
 const RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH = "platform/graph/neighborhood";
+const RUST_PRODUCT_GRAPH_PROVENANCE_PATH = "platform/graph/provenance";
 const RUST_TENANT_AUTH_CONTEXT = Buffer.from(
   "cerebro-organizational-graph/tenant/v1\0",
   "utf8",
@@ -104,12 +105,15 @@ export const rustTenantAuthHeaders = (tenantID: string, sharedSecret: string): H
 const isRustPlatformPath = (path: string) => {
   const normalizedPath = normalizeProxyPath(path);
   return normalizedPath === RUST_RUNTIME_HEALTH_PATH
-    || normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH;
+    || normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH
+    || normalizedPath === RUST_PRODUCT_GRAPH_PROVENANCE_PATH;
 };
 
 const usesOrganizationalGraphTenant = (path: string) => {
   const normalizedPath = normalizeProxyPath(path);
-  return normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH || normalizedPath.startsWith("grc/");
+  return normalizedPath === RUST_PRODUCT_GRAPH_NEIGHBORHOOD_PATH
+    || normalizedPath === RUST_PRODUCT_GRAPH_PROVENANCE_PATH
+    || normalizedPath.startsWith("grc/");
 };
 
 const forwardRequestAuth =
