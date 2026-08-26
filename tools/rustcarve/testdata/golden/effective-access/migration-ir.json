@@ -1,8 +1,8 @@
 {
-  "schema_version": "cerebro.rustcarve.migration-ir/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
+  "schema_version": "cerebro.rustcarve.migration-ir/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
   "ir_version": "graph-query/v1",
-  "digest_sha256": "sha256:768ad831ffe223913a3f631eee787caf66d5326e56ab17bdc0ca4c77648fc693",
+  "digest_sha256": "sha256:68f91ef9bfb3f591618d4e60fe0e46f076608aa79f17b064affdbcd50b51d0aa",
   "behavior_kind": "graph_query",
   "subject": {
     "id": "graphquery.effective_access",

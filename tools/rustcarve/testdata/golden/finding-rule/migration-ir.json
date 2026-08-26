@@ -1,8 +1,8 @@
 {
-  "schema_version": "cerebro.rustcarve.migration-ir/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
+  "schema_version": "cerebro.rustcarve.migration-ir/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
   "ir_version": "finding-rule/v1",
-  "digest_sha256": "sha256:5ac4f7373b29b022169314155601c663dd646f4d8dd7f54c72ee412a82283bd0",
+  "digest_sha256": "sha256:cab6fdd1e13b86d5b0b9ceb52c24858f901ce167e65d4f33d7cbf168219bedc5",
   "behavior_kind": "finding_rule",
   "subject": {
     "id": "tailscale-tailnet-device-approval-disabled",
@@ -31,7 +31,7 @@
       {
         "path": "internal/findings/rust_tailscale_tailnet_rule.go",
         "role": "go_source",
-        "digest_sha256": "sha256:53f3e4b7edb2c161c34f9b337c6779c0ffcd0eeffbac28a78ed3428e089a160d"
+        "digest_sha256": "sha256:0d63694d6f9add22ae17b6daa8af3abc0bdeb0aba890f1dc6ef1e0a82e589fb4"
       }
     ],
     "imports": [
@@ -50,14 +50,14 @@
       "newTailscaleTailnetDeviceApprovalDisabledRule"
     ],
     "calls": [],
-    "digest_sha256": "sha256:eeead0d93f482fafaeac7efd391bb34217571e497b326652a1c1ccf7a0a25467"
+    "digest_sha256": "sha256:1f0ad82f1d7ec10da734a7b03389a3226b0204b3825ad8d3d6268951af523b2a"
   },
   "evidence": {
     "fixtures": [
       {
         "path": "internal/findings/tailscale_tailnet_device_approval_disabled_rule_test.go",
         "role": "retired_go_oracle",
-        "digest_sha256": "sha256:b71e855a3e8bcb06994ec6e9c21b5d3e5753aae71a40cb38c877e42571dc8928"
+        "digest_sha256": "sha256:04b5accd5504844cde67f849a2575d5ed52b8c741e5ff3e5afd2401b8e6dc5e2"
       },
       {
         "path": "internal/findings/testdata/rules/tailscale-tailnet-device-approval-disabled.json",

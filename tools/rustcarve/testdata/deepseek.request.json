@@ -1,5 +1,5 @@
 {
-  "schema_version": "cerebro.rustcarve.request/v1",
+  "schema_version": "cerebro.rustcarve.request/v2",
   "behavior_kind": "provider_source",
   "subject": {
     "id": "deepseek",
@@ -22,6 +22,17 @@
     {"path": "crates/source-runtime-next/src/deepseek/fixtures/projection_oracle.json", "role": "projection_oracle"}
   ],
   "differential_receipts": [],
+  "source_authority": {
+    "projection_dispatch": {
+      "path": "internal/sourceprojection/registry.go",
+      "register_symbol": "RegisterConnectorDefinitions",
+      "dynamic_projector_symbol": "catalogRuntimeDefinitionProjectors"
+    },
+    "runtime_fence": {
+      "path": "internal/sourceruntime/sourceworker/pull.go",
+      "symbol": "RustAuthoritativeFamily"
+    }
+  },
   "deletion": {
     "paths": ["internal/sourceregistry/registry.go"],
     "imports": ["github.com/writer/cerebro/sources/catalogruntime"],

@@ -7,6 +7,16 @@ pub struct ArtifactDigest {
     pub digest_sha256: &'static str,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AuthorityGate {
+    pub kind: &'static str,
+    pub satisfied: bool,
+    pub reason_code: Option<&'static str>,
+    pub path: &'static str,
+    pub symbol: &'static str,
+    pub digest_sha256: &'static str,
+}
+
 pub const FIXTURE_CORPUS: &[ArtifactDigest] = &[
     ArtifactDigest {
         path: "sources/deepseek/testdata/read_account_balances.json",
@@ -29,10 +39,32 @@ pub const PORT_TRACES: &[ArtifactDigest] = &[ArtifactDigest {
 pub const REQUIRED_RECEIPT_MODES: &[&str] = &["fixed_fixture"];
 pub const ACCEPTED_RECEIPTS: &[ArtifactDigest] = &[];
 pub const DELETION_ELIGIBLE: bool = false;
-pub const DELETION_REASON_CODES: &[&str] = &["active_go_registry_path", "missing_parity_receipt"];
+pub const DELETION_REASON_CODES: &[&str] = &[
+    "active_go_projection_path",
+    "active_go_registry_path",
+    "missing_parity_receipt",
+];
+pub const AUTHORITY_GATES: &[AuthorityGate] = &[
+    AuthorityGate {
+        kind: "projection_dispatch",
+        satisfied: false,
+        reason_code: Some("active_go_projection_path"),
+        path: "internal/sourceprojection/registry.go",
+        symbol: "RegisterConnectorDefinitions",
+        digest_sha256: "sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80",
+    },
+    AuthorityGate {
+        kind: "runtime_fence",
+        satisfied: true,
+        reason_code: None,
+        path: "internal/sourceruntime/sourceworker/pull.go",
+        symbol: "RustAuthoritativeFamily",
+        digest_sha256: "sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861",
+    },
+];
 
 pub const BEHAVIOR_KIND: &str = "provider_source";
-pub const BEHAVIOR_CONTRACT_JSON: &str = "{\"catalog_path\":\"sources/deepseek/catalog.yaml\",\"registration_shape\":\"generic_catalog_runtime\",\"execution_owner\":\"compiled_rust_source_plan\",\"fail_closed\":true,\"runtime_families\":[\"account_balances\",\"model_catalog\"],\"event_contracts\":[{\"kind\":\"deepseek.model_catalog\",\"schema_ref\":\"deepseek/model_catalog/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"id\"]},{\"kind\":\"deepseek.account_balances\",\"schema_ref\":\"deepseek/account_balances/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"currency\"]}]}";
+pub const BEHAVIOR_CONTRACT_JSON: &str = "{\"catalog_path\":\"sources/deepseek/catalog.yaml\",\"registration_shape\":\"generic_catalog_runtime\",\"execution_owner\":\"compiled_rust_source_plan\",\"fail_closed\":true,\"runtime_families\":[\"account_balances\",\"model_catalog\"],\"event_contracts\":[{\"kind\":\"deepseek.model_catalog\",\"schema_ref\":\"deepseek/model_catalog/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"id\"]},{\"kind\":\"deepseek.account_balances\",\"schema_ref\":\"deepseek/account_balances/v1\",\"required_attributes\":[\"tenant_id\",\"source_event_id\",\"resource_urn\",\"resource_type\",\"resource_id\"],\"required_payload_fields\":[\"currency\"]}],\"authority\":{\"projection_dispatch\":{\"path\":\"internal/sourceprojection/registry.go\",\"register_symbol\":\"RegisterConnectorDefinitions\",\"dynamic_projector_symbol\":\"catalogRuntimeDefinitionProjectors\",\"go_file_digest_sha256\":\"sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80\",\"active_go_projection_path\":true},\"runtime_fence\":{\"path\":\"internal/sourceruntime/sourceworker/pull.go\",\"symbol\":\"RustAuthoritativeFamily\",\"go_file_digest_sha256\":\"sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861\",\"covered_runtime_families\":[\"account_balances\",\"model_catalog\"],\"missing_runtime_families\":[]}}}";
 
 pub const RUNTIME_FAMILIES: &[&str] = &["account_balances", "model_catalog"];
 

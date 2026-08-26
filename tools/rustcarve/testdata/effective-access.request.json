@@ -1,5 +1,5 @@
 {
-  "schema_version": "cerebro.rustcarve.request/v1",
+  "schema_version": "cerebro.rustcarve.request/v2",
   "behavior_kind": "graph_query",
   "subject": {
     "id": "graphquery.effective_access",

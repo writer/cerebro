@@ -1,16 +1,34 @@
 {
-  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
   "behavior_kind": "provider_source",
   "subject_id": "deepseek",
-  "ir_version": "provider-source/v1",
-  "ir_digest_sha256": "sha256:5c54836bc6e28ae59038178ac30fa6f61ce7624427725f526b938b05b7b0b402",
-  "go_facts_digest_sha256": "sha256:3f4dfca0811524fdcd73f40174e525489f6c3a81be156373b25a9264a6984d22",
+  "ir_version": "provider-source/v2",
+  "ir_digest_sha256": "sha256:82c2d471afa88404539b9411c9088bb2ef7abb2e09ed802d1d808d3c95f319c7",
+  "go_facts_digest_sha256": "sha256:3947d17cf7d110663504d6c7511422a2586ae74d95039c8636c12c0997ff2dba",
   "rust_implementation_revision": "5ff8021ab1a2d971e772fd6bf7f3275ff596aa6b",
   "eligible": false,
   "reason_codes": [
+    "active_go_projection_path",
     "active_go_registry_path",
     "missing_parity_receipt"
+  ],
+  "authority_gates": [
+    {
+      "kind": "projection_dispatch",
+      "satisfied": false,
+      "reason_code": "active_go_projection_path",
+      "path": "internal/sourceprojection/registry.go",
+      "symbol": "RegisterConnectorDefinitions",
+      "digest_sha256": "sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80"
+    },
+    {
+      "kind": "runtime_fence",
+      "satisfied": true,
+      "path": "internal/sourceruntime/sourceworker/pull.go",
+      "symbol": "RustAuthoritativeFamily",
+      "digest_sha256": "sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861"
+    }
   ],
   "paths": [
     "internal/sourceregistry/registry.go"

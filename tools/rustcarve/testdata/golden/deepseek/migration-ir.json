@@ -1,8 +1,8 @@
 {
-  "schema_version": "cerebro.rustcarve.migration-ir/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
-  "ir_version": "provider-source/v1",
-  "digest_sha256": "sha256:5c54836bc6e28ae59038178ac30fa6f61ce7624427725f526b938b05b7b0b402",
+  "schema_version": "cerebro.rustcarve.migration-ir/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
+  "ir_version": "provider-source/v2",
+  "digest_sha256": "sha256:82c2d471afa88404539b9411c9088bb2ef7abb2e09ed802d1d808d3c95f319c7",
   "behavior_kind": "provider_source",
   "subject": {
     "id": "deepseek",
@@ -26,7 +26,7 @@
       {
         "path": "internal/sourceregistry/registry.go",
         "role": "go_source",
-        "digest_sha256": "sha256:96de2ec23d07429f2458c58ed6e35a0d94df09f27b96283e8dde58beeeafa933"
+        "digest_sha256": "sha256:1162de0ba5488bce6e75427ba0bb9a9bdf6b9c9b0c04447838d7110c1a894094"
       }
     ],
     "imports": [
@@ -66,7 +66,9 @@
       "github.com/writer/cerebro/sources/trivy",
       "github.com/writer/cerebro/sources/trustedendpoint",
       "github.com/writer/cerebro/sources/vulnview",
-      "github.com/writer/cerebro/sources/writer"
+      "github.com/writer/cerebro/sources/writer",
+      "maps",
+      "slices"
     ],
     "owner_symbols": [
       "BuiltinWithCatalogOverrides"
@@ -78,14 +80,18 @@
       "connectorcatalog.BuiltinRuntime",
       "fmt.Errorf",
       "len",
+      "loadStandardSourcePlans",
       "loader.load",
       "make",
-      "newWorkerCatalogSource",
+      "maps.Keys",
+      "newMetadataOnlyCatalogSource",
       "registry.WithBuiltinDefinitionCatalog",
+      "slices.Clone",
+      "slices.Sorted",
       "source.Spec",
       "sourcecdk.NewRegistry"
     ],
-    "digest_sha256": "sha256:3f4dfca0811524fdcd73f40174e525489f6c3a81be156373b25a9264a6984d22"
+    "digest_sha256": "sha256:3947d17cf7d110663504d6c7511422a2586ae74d95039c8636c12c0997ff2dba"
   },
   "evidence": {
     "fixtures": [
@@ -146,6 +152,25 @@
           "currency"
         ]
       }
-    ]
+    ],
+    "authority": {
+      "projection_dispatch": {
+        "path": "internal/sourceprojection/registry.go",
+        "register_symbol": "RegisterConnectorDefinitions",
+        "dynamic_projector_symbol": "catalogRuntimeDefinitionProjectors",
+        "go_file_digest_sha256": "sha256:3c5474c2cba11e2a59576624981005967c7cc8d74b0cf063d0032483acd7bc80",
+        "active_go_projection_path": true
+      },
+      "runtime_fence": {
+        "path": "internal/sourceruntime/sourceworker/pull.go",
+        "symbol": "RustAuthoritativeFamily",
+        "go_file_digest_sha256": "sha256:ac80d2c39a9b72b52d7d39bcb698e558334461cca9bf0cb7c732350c9de4f861",
+        "covered_runtime_families": [
+          "account_balances",
+          "model_catalog"
+        ],
+        "missing_runtime_families": []
+      }
+    }
   }
 }

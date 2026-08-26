@@ -1,14 +1,15 @@
 {
-  "schema_version": "cerebro.rustcarve.request/v1",
+  "schema_version": "cerebro.rustcarve.request/v2",
   "behavior_kind": "standard_source",
   "subject": {
     "id": "acunetix",
     "package_dir": "internal/sourceregistry",
     "catalog_path": "sources/acunetix/catalog.yaml",
-    "go_files": ["internal/sourceregistry/registry.go"],
-    "owner_symbols": ["BuiltinWithCatalogOverrides"],
+    "plan_index_path": "internal/sourceregistry/standard_source_plan_index.txt",
+    "go_files": ["internal/sourceregistry/registry.go", "internal/sourceregistry/standard_source_plan_index.go"],
+    "owner_symbols": ["BuiltinWithCatalogOverrides", "newMetadataOnlyCatalogSource"],
     "rust_implementation_revision": "24a48b50fbf087eb9b484d31f984f98fcc6e325c",
-    "authority_state": "go_registry_active"
+    "authority_state": "registry_retired_authority_unproven"
   },
   "scope": {
     "tenant": {"name": "tenant_id", "type": "tenant_id", "required": true},
@@ -25,13 +26,24 @@
     {"path": "crates/source-runtime-next/src/acunetix/tests.rs", "role": "rust_parity_contract"}
   ],
   "differential_receipts": [],
+  "source_authority": {
+    "projection_dispatch": {
+      "path": "internal/sourceprojection/registry.go",
+      "register_symbol": "RegisterConnectorDefinitions",
+      "dynamic_projector_symbol": "catalogRuntimeDefinitionProjectors"
+    },
+    "runtime_fence": {
+      "path": "internal/sourceruntime/sourceworker/pull.go",
+      "symbol": "RustAuthoritativeFamily"
+    }
+  },
   "deletion": {
-    "paths": ["internal/sourceregistry/worker_catalog.go"],
-    "imports": ["github.com/writer/cerebro/sources/catalogruntime"],
-    "symbols": ["catalogruntimesource.New(entry)"]
+    "paths": [],
+    "imports": [],
+    "symbols": []
   },
   "options": {
-    "expected_registration_shape": "generic_catalog_runtime",
+    "expected_registration_shape": "compiled_plan_fail_closed_metadata",
     "max_input_bytes": 4194304
   }
 }
