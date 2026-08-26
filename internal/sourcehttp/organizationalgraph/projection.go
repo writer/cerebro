@@ -26,6 +26,8 @@ const (
 var (
 	ErrSourceCollectionNotFound           = errors.New("source collection receipt not found")
 	ErrSourceCollectionProvenanceMismatch = errors.New("source collection receipt provenance mismatch")
+	ErrProjectionAuthorityUnavailable     = errors.New("rust projection authority client is required")
+	ErrProjectionAuthorityScopeMismatch   = errors.New("rust projection authority response scope does not match the request")
 )
 
 // ProjectionClient talks only to the Rust projection authority boundary.
@@ -351,7 +353,7 @@ func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.Event
 	if strings.TrimSpace(response.TenantID) != tenantID ||
 		strings.TrimSpace(response.SourceID) != sourceID ||
 		strings.TrimSpace(response.FamilyID) != familyID {
-		return "", errors.New("rust projection authority response scope does not match the request")
+		return "", ErrProjectionAuthorityScopeMismatch
 	}
 	if response.Authority != projectionAuthorityLegacy && response.Authority != projectionAuthorityRust {
 		return "", fmt.Errorf("rust projection returned invalid authority %q", response.Authority)
@@ -412,7 +414,7 @@ func (p *AppendLogProjector) RecordSourceCollection(ctx context.Context, manifes
 
 func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
 	if p == nil || p.rust == nil {
-		return ports.ProjectionResult{}, errors.New("rust projection authority client is required")
+		return ports.ProjectionResult{}, ErrProjectionAuthorityUnavailable
 	}
 	authority, err := p.rust.authority(ctx, event)
 	if err != nil {

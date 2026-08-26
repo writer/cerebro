@@ -512,7 +512,7 @@ func TestNewOrchestratorRuntimeServiceDoesNotFallBackWithoutRustAuthority(t *tes
 	service := newOrchestratorRuntimeService(registry, store, &orchestratorEventLog{}, stateStore, "")
 
 	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-1", PageLimit: 1})
-	if err == nil || !strings.Contains(err.Error(), "rust projection authority client is required") {
+	if !errors.Is(err, organizationalgraph.ErrProjectionAuthorityUnavailable) {
 		t.Fatalf("Sync() error = %v, want missing Rust authority", err)
 	}
 	if len(stateStore.entities) != 0 || len(stateStore.links) != 0 {

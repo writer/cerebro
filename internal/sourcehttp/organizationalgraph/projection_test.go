@@ -424,7 +424,7 @@ func TestRustAuthorityScopeMismatchDoesNotFallBackToGo(t *testing.T) {
 	}
 	legacy := &sourceProjectorStub{err: errors.New("must not run")}
 	_, err = NewAppendLogProjector(legacy, client).Project(context.Background(), projectionEvent())
-	if err == nil || !strings.Contains(err.Error(), "scope does not match") || legacy.callCount() != 0 {
+	if !errors.Is(err, ErrProjectionAuthorityScopeMismatch) || legacy.callCount() != 0 {
 		t.Fatalf("Project() error = %v calls=%d, want scope rejection without Go fallback", err, legacy.callCount())
 	}
 }
