@@ -8050,6 +8050,1251 @@ pub const __LIST_PERSON_ACCESS_PATHS_RESPONSE_JSON_ANY: ::buffa::type_registry::
 #[derive(Clone, PartialEq, Default)]
 #[derive(::serde::Serialize, ::serde::Deserialize)]
 #[serde(default)]
+pub struct EffectiveAccessPathEdge {
+    /// Field 1: `from`
+    #[serde(
+        rename = "from",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub from: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 2: `relation`
+    #[serde(
+        rename = "relation",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub relation: ::buffa::alloc::string::String,
+    /// Field 3: `to`
+    #[serde(
+        rename = "to",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub to: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 4: `source_id`
+    #[serde(
+        rename = "sourceId",
+        alias = "source_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_id: ::buffa::alloc::string::String,
+    /// Field 5: `runtime_id`
+    #[serde(
+        rename = "runtimeId",
+        alias = "runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub runtime_id: ::buffa::alloc::string::String,
+    /// Field 6: `attributes_json`
+    #[serde(
+        rename = "attributesJson",
+        alias = "attributes_json",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub attributes_json: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for EffectiveAccessPathEdge {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("EffectiveAccessPathEdge")
+            .field("from", &self.from)
+            .field("relation", &self.relation)
+            .field("to", &self.to)
+            .field("source_id", &self.source_id)
+            .field("runtime_id", &self.runtime_id)
+            .field("attributes_json", &self.attributes_json)
+            .finish()
+    }
+}
+impl EffectiveAccessPathEdge {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EffectiveAccessPathEdge";
+}
+::buffa::impl_default_instance!(EffectiveAccessPathEdge);
+impl ::buffa::MessageName for EffectiveAccessPathEdge {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "EffectiveAccessPathEdge";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.EffectiveAccessPathEdge";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EffectiveAccessPathEdge";
+}
+impl ::buffa::Message for EffectiveAccessPathEdge {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.from.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.from.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.relation.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.relation) as u64;
+        }
+        if self.to.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.to.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.source_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+        }
+        if !self.runtime_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.runtime_id) as u64;
+        }
+        if !self.attributes_json.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.attributes_json) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.from.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.from.write_to(__cache, buf);
+        }
+        if !self.relation.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.relation, buf);
+        }
+        if self.to.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.to.write_to(__cache, buf);
+        }
+        if !self.source_id.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.source_id, buf);
+        }
+        if !self.runtime_id.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.runtime_id, buf);
+        }
+        if !self.attributes_json.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.attributes_json, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.from.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.relation, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.to.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_id, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.runtime_id, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.attributes_json, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.from = ::buffa::MessageField::none();
+        self.relation.clear();
+        self.to = ::buffa::MessageField::none();
+        self.source_id.clear();
+        self.runtime_id.clear();
+        self.attributes_json.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for EffectiveAccessPathEdge {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.EffectiveAccessPathEdge";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for EffectiveAccessPathEdge {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EFFECTIVE_ACCESS_PATH_EDGE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.EffectiveAccessPathEdge",
+    to_json: ::buffa::type_registry::any_to_json::<EffectiveAccessPathEdge>,
+    from_json: ::buffa::type_registry::any_from_json::<EffectiveAccessPathEdge>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct EffectiveAccessPath {
+    /// Field 1: `identity`
+    #[serde(
+        rename = "identity",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub identity: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 2: `principal`
+    #[serde(
+        rename = "principal",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub principal: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 3: `mediator`
+    #[serde(
+        rename = "mediator",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub mediator: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 4: `access_target`
+    #[serde(
+        rename = "accessTarget",
+        alias = "access_target",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub access_target: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 5: `entitlement`
+    #[serde(
+        rename = "entitlement",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub entitlement: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 6: `capability`
+    #[serde(
+        rename = "capability",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub capability: ::buffa::MessageField<GraphEntity, ::buffa::Inline<GraphEntity>>,
+    /// Field 7: `assignment_kind`
+    #[serde(
+        rename = "assignmentKind",
+        alias = "assignment_kind",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub assignment_kind: ::buffa::alloc::string::String,
+    /// Field 8: `identity_relation_chain`
+    #[serde(
+        rename = "identityRelationChain",
+        alias = "identity_relation_chain",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub identity_relation_chain: ::buffa::alloc::vec::Vec<
+        ::buffa::alloc::string::String,
+    >,
+    /// Field 9: `identity_edges`
+    #[serde(
+        rename = "identityEdges",
+        alias = "identity_edges",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub identity_edges: ::buffa::alloc::vec::Vec<EffectiveAccessPathEdge>,
+    /// Field 10: `relation_chain`
+    #[serde(
+        rename = "relationChain",
+        alias = "relation_chain",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub relation_chain: ::buffa::alloc::vec::Vec<::buffa::alloc::string::String>,
+    /// Field 11: `edges`
+    #[serde(
+        rename = "edges",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub edges: ::buffa::alloc::vec::Vec<EffectiveAccessPathEdge>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for EffectiveAccessPath {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("EffectiveAccessPath")
+            .field("identity", &self.identity)
+            .field("principal", &self.principal)
+            .field("mediator", &self.mediator)
+            .field("access_target", &self.access_target)
+            .field("entitlement", &self.entitlement)
+            .field("capability", &self.capability)
+            .field("assignment_kind", &self.assignment_kind)
+            .field("identity_relation_chain", &self.identity_relation_chain)
+            .field("identity_edges", &self.identity_edges)
+            .field("relation_chain", &self.relation_chain)
+            .field("edges", &self.edges)
+            .finish()
+    }
+}
+impl EffectiveAccessPath {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EffectiveAccessPath";
+}
+::buffa::impl_default_instance!(EffectiveAccessPath);
+impl ::buffa::MessageName for EffectiveAccessPath {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "EffectiveAccessPath";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.EffectiveAccessPath";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EffectiveAccessPath";
+}
+impl ::buffa::Message for EffectiveAccessPath {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.identity.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.identity.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.principal.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.principal.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.mediator.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.mediator.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.access_target.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.access_target.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.entitlement.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.entitlement.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.capability.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.capability.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.assignment_kind.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.assignment_kind) as u64;
+        }
+        for v in &self.identity_relation_chain {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.identity_edges {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.relation_chain {
+            size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+        }
+        for v in &self.edges {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.identity.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.identity.write_to(__cache, buf);
+        }
+        if self.principal.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.principal.write_to(__cache, buf);
+        }
+        if self.mediator.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.mediator.write_to(__cache, buf);
+        }
+        if self.access_target.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                4u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.access_target.write_to(__cache, buf);
+        }
+        if self.entitlement.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                5u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.entitlement.write_to(__cache, buf);
+        }
+        if self.capability.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.capability.write_to(__cache, buf);
+        }
+        if !self.assignment_kind.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.assignment_kind, buf);
+        }
+        for v in &self.identity_relation_chain {
+            ::buffa::types::put_string_field(8u32, v, buf);
+        }
+        for v in &self.identity_edges {
+            ::buffa::types::put_len_delimited_header(
+                9u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.relation_chain {
+            ::buffa::types::put_string_field(10u32, v, buf);
+        }
+        for v in &self.edges {
+            ::buffa::types::put_len_delimited_header(
+                11u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.identity.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.principal.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.mediator.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.access_target.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.entitlement.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.capability.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.assignment_kind, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.identity_relation_chain.push(__elem);
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.identity_edges.push(elem);
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __elem = ::buffa::types::decode_string(buf)?;
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&__elem),
+                )?;
+                self.relation_chain.push(__elem);
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.edges.push(elem);
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.identity = ::buffa::MessageField::none();
+        self.principal = ::buffa::MessageField::none();
+        self.mediator = ::buffa::MessageField::none();
+        self.access_target = ::buffa::MessageField::none();
+        self.entitlement = ::buffa::MessageField::none();
+        self.capability = ::buffa::MessageField::none();
+        self.assignment_kind.clear();
+        self.identity_relation_chain.clear();
+        self.identity_edges.clear();
+        self.relation_chain.clear();
+        self.edges.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for EffectiveAccessPath {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.EffectiveAccessPath";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for EffectiveAccessPath {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __EFFECTIVE_ACCESS_PATH_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.EffectiveAccessPath",
+    to_json: ::buffa::type_registry::any_to_json::<EffectiveAccessPath>,
+    from_json: ::buffa::type_registry::any_from_json::<EffectiveAccessPath>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListEffectiveAccessPathsRequest {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `identity_urn`
+    #[serde(
+        rename = "identityUrn",
+        alias = "identity_urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub identity_urn: ::buffa::alloc::string::String,
+    /// Field 3: `identity_query`
+    #[serde(
+        rename = "identityQuery",
+        alias = "identity_query",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub identity_query: ::buffa::alloc::string::String,
+    /// Field 4: `application_urn`
+    #[serde(
+        rename = "applicationUrn",
+        alias = "application_urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub application_urn: ::buffa::alloc::string::String,
+    /// Field 5: `capability_urn`
+    #[serde(
+        rename = "capabilityUrn",
+        alias = "capability_urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub capability_urn: ::buffa::alloc::string::String,
+    /// Field 6: `capability_id`
+    #[serde(
+        rename = "capabilityId",
+        alias = "capability_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub capability_id: ::buffa::alloc::string::String,
+    /// Field 7: `limit`
+    #[serde(
+        rename = "limit",
+        with = "::buffa::json_helpers::uint32",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u32"
+    )]
+    pub limit: u32,
+    /// Field 8: `expected_graph_revision`
+    #[serde(
+        rename = "expectedGraphRevision",
+        alias = "expected_graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub expected_graph_revision: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListEffectiveAccessPathsRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListEffectiveAccessPathsRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("identity_urn", &self.identity_urn)
+            .field("identity_query", &self.identity_query)
+            .field("application_urn", &self.application_urn)
+            .field("capability_urn", &self.capability_urn)
+            .field("capability_id", &self.capability_id)
+            .field("limit", &self.limit)
+            .field("expected_graph_revision", &self.expected_graph_revision)
+            .finish()
+    }
+}
+impl ListEffectiveAccessPathsRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEffectiveAccessPathsRequest";
+}
+::buffa::impl_default_instance!(ListEffectiveAccessPathsRequest);
+impl ::buffa::MessageName for ListEffectiveAccessPathsRequest {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListEffectiveAccessPathsRequest";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListEffectiveAccessPathsRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEffectiveAccessPathsRequest";
+}
+impl ::buffa::Message for ListEffectiveAccessPathsRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.identity_urn.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.identity_urn) as u64;
+        }
+        if !self.identity_query.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.identity_query) as u64;
+        }
+        if !self.application_urn.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.application_urn) as u64;
+        }
+        if !self.capability_urn.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.capability_urn) as u64;
+        }
+        if !self.capability_id.is_empty() {
+            size
+                += 1u64 + ::buffa::types::string_encoded_len(&self.capability_id) as u64;
+        }
+        if self.limit != 0u32 {
+            size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+        }
+        if self.expected_graph_revision != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.expected_graph_revision)
+                        as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.identity_urn.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.identity_urn, buf);
+        }
+        if !self.identity_query.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.identity_query, buf);
+        }
+        if !self.application_urn.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.application_urn, buf);
+        }
+        if !self.capability_urn.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.capability_urn, buf);
+        }
+        if !self.capability_id.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.capability_id, buf);
+        }
+        if self.limit != 0u32 {
+            ::buffa::types::put_uint32_field(7u32, self.limit, buf);
+        }
+        if self.expected_graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(8u32, self.expected_graph_revision, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.identity_urn, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.identity_query, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.application_urn, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.capability_urn, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.capability_id, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.limit = ::buffa::types::decode_uint32(buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.expected_graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.identity_urn.clear();
+        self.identity_query.clear();
+        self.application_urn.clear();
+        self.capability_urn.clear();
+        self.capability_id.clear();
+        self.limit = 0u32;
+        self.expected_graph_revision = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListEffectiveAccessPathsRequest {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListEffectiveAccessPathsRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListEffectiveAccessPathsRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_EFFECTIVE_ACCESS_PATHS_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListEffectiveAccessPathsRequest",
+    to_json: ::buffa::type_registry::any_to_json::<ListEffectiveAccessPathsRequest>,
+    from_json: ::buffa::type_registry::any_from_json::<ListEffectiveAccessPathsRequest>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ListEffectiveAccessPathsResponse {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `paths`
+    #[serde(
+        rename = "paths",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub paths: ::buffa::alloc::vec::Vec<EffectiveAccessPath>,
+    /// Field 4: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ListEffectiveAccessPathsResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ListEffectiveAccessPathsResponse")
+            .field("tenant_id", &self.tenant_id)
+            .field("graph_revision", &self.graph_revision)
+            .field("paths", &self.paths)
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
+impl ListEffectiveAccessPathsResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEffectiveAccessPathsResponse";
+}
+::buffa::impl_default_instance!(ListEffectiveAccessPathsResponse);
+impl ::buffa::MessageName for ListEffectiveAccessPathsResponse {
+    const PACKAGE: &'static str = "cerebro.graph.v1";
+    const NAME: &'static str = "ListEffectiveAccessPathsResponse";
+    const FULL_NAME: &'static str = "cerebro.graph.v1.ListEffectiveAccessPathsResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEffectiveAccessPathsResponse";
+}
+impl ::buffa::Message for ListEffectiveAccessPathsResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        for v in &self.paths {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        for v in &self.paths {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.paths.push(elem);
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.graph_revision = 0u64;
+        self.paths.clear();
+        self.truncated = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ListEffectiveAccessPathsResponse {
+    const PROTO_FQN: &'static str = "cerebro.graph.v1.ListEffectiveAccessPathsResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ListEffectiveAccessPathsResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __LIST_EFFECTIVE_ACCESS_PATHS_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.graph.v1.ListEffectiveAccessPathsResponse",
+    to_json: ::buffa::type_registry::any_to_json::<ListEffectiveAccessPathsResponse>,
+    from_json: ::buffa::type_registry::any_from_json::<ListEffectiveAccessPathsResponse>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
 pub struct CloudAttackPathNode {
     /// Field 1: `urn`
     #[serde(
@@ -32548,6 +33793,2236 @@ pub mod __buffa {
             }
         }
         #[derive(Clone, Debug, Default)]
+        pub struct EffectiveAccessPathEdgeView<'a> {
+            /// Field 1: `from`
+            pub from: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 2: `relation`
+            pub relation: &'a str,
+            /// Field 3: `to`
+            pub to: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 4: `source_id`
+            pub source_id: &'a str,
+            /// Field 5: `runtime_id`
+            pub runtime_id: &'a str,
+            /// Field 6: `attributes_json`
+            pub attributes_json: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for EffectiveAccessPathEdgeView<'a> {
+            type Owned = super::super::EffectiveAccessPathEdge;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.from.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.from = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.relation = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.to.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.to = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.attributes_json = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::EffectiveAccessPathEdge,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::EffectiveAccessPathEdge,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::EffectiveAccessPathEdge {
+                    from: match self.from.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    relation: self.relation.to_string(),
+                    to: match self.to.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    source_id: self.source_id.to_string(),
+                    runtime_id: self.runtime_id.to_string(),
+                    attributes_json: self.attributes_json.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for EffectiveAccessPathEdgeView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.from.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.from.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.relation.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.relation) as u64;
+                }
+                if self.to.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.to.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.source_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_id) as u64;
+                }
+                if !self.runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.runtime_id)
+                                as u64;
+                }
+                if !self.attributes_json.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.attributes_json)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.from.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.from.write_to(__cache, buf);
+                }
+                if !self.relation.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.relation, buf);
+                }
+                if self.to.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.to.write_to(__cache, buf);
+                }
+                if !self.source_id.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.source_id, buf);
+                }
+                if !self.runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.runtime_id, buf);
+                }
+                if !self.attributes_json.is_empty() {
+                    ::buffa::types::put_string_field(6u32, &self.attributes_json, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for EffectiveAccessPathEdgeView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.from.as_option() {
+                        __map.serialize_entry("from", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.relation) {
+                    __map.serialize_entry("relation", self.relation)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.to.as_option() {
+                        __map.serialize_entry("to", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.source_id) {
+                    __map.serialize_entry("sourceId", self.source_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.runtime_id) {
+                    __map.serialize_entry("runtimeId", self.runtime_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.attributes_json) {
+                    __map.serialize_entry("attributesJson", self.attributes_json)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for EffectiveAccessPathEdgeView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "EffectiveAccessPathEdge";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.EffectiveAccessPathEdge";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EffectiveAccessPathEdge";
+        }
+        ::buffa::impl_default_view_instance!(EffectiveAccessPathEdgeView);
+        ::buffa::impl_view_reborrow!(EffectiveAccessPathEdgeView);
+        /** Self-contained, `'static` owned view of a `EffectiveAccessPathEdge` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`EffectiveAccessPathEdgeView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`EffectiveAccessPathEdgeView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct EffectiveAccessPathEdgeOwnedView(
+            ::buffa::OwnedView<EffectiveAccessPathEdgeView<'static>>,
+        );
+        impl EffectiveAccessPathEdgeOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EffectiveAccessPathEdgeOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EffectiveAccessPathEdgeOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::EffectiveAccessPathEdge,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EffectiveAccessPathEdgeOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`EffectiveAccessPathEdgeView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &EffectiveAccessPathEdgeView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::EffectiveAccessPathEdge {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `from`
+            #[must_use]
+            pub fn from(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().from
+            }
+            /// Field 2: `relation`
+            #[must_use]
+            pub fn relation(&self) -> &'_ str {
+                self.0.reborrow().relation
+            }
+            /// Field 3: `to`
+            #[must_use]
+            pub fn to(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().to
+            }
+            /// Field 4: `source_id`
+            #[must_use]
+            pub fn source_id(&self) -> &'_ str {
+                self.0.reborrow().source_id
+            }
+            /// Field 5: `runtime_id`
+            #[must_use]
+            pub fn runtime_id(&self) -> &'_ str {
+                self.0.reborrow().runtime_id
+            }
+            /// Field 6: `attributes_json`
+            #[must_use]
+            pub fn attributes_json(&self) -> &'_ str {
+                self.0.reborrow().attributes_json
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<EffectiveAccessPathEdgeView<'static>>,
+        > for EffectiveAccessPathEdgeOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<EffectiveAccessPathEdgeView<'static>>,
+            ) -> Self {
+                EffectiveAccessPathEdgeOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<EffectiveAccessPathEdgeOwnedView>
+        for ::buffa::OwnedView<EffectiveAccessPathEdgeView<'static>> {
+            fn from(wrapper: EffectiveAccessPathEdgeOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<EffectiveAccessPathEdgeView<'static>>,
+        > for EffectiveAccessPathEdgeOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<EffectiveAccessPathEdgeView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::EffectiveAccessPathEdge {
+            type View<'a> = EffectiveAccessPathEdgeView<'a>;
+            type ViewHandle = EffectiveAccessPathEdgeOwnedView;
+        }
+        impl ::serde::Serialize for EffectiveAccessPathEdgeOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct EffectiveAccessPathView<'a> {
+            /// Field 1: `identity`
+            pub identity: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 2: `principal`
+            pub principal: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 3: `mediator`
+            pub mediator: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 4: `access_target`
+            pub access_target: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 5: `entitlement`
+            pub entitlement: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 6: `capability`
+            pub capability: ::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'a>,
+            >,
+            /// Field 7: `assignment_kind`
+            pub assignment_kind: &'a str,
+            /// Field 8: `identity_relation_chain`
+            pub identity_relation_chain: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 9: `identity_edges`
+            pub identity_edges: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::EffectiveAccessPathEdgeView<'a>,
+            >,
+            /// Field 10: `relation_chain`
+            pub relation_chain: ::buffa::RepeatedView<'a, &'a str>,
+            /// Field 11: `edges`
+            pub edges: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::EffectiveAccessPathEdgeView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for EffectiveAccessPathView<'a> {
+            type Owned = super::super::EffectiveAccessPath;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.identity.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.identity = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.principal.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.principal = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.mediator.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.mediator = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.access_target.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.access_target = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.entitlement.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.entitlement = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.capability.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.capability = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::GraphEntityView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.assignment_kind = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.identity_relation_chain.push(__elem);
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::EffectiveAccessPathEdgeView,
+                            >(),
+                        )?;
+                        view.identity_edges
+                            .push(
+                                <super::super::__buffa::view::EffectiveAccessPathEdgeView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    10u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __elem = ::buffa::types::borrow_str(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::buffa::__private::element_footprint(&__elem),
+                        )?;
+                        view.relation_chain.push(__elem);
+                    }
+                    11u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::EffectiveAccessPathEdgeView,
+                            >(),
+                        )?;
+                        view.edges
+                            .push(
+                                <super::super::__buffa::view::EffectiveAccessPathEdgeView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::EffectiveAccessPath,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::EffectiveAccessPath,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::EffectiveAccessPath {
+                    identity: match self.identity.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    principal: match self.principal.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    mediator: match self.mediator.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    access_target: match self.access_target.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    entitlement: match self.entitlement.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    capability: match self.capability.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::GraphEntity,
+                                ::buffa::Inline<super::super::GraphEntity>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    assignment_kind: self.assignment_kind.to_string(),
+                    identity_relation_chain: self
+                        .identity_relation_chain
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    identity_edges: self
+                        .identity_edges
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    relation_chain: self
+                        .relation_chain
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    edges: self
+                        .edges
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for EffectiveAccessPathView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.identity.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.identity.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.principal.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.principal.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.mediator.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.mediator.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.access_target.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.access_target.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.entitlement.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.entitlement.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.capability.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.capability.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.assignment_kind.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.assignment_kind)
+                                as u64;
+                }
+                for v in &self.identity_relation_chain {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                for v in &self.identity_edges {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.relation_chain {
+                    size += 1u64 + ::buffa::types::string_encoded_len(v) as u64;
+                }
+                for v in &self.edges {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.identity.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.identity.write_to(__cache, buf);
+                }
+                if self.principal.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.principal.write_to(__cache, buf);
+                }
+                if self.mediator.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.mediator.write_to(__cache, buf);
+                }
+                if self.access_target.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        4u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.access_target.write_to(__cache, buf);
+                }
+                if self.entitlement.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        5u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.entitlement.write_to(__cache, buf);
+                }
+                if self.capability.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        6u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.capability.write_to(__cache, buf);
+                }
+                if !self.assignment_kind.is_empty() {
+                    ::buffa::types::put_string_field(7u32, &self.assignment_kind, buf);
+                }
+                for v in &self.identity_relation_chain {
+                    ::buffa::types::put_string_field(8u32, v, buf);
+                }
+                for v in &self.identity_edges {
+                    ::buffa::types::put_len_delimited_header(
+                        9u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                for v in &self.relation_chain {
+                    ::buffa::types::put_string_field(10u32, v, buf);
+                }
+                for v in &self.edges {
+                    ::buffa::types::put_len_delimited_header(
+                        11u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for EffectiveAccessPathView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.identity.as_option()
+                    {
+                        __map.serialize_entry("identity", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.principal.as_option()
+                    {
+                        __map.serialize_entry("principal", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.mediator.as_option()
+                    {
+                        __map.serialize_entry("mediator", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .access_target
+                        .as_option()
+                    {
+                        __map.serialize_entry("accessTarget", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .entitlement
+                        .as_option()
+                    {
+                        __map.serialize_entry("entitlement", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .capability
+                        .as_option()
+                    {
+                        __map.serialize_entry("capability", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.assignment_kind) {
+                    __map.serialize_entry("assignmentKind", self.assignment_kind)?;
+                }
+                if !self.identity_relation_chain.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "identityRelationChain",
+                            &*self.identity_relation_chain,
+                        )?;
+                }
+                if !self.identity_edges.is_empty() {
+                    __map.serialize_entry("identityEdges", &*self.identity_edges)?;
+                }
+                if !self.relation_chain.is_empty() {
+                    __map.serialize_entry("relationChain", &*self.relation_chain)?;
+                }
+                if !self.edges.is_empty() {
+                    __map.serialize_entry("edges", &*self.edges)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for EffectiveAccessPathView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "EffectiveAccessPath";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.EffectiveAccessPath";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.EffectiveAccessPath";
+        }
+        ::buffa::impl_default_view_instance!(EffectiveAccessPathView);
+        ::buffa::impl_view_reborrow!(EffectiveAccessPathView);
+        /** Self-contained, `'static` owned view of a `EffectiveAccessPath` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`EffectiveAccessPathView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`EffectiveAccessPathView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct EffectiveAccessPathOwnedView(
+            ::buffa::OwnedView<EffectiveAccessPathView<'static>>,
+        );
+        impl EffectiveAccessPathOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EffectiveAccessPathOwnedView(::buffa::OwnedView::decode(bytes)?),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EffectiveAccessPathOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::EffectiveAccessPath,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    EffectiveAccessPathOwnedView(::buffa::OwnedView::from_owned(msg)?),
+                )
+            }
+            /// Borrow the full [`EffectiveAccessPathView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &EffectiveAccessPathView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::EffectiveAccessPath {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `identity`
+            #[must_use]
+            pub fn identity(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().identity
+            }
+            /// Field 2: `principal`
+            #[must_use]
+            pub fn principal(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().principal
+            }
+            /// Field 3: `mediator`
+            #[must_use]
+            pub fn mediator(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().mediator
+            }
+            /// Field 4: `access_target`
+            #[must_use]
+            pub fn access_target(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().access_target
+            }
+            /// Field 5: `entitlement`
+            #[must_use]
+            pub fn entitlement(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().entitlement
+            }
+            /// Field 6: `capability`
+            #[must_use]
+            pub fn capability(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::GraphEntityView<'_>,
+            > {
+                &self.0.reborrow().capability
+            }
+            /// Field 7: `assignment_kind`
+            #[must_use]
+            pub fn assignment_kind(&self) -> &'_ str {
+                self.0.reborrow().assignment_kind
+            }
+            /// Field 8: `identity_relation_chain`
+            #[must_use]
+            pub fn identity_relation_chain(
+                &self,
+            ) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().identity_relation_chain
+            }
+            /// Field 9: `identity_edges`
+            #[must_use]
+            pub fn identity_edges(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::EffectiveAccessPathEdgeView<'_>,
+            > {
+                &self.0.reborrow().identity_edges
+            }
+            /// Field 10: `relation_chain`
+            #[must_use]
+            pub fn relation_chain(&self) -> &::buffa::RepeatedView<'_, &'_ str> {
+                &self.0.reborrow().relation_chain
+            }
+            /// Field 11: `edges`
+            #[must_use]
+            pub fn edges(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::EffectiveAccessPathEdgeView<'_>,
+            > {
+                &self.0.reborrow().edges
+            }
+        }
+        impl ::core::convert::From<::buffa::OwnedView<EffectiveAccessPathView<'static>>>
+        for EffectiveAccessPathOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<EffectiveAccessPathView<'static>>,
+            ) -> Self {
+                EffectiveAccessPathOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<EffectiveAccessPathOwnedView>
+        for ::buffa::OwnedView<EffectiveAccessPathView<'static>> {
+            fn from(wrapper: EffectiveAccessPathOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<::buffa::OwnedView<EffectiveAccessPathView<'static>>>
+        for EffectiveAccessPathOwnedView {
+            fn as_ref(&self) -> &::buffa::OwnedView<EffectiveAccessPathView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::EffectiveAccessPath {
+            type View<'a> = EffectiveAccessPathView<'a>;
+            type ViewHandle = EffectiveAccessPathOwnedView;
+        }
+        impl ::serde::Serialize for EffectiveAccessPathOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListEffectiveAccessPathsRequestView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `identity_urn`
+            pub identity_urn: &'a str,
+            /// Field 3: `identity_query`
+            pub identity_query: &'a str,
+            /// Field 4: `application_urn`
+            pub application_urn: &'a str,
+            /// Field 5: `capability_urn`
+            pub capability_urn: &'a str,
+            /// Field 6: `capability_id`
+            pub capability_id: &'a str,
+            /// Field 7: `limit`
+            pub limit: u32,
+            /// Field 8: `expected_graph_revision`
+            pub expected_graph_revision: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListEffectiveAccessPathsRequestView<'a> {
+            type Owned = super::super::ListEffectiveAccessPathsRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.identity_urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.identity_query = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.application_urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.capability_urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.capability_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.limit = ::buffa::types::decode_uint32(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.expected_graph_revision = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListEffectiveAccessPathsRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListEffectiveAccessPathsRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListEffectiveAccessPathsRequest {
+                    tenant_id: self.tenant_id.to_string(),
+                    identity_urn: self.identity_urn.to_string(),
+                    identity_query: self.identity_query.to_string(),
+                    application_urn: self.application_urn.to_string(),
+                    capability_urn: self.capability_urn.to_string(),
+                    capability_id: self.capability_id.to_string(),
+                    limit: self.limit,
+                    expected_graph_revision: self.expected_graph_revision,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListEffectiveAccessPathsRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.identity_urn.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.identity_urn)
+                                as u64;
+                }
+                if !self.identity_query.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.identity_query)
+                                as u64;
+                }
+                if !self.application_urn.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.application_urn)
+                                as u64;
+                }
+                if !self.capability_urn.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.capability_urn)
+                                as u64;
+                }
+                if !self.capability_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.capability_id)
+                                as u64;
+                }
+                if self.limit != 0u32 {
+                    size += 1u64 + ::buffa::types::uint32_encoded_len(self.limit) as u64;
+                }
+                if self.expected_graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(
+                                self.expected_graph_revision,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.identity_urn.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.identity_urn, buf);
+                }
+                if !self.identity_query.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.identity_query, buf);
+                }
+                if !self.application_urn.is_empty() {
+                    ::buffa::types::put_string_field(4u32, &self.application_urn, buf);
+                }
+                if !self.capability_urn.is_empty() {
+                    ::buffa::types::put_string_field(5u32, &self.capability_urn, buf);
+                }
+                if !self.capability_id.is_empty() {
+                    ::buffa::types::put_string_field(6u32, &self.capability_id, buf);
+                }
+                if self.limit != 0u32 {
+                    ::buffa::types::put_uint32_field(7u32, self.limit, buf);
+                }
+                if self.expected_graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(
+                        8u32,
+                        self.expected_graph_revision,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListEffectiveAccessPathsRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.identity_urn) {
+                    __map.serialize_entry("identityUrn", self.identity_urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.identity_query) {
+                    __map.serialize_entry("identityQuery", self.identity_query)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.application_urn) {
+                    __map.serialize_entry("applicationUrn", self.application_urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.capability_urn) {
+                    __map.serialize_entry("capabilityUrn", self.capability_urn)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.capability_id) {
+                    __map.serialize_entry("capabilityId", self.capability_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u32(&self.limit) {
+                    __map
+                        .serialize_entry(
+                            "limit",
+                            &::buffa::json_helpers::ProtoJson(&self.limit),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.expected_graph_revision,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "expectedGraphRevision",
+                            &::buffa::json_helpers::ProtoJson(
+                                &self.expected_graph_revision,
+                            ),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListEffectiveAccessPathsRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListEffectiveAccessPathsRequest";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListEffectiveAccessPathsRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEffectiveAccessPathsRequest";
+        }
+        ::buffa::impl_default_view_instance!(ListEffectiveAccessPathsRequestView);
+        ::buffa::impl_view_reborrow!(ListEffectiveAccessPathsRequestView);
+        /** Self-contained, `'static` owned view of a `ListEffectiveAccessPathsRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListEffectiveAccessPathsRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListEffectiveAccessPathsRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListEffectiveAccessPathsRequestOwnedView(
+            ::buffa::OwnedView<ListEffectiveAccessPathsRequestView<'static>>,
+        );
+        impl ListEffectiveAccessPathsRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEffectiveAccessPathsRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEffectiveAccessPathsRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListEffectiveAccessPathsRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEffectiveAccessPathsRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListEffectiveAccessPathsRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListEffectiveAccessPathsRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListEffectiveAccessPathsRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `identity_urn`
+            #[must_use]
+            pub fn identity_urn(&self) -> &'_ str {
+                self.0.reborrow().identity_urn
+            }
+            /// Field 3: `identity_query`
+            #[must_use]
+            pub fn identity_query(&self) -> &'_ str {
+                self.0.reborrow().identity_query
+            }
+            /// Field 4: `application_urn`
+            #[must_use]
+            pub fn application_urn(&self) -> &'_ str {
+                self.0.reborrow().application_urn
+            }
+            /// Field 5: `capability_urn`
+            #[must_use]
+            pub fn capability_urn(&self) -> &'_ str {
+                self.0.reborrow().capability_urn
+            }
+            /// Field 6: `capability_id`
+            #[must_use]
+            pub fn capability_id(&self) -> &'_ str {
+                self.0.reborrow().capability_id
+            }
+            /// Field 7: `limit`
+            #[must_use]
+            pub fn limit(&self) -> u32 {
+                self.0.reborrow().limit
+            }
+            /// Field 8: `expected_graph_revision`
+            #[must_use]
+            pub fn expected_graph_revision(&self) -> u64 {
+                self.0.reborrow().expected_graph_revision
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListEffectiveAccessPathsRequestView<'static>>,
+        > for ListEffectiveAccessPathsRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListEffectiveAccessPathsRequestView<'static>>,
+            ) -> Self {
+                ListEffectiveAccessPathsRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListEffectiveAccessPathsRequestOwnedView>
+        for ::buffa::OwnedView<ListEffectiveAccessPathsRequestView<'static>> {
+            fn from(wrapper: ListEffectiveAccessPathsRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListEffectiveAccessPathsRequestView<'static>>,
+        > for ListEffectiveAccessPathsRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListEffectiveAccessPathsRequestView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListEffectiveAccessPathsRequest {
+            type View<'a> = ListEffectiveAccessPathsRequestView<'a>;
+            type ViewHandle = ListEffectiveAccessPathsRequestOwnedView;
+        }
+        impl ::serde::Serialize for ListEffectiveAccessPathsRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ListEffectiveAccessPathsResponseView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `paths`
+            pub paths: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::EffectiveAccessPathView<'a>,
+            >,
+            /// Field 4: `truncated`
+            pub truncated: bool,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for ListEffectiveAccessPathsResponseView<'a> {
+            type Owned = super::super::ListEffectiveAccessPathsResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::EffectiveAccessPathView,
+                            >(),
+                        )?;
+                        view.paths
+                            .push(
+                                <super::super::__buffa::view::EffectiveAccessPathView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ListEffectiveAccessPathsResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ListEffectiveAccessPathsResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ListEffectiveAccessPathsResponse {
+                    tenant_id: self.tenant_id.to_string(),
+                    graph_revision: self.graph_revision,
+                    paths: self
+                        .paths
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    truncated: self.truncated,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for ListEffectiveAccessPathsResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                for v in &self.paths {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                for v in &self.paths {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(4u32, self.truncated, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for ListEffectiveAccessPathsResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !self.paths.is_empty() {
+                    __map.serialize_entry("paths", &*self.paths)?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for ListEffectiveAccessPathsResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.graph.v1";
+            const NAME: &'static str = "ListEffectiveAccessPathsResponse";
+            const FULL_NAME: &'static str = "cerebro.graph.v1.ListEffectiveAccessPathsResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.graph.v1.ListEffectiveAccessPathsResponse";
+        }
+        ::buffa::impl_default_view_instance!(ListEffectiveAccessPathsResponseView);
+        ::buffa::impl_view_reborrow!(ListEffectiveAccessPathsResponseView);
+        /** Self-contained, `'static` owned view of a `ListEffectiveAccessPathsResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ListEffectiveAccessPathsResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ListEffectiveAccessPathsResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ListEffectiveAccessPathsResponseOwnedView(
+            ::buffa::OwnedView<ListEffectiveAccessPathsResponseView<'static>>,
+        );
+        impl ListEffectiveAccessPathsResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEffectiveAccessPathsResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEffectiveAccessPathsResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ListEffectiveAccessPathsResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ListEffectiveAccessPathsResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ListEffectiveAccessPathsResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ListEffectiveAccessPathsResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ListEffectiveAccessPathsResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `paths`
+            #[must_use]
+            pub fn paths(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::EffectiveAccessPathView<'_>,
+            > {
+                &self.0.reborrow().paths
+            }
+            /// Field 4: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ListEffectiveAccessPathsResponseView<'static>>,
+        > for ListEffectiveAccessPathsResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<ListEffectiveAccessPathsResponseView<'static>>,
+            ) -> Self {
+                ListEffectiveAccessPathsResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ListEffectiveAccessPathsResponseOwnedView>
+        for ::buffa::OwnedView<ListEffectiveAccessPathsResponseView<'static>> {
+            fn from(wrapper: ListEffectiveAccessPathsResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ListEffectiveAccessPathsResponseView<'static>>,
+        > for ListEffectiveAccessPathsResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<ListEffectiveAccessPathsResponseView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::ListEffectiveAccessPathsResponse {
+            type View<'a> = ListEffectiveAccessPathsResponseView<'a>;
+            type ViewHandle = ListEffectiveAccessPathsResponseOwnedView;
+        }
+        impl ::serde::Serialize for ListEffectiveAccessPathsResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
         pub struct CloudAttackPathNodeView<'a> {
             /// Field 1: `urn`
             pub urn: &'a str,
@@ -50435,6 +53910,10 @@ pub mod __buffa {
         reg.register_json_any(super::__PERSON_ACCESS_PATH_JSON_ANY);
         reg.register_json_any(super::__LIST_PERSON_ACCESS_PATHS_REQUEST_JSON_ANY);
         reg.register_json_any(super::__LIST_PERSON_ACCESS_PATHS_RESPONSE_JSON_ANY);
+        reg.register_json_any(super::__EFFECTIVE_ACCESS_PATH_EDGE_JSON_ANY);
+        reg.register_json_any(super::__EFFECTIVE_ACCESS_PATH_JSON_ANY);
+        reg.register_json_any(super::__LIST_EFFECTIVE_ACCESS_PATHS_REQUEST_JSON_ANY);
+        reg.register_json_any(super::__LIST_EFFECTIVE_ACCESS_PATHS_RESPONSE_JSON_ANY);
         reg.register_json_any(super::__CLOUD_ATTACK_PATH_NODE_JSON_ANY);
         reg.register_json_any(super::__CLOUD_ATTACK_PATH_EDGE_JSON_ANY);
         reg.register_json_any(super::__CLOUD_ATTACK_PATH_OWNERSHIP_JSON_ANY);
@@ -50619,6 +54098,22 @@ pub use self::__buffa::view::ListPersonAccessPathsRequestOwnedView;
 pub use self::__buffa::view::ListPersonAccessPathsResponseView;
 #[doc(inline)]
 pub use self::__buffa::view::ListPersonAccessPathsResponseOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::EffectiveAccessPathEdgeView;
+#[doc(inline)]
+pub use self::__buffa::view::EffectiveAccessPathEdgeOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::EffectiveAccessPathView;
+#[doc(inline)]
+pub use self::__buffa::view::EffectiveAccessPathOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEffectiveAccessPathsRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEffectiveAccessPathsRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEffectiveAccessPathsResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ListEffectiveAccessPathsResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::view::CloudAttackPathNodeView;
 #[doc(inline)]

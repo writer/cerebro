@@ -674,6 +674,63 @@ pub struct PersonAccessPathPage {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// One source-backed edge in an effective-access proof.
+pub struct EffectiveAccessPathEdge {
+    /// Source entity.
+    pub from: ContextEntity,
+    /// Closed relation kind.
+    pub relation: String,
+    /// Target entity.
+    pub to: ContextEntity,
+    /// Source connector identifier.
+    pub source_id: String,
+    /// Source runtime identifier.
+    pub runtime_id: String,
+    /// Bounded source attributes preserved for lineage qualification.
+    pub attributes_json: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded identity-to-capability effective-access proof.
+pub struct EffectiveAccessPath {
+    /// Caller-selected identity.
+    pub identity: ContextEntity,
+    /// Provider principal granting the access.
+    pub principal: ContextEntity,
+    /// Optional group mediating the assignment.
+    pub mediator: Option<ContextEntity>,
+    /// Application or role receiving the assignment.
+    pub access_target: ContextEntity,
+    /// Entitlement granted by the target.
+    pub entitlement: ContextEntity,
+    /// Capability conferred by the entitlement.
+    pub capability: ContextEntity,
+    /// Closed assignment variant.
+    pub assignment_kind: String,
+    /// Ordered identity-to-principal relation kinds.
+    pub identity_relation_chain: Vec<String>,
+    /// Ordered identity-to-principal edges.
+    pub identity_edges: Vec<EffectiveAccessPathEdge>,
+    /// Ordered principal-to-capability relation kinds.
+    pub relation_chain: Vec<String>,
+    /// Ordered principal-to-capability edges.
+    pub edges: Vec<EffectiveAccessPathEdge>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// One revision-bound page of effective-access proofs.
+pub struct EffectiveAccessPathPage {
+    /// Authorized tenant.
+    pub tenant_id: String,
+    /// Durable graph revision read by the query.
+    pub graph_revision: u64,
+    /// Bounded effective-access proofs.
+    pub paths: Vec<EffectiveAccessPath>,
+    /// True when more paths matched than the requested bound.
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 /// One node in a cloud attack path.
 pub struct CloudAttackPathNode {
     /// Stable tenant-scoped entity URN.
@@ -1344,6 +1401,62 @@ ORDER BY runtime_id
         require_same_catalog_revision(revision, end_revision)?;
         let truncated = truncate_to_limit(&mut paths, limit);
         Ok(PersonAccessPathPage {
+            tenant_id: tenant_id.as_str().to_owned(),
+            graph_revision: revision,
+            paths,
+            truncated,
+        })
+    }
+
+    /// Lists bounded identity-to-capability effective-access proofs using one
+    /// closed Rust-owned union query.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_effective_access_paths(
+        &self,
+        tenant_id: &TenantId,
+        identity_urn: &str,
+        identity_query: &str,
+        application_urn: &str,
+        capability_urn: &str,
+        capability_id: &str,
+        limit: usize,
+        expected_graph_revision: u64,
+    ) -> Result<EffectiveAccessPathPage, StoreError> {
+        validate_effective_access_request(
+            tenant_id,
+            identity_urn,
+            identity_query,
+            application_urn,
+            capability_urn,
+            capability_id,
+            limit,
+        )?;
+        let mut transaction = self.graph.start_txn().await?;
+        let revision = catalog_revision(&mut transaction, tenant_id).await?;
+        require_catalog_revision(expected_graph_revision, revision)?;
+        let mut rows = transaction
+            .execute(
+                query(effective_access_path_statement())
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("identity_urn", identity_urn)
+                    .param("identity_query", identity_query)
+                    .param("application_urn", application_urn)
+                    .param("capability_urn", capability_urn)
+                    .param("capability_id", capability_id)
+                    .param("sample_limit", i64::try_from(limit).unwrap_or(i64::MAX))
+                    .param("row_limit", row_limit(limit)),
+            )
+            .await?;
+        let mut paths = Vec::new();
+        while let Some(row) = rows.next(transaction.handle()).await? {
+            paths.push(effective_access_path_from_row(tenant_id, &row)?);
+        }
+        drop(rows);
+        let end_revision = catalog_revision(&mut transaction, tenant_id).await?;
+        transaction.commit().await?;
+        require_same_catalog_revision(revision, end_revision)?;
+        let truncated = truncate_to_limit(&mut paths, limit);
+        Ok(EffectiveAccessPathPage {
             tenant_id: tenant_id.as_str().to_owned(),
             graph_revision: revision,
             paths,
@@ -3701,6 +3814,366 @@ fn validate_catalog_relation_request(
     Ok(())
 }
 
+fn effective_access_path_statement() -> &'static str {
+    r#"MATCH (subject:Entity {tenant_id: $tenant_id})
+WHERE ($identity_urn = '' OR subject.urn = $identity_urn)
+  AND ($identity_query = ''
+       OR toLower(coalesce(subject.urn, '')) CONTAINS $identity_query
+       OR toLower(coalesce(subject.label, '')) CONTAINS $identity_query
+       OR toLower(coalesce(subject.attributes_json, '')) CONTAINS $identity_query)
+WITH subject
+ORDER BY subject.label, subject.urn
+LIMIT $sample_limit
+CALL {
+  WITH subject
+  RETURN subject AS principal, [] AS identity_rels, [subject] AS identity_nodes
+  UNION
+  WITH subject
+  MATCH (principal:Entity {tenant_id: $tenant_id})-[identity_link:RELATION]->(subject)
+  WHERE identity_link.tenant_id = $tenant_id
+    AND identity_link.relation IN ['represents_identity', 'same_actor']
+  RETURN principal, [identity_link] AS identity_rels, [subject, principal] AS identity_nodes
+  UNION
+  WITH subject
+  MATCH (subject)-[identity_link:RELATION]->(principal:Entity {tenant_id: $tenant_id})
+  WHERE identity_link.tenant_id = $tenant_id
+    AND identity_link.relation = 'same_actor'
+  RETURN principal, [identity_link] AS identity_rels, [subject, principal] AS identity_nodes
+  UNION
+  WITH subject
+  MATCH (subject)-[subject_link:RELATION {relation: 'represents_identity'}]->(identity:Entity {tenant_id: $tenant_id})<-[principal_link:RELATION {relation: 'represents_identity'}]-(principal:Entity {tenant_id: $tenant_id})
+  WHERE subject_link.tenant_id = $tenant_id
+    AND principal_link.tenant_id = $tenant_id
+  RETURN principal, [subject_link, principal_link] AS identity_rels, [subject, identity, principal] AS identity_nodes
+  UNION
+  WITH subject
+  MATCH (subject)-[same_actor:RELATION {relation: 'same_actor'}]-(identity:Entity {tenant_id: $tenant_id})<-[principal_link:RELATION {relation: 'represents_identity'}]-(principal:Entity {tenant_id: $tenant_id})
+  WHERE same_actor.tenant_id = $tenant_id
+    AND principal_link.tenant_id = $tenant_id
+  RETURN principal, [same_actor, principal_link] AS identity_rels, [subject, identity, principal] AS identity_nodes
+}
+WITH DISTINCT subject, principal, identity_rels, identity_nodes
+WHERE principal.tenant_id = $tenant_id
+CALL {
+  WITH subject, principal
+  MATCH (principal)-[assignment:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})
+  WHERE assignment.tenant_id = $tenant_id
+    AND target.entity_type ENDS WITH '.application'
+    AND ($application_urn = '' OR target.urn = $application_urn)
+  MATCH (target)-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
+  WHERE grant.tenant_id = $tenant_id
+    AND confers.tenant_id = $tenant_id
+    AND ($capability_urn = '' OR capability.urn = $capability_urn)
+    AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
+  RETURN subject, principal, null AS mediator, target, entitlement, capability,
+         'direct_app_assignment' AS assignment_kind,
+         [assignment, grant, confers] AS rels,
+         [principal, target, entitlement, capability] AS path_nodes
+  UNION
+  WITH subject, principal
+  MATCH (principal)-[membership:RELATION {relation: 'member_of'}]->(mediator:Entity {tenant_id: $tenant_id})-[assignment:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})
+  WHERE membership.tenant_id = $tenant_id
+    AND assignment.tenant_id = $tenant_id
+    AND target.entity_type ENDS WITH '.application'
+    AND ($application_urn = '' OR target.urn = $application_urn)
+  MATCH (target)-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
+  WHERE grant.tenant_id = $tenant_id
+    AND confers.tenant_id = $tenant_id
+    AND ($capability_urn = '' OR capability.urn = $capability_urn)
+    AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
+  RETURN subject, principal, mediator, target, entitlement, capability,
+         'group_app_assignment' AS assignment_kind,
+         [membership, assignment, grant, confers] AS rels,
+         [principal, mediator, target, entitlement, capability] AS path_nodes
+  UNION
+  WITH subject, principal
+  MATCH (principal)-[role_assignment:RELATION]->(target:Entity {tenant_id: $tenant_id})-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
+  WHERE $application_urn = ''
+    AND role_assignment.tenant_id = $tenant_id
+    AND role_assignment.relation IN ['assigned_to', 'can_admin']
+    AND grant.tenant_id = $tenant_id
+    AND confers.tenant_id = $tenant_id
+    AND (target.entity_type ENDS WITH '.role' OR target.entity_type ENDS WITH '.admin_role')
+    AND ($capability_urn = '' OR capability.urn = $capability_urn)
+    AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
+  RETURN subject, principal, null AS mediator, target, entitlement, capability,
+         CASE WHEN role_assignment.relation = 'can_admin' THEN 'admin_role_assignment' ELSE 'role_assignment' END AS assignment_kind,
+         [role_assignment, grant, confers] AS rels,
+         [principal, target, entitlement, capability] AS path_nodes
+}
+RETURN subject.urn AS identity_key,
+       coalesce(subject.entity_type, 'unknown') AS identity_kind,
+       coalesce(subject.label, subject.urn) AS identity_label,
+       coalesce(subject.attributes_json, '{}') AS identity_properties,
+       coalesce(subject.source_id, '') AS identity_source_id,
+       coalesce(subject.runtime_id, '') AS identity_runtime_id,
+       principal.urn AS principal_key,
+       coalesce(principal.entity_type, 'unknown') AS principal_kind,
+       coalesce(principal.label, principal.urn) AS principal_label,
+       coalesce(principal.attributes_json, '{}') AS principal_properties,
+       coalesce(principal.source_id, '') AS principal_source_id,
+       coalesce(principal.runtime_id, '') AS principal_runtime_id,
+       coalesce(mediator.urn, '') AS mediator_key,
+       coalesce(mediator.entity_type, '') AS mediator_kind,
+       coalesce(mediator.label, '') AS mediator_label,
+       coalesce(mediator.attributes_json, '{}') AS mediator_properties,
+       coalesce(mediator.source_id, '') AS mediator_source_id,
+       coalesce(mediator.runtime_id, '') AS mediator_runtime_id,
+       target.urn AS target_key,
+       coalesce(target.entity_type, 'unknown') AS target_kind,
+       coalesce(target.label, target.urn) AS target_label,
+       coalesce(target.attributes_json, '{}') AS target_properties,
+       coalesce(target.source_id, '') AS target_source_id,
+       coalesce(target.runtime_id, '') AS target_runtime_id,
+       entitlement.urn AS entitlement_key,
+       coalesce(entitlement.entity_type, 'unknown') AS entitlement_kind,
+       coalesce(entitlement.label, entitlement.urn) AS entitlement_label,
+       coalesce(entitlement.attributes_json, '{}') AS entitlement_properties,
+       coalesce(entitlement.source_id, '') AS entitlement_source_id,
+       coalesce(entitlement.runtime_id, '') AS entitlement_runtime_id,
+       capability.urn AS capability_key,
+       coalesce(capability.entity_type, 'unknown') AS capability_kind,
+       coalesce(capability.label, capability.urn) AS capability_label,
+       coalesce(capability.attributes_json, '{}') AS capability_properties,
+       coalesce(capability.source_id, '') AS capability_source_id,
+       coalesce(capability.runtime_id, '') AS capability_runtime_id,
+       assignment_kind,
+       [rel IN identity_rels | rel.relation] AS identity_relation_chain,
+       [idx IN range(0, size(identity_rels) - 1) | identity_nodes[idx].urn] AS identity_edge_from_urns,
+       [idx IN range(0, size(identity_rels) - 1) | coalesce(identity_nodes[idx].entity_type, 'unknown')] AS identity_edge_from_kinds,
+       [idx IN range(0, size(identity_rels) - 1) | coalesce(identity_nodes[idx].label, identity_nodes[idx].urn)] AS identity_edge_from_labels,
+       [idx IN range(0, size(identity_rels) - 1) | identity_nodes[idx + 1].urn] AS identity_edge_to_urns,
+       [idx IN range(0, size(identity_rels) - 1) | coalesce(identity_nodes[idx + 1].entity_type, 'unknown')] AS identity_edge_to_kinds,
+       [idx IN range(0, size(identity_rels) - 1) | coalesce(identity_nodes[idx + 1].label, identity_nodes[idx + 1].urn)] AS identity_edge_to_labels,
+       [rel IN identity_rels | coalesce(rel.source_id, '')] AS identity_edge_source_ids,
+       [rel IN identity_rels | coalesce(rel.runtime_id, '')] AS identity_edge_runtime_ids,
+       [rel IN identity_rels | coalesce(rel.attributes_json, '{}')] AS identity_edge_attributes,
+       [rel IN rels | rel.relation] AS relation_chain,
+       [idx IN range(0, size(rels) - 1) | path_nodes[idx].urn] AS edge_from_urns,
+       [idx IN range(0, size(rels) - 1) | coalesce(path_nodes[idx].entity_type, 'unknown')] AS edge_from_kinds,
+       [idx IN range(0, size(rels) - 1) | coalesce(path_nodes[idx].label, path_nodes[idx].urn)] AS edge_from_labels,
+       [idx IN range(0, size(rels) - 1) | path_nodes[idx + 1].urn] AS edge_to_urns,
+       [idx IN range(0, size(rels) - 1) | coalesce(path_nodes[idx + 1].entity_type, 'unknown')] AS edge_to_kinds,
+       [idx IN range(0, size(rels) - 1) | coalesce(path_nodes[idx + 1].label, path_nodes[idx + 1].urn)] AS edge_to_labels,
+       [rel IN rels | coalesce(rel.source_id, '')] AS edge_source_ids,
+       [rel IN rels | coalesce(rel.runtime_id, '')] AS edge_runtime_ids,
+       [rel IN rels | coalesce(rel.attributes_json, '{}')] AS edge_attributes
+ORDER BY identity_label, principal_label, assignment_kind, target_label, entitlement_label, capability_label
+LIMIT $row_limit"#
+}
+
+fn validate_effective_access_request(
+    tenant_id: &TenantId,
+    identity_urn: &str,
+    identity_query: &str,
+    application_urn: &str,
+    capability_urn: &str,
+    capability_id: &str,
+    limit: usize,
+) -> Result<(), StoreError> {
+    if !(1..=100).contains(&limit) {
+        return Err(StoreError::Conflict(
+            "effective access path limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    validate_catalog_text("identity_urn", identity_urn, 4096, false)?;
+    validate_catalog_text("identity_query", identity_query, 512, false)?;
+    validate_catalog_text("application_urn", application_urn, 4096, false)?;
+    validate_catalog_text("capability_urn", capability_urn, 4096, false)?;
+    validate_catalog_text("capability_id", capability_id, 256, false)?;
+    if identity_urn.is_empty() && identity_query.is_empty() {
+        return Err(StoreError::Conflict(
+            "effective access identity selector is required".to_owned(),
+        ));
+    }
+    let tenant_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
+    for (name, urn) in [
+        ("identity_urn", identity_urn),
+        ("application_urn", application_urn),
+        ("capability_urn", capability_urn),
+    ] {
+        if !urn.is_empty() && !urn.starts_with(&tenant_prefix) {
+            return Err(StoreError::Conflict(format!(
+                "effective access {name} is not tenant scoped"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn effective_access_path_from_row(
+    tenant_id: &TenantId,
+    row: &Row,
+) -> Result<EffectiveAccessPath, StoreError> {
+    let mediator = if catalog_row_string(row, "mediator_key")?.is_empty() {
+        None
+    } else {
+        Some(legacy_context_entity_from_row_prefix(
+            tenant_id, row, "mediator",
+        )?)
+    };
+    let identity_relation_chain = catalog_row_string_list(row, "identity_relation_chain")?;
+    let relation_chain = catalog_row_string_list(row, "relation_chain")?;
+    let path = EffectiveAccessPath {
+        identity: legacy_context_entity_from_row_prefix(tenant_id, row, "identity")?,
+        principal: legacy_context_entity_from_row_prefix(tenant_id, row, "principal")?,
+        mediator,
+        access_target: legacy_context_entity_from_row_prefix(tenant_id, row, "target")?,
+        entitlement: legacy_context_entity_from_row_prefix(tenant_id, row, "entitlement")?,
+        capability: legacy_context_entity_from_row_prefix(tenant_id, row, "capability")?,
+        assignment_kind: catalog_row_string(row, "assignment_kind")?,
+        identity_edges: effective_access_edges_from_row(
+            tenant_id,
+            row,
+            "identity_edge",
+            &identity_relation_chain,
+        )?,
+        identity_relation_chain,
+        edges: effective_access_edges_from_row(tenant_id, row, "edge", &relation_chain)?,
+        relation_chain,
+    };
+    validate_effective_access_path(tenant_id, &path)?;
+    Ok(path)
+}
+
+fn effective_access_edges_from_row(
+    tenant_id: &TenantId,
+    row: &Row,
+    prefix: &str,
+    relations: &[String],
+) -> Result<Vec<EffectiveAccessPathEdge>, StoreError> {
+    let from_urns = catalog_row_string_list(row, &format!("{prefix}_from_urns"))?;
+    let from_kinds = catalog_row_string_list(row, &format!("{prefix}_from_kinds"))?;
+    let from_labels = catalog_row_string_list(row, &format!("{prefix}_from_labels"))?;
+    let to_urns = catalog_row_string_list(row, &format!("{prefix}_to_urns"))?;
+    let to_kinds = catalog_row_string_list(row, &format!("{prefix}_to_kinds"))?;
+    let to_labels = catalog_row_string_list(row, &format!("{prefix}_to_labels"))?;
+    let source_ids = catalog_row_string_list(row, &format!("{prefix}_source_ids"))?;
+    let runtime_ids = catalog_row_string_list(row, &format!("{prefix}_runtime_ids"))?;
+    let attributes = catalog_row_string_list(row, &format!("{prefix}_attributes"))?;
+    if !same_len(&[
+        from_urns.len(),
+        from_kinds.len(),
+        from_labels.len(),
+        to_urns.len(),
+        to_kinds.len(),
+        to_labels.len(),
+        source_ids.len(),
+        runtime_ids.len(),
+        attributes.len(),
+        relations.len(),
+    ]) {
+        return Err(StoreError::Conflict(
+            "effective access edge fields are misaligned".to_owned(),
+        ));
+    }
+    let mut edges = Vec::with_capacity(from_urns.len());
+    for index in 0..from_urns.len() {
+        validate_catalog_text(
+            "effective access edge attributes",
+            &attributes[index],
+            16_384,
+            false,
+        )?;
+        edges.push(EffectiveAccessPathEdge {
+            from: legacy_context_entity(
+                tenant_id,
+                &from_urns[index],
+                from_kinds[index].clone(),
+                from_labels[index].clone(),
+                "{}".to_owned(),
+                String::new(),
+                String::new(),
+            )
+            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+            relation: relations[index].clone(),
+            to: legacy_context_entity(
+                tenant_id,
+                &to_urns[index],
+                to_kinds[index].clone(),
+                to_labels[index].clone(),
+                "{}".to_owned(),
+                String::new(),
+                String::new(),
+            )
+            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+            source_id: source_ids[index].clone(),
+            runtime_id: runtime_ids[index].clone(),
+            attributes_json: attributes[index].clone(),
+        });
+    }
+    Ok(edges)
+}
+
+fn validate_effective_access_path(
+    tenant_id: &TenantId,
+    path: &EffectiveAccessPath,
+) -> Result<(), StoreError> {
+    let tenant_prefix = format!("urn:cerebro:{}:", tenant_id.as_str());
+    if path.identity_relation_chain.len() != path.identity_edges.len()
+        || path.relation_chain.len() != path.edges.len()
+        || path.relation_chain.is_empty()
+    {
+        return Err(StoreError::Conflict(
+            "effective access relation and edge chains are misaligned".to_owned(),
+        ));
+    }
+    for (edge, relation) in path
+        .identity_edges
+        .iter()
+        .zip(path.identity_relation_chain.iter())
+    {
+        if !matches!(relation.as_str(), "same_actor" | "represents_identity") {
+            return Err(StoreError::Conflict(
+                "effective access identity relation is outside the whitelist".to_owned(),
+            ));
+        }
+        if !edge.from.agent_key.starts_with(&tenant_prefix)
+            || !edge.to.agent_key.starts_with(&tenant_prefix)
+        {
+            return Err(StoreError::Conflict(
+                "effective access identity edge escaped tenant scope".to_owned(),
+            ));
+        }
+    }
+    let expected: &[&str] = match path.assignment_kind.as_str() {
+        "direct_app_assignment" => &["assigned_to", "grants_entitlement", "confers_capability"],
+        "group_app_assignment" => &[
+            "member_of",
+            "assigned_to",
+            "grants_entitlement",
+            "confers_capability",
+        ],
+        "role_assignment" => &["assigned_to", "grants_entitlement", "confers_capability"],
+        "admin_role_assignment" => &["can_admin", "grants_entitlement", "confers_capability"],
+        _ => {
+            return Err(StoreError::Conflict(
+                "effective access assignment kind is invalid".to_owned(),
+            ));
+        }
+    };
+    if path
+        .relation_chain
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        != expected
+    {
+        return Err(StoreError::Conflict(
+            "effective access relation chain is outside the whitelist".to_owned(),
+        ));
+    }
+    if path.edges.iter().any(|edge| {
+        !edge.from.agent_key.starts_with(&tenant_prefix)
+            || !edge.to.agent_key.starts_with(&tenant_prefix)
+    }) {
+        return Err(StoreError::Conflict(
+            "effective access edge escaped tenant scope".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_person_access_request(
     tenant_id: &TenantId,
     person_urn: &str,
@@ -5638,6 +6111,93 @@ mod tests {
         assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("relation.tenant_id <> $tenant_id"));
         assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("coalesce(relation.tenant_id, '') <> ''"));
         assert!(LEGACY_NEIGHBOR_SCOPE_STATEMENT.contains("neighbor.tenant_id"));
+    }
+
+    #[test]
+    fn effective_access_query_is_closed_tenant_scoped_and_bounded() {
+        let statement = effective_access_path_statement();
+        assert_eq!(statement.matches("\n  UNION\n").count(), 6);
+        assert!(statement.starts_with("MATCH (subject:Entity {tenant_id: $tenant_id})"));
+        assert!(
+            statement.contains("ORDER BY subject.label, subject.urn\nLIMIT $sample_limit\nCALL")
+        );
+        assert!(statement.ends_with("LIMIT $row_limit"));
+        assert!(
+            statement.contains("identity_link.relation IN ['represents_identity', 'same_actor']")
+        );
+        assert!(statement.contains("role_assignment.relation IN ['assigned_to', 'can_admin']"));
+        for relation in [
+            "same_actor",
+            "represents_identity",
+            "assigned_to",
+            "member_of",
+            "can_admin",
+            "grants_entitlement",
+            "confers_capability",
+        ] {
+            assert!(statement.contains(relation));
+        }
+        assert!(statement.contains("toLower(coalesce(subject.urn, '')) CONTAINS $identity_query"));
+        assert!(
+            statement.contains("toLower(coalesce(subject.label, '')) CONTAINS $identity_query")
+        );
+        assert!(
+            statement.contains(
+                "toLower(coalesce(subject.attributes_json, '')) CONTAINS $identity_query"
+            )
+        );
+        assert!(!statement.contains("[*"));
+    }
+
+    #[test]
+    fn effective_access_request_rejects_unbounded_and_cross_tenant_selectors() {
+        let tenant_id = TenantId::parse("writer").expect("tenant");
+        assert!(
+            validate_effective_access_request(
+                &tenant_id,
+                "urn:cerebro:writer:identity:one",
+                "",
+                "",
+                "",
+                "read",
+                25,
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_effective_access_request(
+                &tenant_id,
+                "urn:cerebro:other:identity:one",
+                "",
+                "",
+                "",
+                "read",
+                25,
+            )
+            .is_err()
+        );
+        assert!(validate_effective_access_request(
+            &tenant_id,
+            "",
+            &"q".repeat(513),
+            "",
+            "",
+            "read",
+            25,
+        )
+        .is_err());
+        assert!(
+            validate_effective_access_request(
+                &tenant_id,
+                "urn:cerebro:writer:identity:one",
+                "",
+                "",
+                "",
+                "read",
+                101,
+            )
+            .is_err()
+        );
     }
 
     #[test]

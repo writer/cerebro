@@ -9,14 +9,16 @@ import (
 )
 
 type awsExposureStubStore struct {
-	requests         []ports.CypherQueryRequest
-	responses        [][]ports.CypherRow
-	exposureRequests []ports.ExposureCoverageRequest
-	result           *ports.ExposureCoverageResult
-	err              error
-	personRequests   []ports.PersonAccessPathRequest
-	personResult     *ports.PersonAccessPathResult
-	rawReads         int
+	requests          []ports.CypherQueryRequest
+	responses         [][]ports.CypherRow
+	exposureRequests  []ports.ExposureCoverageRequest
+	result            *ports.ExposureCoverageResult
+	err               error
+	personRequests    []ports.PersonAccessPathRequest
+	personResult      *ports.PersonAccessPathResult
+	rawReads          int
+	effectiveRequests []ports.EffectiveAccessPathRequest
+	effectiveResult   *ports.EffectiveAccessPathResult
 }
 
 func (s *awsExposureStubStore) Ping(context.Context) error { return s.err }
@@ -47,6 +49,11 @@ func (s *awsExposureStubStore) CompareExposureCoverage(_ context.Context, reques
 func (s *awsExposureStubStore) ListPersonAccessPaths(_ context.Context, request ports.PersonAccessPathRequest) (*ports.PersonAccessPathResult, error) {
 	s.personRequests = append(s.personRequests, request)
 	return s.personResult, s.err
+}
+
+func (s *awsExposureStubStore) ListEffectiveAccessPaths(_ context.Context, request ports.EffectiveAccessPathRequest) (*ports.EffectiveAccessPathResult, error) {
+	s.effectiveRequests = append(s.effectiveRequests, request)
+	return s.effectiveResult, s.err
 }
 
 func TestGetAWSPublicEndpointInsightsRequiresTenant(t *testing.T) {

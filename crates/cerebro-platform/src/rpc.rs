@@ -18,6 +18,9 @@ use cerebro_organizational_store::{
     CloudAttackPathNode as StoreCloudAttackPathNode,
     CloudAttackPathOwnership as StoreCloudAttackPathOwnership,
     CloudAttackPathPage as StoreCloudAttackPathPage,
+    EffectiveAccessPath as StoreEffectiveAccessPath,
+    EffectiveAccessPathEdge as StoreEffectiveAccessPathEdge,
+    EffectiveAccessPathPage as StoreEffectiveAccessPathPage,
     EntityCatalogDirection as StoreCatalogDirection, EntityCatalogFilter as StoreCatalogFilter,
     EntityCatalogKindPage as StoreCatalogKindPage, EntityCatalogPage as StoreCatalogPage,
     EntityCatalogRelationCountFilter as StoreCatalogRelationCountFilter,
@@ -986,6 +989,37 @@ impl OrganizationalGraphService for GraphRpc {
         .map_err(|_| ConnectError::unavailable("Person access path read exceeded 2 seconds."))?
         .map_err(catalog_store_error)?;
         Response::ok(person_access_path_response(result))
+    }
+
+    async fn list_effective_access_paths(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ListEffectiveAccessPathsRequest>,
+    ) -> ServiceResult<ListEffectiveAccessPathsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("The entity catalog projection is not loaded.")
+        })?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let identity_query = request.identity_query.trim().to_lowercase();
+        let result = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.list_effective_access_paths(
+                &tenant,
+                request.identity_urn.trim(),
+                &identity_query,
+                request.application_urn.trim(),
+                request.capability_urn.trim(),
+                request.capability_id.trim(),
+                limit,
+                request.expected_graph_revision,
+            ),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Effective access path read exceeded 2 seconds."))?
+        .map_err(catalog_store_error)?;
+        Response::ok(effective_access_path_response(result))
     }
 
     async fn list_cloud_attack_paths(
@@ -1978,6 +2012,55 @@ fn person_access_path_response(page: StorePersonAccessPathPage) -> ListPersonAcc
             })
             .collect(),
         truncated: page.truncated,
+        ..Default::default()
+    }
+}
+
+fn effective_access_path_response(
+    page: StoreEffectiveAccessPathPage,
+) -> ListEffectiveAccessPathsResponse {
+    ListEffectiveAccessPathsResponse {
+        tenant_id: page.tenant_id,
+        graph_revision: page.graph_revision,
+        paths: page.paths.into_iter().map(effective_access_path).collect(),
+        truncated: page.truncated,
+        ..Default::default()
+    }
+}
+
+fn effective_access_path(path: StoreEffectiveAccessPath) -> EffectiveAccessPath {
+    EffectiveAccessPath {
+        identity: graph_entity(path.identity).into(),
+        principal: graph_entity(path.principal).into(),
+        mediator: path.mediator.map(graph_entity).into(),
+        access_target: graph_entity(path.access_target).into(),
+        entitlement: graph_entity(path.entitlement).into(),
+        capability: graph_entity(path.capability).into(),
+        assignment_kind: path.assignment_kind,
+        identity_relation_chain: path.identity_relation_chain,
+        identity_edges: path
+            .identity_edges
+            .into_iter()
+            .map(effective_access_path_edge)
+            .collect(),
+        relation_chain: path.relation_chain,
+        edges: path
+            .edges
+            .into_iter()
+            .map(effective_access_path_edge)
+            .collect(),
+        ..Default::default()
+    }
+}
+
+fn effective_access_path_edge(edge: StoreEffectiveAccessPathEdge) -> EffectiveAccessPathEdge {
+    EffectiveAccessPathEdge {
+        from: graph_entity(edge.from).into(),
+        relation: edge.relation,
+        to: graph_entity(edge.to).into(),
+        source_id: edge.source_id,
+        runtime_id: edge.runtime_id,
+        attributes_json: edge.attributes_json,
         ..Default::default()
     }
 }

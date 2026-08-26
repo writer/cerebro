@@ -808,6 +808,136 @@ func (s *QueryStore) ListPersonAccessPaths(ctx context.Context, request ports.Pe
 	return result, nil
 }
 
+func (s *QueryStore) ListEffectiveAccessPaths(ctx context.Context, request ports.EffectiveAccessPathRequest) (*ports.EffectiveAccessPathResult, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("effective access tenant_id is required")
+	}
+	if request.Limit < 1 || request.Limit > 100 {
+		return nil, errors.New("effective access limit must be between 1 and 100")
+	}
+	if strings.TrimSpace(request.IdentityURN) == "" && strings.TrimSpace(request.IdentityQuery) == "" {
+		return nil, errors.New("effective access identity selector is required")
+	}
+	for name, urn := range map[string]string{
+		"identity_urn":    request.IdentityURN,
+		"application_urn": request.ApplicationURN,
+		"capability_urn":  request.CapabilityURN,
+	} {
+		if urn = strings.TrimSpace(urn); urn != "" && !cerebrourn.SameTenant(urn, tenantID) {
+			return nil, fmt.Errorf("effective access %s must match tenant_id", name)
+		}
+	}
+	message := connect.NewRequest(&cerebrographv1.ListEffectiveAccessPathsRequest{
+		TenantId:              tenantID,
+		IdentityUrn:           strings.TrimSpace(request.IdentityURN),
+		IdentityQuery:         strings.ToLower(strings.TrimSpace(request.IdentityQuery)),
+		ApplicationUrn:        strings.TrimSpace(request.ApplicationURN),
+		CapabilityUrn:         strings.TrimSpace(request.CapabilityURN),
+		CapabilityId:          strings.TrimSpace(request.CapabilityID),
+		Limit:                 uint32(request.Limit), // #nosec G115 -- validated above to 1..100.
+		ExpectedGraphRevision: request.ExpectedRevision,
+	})
+	if err := s.auth.authorizeHeader(message.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.graph.ListEffectiveAccessPaths(ctx, message)
+	if err != nil {
+		return nil, graphRPCError("list effective access paths", err)
+	}
+	if response.Msg.GetTenantId() != tenantID || len(response.Msg.GetPaths()) > request.Limit {
+		return nil, errors.New("rust effective access returned an invalid tenant or bound")
+	}
+	result := &ports.EffectiveAccessPathResult{
+		TenantID:      tenantID,
+		GraphRevision: response.Msg.GetGraphRevision(),
+		Truncated:     response.Msg.GetTruncated(),
+	}
+	for _, path := range response.Msg.GetPaths() {
+		if path == nil || len(path.GetRelationChain()) == 0 || len(path.GetRelationChain()) != len(path.GetEdges()) || len(path.GetIdentityRelationChain()) != len(path.GetIdentityEdges()) {
+			return nil, errors.New("rust effective access returned an invalid path")
+		}
+		identity, err := catalogEntity(tenantID, path.GetIdentity())
+		if err != nil {
+			return nil, err
+		}
+		principal, err := catalogEntity(tenantID, path.GetPrincipal())
+		if err != nil {
+			return nil, err
+		}
+		accessTarget, err := catalogEntity(tenantID, path.GetAccessTarget())
+		if err != nil {
+			return nil, err
+		}
+		entitlement, err := catalogEntity(tenantID, path.GetEntitlement())
+		if err != nil {
+			return nil, err
+		}
+		capability, err := catalogEntity(tenantID, path.GetCapability())
+		if err != nil {
+			return nil, err
+		}
+		converted := ports.EffectiveAccessPath{
+			Identity:              identity,
+			Principal:             principal,
+			AccessTarget:          accessTarget,
+			Entitlement:           entitlement,
+			Capability:            capability,
+			AssignmentKind:        strings.TrimSpace(path.GetAssignmentKind()),
+			IdentityRelationChain: append([]string(nil), path.GetIdentityRelationChain()...),
+			RelationChain:         append([]string(nil), path.GetRelationChain()...),
+		}
+		if mediator := path.GetMediator(); mediator != nil {
+			value, err := catalogEntity(tenantID, mediator)
+			if err != nil {
+				return nil, err
+			}
+			converted.Mediator = &value
+		}
+		for _, edge := range path.GetIdentityEdges() {
+			value, err := effectiveAccessEdge(tenantID, edge)
+			if err != nil {
+				return nil, err
+			}
+			converted.IdentityEdges = append(converted.IdentityEdges, value)
+		}
+		for _, edge := range path.GetEdges() {
+			value, err := effectiveAccessEdge(tenantID, edge)
+			if err != nil {
+				return nil, err
+			}
+			converted.Edges = append(converted.Edges, value)
+		}
+		result.Paths = append(result.Paths, converted)
+	}
+	if result.Truncated && len(result.Paths) != request.Limit {
+		return nil, errors.New("rust effective access returned an invalid truncation")
+	}
+	return result, nil
+}
+
+func effectiveAccessEdge(tenantID string, edge *cerebrographv1.EffectiveAccessPathEdge) (ports.EffectiveAccessPathEdge, error) {
+	if edge == nil || strings.TrimSpace(edge.GetRelation()) == "" {
+		return ports.EffectiveAccessPathEdge{}, errors.New("rust effective access returned an invalid edge")
+	}
+	from, err := catalogEntity(tenantID, edge.GetFrom())
+	if err != nil {
+		return ports.EffectiveAccessPathEdge{}, err
+	}
+	to, err := catalogEntity(tenantID, edge.GetTo())
+	if err != nil {
+		return ports.EffectiveAccessPathEdge{}, err
+	}
+	return ports.EffectiveAccessPathEdge{
+		From:           from,
+		Relation:       strings.TrimSpace(edge.GetRelation()),
+		To:             to,
+		SourceID:       strings.TrimSpace(edge.GetSourceId()),
+		RuntimeID:      strings.TrimSpace(edge.GetRuntimeId()),
+		AttributesJSON: edge.GetAttributesJson(),
+	}, nil
+}
+
 func (s *QueryStore) ListCloudAttackPaths(ctx context.Context, request ports.CloudAttackPathRequest) (*ports.CloudAttackPathResult, error) {
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
