@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 const (
@@ -34,8 +35,10 @@ type Service struct {
 
 // NeighborhoodRequest scopes one bounded root-centered graph query.
 type NeighborhoodRequest struct {
-	RootURN string
-	Limit   uint32
+	RootURN                string
+	TenantID               string
+	ApplicationWorkspaceID string
+	Limit                  uint32
 }
 
 // New constructs a bounded graph neighborhood service.
@@ -128,7 +131,7 @@ func firstPersonAccessCapability(stores []ports.PersonAccessPathStore) ports.Per
 
 // GetEntityNeighborhood loads one bounded root-centered graph neighborhood.
 func (s *Service) GetEntityNeighborhood(ctx context.Context, request NeighborhoodRequest) (*ports.EntityNeighborhood, error) {
-	if s == nil || s.neighborhoods == nil {
+	if s == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	if strings.TrimSpace(request.RootURN) == "" {
@@ -137,6 +140,25 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 	rootURN := request.RootURN
 	if err := validateCerebroURN(rootURN); err != nil {
 		return nil, err
+	}
+	resourceTenantID := cerebrourn.TenantID(rootURN)
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID != "" && tenantID != resourceTenantID {
+		return nil, ports.ErrGraphEntityNotFound
+	}
+	if tenantID == "" {
+		tenantID = resourceTenantID
+	}
+	if workspaceID := strings.TrimSpace(request.ApplicationWorkspaceID); workspaceID != "" {
+		return s.QualifyWorkspaceResources(ctx, WorkspaceResourceRequest{
+			TenantID:               tenantID,
+			ResourceTenantID:       resourceTenantID,
+			ApplicationWorkspaceID: workspaceID,
+			URNs:                   []string{rootURN},
+		})
+	}
+	if s.neighborhoods == nil {
+		return nil, ErrRuntimeUnavailable
 	}
 	return s.neighborhoods.GetEntityNeighborhood(ctx, rootURN, normalizeNeighborhoodLimit(request.Limit))
 }

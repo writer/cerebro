@@ -519,7 +519,7 @@ func randomTokenID() (string, error) {
 }
 
 func requestTenantHint(r *http.Request) string {
-	if tenantID := strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant")); tenantID != "" {
+	if tenantID := strings.TrimSpace(r.Header.Get(applicationworkspace.TenantHeader)); tenantID != "" {
 		return tenantID
 	}
 	if tenantID := strings.TrimSpace(r.URL.Query().Get("tenant_id")); tenantID != "" {
@@ -542,12 +542,30 @@ func requestApplicationWorkspaceSelector(r *http.Request) (string, error) {
 	return workspaceID, nil
 }
 
+func requestTenantWorkspaceSelector(r *http.Request) (string, string, error) {
+	tenantID, err := applicationworkspace.SelectTenantValues(r.Header.Values(applicationworkspace.TenantHeader), r.URL.Query()["tenant_id"])
+	if err != nil {
+		return "", "", fmt.Errorf("%w: tenant_id is invalid", errInvalidHTTPRequest)
+	}
+	workspaceID, err := requestApplicationWorkspaceSelector(r)
+	if err != nil {
+		return "", "", err
+	}
+	if workspaceID != "" && tenantID == "" {
+		return "", "", fmt.Errorf("%w: tenant_id is required with workspace_id", errInvalidHTTPRequest)
+	}
+	return tenantID, workspaceID, nil
+}
+
 func authorizeApplicationWorkspaceID(ctx context.Context, tenantID string, applicationWorkspaceID string) error {
+	tenantID = strings.TrimSpace(tenantID)
+	if err := authorizeTenantID(ctx, tenantID); err != nil {
+		return err
+	}
 	applicationWorkspaceID = strings.TrimSpace(applicationWorkspaceID)
 	if applicationWorkspaceID == "" {
 		return nil
 	}
-	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
 		return fmt.Errorf("%w: tenant_id is required with workspace_id", errInvalidHTTPRequest)
 	}

@@ -106,7 +106,6 @@ describe("Cerebro proxy route permissions", () => {
     expect(permissionForCerebroProxyRequest("POST", "grc/questionnaire-runs/run-1/comments")).toBe("grc:inventory:write");
     expect(permissionForCerebroProxyRequest("POST", "grc/vendors/urn%3Acerebro%3Ademo%3Avendor%3Aone/actions")).toBe("grc:inventory:write");
     expect(permissionForCerebroProxyRequest("POST", "grc/vendor-discoveries/discovery-1/decision")).toBe("grc:inventory:write");
-    expect(permissionForCerebroProxyRequest("POST", "grc/vendor-discoveries/sync")).toBe("grc:inventory:write");
     expect(permissionForCerebroProxyRequest("POST", "grc/policy-lifecycle/actions")).toBe("grc:policies:write");
     expect(permissionForCerebroProxyRequest("POST", "grc/policy-lifecycle/uploads")).toBe("grc:policies:write");
     expect(permissionForCerebroProxyRequest("POST", "grc/policy-lifecycle/uploads/upload-1/replay")).toBe("grc:policies:write");

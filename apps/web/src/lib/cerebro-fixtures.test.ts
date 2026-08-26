@@ -104,6 +104,25 @@ describe("cerebro fixture proxy responses", () => {
     });
   });
 
+  it("does not advertise the unsupported vendor discovery sync route", () => {
+    withFixtureMode();
+    for (const searchParams of [
+      new URLSearchParams("tenant_id=demo-tenant"),
+      new URLSearchParams("tenant_id=demo-tenant&workspace_id=workspace-a"),
+    ]) {
+      const response = cerebroFixtureResponseFor({
+        method: "POST",
+        path: "grc/vendor-discoveries/sync",
+        searchParams,
+        body: JSON.stringify({ source_id: "okta" }),
+      });
+      expect(response?.status).toBe(404);
+      expect(parseFixture(response!)).toMatchObject({
+        error: "No fixture is registered for grc/vendor-discoveries/sync",
+      });
+    }
+  });
+
   it("filters fixture findings by severity", () => {
     withFixtureMode();
     const response = cerebroFixtureResponseFor({
@@ -216,26 +235,31 @@ describe("cerebro fixture proxy responses", () => {
 
   it("returns source-backed vendor discovery fixtures", () => {
     withFixtureMode();
-    const response = cerebroFixtureResponseFor({ method: "GET", path: "grc/vendor-discoveries" });
-    expect(response?.status).toBe(200);
-    expect(parseFixture(response!)).toMatchObject({
-      summary: { total_discoveries: 4, discovered: 3, linked: 1, source_count: 3, evidence_signals: 6 },
-      source_summaries: expect.arrayContaining([
-        expect.objectContaining({ source_id: "okta", provider: "Okta", total: 2, discovered: 2 }),
-        expect.objectContaining({ source_id: "github", provider: "GitHub", total: 2 }),
-        expect.objectContaining({ source_id: "aws", provider: "AWS", total: 1, linked: 1 }),
-      ]),
-      discoveries: expect.arrayContaining([
-        expect.objectContaining({
-          name: "Design Suite",
-          source_id: "okta",
-          confidence_score: 92,
-          signals: expect.arrayContaining([
-            expect.objectContaining({ source_id: "okta", label: "Okta application assignment" }),
-          ]),
-        }),
-      ]),
-    });
+    for (const searchParams of [
+      new URLSearchParams("tenant_id=demo-tenant"),
+      new URLSearchParams("tenant_id=demo-tenant&workspace_id=workspace-a"),
+    ]) {
+      const response = cerebroFixtureResponseFor({ method: "GET", path: "grc/vendor-discoveries", searchParams });
+      expect(response?.status).toBe(200);
+      expect(parseFixture(response!)).toMatchObject({
+        summary: { total_discoveries: 4, discovered: 3, linked: 1, source_count: 3, evidence_signals: 6 },
+        source_summaries: expect.arrayContaining([
+          expect.objectContaining({ source_id: "okta", provider: "Okta", total: 2, discovered: 2 }),
+          expect.objectContaining({ source_id: "github", provider: "GitHub", total: 2 }),
+          expect.objectContaining({ source_id: "aws", provider: "AWS", total: 1, linked: 1 }),
+        ]),
+        discoveries: expect.arrayContaining([
+          expect.objectContaining({
+            name: "Design Suite",
+            source_id: "okta",
+            confidence_score: 92,
+            signals: expect.arrayContaining([
+              expect.objectContaining({ source_id: "okta", label: "Okta application assignment" }),
+            ]),
+          }),
+        ]),
+      });
+    }
 
     const oktaFiltered = cerebroFixtureResponseFor({
       method: "GET",
@@ -257,21 +281,6 @@ describe("cerebro fixture proxy responses", () => {
     });
     expect(parseFixture(signalSearch!)).toMatchObject({
       discoveries: [expect.objectContaining({ name: "Data Warehouse" })],
-    });
-  });
-
-  it("runs vendor discovery sync fixtures", () => {
-    withFixtureMode();
-    const response = cerebroFixtureResponseFor({
-      method: "POST",
-      path: "grc/vendor-discoveries/sync",
-      body: JSON.stringify({ source_id: "okta" }),
-    });
-    expect(response?.status).toBe(200);
-    expect(parseFixture(response!)).toMatchObject({
-      status: "completed",
-      source_id: "okta",
-      source_summaries: [expect.objectContaining({ source_id: "okta", total: 2 })],
     });
   });
 
