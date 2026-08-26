@@ -10,11 +10,7 @@ import (
 
 var openAIOracleAccessProfile = aiAccessProfile{Provider: "openai"}
 
-func newOpenAIOracleService(
-	t *testing.T,
-	state ports.ProjectionStateStore,
-	graph ports.ProjectionGraphStore,
-) *Service {
+func newOpenAIOracleService(t *testing.T, state ports.ProjectionStateStore) *Service {
 	t.Helper()
 	builtinRegistry.mu.RLock()
 	projectors := make([]EventProjector, 0, len(builtinRegistry.projectors))
@@ -29,7 +25,7 @@ func newOpenAIOracleService(
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	return NewWithRegistry(state, graph, registry)
+	return NewWithRegistry(state, nil, registry)
 }
 
 var openAIOracleProjectors = map[string]ProjectFunc{

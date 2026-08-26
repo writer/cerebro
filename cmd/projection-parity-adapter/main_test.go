@@ -9,16 +9,16 @@ import (
 func TestProjectRecordEmitsCatalogContractFact(t *testing.T) {
 	run := runEnvelope{
 		TenantID:        "tenant-a",
-		SourceRuntimeID: "box-prod",
-		SourceID:        "box",
+		SourceRuntimeID: "dropbox-business-prod",
+		SourceID:        "dropbox_business",
 		FamilyID:        "content_assets",
 	}
 	record := recordWire{
 		ObservationID: "observation-1",
 		Family:        "content_assets",
-		ProviderKind:  "box.content_asset",
+		ProviderKind:  "dropbox_business.content_asset",
 		ProviderID:    "asset-1",
-		EventKind:     "box.content_assets",
+		EventKind:     "dropbox_business.content_assets",
 		EventAttributes: map[string]string{
 			"resource_id":   "asset-1",
 			"resource_name": "Architecture",
@@ -37,7 +37,7 @@ func TestProjectRecordEmitsCatalogContractFact(t *testing.T) {
 	if len(facts) != 1 {
 		t.Fatalf("fact count = %d, want 1", len(facts))
 	}
-	want := "entity\x1fprovider:box-prod:box.asset:asset-1\x1fresource\x1fArchitecture"
+	want := "entity\x1fprovider:dropbox-business-prod:dropbox_business.asset:asset-1\x1fresource\x1fArchitecture"
 	if got := canonicalFact(facts[0]); got != want {
 		t.Fatalf("fact = %q, want %q", got, want)
 	}
@@ -45,7 +45,7 @@ func TestProjectRecordEmitsCatalogContractFact(t *testing.T) {
 
 func TestProjectRecordRejectsFamilyDrift(t *testing.T) {
 	_, err := projectRecord(
-		runEnvelope{SourceID: "box", FamilyID: "content_assets"},
+		runEnvelope{SourceID: "dropbox_business", FamilyID: "content_assets"},
 		connectordefinitions.ResourceFamily{},
 		recordWire{ObservationID: "observation-1", Family: "users"},
 	)
