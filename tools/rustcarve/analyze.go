@@ -232,7 +232,7 @@ func validAuthorityState(kind behaviorKind, state string) bool {
 	case behaviorGraphQuery:
 		return stringSetOf("go_raw_query_active", "rust_only_fail_closed")[state]
 	case behaviorFindingRule:
-		return state == "rust_authoritative_no_go_writer"
+		return stringSetOf("go_evaluator_active", "rust_authoritative_no_go_writer")[state]
 	default:
 		return false
 	}

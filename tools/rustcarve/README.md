@@ -60,6 +60,17 @@ The effective-access preset accepts exactly five identity arms and three access 
 
 `finding-rule/v1` accepts closed matcher predicates, typed missing-value behavior, a stable fingerprint contract, explicit lifecycle transitions, graph anchors, observed-at/TTL semantics, a public output contract, replay/counterexample references, authority requirements, and exact deletion symbols. The supplied request distills the existing Tailscale replay corpus without editing its evaluator. Rust scaffold and deletion eligibility remain false until exact replay parity is bound to the same IR, corpus, and tool revisions.
 
+The generated policy-event audit-evidence batch is a canonical unsupported input at `tools/rustcarve/testdata/policy-event-audit-evidence.request.json`. Run it with:
+
+```sh
+go run ./tools/rustcarve \
+  -root . \
+  -request tools/rustcarve/testdata/policy-event-audit-evidence.request.json \
+  -out tools/rustcarve/testdata/golden/policy-event-audit-evidence
+```
+
+The command is expected to fail closed and emit only `unsupported.json`, with `unsupported_graph_anchor` and `unsupported_lifecycle`. It emits no migration IR, Rust scaffold, parity test, or deletion manifest. The request records the active Go evaluator honestly; it does not weaken `finding-rule/v1` to treat an evaluate-only lifecycle or `AnchorNone` as durable Rust finding authority.
+
 ## Stable rejection codes
 
 The initial closed set includes:
