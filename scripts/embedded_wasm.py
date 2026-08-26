@@ -160,6 +160,23 @@ EMBEDDED_WASM_MODULES = (
         changed_reason="Source record kernel source, host, or embedded module changed.",
     ),
     EmbeddedWasmModule(
+        name="finding-rule-evaluator",
+        label="finding rule",
+        package="cerebro-finding-rule-kernel",
+        build_artifact="cerebro_finding_rule_kernel.wasm",
+        embedded_artifact="internal/findings/findingrule.wasm",
+        generate_target="finding-rule-evaluator-generate",
+        check_target="finding-rule-evaluator-check",
+        changed_prefixes=("crates/finding-rule-kernel/",),
+        changed_paths=frozenset(
+            {
+                "internal/findings/findingrule.wasm",
+                "internal/findings/rust_tailscale_tailnet_rule.go",
+            }
+        ),
+        changed_reason="Finding-rule kernel source, host, or embedded module changed.",
+    ),
+    EmbeddedWasmModule(
         name="security-path-evaluator",
         label="security path",
         package="cerebro-security-path-kernel",

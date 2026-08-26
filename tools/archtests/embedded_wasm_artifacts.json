@@ -58,6 +58,14 @@
       "abi_version": 1
     },
     {
+      "name": "finding-rule-evaluator",
+      "path": "internal/findings/findingrule.wasm",
+      "sha256": "b091f0f2cd31dd90ff0805195a9953cc5bd556be6b8226908a1ffa4832c579c7",
+      "size_bytes": 166248,
+      "max_size_bytes": 250000,
+      "abi_version": 1
+    },
+    {
       "name": "security-path-evaluator",
       "path": "internal/securitypathdelta/evaluator.wasm",
       "sha256": "534a617d9eedc4581b21983af64e057c62b818f3cbad84d4fb1c904be249df48",

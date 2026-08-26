@@ -18,6 +18,7 @@ REQUIRED_RUST_LINTS = {
 REQUIRED_CLIPPY_LINTS = {"undocumented_unsafe_blocks": "deny"}
 DEPENDENCY_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
 AUDITED_UNSAFE_POLICIES = {
+    "crates/finding-rule-kernel/src/wasm_abi.rs": ("attribute",) * 3,
     "crates/security-path-kernel/src/wasm_abi.rs": ("attribute",) * 3,
     "internal/graphagent/staticvalidator/src/wasm_abi.rs": ("attribute",) * 3,
     "internal/mitre/evaluator/src/wasm_abi.rs": ("attribute",) * 3,
@@ -34,6 +35,7 @@ SAFE_ONLY_CRATE_ROOTS = {
 }
 RAW_STRING_START = r'(?:br|rb|cr|rc|r)(?P<hashes>#{0,255})"'
 THIN_CRATE_ROOTS = {
+    "crates/finding-rule-kernel/src/lib.rs": ("mod evaluation;", "mod model;"),
     "crates/security-path-kernel/src/lib.rs": ("mod evaluation;", "mod model;"),
     "internal/mitre/evaluator/src/lib.rs": ("mod evaluation;", "mod model;", "mod normalization;"),
     "internal/sourcecoverage/evaluator/src/lib.rs": ("mod evaluation;", "mod model;"),
@@ -49,6 +51,7 @@ THIN_CRATE_ROOTS = {
     ),
 }
 PURE_RUST_MODULES = (
+    "crates/finding-rule-kernel/src/evaluation.rs",
     "crates/security-path-kernel/src/evaluation.rs",
     "internal/mitre/evaluator/src/evaluation.rs",
     "internal/mitre/evaluator/src/normalization.rs",

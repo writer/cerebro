@@ -890,6 +890,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerebro-finding-rule-kernel"
+version = "0.1.0"
+dependencies = [
+ "cerebro-policy-catalog",
+ "cerebro-wasm-guest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "time",
+]
+
+[[package]]
 name = "cerebro-graphactiongen"
 version = "0.1.0"
 dependencies = [
