@@ -228,10 +228,11 @@ func TestBuiltinCatalogSourcesPreservePortableSourceContracts(t *testing.T) {
 	for _, loader := range builtinSourceLoaders {
 		static[loader.name] = struct{}{}
 	}
-	workerCatalog := make(map[string]struct{}, len(workerCatalogSourceIDs))
+	workerCatalog := make(map[string]struct{}, len(workerCatalogSourceIDs)+1)
 	for _, sourceID := range workerCatalogSourceIDs {
 		workerCatalog[sourceID] = struct{}{}
 	}
+	workerCatalog["acunetix"] = struct{}{}
 	var dynamicIDs []string
 	for _, entry := range analysis.Entries {
 		if entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
@@ -403,14 +404,32 @@ func TestWorkerCatalogSourcesKeepMetadataAndFailClosedWithoutWorkerRouting(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, sourceID := range workerCatalogSourceIDs {
+	for _, sourceID := range append(append([]string(nil), workerCatalogSourceIDs...), "acunetix") {
 		source, ok := registry.Get(sourceID)
 		if !ok || source.Spec().GetId() != sourceID {
 			t.Fatalf("worker source %q is missing its portable catalog metadata", sourceID)
 		}
 		family := map[string]string{"asana": "users", "digitalocean": "droplets", "discord": "audit_log", "pagerduty": "user", "sentinelone": "threat"}[sourceID]
-		if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"family": family})); !errors.Is(err, errWorkerCatalogExecutionRequired) {
-			t.Fatalf("worker source %q direct Check() error = %v, want fail-closed worker requirement", sourceID, err)
+		if sourceID == "acunetix" {
+			family = "reports"
+		}
+		ctx := context.Background()
+		cfg := sourcecdk.NewConfig(map[string]string{"family": family})
+		for operation, err := range map[string]error{
+			"check":    func() error { return source.Check(ctx, cfg) }(),
+			"discover": func() error { _, err := source.Discover(ctx, cfg); return err }(),
+			"read":     func() error { _, err := source.Read(ctx, cfg, nil); return err }(),
+		} {
+			if !errors.Is(err, errAuthoritativeRuntimeRequired) {
+				t.Fatalf("worker source %q direct %s error = %v, want authoritative runtime requirement", sourceID, operation, err)
+			}
+		}
+		checkpointSource, ok := source.(sourcecdk.CheckpointAwareSource)
+		if !ok {
+			t.Fatalf("worker source %q is missing checkpoint compatibility", sourceID)
+		}
+		if _, err := checkpointSource.ReadWithCheckpoint(ctx, cfg, nil, nil); !errors.Is(err, errAuthoritativeRuntimeRequired) {
+			t.Fatalf("worker source %q checkpoint read error = %v, want authoritative runtime requirement", sourceID, err)
 		}
 	}
 }

@@ -3,6 +3,8 @@ package sourceregistry
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/connectordefinitions"
@@ -273,6 +275,10 @@ func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Regist
 	}
 	sources := make([]sourcecdk.Source, 0, len(builtinSourceLoaders))
 	registered := map[string]struct{}{}
+	standardPlans, err := loadStandardSourcePlans()
+	if err != nil {
+		return nil, err
+	}
 	for _, loader := range builtinSourceLoaders {
 		var source sourcecdk.Source
 		var err error
@@ -285,10 +291,11 @@ func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Regist
 		}
 		sources = append(sources, source)
 	}
-	for _, sourceID := range workerCatalogSourceIDs {
-		source, err := newWorkerCatalogSource(sourceID)
+	metadataOnlyIDs := append(slices.Clone(workerCatalogSourceIDs), slices.Sorted(maps.Keys(standardPlans))...)
+	for _, sourceID := range metadataOnlyIDs {
+		source, err := newMetadataOnlyCatalogSource(sourceID)
 		if err != nil {
-			return nil, fmt.Errorf("load %s worker source: %w", sourceID, err)
+			return nil, fmt.Errorf("load %s metadata-only source: %w", sourceID, err)
 		}
 		registered[sourceID] = struct{}{}
 		sources = append(sources, source)
