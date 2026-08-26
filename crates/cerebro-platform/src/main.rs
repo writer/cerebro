@@ -5,6 +5,7 @@ mod ask_queries;
 mod audit_events;
 mod cutover_command;
 mod graph_provenance;
+mod identity_directory;
 mod oidc;
 mod parity_command;
 mod ratelimit;
@@ -634,6 +635,8 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
         "/v1/audit-events" => "cerebro:read",
+        "/v1/identity/orgs" => "cerebro:read",
+        "/v1/identity/users" => "cerebro:read",
         "/v1/source-runtimes/health" | "/v1/source-runtimes/freshness" => "cerebro:read",
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
@@ -692,6 +695,8 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/action-reconciliation-runs" => "run_action_reconciliation",
         "/v1/sources/summary" => "source_summary",
         "/v1/audit-events" => "list_audit_events",
+        "/v1/identity/orgs" => "list_identity_orgs",
+        "/v1/identity/users" => "list_identity_users",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
         "/v1/graph/expand" => "expand",
@@ -2355,6 +2360,8 @@ fn router_with_backend(
             get(list_source_runtime_invalid_events),
         )
         .route("/v1/audit-events", get(list_audit_events))
+        .route("/v1/identity/orgs", get(list_identity_organizations))
+        .route("/v1/identity/users", get(list_identity_users))
         .route(
             "/v1/projections/legacy-deltas",
             post(record_legacy_projection),
@@ -2924,6 +2931,86 @@ fn source_runtime_invalid_events_error(
             "Source-runtime invalid-event evidence is temporarily unavailable.",
         ),
     }
+}
+
+/// Serves the persisted identity organizations for the authenticated tenant.
+/// Auth-config-derived organizations remain on the Go route until the auth
+/// pipeline moves; `meta.configured` is always zero here.
+async fn list_identity_organizations(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(params): Query<identity_directory::IdentityDirectoryRequestParams>,
+) -> Result<Json<identity_directory::ListOrganizationsResponse>, (StatusCode, Json<ErrorResponse>)>
+{
+    let ledger = state.runtime_ledger.clone().ok_or_else(|| {
+        service_unavailable(
+            "identity_directory_unavailable",
+            "The Rust identity directory store is not configured.",
+        )
+    })?;
+    let tenant_id = match params
+        .tenant_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|requested| !requested.is_empty())
+    {
+        Some(requested) => authorized_tenant(&authenticated, requested.to_owned())?,
+        None => authenticated.0.clone(),
+    };
+    let query = identity_directory::store_query(&params, tenant_id.as_str(), false);
+    let organizations = ledger
+        .list_identity_organizations(&query)
+        .await
+        .map_err(|error| {
+            eprintln!("Rust identity organization read failed: {error}");
+            service_unavailable(
+                "identity_directory_unavailable",
+                "Identity organizations are temporarily unavailable.",
+            )
+        })?;
+    Ok(Json(identity_directory::organizations_response(
+        tenant_id.as_str(),
+        query.limit,
+        organizations,
+    )))
+}
+
+/// Serves the persisted identity users for the authenticated tenant; see
+/// [`list_identity_organizations`] for the configured-identity scope note.
+async fn list_identity_users(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(params): Query<identity_directory::IdentityDirectoryRequestParams>,
+) -> Result<Json<identity_directory::ListUsersResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let ledger = state.runtime_ledger.clone().ok_or_else(|| {
+        service_unavailable(
+            "identity_directory_unavailable",
+            "The Rust identity directory store is not configured.",
+        )
+    })?;
+    let tenant_id = match params
+        .tenant_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|requested| !requested.is_empty())
+    {
+        Some(requested) => authorized_tenant(&authenticated, requested.to_owned())?,
+        None => authenticated.0.clone(),
+    };
+    let query = identity_directory::store_query(&params, tenant_id.as_str(), true);
+    let users = ledger.list_identity_users(&query).await.map_err(|error| {
+        eprintln!("Rust identity user read failed: {error}");
+        service_unavailable(
+            "identity_directory_unavailable",
+            "Identity users are temporarily unavailable.",
+        )
+    })?;
+    Ok(Json(identity_directory::users_response(
+        tenant_id.as_str(),
+        query.org_id.as_str(),
+        query.limit,
+        users,
+    )))
 }
 
 /// Native REST parity route for `GET /platform/audit-events`: one bounded,
