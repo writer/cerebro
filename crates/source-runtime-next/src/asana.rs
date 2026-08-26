@@ -22,9 +22,19 @@ pub use catalog::{AsanaEventContract, AsanaRuntimeDefinition};
 pub use error::AsanaError;
 pub use family::AsanaFamily;
 pub use projection::{
-    AsanaEntityFact, AsanaProjectionFacts, AsanaRelationFact, project_asana_records,
+    AsanaEntityFact, AsanaProjectionFacts, AsanaRelationFact, asana_users_graph_batch,
+    project_asana_records,
 };
 pub use types::{AsanaCheckpointCandidate, AsanaKernel, AsanaPage, AsanaRecord, AsanaRequest};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod users_graph_read_tests;
+
+#[cfg(test)]
+mod users_request_tests;
+
+#[cfg(test)]
+mod users_test_support;

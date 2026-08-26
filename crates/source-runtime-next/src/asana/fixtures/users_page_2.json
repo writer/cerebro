@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "gid": "user-2",
+      "name": "User Two",
+      "email": "user.two@example.test",
+      "status": "active"
+    },
+    {
+      "gid": "user-3",
+      "name": "User Three",
+      "email": "user.three@example.test",
+      "status": "inactive"
+    }
+  ],
+  "next_page": null
+}
