@@ -110,3 +110,45 @@ pub fn simulate_topology(
         result_digest,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use cerebro_platform_sdk::{GraphRevision, SimulationId};
+
+    use super::*;
+
+    #[test]
+    fn adding_an_existing_relationship_is_a_conflict() {
+        let left = EntityId::parse("repository:left").unwrap();
+        let right = EntityId::parse("service:right").unwrap();
+        let relationship = SimulationRelationship {
+            from_entity_id: left.clone(),
+            relation: RelationKind::Builds,
+            to_entity_id: right.clone(),
+        };
+        let topology = SimulationTopology {
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            entities: BTreeSet::from([left.clone(), right.clone()]),
+            relationships: BTreeSet::from([relationship]),
+        };
+        let request = SimulationRequest {
+            simulation_id: SimulationId::parse("simulation:duplicate").unwrap(),
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            base_revision: GraphRevision::new(1).unwrap(),
+            changes: vec![ProposedChange::AddRelationship {
+                from_entity_id: left,
+                relation: RelationKind::Builds,
+                to_entity_id: right,
+            }],
+            assertions: Vec::new(),
+            max_affected_entities: 10,
+        };
+
+        assert_eq!(
+            simulate_topology(&request, &topology, Vec::new()),
+            Err(SdkError::Conflict(
+                "simulation relationship already exists".to_owned()
+            ))
+        );
+    }
+}
