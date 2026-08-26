@@ -32,7 +32,7 @@ type ComplianceRemediationProjection struct {
 
 // GetComplianceReview loads one tenant-scoped review and all immutable revisions.
 func (s *Store) GetComplianceReview(ctx context.Context, tenantID, reviewID string) (ComplianceReviewProjection, error) {
-	var projection ComplianceReviewProjection
+	projection := ComplianceReviewProjection{Revisions: []complianceassessment.ReviewRevision{}}
 	body, err := s.getComplianceCurrentBody(ctx, "compliance_reviews", tenantID, reviewID)
 	if err != nil {
 		return projection, err
@@ -40,17 +40,16 @@ func (s *Store) GetComplianceReview(ctx context.Context, tenantID, reviewID stri
 	if err := json.Unmarshal(body, &projection.Review); err != nil {
 		return projection, fmt.Errorf("decode compliance review: %w", err)
 	}
-	bodies, err := s.listComplianceImmutableBodies(ctx, "compliance_review_revisions", tenantID, reviewID)
-	if err != nil {
-		return projection, err
-	}
-	projection.Revisions = make([]complianceassessment.ReviewRevision, 0, len(bodies))
-	for _, body := range bodies {
+	err = s.visitComplianceImmutableBodies(ctx, "compliance_review_revisions", tenantID, reviewID, func(body []byte) error {
 		var revision complianceassessment.ReviewRevision
 		if err := json.Unmarshal(body, &revision); err != nil {
-			return ComplianceReviewProjection{}, fmt.Errorf("decode compliance review revision: %w", err)
+			return fmt.Errorf("decode compliance review revision: %w", err)
 		}
 		projection.Revisions = append(projection.Revisions, revision)
+		return nil
+	})
+	if err != nil {
+		return ComplianceReviewProjection{}, err
 	}
 	return projection, nil
 }
@@ -83,38 +82,39 @@ func (s *Store) GetComplianceException(ctx context.Context, tenantID, exceptionI
 
 // GetComplianceWorkItem loads one tenant-scoped work item and retained child records.
 func (s *Store) GetComplianceWorkItem(ctx context.Context, tenantID, workItemID string) (ComplianceWorkItemProjection, error) {
-	var projection ComplianceWorkItemProjection
-	body, err := s.getComplianceCurrentBody(ctx, "compliance_work_items", tenantID, workItemID)
+	projection := ComplianceWorkItemProjection{
+		Occurrences: []complianceassessment.WorkOccurrence{},
+		Actions:     []complianceassessment.WorkActionRecord{},
+	}
+	body, err := s.getComplianceCurrentBodyWithoutChildren(ctx, "compliance_work_items", tenantID, workItemID)
 	if err != nil {
 		return projection, err
 	}
 	if err := json.Unmarshal(body, &projection.Item); err != nil {
 		return projection, fmt.Errorf("decode compliance work item: %w", err)
 	}
-	occurrenceBodies, err := s.listComplianceImmutableBodies(ctx, "compliance_work_occurrences", tenantID, workItemID)
-	if err != nil {
-		return projection, err
-	}
-	projection.Occurrences = make([]complianceassessment.WorkOccurrence, 0, len(occurrenceBodies))
-	for _, childBody := range occurrenceBodies {
+	err = s.visitComplianceImmutableBodies(ctx, "compliance_work_occurrences", tenantID, workItemID, func(body []byte) error {
 		var occurrence complianceassessment.WorkOccurrence
-		if err := json.Unmarshal(childBody, &occurrence); err != nil {
-			return ComplianceWorkItemProjection{}, fmt.Errorf("decode compliance work occurrence: %w", err)
+		if err := json.Unmarshal(body, &occurrence); err != nil {
+			return fmt.Errorf("decode compliance work occurrence: %w", err)
 		}
 		projection.Occurrences = append(projection.Occurrences, occurrence)
+		return nil
+	})
+	if err != nil {
+		return ComplianceWorkItemProjection{}, err
 	}
 	projection.Item.Occurrences = append([]complianceassessment.WorkOccurrence(nil), projection.Occurrences...)
-	actionBodies, err := s.listComplianceImmutableBodies(ctx, "compliance_work_actions", tenantID, workItemID)
-	if err != nil {
-		return projection, err
-	}
-	projection.Actions = make([]complianceassessment.WorkActionRecord, 0, len(actionBodies))
-	for _, childBody := range actionBodies {
+	err = s.visitComplianceImmutableBodies(ctx, "compliance_work_actions", tenantID, workItemID, func(body []byte) error {
 		var action complianceassessment.WorkActionRecord
-		if err := json.Unmarshal(childBody, &action); err != nil {
-			return ComplianceWorkItemProjection{}, fmt.Errorf("decode compliance work action: %w", err)
+		if err := json.Unmarshal(body, &action); err != nil {
+			return fmt.Errorf("decode compliance work action: %w", err)
 		}
 		projection.Actions = append(projection.Actions, action)
+		return nil
+	})
+	if err != nil {
+		return ComplianceWorkItemProjection{}, err
 	}
 	return projection, nil
 }
@@ -122,7 +122,7 @@ func (s *Store) GetComplianceWorkItem(ctx context.Context, tenantID, workItemID 
 // GetComplianceRemediationPlan loads one tenant-scoped plan and current milestones.
 func (s *Store) GetComplianceRemediationPlan(ctx context.Context, tenantID, planID string) (ComplianceRemediationProjection, error) {
 	var projection ComplianceRemediationProjection
-	body, err := s.getComplianceCurrentBody(ctx, "compliance_remediation_plans", tenantID, planID)
+	body, err := s.getComplianceCurrentBodyWithoutChildren(ctx, "compliance_remediation_plans", tenantID, planID)
 	if err != nil {
 		return projection, err
 	}
@@ -188,11 +188,29 @@ WHERE tenant_id = $1 AND event_id = $2`, tenantID, eventID).Scan(
 }
 
 func (s *Store) getComplianceCurrentBody(ctx context.Context, table, tenantID, id string) ([]byte, error) {
+	return s.getComplianceCurrentBodyProjection(ctx, table, tenantID, id, "")
+}
+
+func (s *Store) getComplianceCurrentBodyWithoutChildren(ctx context.Context, table, tenantID, id string) ([]byte, error) {
+	childField, ok := complianceCurrentChildField(table)
+	if !ok {
+		return nil, fmt.Errorf("%w: current projection table has no normalized children", ErrComplianceProjectionInvalid)
+	}
+	return s.getComplianceCurrentBodyProjection(ctx, table, tenantID, id, childField)
+}
+
+func (s *Store) getComplianceCurrentBodyProjection(ctx context.Context, table, tenantID, id, omittedField string) ([]byte, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
 	}
 	if !complianceCurrentTableAllowed(table) {
 		return nil, fmt.Errorf("%w: current projection table is invalid", ErrComplianceProjectionInvalid)
+	}
+	if omittedField != "" {
+		childField, ok := complianceCurrentChildField(table)
+		if !ok || childField != omittedField {
+			return nil, fmt.Errorf("%w: current projection child field is invalid", ErrComplianceProjectionInvalid)
+		}
 	}
 	if err := s.ensureComplianceReviewTables(ctx); err != nil {
 		return nil, err
@@ -202,10 +220,16 @@ func (s *Store) getComplianceCurrentBody(ctx context.Context, table, tenantID, i
 	if tenantID == "" || id == "" {
 		return nil, fmt.Errorf("%w: tenant and aggregate ids are required", ErrComplianceProjectionInvalid)
 	}
-	// #nosec G201 -- table is restricted by complianceCurrentTableAllowed; identifiers are not interpolated.
-	query := fmt.Sprintf(`SELECT body_json FROM %s WHERE tenant_id = $1 AND id = $2`, table)
+	selectExpression := "body_json"
+	args := []any{tenantID, id}
+	if omittedField != "" {
+		selectExpression = "body_json - $3"
+		args = append(args, omittedField)
+	}
+	// #nosec G201 -- table is restricted by complianceCurrentTableAllowed and the select expression is closed above.
+	query := fmt.Sprintf(`SELECT %s FROM %s WHERE tenant_id = $1 AND id = $2`, selectExpression, table)
 	var body []byte
-	if err := s.db.QueryRowContext(ctx, query, tenantID, id).Scan(&body); err != nil {
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&body); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrComplianceProjectionNotFound
 		}
@@ -214,27 +238,42 @@ func (s *Store) getComplianceCurrentBody(ctx context.Context, table, tenantID, i
 	return body, nil
 }
 
-func (s *Store) listComplianceImmutableBodies(ctx context.Context, table, tenantID, parentID string) ([][]byte, error) {
+func (s *Store) visitComplianceImmutableBodies(ctx context.Context, table, tenantID, parentID string, visit func([]byte) error) error {
 	if !complianceImmutableTableAllowed(table) {
-		return nil, fmt.Errorf("%w: immutable projection table is invalid", ErrComplianceProjectionInvalid)
+		return fmt.Errorf("%w: immutable projection table is invalid", ErrComplianceProjectionInvalid)
+	}
+	if visit == nil {
+		return fmt.Errorf("%w: immutable projection visitor is required", ErrComplianceProjectionInvalid)
 	}
 	// #nosec G201 -- table and parent column are restricted by fixed allowlists; values are parameterized.
 	query := fmt.Sprintf(`SELECT body_json FROM %s WHERE tenant_id = $1 AND %s = $2 ORDER BY sequence`, table, complianceImmutableParentColumn(table))
 	rows, err := s.db.QueryContext(ctx, query, strings.TrimSpace(tenantID), strings.TrimSpace(parentID))
 	if err != nil {
-		return nil, fmt.Errorf("list %s immutable projections: %w", table, err)
+		return fmt.Errorf("list %s immutable projections: %w", table, err)
 	}
 	defer func() { _ = rows.Close() }()
-	bodies := make([][]byte, 0)
 	for rows.Next() {
 		var body []byte
 		if err := rows.Scan(&body); err != nil {
-			return nil, fmt.Errorf("scan %s immutable projection: %w", table, err)
+			return fmt.Errorf("scan %s immutable projection: %w", table, err)
 		}
-		bodies = append(bodies, body)
+		if err := visit(body); err != nil {
+			return err
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate %s immutable projections: %w", table, err)
+		return fmt.Errorf("iterate %s immutable projections: %w", table, err)
 	}
-	return bodies, nil
+	return nil
+}
+
+func complianceCurrentChildField(table string) (string, bool) {
+	switch table {
+	case "compliance_work_items":
+		return "occurrences", true
+	case "compliance_remediation_plans":
+		return "milestones", true
+	default:
+		return "", false
+	}
 }

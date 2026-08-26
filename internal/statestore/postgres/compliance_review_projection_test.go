@@ -1,7 +1,9 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -80,10 +82,14 @@ func TestComplianceReviewProjectionPostgresIntegration(t *testing.T) {
 		t.Fatalf("NewComplianceReviewProjector() error = %v", err)
 	}
 	tenantID := fmt.Sprintf("compliance-review-test-%d", time.Now().UnixNano())
+	foreignTenantID := tenantID + "-foreign"
 	if err := store.ensureComplianceReviewTables(ctx); err != nil {
 		t.Fatalf("ensureComplianceReviewTables() error = %v", err)
 	}
-	t.Cleanup(func() { cleanupComplianceReviewTenant(t, store, tenantID) })
+	t.Cleanup(func() {
+		cleanupComplianceReviewTenant(t, store, tenantID)
+		cleanupComplianceReviewTenant(t, store, foreignTenantID)
+	})
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	review, firstRevision, err := complianceassessment.NewReview(tenantID, "run-a", "result-a", "sha256:"+strings.Repeat("a", 64), complianceassessment.ReviewRevisionInput{
@@ -188,6 +194,42 @@ func TestComplianceReviewProjectionPostgresIntegration(t *testing.T) {
 	if _, err := projector.ProjectWorkOccurrence(ctx, ComplianceProjectionMetadata{EventID: "work-observed", ExpectedVersion: 0, OccurredAt: now}, item, occurrence); err != nil {
 		t.Fatalf("ProjectWorkOccurrence() error = %v", err)
 	}
+	initialWork, err := store.GetWorkItem(ctx, tenantID, item.ID)
+	if err != nil {
+		t.Fatalf("GetWorkItem(initial) error = %v", err)
+	}
+	initialWorkJSON, err := json.Marshal(initialWork)
+	if err != nil {
+		t.Fatalf("marshal initial work item: %v", err)
+	}
+	if !bytes.Contains(initialWorkJSON, []byte(`"actions":[]`)) {
+		t.Fatalf("initial work item actions changed wire shape: %s", initialWorkJSON)
+	}
+	foreignItem, foreignOccurrence, err := complianceassessment.NewWorkItem(complianceassessment.WorkItemInput{
+		Basis: complianceassessment.WorkFingerprintInput{
+			TenantID: foreignTenantID, ProgramID: "program-a", ScopeRevisionID: "scope-r1", ControlID: "CC-1",
+			ObjectiveID: "objective-a", Kind: complianceassessment.WorkRemediateFinding,
+			SubjectID: "subject-a", Reason: complianceassessment.ReasonActiveFinding, SourceID: "source-a",
+		},
+		OwnerID: "owner-foreign", DueAt: now.Add(24 * time.Hour), Priority: "high", RiskID: risk.ID,
+		Occurrence: complianceassessment.WorkOccurrenceInput{
+			AssessmentRunID: "run-foreign", ObjectiveResultID: "result-foreign",
+			AutomatedResultHash: "sha256:" + strings.Repeat("c", 64), OccurredAt: now,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewWorkItem(foreign tenant) error = %v", err)
+	}
+	foreignItem.ID = item.ID
+	foreignOccurrence.WorkItemID = item.ID
+	foreignItem.Occurrences[0].WorkItemID = item.ID
+	if _, err := projector.ProjectWorkOccurrence(ctx, ComplianceProjectionMetadata{EventID: "work-observed", ExpectedVersion: 0, OccurredAt: now}, foreignItem, foreignOccurrence); err != nil {
+		t.Fatalf("ProjectWorkOccurrence(foreign tenant) error = %v", err)
+	}
+	foreignStoredWork, err := store.GetComplianceWorkItem(ctx, foreignTenantID, item.ID)
+	if err != nil || len(foreignStoredWork.Occurrences) != 1 || foreignStoredWork.Occurrences[0].AssessmentRunID != "run-foreign" {
+		t.Fatalf("GetComplianceWorkItem(foreign tenant) = %+v, %v", foreignStoredWork, err)
+	}
 	item, action, err := complianceassessment.ApplyWorkAction(item, item.Version, complianceassessment.WorkActionInput{
 		Action: complianceassessment.WorkActionRemediate, Rationale: "Apply the corrective change.", ActorID: "owner-a", At: now.Add(time.Minute),
 	})
@@ -202,11 +244,11 @@ func TestComplianceReviewProjectionPostgresIntegration(t *testing.T) {
 		t.Fatalf("ProjectWorkAction(replay) = %+v, %v", replay, err)
 	}
 	storedWork, err := store.GetComplianceWorkItem(ctx, tenantID, item.ID)
-	if err != nil || storedWork.Item.Version != 2 || len(storedWork.Occurrences) != 1 || len(storedWork.Actions) != 1 {
+	if err != nil || storedWork.Item.Version != 2 || len(storedWork.Item.Occurrences) != 1 || len(storedWork.Occurrences) != 1 || storedWork.Occurrences[0].AssessmentRunID != "run-a" || len(storedWork.Actions) != 1 {
 		t.Fatalf("GetComplianceWorkItem() = %+v, %v", storedWork, err)
 	}
 	page, err := store.ListWorkItems(ctx, tenantID, complianceremediation.WorkItemListFilter{State: complianceassessment.WorkInProgress, OwnerID: "owner-a", Limit: 1})
-	if err != nil || len(page.Items) != 1 || page.Items[0].ID != item.ID || page.NextCursor != "" {
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != item.ID || len(page.Items[0].Occurrences) != 1 || page.NextCursor != "" {
 		t.Fatalf("ListWorkItems() = %+v, %v", page, err)
 	}
 
@@ -225,6 +267,25 @@ func TestComplianceReviewProjectionPostgresIntegration(t *testing.T) {
 	if _, err := projector.ProjectRemediationPlan(ctx, ComplianceProjectionMetadata{EventID: "plan-created", ExpectedVersion: 0, OccurredAt: now}, plan); err != nil {
 		t.Fatalf("ProjectRemediationPlan(create) error = %v", err)
 	}
+	foreignPlan, err := complianceassessment.NewRemediationPlan(complianceassessment.RemediationPlanInput{
+		ID: plan.ID, TenantID: foreignTenantID, ProgramID: "program-a", ScopeRevisionID: "scope-r1",
+		RiskID: risk.ID, WorkItemID: item.ID, Treatment: complianceassessment.RiskTreatmentMitigate,
+		OwnerID: "owner-foreign", TargetAt: now.Add(30 * 24 * time.Hour), VerificationRequired: true,
+		Milestones: []complianceassessment.RemediationMilestoneInput{{
+			ID: "milestone-a", Title: "Apply foreign change", OwnerID: "owner-foreign",
+			TargetAt: now.Add(7 * 24 * time.Hour), PlannedAction: "Apply the foreign corrective change.",
+		}}, CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("NewRemediationPlan(foreign tenant) error = %v", err)
+	}
+	if _, err := projector.ProjectRemediationPlan(ctx, ComplianceProjectionMetadata{EventID: "plan-created", ExpectedVersion: 0, OccurredAt: now}, foreignPlan); err != nil {
+		t.Fatalf("ProjectRemediationPlan(foreign tenant) error = %v", err)
+	}
+	foreignStoredPlan, err := store.GetComplianceRemediationPlan(ctx, foreignTenantID, plan.ID)
+	if err != nil || len(foreignStoredPlan.Milestones) != 1 || foreignStoredPlan.Milestones[0].OwnerID != "owner-foreign" {
+		t.Fatalf("GetComplianceRemediationPlan(foreign tenant) = %+v, %v", foreignStoredPlan, err)
+	}
 	plan, err = complianceassessment.ActivateRemediationPlan(plan, plan.Version, "owner-a", now.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("ActivateRemediationPlan() error = %v", err)
@@ -233,7 +294,7 @@ func TestComplianceReviewProjectionPostgresIntegration(t *testing.T) {
 		t.Fatalf("ProjectRemediationPlan(activate) error = %v", err)
 	}
 	storedPlan, err := store.GetComplianceRemediationPlan(ctx, tenantID, plan.ID)
-	if err != nil || storedPlan.Plan.Version != 2 || len(storedPlan.Milestones) != 1 || storedPlan.Milestones[0].ID != "milestone-a" {
+	if err != nil || storedPlan.Plan.Version != 2 || len(storedPlan.Plan.Milestones) != 1 || len(storedPlan.Milestones) != 1 || storedPlan.Milestones[0].ID != "milestone-a" || storedPlan.Milestones[0].OwnerID != "owner-a" {
 		t.Fatalf("GetComplianceRemediationPlan() = %+v, %v", storedPlan, err)
 	}
 	storedReceipt, err := store.GetComplianceProjectionReceipt(ctx, tenantID, reviewEvent.EventID)
