@@ -34,6 +34,11 @@ const routeScopeMatrix = Object.freeze([
   { tenantID: "tenant-b", workspaceID: "workspace-a" },
   { tenantID: "tenant-b", workspaceID: "workspace-b" },
 ]);
+const homepageAPIPaths = Object.freeze({
+  coverage: "/api/cerebro/connectors/coverage",
+  dashboard: "/api/cerebro/grc/dashboard",
+  readiness: "/api/cerebro/grc/program-readiness",
+});
 const routeParameterSamples = Object.freeze({
   dashboardID: "fixture-program-overview",
   frameworkID: "soc2",
@@ -441,17 +446,25 @@ export function nearestRankPercentile(values, percentile) {
   return sorted[Math.min(rank - 1, sorted.length - 1)];
 }
 
-export function assertDashboardScope(requestURL, scope) {
+export function assertHomepageAPIScope(api, requestURL, scope) {
   const url = new URL(requestURL);
-  if (url.pathname !== "/api/cerebro/grc/dashboard") {
-    throw new Error(`Expected dashboard request, got ${url.pathname}`);
+  const expectedPath = homepageAPIPaths[api];
+  if (!expectedPath) {
+    throw new Error(`Unknown homepage API ${api}`);
+  }
+  if (url.pathname !== expectedPath) {
+    throw new Error(`Expected homepage ${api} request at ${expectedPath}, got ${url.pathname}`);
   }
   if (url.searchParams.get("tenant_id") !== scope.tenantID) {
-    throw new Error(`Dashboard tenant scope mismatch for ${scope.tenantID}`);
+    throw new Error(`Homepage ${api} tenant scope mismatch for ${scope.tenantID}`);
   }
   if (url.searchParams.get("workspace_id") !== scope.workspaceID) {
-    throw new Error(`Dashboard workspace scope mismatch for ${scope.workspaceID}`);
+    throw new Error(`Homepage ${api} workspace scope mismatch for ${scope.workspaceID}`);
   }
+}
+
+export function assertDashboardScope(requestURL, scope) {
+  assertHomepageAPIScope("dashboard", requestURL, scope);
 }
 
 export function assertHomepageP95(durations, maxP95Ms) {
@@ -476,16 +489,27 @@ async function validateAuthenticatedIdentity(context, baseUrl, deadline) {
 async function measureHomepageDataReady(context, baseUrl, deadline, options) {
   const samples = options.homeSamples ?? defaultHomeSamples;
   const durations = [];
+  const endpointDurations = Object.fromEntries(
+    Object.keys(homepageAPIPaths).map((api) => [api, []]),
+  );
   for (let index = 0; index < samples; index += 1) {
     const scope = routeScopeMatrix[index % routeScopeMatrix.length];
     const page = await deadline.run(context.newPage(), "homepage performance page creation");
     try {
       const route = new URL(routeWithScope("/", scope.tenantID, scope.workspaceID), baseUrl);
-      const dashboardResponse = page.waitForResponse((response) =>
-        new URL(response.url()).pathname === "/api/cerebro/grc/dashboard", {
-        timeout: Math.max(1, Math.min(perRequestTimeoutMs, deadline.remaining())),
-      }).then((response) => ({ response }), (error) => ({ error }));
-      const startedAt = performance.now();
+      let startedAt = 0;
+      const apiResponses = Object.entries(homepageAPIPaths).map(([api, pathname]) =>
+        page.waitForResponse((response) => new URL(response.url()).pathname === pathname, {
+          timeout: Math.max(1, Math.min(perRequestTimeoutMs, deadline.remaining())),
+        }).then(async (response) => {
+          await response.finished();
+          return {
+            api,
+            durationMs: Math.round(performance.now() - startedAt),
+            response,
+          };
+        }, (error) => ({ api, error })));
+      startedAt = performance.now();
       const response = await page.goto(route.toString(), {
         timeout: Math.max(1, Math.min(perRequestTimeoutMs, deadline.remaining())),
         waitUntil: "domcontentloaded",
@@ -497,11 +521,15 @@ async function measureHomepageDataReady(context, baseUrl, deadline, options) {
         state: "visible",
         timeout: Math.max(1, Math.min(perRequestTimeoutMs, deadline.remaining())),
       });
-      const dashboardResult = await deadline.run(dashboardResponse, "homepage dashboard response");
-      if (dashboardResult.error) throw dashboardResult.error;
-      const dashboard = dashboardResult.response;
-      if (dashboard.status() !== 200) throw new Error(`Homepage dashboard returned ${dashboard.status()}`);
-      assertDashboardScope(dashboard.url(), scope);
+      const apiResults = await deadline.run(Promise.all(apiResponses), "homepage API responses");
+      for (const result of apiResults) {
+        if (result.error) throw result.error;
+        if (result.response.status() !== 200) {
+          throw new Error(`Homepage ${result.api} returned ${result.response.status()}`);
+        }
+        assertHomepageAPIScope(result.api, result.response.url(), scope);
+        endpointDurations[result.api].push(result.durationMs);
+      }
       durations.push(Math.round(performance.now() - startedAt));
     } finally {
       await deadline.run(page.close(), "homepage performance page close");
@@ -509,6 +537,13 @@ async function measureHomepageDataReady(context, baseUrl, deadline, options) {
   }
   return {
     durations,
+    endpointDurations,
+    endpointP95Ms: Object.fromEntries(
+      Object.entries(endpointDurations).map(([api, values]) => [
+        api,
+        assertHomepageP95(values, options.maxHomeP95Ms ?? defaultHomeP95Ms),
+      ]),
+    ),
     p95Ms: assertHomepageP95(durations, options.maxHomeP95Ms ?? defaultHomeP95Ms),
   };
 }
@@ -652,6 +687,8 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
       discoveredRouteCount: auditedRoutes.size,
       homepageDataReadyDurationsMs: homepagePerformance.durations,
       homepageDataReadyP95Ms: homepagePerformance.p95Ms,
+      homepageEndpointDurationsMs: homepagePerformance.endpointDurations,
+      homepageEndpointP95Ms: homepagePerformance.endpointP95Ms,
       redirectLifecycleAbortCount,
       routeTemplateCount: discoveredRoutes.length,
       scopedRouteCount: [...auditedRoutes].filter((route) => route.includes("workspace_id=")).length,
@@ -883,6 +920,9 @@ async function runCli() {
     console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.tenantWorkspaceScopeCount} tenant and workspace scope pairs`);
     console.log(`[e2e:web:fixtures] classified ${result.routeBugbash.redirectLifecycleAbortCount} redirect lifecycle-aborted API requests`);
     console.log(`[e2e:web:fixtures] homepage data-ready samples ${result.routeBugbash.homepageDataReadyDurationsMs.join(",")}ms; p95 ${result.routeBugbash.homepageDataReadyP95Ms}ms`);
+    for (const [api, durations] of Object.entries(result.routeBugbash.homepageEndpointDurationsMs)) {
+      console.log(`[e2e:web:fixtures] homepage ${api} samples ${durations.join(",")}ms; p95 ${result.routeBugbash.homepageEndpointP95Ms[api]}ms`);
+    }
   }
   console.log(`[e2e:web:fixtures] checked ${result.scriptChunkCount} application chunks`);
 }
