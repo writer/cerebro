@@ -3575,6 +3575,7 @@ mod tests {
             "deepseek",
             "duo",
             "fivetran",
+            "increase",
             "jira",
             "langchain",
             "openai",
