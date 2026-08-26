@@ -71,10 +71,7 @@ async fn clusters_round_trip_two_pages_and_keep_cursor_on_the_declared_origin() 
         })
         .await
         .unwrap();
-    assert!(matches!(
-        &page_one.scope,
-        CollectedScope::NonAuthoritative(_)
-    ));
+    assert!(matches!(&page_one.scope, CollectedScope::Complete(_)));
     assert_eq!(page_one.records[0].provider_id, "cluster-1");
     assert_eq!(page_one.next_cursor.as_deref(), Some("page-2"));
 
