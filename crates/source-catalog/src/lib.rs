@@ -3614,6 +3614,7 @@ mod tests {
             "gitguardian",
             "gitlab",
             "google_vertex_ai",
+            "hashicorp_vault",
             "increase",
             "jira",
             "jumpcloud",
