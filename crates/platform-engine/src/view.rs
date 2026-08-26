@@ -37,7 +37,7 @@ pub fn materialize_view(
 
 #[cfg(test)]
 mod tests {
-    use cerebro_platform_sdk::{FactQuery, QueryNode, ViewId};
+    use cerebro_platform_sdk::{ContentDigest, FactQuery, QueryNode, TenantId, ViewId};
 
     use super::*;
 
