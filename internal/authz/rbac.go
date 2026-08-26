@@ -69,34 +69,19 @@ var allScopes = []string{
 	ScopeUserPreferencesWrite,
 }
 
+var roleAliases = map[string]string{
+	"viewer":    RoleCerebroViewer,
+	"reader":    RoleCerebroViewer,
+	"read_only": RoleCerebroViewer,
+	"analyst":   RoleCerebroAnalyst,
+	"editor":    RoleCerebroAnalyst,
+	"admin":     RoleCerebroAdmin,
+	"owner":     RoleCerebroAdmin,
+}
+
 var roleScopes = map[string][]string{
 	RoleCerebroViewer: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite},
-	"viewer":          {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite},
-	"reader":          {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite},
-	"read_only":       {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite},
 	RoleCerebroAnalyst: {
-		ScopeCosmoSecurityRead,
-		ScopeUserPreferencesWrite,
-		ScopeFindingCandidatePromote,
-		ScopeFindingLifecycleWrite,
-		ScopeGRCInventoryWrite,
-		ScopeGRCPolicyLifecycleWrite,
-		ScopeAskQueriesWrite,
-		ScopeDashboardsWrite,
-		ScopeRiskScoringWrite,
-	},
-	"analyst": {
-		ScopeCosmoSecurityRead,
-		ScopeUserPreferencesWrite,
-		ScopeFindingCandidatePromote,
-		ScopeFindingLifecycleWrite,
-		ScopeGRCInventoryWrite,
-		ScopeGRCPolicyLifecycleWrite,
-		ScopeAskQueriesWrite,
-		ScopeDashboardsWrite,
-		ScopeRiskScoringWrite,
-	},
-	"editor": {
 		ScopeCosmoSecurityRead,
 		ScopeUserPreferencesWrite,
 		ScopeFindingCandidatePromote,
@@ -127,14 +112,12 @@ var roleScopes = map[string][]string{
 	},
 	RoleCerebroJobManager: {ScopeCosmoSecurityRead, ScopeUserPreferencesWrite, ScopeJobsWrite},
 	RoleCerebroAdmin:      allScopes,
-	"admin":               allScopes,
-	"owner":               allScopes,
 }
 
 func ScopesForRoles(roles []string) []string {
 	var scopes []string
 	for _, role := range normalize(roles) {
-		scopes = append(scopes, roleScopes[role]...)
+		scopes = append(scopes, roleScopes[canonicalRole(role)]...)
 	}
 	return normalize(scopes)
 }
@@ -148,8 +131,19 @@ func HasRole(roles []string) bool {
 }
 
 func HasAdminRole(roles []string) bool {
-	roles = normalize(roles)
-	return contains(roles, RoleCerebroAdmin) || contains(roles, "admin") || contains(roles, "owner")
+	normalizedRoles := normalize(roles)
+	canonicalRoles := make([]string, 0, len(normalizedRoles))
+	for _, role := range normalizedRoles {
+		canonicalRoles = append(canonicalRoles, canonicalRole(role))
+	}
+	return contains(canonicalRoles, RoleCerebroAdmin)
+}
+
+func canonicalRole(role string) string {
+	if canonical, ok := roleAliases[role]; ok {
+		return canonical
+	}
+	return role
 }
 
 // PrincipalActorID returns the first stable identity field supplied by the
