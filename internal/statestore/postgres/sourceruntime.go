@@ -25,6 +25,7 @@ var ensureSourceRuntimeStatements = []string{`CREATE TABLE IF NOT EXISTS source_
 	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_generation BIGINT NOT NULL DEFAULT 0 CHECK (lease_generation >= 0)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), updated_at ASC, id ASC)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_source_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), (runtime_json->>'source_id'), updated_at ASC, id ASC)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_workspace_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), (runtime_json->'config'->>'application_workspace_id'), updated_at ASC, id ASC)`,
 }
 
 // PutSourceRuntime upserts one source runtime definition.
@@ -130,40 +131,10 @@ func (s *Store) ListSourceRuntimes(ctx context.Context, filter ports.SourceRunti
 	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
 		return nil, err
 	}
-	clauses := []string{"1=1"}
-	args := []any{}
-	runtimeIDs := normalizedNonEmptyStrings(append(filter.RuntimeIDs, filter.RuntimeID))
-	if len(runtimeIDs) == 1 {
-		args = append(args, runtimeIDs[0])
-		clauses = append(clauses, fmt.Sprintf("id = $%d", len(args)))
-	} else if len(runtimeIDs) > 1 {
-		placeholders := make([]string, 0, len(runtimeIDs))
-		for _, runtimeID := range runtimeIDs {
-			args = append(args, runtimeID)
-			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
-		}
-		clauses = append(clauses, fmt.Sprintf("id IN (%s)", strings.Join(placeholders, ", ")))
+	query, args, err := sourceRuntimeListQuery(filter)
+	if err != nil {
+		return nil, err
 	}
-	if tenantID := strings.TrimSpace(filter.TenantID); tenantID != "" {
-		args = append(args, tenantID)
-		clauses = append(clauses, fmt.Sprintf("runtime_json->>'tenant_id' = $%d", len(args)))
-	}
-	if sourceID := strings.TrimSpace(filter.SourceID); sourceID != "" {
-		args = append(args, sourceID)
-		clauses = append(clauses, fmt.Sprintf("runtime_json->>'source_id' = $%d", len(args)))
-	}
-	limit := filter.Limit
-	if limit == 0 {
-		limit = 100
-	}
-	args = append(args, limit)
-	// #nosec G201 -- clauses and order are fixed predicates; values remain parameterized.
-	query := fmt.Sprintf(`
-SELECT runtime_json::text
-FROM source_runtimes
-WHERE %s
-ORDER BY %s
-LIMIT $%d`, strings.Join(clauses, " AND "), sourceRuntimeListOrderClause(), len(args))
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list source runtimes: %w", err)
@@ -187,6 +158,52 @@ LIMIT $%d`, strings.Join(clauses, " AND "), sourceRuntimeListOrderClause(), len(
 		return nil, fmt.Errorf("iterate source runtimes: %w", err)
 	}
 	return runtimes, nil
+}
+
+func sourceRuntimeListQuery(filter ports.SourceRuntimeFilter) (string, []any, error) {
+	applicationWorkspaceID, err := ports.ValidateApplicationWorkspaceScope(filter.TenantID, filter.ApplicationWorkspaceID)
+	if err != nil {
+		return "", nil, fmt.Errorf("list source runtimes: %w", err)
+	}
+	clauses := []string{"1=1"}
+	args := []any{}
+	runtimeIDs := normalizedNonEmptyStrings(append(filter.RuntimeIDs, filter.RuntimeID))
+	if len(runtimeIDs) == 1 {
+		args = append(args, runtimeIDs[0])
+		clauses = append(clauses, fmt.Sprintf("id = $%d", len(args)))
+	} else if len(runtimeIDs) > 1 {
+		placeholders := make([]string, 0, len(runtimeIDs))
+		for _, runtimeID := range runtimeIDs {
+			args = append(args, runtimeID)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
+		}
+		clauses = append(clauses, fmt.Sprintf("id IN (%s)", strings.Join(placeholders, ", ")))
+	}
+	if tenantID := strings.TrimSpace(filter.TenantID); tenantID != "" {
+		args = append(args, tenantID)
+		clauses = append(clauses, fmt.Sprintf("runtime_json->>'tenant_id' = $%d", len(args)))
+	}
+	if applicationWorkspaceID != "" {
+		args = append(args, applicationWorkspaceID)
+		clauses = append(clauses, fmt.Sprintf("runtime_json->'config'->>'application_workspace_id' = $%d", len(args)))
+	}
+	if sourceID := strings.TrimSpace(filter.SourceID); sourceID != "" {
+		args = append(args, sourceID)
+		clauses = append(clauses, fmt.Sprintf("runtime_json->>'source_id' = $%d", len(args)))
+	}
+	limit := filter.Limit
+	if limit == 0 {
+		limit = 100
+	}
+	args = append(args, limit)
+	// #nosec G201 -- clauses and order are fixed predicates; values remain parameterized.
+	query := fmt.Sprintf(`
+SELECT runtime_json::text
+FROM source_runtimes
+WHERE %s
+ORDER BY %s
+LIMIT $%d`, strings.Join(clauses, " AND "), sourceRuntimeListOrderClause(), len(args))
+	return query, args, nil
 }
 
 // AcquireSourceRuntimeLease leases one source runtime without replacing runtime JSON.

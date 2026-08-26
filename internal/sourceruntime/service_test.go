@@ -94,6 +94,9 @@ func (s *runtimeStore) ListSourceRuntimes(_ context.Context, filter ports.Source
 		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
 			continue
 		}
+		if filter.ApplicationWorkspaceID != "" && strings.TrimSpace(runtime.GetConfig()[ports.SourceRuntimeApplicationWorkspaceIDConfigKey]) != filter.ApplicationWorkspaceID {
+			continue
+		}
 		if filter.SourceID != "" && runtime.GetSourceId() != filter.SourceID {
 			continue
 		}
@@ -1009,6 +1012,26 @@ func TestListSupportsRuntimeIDsFilter(t *testing.T) {
 	sort.Strings(got)
 	if len(got) != 2 || got[0] != "runtime-a" || got[1] != "runtime-b" {
 		t.Fatalf("List(runtime_ids) ids = %#v, want runtime-a/runtime-b", got)
+	}
+}
+
+func TestListScopesApplicationWorkspaceWithinTenant(t *testing.T) {
+	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {Id: "runtime-a", SourceId: "okta", TenantId: "writer", Config: map[string]string{ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-a"}},
+		"runtime-b": {Id: "runtime-b", SourceId: "github", TenantId: "writer", Config: map[string]string{ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-b"}},
+		"runtime-c": {Id: "runtime-c", SourceId: "aws", TenantId: "other", Config: map[string]string{ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-a"}},
+	}}, nil, nil)
+
+	runtimes, err := service.List(context.Background(), ports.SourceRuntimeFilter{TenantID: "writer", ApplicationWorkspaceID: "workspace-a"})
+	if err != nil {
+		t.Fatalf("List(application workspace) error = %v", err)
+	}
+	if len(runtimes) != 1 || runtimes[0].GetId() != "runtime-a" {
+		t.Fatalf("List(application workspace) = %#v, want runtime-a", runtimes)
+	}
+
+	if _, err := service.List(context.Background(), ports.SourceRuntimeFilter{ApplicationWorkspaceID: "workspace-a"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("List(application workspace without tenant) error = %v, want invalid request", err)
 	}
 }
 

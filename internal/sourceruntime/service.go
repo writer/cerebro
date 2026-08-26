@@ -1361,12 +1361,18 @@ func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeF
 	if err != nil {
 		return ports.SourceRuntimeFilter{}, err
 	}
+	tenantID := strings.TrimSpace(filter.TenantID)
+	applicationWorkspaceID, err := ports.ValidateApplicationWorkspaceScope(tenantID, filter.ApplicationWorkspaceID)
+	if err != nil {
+		return ports.SourceRuntimeFilter{}, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
+	}
 	normalized := ports.SourceRuntimeFilter{
-		RuntimeID:  strings.TrimSpace(filter.RuntimeID),
-		RuntimeIDs: runtimeIDs,
-		TenantID:   strings.TrimSpace(filter.TenantID),
-		SourceID:   strings.TrimSpace(filter.SourceID),
-		Limit:      filter.Limit,
+		RuntimeID:              strings.TrimSpace(filter.RuntimeID),
+		RuntimeIDs:             runtimeIDs,
+		TenantID:               tenantID,
+		ApplicationWorkspaceID: applicationWorkspaceID,
+		SourceID:               strings.TrimSpace(filter.SourceID),
+		Limit:                  filter.Limit,
 	}
 	if normalized.Limit == 0 {
 		normalized.Limit = defaultListLimit

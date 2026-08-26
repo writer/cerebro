@@ -7,8 +7,8 @@ import (
 
 // GRCDashboardAggregateRequest scopes aggregate counts needed by the GRC dashboard.
 type GRCDashboardAggregateRequest struct {
-	FindingRequest  ListFindingsRequest
-	EvidenceRequest ListFindingEvidenceRequest
+	FindingRequest    ListFindingsRequest
+	PreviewFindingIDs []string
 }
 
 // GRCDashboardAggregate contains dashboard summary counts fetched without row payloads.

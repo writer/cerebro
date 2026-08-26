@@ -66,6 +66,84 @@ var ensureFindingEvidenceStatements = []string{
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_observed_idx ON finding_evidence (runtime_id, finding_id, last_observed_at DESC, created_at DESC, id)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_created_idx ON finding_evidence (runtime_id, finding_id, created_at DESC, id)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_rule_observed_idx ON finding_evidence (runtime_id, rule_id, last_observed_at DESC, created_at DESC, id)`,
+	`CREATE TABLE IF NOT EXISTS finding_evidence_counts (
+  runtime_id TEXT NOT NULL,
+  finding_id TEXT NOT NULL,
+  evidence_count BIGINT NOT NULL CHECK (evidence_count >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (runtime_id, finding_id)
+)`,
+	`CREATE OR REPLACE FUNCTION sync_finding_evidence_count() RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' OR (
+    TG_OP = 'UPDATE' AND (
+      OLD.runtime_id IS DISTINCT FROM NEW.runtime_id OR
+      OLD.finding_id IS DISTINCT FROM NEW.finding_id
+    )
+  ) THEN
+    UPDATE finding_evidence_counts
+    SET evidence_count = evidence_count - 1, updated_at = NOW()
+    WHERE runtime_id = OLD.runtime_id AND finding_id = OLD.finding_id;
+    DELETE FROM finding_evidence_counts
+    WHERE runtime_id = OLD.runtime_id AND finding_id = OLD.finding_id AND evidence_count <= 0;
+  END IF;
+
+  IF TG_OP = 'INSERT' OR (
+    TG_OP = 'UPDATE' AND (
+      OLD.runtime_id IS DISTINCT FROM NEW.runtime_id OR
+      OLD.finding_id IS DISTINCT FROM NEW.finding_id
+    )
+  ) THEN
+    INSERT INTO finding_evidence_counts (runtime_id, finding_id, evidence_count)
+    VALUES (NEW.runtime_id, NEW.finding_id, 1)
+    ON CONFLICT (runtime_id, finding_id) DO UPDATE
+      SET evidence_count = finding_evidence_counts.evidence_count + 1,
+          updated_at = NOW();
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql`,
+	`DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'finding_evidence_count_sync'
+      AND tgrelid = 'finding_evidence'::regclass
+      AND NOT tgisinternal
+  ) THEN
+    CREATE TRIGGER finding_evidence_count_sync
+      AFTER INSERT OR UPDATE OF runtime_id, finding_id OR DELETE ON finding_evidence
+      FOR EACH ROW EXECUTE FUNCTION sync_finding_evidence_count();
+  END IF;
+END $$`,
+	`CREATE TABLE IF NOT EXISTS finding_evidence_count_migrations (
+  id TEXT PRIMARY KEY,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+	`DO $$
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('finding_evidence_counts'), hashtext('backfill-v1'));
+  IF NOT EXISTS (SELECT 1 FROM finding_evidence_count_migrations WHERE id = 'backfill-v1') THEN
+    LOCK TABLE finding_evidence IN SHARE ROW EXCLUSIVE MODE;
+    INSERT INTO finding_evidence_counts (runtime_id, finding_id, evidence_count, updated_at)
+      SELECT runtime_id, finding_id, COUNT(*), NOW()
+      FROM finding_evidence
+      GROUP BY runtime_id, finding_id
+      ON CONFLICT (runtime_id, finding_id) DO UPDATE
+        SET evidence_count = EXCLUDED.evidence_count, updated_at = EXCLUDED.updated_at;
+    DELETE FROM finding_evidence_counts AS counts
+      WHERE NOT EXISTS (
+        SELECT 1 FROM finding_evidence AS evidence
+        WHERE evidence.runtime_id = counts.runtime_id AND evidence.finding_id = counts.finding_id
+      );
+    INSERT INTO finding_evidence_count_migrations (id) VALUES ('backfill-v1');
+  END IF;
+END $$`,
 }
 
 func findingEvidenceUpsertSQL() string {

@@ -1,9 +1,12 @@
 package postgres
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -14,9 +17,7 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 			RuntimeIDs: []string{"tenant-runtime-a", "tenant-runtime-b"},
 			Status:     "open",
 		},
-		EvidenceRequest: ports.ListFindingEvidenceRequest{
-			RuntimeIDs: []string{"tenant-runtime-a", "tenant-runtime-b"},
-		},
+		PreviewFindingIDs: []string{"finding-a", "finding-b"},
 	})
 	if err != nil {
 		t.Fatalf("grcDashboardAggregateQuery() error = %v", err)
@@ -28,11 +29,11 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 		"JOIN finding_control_refs AS ref ON ref.finding_id = finding.id",
 		"jsonb_build_object('framework_name', framework_name, 'control_id', control_id)",
 		"evidence_summary AS",
-		"jsonb_object_agg(finding_id, evidence_count)",
-		"GROUP BY finding_id",
-		"FROM finding_evidence",
-		"runtime_id IN ($5, $6)",
-		"finding_id IN (SELECT id FROM finding_scope)",
+		"preview_evidence_counts AS",
+		"jsonb_object_agg(finding.id, counts.evidence_count)",
+		"JOIN finding_evidence_counts AS counts",
+		"counts.runtime_id = finding.runtime_id",
+		"finding.id IN ($5, $6)",
 	} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("aggregate query missing %q:\n%s", fragment, query)
@@ -40,7 +41,7 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 	}
 	// The dashboard evidence total must follow finding_scope (all open findings),
 	// not a windowed preview finding-id list, so no positional finding_id filter.
-	for _, forbidden := range []string{`E'\x00'`, `|| E'`, "control_key", "finding_id IN ($7", "jsonb_array_elements"} {
+	for _, forbidden := range []string{`E'\x00'`, `|| E'`, "control_key", "FROM finding_evidence\n", "GROUP BY finding_id", "jsonb_array_elements"} {
 		if strings.Contains(query, forbidden) {
 			t.Fatalf("aggregate query must not contain %q:\n%s", forbidden, query)
 		}
@@ -91,10 +92,39 @@ func TestDecodeGRCDashboardEvidenceCounts(t *testing.T) {
 	}
 }
 
-func TestRebasePostgresPlaceholders(t *testing.T) {
-	got := rebasePostgresPlaceholders("runtime_id IN ($1, $2) AND finding_id = $3", 4)
-	want := "runtime_id IN ($5, $6) AND finding_id = $7"
-	if got != want {
-		t.Fatalf("rebasePostgresPlaceholders() = %q, want %q", got, want)
+func TestGRCDashboardAggregatePlanUsesMaterializedEvidenceCountsPostgresIntegration(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run dashboard aggregate plan integration test")
+	}
+	store, err := Open(config.StateStoreConfig{Driver: config.StateStoreDriverPostgres, PostgresDSN: dsn})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+	if err := store.PrepareGRCReadModels(ctx); err != nil {
+		t.Fatalf("PrepareGRCReadModels() error = %v", err)
+	}
+	query, args, err := grcDashboardAggregateQuery(ports.GRCDashboardAggregateRequest{
+		FindingRequest: ports.ListFindingsRequest{
+			TenantID:   "dashboard-plan-tenant",
+			RuntimeIDs: []string{"dashboard-plan-runtime"},
+			Status:     "open",
+		},
+		PreviewFindingIDs: []string{"dashboard-plan-finding"},
+	})
+	if err != nil {
+		t.Fatalf("grcDashboardAggregateQuery() error = %v", err)
+	}
+	var plan string
+	if err := store.db.QueryRowContext(ctx, "EXPLAIN (FORMAT JSON) "+query, args...).Scan(&plan); err != nil {
+		t.Fatalf("EXPLAIN dashboard aggregate: %v", err)
+	}
+	if !strings.Contains(plan, `"Relation Name": "finding_evidence_counts"`) {
+		t.Fatalf("dashboard aggregate plan does not read the materialized count table: %s", plan)
+	}
+	if strings.Contains(plan, `"Relation Name": "finding_evidence"`) {
+		t.Fatalf("dashboard aggregate plan scans raw finding evidence: %s", plan)
 	}
 }

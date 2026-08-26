@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -119,14 +118,15 @@ func grcDashboardAggregateQuery(request ports.GRCDashboardAggregateRequest) (str
 	if err != nil {
 		return "", nil, err
 	}
-	evidenceClauses, evidenceArgs, err := findingEvidenceFilterClauses(request.EvidenceRequest)
-	if err != nil {
-		return "", nil, err
-	}
 	whereFindings := strings.Join(findingClauses, " AND ")
-	whereEvidence := rebasePostgresPlaceholders(strings.Join(evidenceClauses, " AND "), len(findingArgs))
 	args := append([]any{}, findingArgs...)
-	args = append(args, evidenceArgs...)
+	previewClauses := []string{"FALSE"}
+	previewFindingIDs := normalizedNonEmptyStrings(request.PreviewFindingIDs)
+	if len(previewFindingIDs) > 0 {
+		previewClauses = nil
+		addStringInFilter(&previewClauses, &args, "finding.id", previewFindingIDs)
+	}
+	wherePreview := strings.Join(previewClauses, " AND ")
 	effectiveSeverity := findingEffectiveSeveritySQL()
 	query := `
 WITH finding_scope AS (
@@ -152,16 +152,17 @@ control_refs AS (
   WHERE LOWER(finding.status) = 'open'
 ),
 evidence_summary AS (
-  SELECT
-    COALESCE(SUM(evidence_count), 0)::bigint AS evidence_count,
-    COALESCE(jsonb_object_agg(finding_id, evidence_count), '{}'::jsonb)::text AS evidence_counts_json
-  FROM (
-    SELECT finding_id, COUNT(*) AS evidence_count
-    FROM finding_evidence
-    WHERE ` + whereEvidence + `
-      AND finding_id IN (SELECT id FROM finding_scope)
-    GROUP BY finding_id
-  ) counts
+  SELECT COALESCE(SUM(counts.evidence_count), 0)::bigint AS evidence_count
+  FROM finding_scope AS finding
+  JOIN finding_evidence_counts AS counts
+    ON counts.runtime_id = finding.runtime_id AND counts.finding_id = finding.id
+),
+preview_evidence_counts AS (
+  SELECT COALESCE(jsonb_object_agg(finding.id, counts.evidence_count), '{}'::jsonb)::text AS evidence_counts_json
+  FROM finding_scope AS finding
+  JOIN finding_evidence_counts AS counts
+    ON counts.runtime_id = finding.runtime_id AND counts.finding_id = finding.id
+  WHERE ` + wherePreview + `
 )
 SELECT
   summary.open_findings,
@@ -171,39 +172,9 @@ SELECT
   summary.unassigned,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('framework_name', framework_name, 'control_id', control_id) ORDER BY framework_name, control_id)::text FROM control_refs), '[]'),
   evidence_summary.evidence_count,
-  evidence_summary.evidence_counts_json
+  preview_evidence_counts.evidence_counts_json
 FROM summary
-CROSS JOIN evidence_summary`
+CROSS JOIN evidence_summary
+CROSS JOIN preview_evidence_counts`
 	return query, args, nil
-}
-
-func rebasePostgresPlaceholders(query string, offset int) string {
-	if offset == 0 || query == "" {
-		return query
-	}
-	var out strings.Builder
-	for i := 0; i < len(query); i++ {
-		if query[i] != '$' {
-			out.WriteByte(query[i])
-			continue
-		}
-		j := i + 1
-		for j < len(query) && query[j] >= '0' && query[j] <= '9' {
-			j++
-		}
-		if j == i+1 {
-			out.WriteByte(query[i])
-			continue
-		}
-		index, err := strconv.Atoi(query[i+1 : j])
-		if err != nil {
-			out.WriteString(query[i:j])
-			i = j - 1
-			continue
-		}
-		out.WriteByte('$')
-		out.WriteString(strconv.Itoa(index + offset))
-		i = j - 1
-	}
-	return out.String()
 }

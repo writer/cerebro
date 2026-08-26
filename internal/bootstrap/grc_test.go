@@ -145,6 +145,26 @@ func TestGRCScopeRejectsConflictingOrInvalidApplicationWorkspaceSelectors(t *tes
 	}
 }
 
+func TestGRCDashboardRuntimeScopeExcludesOtherApplicationWorkspaces(t *testing.T) {
+	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-a": {Id: "runtime-a", TenantId: "tenant-a", SourceId: "okta", Config: map[string]string{ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-a"}},
+		"runtime-b": {Id: "runtime-b", TenantId: "tenant-a", SourceId: "github", Config: map[string]string{ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-b"}},
+		"runtime-c": {Id: "runtime-c", TenantId: "tenant-b", SourceId: "aws", Config: map[string]string{ports.SourceRuntimeApplicationWorkspaceIDConfigKey: "workspace-a"}},
+	}}
+	app := New(config.Config{}, Dependencies{StateStore: store}, nil)
+	request := httptest.NewRequest(http.MethodGet, "/grc/dashboard", nil)
+	runtimes, err := app.grcListRuntimes(request, grcScope{TenantID: "tenant-a", ApplicationWorkspaceID: "workspace-a", Limit: 12})
+	if err != nil {
+		t.Fatalf("grcListRuntimes() error = %v", err)
+	}
+	if len(runtimes) != 1 || runtimes[0].GetId() != "runtime-a" {
+		t.Fatalf("grcListRuntimes() = %#v, want only tenant-a/workspace-a runtime", runtimes)
+	}
+	if got := store.sourceRuntimeListFilter; got.TenantID != "tenant-a" || got.ApplicationWorkspaceID != "workspace-a" {
+		t.Fatalf("runtime list filter = %#v, want tenant-a/workspace-a", got)
+	}
+}
+
 func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	store := &stubRuntimeStore{
@@ -1869,8 +1889,23 @@ func (s *stubGRCAggregateStore) SummarizeGRCDashboard(ctx context.Context, reque
 	countsByFindingID := map[string]int{}
 	total := 0
 	status := strings.TrimSpace(request.FindingRequest.Status)
+	runtimeIDs := map[string]struct{}{}
+	for _, runtimeID := range append(request.FindingRequest.RuntimeIDs, request.FindingRequest.RuntimeID) {
+		if runtimeID = strings.TrimSpace(runtimeID); runtimeID != "" {
+			runtimeIDs[runtimeID] = struct{}{}
+		}
+	}
+	previewFindingIDs := map[string]struct{}{}
+	for _, findingID := range request.PreviewFindingIDs {
+		if findingID = strings.TrimSpace(findingID); findingID != "" {
+			previewFindingIDs[findingID] = struct{}{}
+		}
+	}
 	for _, evidence := range s.findingEvidence {
-		if evidence == nil || !findingEvidenceMatches(request.EvidenceRequest, evidence) {
+		if evidence == nil {
+			continue
+		}
+		if _, ok := runtimeIDs[strings.TrimSpace(evidence.GetRuntimeId())]; !ok {
 			continue
 		}
 		finding, ok := s.findings[evidence.GetFindingId()]
@@ -1880,7 +1915,9 @@ func (s *stubGRCAggregateStore) SummarizeGRCDashboard(ctx context.Context, reque
 		if status != "" && !strings.EqualFold(strings.TrimSpace(finding.Status), status) {
 			continue
 		}
-		countsByFindingID[evidence.GetFindingId()]++
+		if _, ok := previewFindingIDs[evidence.GetFindingId()]; ok {
+			countsByFindingID[evidence.GetFindingId()]++
+		}
 		total++
 	}
 	return ports.GRCDashboardAggregate{FindingSummary: summary, EvidenceCount: total, EvidenceCountsByFindingID: countsByFindingID}, nil
