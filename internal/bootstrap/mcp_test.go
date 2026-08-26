@@ -602,6 +602,7 @@ func mcpDomainSurfaceCorpus(t *testing.T) string {
 		"internal/bootstrap/routes.go",
 		"proto/cerebro/v1/bootstrap.proto",
 		"api/openapi.yaml",
+		"docs/contracts/platform-public-route-inventory.json",
 		"docs/domains/mcp-droid-setup.md",
 		"docs/domains/agent-platform-contract.md",
 		"docs/domains/findings-platform-architecture.md",
