@@ -13,7 +13,6 @@ var openAIOracleAccessProfile = aiAccessProfile{Provider: "openai"}
 func newOpenAIOracleService(
 	t *testing.T,
 	state ports.ProjectionStateStore,
-	graph ports.ProjectionGraphStore,
 ) *Service {
 	t.Helper()
 	builtinRegistry.mu.RLock()
@@ -29,7 +28,7 @@ func newOpenAIOracleService(
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	return NewWithRegistry(state, graph, registry)
+	return NewWithRegistry(state, nil, registry)
 }
 
 var openAIOracleProjectors = map[string]ProjectFunc{

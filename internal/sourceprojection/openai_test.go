@@ -13,7 +13,7 @@ import (
 
 func TestProjectOpenAIKeyOwnershipAndPostureEnrichment(t *testing.T) {
 	state := &projectionRecorder{}
-	service := newOpenAIOracleService(t, state, nil)
+	service := newOpenAIOracleService(t, state)
 	occurred := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
 
 	events := []*cerebrov1.EventEnvelope{
@@ -235,7 +235,7 @@ func TestProjectOpenAIDeclaredKindsProduceGraphEntities(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &projectionRecorder{}
-			service := newOpenAIOracleService(t, state, nil)
+			service := newOpenAIOracleService(t, state)
 			attrs := openAIProjectionCoverageAttributes(tc.family)
 			event := &cerebrov1.EventEnvelope{
 				Id:         "openai-" + tc.name,
