@@ -197,7 +197,7 @@ fn stable_identity(values: &Map<String, Value>) -> Option<String> {
     .filter(|value| !value.is_empty() && value.len() <= 512)
 }
 
-fn event_id(kernel: &AkeneoKernel, provider_id: &str) -> String {
+pub(super) fn event_id(kernel: &AkeneoKernel, provider_id: &str) -> String {
     let scope = Sha256::digest(format!(
         "{}\0{}\0{}",
         kernel.base_url.as_str(),
@@ -210,9 +210,9 @@ fn event_id(kernel: &AkeneoKernel, provider_id: &str) -> String {
         .collect::<String>();
     format!(
         "akeneo-{}-{scope}-{}-{}",
-        normalize_id(&kernel.tenant_id),
-        normalize_id(kernel.family.as_str()),
-        normalize_id(provider_id)
+        event_segment(&kernel.tenant_id),
+        event_segment(kernel.family.as_str()),
+        event_segment(provider_id)
     )
 }
 
@@ -237,18 +237,23 @@ fn encode_segment(value: &str) -> String {
     encoded
 }
 
-fn normalize_id(value: &str) -> String {
+fn event_segment(value: &str) -> String {
     let value = value.trim();
-    if value.is_empty() {
-        return "unknown".to_owned();
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return value.to_owned();
     }
-    value
-        .chars()
-        .map(|character| match character {
-            ' ' | '/' | ':' | '\t' | '\n' => '-',
-            other => other,
-        })
-        .collect()
+    let digest = Sha256::digest(value.as_bytes());
+    format!(
+        "sha256-{}",
+        digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    )
 }
 
 fn reject_protected(value: &Value, depth: usize) -> Result<(), AkeneoError> {
@@ -262,7 +267,10 @@ fn reject_protected(value: &Value, depth: usize) -> Result<(), AkeneoError> {
             }
             for (key, value) in values {
                 let key = key.trim().to_ascii_lowercase().replace('-', "_");
-                if key == "tenant_id" {
+                if matches!(
+                    key.as_str(),
+                    "tenant_id" | "runtime_id" | "source_runtime_id"
+                ) {
                     return Err(AkeneoError::TenantMismatch);
                 }
                 if matches!(key.as_str(), "source_id" | "schema_ref") {
@@ -273,9 +281,14 @@ fn reject_protected(value: &Value, depth: usize) -> Result<(), AkeneoError> {
                     "token"
                         | "access_token"
                         | "refresh_token"
+                        | "session_token"
                         | "api_key"
                         | "api_token"
+                        | "x_api_key"
+                        | "set_cookie"
                         | "password"
+                        | "passcode"
+                        | "secret"
                         | "private_key"
                         | "authorization"
                         | "client_secret"
