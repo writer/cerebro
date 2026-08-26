@@ -17,7 +17,7 @@ use postgres_native_tls::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
-use tokio_postgres::Client;
+use tokio_postgres::{Client, error::SqlState, types::ToSql};
 use zeroize::Zeroize;
 
 use crate::{
@@ -2036,6 +2036,117 @@ LIMIT $3
             .collect()
     }
 
+    /// Return one deterministic descending keyset page of projected audit
+    /// events for a single tenant and immutable time window, mirroring the Go
+    /// `ListAuditEvents` reader semantics (tenant scope, lowered exact filters,
+    /// escaped substring search, `occurred_at DESC, event_id COLLATE "C" DESC`
+    /// ordering, and a limit+1 has-more probe).
+    ///
+    /// The Go reader creates the `platform_audit_events` projection table on
+    /// demand before reading it; this surface must not run DDL, so a database
+    /// without the projection serves the same observable result: an empty
+    /// window.
+    pub async fn list_audit_events(
+        &self,
+        query: &AuditEventPageQuery,
+    ) -> Result<StoredAuditEventPage, StoreError> {
+        if query.tenant_id.trim().is_empty()
+            || query.limit == 0
+            || query.limit > 500
+            || query.after.trim().is_empty()
+            || query.before.trim().is_empty()
+            || (query.page_before_occurred_at.is_some() && query.page_before_id.trim().is_empty())
+        {
+            return Err(StoreError::Conflict(
+                "audit event query scope is invalid".to_owned(),
+            ));
+        }
+        let mut clauses = vec![
+            "tenant_id = $1".to_owned(),
+            "occurred_at >= $2::timestamptz".to_owned(),
+            "occurred_at <= $3::timestamptz".to_owned(),
+        ];
+        let mut values = vec![
+            query.tenant_id.trim().to_owned(),
+            query.after.trim().to_owned(),
+            query.before.trim().to_owned(),
+        ];
+        audit_event_exact_filter(&mut clauses, &mut values, "action", &query.action);
+        audit_event_actor_filter(&mut clauses, &mut values, &query.actor);
+        audit_event_exact_filter(&mut clauses, &mut values, "outcome", &query.outcome);
+        audit_event_exact_filter(
+            &mut clauses,
+            &mut values,
+            "resource_type",
+            &query.resource_type,
+        );
+        audit_event_exact_filter(&mut clauses, &mut values, "service", &query.service);
+        audit_event_exact_filter(&mut clauses, &mut values, "trace_id", &query.trace_id);
+        audit_event_text_filter(&mut clauses, &mut values, &query.text);
+        if let Some(boundary) = &query.page_before_occurred_at {
+            values.push(boundary.trim().to_owned());
+            let time_index = values.len();
+            values.push(query.page_before_id.trim().to_owned());
+            clauses.push(format!(
+                "(occurred_at < ${time_index}::timestamptz OR (occurred_at = ${time_index}::timestamptz AND event_id COLLATE \"C\" < ${}))",
+                values.len()
+            ));
+        }
+        let limit = i64::from(query.limit) + 1;
+        let mut params: Vec<&(dyn ToSql + Sync)> = values
+            .iter()
+            .map(|value| value as &(dyn ToSql + Sync))
+            .collect();
+        params.push(&limit);
+        let statement = format!(
+            "SELECT event_id, tenant_id, action, actor_id, actor_kind, actor_label, category, \
+             duration_ms, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'), \
+             outcome, request_id, resource_id, resource_type, resource_label, service, summary, trace_id \
+             FROM platform_audit_events WHERE {} \
+             ORDER BY occurred_at DESC, event_id COLLATE \"C\" DESC LIMIT ${}",
+            clauses.join(" AND "),
+            params.len()
+        );
+        let rows = match self.client.lock().await.query(&statement, &params).await {
+            Ok(rows) => rows,
+            Err(error) if error.code() == Some(&SqlState::UNDEFINED_TABLE) => {
+                return Ok(StoredAuditEventPage::default());
+            }
+            Err(error) => return Err(StoreError::Postgres(error)),
+        };
+        let mut events: Vec<StoredAuditEvent> = rows
+            .iter()
+            .map(|row| StoredAuditEvent {
+                id: row.get(0),
+                tenant_id: row.get(1),
+                action: row.get(2),
+                actor_id: row.get(3),
+                actor_kind: row.get(4),
+                actor_label: row.get(5),
+                category: row.get(6),
+                duration_ms: row.get(7),
+                occurred_at: row.get(8),
+                outcome: row.get(9),
+                request_id: row.get(10),
+                resource_id: row.get(11),
+                resource_type: row.get(12),
+                resource_label: row.get(13),
+                service: row.get(14),
+                summary: row.get(15),
+                trace_id: row.get(16),
+            })
+            .collect();
+        let has_more = events.len() > query.limit as usize;
+        if has_more {
+            events.truncate(query.limit as usize);
+        }
+        Ok(StoredAuditEventPage {
+            events,
+            has_more,
+            partial: false,
+        })
+    }
+
     pub async fn record_parity(&self, receipt: &ParityReceipt) -> Result<(), StoreError> {
         let mismatch_count = i64::try_from(receipt.mismatch_count())
             .map_err(|_| StoreError::Conflict("parity mismatch count overflow".to_owned()))?;
@@ -2790,6 +2901,108 @@ async fn require_identity_claim(
         )));
     }
     Ok(())
+}
+
+/// One bounded, already-validated audit-event read scope. Timestamps are
+/// RFC 3339 UTC text so the read stays on the stable text protocol; the
+/// platform layer owns parsing, clamping, and cursor semantics.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AuditEventPageQuery {
+    pub tenant_id: String,
+    /// Inclusive RFC 3339 UTC lower bound of the immutable window.
+    pub after: String,
+    /// Inclusive RFC 3339 UTC upper bound of the immutable window.
+    pub before: String,
+    /// Page size; the reader probes one extra row to report `has_more`.
+    pub limit: u32,
+    pub action: String,
+    pub actor: String,
+    pub outcome: String,
+    pub resource_type: String,
+    pub service: String,
+    pub trace_id: String,
+    /// Escaped substring search over action, actor label, resource label, and
+    /// summary.
+    pub text: String,
+    /// RFC 3339 UTC keyset boundary; requires `page_before_id`.
+    pub page_before_occurred_at: Option<String>,
+    pub page_before_id: String,
+}
+
+/// One projected audit-event row in the fixed persistence allowlist.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StoredAuditEvent {
+    pub id: String,
+    pub tenant_id: String,
+    pub action: String,
+    pub actor_id: String,
+    pub actor_kind: String,
+    pub actor_label: String,
+    pub category: String,
+    pub duration_ms: Option<i64>,
+    /// RFC 3339 UTC with microsecond precision.
+    pub occurred_at: String,
+    pub outcome: String,
+    pub request_id: String,
+    pub resource_id: String,
+    pub resource_type: String,
+    pub resource_label: String,
+    pub service: String,
+    pub summary: String,
+    pub trace_id: String,
+}
+
+/// One deterministic keyset page of projected audit events. `partial` is
+/// reserved for readers that can prove only a subset of durable inputs was
+/// available; the Postgres reader returns complete pages or an error.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StoredAuditEventPage {
+    pub events: Vec<StoredAuditEvent>,
+    pub has_more: bool,
+    pub partial: bool,
+}
+
+fn audit_event_exact_filter(
+    clauses: &mut Vec<String>,
+    values: &mut Vec<String>,
+    column: &str,
+    value: &str,
+) {
+    let value = value.trim();
+    if value.is_empty() {
+        return;
+    }
+    values.push(value.to_owned());
+    clauses.push(format!("LOWER({column}) = LOWER(${})", values.len()));
+}
+
+fn audit_event_actor_filter(clauses: &mut Vec<String>, values: &mut Vec<String>, value: &str) {
+    let value = value.trim();
+    if value.is_empty() {
+        return;
+    }
+    values.push(value.to_owned());
+    let index = values.len();
+    clauses.push(format!(
+        "(LOWER(actor_id) = LOWER(${index}) OR LOWER(actor_label) = LOWER(${index}))"
+    ));
+}
+
+fn audit_event_text_filter(clauses: &mut Vec<String>, values: &mut Vec<String>, value: &str) {
+    let value = value.trim();
+    if value.is_empty() {
+        return;
+    }
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    values.push(format!("%{escaped}%"));
+    let index = values.len();
+    clauses.push(format!(
+        "(action ILIKE ${index} ESCAPE '\\' OR actor_label ILIKE ${index} ESCAPE '\\' \
+         OR resource_label ILIKE ${index} ESCAPE '\\' OR summary ILIKE ${index} ESCAPE '\\')"
+    ));
 }
 
 async fn set_tenant(
