@@ -31,6 +31,8 @@ service OrganizationalGraphService {
   rpc CountRelations(CountRelationsRequest) returns (CountRelationsResponse);
   // ListPersonAccessPaths returns bounded person-to-access-target paths from the legacy graph projection.
   rpc ListPersonAccessPaths(ListPersonAccessPathsRequest) returns (ListPersonAccessPathsResponse);
+  // ListEffectiveAccessPaths returns bounded identity-to-capability proofs from the legacy graph projection.
+  rpc ListEffectiveAccessPaths(ListEffectiveAccessPathsRequest) returns (ListEffectiveAccessPathsResponse);
   // ListCloudAttackPaths returns bounded public-exposure-to-privilege paths from the legacy graph projection.
   rpc ListCloudAttackPaths(ListCloudAttackPathsRequest) returns (ListCloudAttackPathsResponse);
   // ListEntityRelations returns filtered direct relations for one catalog entity.
@@ -329,6 +331,47 @@ message ListPersonAccessPathsResponse {
   string tenant_id = 1;
   uint64 graph_revision = 2;
   repeated PersonAccessPath paths = 3;
+  bool truncated = 4;
+}
+
+message EffectiveAccessPathEdge {
+  GraphEntity from = 1;
+  string relation = 2;
+  GraphEntity to = 3;
+  string source_id = 4;
+  string runtime_id = 5;
+  string attributes_json = 6;
+}
+
+message EffectiveAccessPath {
+  GraphEntity identity = 1;
+  GraphEntity principal = 2;
+  GraphEntity mediator = 3;
+  GraphEntity access_target = 4;
+  GraphEntity entitlement = 5;
+  GraphEntity capability = 6;
+  string assignment_kind = 7;
+  repeated string identity_relation_chain = 8;
+  repeated EffectiveAccessPathEdge identity_edges = 9;
+  repeated string relation_chain = 10;
+  repeated EffectiveAccessPathEdge edges = 11;
+}
+
+message ListEffectiveAccessPathsRequest {
+  string tenant_id = 1;
+  string identity_urn = 2;
+  string identity_query = 3;
+  string application_urn = 4;
+  string capability_urn = 5;
+  string capability_id = 6;
+  uint32 limit = 7;
+  uint64 expected_graph_revision = 8;
+}
+
+message ListEffectiveAccessPathsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated EffectiveAccessPath paths = 3;
   bool truncated = 4;
 }
 

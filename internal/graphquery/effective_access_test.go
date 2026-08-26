@@ -2,8 +2,10 @@ package graphquery
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -43,35 +45,8 @@ func TestEffectiveAccessPathRequestFromQueryRejectsZeroLimit(t *testing.T) {
 	}
 }
 
-func TestGetEffectiveAccessPathsQueriesAndParsesRows(t *testing.T) {
-	store := &awsExposureStubStore{responses: [][]ports.CypherRow{
-		{{Values: map[string]any{
-			"identity_urn":            "urn:cerebro:writer:identity:email:alice@example.com",
-			"identity_entity_type":    "identity.email",
-			"identity_label":          "alice@example.com",
-			"principal_urn":           "urn:cerebro:writer:okta_user:00u1",
-			"principal_entity_type":   "okta.user",
-			"principal_label":         "alice@example.com",
-			"mediator_urn":            "urn:cerebro:writer:okta_group:grp-security",
-			"mediator_entity_type":    "okta.group",
-			"mediator_label":          "Security Engineering",
-			"target_urn":              "urn:cerebro:writer:okta_application:app-aws-admin",
-			"target_entity_type":      "okta.application",
-			"target_label":            "AWS Admin Console",
-			"entitlement_urn":         "urn:cerebro:writer:okta_entitlement:administratoraccess",
-			"entitlement_entity_type": "okta.entitlement",
-			"entitlement_label":       "AdministratorAccess",
-			"capability_urn":          "urn:cerebro:writer:privileged_capability:cloud_admin",
-			"capability_entity_type":  "privileged.capability",
-			"capability_label":        "Cloud administrator",
-			"assignment_kind":         "group_app_assignment",
-			"identity_relation_chain": []any{"represents_identity"},
-			"identity_edges":          effectiveAccessIdentityTestEdges(),
-			"relation_chain":          []any{"member_of", "assigned_to", "grants_entitlement", "confers_capability"},
-			"edges":                   effectiveAccessPathTestEdges(),
-		}}},
-	}}
-
+func TestGetEffectiveAccessPathsUsesTypedFixtureAndPreservesLegacyShape(t *testing.T) {
+	store := &awsExposureStubStore{effectiveResult: effectiveAccessTypedFixtureResult()}
 	result, err := New(store).GetEffectiveAccessPaths(context.Background(), EffectiveAccessPathRequest{
 		TenantID:       "writer",
 		IdentityQuery:  "Alice",
@@ -82,36 +57,12 @@ func TestGetEffectiveAccessPathsQueriesAndParsesRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEffectiveAccessPaths() error = %v", err)
 	}
-	if len(store.requests) != 1 {
-		t.Fatalf("query count = %d, want 1", len(store.requests))
+	if len(store.effectiveRequests) != 1 || store.rawReads != 0 || len(store.requests) != 0 {
+		t.Fatalf("typed requests = %d, raw reads = %d, raw requests = %d; want 1, 0, 0", len(store.effectiveRequests), store.rawReads, len(store.requests))
 	}
-	request := store.requests[0]
-	if request.RowLimit != maxEffectiveAccessPathLimit {
-		t.Fatalf("row limit = %d, want %d", request.RowLimit, maxEffectiveAccessPathLimit)
-	}
-	if got := request.Params["identity_query"]; got != "alice" {
-		t.Fatalf("identity_query param = %v, want alice", got)
-	}
-	if got := request.Params["capability_id"]; got != "cloud_admin" {
-		t.Fatalf("capability_id param = %v, want cloud_admin", got)
-	}
-	for _, want := range []string{
-		"subject:Entity {tenant_id: $tenant_id}",
-		"ORDER BY subject.label, subject.urn",
-		"principal_link.tenant_id = $tenant_id",
-		"[subject, principal] AS identity_nodes",
-		"identity_relation_chain",
-		"identity_edges",
-		"MATCH (principal)-[assignment:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})",
-		"MATCH (principal)-[membership:RELATION {relation: 'member_of'}]->(mediator:Entity {tenant_id: $tenant_id})-[assignment:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})",
-		"membership.tenant_id = $tenant_id",
-		"grant.tenant_id = $tenant_id",
-		"confers.tenant_id = $tenant_id",
-		"LIMIT $sample_limit",
-	} {
-		if !strings.Contains(request.Query, want) {
-			t.Fatalf("query missing %q:\n%s", want, request.Query)
-		}
+	request := store.effectiveRequests[0]
+	if request.TenantID != "writer" || request.IdentityURN != "" || request.IdentityQuery != "alice" || request.ApplicationURN != "urn:cerebro:writer:okta_application:app-aws-admin" || request.CapabilityURN != "" || request.CapabilityID != "cloud_admin" || request.Limit != maxEffectiveAccessPathLimit {
+		t.Fatalf("typed request = %#v", request)
 	}
 	if result.Filters.Limit != maxEffectiveAccessPathLimit || result.Filters.IdentityQuery != "alice" {
 		t.Fatalf("filters = %#v", result.Filters)
@@ -123,6 +74,12 @@ func TestGetEffectiveAccessPathsQueriesAndParsesRows(t *testing.T) {
 		t.Fatalf("paths = %#v", result.Paths)
 	}
 	path := result.Paths[0]
+	expected := effectiveAccessTestPath()
+	expected.Edges[1].Attributes = map[string]string{"assignment_id": "asg-1"}
+	expected.Lineage = expected.QualifyLineage()
+	if !reflect.DeepEqual(path, expected) {
+		t.Fatalf("typed path = %#v, want %#v", path, expected)
+	}
 	if path.Mediator == nil || path.Mediator.Label != "Security Engineering" {
 		t.Fatalf("mediator = %#v", path.Mediator)
 	}
@@ -143,29 +100,48 @@ func TestGetEffectiveAccessPathsQueriesAndParsesRows(t *testing.T) {
 	}
 }
 
-func TestEffectiveAccessPathsFromRowsDropsIncompleteProofs(t *testing.T) {
-	rows := []ports.CypherRow{{Values: map[string]any{
-		"identity_urn":            "urn:cerebro:writer:identity:email:alice@example.com",
-		"identity_entity_type":    "identity.email",
-		"identity_label":          "alice@example.com",
-		"principal_urn":           "urn:cerebro:writer:okta_user:00u1",
-		"principal_entity_type":   "okta.user",
-		"principal_label":         "alice@example.com",
-		"target_urn":              "urn:cerebro:writer:okta_application:app-aws-admin",
-		"target_entity_type":      "okta.application",
-		"target_label":            "AWS Admin Console",
-		"entitlement_urn":         "urn:cerebro:writer:okta_entitlement:administratoraccess",
-		"entitlement_entity_type": "okta.entitlement",
-		"entitlement_label":       "AdministratorAccess",
-		"capability_urn":          "urn:cerebro:writer:privileged_capability:cloud_admin",
-		"capability_entity_type":  "privileged.capability",
-		"capability_label":        "Cloud administrator",
-		"assignment_kind":         "direct_app_assignment",
-		"relation_chain":          []any{"assigned_to", "grants_entitlement"},
-		"edges":                   effectiveAccessPathTestEdges()[1:],
-	}}}
-	if got := effectiveAccessPathsFromRows(rows); len(got) != 0 {
-		t.Fatalf("effectiveAccessPathsFromRows() = %#v, want empty", got)
+func TestGetEffectiveAccessPathsRejectsInvalidTypedPath(t *testing.T) {
+	fixture := effectiveAccessTypedFixtureResult()
+	fixture.Paths[0].RelationChain = []string{"assigned_to"}
+	store := &awsExposureStubStore{effectiveResult: fixture}
+	_, err := New(store).GetEffectiveAccessPaths(context.Background(), EffectiveAccessPathRequest{
+		TenantID:      "writer",
+		IdentityQuery: "alice",
+	})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("GetEffectiveAccessPaths() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+	if store.rawReads != 0 {
+		t.Fatalf("raw reads = %d, want 0", store.rawReads)
+	}
+}
+
+type rawOnlyEffectiveAccessStore struct {
+	rawReads int
+}
+
+func (s *rawOnlyEffectiveAccessStore) Ping(context.Context) error { return nil }
+
+func (s *rawOnlyEffectiveAccessStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
+	return nil, nil
+}
+
+func (s *rawOnlyEffectiveAccessStore) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	s.rawReads++
+	return nil, nil
+}
+
+func TestGetEffectiveAccessPathsFailsClosedWithoutTypedStore(t *testing.T) {
+	store := &rawOnlyEffectiveAccessStore{}
+	_, err := New(store).GetEffectiveAccessPaths(context.Background(), EffectiveAccessPathRequest{
+		TenantID:      "writer",
+		IdentityQuery: "alice",
+	})
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("GetEffectiveAccessPaths() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+	if store.rawReads != 0 {
+		t.Fatalf("raw reads = %d, want 0", store.rawReads)
 	}
 }
 
@@ -291,96 +267,97 @@ func TestEffectiveAccessPathSupportsOperationProofRequiresChangedPrivilegedOrSen
 	}
 }
 
-func effectiveAccessPathTestEdges() []any {
-	return []any{
-		map[string]any{
-			"from_urn":         "urn:cerebro:writer:okta_user:00u1",
-			"from_entity_type": "okta.user",
-			"from_label":       "alice@example.com",
-			"relation":         "member_of",
-			"to_urn":           "urn:cerebro:writer:okta_group:grp-security",
-			"to_entity_type":   "okta.group",
-			"to_label":         "Security Engineering",
-			"source_id":        "okta",
-			"runtime_id":       "writer-okta",
-			"attributes_json":  `{"event_id":"evt-member","at":"2026-06-10T17:00:00Z"}`,
-		},
-		map[string]any{
-			"from_urn":         "urn:cerebro:writer:okta_group:grp-security",
-			"from_entity_type": "okta.group",
-			"from_label":       "Security Engineering",
-			"relation":         "assigned_to",
-			"to_urn":           "urn:cerebro:writer:okta_application:app-aws-admin",
-			"to_entity_type":   "okta.application",
-			"to_label":         "AWS Admin Console",
-			"source_id":        "okta",
-			"runtime_id":       "writer-okta",
-			"attributes_json":  `{"assignment_id":"asg-1","event_id":"evt-assign","at":"2026-06-10T18:00:00Z"}`,
-		},
-		map[string]any{
-			"from_urn":         "urn:cerebro:writer:okta_application:app-aws-admin",
-			"from_entity_type": "okta.application",
-			"from_label":       "AWS Admin Console",
-			"relation":         "grants_entitlement",
-			"to_urn":           "urn:cerebro:writer:okta_entitlement:administratoraccess",
-			"to_entity_type":   "okta.entitlement",
-			"to_label":         "AdministratorAccess",
-			"source_id":        "okta",
-			"runtime_id":       "writer-okta",
-			"attributes_json":  `{"event_id":"evt-entitlement","at":"2026-06-10T18:00:00Z"}`,
-		},
-		map[string]any{
-			"from_urn":         "urn:cerebro:writer:okta_entitlement:administratoraccess",
-			"from_entity_type": "okta.entitlement",
-			"from_label":       "AdministratorAccess",
-			"relation":         "confers_capability",
-			"to_urn":           "urn:cerebro:writer:privileged_capability:cloud_admin",
-			"to_entity_type":   "privileged.capability",
-			"to_label":         "Cloud administrator",
-			"source_id":        "okta",
-			"runtime_id":       "writer-okta",
-			"attributes_json":  `{"event_id":"evt-capability","at":"2026-06-10T18:00:00Z"}`,
-		},
+func effectiveAccessTypedFixtureResult() *ports.EffectiveAccessPathResult {
+	path := effectiveAccessTestPath()
+	typed := ports.EffectiveAccessPath{
+		Identity:              effectiveAccessCatalogEntity(path.Identity),
+		Principal:             effectiveAccessCatalogEntity(path.Principal),
+		AccessTarget:          effectiveAccessCatalogEntity(path.AccessTarget),
+		Entitlement:           effectiveAccessCatalogEntity(path.Entitlement),
+		Capability:            effectiveAccessCatalogEntity(path.Capability),
+		AssignmentKind:        path.AssignmentKind,
+		IdentityRelationChain: append([]string(nil), path.IdentityRelationChain...),
+		RelationChain:         append([]string(nil), path.RelationChain...),
+	}
+	if path.Mediator != nil {
+		mediator := effectiveAccessCatalogEntity(*path.Mediator)
+		typed.Mediator = &mediator
+	}
+	for _, edge := range path.IdentityEdges {
+		typed.IdentityEdges = append(typed.IdentityEdges, effectiveAccessTypedEdge(edge))
+	}
+	for _, edge := range path.Edges {
+		typed.Edges = append(typed.Edges, effectiveAccessTypedEdge(edge))
+	}
+	return &ports.EffectiveAccessPathResult{
+		TenantID:      "writer",
+		GraphRevision: 42,
+		Paths:         []ports.EffectiveAccessPath{typed},
 	}
 }
 
-func effectiveAccessIdentityTestEdges() []any {
-	return []any{
-		map[string]any{
-			"from_urn":         "urn:cerebro:writer:identity:email:alice@example.com",
-			"from_entity_type": "identity.email",
-			"from_label":       "alice@example.com",
-			"relation":         "represents_identity",
-			"to_urn":           "urn:cerebro:writer:okta_user:00u1",
-			"to_entity_type":   "okta.user",
-			"to_label":         "alice@example.com",
-			"source_id":        "okta",
-			"runtime_id":       "writer-okta",
-			"attributes_json":  `{"event_id":"evt-identity","at":"2026-06-10T16:00:00Z"}`,
-		},
+func effectiveAccessCatalogEntity(ref GraphEntityRef) ports.CatalogEntity {
+	return ports.CatalogEntity{
+		URN:        ref.URN,
+		TenantID:   "writer",
+		EntityType: ref.EntityType,
+		Label:      ref.Label,
+	}
+}
+
+func effectiveAccessTypedEdge(edge EffectiveAccessPathEdge) ports.EffectiveAccessPathEdge {
+	attributes := make(map[string]string, len(edge.Attributes)+2)
+	for key, value := range edge.Attributes {
+		attributes[key] = value
+	}
+	if edge.Relation == "assigned_to" {
+		attributes["assignment_id"] = "asg-1"
+	}
+	if edge.EventID != "" {
+		attributes["event_id"] = edge.EventID
+	}
+	if edge.At != "" {
+		attributes["at"] = edge.At
+	}
+	encoded, err := json.Marshal(attributes)
+	if err != nil {
+		panic(err)
+	}
+	return ports.EffectiveAccessPathEdge{
+		From:           effectiveAccessCatalogEntity(edge.From),
+		Relation:       edge.Relation,
+		To:             effectiveAccessCatalogEntity(edge.To),
+		SourceID:       edge.SourceID,
+		RuntimeID:      edge.RuntimeID,
+		AttributesJSON: string(encoded),
 	}
 }
 
 func effectiveAccessTestPath() EffectiveAccessPath {
+	identity := GraphEntityRef{URN: "urn:cerebro:writer:identity:email:alice@example.com", EntityType: "identity.email", Label: "alice@example.com"}
+	principal := GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1", EntityType: "okta.user", Label: "alice@example.com"}
 	mediator := GraphEntityRef{URN: "urn:cerebro:writer:okta_group:grp-security", EntityType: "okta.group", Label: "Security Engineering"}
+	accessTarget := GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin", EntityType: "okta.application", Label: "AWS Admin Console"}
+	entitlement := GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess", EntityType: "okta.entitlement", Label: "AdministratorAccess"}
+	capability := GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:cloud_admin", EntityType: "privileged.capability", Label: "Cloud administrator"}
 	path := EffectiveAccessPath{
-		Identity:              GraphEntityRef{URN: "urn:cerebro:writer:identity:email:alice@example.com", EntityType: "identity.email", Label: "alice@example.com"},
-		Principal:             GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1", EntityType: "okta.user", Label: "alice@example.com"},
+		Identity:              identity,
+		Principal:             principal,
 		Mediator:              &mediator,
-		AccessTarget:          GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin", EntityType: "okta.application", Label: "AWS Admin Console"},
-		Entitlement:           GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess", EntityType: "okta.entitlement", Label: "AdministratorAccess"},
-		Capability:            GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:cloud_admin", EntityType: "privileged.capability", Label: "Cloud administrator"},
+		AccessTarget:          accessTarget,
+		Entitlement:           entitlement,
+		Capability:            capability,
 		AssignmentKind:        "group_app_assignment",
 		IdentityRelationChain: []string{"represents_identity"},
 		IdentityEdges: []EffectiveAccessPathEdge{
-			{From: GraphEntityRef{URN: "urn:cerebro:writer:identity:email:alice@example.com"}, Relation: "represents_identity", To: GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-identity", At: "2026-06-10T16:00:00Z"},
+			{From: identity, Relation: "represents_identity", To: principal, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-identity", At: "2026-06-10T16:00:00Z"},
 		},
 		RelationChain: []string{"member_of", "assigned_to", "grants_entitlement", "confers_capability"},
 		Edges: []EffectiveAccessPathEdge{
-			{From: GraphEntityRef{URN: "urn:cerebro:writer:okta_user:00u1"}, Relation: "member_of", To: mediator, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-member", At: "2026-06-10T17:00:00Z"},
-			{From: mediator, Relation: "assigned_to", To: GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-assign", At: "2026-06-10T18:00:00Z"},
-			{From: GraphEntityRef{URN: "urn:cerebro:writer:okta_application:app-aws-admin"}, Relation: "grants_entitlement", To: GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-entitlement", At: "2026-06-10T18:00:00Z"},
-			{From: GraphEntityRef{URN: "urn:cerebro:writer:okta_entitlement:administratoraccess"}, Relation: "confers_capability", To: GraphEntityRef{URN: "urn:cerebro:writer:privileged_capability:cloud_admin"}, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-capability", At: "2026-06-10T18:00:00Z"},
+			{From: principal, Relation: "member_of", To: mediator, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-member", At: "2026-06-10T17:00:00Z"},
+			{From: mediator, Relation: "assigned_to", To: accessTarget, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-assign", At: "2026-06-10T18:00:00Z", Attributes: map[string]string{"assignment_id": "asg-1"}},
+			{From: accessTarget, Relation: "grants_entitlement", To: entitlement, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-entitlement", At: "2026-06-10T18:00:00Z"},
+			{From: entitlement, Relation: "confers_capability", To: capability, SourceID: "okta", RuntimeID: "writer-okta", EventID: "evt-capability", At: "2026-06-10T18:00:00Z"},
 		},
 	}
 	return path

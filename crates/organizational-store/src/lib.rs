@@ -37,9 +37,10 @@ pub use cutover::{
 };
 pub use neo4j::{
     CloudAttackPath, CloudAttackPathCounts, CloudAttackPathEdge, CloudAttackPathNode,
-    CloudAttackPathOwnership, CloudAttackPathPage, EntityCatalogDirection, EntityCatalogFilter,
-    EntityCatalogKindCount, EntityCatalogKindPage, EntityCatalogPage, EntityCatalogRelation,
-    EntityCatalogRelationCount, EntityCatalogRelationCountFilter, EntityCatalogRelationKindCount,
+    CloudAttackPathOwnership, CloudAttackPathPage, EffectiveAccessPath, EffectiveAccessPathEdge,
+    EffectiveAccessPathPage, EntityCatalogDirection, EntityCatalogFilter, EntityCatalogKindCount,
+    EntityCatalogKindPage, EntityCatalogPage, EntityCatalogRelation, EntityCatalogRelationCount,
+    EntityCatalogRelationCountFilter, EntityCatalogRelationKindCount,
     EntityCatalogRelationKindPage, EntityCatalogRelationPage, ExposureCoverageAccount,
     ExposureCoverageCompleteness, ExposureCoverageCorroboratingOnly, ExposureCoverageCounts,
     ExposureCoverageEntity, ExposureCoverageKindCount, ExposureCoverageOverlap,

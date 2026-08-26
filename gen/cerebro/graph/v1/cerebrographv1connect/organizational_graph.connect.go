@@ -70,6 +70,9 @@ const (
 	// OrganizationalGraphServiceListPersonAccessPathsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's ListPersonAccessPaths RPC.
 	OrganizationalGraphServiceListPersonAccessPathsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListPersonAccessPaths"
+	// OrganizationalGraphServiceListEffectiveAccessPathsProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's ListEffectiveAccessPaths RPC.
+	OrganizationalGraphServiceListEffectiveAccessPathsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListEffectiveAccessPaths"
 	// OrganizationalGraphServiceListCloudAttackPathsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's ListCloudAttackPaths RPC.
 	OrganizationalGraphServiceListCloudAttackPathsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListCloudAttackPaths"
@@ -115,6 +118,8 @@ type OrganizationalGraphServiceClient interface {
 	CountRelations(context.Context, *connect.Request[v1.CountRelationsRequest]) (*connect.Response[v1.CountRelationsResponse], error)
 	// ListPersonAccessPaths returns bounded person-to-access-target paths from the legacy graph projection.
 	ListPersonAccessPaths(context.Context, *connect.Request[v1.ListPersonAccessPathsRequest]) (*connect.Response[v1.ListPersonAccessPathsResponse], error)
+	// ListEffectiveAccessPaths returns bounded identity-to-capability proofs from the legacy graph projection.
+	ListEffectiveAccessPaths(context.Context, *connect.Request[v1.ListEffectiveAccessPathsRequest]) (*connect.Response[v1.ListEffectiveAccessPathsResponse], error)
 	// ListCloudAttackPaths returns bounded public-exposure-to-privilege paths from the legacy graph projection.
 	ListCloudAttackPaths(context.Context, *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error)
 	// ListEntityRelations returns filtered direct relations for one catalog entity.
@@ -211,6 +216,12 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListPersonAccessPaths")),
 			connect.WithClientOptions(opts...),
 		),
+		listEffectiveAccessPaths: connect.NewClient[v1.ListEffectiveAccessPathsRequest, v1.ListEffectiveAccessPathsResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceListEffectiveAccessPathsProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListEffectiveAccessPaths")),
+			connect.WithClientOptions(opts...),
+		),
 		listCloudAttackPaths: connect.NewClient[v1.ListCloudAttackPathsRequest, v1.ListCloudAttackPathsResponse](
 			httpClient,
 			baseURL+OrganizationalGraphServiceListCloudAttackPathsProcedure,
@@ -246,23 +257,24 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 
 // organizationalGraphServiceClient implements OrganizationalGraphServiceClient.
 type organizationalGraphServiceClient struct {
-	search                  *connect.Client[v1.SearchRequest, v1.SearchResponse]
-	getEntity               *connect.Client[v1.GetEntityRequest, v1.GetEntityResponse]
-	expand                  *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
-	expandBatch             *connect.Client[v1.ExpandBatchRequest, v1.ExpandBatchResponse]
-	findPaths               *connect.Client[v1.FindPathsRequest, v1.FindPathsResponse]
-	explainAssertion        *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
-	queryFacts              *connect.Client[v1.QueryFactsRequest, v1.QueryFactsResponse]
-	compareExposureCoverage *connect.Client[v1.CompareExposureCoverageRequest, v1.CompareExposureCoverageResponse]
-	listEntities            *connect.Client[v1.ListEntitiesRequest, v1.ListEntitiesResponse]
-	countEntityKinds        *connect.Client[v1.CountEntityKindsRequest, v1.CountEntityKindsResponse]
-	countRelations          *connect.Client[v1.CountRelationsRequest, v1.CountRelationsResponse]
-	listPersonAccessPaths   *connect.Client[v1.ListPersonAccessPathsRequest, v1.ListPersonAccessPathsResponse]
-	listCloudAttackPaths    *connect.Client[v1.ListCloudAttackPathsRequest, v1.ListCloudAttackPathsResponse]
-	listEntityRelations     *connect.Client[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse]
-	getSourceSummary        *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
-	listVendorRegister      *connect.Client[v1.ListVendorRegisterRequest, v1.ListVendorRegisterResponse]
-	listVendorDiscoveries   *connect.Client[v1.ListVendorDiscoveriesRequest, v1.ListVendorDiscoveriesResponse]
+	search                   *connect.Client[v1.SearchRequest, v1.SearchResponse]
+	getEntity                *connect.Client[v1.GetEntityRequest, v1.GetEntityResponse]
+	expand                   *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
+	expandBatch              *connect.Client[v1.ExpandBatchRequest, v1.ExpandBatchResponse]
+	findPaths                *connect.Client[v1.FindPathsRequest, v1.FindPathsResponse]
+	explainAssertion         *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
+	queryFacts               *connect.Client[v1.QueryFactsRequest, v1.QueryFactsResponse]
+	compareExposureCoverage  *connect.Client[v1.CompareExposureCoverageRequest, v1.CompareExposureCoverageResponse]
+	listEntities             *connect.Client[v1.ListEntitiesRequest, v1.ListEntitiesResponse]
+	countEntityKinds         *connect.Client[v1.CountEntityKindsRequest, v1.CountEntityKindsResponse]
+	countRelations           *connect.Client[v1.CountRelationsRequest, v1.CountRelationsResponse]
+	listPersonAccessPaths    *connect.Client[v1.ListPersonAccessPathsRequest, v1.ListPersonAccessPathsResponse]
+	listEffectiveAccessPaths *connect.Client[v1.ListEffectiveAccessPathsRequest, v1.ListEffectiveAccessPathsResponse]
+	listCloudAttackPaths     *connect.Client[v1.ListCloudAttackPathsRequest, v1.ListCloudAttackPathsResponse]
+	listEntityRelations      *connect.Client[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse]
+	getSourceSummary         *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
+	listVendorRegister       *connect.Client[v1.ListVendorRegisterRequest, v1.ListVendorRegisterResponse]
+	listVendorDiscoveries    *connect.Client[v1.ListVendorDiscoveriesRequest, v1.ListVendorDiscoveriesResponse]
 }
 
 // Search calls cerebro.graph.v1.OrganizationalGraphService.Search.
@@ -326,6 +338,12 @@ func (c *organizationalGraphServiceClient) ListPersonAccessPaths(ctx context.Con
 	return c.listPersonAccessPaths.CallUnary(ctx, req)
 }
 
+// ListEffectiveAccessPaths calls
+// cerebro.graph.v1.OrganizationalGraphService.ListEffectiveAccessPaths.
+func (c *organizationalGraphServiceClient) ListEffectiveAccessPaths(ctx context.Context, req *connect.Request[v1.ListEffectiveAccessPathsRequest]) (*connect.Response[v1.ListEffectiveAccessPathsResponse], error) {
+	return c.listEffectiveAccessPaths.CallUnary(ctx, req)
+}
+
 // ListCloudAttackPaths calls cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths.
 func (c *organizationalGraphServiceClient) ListCloudAttackPaths(ctx context.Context, req *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error) {
 	return c.listCloudAttackPaths.CallUnary(ctx, req)
@@ -379,6 +397,8 @@ type OrganizationalGraphServiceHandler interface {
 	CountRelations(context.Context, *connect.Request[v1.CountRelationsRequest]) (*connect.Response[v1.CountRelationsResponse], error)
 	// ListPersonAccessPaths returns bounded person-to-access-target paths from the legacy graph projection.
 	ListPersonAccessPaths(context.Context, *connect.Request[v1.ListPersonAccessPathsRequest]) (*connect.Response[v1.ListPersonAccessPathsResponse], error)
+	// ListEffectiveAccessPaths returns bounded identity-to-capability proofs from the legacy graph projection.
+	ListEffectiveAccessPaths(context.Context, *connect.Request[v1.ListEffectiveAccessPathsRequest]) (*connect.Response[v1.ListEffectiveAccessPathsResponse], error)
 	// ListCloudAttackPaths returns bounded public-exposure-to-privilege paths from the legacy graph projection.
 	ListCloudAttackPaths(context.Context, *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error)
 	// ListEntityRelations returns filtered direct relations for one catalog entity.
@@ -470,6 +490,12 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListPersonAccessPaths")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceListEffectiveAccessPathsHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceListEffectiveAccessPathsProcedure,
+		svc.ListEffectiveAccessPaths,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListEffectiveAccessPaths")),
+		connect.WithHandlerOptions(opts...),
+	)
 	organizationalGraphServiceListCloudAttackPathsHandler := connect.NewUnaryHandler(
 		OrganizationalGraphServiceListCloudAttackPathsProcedure,
 		svc.ListCloudAttackPaths,
@@ -526,6 +552,8 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceCountRelationsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceListPersonAccessPathsProcedure:
 			organizationalGraphServiceListPersonAccessPathsHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceListEffectiveAccessPathsProcedure:
+			organizationalGraphServiceListEffectiveAccessPathsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceListCloudAttackPathsProcedure:
 			organizationalGraphServiceListCloudAttackPathsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceListEntityRelationsProcedure:
@@ -591,6 +619,10 @@ func (UnimplementedOrganizationalGraphServiceHandler) CountRelations(context.Con
 
 func (UnimplementedOrganizationalGraphServiceHandler) ListPersonAccessPaths(context.Context, *connect.Request[v1.ListPersonAccessPathsRequest]) (*connect.Response[v1.ListPersonAccessPathsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) ListEffectiveAccessPaths(context.Context, *connect.Request[v1.ListEffectiveAccessPathsRequest]) (*connect.Response[v1.ListEffectiveAccessPathsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListEffectiveAccessPaths is not implemented"))
 }
 
 func (UnimplementedOrganizationalGraphServiceHandler) ListCloudAttackPaths(context.Context, *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error) {

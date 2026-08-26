@@ -132,6 +132,51 @@ type PersonAccessPathStore interface {
 	ListPersonAccessPaths(context.Context, PersonAccessPathRequest) (*PersonAccessPathResult, error)
 }
 
+type EffectiveAccessPathRequest struct {
+	TenantID         string
+	IdentityURN      string
+	IdentityQuery    string
+	ApplicationURN   string
+	CapabilityURN    string
+	CapabilityID     string
+	Limit            int
+	ExpectedRevision uint64
+}
+
+type EffectiveAccessPathEdge struct {
+	From           CatalogEntity
+	Relation       string
+	To             CatalogEntity
+	SourceID       string
+	RuntimeID      string
+	AttributesJSON string
+}
+
+type EffectiveAccessPath struct {
+	Identity              CatalogEntity
+	Principal             CatalogEntity
+	Mediator              *CatalogEntity
+	AccessTarget          CatalogEntity
+	Entitlement           CatalogEntity
+	Capability            CatalogEntity
+	AssignmentKind        string
+	IdentityRelationChain []string
+	IdentityEdges         []EffectiveAccessPathEdge
+	RelationChain         []string
+	Edges                 []EffectiveAccessPathEdge
+}
+
+type EffectiveAccessPathResult struct {
+	TenantID      string
+	GraphRevision uint64
+	Paths         []EffectiveAccessPath
+	Truncated     bool
+}
+
+type EffectiveAccessPathStore interface {
+	ListEffectiveAccessPaths(context.Context, EffectiveAccessPathRequest) (*EffectiveAccessPathResult, error)
+}
+
 type CloudAttackPathNode struct {
 	URN        string
 	EntityType string

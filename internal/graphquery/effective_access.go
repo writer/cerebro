@@ -324,6 +324,10 @@ func (s *Service) GetEffectiveAccessPaths(ctx context.Context, request Effective
 	if s == nil || s.rawCypher == nil {
 		return nil, ErrRuntimeUnavailable
 	}
+	typedStore, ok := s.rawCypher.(ports.EffectiveAccessPathStore)
+	if !ok || typedStore == nil {
+		return nil, ErrRuntimeUnavailable
+	}
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
 		return nil, fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
@@ -352,23 +356,29 @@ func (s *Service) GetEffectiveAccessPaths(ctx context.Context, request Effective
 		capabilityID = normalizeEffectiveCapabilityID(capability)
 	}
 	limit := normalizeEffectiveAccessPathLimit(request.Limit)
-	rows, err := s.rawCypher.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: effectiveAccessPathQuery,
-		Params: map[string]any{
-			"application_urn": applicationURN,
-			"capability_id":   capabilityID,
-			"capability_urn":  capabilityURN,
-			"identity_query":  identityQuery,
-			"identity_urn":    identityURN,
-			"sample_limit":    int64(limit),
-			"tenant_id":       tenantID,
-		},
-		RowLimit: limit,
+	typed, err := typedStore.ListEffectiveAccessPaths(ctx, ports.EffectiveAccessPathRequest{
+		TenantID:       tenantID,
+		IdentityURN:    identityURN,
+		IdentityQuery:  identityQuery,
+		ApplicationURN: applicationURN,
+		CapabilityURN:  capabilityURN,
+		CapabilityID:   capabilityID,
+		Limit:          limit,
 	})
 	if err != nil {
 		return nil, err
 	}
-	paths := effectiveAccessPathsFromRows(rows)
+	if typed == nil || typed.TenantID != tenantID || len(typed.Paths) > limit {
+		return nil, fmt.Errorf("%w: typed effective access returned an invalid tenant or bound", ErrRuntimeUnavailable)
+	}
+	paths := make([]EffectiveAccessPath, 0, len(typed.Paths))
+	for _, path := range typed.Paths {
+		converted, err := effectiveAccessPathFromTyped(path)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, converted)
+	}
 	return &EffectiveAccessPathResult{
 		TenantID: tenantID,
 		Filters: EffectiveAccessPathFilters{
@@ -431,229 +441,55 @@ func normalizeEffectiveCapabilityID(value string) string {
 	return strings.Trim(value, "_")
 }
 
-const effectiveAccessPathQuery = `MATCH (subject:Entity {tenant_id: $tenant_id})
-WHERE ($identity_urn = '' OR subject.urn = $identity_urn)
-  AND ($identity_query = ''
-       OR toLower(coalesce(subject.urn, '')) CONTAINS $identity_query
-       OR toLower(coalesce(subject.label, '')) CONTAINS $identity_query
-       OR toLower(coalesce(subject.attributes_json, '')) CONTAINS $identity_query)
-WITH subject
-ORDER BY subject.label, subject.urn
-LIMIT $sample_limit
-CALL {
-  WITH subject
-  RETURN subject AS principal, [] AS identity_rels, [subject] AS identity_nodes
-  UNION
-  WITH subject
-  MATCH (principal:Entity {tenant_id: $tenant_id})-[identity_link:RELATION]->(subject)
-  WHERE identity_link.tenant_id = $tenant_id
-    AND identity_link.relation IN ['represents_identity', 'same_actor']
-  RETURN principal, [identity_link] AS identity_rels, [subject, principal] AS identity_nodes
-  UNION
-  WITH subject
-  MATCH (subject)-[identity_link:RELATION]->(principal:Entity {tenant_id: $tenant_id})
-  WHERE identity_link.tenant_id = $tenant_id
-    AND identity_link.relation = 'same_actor'
-  RETURN principal, [identity_link] AS identity_rels, [subject, principal] AS identity_nodes
-  UNION
-  WITH subject
-  MATCH (subject)-[subject_link:RELATION {relation: 'represents_identity'}]->(identity:Entity {tenant_id: $tenant_id})<-[principal_link:RELATION {relation: 'represents_identity'}]-(principal:Entity {tenant_id: $tenant_id})
-  WHERE subject_link.tenant_id = $tenant_id
-    AND principal_link.tenant_id = $tenant_id
-  RETURN principal, [subject_link, principal_link] AS identity_rels, [subject, identity, principal] AS identity_nodes
-  UNION
-  WITH subject
-  MATCH (subject)-[same_actor:RELATION {relation: 'same_actor'}]-(identity:Entity {tenant_id: $tenant_id})<-[principal_link:RELATION {relation: 'represents_identity'}]-(principal:Entity {tenant_id: $tenant_id})
-  WHERE same_actor.tenant_id = $tenant_id
-    AND principal_link.tenant_id = $tenant_id
-  RETURN principal, [same_actor, principal_link] AS identity_rels, [subject, identity, principal] AS identity_nodes
-}
-WITH DISTINCT subject, principal, identity_rels, identity_nodes
-WHERE principal.tenant_id = $tenant_id
-CALL {
-  WITH subject, principal
-  MATCH (principal)-[assignment:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})
-  WHERE assignment.tenant_id = $tenant_id
-    AND target.entity_type ENDS WITH '.application'
-    AND ($application_urn = '' OR target.urn = $application_urn)
-  MATCH (target)-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
-  WHERE grant.tenant_id = $tenant_id
-    AND confers.tenant_id = $tenant_id
-    AND ($capability_urn = '' OR capability.urn = $capability_urn)
-    AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
-  WITH subject, principal, target, entitlement, capability,
-       null AS mediator,
-       'direct_app_assignment' AS assignment_kind,
-       [assignment, grant, confers] AS rels,
-       [principal, target, entitlement, capability] AS path_nodes
-  RETURN subject, principal, mediator, target, entitlement, capability, assignment_kind, rels, path_nodes
-  UNION
-  WITH subject, principal
-  MATCH (principal)-[membership:RELATION {relation: 'member_of'}]->(mediator:Entity {tenant_id: $tenant_id})-[assignment:RELATION {relation: 'assigned_to'}]->(target:Entity {tenant_id: $tenant_id})
-  WHERE membership.tenant_id = $tenant_id
-    AND assignment.tenant_id = $tenant_id
-    AND target.entity_type ENDS WITH '.application'
-    AND ($application_urn = '' OR target.urn = $application_urn)
-  MATCH (target)-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
-  WHERE grant.tenant_id = $tenant_id
-    AND confers.tenant_id = $tenant_id
-    AND ($capability_urn = '' OR capability.urn = $capability_urn)
-    AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
-  WITH subject, principal, mediator, target, entitlement, capability,
-       'group_app_assignment' AS assignment_kind,
-       [membership, assignment, grant, confers] AS rels,
-       [principal, mediator, target, entitlement, capability] AS path_nodes
-  RETURN subject, principal, mediator, target, entitlement, capability, assignment_kind, rels, path_nodes
-  UNION
-  WITH subject, principal
-  MATCH (principal)-[role_assignment:RELATION]->(target:Entity {tenant_id: $tenant_id})-[grant:RELATION {relation: 'grants_entitlement'}]->(entitlement:Entity {tenant_id: $tenant_id})-[confers:RELATION {relation: 'confers_capability'}]->(capability:Entity {tenant_id: $tenant_id})
-  WHERE $application_urn = ''
-    AND role_assignment.tenant_id = $tenant_id
-    AND role_assignment.relation IN ['assigned_to', 'can_admin']
-    AND grant.tenant_id = $tenant_id
-    AND confers.tenant_id = $tenant_id
-    AND (target.entity_type ENDS WITH '.role' OR target.entity_type ENDS WITH '.admin_role')
-    AND ($capability_urn = '' OR capability.urn = $capability_urn)
-    AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
-  WITH subject, principal, target, entitlement, capability,
-       null AS mediator,
-       CASE WHEN role_assignment.relation = 'can_admin' THEN 'admin_role_assignment' ELSE 'role_assignment' END AS assignment_kind,
-       [role_assignment, grant, confers] AS rels,
-       [principal, target, entitlement, capability] AS path_nodes
-  RETURN subject, principal, mediator, target, entitlement, capability, assignment_kind, rels, path_nodes
-}
-RETURN subject.urn AS identity_urn,
-       subject.entity_type AS identity_entity_type,
-       subject.label AS identity_label,
-       principal.urn AS principal_urn,
-       principal.entity_type AS principal_entity_type,
-       principal.label AS principal_label,
-       coalesce(mediator.urn, '') AS mediator_urn,
-       coalesce(mediator.entity_type, '') AS mediator_entity_type,
-       coalesce(mediator.label, '') AS mediator_label,
-       target.urn AS target_urn,
-       target.entity_type AS target_entity_type,
-       target.label AS target_label,
-       entitlement.urn AS entitlement_urn,
-       entitlement.entity_type AS entitlement_entity_type,
-       entitlement.label AS entitlement_label,
-       capability.urn AS capability_urn,
-       capability.entity_type AS capability_entity_type,
-       capability.label AS capability_label,
-       assignment_kind AS assignment_kind,
-       [rel IN identity_rels | rel.relation] AS identity_relation_chain,
-       [idx IN range(0, size(identity_rels) - 1) | {
-         from_urn: identity_nodes[idx].urn,
-         from_entity_type: identity_nodes[idx].entity_type,
-         from_label: identity_nodes[idx].label,
-         relation: identity_rels[idx].relation,
-         to_urn: identity_nodes[idx + 1].urn,
-         to_entity_type: identity_nodes[idx + 1].entity_type,
-         to_label: identity_nodes[idx + 1].label,
-         source_id: coalesce(identity_rels[idx].source_id, ''),
-         runtime_id: coalesce(identity_rels[idx].runtime_id, ''),
-         attributes_json: coalesce(identity_rels[idx].attributes_json, '{}')
-       }] AS identity_edges,
-       [rel IN rels | rel.relation] AS relation_chain,
-       [idx IN range(0, size(rels) - 1) | {
-         from_urn: path_nodes[idx].urn,
-         from_entity_type: path_nodes[idx].entity_type,
-         from_label: path_nodes[idx].label,
-         relation: rels[idx].relation,
-         to_urn: path_nodes[idx + 1].urn,
-         to_entity_type: path_nodes[idx + 1].entity_type,
-         to_label: path_nodes[idx + 1].label,
-         source_id: coalesce(rels[idx].source_id, ''),
-         runtime_id: coalesce(rels[idx].runtime_id, ''),
-         attributes_json: coalesce(rels[idx].attributes_json, '{}')
-       }] AS edges
-ORDER BY identity_label, principal_label, assignment_kind, target_label, entitlement_label, capability_label
-LIMIT $sample_limit`
-
-func effectiveAccessPathsFromRows(rows []ports.CypherRow) []EffectiveAccessPath {
-	paths := make([]EffectiveAccessPath, 0, len(rows))
-	for _, row := range rows {
-		path := EffectiveAccessPath{
-			Identity: GraphEntityRef{
-				URN:        cypherString(row, "identity_urn"),
-				EntityType: cypherString(row, "identity_entity_type"),
-				Label:      cypherString(row, "identity_label"),
-			},
-			Principal: GraphEntityRef{
-				URN:        cypherString(row, "principal_urn"),
-				EntityType: cypherString(row, "principal_entity_type"),
-				Label:      cypherString(row, "principal_label"),
-			},
-			AccessTarget: GraphEntityRef{
-				URN:        cypherString(row, "target_urn"),
-				EntityType: cypherString(row, "target_entity_type"),
-				Label:      cypherString(row, "target_label"),
-			},
-			Entitlement: GraphEntityRef{
-				URN:        cypherString(row, "entitlement_urn"),
-				EntityType: cypherString(row, "entitlement_entity_type"),
-				Label:      cypherString(row, "entitlement_label"),
-			},
-			Capability: GraphEntityRef{
-				URN:        cypherString(row, "capability_urn"),
-				EntityType: cypherString(row, "capability_entity_type"),
-				Label:      cypherString(row, "capability_label"),
-			},
-			AssignmentKind:        strings.TrimSpace(cypherString(row, "assignment_kind")),
-			IdentityRelationChain: cypherStringList(row.Values["identity_relation_chain"]),
-			IdentityEdges:         effectiveAccessPathEdgesFromRow(row, "identity_edges"),
-			RelationChain:         cypherStringList(row.Values["relation_chain"]),
-			Edges:                 effectiveAccessPathEdgesFromRow(row, "edges"),
-		}
-		if mediator := prefixedGraphRef(row, "mediator"); mediator.URN != "" {
-			path.Mediator = &mediator
-		}
-		if path.Identity.URN == "" || path.Principal.URN == "" || path.AccessTarget.URN == "" || path.Entitlement.URN == "" || path.Capability.URN == "" || len(path.RelationChain) == 0 || !effectiveAccessPathEdgesMatch(path.RelationChain, path.Edges) {
-			continue
-		}
-		path.Lineage = path.QualifyLineage()
-		paths = append(paths, path)
+func effectiveAccessPathFromTyped(path ports.EffectiveAccessPath) (EffectiveAccessPath, error) {
+	converted := EffectiveAccessPath{
+		Identity:              catalogGraphRef(path.Identity),
+		Principal:             catalogGraphRef(path.Principal),
+		AccessTarget:          catalogGraphRef(path.AccessTarget),
+		Entitlement:           catalogGraphRef(path.Entitlement),
+		Capability:            catalogGraphRef(path.Capability),
+		AssignmentKind:        strings.TrimSpace(path.AssignmentKind),
+		IdentityRelationChain: append([]string(nil), path.IdentityRelationChain...),
+		RelationChain:         append([]string(nil), path.RelationChain...),
 	}
-	return paths
+	if path.Mediator != nil {
+		mediator := catalogGraphRef(*path.Mediator)
+		converted.Mediator = &mediator
+	}
+	for _, edge := range path.IdentityEdges {
+		converted.IdentityEdges = append(converted.IdentityEdges, effectiveAccessEdgeFromTyped(edge))
+	}
+	for _, edge := range path.Edges {
+		converted.Edges = append(converted.Edges, effectiveAccessEdgeFromTyped(edge))
+	}
+	if converted.Identity.URN == "" || converted.Principal.URN == "" || converted.AccessTarget.URN == "" || converted.Entitlement.URN == "" || converted.Capability.URN == "" || !effectiveAccessPathEdgesMatch(converted.RelationChain, converted.Edges) || len(converted.IdentityRelationChain) != len(converted.IdentityEdges) {
+		return EffectiveAccessPath{}, fmt.Errorf("%w: typed effective access returned an invalid path", ErrRuntimeUnavailable)
+	}
+	converted.Lineage = converted.QualifyLineage()
+	return converted, nil
 }
 
-func effectiveAccessPathEdgesFromRow(row ports.CypherRow, key string) []EffectiveAccessPathEdge {
-	items, ok := row.Values[key].([]any)
-	if !ok || len(items) == 0 {
-		return nil
+func effectiveAccessEdgeFromTyped(edge ports.EffectiveAccessPathEdge) EffectiveAccessPathEdge {
+	attributes := effectiveAccessAttributesJSON(edge.AttributesJSON)
+	converted := EffectiveAccessPathEdge{
+		From:       catalogGraphRef(edge.From),
+		Relation:   strings.TrimSpace(edge.Relation),
+		To:         catalogGraphRef(edge.To),
+		SourceID:   strings.TrimSpace(edge.SourceID),
+		RuntimeID:  strings.TrimSpace(edge.RuntimeID),
+		EventID:    strings.TrimSpace(attributes["event_id"]),
+		At:         strings.TrimSpace(attributes["at"]),
+		Attributes: attributes,
 	}
-	edges := make([]EffectiveAccessPathEdge, 0, len(items))
-	for _, item := range items {
-		attributes := effectiveAccessEdgeAttributes(item)
-		edge := EffectiveAccessPathEdge{
-			From: GraphEntityRef{
-				URN:        cypherMapString(item, "from_urn"),
-				EntityType: cypherMapString(item, "from_entity_type"),
-				Label:      cypherMapString(item, "from_label"),
-			},
-			Relation:   strings.TrimSpace(cypherMapString(item, "relation")),
-			To:         GraphEntityRef{URN: cypherMapString(item, "to_urn"), EntityType: cypherMapString(item, "to_entity_type"), Label: cypherMapString(item, "to_label")},
-			SourceID:   strings.TrimSpace(cypherMapString(item, "source_id")),
-			RuntimeID:  strings.TrimSpace(cypherMapString(item, "runtime_id")),
-			EventID:    strings.TrimSpace(attributes["event_id"]),
-			At:         strings.TrimSpace(attributes["at"]),
-			Attributes: attributes,
-		}
-		delete(edge.Attributes, "event_id")
-		delete(edge.Attributes, "at")
-		if len(edge.Attributes) == 0 {
-			edge.Attributes = nil
-		}
-		if edge.From.URN == "" || edge.Relation == "" || edge.To.URN == "" {
-			continue
-		}
-		edges = append(edges, edge)
+	delete(converted.Attributes, "event_id")
+	delete(converted.Attributes, "at")
+	if len(converted.Attributes) == 0 {
+		converted.Attributes = nil
 	}
-	return edges
+	return converted
 }
 
-func effectiveAccessEdgeAttributes(item any) map[string]string {
-	raw := cypherMapString(item, "attributes_json")
+func effectiveAccessAttributesJSON(raw string) map[string]string {
 	if raw == "" {
 		return map[string]string{}
 	}
