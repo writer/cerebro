@@ -284,40 +284,21 @@ describe("cerebro fixture proxy responses", () => {
     });
   });
 
-  it("updates vendor fixtures through quick actions", () => {
+  it("does not expose unsupported vendor actions for either scope shape", () => {
     withFixtureMode();
     const vendorURN = "urn:cerebro:demo-tenant:vendor:payments-processor";
-    const response = cerebroFixtureResponseFor({
-      method: "POST",
-      path: `grc/vendors/${encodeURIComponent(vendorURN)}/actions`,
-      body: JSON.stringify({ action: "assign_owner", owner: "Finance" }),
-    });
-    expect(response?.status).toBe(200);
-    expect(parseFixture(response!)).toMatchObject({
-      action: "assign_owner",
-      vendor: {
-        name: "Payments Processor",
-        owner: "Finance",
-        owner_state: "assigned",
-      },
-    });
-
-    resetCerebroFixtureStateForTests();
-    const resetResponse = cerebroFixtureResponseFor({
-      method: "GET",
-      path: "grc/vendors",
-      searchParams: new URLSearchParams("q=payments"),
-    });
-    const resetPayload = parseFixture(resetResponse!) as {
-      vendors: Array<{ name: string; owner?: string; owner_state: string }>;
-    };
-    expect(resetPayload).toMatchObject({
-      vendors: [expect.objectContaining({
-        name: "Payments Processor",
-        owner_state: "missing",
-      })],
-    });
-    expect(resetPayload.vendors[0].owner).toBeUndefined();
+    for (const searchParams of [
+      new URLSearchParams("tenant_id=demo-tenant"),
+      new URLSearchParams("tenant_id=demo-tenant&workspace_id=workspace-a"),
+    ]) {
+      const response = cerebroFixtureResponseFor({
+        method: "POST",
+        path: `grc/vendors/${encodeURIComponent(vendorURN)}/actions`,
+        searchParams,
+        body: JSON.stringify({ action: "assign_owner", owner: "Finance" }),
+      });
+      expect(response?.status).toBe(404);
+    }
   });
 
   it("returns and mutates unified questionnaire run fixtures", () => {
