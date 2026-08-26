@@ -3608,7 +3608,7 @@ mod tests {
     }
 
     #[test]
-    fn standard_source_plan_index_matches_the_compiled_acunetix_plan() {
+    fn standard_source_plan_index_matches_compiled_authoritative_plans() {
         let root = repository_root();
         let index =
             fs::read_to_string(root.join("internal/sourceregistry/standard_source_plan_index.txt"))
@@ -3621,35 +3621,39 @@ mod tests {
                 (source_id, families.split(',').collect::<Vec<_>>())
             })
             .collect::<BTreeMap<_, _>>();
-        assert_eq!(entries.keys().copied().collect::<Vec<_>>(), ["acunetix"]);
+        assert_eq!(
+            entries.keys().copied().collect::<Vec<_>>(),
+            ["acunetix", "deepseek"]
+        );
 
         let catalog = SourceCatalog::load(
             root.join("internal/connectorcatalog/catalog"),
             root.join("sources"),
         )
         .unwrap();
-        let source = catalog.get("acunetix").unwrap();
-        assert_eq!(source.authority(), CollectionAuthority::Authoritative);
-        assert!(
-            source
-                .families()
-                .iter()
-                .all(CompiledFamily::is_authoritative)
-        );
-        assert!(
-            source
-                .families()
-                .iter()
-                .all(CompiledFamily::is_projection_authoritative)
-        );
-        assert_eq!(
-            entries["acunetix"],
-            source
+        for (source_id, indexed_families) in entries {
+            let source = catalog.get(source_id).unwrap();
+            assert_eq!(source.authority(), CollectionAuthority::Authoritative);
+            assert!(
+                source
+                    .families()
+                    .iter()
+                    .all(CompiledFamily::is_authoritative)
+            );
+            assert!(
+                source
+                    .families()
+                    .iter()
+                    .all(CompiledFamily::is_projection_authoritative)
+            );
+            let mut compiled_families = source
                 .families()
                 .iter()
                 .map(CompiledFamily::id)
-                .collect::<Vec<_>>()
-        );
+                .collect::<Vec<_>>();
+            compiled_families.sort_unstable();
+            assert_eq!(indexed_families, compiled_families);
+        }
     }
 
     #[test]

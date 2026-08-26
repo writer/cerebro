@@ -266,7 +266,7 @@ func Builtin() (*sourcecdk.Registry, error) {
 	return BuiltinWithCatalogOverrides(nil)
 }
 
-// BuiltinWithCatalogOverrides applies verified declarative catalog bytes to supported runtimes.
+// BuiltinWithCatalogOverrides applies verified declarative catalog bytes to supported source metadata.
 func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Registry, error) {
 	for sourceID := range overrides {
 		if sourceID != "deepseek" {
@@ -293,7 +293,7 @@ func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Regist
 	}
 	metadataOnlyIDs := append(slices.Clone(workerCatalogSourceIDs), slices.Sorted(maps.Keys(standardPlans))...)
 	for _, sourceID := range metadataOnlyIDs {
-		source, err := newMetadataOnlyCatalogSource(sourceID)
+		source, err := newMetadataOnlyCatalogSource(sourceID, overrides[sourceID])
 		if err != nil {
 			return nil, fmt.Errorf("load %s metadata-only source: %w", sourceID, err)
 		}
@@ -309,14 +309,10 @@ func BuiltinWithCatalogOverrides(overrides map[string][]byte) (*sourcecdk.Regist
 		if _, ok := registered[sourceID]; ok {
 			continue
 		}
-		var source sourcecdk.Source
 		if entry.Report.Verdict != connectordefinitions.SupportVerdictSupported {
 			continue
-		} else if catalogBytes := overrides[sourceID]; len(catalogBytes) != 0 {
-			source, err = catalogruntimesource.NewWithCatalog(entry, catalogBytes)
-		} else {
-			source, err = catalogruntimesource.New(entry)
 		}
+		source, err := catalogruntimesource.New(entry)
 		if err != nil {
 			return nil, fmt.Errorf("load catalog source %s: %w", sourceID, err)
 		}

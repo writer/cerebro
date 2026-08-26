@@ -2,7 +2,7 @@
   "schema_version": "cerebro.rustcarve.migration-ir/v2",
   "tool_revision": "cerebro.rustcarve/v2",
   "ir_version": "standard-source/v2",
-  "digest_sha256": "sha256:ed0ddc3c30f34c0beee5c5c0c9f3adb85f898d25898ab0615563e0f3e77f13ab",
+  "digest_sha256": "sha256:d8b0c76b2a0aa9fc6ab8cc64e7be40fb4318f5500f25c2b9c40de40cba46ab8f",
   "behavior_kind": "standard_source",
   "subject": {
     "id": "acunetix",
@@ -27,12 +27,12 @@
       {
         "path": "internal/sourceregistry/registry.go",
         "role": "go_source",
-        "digest_sha256": "sha256:1162de0ba5488bce6e75427ba0bb9a9bdf6b9c9b0c04447838d7110c1a894094"
+        "digest_sha256": "sha256:fd1296317c811dcf2825cdc15b6fece27d7ce6e047e81edf3e8526c412e9c160"
       },
       {
         "path": "internal/sourceregistry/standard_source_plan_index.go",
         "role": "go_source",
-        "digest_sha256": "sha256:6da2018b3f3fbd088934e7ba864c93af8d5fcb74ccf4edc8a7628e5b69d9367c"
+        "digest_sha256": "sha256:0647fa96b070d493d61925c118c7ecd09deddceee91c9c664c5c6657a2fe2a76"
       }
     ],
     "imports": [
@@ -87,7 +87,6 @@
       "append",
       "catalog.Spec.GetId",
       "catalogruntimesource.New",
-      "catalogruntimesource.NewWithCatalog",
       "connectorcatalog.BuiltinRuntime",
       "fmt.Errorf",
       "len",
@@ -107,7 +106,7 @@
       "sourcecdk.NewRegistry",
       "sourcecdk.WrapSourceError"
     ],
-    "digest_sha256": "sha256:ce2a5bbc289699c5a3b7476661ceaacb4144d36e2af671eb58c72716ed69929d"
+    "digest_sha256": "sha256:7f84fbcfd77f656c28cb600da24c94327d41c1522f12a4a2a7cf42f75e9aa587"
   },
   "evidence": {
     "fixtures": [
@@ -148,7 +147,7 @@
   "standard_source": {
     "catalog_path": "sources/acunetix/catalog.yaml",
     "plan_index_path": "internal/sourceregistry/standard_source_plan_index.txt",
-    "plan_index_digest_sha256": "sha256:fd77e89792f4f49aad0a2d846f7bee60015400e6c1f66a24d245277a216ca761",
+    "plan_index_digest_sha256": "sha256:4ddfd8a7fc2f42898318c0c093ab72519480b79387ea48f94fcc39014033d719",
     "registration_shape": "compiled_plan_fail_closed_metadata",
     "execution_owner": "compiled_rust_source_plan",
     "fail_closed": true,

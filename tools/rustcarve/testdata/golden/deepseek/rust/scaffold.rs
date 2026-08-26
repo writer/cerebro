@@ -7,9 +7,9 @@ pub mod contracts;
 mod parity_test;
 
 pub const RUSTCARVE_TOOL_REVISION: &str = "cerebro.rustcarve/v2";
-pub const MIGRATION_IR_VERSION: &str = "provider-source/v2";
+pub const MIGRATION_IR_VERSION: &str = "standard-source/v2";
 pub const MIGRATION_IR_DIGEST_SHA256: &str =
-    "sha256:82c2d471afa88404539b9411c9088bb2ef7abb2e09ed802d1d808d3c95f319c7";
+    "sha256:9dbb4f6e73c89af8ee2c071178ac42a8a04a0c94f9dcc0e44e93fa4f2afdd026";
 pub const SUBJECT_ID: &str = "deepseek";
 pub const RUST_IMPLEMENTATION_REVISION: &str = "5ff8021ab1a2d971e772fd6bf7f3275ff596aa6b";
 
