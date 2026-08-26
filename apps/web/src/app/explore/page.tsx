@@ -1,13 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import AskAboutLink from "@/components/ask/AskAboutLink";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { DataStateBanner, EmptyBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
-import { useApiKey } from "@/components/providers";
+import { useApiKey, useCurrentUser } from "@/components/providers";
 import { GRCFinding, GRCGraph, shortEntity } from "@/lib/grc";
-import { fetchCachedGRC, grcPath, grcResponseErrorMessage, grcTimeoutMessage, GRC_QUERY_TIMEOUT_MS, organizationalGraphNeighborhoodPath, useDebouncedValue, useGRCQuery } from "@/lib/grc-client";
+import {
+  fetchCachedGRC,
+  grcClientScopeKey,
+  grcPath,
+  grcResponseErrorMessage,
+  grcTimeoutMessage,
+  GRC_QUERY_TIMEOUT_MS,
+  organizationalGraphNeighborhoodPath,
+  useDebouncedValue,
+  useGRCQuery,
+  type GRCQueryScope,
+} from "@/lib/grc-client";
 import {
   ExploreGraphState,
   emptyExploreState,
@@ -19,6 +30,7 @@ import {
   removeExploreNode,
   toGRCGraph,
 } from "@/lib/graph-explore";
+import { grcScopeQuery, useGRCScopeQueryState } from "@/lib/grc-scope";
 import { useQueryParamState } from "@/lib/query-params";
 import { metricValueForState, runtimeStateForError, type RuntimeState } from "@/lib/runtime-state";
 
@@ -30,8 +42,11 @@ const EXPLORE_NODE_LIMIT = 200;
 const inputClass = "mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400/30";
 const labelClass = "text-[11px] font-medium uppercase tracking-wider text-slate-500";
 
-const neighborhoodPath = (urn: string) =>
-  organizationalGraphNeighborhoodPath(urn, { limit: NEIGHBORS_PER_EXPAND });
+const neighborhoodPath = (urn: string, tenantID = "", workspaceID = "") =>
+  organizationalGraphNeighborhoodPath(urn, {
+    ...grcScopeQuery({ tenantID, workspaceID }),
+    limit: NEIGHBORS_PER_EXPAND,
+  });
 
 const isLikelyEntityURN = (value: string) => /^urn:[^\s:]+:.+/.test(value.trim());
 
@@ -40,12 +55,33 @@ const graphNodeURNs = (graph: GRCGraph | undefined) =>
 
 export default function ExplorePage() {
   const { apiKey } = useApiKey();
+  const { actor, loading: userLoading } = useCurrentUser();
+  const { tenantID, workspaceID } = useGRCScopeQueryState();
+  const normalizedTenantID = tenantID.trim();
+  const normalizedWorkspaceID = workspaceID.trim();
+  const invalidWorkspaceScope = Boolean(normalizedWorkspaceID && !normalizedTenantID);
+  const scope = useMemo<GRCQueryScope>(() => ({
+    actor,
+    tenantID: normalizedTenantID,
+    workspaceID: normalizedWorkspaceID,
+  }), [actor, normalizedTenantID, normalizedWorkspaceID]);
+  const activeScopeKey = useMemo(() => grcClientScopeKey(scope, apiKey), [apiKey, scope]);
+  const activeScopeKeyRef = useRef(activeScopeKey);
+  useLayoutEffect(() => {
+    activeScopeKeyRef.current = activeScopeKey;
+  }, [activeScopeKey]);
   const [rootURN, setRootURN] = useQueryParamState("root_urn");
   const debouncedRootURN = useDebouncedValue(rootURN.trim());
   const needsFallbackRoot = debouncedRootURN === "";
 
   const fallbackFindings = useGRCQuery<FindingsResponse>(
-    needsFallbackRoot ? grcPath("/grc/findings", { status: "open", limit: 10 }) : null,
+    needsFallbackRoot && !invalidWorkspaceScope
+      ? grcPath("/grc/findings", {
+        ...grcScopeQuery({ tenantID: normalizedTenantID, workspaceID: normalizedWorkspaceID }),
+        status: "open",
+        limit: 10,
+      })
+      : null,
   );
   const fallbackRoot = fallbackFindings.data?.findings?.find((finding) => finding.entity || finding.resource_urns?.[0])?.entity ?? fallbackFindings.data?.findings?.find((finding) => finding.resource_urns?.[0])?.resource_urns?.[0] ?? "";
   const seedValidation = debouncedRootURN && !isLikelyEntityURN(debouncedRootURN) ? "Use a full entity URN, for example urn:cerebro:tenant:asset:id." : "";
@@ -59,6 +95,7 @@ export default function ExplorePage() {
   const [recentlyDiscoveredURNs, setRecentlyDiscoveredURNs] = useState<Set<string>>(new Set());
   const [reloadToken, setReloadToken] = useState(0);
   const [lastGraphLoadedAt, setLastGraphLoadedAt] = useState<number | null>(null);
+  const [loadedScopeKey, setLoadedScopeKey] = useState("");
   const loadKeyRef = useRef("");
 
   const seedSuggestions = useMemo(() => {
@@ -78,6 +115,9 @@ export default function ExplorePage() {
 
   const clearSeed = useCallback(() => {
     setState(null);
+    setSeedLoading(false);
+    setExpandingURN(null);
+    setLoadedScopeKey("");
     setError(null);
     setExpandNotice(null);
     setRecentlyDiscoveredURNs(new Set());
@@ -89,7 +129,7 @@ export default function ExplorePage() {
     signal?.addEventListener("abort", abort, { once: true });
     const timer = window.setTimeout(() => controller.abort(), GRC_QUERY_TIMEOUT_MS);
     try {
-      return await fetchCachedGRC<GRCGraph>(path, apiKey, force, { signal: controller.signal });
+      return await fetchCachedGRC<GRCGraph>(path, apiKey, force, { signal: controller.signal }, scope);
     } catch (err) {
       if (controller.signal.aborted && !signal?.aborted) {
         throw new Error(grcTimeoutMessage(path, GRC_QUERY_TIMEOUT_MS));
@@ -99,14 +139,15 @@ export default function ExplorePage() {
       signal?.removeEventListener("abort", abort);
       window.clearTimeout(timer);
     }
-  }, [apiKey]);
+  }, [apiKey, scope]);
 
   const loadSeed = useCallback(
     async (seed: string, force: boolean, signal: AbortSignal, isCancelled: () => boolean) => {
       setSeedLoading(true);
+      setExpandingURN(null);
       setError(null);
       setExpandNotice(null);
-      const path = neighborhoodPath(seed);
+      const path = neighborhoodPath(seed, normalizedTenantID, normalizedWorkspaceID);
       try {
         const response = await fetchNeighborhood(path, force, signal);
         if (isCancelled()) return;
@@ -116,6 +157,7 @@ export default function ExplorePage() {
           return;
         }
         setState(mergeNeighborhood(emptyExploreState(seed), seed, response.data));
+        setLoadedScopeKey(activeScopeKey);
         setLastGraphLoadedAt(Date.now());
         setRecentlyDiscoveredURNs(new Set(graphNodeURNs(response.data)));
       } catch (err) {
@@ -126,7 +168,7 @@ export default function ExplorePage() {
         if (!isCancelled()) setSeedLoading(false);
       }
     },
-    [fetchNeighborhood],
+    [activeScopeKey, fetchNeighborhood, normalizedTenantID, normalizedWorkspaceID],
   );
 
   useEffect(() => {
@@ -134,12 +176,17 @@ export default function ExplorePage() {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       if (cancelled) return;
+      if (userLoading || !actor.trim() || invalidWorkspaceScope) {
+        loadKeyRef.current = "";
+        clearSeed();
+        return;
+      }
       if (selectedSeed === "") {
         loadKeyRef.current = "";
         clearSeed();
         return;
       }
-      const loadKey = `${selectedSeed}|${reloadToken}`;
+      const loadKey = `${activeScopeKey}|${selectedSeed}|${reloadToken}`;
       if (loadKey === loadKeyRef.current) return;
       loadKeyRef.current = loadKey;
       void loadSeed(selectedSeed, reloadToken > 0, controller.signal, () => cancelled);
@@ -149,27 +196,31 @@ export default function ExplorePage() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [clearSeed, loadSeed, reloadToken, selectedSeed]);
+  }, [activeScopeKey, actor, clearSeed, invalidWorkspaceScope, loadSeed, reloadToken, selectedSeed, userLoading]);
+
+  const scopedState = loadedScopeKey !== "" && loadedScopeKey === activeScopeKey ? state : null;
 
   const expand = useCallback(async (urn: string) => {
     const target = urn.trim();
     if (target === "") return;
-    if (state && isExploreNodeExpanded(state, target)) return;
+    if (scopedState && isExploreNodeExpanded(scopedState, target)) return;
+    const requestScopeKey = activeScopeKey;
     setExpandingURN(target);
     setError(null);
     setExpandNotice(null);
-    const path = neighborhoodPath(target);
+    const path = neighborhoodPath(target, normalizedTenantID, normalizedWorkspaceID);
     const controller = new AbortController();
     try {
       const response = await fetchNeighborhood(path, false, controller.signal);
+      if (activeScopeKeyRef.current !== requestScopeKey) return;
       if (!response.ok) {
         setError(grcResponseErrorMessage(path, response.status, response.data));
         return;
       }
-      if (!state) return;
-      const beforeNodes = exploreNodeCount(state);
-      const beforeRelations = exploreRelationCount(state);
-      const next = mergeNeighborhood(state, target, response.data);
+      if (!scopedState) return;
+      const beforeNodes = exploreNodeCount(scopedState);
+      const beforeRelations = exploreRelationCount(scopedState);
+      const next = mergeNeighborhood(scopedState, target, response.data);
       const addedNodes = Math.max(0, exploreNodeCount(next) - beforeNodes);
       const addedRelations = Math.max(0, exploreRelationCount(next) - beforeRelations);
       const discovered = new Set([target, ...graphNodeURNs(response.data)]);
@@ -183,11 +234,14 @@ export default function ExplorePage() {
           : `Expanded ${shortEntity(target)}: no new neighbors found.`,
       });
     } catch (err) {
+      if (activeScopeKeyRef.current !== requestScopeKey) return;
       setError(err instanceof Error ? err.message : "Unable to expand node.");
     } finally {
-      setExpandingURN(null);
+      if (activeScopeKeyRef.current === requestScopeKey) {
+        setExpandingURN(null);
+      }
     }
-  }, [fetchNeighborhood, state]);
+  }, [activeScopeKey, fetchNeighborhood, normalizedTenantID, normalizedWorkspaceID, scopedState]);
 
   const removeNode = useCallback((urn: string) => {
     setState((current) => (current ? removeExploreNode(current, urn) : current));
@@ -204,22 +258,22 @@ export default function ExplorePage() {
 
   const retryExplore = useCallback(() => {
     resetExploration();
-    if (!selectedSeed) {
+    if (!selectedSeed && !invalidWorkspaceScope && !userLoading && actor.trim()) {
       void fallbackFindings.reload();
     }
-  }, [fallbackFindings, resetExploration, selectedSeed]);
+  }, [actor, fallbackFindings, invalidWorkspaceScope, resetExploration, selectedSeed, userLoading]);
 
-  const graph = useMemo(() => (state ? toGRCGraph(state) : undefined), [state]);
-  const expandedURNs = useMemo(() => new Set(state ? Object.keys(state.expanded) : []), [state]);
+  const graph = useMemo(() => (scopedState ? toGRCGraph(scopedState) : undefined), [scopedState]);
+  const expandedURNs = useMemo(() => new Set(scopedState ? Object.keys(scopedState.expanded) : []), [scopedState]);
   const pinnedURNs = useMemo(() => {
     const next = new Set(expandedURNs);
     recentlyDiscoveredURNs.forEach((urn) => next.add(urn));
     if (selectedSeed) next.add(selectedSeed);
     return next;
   }, [expandedURNs, recentlyDiscoveredURNs, selectedSeed]);
-  const nodeCount = state ? exploreNodeCount(state) : 0;
-  const relationCount = state ? exploreRelationCount(state) : 0;
-  const expandedCount = state ? exploreExpandedCount(state) : 0;
+  const nodeCount = scopedState ? exploreNodeCount(scopedState) : 0;
+  const relationCount = scopedState ? exploreRelationCount(scopedState) : 0;
+  const expandedCount = scopedState ? exploreExpandedCount(scopedState) : 0;
   const visibleNodeCount = Math.min(nodeCount, EXPLORE_NODE_LIMIT);
   const hiddenNodeCount = Math.max(0, nodeCount - visibleNodeCount);
 

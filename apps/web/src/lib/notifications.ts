@@ -13,6 +13,33 @@ export type AppNotification = {
   href: string;
 };
 
+export type NotificationScope = {
+  actor: string;
+  apiKey?: string;
+  tenantID?: string;
+  workspaceID?: string;
+};
+
+const notificationScopeHash = (seed: number, value: string) => {
+  let hash = seed >>> 0;
+  for (const character of value) {
+    hash = Math.imul(hash ^ (character.codePointAt(0) ?? 0), 16777619);
+  }
+  return hash >>> 0;
+};
+
+export const notificationReadStorageKey = (scope: NotificationScope) => {
+  const serialized = JSON.stringify([
+    scope.actor.trim(),
+    scope.apiKey?.trim() ?? "",
+    scope.tenantID?.trim() ?? "",
+    scope.workspaceID?.trim() ?? "",
+  ]);
+  const primary = notificationScopeHash(2166136261, serialized);
+  const secondary = notificationScopeHash(2654435761, serialized);
+  return `cerebro.notifications.read.${primary.toString(16).padStart(8, "0")}${secondary.toString(16).padStart(8, "0")}`;
+};
+
 const MAX_FINDING_NOTIFICATIONS = 8;
 
 const isOverdue = (finding: GRCFinding) => (finding.sla_status ?? "").toLowerCase() === "overdue";
