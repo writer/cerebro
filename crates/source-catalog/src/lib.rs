@@ -3576,6 +3576,7 @@ mod tests {
             "duo",
             "fivetran",
             "jira",
+            "jumpcloud",
             "langchain",
             "openai",
         ] {
