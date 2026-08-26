@@ -77,7 +77,7 @@ describe("StatusPanel cache behavior", () => {
     expect(probes.find((probe) => probe.key === "healthz")?.path).toBe("/api/cerebro/healthz");
     expect(probes.find((probe) => probe.key === "health")?.path).toBe("/api/cerebro/health");
     expect(probes.find((probe) => probe.key === "source-runtime")?.path)
-      .toBe("/api/cerebro/v1/source-runtimes/health?limit=1&tenant_id=tenant-a&workspace_id=workspace-a");
+      .toBe("/api/cerebro/v1/source-runtimes/health?limit=1&tenant_id=tenant-a");
     expect(probes.find((probe) => probe.key === "inventory")?.path)
       .toBe("/api/cerebro/grc/inventory/categories?limit=1&tenant_id=tenant-a&workspace_id=workspace-a");
     expect(probes.find((probe) => probe.key === "vendors")?.path)

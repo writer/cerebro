@@ -97,6 +97,17 @@ describe("cerebro proxy cache headers", () => {
     expect(headers.get("x-cerebro-workspace")).toBe("workspace-a");
   });
 
+  it("forwards workspace scope only to the workspace-aware connector coverage route", () => {
+    const request = new NextRequest(
+      "http://localhost/api/cerebro/connectors/coverage?tenant_id=tenant-a&workspace_id=workspace-a",
+    );
+
+    const headers = new Headers(authHeadersFor(request, "connectors/coverage"));
+    expect(headers.get("x-cerebro-tenant")).toBe("tenant-a");
+    expect(headers.get("x-cerebro-workspace")).toBe("workspace-a");
+    expect(() => authHeadersFor(request, "v1/source-runtimes/health")).toThrow("Workspace scope is not supported");
+  });
+
   it.each([
     "http://localhost/api/cerebro/grc/dashboard?workspace_id=workspace-a",
     "http://localhost/api/cerebro/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-a&workspace_id=workspace-a",
