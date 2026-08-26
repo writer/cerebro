@@ -5511,7 +5511,22 @@ mod tests {
         assert_eq!(config.get("family").map(String::as_str), Some("resources"));
     }
 
-    struct UnavailableGraph;
+    #[derive(Default)]
+    struct UnavailableGraph {
+        reads: Option<Arc<AtomicUsize>>,
+    }
+
+    impl UnavailableGraph {
+        fn counting(reads: Arc<AtomicUsize>) -> Self {
+            Self { reads: Some(reads) }
+        }
+
+        fn record_read(&self) {
+            if let Some(reads) = &self.reads {
+                reads.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
 
     struct FixtureSourceRuntimeSync;
 
@@ -5661,10 +5676,12 @@ mod tests {
     #[async_trait]
     impl AgentGraph for UnavailableGraph {
         async fn health(&self) -> Result<(), ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
         async fn revision(&self, _tenant_id: &TenantId) -> Result<u64, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5675,6 +5692,7 @@ mod tests {
             _kinds: &[String],
             _limit: usize,
         ) -> Result<Vec<ContextEntity>, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5683,6 +5701,7 @@ mod tests {
             _tenant_id: &TenantId,
             _entity_id: &EntityId,
         ) -> Result<ContextEntity, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5691,6 +5710,7 @@ mod tests {
             _tenant_id: &TenantId,
             _key: &str,
         ) -> Result<ContextEntity, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5701,6 +5721,7 @@ mod tests {
             _depth: usize,
             _limit: usize,
         ) -> Result<Neighborhood, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5712,6 +5733,7 @@ mod tests {
             _max_depth: usize,
             _limit: usize,
         ) -> Result<Vec<GraphPath>, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5720,6 +5742,7 @@ mod tests {
             _tenant_id: &TenantId,
             _assertion_id: &AssertionId,
         ) -> Result<ContextEdge, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5728,6 +5751,7 @@ mod tests {
             _tenant_id: &TenantId,
             _query: &cerebro_agent_context::FactQuery,
         ) -> Result<cerebro_agent_context::QueryResult, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
     }
@@ -6277,8 +6301,9 @@ mod tests {
     #[tokio::test]
     async fn product_neighborhood_route_rejects_scope_mismatch_before_graph_read() {
         let root_urn = "urn:cerebro:tenant-demo:asset:one";
+        let graph_reads = Arc::new(AtomicUsize::new(0));
         let app = router_with_backend(
-            Arc::new(UnavailableGraph),
+            Arc::new(UnavailableGraph::counting(graph_reads.clone())),
             None,
             None,
             PlatformStores::default(),
@@ -6304,9 +6329,16 @@ mod tests {
                 ))
                 .body(Body::empty())
                 .unwrap(),
+            authenticated(Request::builder(), "tenant-demo")
+                .uri(format!(
+                    "/platform/graph/neighborhood?root_urn={root_urn}&tenant_id=tenant-other&workspace_id=workspace-a"
+                ))
+                .body(Body::empty())
+                .unwrap(),
         ] {
             let response = app.clone().oneshot(request).await.unwrap();
             assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(graph_reads.load(Ordering::Relaxed), 0);
         }
 
         let matching_tenant = app
@@ -6321,6 +6353,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(matching_tenant.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(graph_reads.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test]
@@ -6380,7 +6413,7 @@ mod tests {
     #[tokio::test]
     async fn product_neighborhood_route_surfaces_backend_failure_as_unavailable() {
         let app = router_with_backend(
-            Arc::new(UnavailableGraph),
+            Arc::new(UnavailableGraph::default()),
             None,
             None,
             PlatformStores::default(),
@@ -7562,7 +7595,7 @@ mod tests {
     #[tokio::test]
     async fn readiness_fails_without_breaking_process_liveness() {
         let app = router_with_backend(
-            Arc::new(UnavailableGraph),
+            Arc::new(UnavailableGraph::default()),
             None,
             None,
             PlatformStores::default(),
