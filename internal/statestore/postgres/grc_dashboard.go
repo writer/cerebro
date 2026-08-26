@@ -130,7 +130,7 @@ func grcDashboardAggregateQuery(request ports.GRCDashboardAggregateRequest) (str
 	effectiveSeverity := findingEffectiveSeveritySQL()
 	query := `
 WITH finding_scope AS (
-  SELECT id, status, ` + effectiveSeverity + ` AS effective_severity, due_at, assignee
+  SELECT id, runtime_id, status, ` + effectiveSeverity + ` AS effective_severity, due_at, assignee
   FROM findings
   WHERE ` + whereFindings + `
 ),

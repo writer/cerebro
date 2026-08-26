@@ -24,7 +24,7 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 	}
 	for _, fragment := range []string{
 		"WITH finding_scope AS",
-		"SELECT id, status,",
+		"SELECT id, runtime_id, status,",
 		"COUNT(*) FILTER (WHERE LOWER(status) = 'open') AS open_findings",
 		"JOIN finding_control_refs AS ref ON ref.finding_id = finding.id",
 		"jsonb_build_object('framework_name', framework_name, 'control_id', control_id)",
