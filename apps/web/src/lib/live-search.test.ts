@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiKeyProvider } from "@/components/providers";
+import { ApiKeyProvider, CurrentUserProvider } from "@/components/providers";
 
 import {
   LIVE_SEARCH_TIMEOUT_MS,
@@ -43,13 +43,14 @@ describe("live search scope", () => {
   it("partitions shared state by API key, tenant, and workspace", () => {
     const scope = { tenantID: "tenant-a", workspaceID: "workspace-a" };
     const keys = new Set([
-      liveSearchScopeKey("key-a", scope),
-      liveSearchScopeKey("key-a", { ...scope, workspaceID: "workspace-b" }),
-      liveSearchScopeKey("key-a", { ...scope, tenantID: "tenant-b" }),
-      liveSearchScopeKey("key-b", scope),
+      liveSearchScopeKey("key-a", "actor-a", scope),
+      liveSearchScopeKey("key-a", "actor-a", { ...scope, workspaceID: "workspace-b" }),
+      liveSearchScopeKey("key-a", "actor-a", { ...scope, tenantID: "tenant-b" }),
+      liveSearchScopeKey("key-b", "actor-a", scope),
+      liveSearchScopeKey("key-a", "actor-b", scope),
     ]);
 
-    expect(keys).toHaveLength(4);
+    expect(keys).toHaveLength(5);
   });
 
   it("does not permit a workspace selector without an explicit tenant", () => {
@@ -68,10 +69,28 @@ describe("live search scope requests", () => {
     reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
     window.localStorage.setItem("cerebro.apiKey", "live-search-test-key");
     window.__cerebroLiveSearchDashboard = undefined;
-    fetchMock = vi.fn(async () => new Response("{}", {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }));
+    fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/me") {
+        return new Response(JSON.stringify({
+          authenticated: true,
+          user: {
+            actorId: "actor-a",
+            actorLabel: "Actor A",
+            confidence: "trusted-proxy",
+            displayName: "Actor A",
+            initials: "AA",
+            source: "headers",
+          },
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -95,26 +114,34 @@ describe("live search scope requests", () => {
             hasMemory: true,
             searchParams,
           } as ComponentProps<typeof NuqsTestingAdapter>,
-          createElement(ApiKeyProvider, null, createElement(LiveSearchHarness)),
+          createElement(
+            ApiKeyProvider,
+            null,
+            createElement(CurrentUserProvider, null, createElement(LiveSearchHarness)),
+          ),
         ),
       );
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
     });
   };
 
   it("does not issue a read for an orphan workspace", async () => {
     await renderSearch("?workspace_id=workspace-a");
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/grc/dashboard"))).toHaveLength(0);
   });
 
   it("issues the scoped dashboard read for a tenant and workspace", async () => {
     await renderSearch("?tenant_id=tenant-a&workspace_id=workspace-a");
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+    const dashboardCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes("/grc/dashboard"));
+    expect(dashboardCalls).toHaveLength(1);
+    expect(dashboardCalls[0]?.[0]).toBe(
       "/api/cerebro/grc/dashboard?limit=100&tenant_id=tenant-a&workspace_id=workspace-a&view=summary",
     );
   });

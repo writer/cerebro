@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { useApiKey } from "@/components/providers";
+import { useApiKey, useCurrentUser } from "@/components/providers";
 import { fetchCachedGRC, grcDashboardPath, grcTimeoutMessage } from "@/lib/grc-client";
 import { grcScopeQuery, type GRCScope, useGRCScopeQueryState } from "@/lib/grc-scope";
 import {
@@ -82,8 +82,8 @@ export const LIVE_SEARCH_UNAVAILABLE_COPY = "Page actions are ready. Live search
 export const liveSearchDashboardPath = (scope: GRCScope) =>
   grcDashboardPath({ limit: 100, ...grcScopeQuery(scope) });
 
-export const liveSearchScopeKey = (apiKey: string | undefined, scope: GRCScope) =>
-  JSON.stringify([apiKey ?? "", scope.tenantID.trim(), scope.workspaceID.trim()]);
+export const liveSearchScopeKey = (apiKey: string | undefined, actor: string, scope: GRCScope) =>
+  JSON.stringify([apiKey ?? "", actor.trim(), scope.tenantID.trim(), scope.workspaceID.trim()]);
 
 export const liveSearchScopeIsReady = (scope: GRCScope) =>
   !scope.workspaceID.trim() || Boolean(scope.tenantID.trim());
@@ -312,12 +312,17 @@ const errorMessage = (data: unknown, status: number) =>
 
 export function useLiveSearchCommands(query: string, isOpen: boolean) {
   const { apiKey } = useApiKey();
+  const { actor, loading: currentUserLoading } = useCurrentUser();
   const { tenantID, workspaceID } = useGRCScopeQueryState();
   const scope = useMemo(() => ({ tenantID: tenantID.trim(), workspaceID: workspaceID.trim() }), [tenantID, workspaceID]);
-  const scopeKey = useMemo(() => liveSearchScopeKey(apiKey, scope), [apiKey, scope]);
+  const scopeKey = useMemo(() => liveSearchScopeKey(apiKey, actor, scope), [actor, apiKey, scope]);
   const dashboardPath = useMemo(() => liveSearchDashboardPath(scope), [scope]);
   const trimmedQuery = query.trim();
-  const shouldSearch = isOpen && trimmedQuery.length >= 2 && liveSearchScopeIsReady(scope);
+  const shouldSearch = isOpen
+    && trimmedQuery.length >= 2
+    && !currentUserLoading
+    && Boolean(actor.trim())
+    && liveSearchScopeIsReady(scope);
   const [loadState, setLoadState] = useState<LiveSearchLoadState>(emptyLoadState);
 
   useEffect(() => {
