@@ -1696,18 +1696,6 @@ export type GRCVendorDiscoveriesResponse = {
   generated_at: string;
 };
 
-export type GRCVendorDiscoverySyncRequest = {
-  tenant_id?: string;
-  source_id?: string;
-};
-
-export type GRCVendorDiscoverySyncResponse = {
-  status: string;
-  source_id?: string;
-  source_summaries?: GRCVendorDiscoverySourceSummary[];
-  generated_at: string;
-};
-
 export type GRCVendorRiskVendor = GRCVendor;
 export type GRCVendorRiskSummary = GRCVendorSummary;
 export type GRCVendorRiskRelatedRecord = GRCVendorRelatedRecord;

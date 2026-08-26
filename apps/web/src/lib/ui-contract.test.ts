@@ -248,6 +248,16 @@ describe("product UI contract", () => {
     expect(vendorDetailSource).not.toContain("function ConsoleStatCard");
   });
 
+  it("keeps vendor source coverage on the supported scoped read path", () => {
+    const vendorSource = readProjectFile("src/app/vendors/page.tsx");
+
+    expect(vendorSource).toContain('grcPath("/grc/vendor-discoveries"');
+    expect(vendorSource).toContain("grcScopeQuery(debouncedScope)");
+    expect(vendorSource).toContain("Refresh sources");
+    expect(vendorSource).not.toContain("/grc/vendor-discoveries/sync");
+    expect(vendorSource).not.toContain("Run discovery");
+  });
+
   it("keeps lifecycle details modal and lifecycle records usable at mobile width", () => {
     const lifecycleSource = readProjectFile("src/app/security/lifecycle/page.tsx");
 

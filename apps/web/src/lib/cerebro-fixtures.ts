@@ -8,7 +8,6 @@ import type {
   GRCVendorActionRequest,
   GRCVendorCreateRequest,
   GRCVendorDiscovery,
-  GRCVendorDiscoverySyncRequest,
 } from "@/lib/grc";
 
 type FixtureResponse = {
@@ -3642,25 +3641,6 @@ const vendorActionFixture = (rawURN: string, parsed: Record<string, unknown>) =>
   return jsonFixture({ action, vendor, generated_at: generatedAt });
 };
 
-const vendorDiscoverySyncFixture = (parsed: Record<string, unknown>) => {
-  const request = parsed as GRCVendorDiscoverySyncRequest;
-  const sourceID = stringField(request.source_id);
-  vendorDiscoveries.forEach((discovery) => {
-    if (!sourceID || vendorDiscoverySourceIDs(discovery).includes(sourceID)) {
-      discovery.last_observed_at = generatedAt;
-    }
-  });
-  const scopedDiscoveries = sourceID
-    ? vendorDiscoveries.filter((discovery) => vendorDiscoverySourceIDs(discovery).includes(sourceID))
-    : vendorDiscoveries;
-  return jsonFixture({
-    status: "completed",
-    source_id: sourceID || undefined,
-    source_summaries: vendorDiscoverySourceSummaries(scopedDiscoveries),
-    generated_at: generatedAt,
-  });
-};
-
 const questionnaireQuestionsFromRequest = (parsed: Record<string, unknown>) => {
   const direct = Array.isArray(parsed.questions) ? parsed.questions as Array<Record<string, unknown>> : [];
   const rows = Array.isArray(parsed.intake_rows) ? parsed.intake_rows as Array<Record<string, unknown>> : [];
@@ -4169,10 +4149,6 @@ const writeFixture = (path: string, body?: string) => {
   const vendorActionMatch = /^grc\/vendors\/(.+)\/actions$/.exec(path);
   if (vendorActionMatch) {
     return vendorActionFixture(vendorActionMatch[1], parsed);
-  }
-
-  if (path === "grc/vendor-discoveries/sync") {
-    return vendorDiscoverySyncFixture(parsed);
   }
 
   if (path === "grc/inventory/resource-scope") {
