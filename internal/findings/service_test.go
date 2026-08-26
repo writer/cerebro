@@ -998,6 +998,22 @@ type counterAnchorRule struct {
 	sourceID   string
 }
 
+type contextTrackingCounterAnchorRule struct {
+	*counterAnchorRule
+	contexts []context.Context
+}
+
+func (r *contextTrackingCounterAnchorRule) OpenAnchorContext(ctx context.Context, attributes map[string]string) (string, error) {
+	r.contexts = append(r.contexts, ctx)
+	return r.OpenAnchor(attributes), nil
+}
+
+func (r *contextTrackingCounterAnchorRule) CloseOnEventContext(ctx context.Context, event Event) (string, bool, error) {
+	r.contexts = append(r.contexts, ctx)
+	anchor, closes := r.CloseOnEvent(event)
+	return anchor, closes, nil
+}
+
 var _ CounterEventRule = (*counterAnchorRule)(nil)
 
 func newCounterAnchorRule(ruleID string) *counterAnchorRule {
@@ -1857,6 +1873,39 @@ func TestCounterEventRule_AnchorClose(t *testing.T) {
 	}
 	if got := len(sameRunEvidence.Evidence); got == 0 {
 		t.Fatalf("ListEvidence(same-run close event) returned %d rows, want close-event evidence", got)
+	}
+}
+
+func TestLatestCounterAnchorEventsPropagatesEvaluationContext(t *testing.T) {
+	type contextKey struct{}
+	key := contextKey{}
+	ctx := context.WithValue(context.Background(), key, "evaluation-request")
+	rule := &contextTrackingCounterAnchorRule{counterAnchorRule: newCounterAnchorRule("context-counter-rule")}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	events := []*cerebrov1.EventEnvelope{{
+		Id: "open", TenantId: "writer", SourceId: "github", Kind: "github.audit",
+		Attributes: map[string]string{"action": "open", "repo": "writer/cerebro", "user": "alice"},
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)),
+	}, {
+		Id: "close", TenantId: "writer", SourceId: "github", Kind: "github.audit",
+		Attributes: map[string]string{"action": "close", "repo": "writer/cerebro", "user": "alice"},
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 7, 20, 54, 0, 0, time.UTC)),
+	}}
+
+	latest, err := latestCounterAnchorEvents(ctx, runtime, rule, rule, events)
+	if err != nil {
+		t.Fatalf("latestCounterAnchorEvents() error = %v", err)
+	}
+	if !hasLatestCounterAnchorClose(latest) {
+		t.Fatalf("latestCounterAnchorEvents() = %#v, want a closing anchor", latest)
+	}
+	if len(rule.contexts) == 0 {
+		t.Fatal("context-aware lifecycle methods were not called")
+	}
+	for _, got := range rule.contexts {
+		if got.Value(key) != "evaluation-request" {
+			t.Fatalf("lifecycle context value = %v, want evaluation-request", got.Value(key))
+		}
 	}
 }
 

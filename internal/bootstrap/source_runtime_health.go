@@ -319,8 +319,8 @@ func (a *App) listVisibleSourceRuntimes(r *http.Request, filter ports.SourceRunt
 	if !ok || isNilInterface(lister) {
 		return nil, sourceruntime.ErrRuntimeUnavailable
 	}
-	return sourceruntime.ListVisibleRuntimes(r.Context(), lister, filter, func(tenantID string) bool {
-		return !requiresTenantFilter(r.Context()) || tenantAllowedByContext(r.Context(), tenantID)
+	return sourceruntime.ListVisibleRuntimes(r.Context(), lister, filter, func(ctx context.Context, tenantID string) bool {
+		return !requiresTenantFilter(ctx) || tenantAllowedByContext(ctx, tenantID)
 	})
 }
 

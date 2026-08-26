@@ -25,6 +25,15 @@ type CounterEventRule interface {
 	CloseOnEvent(event Event) (anchor string, closes bool)
 }
 
+// ContextCounterEventRule is the context-aware lifecycle boundary for rules
+// whose open and close decisions execute outside the Go process, including
+// Wasm authorities. Errors fail the evaluation closed instead of being
+// converted into a missing anchor or a non-closing event.
+type ContextCounterEventRule interface {
+	OpenAnchorContext(ctx context.Context, attributes map[string]string) (string, error)
+	CloseOnEventContext(ctx context.Context, event Event) (anchor string, closes bool, err error)
+}
+
 // CounterEventStateUpdate lets aggregate durable-state rules describe which
 // subcontrol at an anchor an event made compliant or non-compliant.
 type CounterEventStateUpdate struct {

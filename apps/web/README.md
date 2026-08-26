@@ -23,7 +23,7 @@ Run the browser against the Rust-owned organizational graph without Docker or pr
 make rust-product-demo
 ```
 
-The command prints a graph explorer URL and stops both local processes on `Ctrl-C`. With Chromium installed, `make rust-product-demo-check` validates the direct Rust response, the web proxy, and the rendered graph, then writes `tmp/rust-product-demo/receipt.json` without the ephemeral authentication secret.
+The command prints graph explorer and vendor register URLs and stops all local processes on `Ctrl-C`. With Chromium installed, `make rust-product-demo-check` validates the direct Rust response, the web proxy, the rendered graph, and the Go-compatible GRC vendor read backed by the Rust graph, then writes `tmp/rust-product-demo/receipt.json` without the ephemeral authentication secret.
 
 ## Check
 

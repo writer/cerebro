@@ -73,17 +73,27 @@ func TestTailscaleTailnetDeviceApprovalReopensOnRecurrence(t *testing.T) {
 		t.Fatal("opened finding has empty fingerprint")
 	}
 
-	counterRule, ok := rule.(CounterEventRule)
+	counterRule, ok := rule.(ContextCounterEventRule)
 	if !ok {
-		t.Fatal("rule does not implement CounterEventRule")
+		t.Fatal("rule does not implement ContextCounterEventRule")
+	}
+	if _, ok := rule.(CounterEventRule); ok {
+		t.Fatal("Rust-authoritative rule must not expose the legacy context-free CounterEventRule path")
 	}
 	restoredEvent := tailscaleTailnetEvent("ts-tailnet-restored", "true", time.Date(2026, 4, 23, 13, 0, 0, 0, time.UTC))
-	closeAnchor, closes := counterRule.CloseOnEvent(restoredEvent)
-	if !closes || closeAnchor == "" {
-		t.Fatalf("CloseOnEvent(restored) = (%q, %v), want a non-empty closing anchor", closeAnchor, closes)
+	closeAnchor, closes, err := counterRule.CloseOnEventContext(context.Background(), restoredEvent)
+	if err != nil {
+		t.Fatalf("CloseOnEventContext(restored) error = %v", err)
 	}
-	if openAnchor := counterRule.OpenAnchor(opened.Attributes); openAnchor != closeAnchor {
-		t.Fatalf("OpenAnchor(open finding) = %q, want match close anchor %q", openAnchor, closeAnchor)
+	if !closes || closeAnchor == "" {
+		t.Fatalf("CloseOnEventContext(restored) = (%q, %v), want a non-empty closing anchor", closeAnchor, closes)
+	}
+	openAnchor, err := counterRule.OpenAnchorContext(context.Background(), opened.Attributes)
+	if err != nil {
+		t.Fatalf("OpenAnchorContext(open finding) error = %v", err)
+	}
+	if openAnchor != closeAnchor {
+		t.Fatalf("OpenAnchorContext(open finding) = %q, want match close anchor %q", openAnchor, closeAnchor)
 	}
 
 	reopened := emitOpen(tailscaleTailnetEvent("ts-tailnet-disabled-2", "false", time.Date(2026, 4, 23, 14, 0, 0, 0, time.UTC)))
@@ -130,6 +140,21 @@ func TestTailscaleTailnetRustAuthorityFailsClosedWithoutGoFallback(t *testing.T)
 	}
 }
 
+func TestTailscaleTailnetRustLifecyclePropagatesContextAndFailsClosed(t *testing.T) {
+	type contextKey struct{}
+	evaluator := &recordingFindingRuleEvaluator{err: context.Canceled}
+	rule := &rustTailscaleRule{evaluator: evaluator}
+	evaluationContext := context.WithValue(context.Background(), contextKey{}, "service-evaluation")
+
+	_, err := rule.OpenAnchorContext(evaluationContext, map[string]string{"tailscale_tailnet_urn": "urn:cerebro:tenant-a:tailscale_tailnet:example.com"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("OpenAnchorContext() error = %v, want context.Canceled", err)
+	}
+	if len(evaluator.contexts) != 1 || evaluator.contexts[0].Value(contextKey{}) != "service-evaluation" {
+		t.Fatalf("Wasm evaluator contexts = %#v, want the service evaluation context", evaluator.contexts)
+	}
+}
+
 func TestTailscaleTailnetRustAuthorityRejectsCrossScopeReplay(t *testing.T) {
 	rule := newTailscaleTailnetDeviceApprovalDisabledRule()
 	runtime := &cerebrov1.SourceRuntime{
@@ -152,12 +177,14 @@ func TestTailscaleTailnetRustAuthorityRejectsCrossScopeReplay(t *testing.T) {
 }
 
 type recordingFindingRuleEvaluator struct {
-	calls int
-	err   error
+	calls    int
+	err      error
+	contexts []context.Context
 }
 
-func (e *recordingFindingRuleEvaluator) Evaluate(context.Context, []byte) ([]byte, error) {
+func (e *recordingFindingRuleEvaluator) Evaluate(ctx context.Context, _ []byte) ([]byte, error) {
 	e.calls++
+	e.contexts = append(e.contexts, ctx)
 	return nil, e.err
 }
 

@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,8 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+const maxShadowEmbeddedFileBytes = 8 << 20
 
 func TestParseFindingRuleNewArgsAppliesDefaults(t *testing.T) {
 	request, err := parseFindingRuleNewArgs([]string{
@@ -332,6 +335,14 @@ func TestRenderFindingRuleGo_RetiredEmitsRetiredEventRule(t *testing.T) {
 func TestScaffoldFindingRule_RetiredGeneratedTestPasses(t *testing.T) {
 	repoRoot := testRepoRoot(t)
 	outputDir := shadowRepoForFindingRuleScaffold(t, repoRoot)
+	shadowWasmPath := filepath.Join(outputDir, "internal", "findings", "findingrule.wasm")
+	shadowWasm, err := os.Lstat(shadowWasmPath)
+	if err != nil {
+		t.Fatalf("lstat shadow findingrule.wasm: %v", err)
+	}
+	if !shadowWasm.Mode().IsRegular() || shadowWasm.Size() <= 0 || shadowWasm.Size() > maxShadowEmbeddedFileBytes {
+		t.Fatalf("shadow findingrule.wasm mode/size = %s/%d, want a non-empty bounded regular file", shadowWasm.Mode(), shadowWasm.Size())
+	}
 	request, err := parseFindingRuleNewArgs([]string{
 		"retired-scaffold-contract",
 		"source_id=github",
@@ -505,19 +516,23 @@ func shadowRepoForFindingRuleScaffold(t *testing.T, repoRoot string) string {
 		"correlation_patterns": true,
 		"testdata":             true,
 	}
-	// go:embed cannot resolve through symlinks, so embedded data files must be
-	// copied into the shadow package as real files (mirrors correlation_patterns).
-	embedYAMLFiles, err := filepath.Glob(filepath.Join(repoRoot, "internal", "findings", "*.yaml"))
-	if err != nil {
-		t.Fatalf("glob findings embed files: %v", err)
+	// go:embed rejects symlinks, so embedded package files must be copied into
+	// the shadow package as bounded regular files.
+	var embedFiles []string
+	for _, pattern := range []string{"*.yaml", "*.wasm"} {
+		matches, err := filepath.Glob(filepath.Join(repoRoot, "internal", "findings", pattern))
+		if err != nil {
+			t.Fatalf("glob findings embed files %q: %v", pattern, err)
+		}
+		embedFiles = append(embedFiles, matches...)
 	}
-	for _, embedFile := range embedYAMLFiles {
+	for _, embedFile := range embedFiles {
 		findingsSkip[filepath.Base(embedFile)] = true
 	}
 	linkRepoEntries(t, filepath.Join(repoRoot, "internal", "findings"), findingsDir, findingsSkip)
 	copyRepoTree(t, filepath.Join(repoRoot, "internal", "findings", "correlation_patterns"), filepath.Join(findingsDir, "correlation_patterns"))
-	for _, embedFile := range embedYAMLFiles {
-		copyRepoFile(t, embedFile, filepath.Join(findingsDir, filepath.Base(embedFile)))
+	for _, embedFile := range embedFiles {
+		copyRepoFileBounded(t, embedFile, filepath.Join(findingsDir, filepath.Base(embedFile)), maxShadowEmbeddedFileBytes)
 	}
 	linkRepoEntries(t, filepath.Join(repoRoot, "internal", "findings", "testdata"), filepath.Join(findingsDir, "testdata"), map[string]bool{
 		"rules": true,
@@ -578,17 +593,31 @@ func copyRepoTree(t *testing.T, srcDir, dstDir string) {
 	}
 }
 
-func copyRepoFile(t *testing.T, src, dst string) {
+func copyRepoFileBounded(t *testing.T, src, dst string, maxBytes int64) {
 	t.Helper()
-	dstDir := filepath.Dir(dst)
-	if rel, err := filepath.Rel(dstDir, dst); err != nil || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
-		t.Fatalf("copy destination %q escaped %q", dst, dstDir)
+	if maxBytes <= 0 {
+		t.Fatalf("copy bound for %q must be positive", src)
 	}
-	payload, err := os.ReadFile(src) // #nosec G304 -- source path is a repository fixture copied into a temp shadow repo.
+	source, err := os.Open(src) // #nosec G304 -- source is a repository embed file selected by a fixed glob.
+	if err != nil {
+		t.Fatalf("open file %q: %v", src, err)
+	}
+	defer func() { _ = source.Close() }()
+	info, err := source.Stat()
+	if err != nil {
+		t.Fatalf("stat file %q: %v", src, err)
+	}
+	if !info.Mode().IsRegular() {
+		t.Fatalf("embedded source %q is not a regular file", src)
+	}
+	payload, err := io.ReadAll(io.LimitReader(source, maxBytes+1))
 	if err != nil {
 		t.Fatalf("read file %q: %v", src, err)
 	}
-	if err := os.WriteFile(dst, payload, 0o600); err != nil { // #nosec G703 -- destination is validated to remain in the requested temp shadow repo directory.
+	if int64(len(payload)) > maxBytes {
+		t.Fatalf("embedded source %q is %d bytes, limit is %d", src, len(payload), maxBytes)
+	}
+	if err := os.WriteFile(dst, payload, 0o600); err != nil { // #nosec G703 -- destination remains in the requested temp shadow repo directory.
 		t.Fatalf("write file %q: %v", dst, err)
 	}
 }

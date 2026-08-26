@@ -38,7 +38,7 @@ use aws_sdk_secretsmanager::Client as AwsSecretsManagerClient;
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, Request, State},
-    http::{Method, StatusCode, header::AUTHORIZATION},
+    http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -100,6 +100,7 @@ use tokio::sync::{Mutex, oneshot};
 use zeroize::Zeroize;
 
 const TENANT_AUTH_HEADER: &str = "x-cerebro-tenant";
+const WORKSPACE_AUTH_HEADER: &str = "x-cerebro-workspace";
 const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
 const MAX_LEGACY_DELTA_RECORDS: usize = 100_000;
 const MIN_SHARED_SECRET_BYTES: usize = 32;
@@ -1244,6 +1245,8 @@ struct PathsResponse {
 #[derive(Deserialize)]
 struct ProductNeighborhoodQuery {
     root_urn: String,
+    tenant_id: Option<String>,
+    workspace_id: Option<String>,
     limit: Option<u32>,
 }
 
@@ -3928,14 +3931,30 @@ async fn find_paths(
 async fn product_neighborhood_route(
     State(state): State<AppState>,
     Extension(authenticated): Extension<AuthenticatedTenant>,
+    headers: HeaderMap,
     Query(query): Query<ProductNeighborhoodQuery>,
 ) -> Result<Json<ProductNeighborhood>, (StatusCode, Json<ErrorResponse>)> {
+    if query.workspace_id.is_some() || headers.contains_key(WORKSPACE_AUTH_HEADER) {
+        return Err(bad_request(
+            "workspace_scope_unsupported",
+            "Application workspace scope is not supported for graph neighborhood reads.",
+        ));
+    }
     let tenant = product_urn_tenant(&query.root_urn).ok_or_else(|| {
         bad_request(
             "invalid_root_urn",
             "root_urn must be a tenant-scoped Cerebro URN.",
         )
     })?;
+    if let Some(query_tenant) = query.tenant_id {
+        let query_tenant = parse_tenant(query_tenant)?;
+        if query_tenant.as_str() != tenant {
+            return Err(bad_request(
+                "tenant_selector_mismatch",
+                "The tenant selector does not match the graph root tenant.",
+            ));
+        }
+    }
     let tenant_id = authorized_tenant(&authenticated, tenant.to_owned())?;
     let limit = normalize_product_neighborhood_limit(query.limit);
     let mut neighborhoods = state
@@ -5492,7 +5511,22 @@ mod tests {
         assert_eq!(config.get("family").map(String::as_str), Some("resources"));
     }
 
-    struct UnavailableGraph;
+    #[derive(Default)]
+    struct UnavailableGraph {
+        reads: Option<Arc<AtomicUsize>>,
+    }
+
+    impl UnavailableGraph {
+        fn counting(reads: Arc<AtomicUsize>) -> Self {
+            Self { reads: Some(reads) }
+        }
+
+        fn record_read(&self) {
+            if let Some(reads) = &self.reads {
+                reads.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
 
     struct FixtureSourceRuntimeSync;
 
@@ -5642,10 +5676,12 @@ mod tests {
     #[async_trait]
     impl AgentGraph for UnavailableGraph {
         async fn health(&self) -> Result<(), ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
         async fn revision(&self, _tenant_id: &TenantId) -> Result<u64, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5656,6 +5692,7 @@ mod tests {
             _kinds: &[String],
             _limit: usize,
         ) -> Result<Vec<ContextEntity>, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5664,6 +5701,7 @@ mod tests {
             _tenant_id: &TenantId,
             _entity_id: &EntityId,
         ) -> Result<ContextEntity, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5672,6 +5710,7 @@ mod tests {
             _tenant_id: &TenantId,
             _key: &str,
         ) -> Result<ContextEntity, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5682,6 +5721,7 @@ mod tests {
             _depth: usize,
             _limit: usize,
         ) -> Result<Neighborhood, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5693,6 +5733,7 @@ mod tests {
             _max_depth: usize,
             _limit: usize,
         ) -> Result<Vec<GraphPath>, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5701,6 +5742,7 @@ mod tests {
             _tenant_id: &TenantId,
             _assertion_id: &AssertionId,
         ) -> Result<ContextEdge, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
 
@@ -5709,6 +5751,7 @@ mod tests {
             _tenant_id: &TenantId,
             _query: &cerebro_agent_context::FactQuery,
         ) -> Result<cerebro_agent_context::QueryResult, ContextError> {
+            self.record_read();
             Err(unavailable())
         }
     }
@@ -6256,6 +6299,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn product_neighborhood_route_rejects_scope_mismatch_before_graph_read() {
+        let root_urn = "urn:cerebro:tenant-demo:asset:one";
+        let graph_reads = Arc::new(AtomicUsize::new(0));
+        let app = router_with_backend(
+            Arc::new(UnavailableGraph::counting(graph_reads.clone())),
+            None,
+            None,
+            PlatformStores::default(),
+            ActionBackends::default(),
+            TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+            None,
+        );
+        for request in [
+            authenticated(Request::builder(), "tenant-demo")
+                .uri(format!(
+                    "/platform/graph/neighborhood?root_urn={root_urn}&workspace_id=workspace-a"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+            authenticated(Request::builder(), "tenant-demo")
+                .header(WORKSPACE_AUTH_HEADER, "workspace-a")
+                .uri(format!("/platform/graph/neighborhood?root_urn={root_urn}"))
+                .body(Body::empty())
+                .unwrap(),
+            authenticated(Request::builder(), "tenant-demo")
+                .uri(format!(
+                    "/platform/graph/neighborhood?root_urn={root_urn}&tenant_id=tenant-other"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+            authenticated(Request::builder(), "tenant-demo")
+                .uri(format!(
+                    "/platform/graph/neighborhood?root_urn={root_urn}&tenant_id=tenant-other&workspace_id=workspace-a"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        ] {
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(graph_reads.load(Ordering::Relaxed), 0);
+        }
+
+        let matching_tenant = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri(format!(
+                        "/platform/graph/neighborhood?root_urn={root_urn}&tenant_id=tenant-demo"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(matching_tenant.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(graph_reads.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
     async fn product_neighborhood_route_distinguishes_bad_roots_from_missing_roots() {
         let (graph, _, _) = demo_graph().unwrap();
         let app = router(graph);
@@ -6312,7 +6413,7 @@ mod tests {
     #[tokio::test]
     async fn product_neighborhood_route_surfaces_backend_failure_as_unavailable() {
         let app = router_with_backend(
-            Arc::new(UnavailableGraph),
+            Arc::new(UnavailableGraph::default()),
             None,
             None,
             PlatformStores::default(),
@@ -7494,7 +7595,7 @@ mod tests {
     #[tokio::test]
     async fn readiness_fails_without_breaking_process_liveness() {
         let app = router_with_backend(
-            Arc::new(UnavailableGraph),
+            Arc::new(UnavailableGraph::default()),
             None,
             None,
             PlatformStores::default(),
