@@ -321,10 +321,13 @@ func EffectiveAccessPathRequestFromQuery(values url.Values) (EffectiveAccessPath
 }
 
 func (s *Service) GetEffectiveAccessPaths(ctx context.Context, request EffectiveAccessPathRequest) (*EffectiveAccessPathResult, error) {
-	if s == nil || s.rawCypher == nil {
+	if s == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	typedStore, ok := s.rawCypher.(ports.EffectiveAccessPathStore)
+	typedStore, ok := s.neighborhoods.(ports.EffectiveAccessPathStore)
+	if !ok || typedStore == nil {
+		typedStore, ok = s.rawCypher.(ports.EffectiveAccessPathStore)
+	}
 	if !ok || typedStore == nil {
 		return nil, ErrRuntimeUnavailable
 	}

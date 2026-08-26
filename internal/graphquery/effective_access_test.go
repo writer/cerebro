@@ -100,6 +100,36 @@ func TestGetEffectiveAccessPathsUsesTypedFixtureAndPreservesLegacyShape(t *testi
 	}
 }
 
+type typedOnlyEffectiveAccessStore struct {
+	requests []ports.EffectiveAccessPathRequest
+	result   *ports.EffectiveAccessPathResult
+}
+
+func (s *typedOnlyEffectiveAccessStore) Ping(context.Context) error { return nil }
+
+func (s *typedOnlyEffectiveAccessStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
+	return nil, nil
+}
+
+func (s *typedOnlyEffectiveAccessStore) ListEffectiveAccessPaths(_ context.Context, request ports.EffectiveAccessPathRequest) (*ports.EffectiveAccessPathResult, error) {
+	s.requests = append(s.requests, request)
+	return s.result, nil
+}
+
+func TestGetEffectiveAccessPathsDoesNotRequireRawCypherCapability(t *testing.T) {
+	store := &typedOnlyEffectiveAccessStore{result: effectiveAccessTypedFixtureResult()}
+	result, err := New(store).GetEffectiveAccessPaths(context.Background(), EffectiveAccessPathRequest{
+		TenantID:      "writer",
+		IdentityQuery: "alice",
+	})
+	if err != nil {
+		t.Fatalf("GetEffectiveAccessPaths() error = %v", err)
+	}
+	if len(store.requests) != 1 || result == nil || len(result.Paths) != 1 {
+		t.Fatalf("typed requests = %d, result = %#v; want one typed request and path", len(store.requests), result)
+	}
+}
+
 func TestGetEffectiveAccessPathsRejectsInvalidTypedPath(t *testing.T) {
 	fixture := effectiveAccessTypedFixtureResult()
 	fixture.Paths[0].RelationChain = []string{"assigned_to"}
