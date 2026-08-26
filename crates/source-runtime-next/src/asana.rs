@@ -31,10 +31,22 @@ pub use types::{AsanaCheckpointCandidate, AsanaKernel, AsanaPage, AsanaRecord, A
 mod tests;
 
 #[cfg(test)]
-mod users_graph_read_tests;
+mod users_catalog_tests;
 
 #[cfg(test)]
-mod users_request_tests;
+mod users_failure_tests;
+
+#[cfg(test)]
+mod users_graph_projection_tests;
+
+#[cfg(test)]
+mod users_graph_rejection_tests;
+
+#[cfg(test)]
+mod users_pagination_tests;
+
+#[cfg(test)]
+mod users_publication_tests;
 
 #[cfg(test)]
 mod users_test_support;

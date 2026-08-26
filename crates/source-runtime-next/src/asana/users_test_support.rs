@@ -1,15 +1,43 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
-use crate::source_execution::{
-    SourceExecutionDispatcher, SourceExecutionError, SourceExecutionPlanV1,
-    SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2, SourceWorkerDecodeOutputV2,
-    SourceWorkerDecodeRequestV1, SourceWorkerExecutionContextV1, SourceWorkerHttpExecutionV2,
-    SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1, SourceWorkerRuntimeMetadataV2,
+use cerebro_organizational_model::{CollectionId, CollectionReceipt, SourceRuntimeId, TenantId};
+use cerebro_source_catalog::SourceCatalog;
+
+use crate::{
+    CatalogGraphMapper,
+    source_execution::{
+        SourceExecutionDispatcher, SourceExecutionError, SourceExecutionPlanV1,
+        SourceExecutionSelectionRequestV1, SourceWorkerDecodeEnvelopeV2,
+        SourceWorkerDecodeOutputV2, SourceWorkerDecodeRequestV1, SourceWorkerExecutionContextV1,
+        SourceWorkerHttpExecutionV2, SourceWorkerPlanEnvelopeV2, SourceWorkerPlanRequestV1,
+        SourceWorkerRuntimeMetadataV2,
+    },
 };
 
 pub(super) const OBSERVED_AT_MILLIS: i64 = 1_780_272_000_000;
 pub(super) const USERS_PAGE_1: &[u8] = include_bytes!("fixtures/users_page_1.json");
 pub(super) const USERS_PAGE_2: &[u8] = include_bytes!("fixtures/users_page_2.json");
+
+pub(super) fn collection_receipt(tenant_id: &str, collection_id: &str) -> CollectionReceipt {
+    CollectionReceipt::incremental(
+        TenantId::parse(tenant_id).unwrap(),
+        SourceRuntimeId::parse("asana-users-runtime").unwrap(),
+        CollectionId::parse(collection_id).unwrap(),
+        "asana.users",
+        OBSERVED_AT_MILLIS,
+    )
+    .unwrap()
+}
+
+pub(super) fn mapper() -> CatalogGraphMapper {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let catalog = SourceCatalog::load(
+        root.join("internal/connectorcatalog/catalog"),
+        root.join("sources"),
+    )
+    .unwrap();
+    CatalogGraphMapper::new(catalog.get("asana").unwrap().clone(), "asana-users-v1").unwrap()
+}
 
 pub(super) fn context(tenant_id: &str, cursor: &str, page: u32) -> SourceWorkerExecutionContextV1 {
     SourceWorkerExecutionContextV1 {
@@ -87,4 +115,26 @@ pub(super) fn decode_page(
         response_headers_sha256: String::new(),
         execution_intent_digest_sha256: execution.execution_intent_digest_sha256.clone(),
     })
+}
+
+pub(super) fn decoded_page(
+    tenant_id: &str,
+    cursor: &str,
+    page_number: u32,
+    body: &[u8],
+) -> SourceWorkerDecodeOutputV2 {
+    let plan = plan();
+    let metadata = metadata();
+    let context = context(tenant_id, cursor, page_number);
+    let execution = plan_page(&plan, &context, &metadata).unwrap();
+    decode_page(
+        &plan,
+        &context,
+        &metadata,
+        &execution,
+        200,
+        body,
+        HashMap::new(),
+    )
+    .unwrap()
 }
