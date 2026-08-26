@@ -1,34 +1,38 @@
 package sourceprojection
 
 import (
+	"errors"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func jumpcloudUsersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, identityProjectionProfile{Provider: "jumpcloud"})
+var errJumpCloudRustProjectionRequired = errors.New("jumpcloud projection requires Rust authority")
+
+func jumpcloudUsersProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errJumpCloudRustProjectionRequired
 }
 
-func jumpcloudGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, identityProjectionProfile{Provider: "jumpcloud"})
+func jumpcloudGroupsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errJumpCloudRustProjectionRequired
 }
 
-func jumpcloudSystemsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return catalogRuntimeAssetProjections(event)
+func jumpcloudSystemsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errJumpCloudRustProjectionRequired
 }
 
-func jumpcloudApplicationsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityApplicationProjections(event, identityProjectionProfile{Provider: "jumpcloud"})
+func jumpcloudApplicationsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errJumpCloudRustProjectionRequired
 }
 
-func jumpcloudSystemGroupsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, identityProjectionProfile{Provider: "jumpcloud"})
+func jumpcloudSystemGroupsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errJumpCloudRustProjectionRequired
 }
 
-func jumpcloudGroupMembersProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupMembershipProjections(event, identityProjectionProfile{Provider: "jumpcloud"})
+func jumpcloudGroupMembersProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errJumpCloudRustProjectionRequired
 }
 
-func jumpcloudAuditEventsProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, identityProjectionProfile{Provider: "jumpcloud"})
+func jumpcloudAuditEventsProjections(_ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return nil, nil, errJumpCloudRustProjectionRequired
 }
