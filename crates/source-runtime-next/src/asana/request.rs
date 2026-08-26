@@ -4,7 +4,7 @@ use super::{
 };
 
 pub(super) const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
-const MAX_CURSOR_BYTES: usize = 2_048;
+pub(super) const MAX_CURSOR_BYTES: usize = 2_048;
 
 impl AsanaRequest {
     /// HTTP method.
@@ -134,11 +134,9 @@ impl AsanaKernel {
 }
 
 pub(super) fn validate_cursor(value: &str) -> Result<String, AsanaError> {
-    let value = value.trim();
-    if value.is_empty()
+    if value.trim().is_empty()
         || value.len() > MAX_CURSOR_BYTES
         || value.chars().any(char::is_control)
-        || value.contains(['&', '=', '#', '?', ':', '/'])
     {
         return Err(AsanaError::InvalidCursor);
     }

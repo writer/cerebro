@@ -5,7 +5,7 @@ use crate::source_execution::{
     seal_page_program_v2,
 };
 
-use super::users_test_support as support;
+use super::{request::MAX_CURSOR_BYTES, users_test_support as support};
 
 #[test]
 fn asana_users_plans_decodes_and_resumes_two_origin_bound_pages() {
@@ -91,4 +91,62 @@ fn asana_users_plans_decodes_and_resumes_two_origin_bound_pages() {
     .unwrap();
     assert_eq!(resumed.result.as_ref().unwrap().records.len(), 2);
     assert!(resumed.result.as_ref().unwrap().next_cursor.is_empty());
+}
+
+#[test]
+fn asana_users_round_trips_bounded_opaque_offsets_as_query_data() {
+    let opaque_offset = "https://escape.example/page?token=a/b:c&next=1";
+    let plan = support::plan();
+    let metadata = support::metadata();
+    let context = support::context("tenant-a", "", 1);
+    let execution = support::plan_page(&plan, &context, &metadata).unwrap();
+    let body = serde_json::to_vec(&serde_json::json!({
+        "data": [],
+        "next_page": { "offset": opaque_offset },
+    }))
+    .unwrap();
+    let output = support::decode_page(
+        &plan,
+        &context,
+        &metadata,
+        &execution,
+        200,
+        &body,
+        HashMap::new(),
+    )
+    .unwrap();
+    assert_eq!(output.result.as_ref().unwrap().next_cursor, opaque_offset);
+
+    let resumed_context = support::context("tenant-a", opaque_offset, 2);
+    let resumed = support::plan_page(&plan, &resumed_context, &metadata).unwrap();
+    let url = reqwest::Url::parse(&resumed.request.as_ref().unwrap().url).unwrap();
+    assert_eq!(url.scheme(), "https");
+    assert_eq!(url.host_str(), Some("app.asana.com"));
+    assert_eq!(url.port_or_known_default(), Some(443));
+    assert_eq!(url.path(), "/api/1.0/users");
+    assert_eq!(
+        url.query_pairs()
+            .find(|(key, _)| key == "offset")
+            .map(|(_, value)| value.into_owned()),
+        Some(opaque_offset.to_owned())
+    );
+
+    let oversized_offset = "x".repeat(MAX_CURSOR_BYTES + 1);
+    let oversized_body = serde_json::to_vec(&serde_json::json!({
+        "data": [],
+        "next_page": { "offset": oversized_offset },
+    }))
+    .unwrap();
+    assert_eq!(
+        support::decode_page(
+            &plan,
+            &context,
+            &metadata,
+            &execution,
+            200,
+            &oversized_body,
+            HashMap::new(),
+        ),
+        Err(SourceExecutionError::InvalidCursor)
+    );
 }

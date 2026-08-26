@@ -52,18 +52,6 @@ fn asana_users_rejects_escape_bounds_and_typed_provider_failures() {
             &metadata,
             &execution,
             200,
-            br#"{"data":[],"next_page":{"offset":"https://escape.example/page"}}"#,
-            HashMap::new(),
-        ),
-        Err(SourceExecutionError::InvalidCursor)
-    );
-    assert_eq!(
-        support::decode_page(
-            &plan,
-            &context,
-            &metadata,
-            &execution,
-            200,
             br#"{"data":[{"gid":"1"},{"gid":"2"},{"gid":"3"}]}"#,
             HashMap::new(),
         ),
