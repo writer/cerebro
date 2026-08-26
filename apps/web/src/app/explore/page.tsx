@@ -144,6 +144,7 @@ export default function ExplorePage() {
   const loadSeed = useCallback(
     async (seed: string, force: boolean, signal: AbortSignal, isCancelled: () => boolean) => {
       setSeedLoading(true);
+      setExpandingURN(null);
       setError(null);
       setExpandNotice(null);
       const path = neighborhoodPath(seed, normalizedTenantID, normalizedWorkspaceID);

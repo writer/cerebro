@@ -215,6 +215,7 @@ describe("product UI contract", () => {
     expect(page).toContain("const requestScopeKey = activeScopeKey");
     expect(page).toContain("activeScopeKeyRef.current !== requestScopeKey");
     expect(page).toContain("activeScopeKeyRef.current === requestScopeKey");
+    expect(page).toContain("setExpandingURN(null);");
   });
 
   it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {
