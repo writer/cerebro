@@ -6,12 +6,15 @@ import { PassThrough, Writable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  assertDashboardScope,
+  assertHomepageP95,
   assertPageContract,
   assertPublicConfig,
   closeLogStream,
   createDeadline,
   discoverPageRoutes,
   isExpectedLocal404,
+  isExpectedRouteRedirect,
   parseArgs,
   parseFixtureReadyLine,
   routeBugbashFindings,
@@ -28,17 +31,38 @@ const headers = (values = {}) => new Headers(values);
 
 describe("portable web fixture E2E options", () => {
   it("uses child-owned port allocation, Chromium, and a hard deadline by default", () => {
-    expect(parseArgs([])).toEqual({ allRoutes: false, browser: true, port: 0, timeoutMs: 180_000 });
+    expect(parseArgs([])).toEqual({
+      allRoutes: false,
+      browser: true,
+      homeSamples: 5,
+      maxHomeP95Ms: 1_000,
+      port: 0,
+      timeoutMs: 180_000,
+    });
   });
 
   it("parses explicit browser, port, and timeout options", () => {
-    expect(parseArgs(["--no-browser", "--port=43123", "--timeout-ms", "1200"]))
-      .toEqual({ allRoutes: false, browser: false, port: 43123, timeoutMs: 1200 });
+    expect(parseArgs(["--no-browser", "--port=43123", "--timeout-ms", "1200", "--home-samples=9", "--max-home-p95-ms", "999"]))
+      .toEqual({
+        allRoutes: false,
+        browser: false,
+        homeSamples: 9,
+        maxHomeP95Ms: 999,
+        port: 43123,
+        timeoutMs: 1200,
+      });
   });
 
   it("enables the bounded full-route harness with a longer default deadline", () => {
     expect(parseArgs(["--all-routes"]))
-      .toEqual({ allRoutes: true, browser: true, port: 0, timeoutMs: 420_000 });
+      .toEqual({
+        allRoutes: true,
+        browser: true,
+        homeSamples: 5,
+        maxHomeP95Ms: 1_000,
+        port: 0,
+        timeoutMs: 420_000,
+      });
     expect(parseArgs(["--timeout-ms=1200", "--all-routes"]).timeoutMs).toBe(1200);
   });
 
@@ -50,10 +74,26 @@ describe("portable web fixture E2E options", () => {
     expect(() => parseArgs(["--keep"])).toThrow("Unknown option");
     expect(() => parseArgs(["--port", "70000"])).toThrow("between 0 and 65535");
     expect(() => parseArgs(["--timeout-ms=0"])).toThrow("between 1");
+    expect(() => parseArgs(["--home-samples=0"])).toThrow("between 1 and 100");
+    expect(() => parseArgs(["--max-home-p95-ms=0"])).toThrow("between 1 and 60000");
   });
 });
 
 describe("portable web fixture route bug bash", () => {
+  it("hard-fails homepage data-ready p95 at one second", () => {
+    expect(assertHomepageP95([120, 140, 180, 250, 999], 1_000)).toBe(999);
+    expect(() => assertHomepageP95([120, 140, 180, 250, 1_000], 1_000))
+      .toThrow("must be below 1000ms");
+  });
+
+  it("requires both tenant and workspace on the dashboard request", () => {
+    const url = "http://127.0.0.1:43123/api/cerebro/grc/dashboard?tenant_id=tenant-a&workspace_id=workspace-b";
+    expect(() => assertDashboardScope(url, { tenantID: "tenant-a", workspaceID: "workspace-b" }))
+      .not.toThrow();
+    expect(() => assertDashboardScope(url, { tenantID: "tenant-a", workspaceID: "workspace-a" }))
+      .toThrow("workspace scope mismatch");
+  });
+
   it("discovers every app page with safe concrete dynamic route samples", async () => {
     const webRoot = path.resolve(import.meta.dirname, "..");
     const routes = await discoverPageRoutes(webRoot);
@@ -122,6 +162,14 @@ describe("portable web fixture route bug bash", () => {
   });
 
   it("accepts declared legacy redirects and requires scope on the preserving redirect", () => {
+    expect(isExpectedRouteRedirect(
+      "/developer/codegen?tenant_id=tenant-a&workspace_id=workspace-a",
+      "http://127.0.0.1:43123/developer",
+    )).toBe(true);
+    expect(isExpectedRouteRedirect(
+      "/developer/codegen?tenant_id=tenant-a&workspace_id=workspace-a",
+      "http://127.0.0.1:43123/login",
+    )).toBe(false);
     expect(routeBugbashFindings({
       body: "Ready",
       consoleErrors: [],

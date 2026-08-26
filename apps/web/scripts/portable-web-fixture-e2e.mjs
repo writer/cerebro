@@ -20,10 +20,20 @@ const renderedErrorPattern = /Application error|Unhandled Runtime Error|Cerebro 
 const frameworkErrorPattern = /This page could not be found|Next\.js.*error|ChunkLoadError|Minified React error/i;
 const defaultTimeoutMs = 180_000;
 const perRequestTimeoutMs = 15_000;
+const apiRouteTimeoutMs = 5_000;
 const routeBugbashTimeoutMs = 420_000;
-const maxBugbashRoutes = 300;
+const maxBugbashRoutes = 500;
+const defaultHomeSamples = 5;
+const defaultHomeP95Ms = 1_000;
 const fixtureTenantID = "demo-tenant";
 const fixtureWorkspaceID = "fixture-workspace";
+const fixtureUserEmail = "local-bugbash@example.org";
+const routeScopeMatrix = Object.freeze([
+  { tenantID: "tenant-a", workspaceID: "workspace-a" },
+  { tenantID: "tenant-a", workspaceID: "workspace-b" },
+  { tenantID: "tenant-b", workspaceID: "workspace-a" },
+  { tenantID: "tenant-b", workspaceID: "workspace-b" },
+]);
 const routeParameterSamples = Object.freeze({
   dashboardID: "fixture-program-overview",
   frameworkID: "soc2",
@@ -45,7 +55,14 @@ const routeURNParameterSample = (pageFile) => pageFile === path.join("vendors", 
   : "urn:cerebro:demo-tenant:identity:platform-admin";
 
 export function parseArgs(argv) {
-  const options = { allRoutes: false, browser: true, port: 0, timeoutMs: defaultTimeoutMs };
+  const options = {
+    allRoutes: false,
+    browser: true,
+    homeSamples: defaultHomeSamples,
+    maxHomeP95Ms: defaultHomeP95Ms,
+    port: 0,
+    timeoutMs: defaultTimeoutMs,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--browser") {
@@ -67,6 +84,16 @@ export function parseArgs(argv) {
       options.timeoutMs = parseIntegerOption("--timeout-ms", arg.slice("--timeout-ms=".length), { minimum: 1 });
     } else if (arg.startsWith("--ready-timeout-ms=")) {
       options.timeoutMs = parseIntegerOption("--ready-timeout-ms", arg.slice("--ready-timeout-ms=".length), { minimum: 1 });
+    } else if (arg === "--home-samples") {
+      options.homeSamples = parseIntegerOption(arg, argv[index + 1], { minimum: 1, maximum: 100 });
+      index += 1;
+    } else if (arg.startsWith("--home-samples=")) {
+      options.homeSamples = parseIntegerOption("--home-samples", arg.slice("--home-samples=".length), { minimum: 1, maximum: 100 });
+    } else if (arg === "--max-home-p95-ms") {
+      options.maxHomeP95Ms = parseIntegerOption(arg, argv[index + 1], { minimum: 1, maximum: 60_000 });
+      index += 1;
+    } else if (arg.startsWith("--max-home-p95-ms=")) {
+      options.maxHomeP95Ms = parseIntegerOption("--max-home-p95-ms", arg.slice("--max-home-p95-ms=".length), { minimum: 1, maximum: 60_000 });
     } else {
       throw new Error(`Unknown option: ${arg}`);
     }
@@ -145,6 +172,12 @@ export function isExpectedLocal404(pathname, status) {
     "/evals/ask/latest.json",
     "/evals/security-agent/latest.json",
   ].includes(pathname);
+}
+
+export function isExpectedRouteRedirect(route, finalURL) {
+  const requested = new URL(route, finalURL);
+  const final = new URL(finalURL);
+  return expectedRouteRedirects.get(requested.pathname)?.pathname === final.pathname;
 }
 
 export function routeBugbashFindings({ body, consoleErrors, documentStatus, finalURL, pageErrors, requestFailures = [], response404s = [], responseFailures = [], route }) {
@@ -377,13 +410,107 @@ export async function validateBrowserContracts(baseUrl, contracts, deadline) {
 }
 
 async function waitForRouteSettled(page, deadline, route) {
-  const waitMs = Math.max(1, Math.min(500, deadline.remaining()));
+  const waitMs = Math.max(1, Math.min(apiRouteTimeoutMs, deadline.remaining()));
   try {
     await page.waitForLoadState("networkidle", { timeout: waitMs });
   } catch (error) {
     if (error?.name !== "TimeoutError") throw error;
   }
   await deadline.run(page.waitForTimeout(50), `${route} render settlement`);
+}
+
+function observeAPIRequest(request) {
+  const url = new URL(request.url());
+  const requestURL = `${url.pathname}${url.search}`;
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve({ timedOut: true, url: requestURL }), apiRouteTimeoutMs);
+    request.response().then((response) => {
+      clearTimeout(timeout);
+      resolve({ response, timedOut: false, url: requestURL });
+    }, (error) => {
+      clearTimeout(timeout);
+      resolve({ error, timedOut: false, url: requestURL });
+    });
+  });
+}
+
+export function nearestRankPercentile(values, percentile) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const rank = Math.max(1, Math.ceil((percentile / 100) * sorted.length));
+  return sorted[Math.min(rank - 1, sorted.length - 1)];
+}
+
+export function assertDashboardScope(requestURL, scope) {
+  const url = new URL(requestURL);
+  if (url.pathname !== "/api/cerebro/grc/dashboard") {
+    throw new Error(`Expected dashboard request, got ${url.pathname}`);
+  }
+  if (url.searchParams.get("tenant_id") !== scope.tenantID) {
+    throw new Error(`Dashboard tenant scope mismatch for ${scope.tenantID}`);
+  }
+  if (url.searchParams.get("workspace_id") !== scope.workspaceID) {
+    throw new Error(`Dashboard workspace scope mismatch for ${scope.workspaceID}`);
+  }
+}
+
+export function assertHomepageP95(durations, maxP95Ms) {
+  const p95Ms = nearestRankPercentile(durations, 95);
+  if (p95Ms === null || p95Ms >= maxP95Ms) {
+    throw new Error(`Homepage data-ready p95 ${p95Ms ?? "missing"}ms must be below ${maxP95Ms}ms`);
+  }
+  return p95Ms;
+}
+
+async function validateAuthenticatedIdentity(context, baseUrl, deadline) {
+  const response = await deadline.run(
+    context.request.get(new URL("/api/me", baseUrl).toString()),
+    "local authenticated identity probe",
+  );
+  const payload = await deadline.run(response.json(), "local authenticated identity payload");
+  if (response.status() !== 200 || !payload.authenticated || payload.fallback || payload.user?.email !== fixtureUserEmail) {
+    throw new Error("Local route bug bash did not establish the trusted test identity");
+  }
+}
+
+async function measureHomepageDataReady(context, baseUrl, deadline, options) {
+  const samples = options.homeSamples ?? defaultHomeSamples;
+  const durations = [];
+  for (let index = 0; index < samples; index += 1) {
+    const scope = routeScopeMatrix[index % routeScopeMatrix.length];
+    const page = await deadline.run(context.newPage(), "homepage performance page creation");
+    try {
+      const route = new URL(routeWithScope("/", scope.tenantID, scope.workspaceID), baseUrl);
+      const dashboardResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === "/api/cerebro/grc/dashboard", {
+        timeout: Math.max(1, Math.min(perRequestTimeoutMs, deadline.remaining())),
+      }).then((response) => ({ response }), (error) => ({ error }));
+      const startedAt = performance.now();
+      const response = await page.goto(route.toString(), {
+        timeout: Math.max(1, Math.min(perRequestTimeoutMs, deadline.remaining())),
+        waitUntil: "domcontentloaded",
+      });
+      if (!response || response.status() !== 200) {
+        throw new Error(`Homepage returned ${response?.status() ?? "no response"}`);
+      }
+      await page.getByText("Open work queue", { exact: true }).waitFor({
+        state: "visible",
+        timeout: Math.max(1, Math.min(perRequestTimeoutMs, deadline.remaining())),
+      });
+      const dashboardResult = await deadline.run(dashboardResponse, "homepage dashboard response");
+      if (dashboardResult.error) throw dashboardResult.error;
+      const dashboard = dashboardResult.response;
+      if (dashboard.status() !== 200) throw new Error(`Homepage dashboard returned ${dashboard.status()}`);
+      assertDashboardScope(dashboard.url(), scope);
+      durations.push(Math.round(performance.now() - startedAt));
+    } finally {
+      await deadline.run(page.close(), "homepage performance page close");
+    }
+  }
+  return {
+    durations,
+    p95Ms: assertHomepageP95(durations, options.maxHomeP95Ms ?? defaultHomeP95Ms),
+  };
 }
 
 export async function validateBrowserRouteBugbash(baseUrl, options) {
@@ -410,15 +537,26 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
     const discoveredRoutes = await deadline.run(discoverPageRoutes(webRoot), "application route discovery");
     for (const route of discoveredRoutes) {
       enqueue(route);
-      enqueue(routeWithScope(route));
+      for (const scope of routeScopeMatrix) {
+        enqueue(routeWithScope(route, scope.tenantID, scope.workspaceID));
+      }
     }
 
-    const page = await deadline.run(browser.newPage({ viewport: { width: 1440, height: 1000 } }), "bug-bash page creation");
+    const context = await deadline.run(browser.newContext({
+      extraHTTPHeaders: { "x-user-email": fixtureUserEmail },
+      viewport: { width: 1440, height: 1000 },
+    }), "authenticated bug-bash context creation");
+    await validateAuthenticatedIdentity(context, baseUrl, deadline);
+    const page = await deadline.run(context.newPage(), "bug-bash page creation");
     let currentConsoleErrors = [];
     let currentPageErrors = [];
+    let currentAPIRequests = [];
     let currentRequestFailures = [];
     let currentResponseFailures = [];
+    const observedAPIRoutes = new Set();
     const scopedAPIRequests = new Set();
+    const observedScopes = new Set();
+    let redirectLifecycleAbortCount = 0;
     page.on("console", (message) => {
       if (message.type() !== "error") return;
       if (/^Failed to load resource: the server responded with a status of/i.test(message.text())) return;
@@ -427,9 +565,15 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
     page.on("pageerror", (error) => currentPageErrors.push(error.message));
     page.on("request", (request) => {
       const url = new URL(request.url());
-      if (url.origin !== new URL(baseUrl).origin || !url.pathname.startsWith("/api/cerebro/")) return;
-      if (url.searchParams.get("tenant_id") === fixtureTenantID && url.searchParams.get("workspace_id") === fixtureWorkspaceID) {
+      if (url.origin !== new URL(baseUrl).origin || !url.pathname.startsWith("/api/")) return;
+      observedAPIRoutes.add(`${request.method()} ${url.pathname}`);
+      currentAPIRequests.push(observeAPIRequest(request));
+      if (!url.pathname.startsWith("/api/cerebro/")) return;
+      const tenantID = url.searchParams.get("tenant_id");
+      const workspaceID = url.searchParams.get("workspace_id");
+      if (tenantID && workspaceID) {
         scopedAPIRequests.add(`${url.pathname}${url.search}`);
+        observedScopes.add(`${tenantID}:${workspaceID}`);
       }
     });
     page.on("requestfailed", (request) => {
@@ -452,6 +596,7 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
       auditedRoutes.add(route);
       currentConsoleErrors = [];
       currentPageErrors = [];
+      currentAPIRequests = [];
       currentRequestFailures = [];
       currentResponseFailures = [];
       const response = await page.goto(new URL(route, baseUrl).toString(), {
@@ -459,6 +604,19 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
         waitUntil: "domcontentloaded",
       });
       await waitForRouteSettled(page, deadline, route);
+      const expectedRedirect = isExpectedRouteRedirect(route, page.url());
+      for (let index = 0; index < currentAPIRequests.length; index += 1) {
+        const request = await deadline.run(currentAPIRequests[index], `${route} API response`);
+        if (!request.timedOut) continue;
+        if (expectedRedirect) {
+          redirectLifecycleAbortCount += 1;
+          continue;
+        }
+        currentRequestFailures.push({
+          error: `timed out after ${apiRouteTimeoutMs}ms`,
+          url: request.url,
+        });
+      }
       const body = await deadline.run(page.locator("body").innerText(), `${route} body read`);
       findings.push(...routeBugbashFindings({
         body,
@@ -483,14 +641,22 @@ export async function validateBrowserRouteBugbash(baseUrl, options) {
     if (findings.length > 0) {
       throw new Error(`Local route bug bash found ${findings.length} failure(s):\n- ${findings.join("\n- ")}`);
     }
-    if (scopedAPIRequests.size === 0) {
-      throw new Error("Local route bug bash did not observe tenant and workspace scope on an API request");
+    const missingScopes = routeScopeMatrix.filter((scope) =>
+      !observedScopes.has(`${scope.tenantID}:${scope.workspaceID}`));
+    if (missingScopes.length > 0) {
+      throw new Error(`Local route bug bash did not observe scoped API requests for ${missingScopes.map((scope) => `${scope.tenantID}/${scope.workspaceID}`).join(", ")}`);
     }
+    const homepagePerformance = await measureHomepageDataReady(context, baseUrl, deadline, options);
     return {
+      apiRouteCount: observedAPIRoutes.size,
       discoveredRouteCount: auditedRoutes.size,
+      homepageDataReadyDurationsMs: homepagePerformance.durations,
+      homepageDataReadyP95Ms: homepagePerformance.p95Ms,
+      redirectLifecycleAbortCount,
       routeTemplateCount: discoveredRoutes.length,
       scopedRouteCount: [...auditedRoutes].filter((route) => route.includes("workspace_id=")).length,
       scopedAPIRequestCount: scopedAPIRequests.size,
+      tenantWorkspaceScopeCount: observedScopes.size,
     };
   } finally {
     await deadline.run(browser.close(), "Chromium shutdown");
@@ -655,7 +821,7 @@ export async function runPortableWebFixtureE2E(options = {}) {
         await validateBrowserContracts(baseUrl, contracts, validationDeadline);
       }
       const routeBugbash = options.allRoutes
-        ? await validateBrowserRouteBugbash(baseUrl, { deadline: validationDeadline, webRoot })
+        ? await validateBrowserRouteBugbash(baseUrl, { ...options, deadline: validationDeadline, webRoot })
         : null;
       return {
         browserChecked: options.browser ?? true,
@@ -713,6 +879,10 @@ async function runCli() {
     console.log(`[e2e:web:fixtures] bug-bashed ${result.routeBugbash.discoveredRouteCount} local routes from ${result.routeBugbash.routeTemplateCount} page templates`);
     console.log(`[e2e:web:fixtures] checked ${result.routeBugbash.scopedRouteCount} tenant and workspace route variants`);
     console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.scopedAPIRequestCount} tenant and workspace scoped API requests`);
+    console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.apiRouteCount} same-origin API routes`);
+    console.log(`[e2e:web:fixtures] observed ${result.routeBugbash.tenantWorkspaceScopeCount} tenant and workspace scope pairs`);
+    console.log(`[e2e:web:fixtures] classified ${result.routeBugbash.redirectLifecycleAbortCount} redirect lifecycle-aborted API requests`);
+    console.log(`[e2e:web:fixtures] homepage data-ready samples ${result.routeBugbash.homepageDataReadyDurationsMs.join(",")}ms; p95 ${result.routeBugbash.homepageDataReadyP95Ms}ms`);
   }
   console.log(`[e2e:web:fixtures] checked ${result.scriptChunkCount} application chunks`);
 }

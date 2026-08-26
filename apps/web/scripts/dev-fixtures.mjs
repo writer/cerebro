@@ -42,6 +42,7 @@ export function createFixtureEnvironment(source = process.env, runNonce = source
     CEREBRO_IDENTITY_REQUIRED: "false",
     CEREBRO_LOCAL_IDENTITY_FALLBACK: "1",
     CEREBRO_PROXY_CACHE_TTL_MS: "0",
+    CEREBRO_TRUSTED_IDENTITY_HEADERS: "x-user-email",
     CEREBRO_WEB_FIXTURE_MODE: "1",
     NEXT_PUBLIC_CEREBRO_API_BASE: "fixture://local",
     NEXT_TELEMETRY_DISABLED: "1",

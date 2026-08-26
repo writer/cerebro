@@ -38,7 +38,7 @@ For a full local route bug bash, including dynamic page samples and tenant plus 
 make web-route-bugbash
 ```
 
-The route harness enumerates every Next.js page, follows same-origin product links, and fails on document or backend 404s, framework overlays, page errors, or console errors. It keeps logs in a temporary directory only when a run fails; it does not write screenshots or reports into the checkout.
+The route harness enumerates every Next.js page, follows same-origin product links, and exercises four tenant and application-workspace scope pairs. It fails on document or backend 404s, request timeouts, framework overlays, page errors, console errors, or homepage data-ready p95 of 1 second or slower. The checked default uses five homepage samples. The harness keeps logs in a temporary directory only when a run fails; it does not write screenshots or reports into the checkout.
 
 ## Continue With Real Data
 
