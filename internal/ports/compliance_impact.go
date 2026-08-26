@@ -9,11 +9,13 @@ import (
 // ErrComplianceImpactRevisionNotFound means an exact immutable revision is not
 // available. Impact analysis must fail rather than silently omit its dependents.
 var ErrComplianceImpactRevisionNotFound = errors.New("compliance impact revision not found")
+var ErrComplianceImpactInvalidProjection = errors.New("compliance impact projection is invalid")
 
 // ComplianceImpactRevisionRef is the storage-boundary representation of one
 // exact immutable domain revision. Services validate it into their own domain
 // value before using it for traversal.
 type ComplianceImpactRevisionRef struct {
+	AgentKey      string
 	TenantID      string
 	Domain        string
 	Kind          string

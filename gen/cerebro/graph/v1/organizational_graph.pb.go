@@ -6262,6 +6262,330 @@ func (x *CompareExposureCoverageResponse) GetCompleteness() *ExposureCoverageCom
 	return nil
 }
 
+type GetComplianceImpactFactRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	AgentKey      string                 `protobuf:"bytes,2,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetComplianceImpactFactRequest) Reset() {
+	*x = GetComplianceImpactFactRequest{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetComplianceImpactFactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetComplianceImpactFactRequest) ProtoMessage() {}
+
+func (x *GetComplianceImpactFactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetComplianceImpactFactRequest.ProtoReflect.Descriptor instead.
+func (*GetComplianceImpactFactRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *GetComplianceImpactFactRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *GetComplianceImpactFactRequest) GetAgentKey() string {
+	if x != nil {
+		return x.AgentKey
+	}
+	return ""
+}
+
+type ComplianceImpactDependency struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entity        *GraphEntity           `protobuf:"bytes,1,opt,name=entity,proto3" json:"entity,omitempty"`
+	Relation      string                 `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ComplianceImpactDependency) Reset() {
+	*x = ComplianceImpactDependency{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ComplianceImpactDependency) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ComplianceImpactDependency) ProtoMessage() {}
+
+func (x *ComplianceImpactDependency) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ComplianceImpactDependency.ProtoReflect.Descriptor instead.
+func (*ComplianceImpactDependency) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *ComplianceImpactDependency) GetEntity() *GraphEntity {
+	if x != nil {
+		return x.Entity
+	}
+	return nil
+}
+
+func (x *ComplianceImpactDependency) GetRelation() string {
+	if x != nil {
+		return x.Relation
+	}
+	return ""
+}
+
+type GetComplianceImpactFactResponse struct {
+	state           protoimpl.MessageState        `protogen:"open.v1"`
+	TenantId        string                        `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	GraphRevision   uint64                        `protobuf:"varint,2,opt,name=graph_revision,json=graphRevision,proto3" json:"graph_revision,omitempty"`
+	Fact            *GraphEntity                  `protobuf:"bytes,3,opt,name=fact,proto3" json:"fact,omitempty"`
+	DependencyCount uint32                        `protobuf:"varint,4,opt,name=dependency_count,json=dependencyCount,proto3" json:"dependency_count,omitempty"`
+	Dependencies    []*ComplianceImpactDependency `protobuf:"bytes,5,rep,name=dependencies,proto3" json:"dependencies,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetComplianceImpactFactResponse) Reset() {
+	*x = GetComplianceImpactFactResponse{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetComplianceImpactFactResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetComplianceImpactFactResponse) ProtoMessage() {}
+
+func (x *GetComplianceImpactFactResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetComplianceImpactFactResponse.ProtoReflect.Descriptor instead.
+func (*GetComplianceImpactFactResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *GetComplianceImpactFactResponse) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *GetComplianceImpactFactResponse) GetGraphRevision() uint64 {
+	if x != nil {
+		return x.GraphRevision
+	}
+	return 0
+}
+
+func (x *GetComplianceImpactFactResponse) GetFact() *GraphEntity {
+	if x != nil {
+		return x.Fact
+	}
+	return nil
+}
+
+func (x *GetComplianceImpactFactResponse) GetDependencyCount() uint32 {
+	if x != nil {
+		return x.DependencyCount
+	}
+	return 0
+}
+
+func (x *GetComplianceImpactFactResponse) GetDependencies() []*ComplianceImpactDependency {
+	if x != nil {
+		return x.Dependencies
+	}
+	return nil
+}
+
+type ListComplianceImpactDependentsRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	TenantId           string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	DependencyAgentKey string                 `protobuf:"bytes,2,opt,name=dependency_agent_key,json=dependencyAgentKey,proto3" json:"dependency_agent_key,omitempty"`
+	AfterAgentKey      string                 `protobuf:"bytes,3,opt,name=after_agent_key,json=afterAgentKey,proto3" json:"after_agent_key,omitempty"`
+	Limit              uint32                 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ListComplianceImpactDependentsRequest) Reset() {
+	*x = ListComplianceImpactDependentsRequest{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListComplianceImpactDependentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListComplianceImpactDependentsRequest) ProtoMessage() {}
+
+func (x *ListComplianceImpactDependentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListComplianceImpactDependentsRequest.ProtoReflect.Descriptor instead.
+func (*ListComplianceImpactDependentsRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *ListComplianceImpactDependentsRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListComplianceImpactDependentsRequest) GetDependencyAgentKey() string {
+	if x != nil {
+		return x.DependencyAgentKey
+	}
+	return ""
+}
+
+func (x *ListComplianceImpactDependentsRequest) GetAfterAgentKey() string {
+	if x != nil {
+		return x.AfterAgentKey
+	}
+	return ""
+}
+
+func (x *ListComplianceImpactDependentsRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListComplianceImpactDependentsResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	TenantId          string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	GraphRevision     uint64                 `protobuf:"varint,2,opt,name=graph_revision,json=graphRevision,proto3" json:"graph_revision,omitempty"`
+	Dependents        []*GraphEntity         `protobuf:"bytes,3,rep,name=dependents,proto3" json:"dependents,omitempty"`
+	Truncated         bool                   `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	NextAfterAgentKey string                 `protobuf:"bytes,5,opt,name=next_after_agent_key,json=nextAfterAgentKey,proto3" json:"next_after_agent_key,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ListComplianceImpactDependentsResponse) Reset() {
+	*x = ListComplianceImpactDependentsResponse{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListComplianceImpactDependentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListComplianceImpactDependentsResponse) ProtoMessage() {}
+
+func (x *ListComplianceImpactDependentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListComplianceImpactDependentsResponse.ProtoReflect.Descriptor instead.
+func (*ListComplianceImpactDependentsResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *ListComplianceImpactDependentsResponse) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListComplianceImpactDependentsResponse) GetGraphRevision() uint64 {
+	if x != nil {
+		return x.GraphRevision
+	}
+	return 0
+}
+
+func (x *ListComplianceImpactDependentsResponse) GetDependents() []*GraphEntity {
+	if x != nil {
+		return x.Dependents
+	}
+	return nil
+}
+
+func (x *ListComplianceImpactDependentsResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *ListComplianceImpactDependentsResponse) GetNextAfterAgentKey() string {
+	if x != nil {
+		return x.NextAfterAgentKey
+	}
+	return ""
+}
+
 var File_cerebro_graph_v1_organizational_graph_proto protoreflect.FileDescriptor
 
 const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
@@ -6854,7 +7178,32 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\fprimary_only\x18\x06 \x03(\v2&.cerebro.graph.v1.ExposureCoveragePairR\vprimaryOnly\x12b\n" +
 	"\x12corroborating_only\x18\a \x03(\v23.cerebro.graph.v1.ExposureCoverageCorroboratingOnlyR\x11corroboratingOnly\x12E\n" +
 	"\baccounts\x18\b \x03(\v2).cerebro.graph.v1.ExposureCoverageAccountR\baccounts\x12R\n" +
-	"\fcompleteness\x18\t \x01(\v2..cerebro.graph.v1.ExposureCoverageCompletenessR\fcompleteness*m\n" +
+	"\fcompleteness\x18\t \x01(\v2..cerebro.graph.v1.ExposureCoverageCompletenessR\fcompleteness\"Z\n" +
+	"\x1eGetComplianceImpactFactRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
+	"\tagent_key\x18\x02 \x01(\tR\bagentKey\"o\n" +
+	"\x1aComplianceImpactDependency\x125\n" +
+	"\x06entity\x18\x01 \x01(\v2\x1d.cerebro.graph.v1.GraphEntityR\x06entity\x12\x1a\n" +
+	"\brelation\x18\x02 \x01(\tR\brelation\"\x95\x02\n" +
+	"\x1fGetComplianceImpactFactResponse\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
+	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x121\n" +
+	"\x04fact\x18\x03 \x01(\v2\x1d.cerebro.graph.v1.GraphEntityR\x04fact\x12)\n" +
+	"\x10dependency_count\x18\x04 \x01(\rR\x0fdependencyCount\x12P\n" +
+	"\fdependencies\x18\x05 \x03(\v2,.cerebro.graph.v1.ComplianceImpactDependencyR\fdependencies\"\xb4\x01\n" +
+	"%ListComplianceImpactDependentsRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x120\n" +
+	"\x14dependency_agent_key\x18\x02 \x01(\tR\x12dependencyAgentKey\x12&\n" +
+	"\x0fafter_agent_key\x18\x03 \x01(\tR\rafterAgentKey\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\rR\x05limit\"\xfa\x01\n" +
+	"&ListComplianceImpactDependentsResponse\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
+	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12=\n" +
+	"\n" +
+	"dependents\x18\x03 \x03(\v2\x1d.cerebro.graph.v1.GraphEntityR\n" +
+	"dependents\x12\x1c\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\x12/\n" +
+	"\x14next_after_agent_key\x18\x05 \x01(\tR\x11nextAfterAgentKey*m\n" +
 	"\x0eQueryDirection\x12\x1f\n" +
 	"\x1bQUERY_DIRECTION_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18QUERY_DIRECTION_OUTGOING\x10\x01\x12\x1c\n" +
@@ -6862,7 +7211,7 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x17EntityRelationDirection\x12)\n" +
 	"%ENTITY_RELATION_DIRECTION_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ENTITY_RELATION_DIRECTION_INCOMING\x10\x01\x12&\n" +
-	"\"ENTITY_RELATION_DIRECTION_OUTGOING\x10\x022\xf0\x0e\n" +
+	"\"ENTITY_RELATION_DIRECTION_OUTGOING\x10\x022\x86\x11\n" +
 	"\x1aOrganizationalGraphService\x12K\n" +
 	"\x06Search\x12\x1f.cerebro.graph.v1.SearchRequest\x1a .cerebro.graph.v1.SearchResponse\x12T\n" +
 	"\tGetEntity\x12\".cerebro.graph.v1.GetEntityRequest\x1a#.cerebro.graph.v1.GetEntityResponse\x12K\n" +
@@ -6879,7 +7228,9 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x15ListPersonAccessPaths\x12..cerebro.graph.v1.ListPersonAccessPathsRequest\x1a/.cerebro.graph.v1.ListPersonAccessPathsResponse\x12\x81\x01\n" +
 	"\x18ListEffectiveAccessPaths\x121.cerebro.graph.v1.ListEffectiveAccessPathsRequest\x1a2.cerebro.graph.v1.ListEffectiveAccessPathsResponse\x12u\n" +
 	"\x14ListCloudAttackPaths\x12-.cerebro.graph.v1.ListCloudAttackPathsRequest\x1a..cerebro.graph.v1.ListCloudAttackPathsResponse\x12r\n" +
-	"\x13ListEntityRelations\x12,.cerebro.graph.v1.ListEntityRelationsRequest\x1a-.cerebro.graph.v1.ListEntityRelationsResponse\x12i\n" +
+	"\x13ListEntityRelations\x12,.cerebro.graph.v1.ListEntityRelationsRequest\x1a-.cerebro.graph.v1.ListEntityRelationsResponse\x12~\n" +
+	"\x17GetComplianceImpactFact\x120.cerebro.graph.v1.GetComplianceImpactFactRequest\x1a1.cerebro.graph.v1.GetComplianceImpactFactResponse\x12\x93\x01\n" +
+	"\x1eListComplianceImpactDependents\x127.cerebro.graph.v1.ListComplianceImpactDependentsRequest\x1a8.cerebro.graph.v1.ListComplianceImpactDependentsResponse\x12i\n" +
 	"\x10GetSourceSummary\x12).cerebro.graph.v1.GetSourceSummaryRequest\x1a*.cerebro.graph.v1.GetSourceSummaryResponse\x12o\n" +
 	"\x12ListVendorRegister\x12+.cerebro.graph.v1.ListVendorRegisterRequest\x1a,.cerebro.graph.v1.ListVendorRegisterResponse\x12x\n" +
 	"\x15ListVendorDiscoveries\x12..cerebro.graph.v1.ListVendorDiscoveriesRequest\x1a/.cerebro.graph.v1.ListVendorDiscoveriesResponseB?Z=github.com/writer/cerebro/gen/cerebro/graph/v1;cerebrographv1b\x06proto3"
@@ -6897,94 +7248,99 @@ func file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP() []byte {
 }
 
 var file_cerebro_graph_v1_organizational_graph_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 81)
+var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 86)
 var file_cerebro_graph_v1_organizational_graph_proto_goTypes = []any{
-	(QueryDirection)(0),                       // 0: cerebro.graph.v1.QueryDirection
-	(EntityRelationDirection)(0),              // 1: cerebro.graph.v1.EntityRelationDirection
-	(*GraphEntity)(nil),                       // 2: cerebro.graph.v1.GraphEntity
-	(*GraphEdge)(nil),                         // 3: cerebro.graph.v1.GraphEdge
-	(*GraphPath)(nil),                         // 4: cerebro.graph.v1.GraphPath
-	(*SearchRequest)(nil),                     // 5: cerebro.graph.v1.SearchRequest
-	(*SearchResponse)(nil),                    // 6: cerebro.graph.v1.SearchResponse
-	(*GetEntityRequest)(nil),                  // 7: cerebro.graph.v1.GetEntityRequest
-	(*GetEntityResponse)(nil),                 // 8: cerebro.graph.v1.GetEntityResponse
-	(*ExpandRequest)(nil),                     // 9: cerebro.graph.v1.ExpandRequest
-	(*ExpandResponse)(nil),                    // 10: cerebro.graph.v1.ExpandResponse
-	(*ExpandBatchRequest)(nil),                // 11: cerebro.graph.v1.ExpandBatchRequest
-	(*ExpandBatchResponse)(nil),               // 12: cerebro.graph.v1.ExpandBatchResponse
-	(*FindPathsRequest)(nil),                  // 13: cerebro.graph.v1.FindPathsRequest
-	(*FindPathsResponse)(nil),                 // 14: cerebro.graph.v1.FindPathsResponse
-	(*ExplainAssertionRequest)(nil),           // 15: cerebro.graph.v1.ExplainAssertionRequest
-	(*ExplainAssertionResponse)(nil),          // 16: cerebro.graph.v1.ExplainAssertionResponse
-	(*QueryNodePattern)(nil),                  // 17: cerebro.graph.v1.QueryNodePattern
-	(*QueryEdgePattern)(nil),                  // 18: cerebro.graph.v1.QueryEdgePattern
-	(*QueryAbsentEdgePattern)(nil),            // 19: cerebro.graph.v1.QueryAbsentEdgePattern
-	(*QueryFactsRequest)(nil),                 // 20: cerebro.graph.v1.QueryFactsRequest
-	(*QueryBoundEntity)(nil),                  // 21: cerebro.graph.v1.QueryBoundEntity
-	(*QueryBoundEdge)(nil),                    // 22: cerebro.graph.v1.QueryBoundEdge
-	(*QueryFactMatch)(nil),                    // 23: cerebro.graph.v1.QueryFactMatch
-	(*QueryFactsResponse)(nil),                // 24: cerebro.graph.v1.QueryFactsResponse
-	(*EntityCatalogFilter)(nil),               // 25: cerebro.graph.v1.EntityCatalogFilter
-	(*EntityRelationCountFilter)(nil),         // 26: cerebro.graph.v1.EntityRelationCountFilter
-	(*ListEntitiesRequest)(nil),               // 27: cerebro.graph.v1.ListEntitiesRequest
-	(*ListEntitiesResponse)(nil),              // 28: cerebro.graph.v1.ListEntitiesResponse
-	(*EntityRelationCount)(nil),               // 29: cerebro.graph.v1.EntityRelationCount
-	(*EntityKindCount)(nil),                   // 30: cerebro.graph.v1.EntityKindCount
-	(*CountEntityKindsRequest)(nil),           // 31: cerebro.graph.v1.CountEntityKindsRequest
-	(*CountEntityKindsResponse)(nil),          // 32: cerebro.graph.v1.CountEntityKindsResponse
-	(*RelationCount)(nil),                     // 33: cerebro.graph.v1.RelationCount
-	(*CountRelationsRequest)(nil),             // 34: cerebro.graph.v1.CountRelationsRequest
-	(*CountRelationsResponse)(nil),            // 35: cerebro.graph.v1.CountRelationsResponse
-	(*PersonAccessPath)(nil),                  // 36: cerebro.graph.v1.PersonAccessPath
-	(*ListPersonAccessPathsRequest)(nil),      // 37: cerebro.graph.v1.ListPersonAccessPathsRequest
-	(*ListPersonAccessPathsResponse)(nil),     // 38: cerebro.graph.v1.ListPersonAccessPathsResponse
-	(*EffectiveAccessPathEdge)(nil),           // 39: cerebro.graph.v1.EffectiveAccessPathEdge
-	(*EffectiveAccessPath)(nil),               // 40: cerebro.graph.v1.EffectiveAccessPath
-	(*ListEffectiveAccessPathsRequest)(nil),   // 41: cerebro.graph.v1.ListEffectiveAccessPathsRequest
-	(*ListEffectiveAccessPathsResponse)(nil),  // 42: cerebro.graph.v1.ListEffectiveAccessPathsResponse
-	(*CloudAttackPathNode)(nil),               // 43: cerebro.graph.v1.CloudAttackPathNode
-	(*CloudAttackPathEdge)(nil),               // 44: cerebro.graph.v1.CloudAttackPathEdge
-	(*CloudAttackPathOwnership)(nil),          // 45: cerebro.graph.v1.CloudAttackPathOwnership
-	(*CloudAttackPath)(nil),                   // 46: cerebro.graph.v1.CloudAttackPath
-	(*CloudAttackPathCounts)(nil),             // 47: cerebro.graph.v1.CloudAttackPathCounts
-	(*ListCloudAttackPathsRequest)(nil),       // 48: cerebro.graph.v1.ListCloudAttackPathsRequest
-	(*ListCloudAttackPathsResponse)(nil),      // 49: cerebro.graph.v1.ListCloudAttackPathsResponse
-	(*ListEntityRelationsRequest)(nil),        // 50: cerebro.graph.v1.ListEntityRelationsRequest
-	(*EntityRelation)(nil),                    // 51: cerebro.graph.v1.EntityRelation
-	(*ListEntityRelationsResponse)(nil),       // 52: cerebro.graph.v1.ListEntityRelationsResponse
-	(*GetSourceSummaryRequest)(nil),           // 53: cerebro.graph.v1.GetSourceSummaryRequest
-	(*GetSourceSummaryResponse)(nil),          // 54: cerebro.graph.v1.GetSourceSummaryResponse
-	(*VendorRegisterFilter)(nil),              // 55: cerebro.graph.v1.VendorRegisterFilter
-	(*ListVendorRegisterRequest)(nil),         // 56: cerebro.graph.v1.ListVendorRegisterRequest
-	(*VendorRegisterRow)(nil),                 // 57: cerebro.graph.v1.VendorRegisterRow
-	(*VendorRegisterSummary)(nil),             // 58: cerebro.graph.v1.VendorRegisterSummary
-	(*ListVendorRegisterResponse)(nil),        // 59: cerebro.graph.v1.ListVendorRegisterResponse
-	(*VendorDiscoveryFilter)(nil),             // 60: cerebro.graph.v1.VendorDiscoveryFilter
-	(*ListVendorDiscoveriesRequest)(nil),      // 61: cerebro.graph.v1.ListVendorDiscoveriesRequest
-	(*VendorDiscoveryRow)(nil),                // 62: cerebro.graph.v1.VendorDiscoveryRow
-	(*VendorDiscoverySignal)(nil),             // 63: cerebro.graph.v1.VendorDiscoverySignal
-	(*VendorDiscoverySummary)(nil),            // 64: cerebro.graph.v1.VendorDiscoverySummary
-	(*VendorDiscoverySourceSummary)(nil),      // 65: cerebro.graph.v1.VendorDiscoverySourceSummary
-	(*ListVendorDiscoveriesResponse)(nil),     // 66: cerebro.graph.v1.ListVendorDiscoveriesResponse
-	(*ExposureCoverageProfile)(nil),           // 67: cerebro.graph.v1.ExposureCoverageProfile
-	(*CompareExposureCoverageRequest)(nil),    // 68: cerebro.graph.v1.CompareExposureCoverageRequest
-	(*ExposureCoverageCounts)(nil),            // 69: cerebro.graph.v1.ExposureCoverageCounts
-	(*ExposureCoverageKindCount)(nil),         // 70: cerebro.graph.v1.ExposureCoverageKindCount
-	(*ExposureCoverageOverlap)(nil),           // 71: cerebro.graph.v1.ExposureCoverageOverlap
-	(*ExposureCoveragePair)(nil),              // 72: cerebro.graph.v1.ExposureCoveragePair
-	(*ExposureCoverageCorroboratingOnly)(nil), // 73: cerebro.graph.v1.ExposureCoverageCorroboratingOnly
-	(*ExposureCoverageAccount)(nil),           // 74: cerebro.graph.v1.ExposureCoverageAccount
-	(*ExposureCoverageCompleteness)(nil),      // 75: cerebro.graph.v1.ExposureCoverageCompleteness
-	(*CompareExposureCoverageResponse)(nil),   // 76: cerebro.graph.v1.CompareExposureCoverageResponse
-	nil,                                       // 77: cerebro.graph.v1.GraphEntity.PropertiesEntry
-	nil,                                       // 78: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
-	nil,                                       // 79: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
-	nil,                                       // 80: cerebro.graph.v1.VendorRegisterRow.AttributesEntry
-	nil,                                       // 81: cerebro.graph.v1.VendorDiscoveryRow.AttributesEntry
-	nil,                                       // 82: cerebro.graph.v1.VendorDiscoverySignal.AttributesEntry
+	(QueryDirection)(0),                            // 0: cerebro.graph.v1.QueryDirection
+	(EntityRelationDirection)(0),                   // 1: cerebro.graph.v1.EntityRelationDirection
+	(*GraphEntity)(nil),                            // 2: cerebro.graph.v1.GraphEntity
+	(*GraphEdge)(nil),                              // 3: cerebro.graph.v1.GraphEdge
+	(*GraphPath)(nil),                              // 4: cerebro.graph.v1.GraphPath
+	(*SearchRequest)(nil),                          // 5: cerebro.graph.v1.SearchRequest
+	(*SearchResponse)(nil),                         // 6: cerebro.graph.v1.SearchResponse
+	(*GetEntityRequest)(nil),                       // 7: cerebro.graph.v1.GetEntityRequest
+	(*GetEntityResponse)(nil),                      // 8: cerebro.graph.v1.GetEntityResponse
+	(*ExpandRequest)(nil),                          // 9: cerebro.graph.v1.ExpandRequest
+	(*ExpandResponse)(nil),                         // 10: cerebro.graph.v1.ExpandResponse
+	(*ExpandBatchRequest)(nil),                     // 11: cerebro.graph.v1.ExpandBatchRequest
+	(*ExpandBatchResponse)(nil),                    // 12: cerebro.graph.v1.ExpandBatchResponse
+	(*FindPathsRequest)(nil),                       // 13: cerebro.graph.v1.FindPathsRequest
+	(*FindPathsResponse)(nil),                      // 14: cerebro.graph.v1.FindPathsResponse
+	(*ExplainAssertionRequest)(nil),                // 15: cerebro.graph.v1.ExplainAssertionRequest
+	(*ExplainAssertionResponse)(nil),               // 16: cerebro.graph.v1.ExplainAssertionResponse
+	(*QueryNodePattern)(nil),                       // 17: cerebro.graph.v1.QueryNodePattern
+	(*QueryEdgePattern)(nil),                       // 18: cerebro.graph.v1.QueryEdgePattern
+	(*QueryAbsentEdgePattern)(nil),                 // 19: cerebro.graph.v1.QueryAbsentEdgePattern
+	(*QueryFactsRequest)(nil),                      // 20: cerebro.graph.v1.QueryFactsRequest
+	(*QueryBoundEntity)(nil),                       // 21: cerebro.graph.v1.QueryBoundEntity
+	(*QueryBoundEdge)(nil),                         // 22: cerebro.graph.v1.QueryBoundEdge
+	(*QueryFactMatch)(nil),                         // 23: cerebro.graph.v1.QueryFactMatch
+	(*QueryFactsResponse)(nil),                     // 24: cerebro.graph.v1.QueryFactsResponse
+	(*EntityCatalogFilter)(nil),                    // 25: cerebro.graph.v1.EntityCatalogFilter
+	(*EntityRelationCountFilter)(nil),              // 26: cerebro.graph.v1.EntityRelationCountFilter
+	(*ListEntitiesRequest)(nil),                    // 27: cerebro.graph.v1.ListEntitiesRequest
+	(*ListEntitiesResponse)(nil),                   // 28: cerebro.graph.v1.ListEntitiesResponse
+	(*EntityRelationCount)(nil),                    // 29: cerebro.graph.v1.EntityRelationCount
+	(*EntityKindCount)(nil),                        // 30: cerebro.graph.v1.EntityKindCount
+	(*CountEntityKindsRequest)(nil),                // 31: cerebro.graph.v1.CountEntityKindsRequest
+	(*CountEntityKindsResponse)(nil),               // 32: cerebro.graph.v1.CountEntityKindsResponse
+	(*RelationCount)(nil),                          // 33: cerebro.graph.v1.RelationCount
+	(*CountRelationsRequest)(nil),                  // 34: cerebro.graph.v1.CountRelationsRequest
+	(*CountRelationsResponse)(nil),                 // 35: cerebro.graph.v1.CountRelationsResponse
+	(*PersonAccessPath)(nil),                       // 36: cerebro.graph.v1.PersonAccessPath
+	(*ListPersonAccessPathsRequest)(nil),           // 37: cerebro.graph.v1.ListPersonAccessPathsRequest
+	(*ListPersonAccessPathsResponse)(nil),          // 38: cerebro.graph.v1.ListPersonAccessPathsResponse
+	(*EffectiveAccessPathEdge)(nil),                // 39: cerebro.graph.v1.EffectiveAccessPathEdge
+	(*EffectiveAccessPath)(nil),                    // 40: cerebro.graph.v1.EffectiveAccessPath
+	(*ListEffectiveAccessPathsRequest)(nil),        // 41: cerebro.graph.v1.ListEffectiveAccessPathsRequest
+	(*ListEffectiveAccessPathsResponse)(nil),       // 42: cerebro.graph.v1.ListEffectiveAccessPathsResponse
+	(*CloudAttackPathNode)(nil),                    // 43: cerebro.graph.v1.CloudAttackPathNode
+	(*CloudAttackPathEdge)(nil),                    // 44: cerebro.graph.v1.CloudAttackPathEdge
+	(*CloudAttackPathOwnership)(nil),               // 45: cerebro.graph.v1.CloudAttackPathOwnership
+	(*CloudAttackPath)(nil),                        // 46: cerebro.graph.v1.CloudAttackPath
+	(*CloudAttackPathCounts)(nil),                  // 47: cerebro.graph.v1.CloudAttackPathCounts
+	(*ListCloudAttackPathsRequest)(nil),            // 48: cerebro.graph.v1.ListCloudAttackPathsRequest
+	(*ListCloudAttackPathsResponse)(nil),           // 49: cerebro.graph.v1.ListCloudAttackPathsResponse
+	(*ListEntityRelationsRequest)(nil),             // 50: cerebro.graph.v1.ListEntityRelationsRequest
+	(*EntityRelation)(nil),                         // 51: cerebro.graph.v1.EntityRelation
+	(*ListEntityRelationsResponse)(nil),            // 52: cerebro.graph.v1.ListEntityRelationsResponse
+	(*GetSourceSummaryRequest)(nil),                // 53: cerebro.graph.v1.GetSourceSummaryRequest
+	(*GetSourceSummaryResponse)(nil),               // 54: cerebro.graph.v1.GetSourceSummaryResponse
+	(*VendorRegisterFilter)(nil),                   // 55: cerebro.graph.v1.VendorRegisterFilter
+	(*ListVendorRegisterRequest)(nil),              // 56: cerebro.graph.v1.ListVendorRegisterRequest
+	(*VendorRegisterRow)(nil),                      // 57: cerebro.graph.v1.VendorRegisterRow
+	(*VendorRegisterSummary)(nil),                  // 58: cerebro.graph.v1.VendorRegisterSummary
+	(*ListVendorRegisterResponse)(nil),             // 59: cerebro.graph.v1.ListVendorRegisterResponse
+	(*VendorDiscoveryFilter)(nil),                  // 60: cerebro.graph.v1.VendorDiscoveryFilter
+	(*ListVendorDiscoveriesRequest)(nil),           // 61: cerebro.graph.v1.ListVendorDiscoveriesRequest
+	(*VendorDiscoveryRow)(nil),                     // 62: cerebro.graph.v1.VendorDiscoveryRow
+	(*VendorDiscoverySignal)(nil),                  // 63: cerebro.graph.v1.VendorDiscoverySignal
+	(*VendorDiscoverySummary)(nil),                 // 64: cerebro.graph.v1.VendorDiscoverySummary
+	(*VendorDiscoverySourceSummary)(nil),           // 65: cerebro.graph.v1.VendorDiscoverySourceSummary
+	(*ListVendorDiscoveriesResponse)(nil),          // 66: cerebro.graph.v1.ListVendorDiscoveriesResponse
+	(*ExposureCoverageProfile)(nil),                // 67: cerebro.graph.v1.ExposureCoverageProfile
+	(*CompareExposureCoverageRequest)(nil),         // 68: cerebro.graph.v1.CompareExposureCoverageRequest
+	(*ExposureCoverageCounts)(nil),                 // 69: cerebro.graph.v1.ExposureCoverageCounts
+	(*ExposureCoverageKindCount)(nil),              // 70: cerebro.graph.v1.ExposureCoverageKindCount
+	(*ExposureCoverageOverlap)(nil),                // 71: cerebro.graph.v1.ExposureCoverageOverlap
+	(*ExposureCoveragePair)(nil),                   // 72: cerebro.graph.v1.ExposureCoveragePair
+	(*ExposureCoverageCorroboratingOnly)(nil),      // 73: cerebro.graph.v1.ExposureCoverageCorroboratingOnly
+	(*ExposureCoverageAccount)(nil),                // 74: cerebro.graph.v1.ExposureCoverageAccount
+	(*ExposureCoverageCompleteness)(nil),           // 75: cerebro.graph.v1.ExposureCoverageCompleteness
+	(*CompareExposureCoverageResponse)(nil),        // 76: cerebro.graph.v1.CompareExposureCoverageResponse
+	(*GetComplianceImpactFactRequest)(nil),         // 77: cerebro.graph.v1.GetComplianceImpactFactRequest
+	(*ComplianceImpactDependency)(nil),             // 78: cerebro.graph.v1.ComplianceImpactDependency
+	(*GetComplianceImpactFactResponse)(nil),        // 79: cerebro.graph.v1.GetComplianceImpactFactResponse
+	(*ListComplianceImpactDependentsRequest)(nil),  // 80: cerebro.graph.v1.ListComplianceImpactDependentsRequest
+	(*ListComplianceImpactDependentsResponse)(nil), // 81: cerebro.graph.v1.ListComplianceImpactDependentsResponse
+	nil, // 82: cerebro.graph.v1.GraphEntity.PropertiesEntry
+	nil, // 83: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	nil, // 84: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	nil, // 85: cerebro.graph.v1.VendorRegisterRow.AttributesEntry
+	nil, // 86: cerebro.graph.v1.VendorDiscoveryRow.AttributesEntry
+	nil, // 87: cerebro.graph.v1.VendorDiscoverySignal.AttributesEntry
 }
 var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
-	77,  // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
+	82,  // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
 	2,   // 1: cerebro.graph.v1.GraphPath.entities:type_name -> cerebro.graph.v1.GraphEntity
 	3,   // 2: cerebro.graph.v1.GraphPath.edges:type_name -> cerebro.graph.v1.GraphEdge
 	2,   // 3: cerebro.graph.v1.SearchResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
@@ -6992,7 +7348,7 @@ var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
 	2,   // 5: cerebro.graph.v1.ExpandResponse.root:type_name -> cerebro.graph.v1.GraphEntity
 	2,   // 6: cerebro.graph.v1.ExpandResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
 	3,   // 7: cerebro.graph.v1.ExpandResponse.edges:type_name -> cerebro.graph.v1.GraphEdge
-	78,  // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	83,  // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
 	4,   // 9: cerebro.graph.v1.FindPathsResponse.paths:type_name -> cerebro.graph.v1.GraphPath
 	3,   // 10: cerebro.graph.v1.ExplainAssertionResponse.edge:type_name -> cerebro.graph.v1.GraphEdge
 	0,   // 11: cerebro.graph.v1.QueryAbsentEdgePattern.direction:type_name -> cerebro.graph.v1.QueryDirection
@@ -7052,15 +7408,15 @@ var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
 	2,   // 65: cerebro.graph.v1.EntityRelation.entity:type_name -> cerebro.graph.v1.GraphEntity
 	51,  // 66: cerebro.graph.v1.ListEntityRelationsResponse.relations:type_name -> cerebro.graph.v1.EntityRelation
 	1,   // 67: cerebro.graph.v1.ListEntityRelationsResponse.next_after_direction:type_name -> cerebro.graph.v1.EntityRelationDirection
-	79,  // 68: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	84,  // 68: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
 	55,  // 69: cerebro.graph.v1.ListVendorRegisterRequest.filter:type_name -> cerebro.graph.v1.VendorRegisterFilter
-	80,  // 70: cerebro.graph.v1.VendorRegisterRow.attributes:type_name -> cerebro.graph.v1.VendorRegisterRow.AttributesEntry
+	85,  // 70: cerebro.graph.v1.VendorRegisterRow.attributes:type_name -> cerebro.graph.v1.VendorRegisterRow.AttributesEntry
 	57,  // 71: cerebro.graph.v1.ListVendorRegisterResponse.vendors:type_name -> cerebro.graph.v1.VendorRegisterRow
 	58,  // 72: cerebro.graph.v1.ListVendorRegisterResponse.summary:type_name -> cerebro.graph.v1.VendorRegisterSummary
 	60,  // 73: cerebro.graph.v1.ListVendorDiscoveriesRequest.filter:type_name -> cerebro.graph.v1.VendorDiscoveryFilter
-	81,  // 74: cerebro.graph.v1.VendorDiscoveryRow.attributes:type_name -> cerebro.graph.v1.VendorDiscoveryRow.AttributesEntry
+	86,  // 74: cerebro.graph.v1.VendorDiscoveryRow.attributes:type_name -> cerebro.graph.v1.VendorDiscoveryRow.AttributesEntry
 	63,  // 75: cerebro.graph.v1.VendorDiscoveryRow.signals:type_name -> cerebro.graph.v1.VendorDiscoverySignal
-	82,  // 76: cerebro.graph.v1.VendorDiscoverySignal.attributes:type_name -> cerebro.graph.v1.VendorDiscoverySignal.AttributesEntry
+	87,  // 76: cerebro.graph.v1.VendorDiscoverySignal.attributes:type_name -> cerebro.graph.v1.VendorDiscoverySignal.AttributesEntry
 	62,  // 77: cerebro.graph.v1.ListVendorDiscoveriesResponse.discoveries:type_name -> cerebro.graph.v1.VendorDiscoveryRow
 	64,  // 78: cerebro.graph.v1.ListVendorDiscoveriesResponse.summary:type_name -> cerebro.graph.v1.VendorDiscoverySummary
 	65,  // 79: cerebro.graph.v1.ListVendorDiscoveriesResponse.source_summaries:type_name -> cerebro.graph.v1.VendorDiscoverySourceSummary
@@ -7080,48 +7436,56 @@ var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
 	73,  // 93: cerebro.graph.v1.CompareExposureCoverageResponse.corroborating_only:type_name -> cerebro.graph.v1.ExposureCoverageCorroboratingOnly
 	74,  // 94: cerebro.graph.v1.CompareExposureCoverageResponse.accounts:type_name -> cerebro.graph.v1.ExposureCoverageAccount
 	75,  // 95: cerebro.graph.v1.CompareExposureCoverageResponse.completeness:type_name -> cerebro.graph.v1.ExposureCoverageCompleteness
-	10,  // 96: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
-	5,   // 97: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
-	7,   // 98: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
-	9,   // 99: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
-	11,  // 100: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
-	13,  // 101: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
-	15,  // 102: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
-	20,  // 103: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:input_type -> cerebro.graph.v1.QueryFactsRequest
-	68,  // 104: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:input_type -> cerebro.graph.v1.CompareExposureCoverageRequest
-	27,  // 105: cerebro.graph.v1.OrganizationalGraphService.ListEntities:input_type -> cerebro.graph.v1.ListEntitiesRequest
-	31,  // 106: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:input_type -> cerebro.graph.v1.CountEntityKindsRequest
-	34,  // 107: cerebro.graph.v1.OrganizationalGraphService.CountRelations:input_type -> cerebro.graph.v1.CountRelationsRequest
-	37,  // 108: cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths:input_type -> cerebro.graph.v1.ListPersonAccessPathsRequest
-	41,  // 109: cerebro.graph.v1.OrganizationalGraphService.ListEffectiveAccessPaths:input_type -> cerebro.graph.v1.ListEffectiveAccessPathsRequest
-	48,  // 110: cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths:input_type -> cerebro.graph.v1.ListCloudAttackPathsRequest
-	50,  // 111: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:input_type -> cerebro.graph.v1.ListEntityRelationsRequest
-	53,  // 112: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
-	56,  // 113: cerebro.graph.v1.OrganizationalGraphService.ListVendorRegister:input_type -> cerebro.graph.v1.ListVendorRegisterRequest
-	61,  // 114: cerebro.graph.v1.OrganizationalGraphService.ListVendorDiscoveries:input_type -> cerebro.graph.v1.ListVendorDiscoveriesRequest
-	6,   // 115: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
-	8,   // 116: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
-	10,  // 117: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
-	12,  // 118: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
-	14,  // 119: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
-	16,  // 120: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
-	24,  // 121: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:output_type -> cerebro.graph.v1.QueryFactsResponse
-	76,  // 122: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:output_type -> cerebro.graph.v1.CompareExposureCoverageResponse
-	28,  // 123: cerebro.graph.v1.OrganizationalGraphService.ListEntities:output_type -> cerebro.graph.v1.ListEntitiesResponse
-	32,  // 124: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:output_type -> cerebro.graph.v1.CountEntityKindsResponse
-	35,  // 125: cerebro.graph.v1.OrganizationalGraphService.CountRelations:output_type -> cerebro.graph.v1.CountRelationsResponse
-	38,  // 126: cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths:output_type -> cerebro.graph.v1.ListPersonAccessPathsResponse
-	42,  // 127: cerebro.graph.v1.OrganizationalGraphService.ListEffectiveAccessPaths:output_type -> cerebro.graph.v1.ListEffectiveAccessPathsResponse
-	49,  // 128: cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths:output_type -> cerebro.graph.v1.ListCloudAttackPathsResponse
-	52,  // 129: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:output_type -> cerebro.graph.v1.ListEntityRelationsResponse
-	54,  // 130: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
-	59,  // 131: cerebro.graph.v1.OrganizationalGraphService.ListVendorRegister:output_type -> cerebro.graph.v1.ListVendorRegisterResponse
-	66,  // 132: cerebro.graph.v1.OrganizationalGraphService.ListVendorDiscoveries:output_type -> cerebro.graph.v1.ListVendorDiscoveriesResponse
-	115, // [115:133] is the sub-list for method output_type
-	97,  // [97:115] is the sub-list for method input_type
-	97,  // [97:97] is the sub-list for extension type_name
-	97,  // [97:97] is the sub-list for extension extendee
-	0,   // [0:97] is the sub-list for field type_name
+	2,   // 96: cerebro.graph.v1.ComplianceImpactDependency.entity:type_name -> cerebro.graph.v1.GraphEntity
+	2,   // 97: cerebro.graph.v1.GetComplianceImpactFactResponse.fact:type_name -> cerebro.graph.v1.GraphEntity
+	78,  // 98: cerebro.graph.v1.GetComplianceImpactFactResponse.dependencies:type_name -> cerebro.graph.v1.ComplianceImpactDependency
+	2,   // 99: cerebro.graph.v1.ListComplianceImpactDependentsResponse.dependents:type_name -> cerebro.graph.v1.GraphEntity
+	10,  // 100: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
+	5,   // 101: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
+	7,   // 102: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
+	9,   // 103: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
+	11,  // 104: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
+	13,  // 105: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
+	15,  // 106: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
+	20,  // 107: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:input_type -> cerebro.graph.v1.QueryFactsRequest
+	68,  // 108: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:input_type -> cerebro.graph.v1.CompareExposureCoverageRequest
+	27,  // 109: cerebro.graph.v1.OrganizationalGraphService.ListEntities:input_type -> cerebro.graph.v1.ListEntitiesRequest
+	31,  // 110: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:input_type -> cerebro.graph.v1.CountEntityKindsRequest
+	34,  // 111: cerebro.graph.v1.OrganizationalGraphService.CountRelations:input_type -> cerebro.graph.v1.CountRelationsRequest
+	37,  // 112: cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths:input_type -> cerebro.graph.v1.ListPersonAccessPathsRequest
+	41,  // 113: cerebro.graph.v1.OrganizationalGraphService.ListEffectiveAccessPaths:input_type -> cerebro.graph.v1.ListEffectiveAccessPathsRequest
+	48,  // 114: cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths:input_type -> cerebro.graph.v1.ListCloudAttackPathsRequest
+	50,  // 115: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:input_type -> cerebro.graph.v1.ListEntityRelationsRequest
+	77,  // 116: cerebro.graph.v1.OrganizationalGraphService.GetComplianceImpactFact:input_type -> cerebro.graph.v1.GetComplianceImpactFactRequest
+	80,  // 117: cerebro.graph.v1.OrganizationalGraphService.ListComplianceImpactDependents:input_type -> cerebro.graph.v1.ListComplianceImpactDependentsRequest
+	53,  // 118: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
+	56,  // 119: cerebro.graph.v1.OrganizationalGraphService.ListVendorRegister:input_type -> cerebro.graph.v1.ListVendorRegisterRequest
+	61,  // 120: cerebro.graph.v1.OrganizationalGraphService.ListVendorDiscoveries:input_type -> cerebro.graph.v1.ListVendorDiscoveriesRequest
+	6,   // 121: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
+	8,   // 122: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
+	10,  // 123: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
+	12,  // 124: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
+	14,  // 125: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
+	16,  // 126: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
+	24,  // 127: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:output_type -> cerebro.graph.v1.QueryFactsResponse
+	76,  // 128: cerebro.graph.v1.OrganizationalGraphService.CompareExposureCoverage:output_type -> cerebro.graph.v1.CompareExposureCoverageResponse
+	28,  // 129: cerebro.graph.v1.OrganizationalGraphService.ListEntities:output_type -> cerebro.graph.v1.ListEntitiesResponse
+	32,  // 130: cerebro.graph.v1.OrganizationalGraphService.CountEntityKinds:output_type -> cerebro.graph.v1.CountEntityKindsResponse
+	35,  // 131: cerebro.graph.v1.OrganizationalGraphService.CountRelations:output_type -> cerebro.graph.v1.CountRelationsResponse
+	38,  // 132: cerebro.graph.v1.OrganizationalGraphService.ListPersonAccessPaths:output_type -> cerebro.graph.v1.ListPersonAccessPathsResponse
+	42,  // 133: cerebro.graph.v1.OrganizationalGraphService.ListEffectiveAccessPaths:output_type -> cerebro.graph.v1.ListEffectiveAccessPathsResponse
+	49,  // 134: cerebro.graph.v1.OrganizationalGraphService.ListCloudAttackPaths:output_type -> cerebro.graph.v1.ListCloudAttackPathsResponse
+	52,  // 135: cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations:output_type -> cerebro.graph.v1.ListEntityRelationsResponse
+	79,  // 136: cerebro.graph.v1.OrganizationalGraphService.GetComplianceImpactFact:output_type -> cerebro.graph.v1.GetComplianceImpactFactResponse
+	81,  // 137: cerebro.graph.v1.OrganizationalGraphService.ListComplianceImpactDependents:output_type -> cerebro.graph.v1.ListComplianceImpactDependentsResponse
+	54,  // 138: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
+	59,  // 139: cerebro.graph.v1.OrganizationalGraphService.ListVendorRegister:output_type -> cerebro.graph.v1.ListVendorRegisterResponse
+	66,  // 140: cerebro.graph.v1.OrganizationalGraphService.ListVendorDiscoveries:output_type -> cerebro.graph.v1.ListVendorDiscoveriesResponse
+	121, // [121:141] is the sub-list for method output_type
+	101, // [101:121] is the sub-list for method input_type
+	101, // [101:101] is the sub-list for extension type_name
+	101, // [101:101] is the sub-list for extension extendee
+	0,   // [0:101] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_graph_v1_organizational_graph_proto_init() }
@@ -7135,7 +7499,7 @@ func file_cerebro_graph_v1_organizational_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_graph_v1_organizational_graph_proto_rawDesc), len(file_cerebro_graph_v1_organizational_graph_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   81,
+			NumMessages:   86,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
