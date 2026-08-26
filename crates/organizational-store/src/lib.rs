@@ -30,11 +30,10 @@ mod neo4j;
 mod page_publication;
 mod parity;
 mod postgres;
+mod promotion;
+mod promotion_evidence_store;
 
-pub use cutover::{
-    CutoverDecision, CutoverGate, CutoverPolicy, ProjectionAuthority, ProjectionAuthorityRecord,
-    ProjectionPromotionRequest,
-};
+pub use cutover::CutoverPolicy;
 pub use neo4j::{
     CloudAttackPath, CloudAttackPathCounts, CloudAttackPathEdge, CloudAttackPathNode,
     CloudAttackPathOwnership, CloudAttackPathPage, ComplianceImpactDependency,
@@ -62,6 +61,10 @@ pub use postgres::{
     SourceRuntimeCollectionObservation, SourceRuntimeObservation, StoredAuditEvent,
     StoredAuditEventPage, StoredSourceRuntime,
 };
+pub use promotion::{
+    CutoverDecision, ProjectionAuthority, ProjectionAuthorityRecord, ProjectionPromotionRequest,
+};
+pub use promotion_evidence_store::{VerifiedPromotionReceipt, VerifiedPromotionReceiptKind};
 
 use std::{error::Error, fmt};
 
