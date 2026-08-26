@@ -16,7 +16,7 @@ var (
 )
 
 func TestOrganizationalPlatformRawBenchmarkCorpus(t *testing.T) {
-	definition, family := organizationalBenchmarkBoxAssetDefinition(t)
+	definition, family := organizationalBenchmarkContentAssetDefinition(t)
 	runtime := organizationalBenchmarkRuntime()
 	for _, recordCount := range []int{100, 1_000, 5_000} {
 		records := organizationalBenchmarkRawAssets(recordCount)
@@ -39,7 +39,7 @@ func TestOrganizationalPlatformRawBenchmarkCorpus(t *testing.T) {
 }
 
 func BenchmarkOrganizationalPlatformGoRawProjection(b *testing.B) {
-	definition, family := organizationalBenchmarkBoxAssetDefinition(b)
+	definition, family := organizationalBenchmarkContentAssetDefinition(b)
 	runtime := organizationalBenchmarkRuntime()
 	for _, recordCount := range []int{100, 1_000, 5_000} {
 		records := organizationalBenchmarkRawAssets(recordCount)
@@ -58,7 +58,7 @@ func BenchmarkOrganizationalPlatformGoRawProjection(b *testing.B) {
 				recordCount,
 			)
 		}
-		b.Run(fmt.Sprintf("projection/box_assets/records_%d", recordCount), func(b *testing.B) {
+		b.Run(fmt.Sprintf("projection/content_assets/records_%d", recordCount), func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
@@ -97,7 +97,7 @@ func projectOrganizationalRawBenchmarkRecords(
 			Id:         fmt.Sprintf("observation-%05d", index),
 			TenantId:   runtime.GetTenantId(),
 			SourceId:   runtime.GetSourceId(),
-			Kind:       "box.content_assets",
+			Kind:       "dropbox_business.content_assets",
 			Attributes: attributes,
 		}
 		entities, links, err := sourceprojection.ProjectEvent(event)
@@ -110,31 +110,31 @@ func projectOrganizationalRawBenchmarkRecords(
 	return entityCount, linkCount
 }
 
-func organizationalBenchmarkBoxAssetDefinition(
+func organizationalBenchmarkContentAssetDefinition(
 	tb testing.TB,
 ) (connectordefinitions.Definition, connectordefinitions.ResourceFamily) {
 	tb.Helper()
-	entry, ok, err := connectorcatalog.BuiltinEntry("box")
+	entry, ok, err := connectorcatalog.BuiltinEntry("dropbox_business")
 	if err != nil {
 		tb.Fatal(err)
 	}
 	if !ok {
-		tb.Fatal("Box connector definition is missing")
+		tb.Fatal("Dropbox Business connector definition is missing")
 	}
 	for _, family := range entry.Definition.ResourceFamilies {
 		if family.ID == "content_assets" {
 			return entry.Definition, family
 		}
 	}
-	tb.Fatal("Box content_assets family is missing")
+	tb.Fatal("Dropbox Business content_assets family is missing")
 	return connectordefinitions.Definition{}, connectordefinitions.ResourceFamily{}
 }
 
 func organizationalBenchmarkRuntime() *cerebrov1.SourceRuntime {
 	return &cerebrov1.SourceRuntime{
-		Id:       "box-benchmark",
+		Id:       "dropbox-business-benchmark",
 		TenantId: "benchmark-tenant",
-		SourceId: "box",
+		SourceId: "dropbox_business",
 	}
 }
 
