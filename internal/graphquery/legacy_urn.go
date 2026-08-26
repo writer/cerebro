@@ -1,10 +1,33 @@
 package graphquery
 
 import (
+	"context"
+	"errors"
 	"strings"
 
+	"github.com/writer/cerebro/internal/ports"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
+
+// GetEntityImpactNeighborhood resolves legacy tenant-wide entity URLs but
+// never falls back outside a selected application workspace.
+func (s *Service) GetEntityImpactNeighborhood(ctx context.Context, request NeighborhoodRequest) (*ports.EntityNeighborhood, string, error) {
+	graph, err := s.GetEntityNeighborhood(ctx, request)
+	if err == nil || strings.TrimSpace(request.ApplicationWorkspaceID) != "" || !errors.Is(err, ports.ErrGraphEntityNotFound) {
+		return graph, request.RootURN, err
+	}
+	for _, candidateURN := range LegacyEntityImpactFallbackURNs(request.RootURN) {
+		request.RootURN = candidateURN
+		graph, err = s.GetEntityNeighborhood(ctx, request)
+		if err == nil {
+			return graph, candidateURN, nil
+		}
+		if !errors.Is(err, ports.ErrGraphEntityNotFound) {
+			break
+		}
+	}
+	return nil, request.RootURN, err
+}
 
 // LegacyEntityImpactFallbackURNs returns current graph root candidates for
 // legacy impact URLs that were minted before GitHub entity kinds stabilized.

@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	Header             = "X-Cerebro-Workspace"
-	maxSelectorIDBytes = 128
+	Header                   = "X-Cerebro-Workspace"
+	TenantHeader             = "X-Cerebro-Tenant"
+	maxSelectorIDBytes       = 128
+	maxTenantSelectorIDBytes = 256
 )
 
 var ErrInvalidSelector = errors.New("invalid application workspace selector")
@@ -39,6 +41,16 @@ func Select(headerValue, queryValue string) (string, error) {
 // SelectValues rejects ambiguous repeated selectors before reconciling header
 // and query values.
 func SelectValues(headerValues, queryValues []string) (string, error) {
+	return selectValues(headerValues, queryValues, Select)
+}
+
+// SelectTenantValues rejects ambiguous repeated tenant selectors and requires
+// the header and query forms to identify the same tenant.
+func SelectTenantValues(headerValues, queryValues []string) (string, error) {
+	return selectValues(headerValues, queryValues, selectTenant)
+}
+
+func selectValues(headerValues, queryValues []string, selectValue func(string, string) (string, error)) (string, error) {
 	if len(headerValues) > 1 || len(queryValues) > 1 {
 		return "", ErrInvalidSelector
 	}
@@ -49,12 +61,37 @@ func SelectValues(headerValues, queryValues []string) (string, error) {
 	if len(queryValues) == 1 {
 		queryValue = queryValues[0]
 	}
-	return Select(headerValue, queryValue)
+	return selectValue(headerValue, queryValue)
+}
+
+func selectTenant(headerValue, queryValue string) (string, error) {
+	headerValue = strings.TrimSpace(headerValue)
+	queryValue = strings.TrimSpace(queryValue)
+	if headerValue != "" && queryValue != "" && headerValue != queryValue {
+		return "", ErrInvalidSelector
+	}
+	tenantID := queryValue
+	if tenantID == "" {
+		tenantID = headerValue
+	}
+	if tenantID != "" && !ValidTenantID(tenantID) {
+		return "", ErrInvalidSelector
+	}
+	return tenantID, nil
 }
 
 // ValidID reports whether value is a single bounded opaque workspace ID.
 func ValidID(value string) bool {
-	if value == "" || len(value) > maxSelectorIDBytes || !utf8.ValidString(value) || value == "*" || strings.Contains(value, ",") {
+	return validSelectorID(value, maxSelectorIDBytes)
+}
+
+// ValidTenantID reports whether value is a single bounded opaque tenant ID.
+func ValidTenantID(value string) bool {
+	return validSelectorID(value, maxTenantSelectorIDBytes)
+}
+
+func validSelectorID(value string, maxBytes int) bool {
+	if value == "" || len(value) > maxBytes || !utf8.ValidString(value) || value == "*" || strings.Contains(value, ",") {
 		return false
 	}
 	for _, character := range value {

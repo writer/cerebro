@@ -561,39 +561,15 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, fmt.Errorf("%w: entity urn is required", errInvalidHTTPRequest))
 		return
 	}
-	if err := authorizeCerebroURNTenant(r.Context(), entityURN); err != nil {
+	scope, err := grcScopeFromRequest(r)
+	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
 	requestedEntityURN := entityURN
-	limit, err := grcLimitFromRequest(r)
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	graphStore := a.deps.GraphReads.Neighborhoods
-	if graphStore == nil {
-		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
-		return
-	}
-	graph, err := graphStore.GetEntityNeighborhood(r.Context(), entityURN, int(limit))
-	if errors.Is(err, ports.ErrGraphEntityNotFound) {
-		for _, candidateURN := range graphquery.LegacyEntityImpactFallbackURNs(entityURN) {
-			graph, err = graphStore.GetEntityNeighborhood(r.Context(), candidateURN, int(limit))
-			if err == nil {
-				entityURN = candidateURN
-				break
-			}
-			if !errors.Is(err, ports.ErrGraphEntityNotFound) {
-				break
-			}
-		}
-	}
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	scope, err := grcScopeFromRequest(r)
+	graph, entityURN, err := a.graphQueryService().GetEntityImpactNeighborhood(r.Context(), graphquery.NeighborhoodRequest{
+		RootURN: entityURN, TenantID: scope.TenantID, ApplicationWorkspaceID: scope.ApplicationWorkspaceID, Limit: scope.Limit,
+	})
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -603,7 +579,7 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	findingFilter := grcFindingFilter{ResourceURN: entityURN, Limit: limit}
+	findingFilter := grcFindingFilter{ResourceURN: entityURN, Limit: scope.Limit}
 	if requestedEntityURN != entityURN {
 		findingFilter.ResourceURN = ""
 		findingFilter.ResourceURNs = []string{entityURN, requestedEntityURN}
@@ -613,7 +589,7 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: limit})
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -821,16 +797,9 @@ func grcScopeFromRequest(r *http.Request) (grcScope, error) {
 	if err != nil {
 		return grcScope{}, err
 	}
-	applicationWorkspaceID, err := requestApplicationWorkspaceSelector(r)
+	tenantID, applicationWorkspaceID, err := requestTenantWorkspaceSelector(r)
 	if err != nil {
 		return grcScope{}, err
-	}
-	tenantID := strings.TrimSpace(r.URL.Query().Get("tenant_id"))
-	if tenantID == "" {
-		tenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
-	}
-	if applicationWorkspaceID != "" && tenantID == "" {
-		return grcScope{}, fmt.Errorf("%w: tenant_id is required with workspace_id", errInvalidHTTPRequest)
 	}
 	if tenantID == "" {
 		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok {
@@ -839,9 +808,6 @@ func grcScopeFromRequest(r *http.Request) (grcScope, error) {
 	}
 	if tenantID == "" && requiresTenantFilter(r.Context()) {
 		return grcScope{}, errTenantForbidden
-	}
-	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
-		return grcScope{}, err
 	}
 	if err := authorizeApplicationWorkspaceID(r.Context(), tenantID, applicationWorkspaceID); err != nil {
 		return grcScope{}, err

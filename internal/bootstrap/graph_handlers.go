@@ -156,13 +156,23 @@ func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request
 		}
 	}
 	request.RootUrn = r.URL.Query().Get("root_urn")
-	if err := authorizeCerebroURNTenant(r.Context(), request.GetRootUrn()); err != nil { //nolint:contextcheck // r carries the validated parity context above.
+	tenantID, applicationWorkspaceID, err := requestTenantWorkspaceSelector(r)
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	if tenantID == "" {
+		tenantID = tenantIDFromCerebroURN(request.GetRootUrn())
+	}
+	if err := authorizeApplicationWorkspaceID(r.Context(), tenantID, applicationWorkspaceID); err != nil { //nolint:contextcheck // r carries the validated parity context above.
 		writeGraphQueryError(w, err)
 		return
 	}
 	response, err := a.graphQueryService().GetEntityNeighborhood(r.Context(), graphquery.NeighborhoodRequest{ //nolint:contextcheck // r carries the validated parity context above.
-		RootURN: request.GetRootUrn(),
-		Limit:   request.GetLimit(),
+		RootURN:                request.GetRootUrn(),
+		TenantID:               tenantID,
+		ApplicationWorkspaceID: applicationWorkspaceID,
+		Limit:                  request.GetLimit(),
 	})
 	if err != nil {
 		writeGraphQueryError(w, err)
