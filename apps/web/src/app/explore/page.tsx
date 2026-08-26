@@ -5,9 +5,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AskAboutLink from "@/components/ask/AskAboutLink";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { DataStateBanner, EmptyBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
-import { useApiKey } from "@/components/providers";
+import { useApiKey, useCurrentUser } from "@/components/providers";
 import { GRCFinding, GRCGraph, shortEntity } from "@/lib/grc";
-import { fetchCachedGRC, grcPath, grcResponseErrorMessage, grcTimeoutMessage, GRC_QUERY_TIMEOUT_MS, organizationalGraphNeighborhoodPath, useDebouncedValue, useGRCQuery } from "@/lib/grc-client";
+import {
+  fetchCachedGRC,
+  grcClientScopeKey,
+  grcPath,
+  grcResponseErrorMessage,
+  grcTimeoutMessage,
+  GRC_QUERY_TIMEOUT_MS,
+  organizationalGraphNeighborhoodPath,
+  useDebouncedValue,
+  useGRCQuery,
+  type GRCQueryScope,
+} from "@/lib/grc-client";
 import {
   ExploreGraphState,
   emptyExploreState,
@@ -40,6 +51,9 @@ const graphNodeURNs = (graph: GRCGraph | undefined) =>
 
 export default function ExplorePage() {
   const { apiKey } = useApiKey();
+  const { actor, loading: userLoading } = useCurrentUser();
+  const scope = useMemo<GRCQueryScope>(() => ({ actor }), [actor]);
+  const activeScopeKey = useMemo(() => grcClientScopeKey(scope, apiKey), [apiKey, scope]);
   const [rootURN, setRootURN] = useQueryParamState("root_urn");
   const debouncedRootURN = useDebouncedValue(rootURN.trim());
   const needsFallbackRoot = debouncedRootURN === "";
@@ -59,6 +73,7 @@ export default function ExplorePage() {
   const [recentlyDiscoveredURNs, setRecentlyDiscoveredURNs] = useState<Set<string>>(new Set());
   const [reloadToken, setReloadToken] = useState(0);
   const [lastGraphLoadedAt, setLastGraphLoadedAt] = useState<number | null>(null);
+  const [loadedScopeKey, setLoadedScopeKey] = useState("");
   const loadKeyRef = useRef("");
 
   const seedSuggestions = useMemo(() => {
@@ -78,6 +93,7 @@ export default function ExplorePage() {
 
   const clearSeed = useCallback(() => {
     setState(null);
+    setLoadedScopeKey("");
     setError(null);
     setExpandNotice(null);
     setRecentlyDiscoveredURNs(new Set());
@@ -89,7 +105,7 @@ export default function ExplorePage() {
     signal?.addEventListener("abort", abort, { once: true });
     const timer = window.setTimeout(() => controller.abort(), GRC_QUERY_TIMEOUT_MS);
     try {
-      return await fetchCachedGRC<GRCGraph>(path, apiKey, force, { signal: controller.signal });
+      return await fetchCachedGRC<GRCGraph>(path, apiKey, force, { signal: controller.signal }, scope);
     } catch (err) {
       if (controller.signal.aborted && !signal?.aborted) {
         throw new Error(grcTimeoutMessage(path, GRC_QUERY_TIMEOUT_MS));
@@ -99,7 +115,7 @@ export default function ExplorePage() {
       signal?.removeEventListener("abort", abort);
       window.clearTimeout(timer);
     }
-  }, [apiKey]);
+  }, [apiKey, scope]);
 
   const loadSeed = useCallback(
     async (seed: string, force: boolean, signal: AbortSignal, isCancelled: () => boolean) => {
@@ -116,6 +132,7 @@ export default function ExplorePage() {
           return;
         }
         setState(mergeNeighborhood(emptyExploreState(seed), seed, response.data));
+        setLoadedScopeKey(activeScopeKey);
         setLastGraphLoadedAt(Date.now());
         setRecentlyDiscoveredURNs(new Set(graphNodeURNs(response.data)));
       } catch (err) {
@@ -126,7 +143,7 @@ export default function ExplorePage() {
         if (!isCancelled()) setSeedLoading(false);
       }
     },
-    [fetchNeighborhood],
+    [activeScopeKey, fetchNeighborhood],
   );
 
   useEffect(() => {
@@ -134,12 +151,17 @@ export default function ExplorePage() {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       if (cancelled) return;
+      if (userLoading || !actor.trim()) {
+        loadKeyRef.current = "";
+        clearSeed();
+        return;
+      }
       if (selectedSeed === "") {
         loadKeyRef.current = "";
         clearSeed();
         return;
       }
-      const loadKey = `${selectedSeed}|${reloadToken}`;
+      const loadKey = `${activeScopeKey}|${selectedSeed}|${reloadToken}`;
       if (loadKey === loadKeyRef.current) return;
       loadKeyRef.current = loadKey;
       void loadSeed(selectedSeed, reloadToken > 0, controller.signal, () => cancelled);
@@ -149,12 +171,14 @@ export default function ExplorePage() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [clearSeed, loadSeed, reloadToken, selectedSeed]);
+  }, [activeScopeKey, actor, clearSeed, loadSeed, reloadToken, selectedSeed, userLoading]);
+
+  const scopedState = loadedScopeKey !== "" && loadedScopeKey === activeScopeKey ? state : null;
 
   const expand = useCallback(async (urn: string) => {
     const target = urn.trim();
     if (target === "") return;
-    if (state && isExploreNodeExpanded(state, target)) return;
+    if (scopedState && isExploreNodeExpanded(scopedState, target)) return;
     setExpandingURN(target);
     setError(null);
     setExpandNotice(null);
@@ -166,10 +190,10 @@ export default function ExplorePage() {
         setError(grcResponseErrorMessage(path, response.status, response.data));
         return;
       }
-      if (!state) return;
-      const beforeNodes = exploreNodeCount(state);
-      const beforeRelations = exploreRelationCount(state);
-      const next = mergeNeighborhood(state, target, response.data);
+      if (!scopedState) return;
+      const beforeNodes = exploreNodeCount(scopedState);
+      const beforeRelations = exploreRelationCount(scopedState);
+      const next = mergeNeighborhood(scopedState, target, response.data);
       const addedNodes = Math.max(0, exploreNodeCount(next) - beforeNodes);
       const addedRelations = Math.max(0, exploreRelationCount(next) - beforeRelations);
       const discovered = new Set([target, ...graphNodeURNs(response.data)]);
@@ -187,7 +211,7 @@ export default function ExplorePage() {
     } finally {
       setExpandingURN(null);
     }
-  }, [fetchNeighborhood, state]);
+  }, [fetchNeighborhood, scopedState]);
 
   const removeNode = useCallback((urn: string) => {
     setState((current) => (current ? removeExploreNode(current, urn) : current));
@@ -209,17 +233,17 @@ export default function ExplorePage() {
     }
   }, [fallbackFindings, resetExploration, selectedSeed]);
 
-  const graph = useMemo(() => (state ? toGRCGraph(state) : undefined), [state]);
-  const expandedURNs = useMemo(() => new Set(state ? Object.keys(state.expanded) : []), [state]);
+  const graph = useMemo(() => (scopedState ? toGRCGraph(scopedState) : undefined), [scopedState]);
+  const expandedURNs = useMemo(() => new Set(scopedState ? Object.keys(scopedState.expanded) : []), [scopedState]);
   const pinnedURNs = useMemo(() => {
     const next = new Set(expandedURNs);
     recentlyDiscoveredURNs.forEach((urn) => next.add(urn));
     if (selectedSeed) next.add(selectedSeed);
     return next;
   }, [expandedURNs, recentlyDiscoveredURNs, selectedSeed]);
-  const nodeCount = state ? exploreNodeCount(state) : 0;
-  const relationCount = state ? exploreRelationCount(state) : 0;
-  const expandedCount = state ? exploreExpandedCount(state) : 0;
+  const nodeCount = scopedState ? exploreNodeCount(scopedState) : 0;
+  const relationCount = scopedState ? exploreRelationCount(scopedState) : 0;
+  const expandedCount = scopedState ? exploreExpandedCount(scopedState) : 0;
   const visibleNodeCount = Math.min(nodeCount, EXPLORE_NODE_LIMIT);
   const hiddenNodeCount = Math.max(0, nodeCount - visibleNodeCount);
 
