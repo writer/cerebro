@@ -89,7 +89,11 @@ fn asana_users_restart_preserves_append_projection_checkpoint_order() {
         .record_projection(
             &successor,
             PageProjectionReceipt {
-                delta_sha256: write.delta_digest,
+                delta_sha256: write
+                    .delta_digest
+                    .strip_prefix("sha256:")
+                    .expect("graph delta digest prefix")
+                    .to_owned(),
                 graph_revision: write.graph_revision,
             },
         )

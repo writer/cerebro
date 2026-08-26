@@ -59,7 +59,7 @@ fn asana_users_plans_decodes_and_resumes_two_origin_bound_pages() {
         }),
         metadata: Some(metadata.clone()),
     });
-    assert_eq!(stale, Err(SourceExecutionError::StaleGeneration));
+    assert_eq!(stale, Err(SourceExecutionError::LeaseLost));
     let admitted = seal_page_program_v2(&SourceExecutionLifecycleEnvelopeV2 {
         request: Some(SourceExecutionLifecycleRequestV1 {
             plan: Some(plan.clone()),

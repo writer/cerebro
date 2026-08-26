@@ -138,7 +138,7 @@ pub(super) fn validate_cursor(value: &str) -> Result<String, AsanaError> {
     if value.is_empty()
         || value.len() > MAX_CURSOR_BYTES
         || value.chars().any(char::is_control)
-        || value.contains(['&', '=', '#', '?'])
+        || value.contains(['&', '=', '#', '?', ':', '/'])
     {
         return Err(AsanaError::InvalidCursor);
     }

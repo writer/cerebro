@@ -10,6 +10,8 @@ entries:
             secret: true
         model: bearer_token
         requires_references: true
+        token_header: Authorization
+        token_scheme: Bearer
       categories:
         - saas
         - collaboration_productivity
