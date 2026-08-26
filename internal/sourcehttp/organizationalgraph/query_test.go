@@ -434,7 +434,7 @@ func TestComplianceImpactTypedReadsPreserveExactOrderedDependencyRelations(t *te
 	})
 	store := newComplianceImpactQueryStore(t, graphServiceStub{impactFact: func(context.Context, *connect.Request[cerebrographv1.GetComplianceImpactFactRequest]) (*connect.Response[cerebrographv1.GetComplianceImpactFactResponse], error) {
 		return connect.NewResponse(&cerebrographv1.GetComplianceImpactFactResponse{
-			TenantId: "tenant-a", Fact: complianceImpactEntity(t, root), DependencyCount: uint32(len(fixtures)),
+			TenantId: "tenant-a", Fact: complianceImpactEntity(t, root), DependencyCount: 2,
 			Dependencies: []*cerebrographv1.ComplianceImpactDependency{
 				{Entity: complianceImpactEntity(t, fixtures[0].revision), Relation: fixtures[0].relation},
 				{Entity: complianceImpactEntity(t, fixtures[1].revision), Relation: fixtures[1].relation},
@@ -480,7 +480,7 @@ func TestComplianceImpactTypedReadsRejectDuplicateDirectDependencies(t *testing.
 func TestComplianceImpactTypedReadsRejectMalformedDependentCursors(t *testing.T) {
 	dependency := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy-1", "policy-1-revision", 1, "a", time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC))
 	first := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-a", "plan-a-revision", 1, "b", time.Date(2026, time.August, 25, 12, 1, 0, 0, time.UTC))
-	second := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-b", "plan-b-revision", 1, "c", time.Date(2026, time.August, 25, 12, 2, 0, 0, time.UTC))
+	second := canonicalComplianceRevision(t, "tenant-a", complianceintegration.FactAssessmentPlan, "plan-b", "plan-b-revision", 2, "c", time.Date(2026, time.August, 25, 12, 2, 0, 0, time.UTC))
 	firstKey := complianceImpactKey(t, first)
 	secondKey := complianceImpactKey(t, second)
 	if secondKey < firstKey {
