@@ -18,15 +18,10 @@ type aiInviteProjectMembership struct {
 }
 
 var (
-	openAIAccessProfile    = aiAccessProfile{Provider: "openai"}
 	anthropicAccessProfile = aiAccessProfile{Provider: "anthropic"}
 	langChainAccessProfile = aiAccessProfile{Provider: "langchain"}
 	langfuseAccessProfile  = aiAccessProfile{Provider: "langfuse"}
 )
-
-func openAIUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiUserProjections(event, openAIAccessProfile)
-}
 
 func anthropicUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiUserProjections(event, anthropicAccessProfile)
@@ -34,10 +29,6 @@ func anthropicUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 
 func langChainOrganizationMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiUserProjections(event, langChainAccessProfile)
-}
-
-func openAIProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiProjectProjections(event, openAIAccessProfile)
 }
 
 func anthropicProjectProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -68,10 +59,6 @@ func langChainOrganizationProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	return aiOrganizationProjections(event, langChainAccessProfile)
 }
 
-func openAIInviteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiInviteProjections(event, openAIAccessProfile)
-}
-
 func anthropicInviteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiInviteProjections(event, anthropicAccessProfile)
 }
@@ -82,18 +69,6 @@ func anthropicWorkspaceProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 
 func langChainWorkspaceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiWorkspaceProjections(event, langChainAccessProfile)
-}
-
-func openAIGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGroupProjections(event, openAIAccessProfile)
-}
-
-func openAIGroupUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGroupMembershipProjections(event, openAIAccessProfile)
-}
-
-func openAIProjectUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiScopedUserAccessProjections(event, openAIAccessProfile, "project")
 }
 
 func anthropicWorkspaceMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -112,20 +87,12 @@ func anthropicComplianceGroupMemberProjections(event *cerebrov1.EventEnvelope) (
 	return aiGroupMembershipProjections(event, anthropicAccessProfile)
 }
 
-func openAIServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiServiceAccountProjections(event, openAIAccessProfile, "project")
-}
-
 func anthropicServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiServiceAccountProjections(event, anthropicAccessProfile, "organization")
 }
 
 func langChainServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiServiceAccountProjections(event, langChainAccessProfile, "organization")
-}
-
-func openAICredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiCredentialProjections(event, openAIAccessProfile)
 }
 
 func anthropicCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -140,10 +107,6 @@ func langfuseCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	return aiCredentialProjections(event, langfuseAccessProfile)
 }
 
-func openAIRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiRoleProjections(event, openAIAccessProfile)
-}
-
 func anthropicComplianceRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiScopedRoleProjections(event, anthropicAccessProfile)
 }
@@ -156,44 +119,12 @@ func anthropicComplianceRolePermissionProjections(event *cerebrov1.EventEnvelope
 	return aiRolePermissionProjections(event, anthropicAccessProfile)
 }
 
-func openAIUserRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiSubjectRoleProjections(event, openAIAccessProfile, "user", "organization")
-}
-
-func openAIGroupRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiSubjectRoleProjections(event, openAIAccessProfile, "group", "organization")
-}
-
-func openAIProjectUserRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiSubjectRoleProjections(event, openAIAccessProfile, "user", "project")
-}
-
-func openAIProjectGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiScopedGroupAccessProjections(event, openAIAccessProfile, "project")
-}
-
-func openAIProjectGroupRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiSubjectRoleProjections(event, openAIAccessProfile, "group", "project")
-}
-
-func openAIProjectEntitlementProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiProjectEntitlementProjections(event, openAIAccessProfile)
-}
-
-func openAIGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiGovernanceControlProjections(event, openAIAccessProfile)
-}
-
 func anthropicGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiGovernanceControlProjections(event, anthropicAccessProfile)
 }
 
 func langChainGovernanceControlProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiGovernanceControlProjections(event, langChainAccessProfile)
-}
-
-func openAIUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiUsageMetricProjections(event, openAIAccessProfile)
 }
 
 func anthropicUsageMetricProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -214,10 +145,6 @@ func anthropicFederationIssuerProjections(event *cerebrov1.EventEnvelope) ([]*po
 
 func anthropicFederationRuleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return aiFederationRuleProjections(event, anthropicAccessProfile)
-}
-
-func openAIAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return aiAuditProjections(event, openAIAccessProfile)
 }
 
 func anthropicComplianceActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
