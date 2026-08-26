@@ -259,7 +259,12 @@ export const isCacheableCerebroPath = (path: string) => {
 
 export const cerebroProxyCacheKey = (target: URL, headers: HeadersInit) => {
   const normalizedHeaders = new Headers(headers);
-  if (!forwardRequestAuth && Boolean(SERVER_API_KEY || SERVER_AUTHORIZATION)) {
+  const sharesServerOwnedDashboard = normalizeProxyPath(target.pathname).endsWith("grc/dashboard");
+  if (
+    sharesServerOwnedDashboard
+    && !forwardRequestAuth
+    && Boolean(SERVER_API_KEY || SERVER_AUTHORIZATION)
+  ) {
     USER_STAMP_HEADERS.forEach((name) => normalizedHeaders.delete(name));
   }
   const authHeaders = Array.from(normalizedHeaders.entries()).sort(([left], [right]) => left.localeCompare(right));

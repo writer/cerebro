@@ -42,6 +42,21 @@ describe("server-authenticated Cerebro cache warming", () => {
     expect(first).not.toBe(otherTenant);
   });
 
+  it("keeps non-dashboard cached reads partitioned by user stamps", async () => {
+    const proxy = await loadServerAuthenticatedProxy();
+    const target = new URL("https://api.example.com/grc/findings?tenant_id=tenant-a&workspace_id=workspace-a");
+    const first = proxy.cerebroProxyCacheKey(target, {
+      "x-cerebro-api-key": "server-owned-test-key",
+      "x-cerebro-user-id": "user-one",
+    });
+    const second = proxy.cerebroProxyCacheKey(target, {
+      "x-cerebro-api-key": "server-owned-test-key",
+      "x-cerebro-user-id": "user-two",
+    });
+
+    expect(first).not.toBe(second);
+  });
+
   it("warms the exact scoped dashboard request and reuses the cached response", async () => {
     let observedTarget = "";
     let observedHeaders = new Headers();
