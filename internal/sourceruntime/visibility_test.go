@@ -26,7 +26,7 @@ func TestListVisibleRuntimesEnforcesTenantAndWorkspaceBoundaries(t *testing.T) {
 
 	runtimes, err := ListVisibleRuntimes(t.Context(), lister, ports.SourceRuntimeFilter{
 		TenantID: "writer", ApplicationWorkspaceID: "workspace-a",
-	}, func(tenantID string) bool { return tenantID == "writer" })
+	}, func(_ context.Context, tenantID string) bool { return tenantID == "writer" })
 	if err != nil {
 		t.Fatalf("ListVisibleRuntimes() error = %v", err)
 	}

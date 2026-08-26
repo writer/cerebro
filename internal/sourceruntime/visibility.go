@@ -14,7 +14,7 @@ type runtimeLister interface {
 
 // ListVisibleRuntimes applies tenant and workspace boundaries even when a
 // runtime store returns rows outside the requested filter.
-func ListVisibleRuntimes(ctx context.Context, lister runtimeLister, filter ports.SourceRuntimeFilter, tenantAllowed func(string) bool) ([]*cerebrov1.SourceRuntime, error) {
+func ListVisibleRuntimes(ctx context.Context, lister runtimeLister, filter ports.SourceRuntimeFilter, tenantAllowed func(context.Context, string) bool) ([]*cerebrov1.SourceRuntime, error) {
 	runtimes, err := lister.ListSourceRuntimes(ctx, filter)
 	if err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func ListVisibleRuntimes(ctx context.Context, lister runtimeLister, filter ports
 	for _, runtime := range runtimes {
 		if runtime == nil || (filter.TenantID != "" && strings.TrimSpace(runtime.GetTenantId()) != filter.TenantID) ||
 			(filter.ApplicationWorkspaceID != "" && strings.TrimSpace(runtime.GetConfig()[ports.SourceRuntimeApplicationWorkspaceIDConfigKey]) != filter.ApplicationWorkspaceID) ||
-			(tenantAllowed != nil && !tenantAllowed(runtime.GetTenantId())) {
+			(tenantAllowed != nil && !tenantAllowed(ctx, runtime.GetTenantId())) {
 			continue
 		}
 		visible = append(visible, runtime)
