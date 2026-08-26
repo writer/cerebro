@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,7 +12,9 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
@@ -63,6 +66,129 @@ func TestQuietSpanStillExportsOpenTelemetryWithoutWideEvents(t *testing.T) {
 	}
 	if ended := recorder.Ended(); len(ended) != 1 || ended[0].Name() != "test.quiet" {
 		t.Fatalf("quiet span did not reach OTEL recorder: %#v", ended)
+	}
+}
+
+func TestWideEventSinkDoesNotBlockOnSlowOutput(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var output bytes.Buffer
+	var startOnce sync.Once
+	sink := newWideEventSink(1, func() io.Writer {
+		return writerFunc(func(payload []byte) (int, error) {
+			startOnce.Do(func() { close(started) })
+			<-release
+			return output.Write(payload)
+		})
+	})
+	if !sink.enqueue(map[string]any{"kind": "first"}) {
+		t.Fatal("first event was dropped")
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("telemetry worker did not reach slow output")
+	}
+	if !sink.enqueue(map[string]any{"kind": "second"}) {
+		t.Fatal("second event was dropped before the queue filled")
+	}
+	result := make(chan bool, 1)
+	go func() {
+		result <- sink.enqueue(map[string]any{"kind": "third"})
+	}()
+	select {
+	case accepted := <-result:
+		if accepted {
+			t.Fatal("third event was accepted into a full queue")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("request-side telemetry enqueue blocked on slow output")
+	}
+	close(release)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sink.flush(ctx); err != nil {
+		t.Fatalf("flush() error = %v", err)
+	}
+	if !strings.Contains(output.String(), `"telemetry.wide_event.dropped":1`) {
+		t.Fatalf("telemetry output did not report the dropped event: %s", output.String())
+	}
+}
+
+func TestWideEventSinkSnapshotsScopeAndPreservesFIFO(t *testing.T) {
+	var output bytes.Buffer
+	sink := newWideEventSink(4, func() io.Writer { return &output })
+	first := map[string]any{
+		"kind":                     "event",
+		"name":                     "first",
+		"tenant_id":                "tenant-a",
+		"application_workspace_id": "workspace-a",
+	}
+	if !sink.enqueue(first) {
+		t.Fatal("first event was dropped")
+	}
+	first["tenant_id"] = "tenant-mutated"
+	first["application_workspace_id"] = "workspace-mutated"
+	if !sink.enqueue(map[string]any{
+		"kind":                     "event",
+		"name":                     "second",
+		"tenant_id":                "tenant-b",
+		"application_workspace_id": "workspace-b",
+	}) {
+		t.Fatal("second event was dropped")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sink.flush(ctx); err != nil {
+		t.Fatalf("flush() error = %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("telemetry lines = %d, want 2: %s", len(lines), output.String())
+	}
+	var decoded [2]map[string]any
+	for index, line := range lines {
+		if err := json.Unmarshal([]byte(line), &decoded[index]); err != nil {
+			t.Fatalf("decode line %d: %v", index, err)
+		}
+	}
+	if decoded[0]["name"] != "first" || decoded[0]["tenant_id"] != "tenant-a" || decoded[0]["application_workspace_id"] != "workspace-a" {
+		t.Fatalf("first scope snapshot = %#v", decoded[0])
+	}
+	if decoded[1]["name"] != "second" || decoded[1]["tenant_id"] != "tenant-b" || decoded[1]["application_workspace_id"] != "workspace-b" {
+		t.Fatalf("second scope snapshot = %#v", decoded[1])
+	}
+}
+
+func TestWideEventSinkFlushHonorsContextDeadline(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startOnce sync.Once
+	sink := newWideEventSink(1, func() io.Writer {
+		return writerFunc(func(payload []byte) (int, error) {
+			startOnce.Do(func() { close(started) })
+			<-release
+			return len(payload), nil
+		})
+	})
+	if !sink.enqueue(map[string]any{"kind": "blocked"}) {
+		t.Fatal("event was dropped")
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("telemetry worker did not reach blocked output")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := sink.flush(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("flush() error = %v, want context deadline exceeded", err)
+	}
+	close(release)
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), time.Second)
+	defer drainCancel()
+	if err := sink.flush(drainCtx); err != nil {
+		t.Fatalf("drain flush() error = %v", err)
 	}
 }
 
@@ -584,6 +710,11 @@ func captureOutput(t *testing.T, fn func()) (string, string) {
 	}()
 
 	fn()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := FlushWideEvents(ctx); err != nil {
+		t.Fatalf("flush telemetry: %v", err)
+	}
 	if err := stdoutWriter.Close(); err != nil {
 		t.Fatalf("close stdout writer: %v", err)
 	}
@@ -599,4 +730,10 @@ func captureOutput(t *testing.T, fn func()) (string, string) {
 		t.Fatalf("read stderr: %v", err)
 	}
 	return string(stdout), string(stderr)
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (write writerFunc) Write(payload []byte) (int, error) {
+	return write(payload)
 }

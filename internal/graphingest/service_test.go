@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 type stubRunStore struct {
@@ -1920,6 +1921,11 @@ func captureGraphIngestStderr(t *testing.T, fn func()) string {
 		os.Stderr = oldStderr
 	}()
 	fn()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := telemetry.FlushWideEvents(ctx); err != nil {
+		t.Fatalf("flush telemetry: %v", err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close stderr writer: %v", err)
 	}

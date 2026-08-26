@@ -39,7 +39,7 @@ type ShutdownFunc func(context.Context) error
 
 func ConfigureOpenTelemetry(ctx context.Context, options OpenTelemetryOptions) (ShutdownFunc, error) {
 	if !options.Enabled {
-		return func(context.Context) error { return nil }, nil
+		return FlushWideEvents, nil
 	}
 	if options.Protocol == "" {
 		options.Protocol = defaultOTELProtocol
@@ -76,7 +76,7 @@ func ConfigureOpenTelemetry(ctx context.Context, options OpenTelemetryOptions) (
 	otel.SetMeterProvider(meterProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	return func(ctx context.Context) error {
-		return errors.Join(meterProvider.Shutdown(ctx), traceProvider.Shutdown(ctx))
+		return errors.Join(FlushWideEvents(ctx), meterProvider.Shutdown(ctx), traceProvider.Shutdown(ctx))
 	}, nil
 }
 

@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/telemetry"
 	sourcecatalogs "github.com/writer/cerebro/sources"
 	auth0source "github.com/writer/cerebro/sources/auth0"
 	githubsource "github.com/writer/cerebro/sources/github"
@@ -610,6 +612,11 @@ func captureSourceOpsStderr(t *testing.T, fn func()) string {
 		os.Stderr = oldStderr
 	}()
 	fn()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := telemetry.FlushWideEvents(ctx); err != nil {
+		t.Fatalf("flush telemetry: %v", err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close stderr writer: %v", err)
 	}

@@ -6,6 +6,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 func TestInstrumentedLLMClientDraftDoesNotEmitPromptOrCypherText(t *testing.T) {
@@ -57,6 +60,11 @@ func captureGraphAgentStderr(t *testing.T, fn func()) string {
 		os.Stderr = original
 	})
 	fn()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := telemetry.FlushWideEvents(ctx); err != nil {
+		t.Fatalf("flush telemetry: %v", err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close stderr writer: %v", err)
 	}
