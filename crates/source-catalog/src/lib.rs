@@ -3646,14 +3646,13 @@ mod tests {
                     .iter()
                     .all(CompiledFamily::is_projection_authoritative)
             );
-            assert_eq!(
-                indexed_families,
-                source
-                    .families()
-                    .iter()
-                    .map(CompiledFamily::id)
-                    .collect::<Vec<_>>()
-            );
+            let mut compiled_families = source
+                .families()
+                .iter()
+                .map(CompiledFamily::id)
+                .collect::<Vec<_>>();
+            compiled_families.sort_unstable();
+            assert_eq!(indexed_families, compiled_families);
         }
     }
 
