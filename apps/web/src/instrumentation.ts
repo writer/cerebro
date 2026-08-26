@@ -10,19 +10,20 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
   const { warmCerebroProxyCache } = await import("@/lib/cerebro-proxy");
-  const warm = () => {
-    void warmCerebroProxyCache(HOME_DASHBOARD_PATH, HOME_DASHBOARD_SEARCH)
-      .catch((error: unknown) => {
-        console.warn("cerebro dashboard cache warm failed", {
-          error_kind: error instanceof Error ? error.constructor.name : typeof error,
-        });
+  const warm = async () => {
+    try {
+      await warmCerebroProxyCache(HOME_DASHBOARD_PATH, HOME_DASHBOARD_SEARCH);
+    } catch (error: unknown) {
+      console.warn("cerebro dashboard cache warm failed", {
+        error_kind: error instanceof Error ? error.constructor.name : typeof error,
       });
+    }
   };
 
-  warm();
+  await warm();
   const shared = globalThis as WarmerGlobal;
   if (!shared.__cerebroProxyCacheWarmer) {
-    shared.__cerebroProxyCacheWarmer = setInterval(warm, WARM_INTERVAL_MS);
+    shared.__cerebroProxyCacheWarmer = setInterval(() => void warm(), WARM_INTERVAL_MS);
     shared.__cerebroProxyCacheWarmer.unref?.();
   }
 }

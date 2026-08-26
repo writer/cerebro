@@ -309,6 +309,7 @@ async function runScenario(scenario) {
       HOSTNAME: "127.0.0.1",
       PORT: String(webPort),
       CEREBRO_API_BASE: apiBase,
+      CEREBRO_API_KEY: "scale-benchmark-server-key",
       NEXT_PUBLIC_CEREBRO_API_BASE: apiBase,
       CEREBRO_FORWARD_AUTH_HEADERS: "false",
       CEREBRO_IDENTITY_PROFILE: "local",
