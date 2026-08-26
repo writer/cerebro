@@ -406,6 +406,9 @@ func graphIngestTelemetryErrorKind(err error) string {
 		return "invalid_event"
 	case errors.Is(err, sourcecdk.ErrInvalidConfig):
 		return "invalid_source_config"
+	case sourcecdk.SourceErrorKind(err) == sourcecdk.ErrorKindRateLimited,
+		sourcecdk.IsHTTPStatus(err, 429):
+		return "rate_limited"
 	default:
 		return "ingest_failed"
 	}
