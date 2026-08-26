@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   assertDashboardScope,
+  assertHomepageAPIScope,
   assertHomepageP95,
   assertPageContract,
   assertPublicConfig,
@@ -92,6 +93,27 @@ describe("portable web fixture route bug bash", () => {
       .not.toThrow();
     expect(() => assertDashboardScope(url, { tenantID: "tenant-a", workspaceID: "workspace-a" }))
       .toThrow("workspace scope mismatch");
+  });
+
+  it("requires tenant and workspace scope on every homepage API read", () => {
+    const scope = { tenantID: "tenant-a", workspaceID: "workspace-a" };
+    expect(() => assertHomepageAPIScope(
+      "readiness",
+      "http://127.0.0.1:43123/api/cerebro/grc/program-readiness?tenant_id=tenant-a&workspace_id=workspace-a",
+      scope,
+    )).not.toThrow();
+    expect(() => assertHomepageAPIScope(
+      "coverage",
+      "http://127.0.0.1:43123/api/cerebro/connectors/coverage?tenant_id=tenant-a&workspace_id=workspace-b",
+      scope,
+    )).toThrow("Homepage coverage workspace scope mismatch");
+    expect(() => assertHomepageAPIScope(
+      "dashboard",
+      "http://127.0.0.1:43123/api/cerebro/grc/program-readiness?tenant_id=tenant-a&workspace_id=workspace-a",
+      scope,
+    )).toThrow("Expected homepage dashboard request");
+    expect(() => assertHomepageAPIScope("unknown", "http://127.0.0.1:43123/", scope))
+      .toThrow("Unknown homepage API unknown");
   });
 
   it("discovers every app page with safe concrete dynamic route samples", async () => {
