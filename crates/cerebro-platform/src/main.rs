@@ -38,7 +38,7 @@ use aws_sdk_secretsmanager::Client as AwsSecretsManagerClient;
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, Request, State},
-    http::{Method, StatusCode, header::AUTHORIZATION},
+    http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -100,6 +100,7 @@ use tokio::sync::{Mutex, oneshot};
 use zeroize::Zeroize;
 
 const TENANT_AUTH_HEADER: &str = "x-cerebro-tenant";
+const WORKSPACE_AUTH_HEADER: &str = "x-cerebro-workspace";
 const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
 const MAX_LEGACY_DELTA_RECORDS: usize = 100_000;
 const MIN_SHARED_SECRET_BYTES: usize = 32;
@@ -1244,6 +1245,8 @@ struct PathsResponse {
 #[derive(Deserialize)]
 struct ProductNeighborhoodQuery {
     root_urn: String,
+    tenant_id: Option<String>,
+    workspace_id: Option<String>,
     limit: Option<u32>,
 }
 
@@ -3928,14 +3931,30 @@ async fn find_paths(
 async fn product_neighborhood_route(
     State(state): State<AppState>,
     Extension(authenticated): Extension<AuthenticatedTenant>,
+    headers: HeaderMap,
     Query(query): Query<ProductNeighborhoodQuery>,
 ) -> Result<Json<ProductNeighborhood>, (StatusCode, Json<ErrorResponse>)> {
+    if query.workspace_id.is_some() || headers.contains_key(WORKSPACE_AUTH_HEADER) {
+        return Err(bad_request(
+            "workspace_scope_unsupported",
+            "Application workspace scope is not supported for graph neighborhood reads.",
+        ));
+    }
     let tenant = product_urn_tenant(&query.root_urn).ok_or_else(|| {
         bad_request(
             "invalid_root_urn",
             "root_urn must be a tenant-scoped Cerebro URN.",
         )
     })?;
+    if let Some(query_tenant) = query.tenant_id {
+        let query_tenant = parse_tenant(query_tenant)?;
+        if query_tenant.as_str() != tenant {
+            return Err(bad_request(
+                "tenant_selector_mismatch",
+                "The tenant selector does not match the graph root tenant.",
+            ));
+        }
+    }
     let tenant_id = authorized_tenant(&authenticated, tenant.to_owned())?;
     let limit = normalize_product_neighborhood_limit(query.limit);
     let mut neighborhoods = state
@@ -6253,6 +6272,55 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(cross_tenant.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn product_neighborhood_route_rejects_scope_mismatch_before_graph_read() {
+        let root_urn = "urn:cerebro:tenant-demo:asset:one";
+        let app = router_with_backend(
+            Arc::new(UnavailableGraph),
+            None,
+            None,
+            PlatformStores::default(),
+            ActionBackends::default(),
+            TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+            None,
+        );
+        for request in [
+            authenticated(Request::builder(), "tenant-demo")
+                .uri(format!(
+                    "/platform/graph/neighborhood?root_urn={root_urn}&workspace_id=workspace-a"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+            authenticated(Request::builder(), "tenant-demo")
+                .header(WORKSPACE_AUTH_HEADER, "workspace-a")
+                .uri(format!("/platform/graph/neighborhood?root_urn={root_urn}"))
+                .body(Body::empty())
+                .unwrap(),
+            authenticated(Request::builder(), "tenant-demo")
+                .uri(format!(
+                    "/platform/graph/neighborhood?root_urn={root_urn}&tenant_id=tenant-other"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        ] {
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
+
+        let matching_tenant = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri(format!(
+                        "/platform/graph/neighborhood?root_urn={root_urn}&tenant_id=tenant-demo"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(matching_tenant.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
