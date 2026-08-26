@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import AskAboutLink from "@/components/ask/AskAboutLink";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
@@ -67,7 +67,7 @@ export default function ExplorePage() {
   }), [actor, normalizedTenantID, normalizedWorkspaceID]);
   const activeScopeKey = useMemo(() => grcClientScopeKey(scope, apiKey), [apiKey, scope]);
   const activeScopeKeyRef = useRef(activeScopeKey);
-  useEffect(() => {
+  useLayoutEffect(() => {
     activeScopeKeyRef.current = activeScopeKey;
   }, [activeScopeKey]);
   const [rootURN, setRootURN] = useQueryParamState("root_urn");
@@ -115,6 +115,8 @@ export default function ExplorePage() {
 
   const clearSeed = useCallback(() => {
     setState(null);
+    setSeedLoading(false);
+    setExpandingURN(null);
     setLoadedScopeKey("");
     setError(null);
     setExpandNotice(null);
