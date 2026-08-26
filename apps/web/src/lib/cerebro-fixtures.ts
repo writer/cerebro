@@ -5,7 +5,6 @@ import type {
   GRCQuestionnaireEvidenceAnswer,
   GRCQuestionnaireRun,
   GRCVendor,
-  GRCVendorActionRequest,
   GRCVendorCreateRequest,
   GRCVendorDiscovery,
 } from "@/lib/grc";
@@ -3601,46 +3600,6 @@ const createVendorFixture = (parsed: Record<string, unknown>) => {
   return jsonFixture({ vendor, generated_at: generatedAt }, 201);
 };
 
-const vendorActionFixture = (rawURN: string, parsed: Record<string, unknown>) => {
-  const vendorURN = safeDecode(rawURN);
-  const vendor = allFixtureVendors().find((item) => item.urn === vendorURN);
-  if (!vendor) {
-    return jsonFixture({ error: `No fixture vendor found for ${vendorURN}`, generated_at: generatedAt }, 404);
-  }
-
-  const request = parsed as GRCVendorActionRequest;
-  const action = stringField(request.action);
-  const reason = stringField(request.reason);
-  if (action === "assign_owner") {
-    const owner = stringField(request.owner);
-    if (!owner) {
-      return jsonFixture({ error: "Owner is required.", generated_at: generatedAt }, 400);
-    }
-    vendor.owner = owner;
-    vendor.owner_state = "assigned";
-    vendor.queue_reasons = (vendor.queue_reasons ?? []).filter((item) => item !== "owner_missing");
-    vendor.next_actions = (vendor.next_actions ?? []).filter((item) => item.action_type !== "assign_owner");
-  } else if (action === "change_lifecycle") {
-    const lifecycleState = stringField(request.lifecycle_state);
-    if (!lifecycleState) {
-      return jsonFixture({ error: "Lifecycle state is required.", generated_at: generatedAt }, 400);
-    }
-    vendor.lifecycle_state = lifecycleState;
-    vendor.lifecycle_reason = reason || "Lifecycle changed from vendor review.";
-  } else if (action === "start_review") {
-    vendor.review_state = stringField(request.review_state) || "in_progress";
-    vendor.assessment_state = "in_progress";
-    vendor.assessment_progress = Math.max(vendor.assessment_progress ?? 0, 10);
-    vendor.open_assessments = Math.max(vendor.open_assessments ?? 0, 1);
-    vendor.next_assessment_at = vendor.next_assessment_at ?? "2026-02-15T12:00:00.000Z";
-  } else {
-    return jsonFixture({ error: "Unsupported vendor action.", generated_at: generatedAt }, 400);
-  }
-
-  vendor.last_material_change_at = generatedAt;
-  return jsonFixture({ action, vendor, generated_at: generatedAt });
-};
-
 const questionnaireQuestionsFromRequest = (parsed: Record<string, unknown>) => {
   const direct = Array.isArray(parsed.questions) ? parsed.questions as Array<Record<string, unknown>> : [];
   const rows = Array.isArray(parsed.intake_rows) ? parsed.intake_rows as Array<Record<string, unknown>> : [];
@@ -4144,11 +4103,6 @@ const writeFixture = (path: string, body?: string) => {
   const runCommentMatch = /^grc\/questionnaire-runs\/([^/]+)\/comments$/.exec(path);
   if (runCommentMatch) {
     return questionnaireRunCommentFixture(runCommentMatch[1], parsed);
-  }
-
-  const vendorActionMatch = /^grc\/vendors\/(.+)\/actions$/.exec(path);
-  if (vendorActionMatch) {
-    return vendorActionFixture(vendorActionMatch[1], parsed);
   }
 
   if (path === "grc/inventory/resource-scope") {

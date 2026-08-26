@@ -1457,21 +1457,6 @@ export type GRCVendorCreateResponse = {
   generated_at: string;
 };
 
-export type GRCVendorActionRequest = {
-  tenant_id?: string;
-  action: "assign_owner" | "change_lifecycle" | "start_review" | string;
-  owner?: string;
-  lifecycle_state?: string;
-  review_state?: string;
-  reason?: string;
-};
-
-export type GRCVendorActionResponse = {
-  action: string;
-  vendor: GRCVendor;
-  generated_at: string;
-};
-
 export type GRCVendorDetailResponse = {
   vendor: GRCVendor;
   relationships?: GRCVendorRelationships;

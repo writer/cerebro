@@ -14,7 +14,6 @@ import {
   SearchCheck,
   SlidersHorizontal,
   Upload,
-  UserPlus,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -29,7 +28,6 @@ import {
   GRCUploadReplayResponse,
   GRCUploadResponse,
   GRCVendor,
-  GRCVendorActionResponse,
   GRCVendorCreateRequest,
   GRCVendorCreateResponse,
   GRCVendorDetailResponse,
@@ -144,12 +142,6 @@ type BulkDiscoveryDraft = {
   reason: string;
 };
 
-type VendorQuickActionDraft = {
-  owner: string;
-  lifecycleState: string;
-  reviewState: string;
-};
-
 type VendorSection = "register" | "discoveries" | "uploads";
 
 const vendorSections: Array<{ id: VendorSection; label: string }> = [
@@ -179,20 +171,10 @@ const defaultBulkDiscoveryDraft = (): BulkDiscoveryDraft => ({
   reason: "",
 });
 
-const defaultVendorQuickActionDraft = (): VendorQuickActionDraft => ({
-  owner: "",
-  lifecycleState: "approved",
-  reviewState: "in_progress",
-});
-
 const createRiskOptions = riskFilters.filter((item) => item.value);
 const createLifecycleOptions = lifecycleFilters.filter((item) =>
   ["active", "approved", "in_review", "conditionally_approved", "restricted"].includes(item.value));
 const createReviewOptions = reviewFilters.filter((item) => item.value);
-const quickReviewOptions = [
-  { value: "in_progress", label: "In progress" },
-  ...createReviewOptions,
-];
 
 const compactAttributes = (attributes: Record<string, string | undefined>) =>
   Object.fromEntries(Object.entries(attributes).filter(([, value]) => Boolean(value))) as Record<string, string>;
@@ -1394,9 +1376,6 @@ function DrawerCount({ label, value }: { label: string; value: number }) {
 }
 
 function VendorDetailDrawer({
-  actionDraft,
-  actionError,
-  actionSaving,
   detail,
   detailError,
   detailLoading,
@@ -1404,15 +1383,10 @@ function VendorDetailDrawer({
   linkedDiscoveriesLoaded,
   onClose,
   onOpenUpload,
-  onQuickAction,
   onReload,
-  onUpdateActionDraft,
   scope,
   vendor,
 }: {
-  actionDraft: VendorQuickActionDraft;
-  actionError: string | null;
-  actionSaving: boolean;
   detail?: GRCVendorDetailResponse | null;
   detailError: string | null;
   detailLoading: boolean;
@@ -1420,9 +1394,7 @@ function VendorDetailDrawer({
   linkedDiscoveriesLoaded: boolean;
   onClose: () => void;
   onOpenUpload: (vendor: GRCVendor) => void;
-  onQuickAction: (action: "assign_owner" | "change_lifecycle" | "start_review") => Promise<void> | void;
   onReload: () => void;
-  onUpdateActionDraft: (patch: Partial<VendorQuickActionDraft>) => void;
   scope: GRCScope;
   vendor?: GRCVendor | null;
 }) {
@@ -1464,7 +1436,6 @@ function VendorDetailDrawer({
 
           <div className="flex-1 overflow-y-auto px-5 py-4">
             {detailError && <ErrorBlock error={detailError} onRetry={onReload} recoveryDetail="Using register data until detail loads." />}
-            {actionError && <ErrorBlock error={actionError} recoveryDetail="Vendor action was not saved." />}
             {detailLoading && !detail && <LoadingBlock label="Loading vendor detail..." />}
 
             <div className="grid gap-3 sm:grid-cols-4">
@@ -1566,43 +1537,6 @@ function VendorDetailDrawer({
               )}
             </section>
 
-            <section className="mt-4 rounded-md border border-[color:var(--border)] p-4">
-              <div className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">Quick actions</div>
-              <div className="grid gap-3">
-                <label className={labelClass}>
-                  Owner
-                  <div className="mt-1 flex gap-2">
-                    <input value={actionDraft.owner} onChange={(event) => onUpdateActionDraft({ owner: event.target.value })} placeholder={ownerLabel(activeVendor)} className="control-input min-w-0 flex-1 px-3 py-1.5 text-[13px]" />
-                    <button type="button" disabled={actionSaving || !actionDraft.owner.trim()} onClick={() => { void Promise.resolve(onQuickAction("assign_owner")).catch(() => undefined); }} className="secondary-button inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] disabled:opacity-50">
-                      <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                      Assign
-                    </button>
-                  </div>
-                </label>
-                <label className={labelClass}>
-                  Lifecycle
-                  <div className="mt-1 flex gap-2">
-                    <select value={actionDraft.lifecycleState} onChange={(event) => onUpdateActionDraft({ lifecycleState: event.target.value })} className="control-input min-w-0 flex-1 px-3 py-1.5 text-[13px]">
-                      {createLifecycleOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                    </select>
-                    <button type="button" disabled={actionSaving} onClick={() => { void Promise.resolve(onQuickAction("change_lifecycle")).catch(() => undefined); }} className="secondary-button px-3 py-1.5 text-[13px] disabled:opacity-50">
-                      Change
-                    </button>
-                  </div>
-                </label>
-                <label className={labelClass}>
-                  Review
-                  <div className="mt-1 flex gap-2">
-                    <select value={actionDraft.reviewState} onChange={(event) => onUpdateActionDraft({ reviewState: event.target.value })} className="control-input min-w-0 flex-1 px-3 py-1.5 text-[13px]">
-                      {quickReviewOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                    </select>
-                    <button type="button" disabled={actionSaving} onClick={() => { void Promise.resolve(onQuickAction("start_review")).catch(() => undefined); }} className="secondary-button px-3 py-1.5 text-[13px] disabled:opacity-50">
-                      Start
-                    </button>
-                  </div>
-                </label>
-              </div>
-            </section>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--border)] px-5 py-4">
@@ -1656,8 +1590,6 @@ export default function VendorsPage() {
   const [bulkDraft, setBulkDraft] = useState<BulkDiscoveryDraft>(() => defaultBulkDiscoveryDraft());
   const [bulkSaving, setBulkSaving] = useState(false);
   const [selectedDiscoveryURNs, setSelectedDiscoveryURNs] = useState<Set<string>>(() => new Set());
-  const [quickActionMessage, setQuickActionMessage] = useState("");
-  const [quickActionDraft, setQuickActionDraft] = useState<VendorQuickActionDraft>(() => defaultVendorQuickActionDraft());
   const uploadPanelRef = useRef<HTMLDivElement>(null);
   const debouncedScope = useDebouncedGRCScope({ tenantID, workspaceID });
   const debouncedQuery = useDebouncedValue(query.trim());
@@ -1713,8 +1645,6 @@ export default function VendorsPage() {
     error: createError,
     setError: setCreateError,
   } = useGRCMutation<GRCVendorCreateResponse>();
-  const { mutate: mutateVendorAction, saving: quickActionSaving, error: quickActionError } = useGRCMutation<GRCVendorActionResponse>();
-
   const vendorRows = useMemo(() => boundedVendorRows(vendorsQuery.data, GRC_WORKLIST_LIMIT), [vendorsQuery.data]);
   const vendors = vendorRows.vendors;
   const vendorMeta = vendorRows.meta;
@@ -1807,23 +1737,13 @@ export default function VendorsPage() {
   };
 
   const openVendorDrawer = useCallback((vendorURN: string) => {
-    const vendor = vendors.find((item) => item.urn === vendorURN) ?? vendorDetailQuery.data?.vendor;
     setSelectedVendorURN(vendorURN);
-    setQuickActionMessage("");
-    setQuickActionDraft({
-      owner: vendor?.owner || vendor?.security_owner_user_id || vendor?.business_owner_user_id || "",
-      lifecycleState: vendor?.lifecycle_state || "approved",
-      reviewState: "in_progress",
-    });
-  }, [vendorDetailQuery.data?.vendor, vendors]);
+  }, []);
   const closeVendorDrawer = useCallback(() => {
     setSelectedVendorURN("");
   }, []);
   const updateBulkDraft = useCallback((patch: Partial<BulkDiscoveryDraft>) => {
     setBulkDraft((current) => ({ ...current, ...patch }));
-  }, []);
-  const updateQuickActionDraft = useCallback((patch: Partial<VendorQuickActionDraft>) => {
-    setQuickActionDraft((current) => ({ ...current, ...patch }));
   }, []);
   const toggleDiscoverySelection = useCallback((urn: string) => {
     setSelectedDiscoveryURNs((current) => {
@@ -1986,20 +1906,6 @@ export default function VendorsPage() {
     }
   }, [bulkDraft.linkedVendorURN, bulkDraft.owner, bulkDraft.reason, bulkDraft.riskLevel, createVendorFromDiscovery, discoveries, selectedDiscoveryURNs, setDiscoveryDecision]);
 
-  const runVendorQuickAction = useCallback(async (action: "assign_owner" | "change_lifecycle" | "start_review") => {
-    if (!selectedVendorURN) return;
-    const response = await mutateVendorAction(grcPath(`/grc/vendors/${encodeURIComponent(selectedVendorURN)}/actions`, grcScopeQuery({ tenantID, workspaceID })), {
-      ...grcScopeQuery({ tenantID, workspaceID }),
-      action,
-      owner: action === "assign_owner" ? quickActionDraft.owner.trim() : undefined,
-      lifecycle_state: action === "change_lifecycle" ? quickActionDraft.lifecycleState : undefined,
-      review_state: action === "start_review" ? quickActionDraft.reviewState : undefined,
-      reason: action === "change_lifecycle" ? "Lifecycle changed from vendor review." : undefined,
-    });
-    setQuickActionMessage(`${response.vendor.name} updated.`);
-    await Promise.all([vendorsQuery.reload(), vendorDetailQuery.reload()]);
-  }, [mutateVendorAction, quickActionDraft.lifecycleState, quickActionDraft.owner, quickActionDraft.reviewState, selectedVendorURN, tenantID, vendorDetailQuery, vendorsQuery, workspaceID]);
-
   const submitVendorUpload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!vendorUploadFile) {
@@ -2111,9 +2017,6 @@ export default function VendorsPage() {
         saving={createSaving}
       />
       <VendorDetailDrawer
-        actionDraft={quickActionDraft}
-        actionError={quickActionError}
-        actionSaving={quickActionSaving}
         detail={vendorDetailQuery.data}
         detailError={vendorDetailQuery.error}
         detailLoading={vendorDetailQuery.loading}
@@ -2121,9 +2024,7 @@ export default function VendorsPage() {
         linkedDiscoveriesLoaded={Boolean(discoveriesQuery.data)}
         onClose={closeVendorDrawer}
         onOpenUpload={openUploadForVendor}
-        onQuickAction={runVendorQuickAction}
         onReload={() => { void vendorDetailQuery.reload(); }}
-        onUpdateActionDraft={updateQuickActionDraft}
         scope={{ tenantID, workspaceID }}
         vendor={selectedVendor}
       />
@@ -2153,11 +2054,6 @@ export default function VendorsPage() {
           error={createError}
           recoveryDetail="Vendor was not saved."
         />
-      )}
-      {quickActionMessage && (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-[13px] font-semibold text-emerald-700 dark:text-emerald-200">
-          {quickActionMessage}
-        </div>
       )}
       {createMessage && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-[13px] font-semibold text-emerald-700 dark:text-emerald-200">
