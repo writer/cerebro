@@ -358,7 +358,6 @@ func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/runtime-freshness", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("runtime.freshness", 30*time.Second, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeFindings), app.handleListRuntimeFreshness))
 	registerHTTPRoute(mux, "POST /platform/graph/actions", routeSurfacePlatformHTTP, app.handleExecuteGraphAction)
 	registerHTTPRoute(mux, "POST /platform/graph/actions/reconcile", routeSurfacePlatformHTTP, app.handleReconcileGraphAction)
-	registerHTTPRoute(mux, "GET /platform/graph/provenance", routeSurfacePlatformHTTP, app.handleGetGraphProvenance)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/vulnerability/{id}", routeSurfacePlatformHTTP, app.handleGetVulnerabilityImpact)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/package", routeSurfacePlatformHTTP, app.handleGetPackageImpact)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/asset", routeSurfacePlatformHTTP, app.handleGetAssetImpact)
