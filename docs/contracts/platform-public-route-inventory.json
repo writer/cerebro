@@ -9,29 +9,29 @@
     "gen/cerebro/v1/cerebrov1connect/bootstrap.connect.go"
   ],
   "summary": {
-    "http_routes": 275,
+    "http_routes": 276,
     "connect_mounts": 1,
     "connect_rpcs": 47,
     "by_surface": {
       "bridged-to-rust-authority": 22,
-      "protected": 285,
+      "protected": 286,
       "public-exempt": 15,
       "rust-authority": 1
     },
     "by_authority_owner": {
       "bridged-to-rust-authority": 22,
-      "go-compatibility": 300,
+      "go-compatibility": 301,
       "rust-authority": 1
     },
     "by_auth_class": {
       "api-key-bearer-or-oauth": 2,
-      "api-key-or-bearer": 258,
+      "api-key-or-bearer": 259,
       "connect-api-key-or-bearer": 48,
       "public-exempt": 15
     },
     "by_contract_source": {
       "MCP schema": 2,
-      "OpenAPI": 273,
+      "OpenAPI": 274,
       "proto": 48
     },
     "deprecated_surfaces": 0
@@ -3400,6 +3400,18 @@
       "kind": "http",
       "method": "POST",
       "path": "/grc/vendor-discoveries/{discoveryID}/decision",
+      "surface": "protected",
+      "authority_owner": "go-compatibility",
+      "owner": "grc",
+      "auth_class": "api-key-or-bearer",
+      "tenant_scope_rule": "tenant-id-required",
+      "contract_source": "OpenAPI"
+    },
+    {
+      "identity": "POST /grc/vendors",
+      "kind": "http",
+      "method": "POST",
+      "path": "/grc/vendors",
       "surface": "protected",
       "authority_owner": "go-compatibility",
       "owner": "grc",

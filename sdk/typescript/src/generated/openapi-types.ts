@@ -4244,6 +4244,33 @@ export type GRCUploadStructuredField = {
   value?: string;
 };
 
+export type GRCVendorCreateRequest = {
+  attributes?: Record<string, string>;
+  business_owner_user_id?: string;
+  category?: string;
+  discovery_urn?: string;
+  lifecycle_state?: string;
+  name: string;
+  owner?: string;
+  provider?: string;
+  review_state?: string;
+  risk_level?: string;
+  runtime_id?: string;
+  security_owner_user_id?: string;
+  services_provided?: string;
+  source_id?: string;
+  status?: string;
+  tenant_id?: string;
+  vendor_id?: string;
+  website_url?: string;
+  workspace_id?: string;
+};
+
+export type GRCVendorCreateResponse = {
+  generated_at: string;
+  vendor: Record<string, unknown>;
+};
+
 export type GetEntityNeighborhoodResponse = {
   neighbors?: GraphEntity[];
   relations?: GraphRelation[];
