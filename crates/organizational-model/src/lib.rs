@@ -254,6 +254,8 @@ pub enum EntityKind {
     Verification,
     /// A tracked unit of remediation work.
     WorkItem,
+    /// An exact immutable compliance domain revision used by impact analysis.
+    ComplianceImpactRevision,
     /// A namespaced provider extension not represented by a fixed kind.
     Provider(ProviderKind),
 }
@@ -291,6 +293,7 @@ impl EntityKind {
             Self::Remediation => "remediation",
             Self::Verification => "verification",
             Self::WorkItem => "work_item",
+            Self::ComplianceImpactRevision => "compliance.impact_revision",
             Self::Provider(_) => "provider",
         }
     }
@@ -325,6 +328,7 @@ impl EntityKind {
                 | "remediation"
                 | "verification"
                 | "work_item"
+                | "compliance.impact_revision"
                 | "provider"
         )
     }
@@ -919,6 +923,8 @@ pub enum RelationKind {
     Maintains,
     /// One non-finding object depends on another.
     DependsOn,
+    /// One exact compliance revision declares another exact revision as an input.
+    ComplianceDependsOn,
     /// A repository builds a service or application.
     Builds,
     /// A repository or service deploys into an environment.
@@ -983,6 +989,7 @@ impl RelationKind {
             Self::Owns => "owns",
             Self::Maintains => "maintains",
             Self::DependsOn => "depends_on",
+            Self::ComplianceDependsOn => "compliance_depends_on",
             Self::Builds => "builds",
             Self::Deploys => "deploys",
             Self::RunsIn => "runs_in",
@@ -1023,6 +1030,7 @@ impl RelationKind {
             "owns" => Self::Owns,
             "maintains" => Self::Maintains,
             "depends_on" => Self::DependsOn,
+            "compliance_depends_on" => Self::ComplianceDependsOn,
             "builds" => Self::Builds,
             "deploys" => Self::Deploys,
             "runs_in" => Self::RunsIn,
@@ -1067,6 +1075,9 @@ impl RelationKind {
                     )
             }
             Self::DependsOn => !matches!(from, Finding) && !matches!(to, Finding),
+            Self::ComplianceDependsOn => {
+                matches!(from, ComplianceImpactRevision) && matches!(to, ComplianceImpactRevision)
+            }
             Self::Builds => matches!(from, Repository) && matches!(to, Service | Application),
             Self::Deploys => matches!(from, Repository | Service) && matches!(to, Environment),
             Self::RunsIn => {

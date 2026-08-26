@@ -70,8 +70,9 @@ describe("product UI contract", () => {
     const statusSource = readProjectFile("src/components/StatusPanel.tsx");
     const topbarSource = readProjectFile("src/components/Topbar.tsx");
 
-    expect(topbarSource).toContain("notificationsRequested ? grcDashboardPath");
-    expect(topbarSource).toContain("notificationsRequested ? grcPath");
+    expect(topbarSource).toContain("notificationsRequested && !invalidNotificationScope");
+    expect(topbarSource).toContain("grcDashboardPath({");
+    expect(topbarSource).toContain('grcPath("/report-runs"');
     expect(topbarSource).toContain("onFocus={() => setNotificationsRequested(true)}");
     expect(topbarSource).toContain("onMouseEnter={() => setNotificationsRequested(true)}");
     expect(topbarSource).not.toContain("showNotifications ? grcDashboardPath");
@@ -200,11 +201,21 @@ describe("product UI contract", () => {
     const runtime = readProjectFile("src/lib/connector-runtime.ts");
 
     expect(page).toContain('withQuery("/v1/source-runtimes/health"');
+    expect(page).toContain("tenant_id: debouncedTenantID");
     expect(page).toContain("normalizeSourceRuntimeSummary");
     expect(page).not.toContain("sourceHealthBreakdown");
     expect(runtime).toContain('stringField(runtime, ["readiness"])');
     expect(runtime).toContain('stringField(summary, ["readiness"])');
     expect(runtime).not.toContain("const sourceReadiness =");
+  });
+
+  it("guards Explore expansion responses against a changed scope", () => {
+    const page = readProjectFile("src/app/explore/page.tsx");
+
+    expect(page).toContain("const requestScopeKey = activeScopeKey");
+    expect(page).toContain("activeScopeKeyRef.current !== requestScopeKey");
+    expect(page).toContain("activeScopeKeyRef.current === requestScopeKey");
+    expect(page).toContain("setExpandingURN(null);");
   });
 
   it("keeps vendor decisions ahead of source diagnostics without a duplicate queue", () => {

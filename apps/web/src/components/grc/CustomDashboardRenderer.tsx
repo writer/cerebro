@@ -10,6 +10,7 @@ import type { CustomDashboard, CustomDashboardWidget } from "@/lib/custom-dashbo
 import {
   customDashboardFindingsPath,
   customDashboardFrameworksPath,
+  customDashboardScopedPath,
   customDashboardSummaryPath,
   customDashboardTrendPath,
 } from "@/lib/custom-dashboards";
@@ -109,7 +110,8 @@ function TrendWidget({ dashboard, widget }: { dashboard: CustomDashboard; widget
   const metricState = query.loading ? "loading" : "ready";
   const interval = String(widget.query?.params?.interval ?? dashboard.filters.interval ?? "week");
   const filterParams = {
-    tenant_id: stringValue(dashboard.filters.tenant_id),
+    tenant_id: stringValue(dashboard.tenant_id),
+    workspace_id: stringValue(dashboard.workspace_id),
     runtime_id: stringValue(dashboard.filters.runtime_id),
     source_id: stringValue(dashboard.filters.source_id),
     severity: stringValue(dashboard.filters.severity),
@@ -287,7 +289,7 @@ function FindingsTableWidget({ dashboard, widget }: { dashboard: CustomDashboard
             <tbody>
               {findings.map((finding) => (
                 <tr key={finding.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2"><Link href={`/findings/${encodeURIComponent(finding.id)}`} className="font-medium text-indigo-600 hover:text-indigo-800">{finding.title}</Link></td>
+                  <td className="px-3 py-2"><Link href={customDashboardScopedPath(`/findings/${encodeURIComponent(finding.id)}`, dashboard)} className="font-medium text-indigo-600 hover:text-indigo-800">{finding.title}</Link></td>
                   <td className="px-3 py-2"><Badge value={finding.severity} tone="severity" /></td>
                   <td className="px-3 py-2 text-slate-700">{humanize(finding.status)}</td>
                   <td className="px-3 py-2 text-right"><RiskBadge score={finding.risk_score} level={finding.likelihood_level} /></td>
@@ -302,7 +304,7 @@ function FindingsTableWidget({ dashboard, widget }: { dashboard: CustomDashboard
 }
 
 function FrameworkProgressWidget({ dashboard, widget }: { dashboard: CustomDashboard; widget: CustomDashboardWidget }) {
-  const path = useMemo(() => customDashboardFrameworksPath(dashboard, widget), [dashboard, widget]);
+  const path = useMemo(() => customDashboardFrameworksPath(dashboard), [dashboard]);
   const query = useGRCQuery<GRCFrameworksResponse>(path);
   if (query.loading) return <LoadingBlock label={`Loading ${widget.title ?? "frameworks"}...`} />;
   if (query.error) return <ErrorBlock error={query.error} onRetry={() => void query.reload()} recoveryDetail="Frameworks will appear when the API is reachable." />;
@@ -324,7 +326,7 @@ function FrameworkProgressWidget({ dashboard, widget }: { dashboard: CustomDashb
                 percent={percent}
                 detail={`${mapped}/${total} controls mapped`}
                 total={`${framework.control_count} total`}
-                href={framework.id ? `/frameworks/${encodeURIComponent(framework.id)}` : undefined}
+                href={framework.id ? customDashboardScopedPath(`/frameworks/${encodeURIComponent(framework.id)}`, dashboard) : undefined}
               />
             );
           })}
@@ -338,7 +340,10 @@ function CatalogWidget({ dashboard, widget, catalog }: { dashboard: CustomDashbo
   const sourceID = catalogWidgetSourceID(widget);
   const source = findSource(catalog.sources, sourceID);
   const reportQuery = source ? buildWidgetReportQuery(source, dashboard.filters, widget) : null;
-  const result = useReportQuery(reportQuery);
+  const result = useReportQuery(reportQuery, {
+    tenantID: dashboard.tenant_id,
+    workspaceID: dashboard.workspace_id,
+  });
   const title = widget.title ?? source?.title ?? "Report";
 
   if (catalog.loading) return <LoadingBlock label={`Loading ${title}...`} />;

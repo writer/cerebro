@@ -533,8 +533,11 @@ func TestBuiltinCloudflareCatalogClosesTheProviderFamilyAndCredentialContracts(t
 		if family.Pagination == nil || family.Pagination.Type != "page" || family.Pagination.PageParam != "page" || family.Pagination.PageSizeParam != "per_page" {
 			t.Fatalf("%s pagination = %#v", family.ID, family.Pagination)
 		}
-		if family.Config == nil || family.Config.ConfigAttributes["tenant_id"] != "tenant_id" {
-			t.Fatalf("%s config = %#v, want authenticated tenant binding", family.ID, family.Config)
+		if family.Config == nil {
+			t.Fatalf("%s config = nil", family.ID)
+		}
+		if _, configurable := family.Config.ConfigAttributes["tenant_id"]; configurable {
+			t.Fatalf("%s config = %#v, tenant scope must come from the authenticated runtime", family.ID, family.Config)
 		}
 		if family.Projection == nil || strings.TrimSpace(family.Projection.Template) == "" {
 			t.Fatalf("%s projection is not compiled", family.ID)

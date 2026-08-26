@@ -5,6 +5,7 @@ package complianceintegration
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/compliance"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 var ErrInvalidFact = errors.New("invalid compliance integration fact")
@@ -101,6 +103,39 @@ func (r RevisionRef) ExactKey() string {
 }
 func (r RevisionRef) SameSubject(other RevisionRef) bool { return r.subjectKey() == other.subjectKey() }
 func (r RevisionRef) Equal(other RevisionRef) bool       { return r.ExactKey() == other.ExactKey() }
+func (r RevisionRef) ImpactRevisionURN() (string, error) {
+	if r.ExactKey() == "" {
+		return "", ErrInvalidFact
+	}
+	exactID := cerebrourn.StableExternalID(r.ExactKey(), "revision-missing")
+	return cerebrourn.Mint(r.TenantID(), "compliance_impact_revision",
+		cerebrourn.EncodeSegment(r.Domain()), cerebrourn.EncodeSegment(string(r.Kind())),
+		cerebrourn.EncodeSegment(r.ID()), cerebrourn.EncodeSegment(r.RevisionID()), exactID)
+}
+
+// ValidateImpactRevisionURN rejects non-canonical or cross-tenant graph keys.
+func ValidateImpactRevisionURN(tenantID, raw string) error {
+	tenantID = strings.TrimSpace(tenantID)
+	if raw == "" || raw != strings.TrimSpace(raw) {
+		return fmt.Errorf("%w: invalid compliance impact revision URN", ErrInvalidFact)
+	}
+	parts := strings.Split(raw, ":")
+	if tenantID == "" || len(parts) != 9 || parts[0] != "urn" || parts[1] != "cerebro" || parts[2] != tenantID || parts[3] != "compliance_impact_revision" || len(parts[8]) != 35 || !strings.HasPrefix(parts[8], "id-") || strings.Trim(parts[8][3:], "0123456789abcdef") != "" {
+		return fmt.Errorf("%w: invalid compliance impact revision URN", ErrInvalidFact)
+	}
+	decoded := make([]string, 4)
+	for index, part := range parts[4:8] {
+		value, err := url.PathUnescape(part)
+		if err != nil || value == "" || strings.TrimSpace(value) != value || cerebrourn.EncodeSegment(value) != part {
+			return fmt.Errorf("%w: non-canonical compliance impact revision URN", ErrInvalidFact)
+		}
+		decoded[index] = value
+	}
+	if !identifierPattern.MatchString(decoded[0]) || !validFactKind(FactKind(decoded[1])) {
+		return fmt.Errorf("%w: invalid compliance impact revision authority", ErrInvalidFact)
+	}
+	return nil
+}
 func (r RevisionRef) subjectKey() string {
 	return r.tenantID + "\x00" + r.domain + "\x00" + string(r.kind) + "\x00" + r.revision.ID
 }

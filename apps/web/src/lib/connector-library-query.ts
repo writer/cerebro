@@ -2,10 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useApiKey } from "@/components/providers";
+import { useApiKey, useCurrentUser } from "@/components/providers";
 import { withQuery } from "@/lib/cerebro-data";
 import type { ConnectorLibraryResponse } from "@/lib/connectors";
-import { fetchCachedGRC, GRC_QUERY_TIMEOUT_MS, grcResponseErrorMessage, grcTimeoutMessage } from "@/lib/grc-client";
+import {
+  fetchCachedGRC,
+  GRC_QUERY_TIMEOUT_MS,
+  grcClientScopeKey,
+  grcResponseErrorMessage,
+  grcTimeoutMessage,
+  type GRCQueryScope,
+} from "@/lib/grc-client";
 
 export const CONNECTOR_LIBRARY_PAGE_LIMIT = 200;
 const CONNECTOR_LIBRARY_MAX_PAGES = 50;
@@ -76,15 +83,20 @@ export function useConnectorLibraryQuery({
   enabled = true,
 }: ConnectorLibraryQueryOptions = {}) {
   const { apiKey } = useApiKey();
+  const { actor, loading: userLoading } = useCurrentUser();
   const [data, setData] = useState<ConnectorLibraryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [durationMs, setDurationMs] = useState<number | null>(null);
+  const [loadedScopeKey, setLoadedScopeKey] = useState("");
   const requestID = useRef(0);
   const pageLimit = useMemo(() => connectorLibraryLimit(limit), [limit]);
+  const scope = useMemo<GRCQueryScope>(() => ({ actor, tenantID: tenantID.trim() }), [actor, tenantID]);
+  const requestScopeKey = useMemo(() => grcClientScopeKey(scope, apiKey), [apiKey, scope]);
+  const requestEnabled = enabled && !userLoading && Boolean(actor.trim());
   const firstPagePath = useMemo(
-    () => enabled ? connectorLibraryPagePath({ tenantID, view, limit: pageLimit }) : null,
-    [enabled, pageLimit, tenantID, view],
+    () => requestEnabled ? connectorLibraryPagePath({ tenantID, view, limit: pageLimit }) : null,
+    [pageLimit, requestEnabled, tenantID, view],
   );
 
   const load = useCallback(async (signal?: AbortSignal, force = false) => {
@@ -93,6 +105,7 @@ export function useConnectorLibraryQuery({
       setError(null);
       setLoading(false);
       setDurationMs(null);
+      setLoadedScopeKey("");
       return;
     }
 
@@ -120,7 +133,7 @@ export function useConnectorLibraryQuery({
         const path = index === 0
           ? firstPagePath
           : connectorLibraryPagePath({ tenantID, view, limit: pageLimit, cursor });
-        const response = await fetchCachedGRC<ConnectorLibraryResponse>(path, apiKey, force, { signal: controller.signal });
+        const response = await fetchCachedGRC<ConnectorLibraryResponse>(path, apiKey, force, { signal: controller.signal }, scope);
 
         if (!response.ok) {
           throw new Error(grcResponseErrorMessage(path, response.status, response.data, Math.round(performance.now() - startedAt)));
@@ -145,8 +158,9 @@ export function useConnectorLibraryQuery({
       if (cursor) {
         throw new Error("Connector catalog pagination exceeded the client page limit.");
       }
-      if (currentRequestID !== requestID.current) return;
+      if (signal?.aborted || currentRequestID !== requestID.current) return;
       setData(mergeConnectorLibraryPages(pages) ?? { connectors: [] });
+      setLoadedScopeKey(requestScopeKey);
       setDurationMs(Math.round(performance.now() - startedAt));
       setLoading(false);
     } catch (err) {
@@ -161,7 +175,7 @@ export function useConnectorLibraryQuery({
       window.clearTimeout(timeout);
       signal?.removeEventListener("abort", abortFromCaller);
     }
-  }, [apiKey, firstPagePath, pageLimit, tenantID, view]);
+  }, [apiKey, firstPagePath, pageLimit, requestScopeKey, scope, tenantID, view]);
 
   const reload = useCallback(() => load(undefined, true), [load]);
 
@@ -174,5 +188,6 @@ export function useConnectorLibraryQuery({
     };
   }, [load]);
 
-  return { data, error, loading, durationMs, reload };
+  const visibleData = loadedScopeKey !== "" && loadedScopeKey === requestScopeKey ? data : null;
+  return { data: visibleData, error, loading, durationMs, reload };
 }

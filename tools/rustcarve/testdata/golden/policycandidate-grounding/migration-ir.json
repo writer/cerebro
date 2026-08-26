@@ -1,8 +1,8 @@
 {
-  "schema_version": "cerebro.rustcarve.migration-ir/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
+  "schema_version": "cerebro.rustcarve.migration-ir/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
   "ir_version": "graph-query/v1",
-  "digest_sha256": "sha256:94ac4617fb44bd4b6ab9063ffb09dd2d8e9cf58cd986ff171974f8408983d76c",
+  "digest_sha256": "sha256:15830b42b702c0ad8140752a6278ab590904ff40768ec0ac3cca2b0893b4dce7",
   "behavior_kind": "graph_query",
   "subject": {
     "id": "policycandidate.grounding",

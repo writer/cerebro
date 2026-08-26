@@ -89,6 +89,21 @@ func TestAnalyzeMissingRevisionIsHardError(t *testing.T) {
 	}
 }
 
+func TestAnalyzeMapsTypedProjectionFailuresToInvalidGraph(t *testing.T) {
+	root := impactRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy", 1)
+	graph := newFakeGraph(impactFact(t, root))
+	graph.getErr = ports.ErrComplianceImpactInvalidProjection
+	if _, err := analyze(t, graph, root, complianceintegration.ChangeUpdated, DefaultLimits()); !errors.Is(err, ErrInvalidGraph) {
+		t.Fatalf("fact error = %v, want ErrInvalidGraph", err)
+	}
+
+	graph.getErr = nil
+	graph.listErr = ports.ErrComplianceImpactInvalidProjection
+	if _, err := analyze(t, graph, root, complianceintegration.ChangeUpdated, DefaultLimits()); !errors.Is(err, ErrInvalidGraph) {
+		t.Fatalf("dependent error = %v, want ErrInvalidGraph", err)
+	}
+}
+
 func TestAnalyzeRejectsAlteredExactRevisionMetadata(t *testing.T) {
 	root := impactRevision(t, "tenant-a", complianceintegration.FactPolicy, "policy", 1)
 	graph := newFakeGraph(impactFact(t, root))
@@ -197,6 +212,8 @@ func TestAnalyzerRejectsInvalidLimitsAndStalledCursor(t *testing.T) {
 type fakeGraph struct {
 	facts       map[string]ports.ComplianceImpactDomainFact
 	dependents  map[string][]ports.ComplianceImpactRevisionRef
+	getErr      error
+	listErr     error
 	stallCursor bool
 }
 
@@ -218,6 +235,9 @@ func newFakeGraph(facts ...complianceintegration.DomainFact) *fakeGraph {
 }
 
 func (f *fakeGraph) GetComplianceImpactFact(_ context.Context, tenantID string, ref ports.ComplianceImpactRevisionRef) (ports.ComplianceImpactDomainFact, error) {
+	if f.getErr != nil {
+		return ports.ComplianceImpactDomainFact{}, f.getErr
+	}
 	if tenantID != ref.TenantID {
 		return ports.ComplianceImpactDomainFact{}, ports.ErrComplianceImpactRevisionNotFound
 	}
@@ -229,6 +249,9 @@ func (f *fakeGraph) GetComplianceImpactFact(_ context.Context, tenantID string, 
 }
 
 func (f *fakeGraph) ListComplianceImpactDependents(_ context.Context, request ports.ComplianceImpactDependentRequest) (ports.ComplianceImpactDependentPage, error) {
+	if f.listErr != nil {
+		return ports.ComplianceImpactDependentPage{}, f.listErr
+	}
 	values := f.dependents[portKey(request.Dependency)]
 	start := 0
 	if request.AfterCursor != "" {

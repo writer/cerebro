@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Check, Settings2, Share2, UsersRound } from "lucide-react";
 
@@ -11,7 +12,7 @@ import type { GRCDashboard } from "@/lib/grc";
 import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcPath, useGRCQuery } from "@/lib/grc-client";
 import { currentUserConfidenceLabel, identityPosture } from "@/lib/identity";
 import { currentUserWriteFieldForPath } from "@/lib/identity-write-stamp";
-import { buildNotifications, notificationSignatures, reportRunNotifications, unreadNotifications, type NotificationIntent } from "@/lib/notifications";
+import { buildNotifications, notificationReadStorageKey, notificationSignatures, reportRunNotifications, unreadNotifications, type NotificationIntent } from "@/lib/notifications";
 import { authorizationRoleLabelsForUser, effectiveAuthorizationPermissionsForUser } from "@/lib/rbac";
 import type { ReportRunListResponse } from "@/lib/report-schedules";
 import { usePopoverDismissal } from "@/lib/use-popover-dismissal";
@@ -19,7 +20,6 @@ import { HOME_SECTION_IDS, HOME_SECTION_LABELS, userPreferencesShareURL, type Di
 
 const displayValues = (values: string[] | undefined) => values?.filter(Boolean).join(", ") || "—";
 
-const NOTIFICATIONS_READ_KEY = "cerebro.notifications.read";
 const NOTIFICATIONS_READ_EVENT = "cerebro-notifications-read";
 
 const subscribeReadSignatures = (callback: () => void) => {
@@ -31,11 +31,10 @@ const subscribeReadSignatures = (callback: () => void) => {
   };
 };
 
-const getReadSignaturesSnapshot = () => window.localStorage.getItem(NOTIFICATIONS_READ_KEY) ?? "[]";
 const getReadSignaturesServerSnapshot = () => "[]";
 
-const persistReadSignatures = (signatures: string[]) => {
-  window.localStorage.setItem(NOTIFICATIONS_READ_KEY, JSON.stringify(signatures));
+const persistReadSignatures = (storageKey: string, signatures: string[]) => {
+  window.localStorage.setItem(storageKey, JSON.stringify(signatures));
   window.dispatchEvent(new Event(NOTIFICATIONS_READ_EVENT));
 };
 
@@ -48,7 +47,11 @@ export default function Topbar() {
   const topbarRef = useRef<HTMLElement>(null);
   const { apiKey, setApiKey } = useApiKey();
   const { openCommandPalette } = useCommandPalette();
-  const { error: userError, loading: userLoading, user } = useCurrentUser();
+  const { actor, error: userError, loading: userLoading, user } = useCurrentUser();
+  const searchParams = useSearchParams();
+  const notificationTenantID = searchParams.get("tenant_id")?.trim() ?? "";
+  const notificationWorkspaceID = searchParams.get("workspace_id")?.trim() ?? "";
+  const invalidNotificationScope = Boolean(notificationWorkspaceID && !notificationTenantID);
   const { theme, setTheme, toggleTheme } = useTheme();
   const {
     error: preferencesError,
@@ -151,10 +154,32 @@ export default function Topbar() {
   }, [shareStatus, shareURL]);
 
   const notificationsQuery = useGRCQuery<GRCDashboard>(
-    notificationsRequested ? grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT }) : null,
+    notificationsRequested && !invalidNotificationScope
+      ? grcDashboardPath({
+        limit: DASHBOARD_FINDING_LIMIT,
+        tenant_id: notificationTenantID || undefined,
+        workspace_id: notificationWorkspaceID || undefined,
+      })
+      : null,
   );
   const reportRunsQuery = useGRCQuery<ReportRunListResponse>(
-    notificationsRequested ? grcPath("/report-runs", { limit: 5 }) : null,
+    notificationsRequested && !invalidNotificationScope
+      ? grcPath("/report-runs", {
+        limit: 5,
+        tenant_id: notificationTenantID || undefined,
+        workspace_id: notificationWorkspaceID || undefined,
+      })
+      : null,
+  );
+  const notificationStorageKey = notificationReadStorageKey({
+    actor,
+    apiKey,
+    tenantID: notificationTenantID,
+    workspaceID: notificationWorkspaceID,
+  });
+  const getReadSignaturesSnapshot = useCallback(
+    () => window.localStorage.getItem(notificationStorageKey) ?? "[]",
+    [notificationStorageKey],
   );
   const notificationsLoading = notificationsQuery.loading || reportRunsQuery.loading;
   const notifications = useMemo(
@@ -177,13 +202,13 @@ export default function Topbar() {
   const unread = useMemo(() => unreadNotifications(notifications, readSignatures), [notifications, readSignatures]);
   const unreadCount = unread.length;
   const hasDangerUnread = unread.some((notification) => notification.intent === "danger");
-  const markAllNotificationsRead = () => persistReadSignatures(notificationSignatures(notifications));
+  const markAllNotificationsRead = () => persistReadSignatures(notificationStorageKey, notificationSignatures(notifications));
   const popoverOpen = showConnection || showIdentity || showNotifications;
   const closePopovers = useCallback(() => {
     setShowConnection(false);
     setShowIdentity(false);
     setShowNotifications(false);
-  }, []);
+  }, [setShowConnection, setShowIdentity, setShowNotifications]);
   usePopoverDismissal({ containerRef: topbarRef, enabled: popoverOpen, onDismiss: closePopovers });
 
   return (

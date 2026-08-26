@@ -1334,6 +1334,7 @@ fn query_entity_kind(value: &str) -> Option<EntityKind> {
         "remediation" => EntityKind::Remediation,
         "verification" => EntityKind::Verification,
         "work_item" => EntityKind::WorkItem,
+        "compliance.impact_revision" => EntityKind::ComplianceImpactRevision,
         "provider" => EntityKind::Provider(
             cerebro_organizational_model::ProviderKind::parse("query.provider")
                 .expect("fixed provider query kind"),

@@ -253,6 +253,11 @@ func captureSourceHTTPStderr(t *testing.T, fn func()) (string, string) {
 	os.Stdout = stdoutWriter
 	os.Stderr = stderrWriter
 	fn()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := telemetry.FlushWideEvents(ctx); err != nil {
+		t.Fatalf("flush telemetry: %v", err)
+	}
 	_ = stdoutWriter.Close()
 	_ = stderrWriter.Close()
 	os.Stdout = oldStdout

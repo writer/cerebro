@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile, spawn } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import http from "node:http";
@@ -24,6 +24,7 @@ const proxyCacheStaleMs = 60_000;
 const perfFirstMs = 5_000;
 const perfCachedMs = 1_000;
 const tenantID = "e2e-local";
+const tenantAuthContext = Buffer.from("cerebro-organizational-graph/tenant/v1\0", "utf8");
 const postgresImage = "postgres:16-alpine";
 const neo4jImage = "neo4j:5";
 const runID = randomUUID();
@@ -326,7 +327,7 @@ async function main(options) {
 
   step("validating backend GRC endpoints");
   assertChildHealthy(backendProcess, "Cerebro API");
-  await validateRegisteredOpenAPIRoutes();
+  await validateRegisteredOpenAPIRoutes(rustGraphBase, rustGraphSharedSecret);
   await validateBackend();
   assertChildHealthy(backendProcess, "Cerebro API");
 
@@ -853,34 +854,92 @@ async function validateBackend() {
   expect(invalidLimit.status === 400, `invalid limit status ${invalidLimit.status}`);
 }
 
-export function openAPIRouteProbePaths(document) {
+export function openAPIRouteProbePaths(document, inventory) {
   const paths = document?.paths;
   if (!paths || typeof paths !== "object" || Array.isArray(paths)) {
     throw new Error("OpenAPI document has no paths object");
   }
-  return Object.keys(paths).sort().map((template) => {
+
+  if (!Array.isArray(inventory?.entries)) {
+    throw new Error("Public route inventory has no entries array");
+  }
+  const authorityOwnersByPath = new Map();
+  const routeIdentities = new Set();
+  const knownAuthorityOwners = new Set([
+    "bridged-to-rust-authority",
+    "go-compatibility",
+    "rust-authority",
+  ]);
+  for (const entry of inventory.entries) {
+    if (entry?.kind !== "http") continue;
+    if (typeof entry.path !== "string" || !entry.path.startsWith("/")) {
+      throw new Error("Public route inventory has an invalid HTTP path");
+    }
+    if (typeof entry.authority_owner !== "string" || entry.authority_owner.length === 0) {
+      throw new Error(`Public route inventory has no authority owner for ${entry.path}`);
+    }
+    if (!knownAuthorityOwners.has(entry.authority_owner)) {
+      throw new Error(`Public route inventory has an unknown authority owner for ${entry.path}`);
+    }
+    if (typeof entry.method !== "string" || !/^[A-Z]+$/.test(entry.method)) {
+      throw new Error(`Public route inventory has an invalid HTTP method for ${entry.path}`);
+    }
+    const routeIdentity = `${entry.method} ${entry.path}`;
+    if (routeIdentities.has(routeIdentity)) {
+      throw new Error(`Public route inventory has duplicate ownership for ${routeIdentity}`);
+    }
+    routeIdentities.add(routeIdentity);
+    const owners = authorityOwnersByPath.get(entry.path) ?? new Set();
+    owners.add(entry.authority_owner);
+    authorityOwnersByPath.set(entry.path, owners);
+  }
+
+  return Object.keys(paths).sort().flatMap((template) => {
     if (!template.startsWith("/")) throw new Error(`OpenAPI path is not absolute: ${template}`);
     const concrete = template.replace(/\{[^{}]+\}/g, "route-probe");
     if (concrete.includes("{") || concrete.includes("}")) throw new Error(`OpenAPI path has an invalid template: ${template}`);
-    return { concrete, template };
+    const authorityOwners = authorityOwnersByPath.get(template);
+    if (!authorityOwners) throw new Error(`Public route inventory has no HTTP entry for ${template}`);
+    const listener = authorityOwners.size === 1 && authorityOwners.has("rust-authority") ? "rust" : "go";
+    return [{ concrete, listener, template }];
   });
 }
 
 export function assertRegisteredOpenAPIRouteResponses(results) {
-  for (const { status, template } of results) {
+  for (const { allow, listener = "go", status, template } of results) {
     expect(status !== 404, `OpenAPI route ${template} is not registered`);
+    if (listener === "rust") {
+      expect(status === 405 && /(?:^|,\s*)GET(?:,|$)/.test(allow ?? ""), `Rust OpenAPI route ${template} is not registered for GET`);
+    }
   }
 }
 
-async function validateRegisteredOpenAPIRoutes() {
-  const spec = parseYAML(await readFile(path.join(backendRoot, "api", "openapi.yaml"), "utf8"));
-  const probes = openAPIRouteProbePaths(spec);
+function rustTenantBearer(secret, requestedTenantID) {
+  const tenant = Buffer.from(requestedTenantID, "utf8");
+  const length = Buffer.alloc(8);
+  length.writeBigUInt64BE(BigInt(tenant.length));
+  return createHmac("sha256", secret)
+    .update(tenantAuthContext)
+    .update(length)
+    .update(tenant)
+    .digest("hex");
+}
+
+async function validateRegisteredOpenAPIRoutes(rustGraphBase, rustGraphSharedSecret) {
+  const [openAPIPayload, inventoryPayload] = await Promise.all([
+    readFile(path.join(backendRoot, "api", "openapi.yaml"), "utf8"),
+    readFile(path.join(backendRoot, "docs", "contracts", "platform-public-route-inventory.json"), "utf8"),
+  ]);
+  const spec = parseYAML(openAPIPayload);
+  const probes = openAPIRouteProbePaths(spec, JSON.parse(inventoryPayload));
   const concurrency = 16;
   for (let offset = 0; offset < probes.length; offset += concurrency) {
     const batch = probes.slice(offset, offset + concurrency);
-    const responses = await Promise.all(batch.map(async ({ concrete, template }) => ({
-      response: await request(`${apiBase}${concrete}`, {
+    const responses = await Promise.all(batch.map(async ({ concrete, listener, template }) => ({
+      listener,
+      response: await request(`${listener === "rust" ? rustGraphBase : apiBase}${concrete}`, {
         headers: {
+          ...(listener === "rust" ? { Authorization: `Bearer ${rustTenantBearer(rustGraphSharedSecret, tenantID)}` } : {}),
           "X-Cerebro-Tenant": tenantID,
           "X-Cerebro-Workspace": "e2e-workspace",
         },
@@ -888,7 +947,9 @@ async function validateRegisteredOpenAPIRoutes() {
       }),
       template,
     })));
-    assertRegisteredOpenAPIRouteResponses(responses.map(({ response, template }) => ({
+    assertRegisteredOpenAPIRouteResponses(responses.map(({ listener, response, template }) => ({
+      allow: response.headers.get("allow"),
+      listener,
       status: response.status,
       template,
     })));

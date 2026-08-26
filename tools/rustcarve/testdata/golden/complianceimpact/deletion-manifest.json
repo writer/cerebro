@@ -1,10 +1,10 @@
 {
-  "schema_version": "cerebro.rustcarve.deletion-manifest/v1",
-  "tool_revision": "cerebro.rustcarve/v1",
+  "schema_version": "cerebro.rustcarve.deletion-manifest/v2",
+  "tool_revision": "cerebro.rustcarve/v2",
   "behavior_kind": "graph_query",
   "subject_id": "complianceimpact.projected_graph",
   "ir_version": "graph-query/v1",
-  "ir_digest_sha256": "sha256:e19d490e27fc09e80f5f902dff3d8fef92ad027cb544a0df20bbf6c205f2d088",
+  "ir_digest_sha256": "sha256:4100c589fefac5a5a3c66a2c9b0c3aed6328693b0858553978d282d8efd6e261",
   "go_facts_digest_sha256": "sha256:decbaa19ea331a0a7af29d9aff738895873b1f70d6c014ced8b7b6e22750c1ec",
   "rust_implementation_revision": "unimplemented",
   "eligible": false,
@@ -12,6 +12,7 @@
     "active_go_execution_path",
     "missing_parity_receipt"
   ],
+  "authority_gates": [],
   "paths": [
     "internal/complianceimpact/projected_graph.go"
   ],

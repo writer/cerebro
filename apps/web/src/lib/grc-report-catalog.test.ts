@@ -6,6 +6,8 @@ import {
   catalogWidgetSourceID,
   extractReportTable,
   findSource,
+  reportQueryCacheKey,
+  reportQueryPath,
   validateWidgetReportQuery,
   type ReportSource,
 } from "./grc-report-catalog";
@@ -100,6 +102,20 @@ describe("grc report catalog helpers", () => {
     const query = buildWidgetReportQuery(findingsSource, dashboard({ severity: "LOW" }).filters, widget);
     expect(query.params).toEqual({ severity: "CRITICAL" });
     expect(query.limit).toBeUndefined();
+  });
+
+  it("binds report paths and cache keys to tenant and workspace scope", () => {
+    const body = JSON.stringify({ source_id: "findings", limit: 25 });
+    const workspaceA = reportQueryPath({ tenantID: "tenant-a", workspaceID: "workspace-a" });
+    const workspaceB = reportQueryPath({ tenantID: "tenant-a", workspaceID: "workspace-b" });
+    expect(workspaceA).toBe("/grc/query?tenant_id=tenant-a&workspace_id=workspace-a");
+    expect(workspaceB).toBe("/grc/query?tenant_id=tenant-a&workspace_id=workspace-b");
+    expect(reportQueryCacheKey(workspaceA!, body, "key")).not.toBe(reportQueryCacheKey(workspaceB!, body, "key"));
+  });
+
+  it("does not build a report path without tenant scope", () => {
+    expect(reportQueryPath({})).toBeNull();
+    expect(reportQueryPath({ workspaceID: "workspace-a" })).toBeNull();
   });
 
   it("shapes a list-shaped envelope into a scalar-only table", () => {

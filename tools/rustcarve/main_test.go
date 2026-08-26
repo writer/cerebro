@@ -28,18 +28,21 @@ func TestDeepSeekDistillationIsDeterministicAndDeletionFailsClosed(t *testing.T)
 	if !reflect.DeepEqual(first, second) {
 		t.Fatal("distillation is not deterministic")
 	}
-	if first.IR.Provider == nil || first.IR.Provider.Registration != "generic_catalog_runtime" {
-		t.Fatalf("provider IR = %#v", first.IR.Provider)
+	if first.IR.Standard == nil || first.IR.Standard.Registration != "compiled_plan_fail_closed_metadata" || !validSHA256Digest(first.IR.Standard.PlanIndexDigestSHA256) {
+		t.Fatalf("standard source IR = %#v", first.IR.Standard)
 	}
-	if got := first.IR.Provider.RuntimeFamilies; !reflect.DeepEqual(got, []string{"account_balances", "model_catalog"}) {
+	if got := first.IR.Standard.RuntimeFamilies; !reflect.DeepEqual(got, []string{"account_balances", "model_catalog"}) {
 		t.Fatalf("runtime families = %v", got)
 	}
 	if first.Manifest.Eligible {
-		t.Fatal("DeepSeek deletion became eligible while the generic Go registry path is active")
+		t.Fatal("DeepSeek deletion became eligible without projection and parity authority")
 	}
-	wantReasons := []reasonCode{reasonActiveGoRegistryPath, reasonMissingParityReceipt}
+	wantReasons := []reasonCode{reasonActiveGoProjectionPath, reasonMissingParityReceipt, reasonNoDeletionTargets}
 	if !reflect.DeepEqual(first.Manifest.ReasonCodes, wantReasons) {
 		t.Fatalf("manifest reasons = %v, want %v", first.Manifest.ReasonCodes, wantReasons)
+	}
+	if len(first.Manifest.AuthorityGates) != 2 || first.Manifest.AuthorityGates[0].Satisfied || !first.Manifest.AuthorityGates[1].Satisfied {
+		t.Fatalf("authority gates = %#v", first.Manifest.AuthorityGates)
 	}
 	for _, path := range []string{"migration-ir.json", "deletion-manifest.json", "rust/scaffold.rs", "rust/contracts.rs", "rust/parity_test.rs", "registry/standard_source_plan_index.txt"} {
 		if len(first.Artifacts[path]) == 0 {
@@ -172,7 +175,7 @@ func TestSecretMaterialAndUnknownRequestFieldsFailClosed(t *testing.T) {
 	}
 	temp := t.TempDir()
 	path := filepath.Join(temp, "request.json")
-	if err := os.WriteFile(path, []byte(`{"schema_version":"cerebro.rustcarve.request/v1","unknown":true}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"schema_version":"cerebro.rustcarve.request/v2","unknown":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := loadCarveRequest(path); err == nil {
@@ -197,6 +200,12 @@ func TestGeneratedJSONIsCanonicalAndClosed(t *testing.T) {
 	if result.Unsupported != nil {
 		t.Fatalf("unexpected unsupported result: %#v", result.Unsupported)
 	}
+	if result.IR.Standard == nil || result.IR.Standard.Registration != "compiled_plan_fail_closed_metadata" || !validSHA256Digest(result.IR.Standard.PlanIndexDigestSHA256) {
+		t.Fatalf("Acunetix compiled plan = %#v", result.IR.Standard)
+	}
+	assertReason(t, result.Manifest.ReasonCodes, reasonActiveGoProjectionPath)
+	assertReason(t, result.Manifest.ReasonCodes, reasonMissingRustRuntimeFence)
+	assertReason(t, result.Manifest.ReasonCodes, reasonNoDeletionTargets)
 	for _, path := range []string{"migration-ir.json", "deletion-manifest.json"} {
 		var decoded any
 		if path == "migration-ir.json" {
@@ -279,6 +288,40 @@ func TestDeletionEligibilityRequiresAnExactlyBoundReceipt(t *testing.T) {
 	assertReason(t, third.Manifest.ReasonCodes, reasonReceiptBindingMismatch)
 }
 
+func TestSourceAuthorityGatesRejectDynamicProjectionAndMissingRuntimeFence(t *testing.T) {
+	root, request := minimalSourceRepository(t)
+	writeTestFile(t, root, sourceProjectionRegistryPath, []byte("package projection\nfunc RegisterConnectorDefinitions() { installDynamicProjector() }\nfunc installDynamicProjector() { catalogRuntimeDefinitionProjectors() }\n"))
+	writeTestFile(t, root, sourceRuntimeFencePath, []byte("package sourceworker\nfunc RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {\n\tswitch sourceID {\n\tcase \"test_source\":\n\t\tif familyID == \"other\" { return familyID, true }\n\t\treturn familyID, false\n\t}\n\treturn familyID, false\n}\n"))
+	result, err := distill(root, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Unsupported != nil {
+		t.Fatalf("unexpected unsupported result: %#v", result.Unsupported)
+	}
+	assertReason(t, result.Manifest.ReasonCodes, reasonActiveGoProjectionPath)
+	assertReason(t, result.Manifest.ReasonCodes, reasonMissingRustRuntimeFence)
+	if result.Manifest.Eligible {
+		t.Fatal("shared authority gaps became deletion eligible")
+	}
+	if got := result.IR.Standard.Authority.RuntimeFence.MissingRuntimeFamilies; !reflect.DeepEqual(got, []string{"records"}) {
+		t.Fatalf("missing runtime families = %v", got)
+	}
+}
+
+func TestSourceAuthorityEvidencePathsAreClosed(t *testing.T) {
+	root, request := minimalSourceRepository(t)
+	request.SourceAuthority.ProjectionDispatch.Path = "alternate/projection.go"
+	result, err := distill(root, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Unsupported == nil {
+		t.Fatal("alternate authority evidence path was accepted")
+	}
+	assertReason(t, result.Unsupported.ReasonCodes, reasonMissingAuthorityEvidence)
+}
+
 func TestGoCallbackIsRejectedWithTypedReason(t *testing.T) {
 	root, request := minimalSourceRepository(t)
 	writeTestFile(t, root, "registry/registry.go", []byte("package registry\nfunc Builtin() { register(func() {}) }\n"))
@@ -296,6 +339,8 @@ func minimalSourceRepository(t *testing.T) (string, carveRequest) {
 	t.Helper()
 	root := t.TempDir()
 	writeTestFile(t, root, "registry/registry.go", []byte("package registry\nfunc Builtin() { catalogruntimesource.New(entry) }\n"))
+	writeTestFile(t, root, sourceProjectionRegistryPath, []byte("package sourceprojection\nfunc RegisterConnectorDefinitions() {}\n"))
+	writeTestFile(t, root, sourceRuntimeFencePath, []byte("package sourceworker\nfunc RustAuthoritativeFamily(sourceID, familyID string) (string, bool) {\n\tswitch sourceID {\n\tcase \"test_source\":\n\t\treturn familyID, true\n\t}\n\treturn \"\", false\n}\n"))
 	writeTestFile(t, root, "source/catalog.yaml", []byte("id: test_source\nruntime_families: [records]\nevent_contracts:\n  - kind: test.records\n    schema_ref: test/records/v1\n    required_attributes: [tenant_id]\n    required_payload_fields: [id]\n"))
 	writeTestFile(t, root, "fixture.json", []byte("{\"records\":[{\"id\":\"one\"}]}\n"))
 	return root, carveRequest{
@@ -313,7 +358,11 @@ func minimalSourceRepository(t *testing.T) (string, carveRequest) {
 		Scope:         tenantOnlyScope(),
 		FixtureCorpus: []artifactRequest{{Path: "fixture.json", Role: "fixed_fixture"}},
 		Deletion:      deletionRequest{Paths: []string{"registry/registry.go"}, Symbols: []string{"catalogruntimesource.New(entry)"}},
-		Options:       distillationOptions{ExpectedRegistrationShape: "generic_catalog_runtime", MaxInputBytes: defaultMaxInputBytes},
+		SourceAuthority: &sourceAuthorityRequest{
+			ProjectionDispatch: projectionDispatchRequest{Path: sourceProjectionRegistryPath, RegisterSymbol: sourceProjectionRegisterSymbol, DynamicProjectorSymbol: sourceDynamicProjectorSymbol},
+			RuntimeFence:       runtimeFenceRequest{Path: sourceRuntimeFencePath, Symbol: sourceRuntimeFenceSymbol},
+		},
+		Options: distillationOptions{ExpectedRegistrationShape: "generic_catalog_runtime", MaxInputBytes: defaultMaxInputBytes},
 	}
 }
 

@@ -6,10 +6,10 @@ pub mod contracts;
 #[path = "parity_test.rs"]
 mod parity_test;
 
-pub const RUSTCARVE_TOOL_REVISION: &str = "cerebro.rustcarve/v1";
+pub const RUSTCARVE_TOOL_REVISION: &str = "cerebro.rustcarve/v2";
 pub const MIGRATION_IR_VERSION: &str = "finding-rule/v1";
 pub const MIGRATION_IR_DIGEST_SHA256: &str =
-    "sha256:5ac4f7373b29b022169314155601c663dd646f4d8dd7f54c72ee412a82283bd0";
+    "sha256:cab6fdd1e13b86d5b0b9ceb52c24858f901ce167e65d4f33d7cbf168219bedc5";
 pub const SUBJECT_ID: &str = "tailscale-tailnet-device-approval-disabled";
 pub const RUST_IMPLEMENTATION_REVISION: &str = "9a0d21b5b87996019ac78aec5a426129e6114558";
 

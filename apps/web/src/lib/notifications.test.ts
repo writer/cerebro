@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildNotifications, notificationSignatures, reportRunNotifications, unreadNotifications } from "@/lib/notifications";
+import { buildNotifications, notificationReadStorageKey, notificationSignatures, reportRunNotifications, unreadNotifications } from "@/lib/notifications";
 import type { GRCDashboard, GRCFinding, GRCSummary } from "@/lib/grc";
 import type { ReportDefinition, ReportRun } from "@/lib/report-schedules";
 
@@ -189,5 +189,18 @@ describe("notificationSignatures", () => {
       makeDashboard({ findings: [makeFinding({ id: "a", severity: "CRITICAL" })], summary: makeSummary({ stale_connectors: 1 }) }),
     );
     expect(notificationSignatures(items)).toEqual(items.map((item) => item.signature));
+  });
+});
+
+describe("notificationReadStorageKey", () => {
+  const scope = { actor: "actor-a", apiKey: "key-a", tenantID: "tenant-a", workspaceID: "workspace-a" };
+
+  it("partitions read state across actor, API key, tenant, and workspace", () => {
+    const base = notificationReadStorageKey(scope);
+    expect(notificationReadStorageKey({ ...scope, actor: "actor-b" })).not.toBe(base);
+    expect(notificationReadStorageKey({ ...scope, apiKey: "key-b" })).not.toBe(base);
+    expect(notificationReadStorageKey({ ...scope, tenantID: "tenant-b" })).not.toBe(base);
+    expect(notificationReadStorageKey({ ...scope, workspaceID: "workspace-b" })).not.toBe(base);
+    expect(base).toMatch(/^cerebro\.notifications\.read\.[0-9a-f]{16}$/);
   });
 });

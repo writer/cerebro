@@ -79,6 +79,12 @@ const (
 	// OrganizationalGraphServiceListEntityRelationsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's ListEntityRelations RPC.
 	OrganizationalGraphServiceListEntityRelationsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListEntityRelations"
+	// OrganizationalGraphServiceGetComplianceImpactFactProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's GetComplianceImpactFact RPC.
+	OrganizationalGraphServiceGetComplianceImpactFactProcedure = "/cerebro.graph.v1.OrganizationalGraphService/GetComplianceImpactFact"
+	// OrganizationalGraphServiceListComplianceImpactDependentsProcedure is the fully-qualified name of
+	// the OrganizationalGraphService's ListComplianceImpactDependents RPC.
+	OrganizationalGraphServiceListComplianceImpactDependentsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ListComplianceImpactDependents"
 	// OrganizationalGraphServiceGetSourceSummaryProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's GetSourceSummary RPC.
 	OrganizationalGraphServiceGetSourceSummaryProcedure = "/cerebro.graph.v1.OrganizationalGraphService/GetSourceSummary"
@@ -124,6 +130,10 @@ type OrganizationalGraphServiceClient interface {
 	ListCloudAttackPaths(context.Context, *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error)
 	// ListEntityRelations returns filtered direct relations for one catalog entity.
 	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
+	// GetComplianceImpactFact resolves one exact compliance revision and its dependencies.
+	GetComplianceImpactFact(context.Context, *connect.Request[v1.GetComplianceImpactFactRequest]) (*connect.Response[v1.GetComplianceImpactFactResponse], error)
+	// ListComplianceImpactDependents returns one keyset-paged reverse-dependency page.
+	ListComplianceImpactDependents(context.Context, *connect.Request[v1.ListComplianceImpactDependentsRequest]) (*connect.Response[v1.ListComplianceImpactDependentsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
 	// ListVendorRegister returns the product-ready vendor register at one graph revision.
@@ -234,6 +244,18 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListEntityRelations")),
 			connect.WithClientOptions(opts...),
 		),
+		getComplianceImpactFact: connect.NewClient[v1.GetComplianceImpactFactRequest, v1.GetComplianceImpactFactResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceGetComplianceImpactFactProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("GetComplianceImpactFact")),
+			connect.WithClientOptions(opts...),
+		),
+		listComplianceImpactDependents: connect.NewClient[v1.ListComplianceImpactDependentsRequest, v1.ListComplianceImpactDependentsResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceListComplianceImpactDependentsProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("ListComplianceImpactDependents")),
+			connect.WithClientOptions(opts...),
+		),
 		getSourceSummary: connect.NewClient[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse](
 			httpClient,
 			baseURL+OrganizationalGraphServiceGetSourceSummaryProcedure,
@@ -257,24 +279,26 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 
 // organizationalGraphServiceClient implements OrganizationalGraphServiceClient.
 type organizationalGraphServiceClient struct {
-	search                   *connect.Client[v1.SearchRequest, v1.SearchResponse]
-	getEntity                *connect.Client[v1.GetEntityRequest, v1.GetEntityResponse]
-	expand                   *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
-	expandBatch              *connect.Client[v1.ExpandBatchRequest, v1.ExpandBatchResponse]
-	findPaths                *connect.Client[v1.FindPathsRequest, v1.FindPathsResponse]
-	explainAssertion         *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
-	queryFacts               *connect.Client[v1.QueryFactsRequest, v1.QueryFactsResponse]
-	compareExposureCoverage  *connect.Client[v1.CompareExposureCoverageRequest, v1.CompareExposureCoverageResponse]
-	listEntities             *connect.Client[v1.ListEntitiesRequest, v1.ListEntitiesResponse]
-	countEntityKinds         *connect.Client[v1.CountEntityKindsRequest, v1.CountEntityKindsResponse]
-	countRelations           *connect.Client[v1.CountRelationsRequest, v1.CountRelationsResponse]
-	listPersonAccessPaths    *connect.Client[v1.ListPersonAccessPathsRequest, v1.ListPersonAccessPathsResponse]
-	listEffectiveAccessPaths *connect.Client[v1.ListEffectiveAccessPathsRequest, v1.ListEffectiveAccessPathsResponse]
-	listCloudAttackPaths     *connect.Client[v1.ListCloudAttackPathsRequest, v1.ListCloudAttackPathsResponse]
-	listEntityRelations      *connect.Client[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse]
-	getSourceSummary         *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
-	listVendorRegister       *connect.Client[v1.ListVendorRegisterRequest, v1.ListVendorRegisterResponse]
-	listVendorDiscoveries    *connect.Client[v1.ListVendorDiscoveriesRequest, v1.ListVendorDiscoveriesResponse]
+	search                         *connect.Client[v1.SearchRequest, v1.SearchResponse]
+	getEntity                      *connect.Client[v1.GetEntityRequest, v1.GetEntityResponse]
+	expand                         *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
+	expandBatch                    *connect.Client[v1.ExpandBatchRequest, v1.ExpandBatchResponse]
+	findPaths                      *connect.Client[v1.FindPathsRequest, v1.FindPathsResponse]
+	explainAssertion               *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
+	queryFacts                     *connect.Client[v1.QueryFactsRequest, v1.QueryFactsResponse]
+	compareExposureCoverage        *connect.Client[v1.CompareExposureCoverageRequest, v1.CompareExposureCoverageResponse]
+	listEntities                   *connect.Client[v1.ListEntitiesRequest, v1.ListEntitiesResponse]
+	countEntityKinds               *connect.Client[v1.CountEntityKindsRequest, v1.CountEntityKindsResponse]
+	countRelations                 *connect.Client[v1.CountRelationsRequest, v1.CountRelationsResponse]
+	listPersonAccessPaths          *connect.Client[v1.ListPersonAccessPathsRequest, v1.ListPersonAccessPathsResponse]
+	listEffectiveAccessPaths       *connect.Client[v1.ListEffectiveAccessPathsRequest, v1.ListEffectiveAccessPathsResponse]
+	listCloudAttackPaths           *connect.Client[v1.ListCloudAttackPathsRequest, v1.ListCloudAttackPathsResponse]
+	listEntityRelations            *connect.Client[v1.ListEntityRelationsRequest, v1.ListEntityRelationsResponse]
+	getComplianceImpactFact        *connect.Client[v1.GetComplianceImpactFactRequest, v1.GetComplianceImpactFactResponse]
+	listComplianceImpactDependents *connect.Client[v1.ListComplianceImpactDependentsRequest, v1.ListComplianceImpactDependentsResponse]
+	getSourceSummary               *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
+	listVendorRegister             *connect.Client[v1.ListVendorRegisterRequest, v1.ListVendorRegisterResponse]
+	listVendorDiscoveries          *connect.Client[v1.ListVendorDiscoveriesRequest, v1.ListVendorDiscoveriesResponse]
 }
 
 // Search calls cerebro.graph.v1.OrganizationalGraphService.Search.
@@ -354,6 +378,18 @@ func (c *organizationalGraphServiceClient) ListEntityRelations(ctx context.Conte
 	return c.listEntityRelations.CallUnary(ctx, req)
 }
 
+// GetComplianceImpactFact calls
+// cerebro.graph.v1.OrganizationalGraphService.GetComplianceImpactFact.
+func (c *organizationalGraphServiceClient) GetComplianceImpactFact(ctx context.Context, req *connect.Request[v1.GetComplianceImpactFactRequest]) (*connect.Response[v1.GetComplianceImpactFactResponse], error) {
+	return c.getComplianceImpactFact.CallUnary(ctx, req)
+}
+
+// ListComplianceImpactDependents calls
+// cerebro.graph.v1.OrganizationalGraphService.ListComplianceImpactDependents.
+func (c *organizationalGraphServiceClient) ListComplianceImpactDependents(ctx context.Context, req *connect.Request[v1.ListComplianceImpactDependentsRequest]) (*connect.Response[v1.ListComplianceImpactDependentsResponse], error) {
+	return c.listComplianceImpactDependents.CallUnary(ctx, req)
+}
+
 // GetSourceSummary calls cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary.
 func (c *organizationalGraphServiceClient) GetSourceSummary(ctx context.Context, req *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {
 	return c.getSourceSummary.CallUnary(ctx, req)
@@ -403,6 +439,10 @@ type OrganizationalGraphServiceHandler interface {
 	ListCloudAttackPaths(context.Context, *connect.Request[v1.ListCloudAttackPathsRequest]) (*connect.Response[v1.ListCloudAttackPathsResponse], error)
 	// ListEntityRelations returns filtered direct relations for one catalog entity.
 	ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error)
+	// GetComplianceImpactFact resolves one exact compliance revision and its dependencies.
+	GetComplianceImpactFact(context.Context, *connect.Request[v1.GetComplianceImpactFactRequest]) (*connect.Response[v1.GetComplianceImpactFactResponse], error)
+	// ListComplianceImpactDependents returns one keyset-paged reverse-dependency page.
+	ListComplianceImpactDependents(context.Context, *connect.Request[v1.ListComplianceImpactDependentsRequest]) (*connect.Response[v1.ListComplianceImpactDependentsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
 	// ListVendorRegister returns the product-ready vendor register at one graph revision.
@@ -508,6 +548,18 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListEntityRelations")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceGetComplianceImpactFactHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceGetComplianceImpactFactProcedure,
+		svc.GetComplianceImpactFact,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("GetComplianceImpactFact")),
+		connect.WithHandlerOptions(opts...),
+	)
+	organizationalGraphServiceListComplianceImpactDependentsHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceListComplianceImpactDependentsProcedure,
+		svc.ListComplianceImpactDependents,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("ListComplianceImpactDependents")),
+		connect.WithHandlerOptions(opts...),
+	)
 	organizationalGraphServiceGetSourceSummaryHandler := connect.NewUnaryHandler(
 		OrganizationalGraphServiceGetSourceSummaryProcedure,
 		svc.GetSourceSummary,
@@ -558,6 +610,10 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceListCloudAttackPathsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceListEntityRelationsProcedure:
 			organizationalGraphServiceListEntityRelationsHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceGetComplianceImpactFactProcedure:
+			organizationalGraphServiceGetComplianceImpactFactHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceListComplianceImpactDependentsProcedure:
+			organizationalGraphServiceListComplianceImpactDependentsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceGetSourceSummaryProcedure:
 			organizationalGraphServiceGetSourceSummaryHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceListVendorRegisterProcedure:
@@ -631,6 +687,14 @@ func (UnimplementedOrganizationalGraphServiceHandler) ListCloudAttackPaths(conte
 
 func (UnimplementedOrganizationalGraphServiceHandler) ListEntityRelations(context.Context, *connect.Request[v1.ListEntityRelationsRequest]) (*connect.Response[v1.ListEntityRelationsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListEntityRelations is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) GetComplianceImpactFact(context.Context, *connect.Request[v1.GetComplianceImpactFactRequest]) (*connect.Response[v1.GetComplianceImpactFactResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.GetComplianceImpactFact is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) ListComplianceImpactDependents(context.Context, *connect.Request[v1.ListComplianceImpactDependentsRequest]) (*connect.Response[v1.ListComplianceImpactDependentsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ListComplianceImpactDependents is not implemented"))
 }
 
 func (UnimplementedOrganizationalGraphServiceHandler) GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {

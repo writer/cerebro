@@ -89,6 +89,7 @@ type GraphReadCapabilities struct {
 	RelationCounts    RelationCountStore
 	VendorRegister    VendorRegisterStore
 	VendorDiscoveries VendorDiscoveryRegisterStore
+	ComplianceImpact  ComplianceImpactGraph
 }
 
 func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
@@ -119,6 +120,9 @@ func NewGraphReadCapabilities(store GraphStore) GraphReadCapabilities {
 	}
 	if vendorDiscoveries, ok := store.(VendorDiscoveryRegisterStore); ok && !isNilGraphReadCapability(vendorDiscoveries) {
 		capabilities.VendorDiscoveries = vendorDiscoveries
+	}
+	if complianceImpact, ok := store.(ComplianceImpactGraph); ok && !isNilGraphReadCapability(complianceImpact) {
+		capabilities.ComplianceImpact = complianceImpact
 	}
 	return capabilities
 }

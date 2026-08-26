@@ -44,7 +44,7 @@ func TestComplianceImpactUsesConfiguredReadAuthority(t *testing.T) {
 	app := &App{deps: Dependencies{
 		StateStore: &monitorStateStub{},
 		GraphStore: &projectionOnlyImpactGraphStub{},
-		GraphReads: GraphReadCapabilities{RawCypher: &queryOnlyImpactGraphStub{}},
+		GraphReads: GraphReadCapabilities{ComplianceImpact: &queryOnlyImpactGraphStub{}},
 		AppendLog:  bootstrapAppendOnlyLog{},
 	}}
 
@@ -100,7 +100,7 @@ func (*monitorStateStub) Ping(context.Context) error { return nil }
 
 type impactGraphStub struct {
 	ports.ProjectionGraphStore
-	ports.RawCypherQueryStore
+	ports.ComplianceImpactGraph
 }
 
 func (*impactGraphStub) Ping(context.Context) error { return nil }
@@ -112,7 +112,7 @@ type projectionOnlyImpactGraphStub struct {
 func (*projectionOnlyImpactGraphStub) Ping(context.Context) error { return nil }
 
 type queryOnlyImpactGraphStub struct {
-	ports.RawCypherQueryStore
+	ports.ComplianceImpactGraph
 }
 
 func (*queryOnlyImpactGraphStub) Ping(context.Context) error { return nil }
