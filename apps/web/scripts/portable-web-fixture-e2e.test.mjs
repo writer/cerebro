@@ -366,6 +366,72 @@ describe("portable web fixture E2E cleanup", () => {
     }
   });
 
+  it.runIf(process.platform !== "win32")("waits for the owned fixture tree before a second run reuses its resource", async () => {
+    const delayedServer = [
+      'const net = require("node:net");',
+      'const port = Number(process.argv[1]);',
+      'process.on("SIGTERM", () => setTimeout(() => process.exit(0), 5_000));',
+      'const server = net.createServer();',
+      'server.on("error", (error) => { console.error(error.message); process.exitCode = 1; process.exit(1); });',
+      'server.listen(port, "127.0.0.1", () => console.log(JSON.stringify({ pid: process.pid, port: server.address().port })));',
+      'setInterval(() => {}, 1_000);',
+    ].join("\n");
+    const startFixture = (port) => {
+      const launcher = [
+        'const { spawn } = require("node:child_process");',
+        `const child = spawn(process.execPath, ["-e", ${JSON.stringify(delayedServer)}, ${JSON.stringify(String(port))}], { stdio: ["ignore", "pipe", "ignore"] });`,
+        'child.stdout.pipe(process.stdout);',
+        'child.once("exit", (code, signal) => { if (code !== 0 || signal) process.exitCode = 1; process.exit(); });',
+        'setInterval(() => {}, 1_000);',
+      ].join("\n");
+      return spawn(process.execPath, ["-e", launcher], {
+        detached: true,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    };
+    const waitForReady = (fixture) => new Promise((resolve, reject) => {
+      let buffer = "";
+      const onData = (chunk) => {
+        buffer += chunk.toString();
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          try {
+            const record = JSON.parse(line);
+            if (record?.pid && record?.port) {
+              fixture.stdout.off("data", onData);
+              resolve(record);
+              return;
+            }
+          } catch {}
+        }
+      };
+      fixture.stdout.on("data", onData);
+      fixture.once("error", reject);
+      fixture.once("exit", (code, signal) => reject(new Error(`fixture exited before readiness (${code ?? signal})`)));
+    });
+    let first;
+    let second;
+    try {
+      first = startFixture(0);
+      const firstReady = await waitForReady(first);
+      await stopProcessTree(first, { deadlineAt: Date.now() + 1_000, graceMs: 25 });
+      expect(processExists(firstReady.pid)).toBe(false);
+
+      second = startFixture(firstReady.port);
+      await expect(waitForReady(second)).resolves.toMatchObject({ port: firstReady.port });
+    } finally {
+      for (const fixture of [first, second]) {
+        if (!fixture) continue;
+        try {
+          await stopProcessTree(fixture, { deadlineAt: Date.now() + 1_000, graceMs: 25 });
+        } catch {
+          try { process.kill(-fixture.pid, "SIGKILL"); } catch {}
+        }
+      }
+    }
+  });
+
   it("uses tree-aware Windows termination before forced tree termination", async () => {
     const child = Object.assign(new EventEmitter(), { exitCode: null, pid: 43123, signalCode: null });
     const calls = [];
