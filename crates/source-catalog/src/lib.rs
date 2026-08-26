@@ -3577,6 +3577,7 @@ mod tests {
             "digitalocean",
             "duo",
             "fivetran",
+            "increase",
             "jira",
             "langchain",
             "openai",
