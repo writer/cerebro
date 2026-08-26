@@ -48,19 +48,19 @@ provider_api:
       operation: apigee.organizations.list
     - id: api_proxies
       method: GET
-      path: /v1/{parent=organizations/*}/apis
+      path: /v1/organizations/{organization}/apis
       operation: apigee.organizations.apis.list
     - id: deployments
       method: GET
-      path: /v1/{parent=organizations/*}/deployments
+      path: /v1/organizations/{organization}/deployments
       operation: apigee.organizations.deployments.list
     - id: developers
       method: GET
-      path: /v1/{parent=organizations/*}/developers
+      path: /v1/organizations/{organization}/developers
       operation: apigee.organizations.developers.list
     - id: apps
       method: GET
-      path: /v1/{parent=organizations/*}/apps
+      path: /v1/organizations/{organization}/apps
       operation: apigee.organizations.apps.list
 coverage_contract:
   owner_domain: source_runtime

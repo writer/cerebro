@@ -77,7 +77,17 @@ async fn clusters_collect_two_pages_and_bind_cursor_query_to_the_declared_origin
     assert_eq!(page_one.records[1].provider_id, "cluster-2");
     assert!(page_one.next_cursor.is_none());
 
-    let origin_bound_page = connector
+    // The origin-binding probe is a separate operation and needs its own
+    // one-operation credential lease.
+    let mut origin_bound_connector = qdrant_connector(
+        &source,
+        "clusters",
+        tenant.as_str(),
+        runtime_id.as_str(),
+        &base_url,
+        2,
+    );
+    let origin_bound_page = origin_bound_connector
         .collect(CollectionRequest {
             tenant_id: tenant,
             source_runtime_id: runtime_id,
