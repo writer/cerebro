@@ -1,83 +1,14 @@
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
-
 use cerebro_organizational_graph::{GraphRead, OrganizationalGraph};
 use cerebro_organizational_model::{SourceRuntimeId, TenantId};
-use cerebro_source_catalog::{CollectionAuthority, CompiledSource, HttpMethod, SourceCatalog};
+use cerebro_source_catalog::{CollectionAuthority, HttpMethod};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{
-    CatalogGraphMapper, CollectionRequest, CredentialLeaseReference, EgressPolicy,
-    EgressRequestContext, HttpProviderAccess, HttpSourceConnector, OperationScopedCredentialLease,
-    ResolvedAuth, SourceRuntime, SourceRuntimeOperation,
-};
+use crate::CollectionRequest;
 
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap()
-}
-
-fn qdrant_runtime(
-    source: &CompiledSource,
-    tenant_id: &str,
-    runtime_id: &str,
-    base_url: &str,
-    generation: u64,
-    store: OrganizationalGraph,
-) -> SourceRuntime<HttpSourceConnector, CatalogGraphMapper, OrganizationalGraph> {
-    let request_intent_digest = "a".repeat(64);
-    let context = EgressRequestContext {
-        tenant_id: tenant_id.to_owned(),
-        runtime_id: runtime_id.to_owned(),
-        source_id: "qdrant_cloud".to_owned(),
-        family_id: "accounts".to_owned(),
-        operation: SourceRuntimeOperation::ReadPage,
-        request_intent_digest: request_intent_digest.clone(),
-        logical_page_id: format!("accounts-page-{generation}"),
-        source_generation: generation,
-        authority_epoch: 1,
-    };
-    let lease_scope = context.lease_scope().unwrap();
-    let credential_lease = OperationScopedCredentialLease::new(
-        CredentialLeaseReference::new(
-            format!("qdrant-accounts-lease-{generation}"),
-            lease_scope,
-            1_000,
-            1_000,
-        )
-        .unwrap(),
-    );
-    let egress_policy =
-        EgressPolicy::live(tenant_id, "accounts", &request_intent_digest, [base_url]).unwrap();
-    let auth = ResolvedAuth::Header {
-        name: "Authorization".to_owned(),
-        value: "apikey fixture-management-key".to_owned(),
-    };
-    assert!(!format!("{auth:?}").contains("fixture-management-key"));
-    let connector = HttpSourceConnector::new(
-        source.clone(),
-        "accounts",
-        base_url,
-        BTreeMap::from([("account_id".to_owned(), "account-fixture".to_owned())]),
-        auth,
-    )
-    .unwrap()
-    .with_provider_access(HttpProviderAccess::new_with_clock(
-        context,
-        egress_policy,
-        credential_lease,
-        1_500,
-    ));
-    let mapper = CatalogGraphMapper::new(source.clone(), "qdrant-accounts-v1").unwrap();
-    SourceRuntime::new(connector, mapper, store)
-}
+use super::request_setup::{qdrant_runtime, qdrant_source};
 
 #[tokio::test]
-async fn qdrant_accounts_collects_projects_restarts_and_reads_with_tenant_identity() {
+async fn accounts_collect_project_restart_and_preserve_tenant_identity() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
@@ -101,15 +32,7 @@ async fn qdrant_accounts_collects_projects_restarts_and_reads_with_tenant_identi
         }
     });
 
-    let root = repository_root();
-    let source = SourceCatalog::load(
-        root.join("internal/connectorcatalog/catalog"),
-        root.join("sources"),
-    )
-    .unwrap()
-    .get("qdrant_cloud")
-    .unwrap()
-    .clone();
+    let source = qdrant_source();
     // This closes the technical catalog contract only. Persisted authority
     // evidence is a separate promotion gate owned by the runtime ledger.
     assert_eq!(source.authority(), CollectionAuthority::Authoritative);
@@ -135,6 +58,7 @@ async fn qdrant_accounts_collects_projects_restarts_and_reads_with_tenant_identi
 
     let mut first = qdrant_runtime(
         &source,
+        "accounts",
         tenant_a.as_str(),
         runtime_id.as_str(),
         &base_url,
@@ -164,6 +88,7 @@ async fn qdrant_accounts_collects_projects_restarts_and_reads_with_tenant_identi
 
     let mut restarted = qdrant_runtime(
         &source,
+        "accounts",
         tenant_a.as_str(),
         runtime_id.as_str(),
         &base_url,
@@ -179,6 +104,7 @@ async fn qdrant_accounts_collects_projects_restarts_and_reads_with_tenant_identi
     let tenant_b = TenantId::parse("tenant-b").unwrap();
     let mut second_tenant = qdrant_runtime(
         &source,
+        "accounts",
         tenant_b.as_str(),
         runtime_id.as_str(),
         &base_url,
