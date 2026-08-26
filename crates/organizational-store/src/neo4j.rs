@@ -3865,7 +3865,7 @@ CALL {
     AND confers.tenant_id = $tenant_id
     AND ($capability_urn = '' OR capability.urn = $capability_urn)
     AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
-  RETURN subject, principal, null AS mediator, target, entitlement, capability,
+  RETURN null AS mediator, target, entitlement, capability,
          'direct_app_assignment' AS assignment_kind,
          [assignment, grant, confers] AS rels,
          [principal, target, entitlement, capability] AS path_nodes
@@ -3881,7 +3881,7 @@ CALL {
     AND confers.tenant_id = $tenant_id
     AND ($capability_urn = '' OR capability.urn = $capability_urn)
     AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
-  RETURN subject, principal, mediator, target, entitlement, capability,
+  RETURN mediator, target, entitlement, capability,
          'group_app_assignment' AS assignment_kind,
          [membership, assignment, grant, confers] AS rels,
          [principal, mediator, target, entitlement, capability] AS path_nodes
@@ -3896,7 +3896,7 @@ CALL {
     AND (target.entity_type ENDS WITH '.role' OR target.entity_type ENDS WITH '.admin_role')
     AND ($capability_urn = '' OR capability.urn = $capability_urn)
     AND ($capability_id = '' OR capability.urn ENDS WITH ':' + $capability_id)
-  RETURN subject, principal, null AS mediator, target, entitlement, capability,
+  RETURN null AS mediator, target, entitlement, capability,
          CASE WHEN role_assignment.relation = 'can_admin' THEN 'admin_role_assignment' ELSE 'role_assignment' END AS assignment_kind,
          [role_assignment, grant, confers] AS rels,
          [principal, target, entitlement, capability] AS path_nodes
@@ -6198,6 +6198,123 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a disposable Neo4j instance"]
+    async fn effective_access_fixture_matches_bounded_typed_page_on_disposable_graph()
+    -> Result<(), Box<dyn Error>> {
+        let graph = Graph::new(
+            env::var("CEREBRO_TEST_NEO4J_URI")?,
+            env::var("CEREBRO_TEST_NEO4J_USERNAME")?,
+            env::var("CEREBRO_TEST_NEO4J_PASSWORD")?,
+        )
+        .await?;
+        let tenant = format!("tenant-effective-access-{}", std::process::id());
+        let other_tenant = format!("{tenant}-other");
+        let tenant_id = TenantId::parse(tenant.clone())?;
+        let subject_urn = format!("urn:cerebro:{tenant}:identity:subject-live");
+        let principal_urn = format!("urn:cerebro:{tenant}:principal:subject-live");
+        let group_urn = format!("urn:cerebro:{tenant}:group:engineering");
+        let application_urn = format!("urn:cerebro:{tenant}:application:console");
+        let entitlement_urn = format!("urn:cerebro:{tenant}:entitlement:reader-a");
+        let capability_urn = format!("urn:cerebro:{tenant}:capability:read");
+        let other_entitlement_urn = format!("urn:cerebro:{tenant}:entitlement:reader-b");
+        let other_capability_urn = format!("urn:cerebro:{tenant}:capability:secondary:read");
+
+        graph
+            .run(
+                query(
+                    r#"CREATE (subject:Entity {tenant_id: $tenant, urn: $subject, entity_type: 'identity.person', label: 'Subject Live', attributes_json: '{\"email\":\"subject@example.com\"}', source_id: 'okta', runtime_id: 'okta-live'})
+CREATE (principal:Entity {tenant_id: $tenant, urn: $principal, entity_type: 'identity.principal', label: 'Subject Principal', attributes_json: '{}', source_id: 'okta', runtime_id: 'okta-live'})
+CREATE (group:Entity {tenant_id: $tenant, urn: $group, entity_type: 'identity.group', label: 'Engineering', attributes_json: '{}', source_id: 'okta', runtime_id: 'okta-live'})
+CREATE (application:Entity {tenant_id: $tenant, urn: $application, entity_type: 'okta.application', label: 'Console', attributes_json: '{}', source_id: 'okta', runtime_id: 'okta-live'})
+CREATE (entitlement:Entity {tenant_id: $tenant, urn: $entitlement, entity_type: 'okta.entitlement', label: 'Reader A', attributes_json: '{}', source_id: 'okta', runtime_id: 'okta-live'})
+CREATE (capability:Entity {tenant_id: $tenant, urn: $capability, entity_type: 'okta.capability', label: 'Capability A', attributes_json: '{}', source_id: 'okta', runtime_id: 'okta-live'})
+CREATE (other_entitlement:Entity {tenant_id: $tenant, urn: $other_entitlement, entity_type: 'okta.entitlement', label: 'Reader B', attributes_json: '{}', source_id: 'okta', runtime_id: 'okta-live'})
+CREATE (other_capability:Entity {tenant_id: $tenant, urn: $other_capability, entity_type: 'okta.capability', label: 'Capability B', attributes_json: '{}', source_id: 'okta', runtime_id: 'okta-live'})
+CREATE (principal)-[:RELATION {tenant_id: $tenant, relation: 'represents_identity', source_id: 'okta', runtime_id: 'okta-live', attributes_json: '{}'}]->(subject)
+CREATE (principal)-[:RELATION {tenant_id: $tenant, relation: 'member_of', source_id: 'okta', runtime_id: 'okta-live', attributes_json: '{}'}]->(group)
+CREATE (group)-[:RELATION {tenant_id: $tenant, relation: 'assigned_to', source_id: 'okta', runtime_id: 'okta-live', attributes_json: '{\"assignment_id\":\"assignment-live\"}'}]->(application)
+CREATE (application)-[:RELATION {tenant_id: $tenant, relation: 'grants_entitlement', source_id: 'okta', runtime_id: 'okta-live', attributes_json: '{}'}]->(entitlement)
+CREATE (entitlement)-[:RELATION {tenant_id: $tenant, relation: 'confers_capability', source_id: 'okta', runtime_id: 'okta-live', attributes_json: '{}'}]->(capability)
+CREATE (application)-[:RELATION {tenant_id: $tenant, relation: 'grants_entitlement', source_id: 'okta', runtime_id: 'okta-live', attributes_json: '{}'}]->(other_entitlement)
+CREATE (other_entitlement)-[:RELATION {tenant_id: $tenant, relation: 'confers_capability', source_id: 'okta', runtime_id: 'okta-live', attributes_json: '{}'}]->(other_capability)
+CREATE (:OrganizationalGraphRevision {tenant_id: $tenant, graph_revision: 42})
+CREATE (:Entity {tenant_id: $other_tenant, urn: $other_subject, entity_type: 'identity.person', label: 'Subject Live', attributes_json: '{}'})"#,
+                )
+                .param("tenant", tenant.clone())
+                .param("other_tenant", other_tenant.clone())
+                .param(
+                    "other_subject",
+                    format!("urn:cerebro:{other_tenant}:identity:subject-live"),
+                )
+                .param("subject", subject_urn.clone())
+                .param("principal", principal_urn.clone())
+                .param("group", group_urn.clone())
+                .param("application", application_urn.clone())
+                .param("entitlement", entitlement_urn.clone())
+                .param("capability", capability_urn.clone())
+                .param("other_entitlement", other_entitlement_urn)
+                .param("other_capability", other_capability_urn),
+            )
+            .await?;
+
+        let projector = Neo4jProjector::from_graph(graph.clone());
+        let page = projector
+            .list_effective_access_paths(
+                &tenant_id,
+                "",
+                "subject live",
+                &application_urn,
+                "",
+                "read",
+                1,
+                42,
+            )
+            .await?;
+        assert_eq!(page.tenant_id, tenant);
+        assert_eq!(page.graph_revision, 42);
+        assert!(page.truncated);
+        assert_eq!(page.paths.len(), 1);
+        let path = &page.paths[0];
+        assert_eq!(path.identity.agent_key, subject_urn);
+        assert_eq!(path.principal.agent_key, principal_urn);
+        assert_eq!(path.assignment_kind, "group_app_assignment");
+        assert_eq!(
+            path.identity_relation_chain,
+            ["represents_identity".to_owned()]
+        );
+        assert_eq!(
+            path.relation_chain,
+            [
+                "member_of".to_owned(),
+                "assigned_to".to_owned(),
+                "grants_entitlement".to_owned(),
+                "confers_capability".to_owned(),
+            ]
+        );
+        assert_eq!(path.edges.len(), 4);
+        assert_eq!(path.capability.agent_key, capability_urn);
+        assert_eq!(path.edges[1].runtime_id, "okta-live");
+        assert!(path.edges[1].attributes_json.contains("assignment-live"));
+        assert!(
+            projector
+                .list_effective_access_paths(&tenant_id, &subject_urn, "", "", "", "read", 1, 41,)
+                .await
+                .is_err()
+        );
+
+        graph
+            .run(
+                query(
+                    "MATCH (node) WHERE node.tenant_id IN [$tenant, $other_tenant] DETACH DELETE node",
+                )
+                .param("tenant", tenant)
+                .param("other_tenant", other_tenant),
+            )
+            .await?;
+        Ok(())
     }
 
     #[test]
