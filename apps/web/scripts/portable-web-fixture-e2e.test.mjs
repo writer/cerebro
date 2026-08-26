@@ -469,6 +469,7 @@ describe("portable web fixture E2E cleanup", () => {
       first = startFixture(0);
       const firstReady = await waitForReady(first);
       await stopProcessTree(first, { deadlineAt: Date.now() + 1_000, graceMs: 25 });
+      await waitForProcessExit(firstReady.pid);
       expect(processExists(firstReady.pid)).toBe(false);
 
       second = startFixture(firstReady.port);
