@@ -704,6 +704,7 @@ export default function ConnectorsPage() {
   const libraryQuery = useConnectorLibraryQuery({ tenantID: debouncedTenantID, view: "summary" });
   const runtimeHealthQuery = useGRCQuery<ConnectorRuntimeHealthResponse>(withQuery("/v1/source-runtimes/health", {
     limit: CONNECTOR_RUNTIME_LIMIT,
+    tenant_id: debouncedTenantID,
   }));
   const definitionsQuery = useGRCQuery<ConnectorDefinitionListResponse>(withQuery("/connector-definitions", { tenant_id: debouncedTenantID }));
 

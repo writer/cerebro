@@ -66,6 +66,10 @@ export default function ExplorePage() {
     workspaceID: normalizedWorkspaceID,
   }), [actor, normalizedTenantID, normalizedWorkspaceID]);
   const activeScopeKey = useMemo(() => grcClientScopeKey(scope, apiKey), [apiKey, scope]);
+  const activeScopeKeyRef = useRef(activeScopeKey);
+  useEffect(() => {
+    activeScopeKeyRef.current = activeScopeKey;
+  }, [activeScopeKey]);
   const [rootURN, setRootURN] = useQueryParamState("root_urn");
   const debouncedRootURN = useDebouncedValue(rootURN.trim());
   const needsFallbackRoot = debouncedRootURN === "";
@@ -197,6 +201,7 @@ export default function ExplorePage() {
     const target = urn.trim();
     if (target === "") return;
     if (scopedState && isExploreNodeExpanded(scopedState, target)) return;
+    const requestScopeKey = activeScopeKey;
     setExpandingURN(target);
     setError(null);
     setExpandNotice(null);
@@ -204,6 +209,7 @@ export default function ExplorePage() {
     const controller = new AbortController();
     try {
       const response = await fetchNeighborhood(path, false, controller.signal);
+      if (activeScopeKeyRef.current !== requestScopeKey) return;
       if (!response.ok) {
         setError(grcResponseErrorMessage(path, response.status, response.data));
         return;
@@ -225,11 +231,14 @@ export default function ExplorePage() {
           : `Expanded ${shortEntity(target)}: no new neighbors found.`,
       });
     } catch (err) {
+      if (activeScopeKeyRef.current !== requestScopeKey) return;
       setError(err instanceof Error ? err.message : "Unable to expand node.");
     } finally {
-      setExpandingURN(null);
+      if (activeScopeKeyRef.current === requestScopeKey) {
+        setExpandingURN(null);
+      }
     }
-  }, [fetchNeighborhood, normalizedTenantID, normalizedWorkspaceID, scopedState]);
+  }, [activeScopeKey, fetchNeighborhood, normalizedTenantID, normalizedWorkspaceID, scopedState]);
 
   const removeNode = useCallback((urn: string) => {
     setState((current) => (current ? removeExploreNode(current, urn) : current));
