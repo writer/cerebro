@@ -614,6 +614,10 @@ func mcpDomainSurfaceCorpus(t *testing.T) string {
 		builder.Write(body)
 		builder.WriteByte('\n')
 	}
+	for _, entry := range rustAuthorityHTTPContractEntries(t, root, openAPIHTTPMethods(t, root)) {
+		builder.WriteString(entry.Identity)
+		builder.WriteByte('\n')
+	}
 	return builder.String()
 }
 
