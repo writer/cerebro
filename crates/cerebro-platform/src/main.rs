@@ -5,6 +5,7 @@ mod cutover_command;
 mod graph_provenance;
 mod oidc;
 mod parity_command;
+mod ratelimit;
 mod rpc;
 mod slack_agent;
 mod slack_agent_eval;
@@ -2264,7 +2265,8 @@ async fn serve(
             },
             tenant_auth,
             oidc,
-        ),
+        )
+        .into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
     .await?;
     Ok(())
@@ -2404,6 +2406,11 @@ fn router_with_backend(
             source_sync,
             metrics: platform_metrics.clone(),
         })
+        .layer(middleware::from_fn_with_state(
+            ratelimit::EdgeRateLimit::from_env()
+                .unwrap_or_else(|error| panic!("invalid rate limit configuration: {error}")),
+            ratelimit::enforce,
+        ))
         .layer(middleware::from_fn_with_state(
             platform_metrics,
             record_request,
