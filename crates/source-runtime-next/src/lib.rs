@@ -41,6 +41,8 @@ mod evidence_cas;
 mod fixture_parity;
 mod gcp;
 mod github;
+#[cfg(test)]
+mod google_gemini_model_catalog_runtime_evidence;
 mod google_workspace;
 mod grc;
 mod http;
