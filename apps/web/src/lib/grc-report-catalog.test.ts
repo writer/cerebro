@@ -104,13 +104,18 @@ describe("grc report catalog helpers", () => {
     expect(query.limit).toBeUndefined();
   });
 
-  it("binds report paths and cache keys to tenant and workspace scope", () => {
+  it("binds report paths and cache keys to actor, tenant, and workspace scope", () => {
     const body = JSON.stringify({ source_id: "findings", limit: 25 });
     const workspaceA = reportQueryPath({ tenantID: "tenant-a", workspaceID: "workspace-a" });
     const workspaceB = reportQueryPath({ tenantID: "tenant-a", workspaceID: "workspace-b" });
     expect(workspaceA).toBe("/grc/query?tenant_id=tenant-a&workspace_id=workspace-a");
     expect(workspaceB).toBe("/grc/query?tenant_id=tenant-a&workspace_id=workspace-b");
-    expect(reportQueryCacheKey(workspaceA!, body, "key")).not.toBe(reportQueryCacheKey(workspaceB!, body, "key"));
+    expect(reportQueryCacheKey(workspaceA!, body, "key", "actor-a")).not.toBe(
+      reportQueryCacheKey(workspaceB!, body, "key", "actor-a"),
+    );
+    expect(reportQueryCacheKey(workspaceA!, body, "key", "actor-a")).not.toBe(
+      reportQueryCacheKey(workspaceA!, body, "key", "actor-b"),
+    );
   });
 
   it("does not build a report path without tenant scope", () => {

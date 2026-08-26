@@ -287,8 +287,10 @@ pub use runtime_config::{
     resolve_environment_references,
 };
 pub use runtime_health::{
-    RuntimeHealthEvidence, RuntimeNextAction, RuntimeReadiness, RuntimeReadinessDecision,
-    evaluate_runtime_readiness,
+    RuntimeFreshnessDigest, RuntimeFreshnessEvidence, RuntimeFreshnessRollup,
+    RuntimeFreshnessState, RuntimeHealthEvidence, RuntimeNextAction, RuntimeReadiness,
+    RuntimeReadinessDecision, evaluate_runtime_freshness, evaluate_runtime_readiness,
+    runtime_freshness_status, summarize_runtime_freshness,
 };
 pub use sdk::{
     SdkIntegrationPostureEvent, SdkPushedTelemetry, SdkTelemetryError,

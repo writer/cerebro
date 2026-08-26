@@ -3,6 +3,7 @@
 mod append_log_consumer;
 mod audit_events;
 mod cutover_command;
+mod graph_provenance;
 mod oidc;
 mod parity_command;
 mod rpc;
@@ -89,8 +90,10 @@ use cerebro_source_catalog::{
 };
 use cerebro_source_runtime_next::{
     AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CommittedSourceEvent,
-    GraphMapper, GraphSink, ResolvedAuth, RuntimeHealthEvidence, RuntimeReadiness,
-    SourceRuntimeLeaseFence, evaluate_runtime_readiness,
+    GraphMapper, GraphSink, ResolvedAuth, RuntimeFreshnessDigest, RuntimeFreshnessEvidence,
+    RuntimeFreshnessRollup, RuntimeHealthEvidence, RuntimeReadiness, SourceRuntimeLeaseFence,
+    evaluate_runtime_freshness, evaluate_runtime_readiness, runtime_freshness_status,
+    summarize_runtime_freshness,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -629,9 +632,11 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
         "/v1/audit-events" => "cerebro:read",
-        "/v1/source-runtimes/health" => "cerebro:read",
+        "/v1/source-runtimes/health" | "/v1/source-runtimes/freshness" => "cerebro:read",
         _ if path.starts_with("/v1/source-runtimes/") && method == Method::PUT => "cerebro:write",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/sync") => "cerebro:write",
+        "/v1/graph/provenance" => "cerebro:read",
+        "/platform/graph/provenance" => "cerebro:read",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
         "/v1/action-dispatches" => ACTION_EXECUTE_SCOPE,
@@ -687,8 +692,11 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/graph/expand" => "expand",
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
+        "/v1/graph/provenance" => "graph_provenance",
+        "/platform/graph/provenance" => "graph_provenance",
         "/v1/security/lifecycle" => "security_lifecycle",
         "/v1/source-runtimes" => "list_source_runtimes",
+        "/v1/source-runtimes/freshness" => "runtime_freshness",
         _ if path.starts_with("/v1/source-runtimes/") && path.ends_with("/invalid-events") => {
             "list_source_runtime_invalid_events"
         }
@@ -1311,6 +1319,62 @@ struct RustSourceRuntimeHealthResponse {
     generated_at: String,
     runtimes: Vec<RustSourceRuntimeHealthView>,
     source_summaries: Vec<RustSourceRuntimeHealthSummary>,
+}
+
+/// Go-parity `runtimeFreshnessRecord` view served from the Rust ledger.
+///
+/// Field names and serialization semantics mirror the Go
+/// `runtimeFreshnessResponse` contract. `family`, `checkpoint_watermark`, and
+/// `watermark_lag_seconds` are omitted-when-empty on the Go side and are not
+/// observable from the Rust ledger, so they are always absent here.
+#[derive(Serialize)]
+struct RustRuntimeFreshnessRecord {
+    runtime_id: String,
+    source_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    tenant_id: String,
+    lifecycle_state: &'static str,
+    schedule_state: &'static str,
+    freshness_state: &'static str,
+    source_sync_state: &'static str,
+    graph_ingest_state: String,
+    finding_evaluation_state: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    failure_class: String,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    failure_reason: &'static str,
+    backfill_eligible: bool,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    backfill_eligibility_reason: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_synced_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync_lag_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_graph_run: Option<SourceRuntimeGraphObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    graph_lag_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_finding_evaluation: Option<RustFindingEvaluationHealthView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_cadence_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stale_after_seconds: Option<u64>,
+    generated_at: String,
+    next_action: &'static str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    recommended_workflow: &'static str,
+    cursor_pending: bool,
+    checkpoint_cursor_present: bool,
+    schedule_context_configured: bool,
+}
+
+#[derive(Serialize)]
+struct RustRuntimeFreshnessResponse {
+    generated_at: String,
+    status: &'static str,
+    runtimes: Vec<RustRuntimeFreshnessRecord>,
+    summaries: Vec<RuntimeFreshnessRollup>,
 }
 
 #[derive(Deserialize)]
@@ -2254,9 +2318,12 @@ fn router_with_backend(
         .route("/v1/graph/expand", post(expand))
         .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
+        .route("/v1/graph/provenance", get(graph_provenance_route))
+        .route("/platform/graph/provenance", get(graph_provenance_route))
         .route("/v1/security/lifecycle", get(security_lifecycle))
         .route("/v1/source-runtimes", get(list_source_runtimes))
         .route("/v1/source-runtimes/health", get(source_runtime_health))
+        .route("/v1/source-runtimes/freshness", get(runtime_freshness))
         .route(
             "/v1/source-runtimes/{runtime_id}",
             get(get_source_runtime).put(put_source_runtime),
@@ -3026,6 +3093,164 @@ async fn source_runtime_health(
     }))
 }
 
+async fn runtime_freshness(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(query): Query<SourceRuntimeHealthQuery>,
+) -> Result<Json<RustRuntimeFreshnessResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let limit = query.limit.unwrap_or(500);
+    if limit == 0 || limit > 500 {
+        return Err(bad_request(
+            "invalid_source_runtime_limit",
+            "Source runtime freshness limit must be between 1 and 500.",
+        ));
+    }
+    let ledger = state.runtime_ledger.as_ref().ok_or_else(|| {
+        service_unavailable(
+            "source_runtime_freshness_unavailable",
+            "The Rust source-runtime ledger is not configured.",
+        )
+    })?;
+    let graph = state.lifecycle_projection.as_ref().ok_or_else(|| {
+        service_unavailable(
+            "source_runtime_freshness_unavailable",
+            "The Rust graph projection is not configured.",
+        )
+    })?;
+    let source_id = query.source_id.as_deref().unwrap_or_default().trim();
+    let records = ledger
+        .source_runtime_observations(authenticated.0.as_str(), source_id, limit)
+        .await
+        .map_err(|_| {
+            service_unavailable(
+                "source_runtime_freshness_unavailable",
+                "Source-runtime evidence is temporarily unavailable.",
+            )
+        })?;
+    let runtime_ids = records
+        .iter()
+        .map(|record| record.runtime_id.clone())
+        .collect::<Vec<_>>();
+    let graph_records = graph
+        .source_runtime_graph_observations(&runtime_ids)
+        .await
+        .map_err(|_| {
+            service_unavailable(
+                "source_runtime_freshness_unavailable",
+                "Graph-ingest evidence is temporarily unavailable.",
+            )
+        })?
+        .into_iter()
+        .map(|record| (record.runtime_id.clone(), record))
+        .collect::<BTreeMap<_, _>>();
+    let now = OffsetDateTime::now_utc();
+    let generated_at = now.format(&Rfc3339).map_err(|_| {
+        service_unavailable(
+            "source_runtime_freshness_unavailable",
+            "Source-runtime freshness time is unavailable.",
+        )
+    })?;
+    let runtimes = records
+        .into_iter()
+        .map(|record| {
+            let graph_record = graph_records.get(&record.runtime_id).cloned();
+            rust_runtime_freshness_record(
+                record,
+                graph_record,
+                authenticated.0.as_str(),
+                now,
+                generated_at.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let status = runtime_freshness_status(runtimes.iter().map(|record| record.freshness_state));
+    let digests = runtimes
+        .iter()
+        .map(|record| RuntimeFreshnessDigest {
+            source_id: &record.source_id,
+            freshness_state: record.freshness_state,
+            backfill_eligible: record.backfill_eligible,
+        })
+        .collect::<Vec<_>>();
+    let summaries = summarize_runtime_freshness(&digests);
+    Ok(Json(RustRuntimeFreshnessResponse {
+        generated_at,
+        status,
+        runtimes,
+        summaries,
+    }))
+}
+
+fn rust_runtime_freshness_record(
+    record: SourceRuntimeObservation,
+    graph: Option<SourceRuntimeGraphObservation>,
+    tenant_id: &str,
+    now: OffsetDateTime,
+    generated_at: String,
+) -> RustRuntimeFreshnessRecord {
+    let source_status = rust_source_status(&record, now);
+    let graph_state = rust_graph_state(graph.as_ref(), record.stale_after_seconds, now);
+    let finding_state = rust_finding_state(record.latest_finding_evaluation_status.as_deref());
+    let schedule_context_configured =
+        record.stale_after_seconds.is_some() || record.expected_cadence_seconds.is_some();
+    let freshness = evaluate_runtime_freshness(RuntimeFreshnessEvidence {
+        enabled_state: &record.enabled_state,
+        source_status,
+        last_failure_category: record.last_failure_category.as_deref().unwrap_or_default(),
+        graph_ingest_state: graph_state,
+        finding_evaluation_state: finding_state,
+        schedule_context_configured,
+    });
+    let sync_lag_seconds = rust_lag_seconds(
+        record
+            .last_synced_at
+            .as_deref()
+            .and_then(|value| OffsetDateTime::parse(value.trim(), &Rfc3339).ok()),
+        now,
+    );
+    let graph_lag_seconds = rust_lag_seconds(graph.as_ref().and_then(rust_graph_observed_at), now);
+    RustRuntimeFreshnessRecord {
+        runtime_id: record.runtime_id,
+        source_id: record.source_id,
+        tenant_id: tenant_id.to_owned(),
+        lifecycle_state: freshness.lifecycle_state,
+        schedule_state: freshness.schedule_state,
+        freshness_state: freshness.freshness_state,
+        source_sync_state: freshness.source_sync_state,
+        graph_ingest_state: freshness.graph_ingest_state,
+        finding_evaluation_state: freshness.finding_evaluation_state,
+        failure_class: freshness.failure_class,
+        failure_reason: freshness.failure_reason,
+        backfill_eligible: freshness.backfill_eligible,
+        backfill_eligibility_reason: freshness.backfill_eligibility_reason,
+        last_synced_at: record.last_synced_at,
+        sync_lag_seconds,
+        latest_graph_run: graph,
+        graph_lag_seconds,
+        latest_finding_evaluation: record
+            .latest_finding_evaluation_status
+            .map(|status| RustFindingEvaluationHealthView { status }),
+        expected_cadence_seconds: record.expected_cadence_seconds,
+        stale_after_seconds: record.stale_after_seconds,
+        generated_at,
+        next_action: freshness.next_action,
+        recommended_workflow: freshness.recommended_workflow,
+        cursor_pending: record.cursor_pending,
+        checkpoint_cursor_present: record.checkpoint_cursor_present,
+        schedule_context_configured,
+    }
+}
+
+fn rust_lag_seconds(observed: Option<OffsetDateTime>, now: OffsetDateTime) -> Option<i64> {
+    observed.map(|observed| (now - observed).whole_seconds().max(0))
+}
+
+fn rust_graph_observed_at(graph: &SourceRuntimeGraphObservation) -> Option<OffsetDateTime> {
+    [&graph.finished_at, &graph.started_at]
+        .into_iter()
+        .find_map(|value| OffsetDateTime::parse(value.trim(), &Rfc3339).ok())
+}
+
 fn rust_source_runtime_health_view(
     record: SourceRuntimeObservation,
     graph: Option<SourceRuntimeGraphObservation>,
@@ -3108,9 +3333,7 @@ fn rust_graph_state(
     if !graph.checkpoint_cursor.trim().is_empty() || graph.checkpoint_complete == Some(false) {
         return "behind";
     }
-    let graph_time = [&graph.finished_at, &graph.started_at]
-        .into_iter()
-        .find_map(|value| OffsetDateTime::parse(value.trim(), &Rfc3339).ok());
+    let graph_time = rust_graph_observed_at(graph);
     if stale_after_seconds
         .zip(graph_time)
         .is_some_and(|(threshold, observed)| {
@@ -3798,6 +4021,49 @@ async fn search(
         .await
         .map(Json)
         .map_err(context_error)
+}
+
+#[derive(Deserialize)]
+struct GraphProvenanceQuery {
+    urn: Option<String>,
+    root_urn: Option<String>,
+}
+
+/// Native REST parity for the Go `GET /platform/graph/provenance` route: one
+/// exact-key entity read plus the pure derivation in [`graph_provenance`].
+async fn graph_provenance_route(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(query): Query<GraphProvenanceQuery>,
+) -> Result<Json<graph_provenance::GraphProvenanceResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let urn = [query.urn.as_deref(), query.root_urn.as_deref()]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .unwrap_or_default()
+        .to_owned();
+    let tenant = graph_provenance::tenant_id_from_urn(&urn).ok_or_else(|| {
+        bad_request(
+            "invalid_graph_request",
+            "urn must be a tenant-scoped Cerebro URN.",
+        )
+    })?;
+    let tenant_id = authorized_tenant(&authenticated, tenant.to_owned())?;
+    let entity = state
+        .graph
+        .resolve(&tenant_id, &urn)
+        .await
+        .map_err(context_error)?;
+    if entity.agent_key != urn {
+        // `resolve` also accepts native entity IDs; provenance is exact-key
+        // only, mirroring the Go `ExactAgentKey` catalog filter.
+        return Err(context_error(ContextError::EntityNotFound));
+    }
+    Ok(Json(graph_provenance::provenance_response(
+        tenant_id.as_str(),
+        &entity,
+    )))
 }
 
 async fn security_lifecycle(
@@ -6363,6 +6629,118 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn graph_provenance_route_is_served_entirely_by_rust() {
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/graph/provenance"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/graph/provenance"),
+            "graph_provenance"
+        );
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let root_urn = format!("urn:cerebro:tenant-demo:organizational_entity:{root_id}");
+        let response = router(graph)
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri(format!("/v1/graph/provenance?urn={root_urn}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["urn"], root_urn);
+        assert_eq!(body["tenant_id"], "tenant-demo");
+        assert_eq!(body["projection_class"], "durable_state");
+        assert_eq!(body["projection_reason"], "projected_current_state");
+        assert_eq!(body["provenance"]["surface"], "graph-provenance");
+        assert_eq!(body["provenance"]["scope"], "tenant-demo");
+        assert_eq!(body["provenance"]["citation_status"], "valid");
+        assert_eq!(body["provenance"]["source_urns"][0], root_urn);
+    }
+
+    #[tokio::test]
+    async fn graph_provenance_route_accepts_the_root_urn_query_alias() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let root_urn = format!("urn:cerebro:tenant-demo:organizational_entity:{root_id}");
+        let response = router(graph)
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri(format!("/v1/graph/provenance?root_urn={root_urn}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn graph_provenance_route_rejects_bad_auth_bad_urns_and_missing_entities() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let root_urn = format!("urn:cerebro:tenant-demo:organizational_entity:{root_id}");
+        let app = router(graph);
+
+        let missing_auth = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/graph/provenance?urn={root_urn}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_auth.status(), StatusCode::UNAUTHORIZED);
+
+        let cross_tenant = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-other")
+                    .uri(format!("/v1/graph/provenance?urn={root_urn}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cross_tenant.status(), StatusCode::FORBIDDEN);
+
+        for invalid in ["", "urn=urn:cerebro:tenant-demo:asset", "urn=not-a-urn"] {
+            let response = app
+                .clone()
+                .oneshot(
+                    authenticated(Request::builder(), "tenant-demo")
+                        .uri(format!("/v1/graph/provenance?{invalid}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "query {invalid:?} was accepted"
+            );
+        }
+
+        let missing_entity = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri("/v1/graph/provenance?urn=urn:cerebro:tenant-demo:okta.user:missing")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_entity.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn product_neighborhood_route_rejects_scope_mismatch_before_graph_read() {
         let root_urn = "urn:cerebro:tenant-demo:asset:one";
         let graph_reads = Arc::new(AtomicUsize::new(0));
@@ -6589,6 +6967,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn runtime_freshness_route_is_read_scoped_and_bounded() {
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/source-runtimes/freshness"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/source-runtimes/freshness"),
+            "runtime_freshness"
+        );
     }
 
     #[tokio::test]

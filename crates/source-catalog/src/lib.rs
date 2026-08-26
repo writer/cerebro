@@ -3623,7 +3623,22 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         assert_eq!(
             entries.keys().copied().collect::<Vec<_>>(),
-            ["acunetix", "deepseek"]
+            [
+                "acunetix",
+                "adobe_workfront",
+                "aircall",
+                "airfocus",
+                "akeyless",
+                "beezup",
+                "bitwarden",
+                "box",
+                "conjur",
+                "deepseek",
+                "duo",
+                "fivetran",
+                "jira",
+                "openai",
+            ]
         );
 
         let catalog = SourceCatalog::load(

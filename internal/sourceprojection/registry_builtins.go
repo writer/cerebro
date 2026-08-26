@@ -506,7 +506,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"cloudflare.access_group":                       cloudflareAccountScopedInventoryProjections,
 	"cloudflare.account":                            cloudflareAccountProjections,
 	"cloudflare.account_ruleset":                    cloudflareAccountScopedInventoryProjections,
-	"cloudflare.audit_log":                          genericInventoryProjections,
+	"cloudflare.audit_log":                          cloudflareAuditLogProjections,
 	"cloudflare.dns_record":                         cloudflareDNSRecordProjections,
 	"cloudflare.gateway_rule":                       cloudflareAccountScopedInventoryProjections,
 	"cloudflare.load_balancer":                      cloudflareLoadBalancerProjections,

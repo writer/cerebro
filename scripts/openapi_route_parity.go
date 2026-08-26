@@ -76,6 +76,8 @@ func registeredRustAuthorityRoutes(path string) ([]route, error) {
 		marker string
 	}{
 		{route: route{Method: "get", Path: "/platform/graph/neighborhood"}, marker: "get(product_neighborhood_route)"},
+		{route: route{Method: "get", Path: "/platform/graph/provenance"}, marker: "get(graph_provenance_route)"},
+		{route: route{Method: "get", Path: "/v1/security/lifecycle"}, marker: "get(security_lifecycle)"},
 	}
 	registered := make([]route, 0, len(routes))
 	for _, candidate := range routes {
