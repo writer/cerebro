@@ -33,7 +33,7 @@ const PRODUCT_READ_TIMEOUT_MS = 5000;
 export const statusProbes = (scope: GRCScope) => [
   { key: "healthz", label: "API liveness", path: "/api/cerebro/healthz", timeoutMs: LIVENESS_TIMEOUT_MS },
   { key: "health", label: "API readiness", path: "/api/cerebro/health", timeoutMs: GRC_QUERY_TIMEOUT_MS },
-  { key: "source-runtime", label: "Rust source runtime", path: withGRCScope("/api/cerebro/v1/source-runtimes/health?limit=1", scope), timeoutMs: PRODUCT_READ_TIMEOUT_MS },
+  { key: "source-runtime", label: "Rust source runtime", path: withGRCScope("/api/cerebro/v1/source-runtimes/health?limit=1", { ...scope, workspaceID: "" }), timeoutMs: PRODUCT_READ_TIMEOUT_MS },
   { key: "inventory", label: "Inventory", path: withGRCScope("/api/cerebro/grc/inventory/categories?limit=1", scope), timeoutMs: PRODUCT_READ_TIMEOUT_MS },
   { key: "vendors", label: "Vendor register", path: withGRCScope("/api/cerebro/grc/vendors?limit=1", scope), timeoutMs: PRODUCT_READ_TIMEOUT_MS },
   { key: "policies", label: "Policy lifecycle", path: withGRCScope("/api/cerebro/grc/policy-lifecycle?rule_profile=baseline&limit=1", scope), timeoutMs: PRODUCT_READ_TIMEOUT_MS },

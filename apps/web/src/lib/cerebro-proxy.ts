@@ -227,7 +227,8 @@ const requiredCerebroProxyScope = (request: NextRequest) => {
 };
 
 export const supportsApplicationWorkspaceScope = (path: string) =>
-  normalizeProxyPath(path).startsWith("grc/");
+  normalizeProxyPath(path).startsWith("grc/")
+  || normalizeProxyPath(path) === "connectors/coverage";
 
 export const getCerebroProxyConfig = () => ({
   apiBase: API_BASE,
