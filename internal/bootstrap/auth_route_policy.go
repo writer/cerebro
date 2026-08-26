@@ -57,7 +57,6 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/platform/knowledge/outcomes", Scope: scopeKnowledgeWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/platform/workflow/replay", Scope: scopeWorkflowReplay, Static: true},
 	{Method: http.MethodGet, Exact: "/platform/audit-events", Scope: scopeCosmoSecurityRead, Static: true},
-	{Method: http.MethodGet, Exact: "/v1/security/lifecycle", Scope: scopeCosmoSecurityRead, Static: true},
 	{Method: http.MethodGet, Exact: "/sources", Scope: scopeCosmoSecurityRead},
 	{Method: http.MethodGet, Prefix: "/sources/", Scope: scopeSourcesPreview, Static: true},
 	{Method: http.MethodGet, Exact: "/credential-stores", Scope: scopeConnectorCredentialsRead, Static: true},
