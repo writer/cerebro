@@ -5,7 +5,7 @@ use cerebro_organizational_store::StoredSourceRuntime;
 
 #[test]
 fn qdrant_runtime_rejects_oversized_durable_cursor() -> Result<(), Box<dyn Error>> {
-    assert!(matches!(
+    assert!(
         StoredSourceRuntime::new(
             SourceRuntimeId::parse("qdrant-cursor-bound")?,
             TenantId::parse("tenant-qdrant-cursor-bound")?,
@@ -14,8 +14,8 @@ fn qdrant_runtime_rejects_oversized_durable_cursor() -> Result<(), Box<dyn Error
             None,
             Some(serde_json::json!({"opaque": "x".repeat((64 * 1024) + 1)})),
             None,
-        ),
-        Err(_)
-    ));
+        )
+        .is_err()
+    );
     Ok(())
 }
