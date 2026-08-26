@@ -3617,6 +3617,7 @@ mod tests {
             "jira",
             "jumpcloud",
             "langchain",
+            "mailchimp",
             "mastodon",
             "meraki",
             "microsoft_entra_id",
