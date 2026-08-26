@@ -16,6 +16,7 @@ import {
   rustOwnsWebAuthority,
   shouldRetryUpstreamResponse,
   shouldBypassCerebroProxyCache,
+  warmCerebroProxyCache,
   withCerebroCacheBypassHeader,
 } from "./cerebro-proxy";
 
@@ -45,6 +46,10 @@ describe("cerebro proxy cache headers", () => {
     expect(first).not.toBe(second);
     expect(first).toMatch(/^[0-9a-f]{64}$/);
     expect(second).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("warms only server-authenticated cacheable reads", async () => {
+    await expect(warmCerebroProxyCache("v1/actions", "?limit=1")).resolves.toBe("skipped");
   });
 
   it("keeps internal upstream addresses out of the browser config", () => {

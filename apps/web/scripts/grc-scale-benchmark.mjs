@@ -16,6 +16,7 @@ const webRoot = process.env.CEREBRO_GRC_SCALE_WEB_ROOT
 const args = process.argv.slice(2);
 const argSet = new Set(args);
 const quick = argSet.has("--quick");
+const production = argSet.has("--production");
 const includeStress = argSet.has("--stress") || process.env.CEREBRO_GRC_SCALE_STRESS === "1";
 const failOnStress = argSet.has("--fail-on-stress") || process.env.CEREBRO_GRC_SCALE_FAIL_ON_STRESS === "1";
 const keepServices = argSet.has("--keep") || process.env.CEREBRO_GRC_SCALE_KEEP === "1";
@@ -39,6 +40,12 @@ let currentWebProcess = null;
 let currentApiServer = null;
 
 const allRouteSpecs = [
+  {
+    route: "/",
+    label: "Home",
+    readySelector: "text=Compliance overview",
+    usableThresholdMs: 1000,
+  },
   {
     route: "/vendors",
     label: "Vendors",
@@ -289,10 +296,18 @@ async function runScenario(scenario) {
   currentApiServer = createMockApi({ bounded: scenario.bounded, recordCount, stats: apiStats });
   await listen(currentApiServer, apiPort);
 
-  currentWebProcess = spawnLogged(`${scenario.name}-web`, "npm", ["run", "dev", "--", "--hostname", "127.0.0.1", "--port", String(webPort)], {
+  currentWebProcess = spawnLogged(
+    `${scenario.name}-web`,
+    "npm",
+    production
+      ? ["run", "start"]
+      : ["run", "dev", "--", "--hostname", "127.0.0.1", "--port", String(webPort)],
+    {
     cwd: webRoot,
     env: {
       ...process.env,
+      HOSTNAME: "127.0.0.1",
+      PORT: String(webPort),
       CEREBRO_API_BASE: apiBase,
       NEXT_PUBLIC_CEREBRO_API_BASE: apiBase,
       CEREBRO_FORWARD_AUTH_HEADERS: "false",
@@ -393,11 +408,12 @@ async function benchmarkRoutes({ scenario, webBase }) {
         route: spec.route,
         label: spec.label,
         usable_ms: usableMs,
+        usable_threshold_ms: spec.usableThresholdMs ?? hardThresholds.usableMs,
         dom_nodes: domNodes,
         ...resourceCosts,
         filter_ms: filterMs,
         interactions,
-        passed: routePasses({ usableMs, domNodes, filterMs, interactions }),
+        passed: routePasses({ usableMs, usableThresholdMs: spec.usableThresholdMs, domNodes, filterMs, interactions }),
       };
       results.push(routeResult);
       console.log(
@@ -423,8 +439,8 @@ async function benchmarkFilter(page, spec) {
   return Math.round(performance.now() - started);
 }
 
-function routePasses({ usableMs, domNodes, filterMs, interactions }) {
-  return usableMs <= hardThresholds.usableMs
+function routePasses({ usableMs, usableThresholdMs, domNodes, filterMs, interactions }) {
+  return usableMs <= (usableThresholdMs ?? hardThresholds.usableMs)
     && domNodes <= hardThresholds.domNodes
     && (filterMs === null || filterMs <= hardThresholds.filterMs)
     && interactions.every((interaction) => interaction.usable_ms <= hardThresholds.usableMs && interaction.dom_nodes <= hardThresholds.domNodes);

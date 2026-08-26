@@ -137,6 +137,12 @@ export type ProxyResponsePayload = Pick<CachedProxyResponse, "status" | "headers
 
 const proxyResponseCache = new Map<string, CachedProxyResponse>();
 const proxyResponseInflight = new Map<string, Promise<ProxyResponsePayload>>();
+const USER_STAMP_HEADERS = [
+  "x-cerebro-user-email",
+  "x-cerebro-user-id",
+  "x-cerebro-user-name",
+  "x-cerebro-user-subject",
+] as const;
 
 class CerebroProxyError extends Error {
   status: number;
@@ -252,11 +258,53 @@ export const isCacheableCerebroPath = (path: string) => {
 };
 
 export const cerebroProxyCacheKey = (target: URL, headers: HeadersInit) => {
-  const authHeaders = Array.from(new Headers(headers).entries()).sort(([left], [right]) => left.localeCompare(right));
+  const normalizedHeaders = new Headers(headers);
+  if (!forwardRequestAuth && Boolean(SERVER_API_KEY || SERVER_AUTHORIZATION)) {
+    USER_STAMP_HEADERS.forEach((name) => normalizedHeaders.delete(name));
+  }
+  const authHeaders = Array.from(normalizedHeaders.entries()).sort(([left], [right]) => left.localeCompare(right));
   return createHash("sha256")
     .update(target.toString())
     .update(JSON.stringify(authHeaders))
     .digest("hex");
+};
+
+export const warmCerebroProxyCache = async (path: string, search = "") => {
+  if (
+    rustOwnsWebAuthority()
+    || forwardRequestAuth
+    || (!SERVER_API_KEY && !SERVER_AUTHORIZATION)
+    || !isCacheableCerebroPath(path)
+  ) {
+    return "skipped" as const;
+  }
+  const target = buildCerebroUrl(path, search);
+  const warmRequestURL = new URL("http://localhost/api/cerebro-cache-warm");
+  warmRequestURL.search = search;
+  const request = new NextRequest(warmRequestURL);
+  const authHeaders = authHeadersFor(request, path);
+  const key = cerebroProxyCacheKey(target, authHeaders);
+  const cached = readCerebroProxyCache(key, true);
+  if (cached) {
+    return cached.state;
+  }
+  const inflight = readCerebroProxyInflight(key);
+  if (inflight) {
+    await inflight;
+    return "dedupe" as const;
+  }
+  const load = async (): Promise<ProxyResponsePayload> => {
+    const response = await fetchCerebro(target, { method: "GET", headers: authHeaders });
+    const body = await response.text();
+    const headers = responseHeadersFor(response);
+    if (!("content-type" in headers)) {
+      headers["content-type"] = "text/plain";
+    }
+    writeCerebroProxyCache(key, response, body, headers);
+    return { body, headers, state: "miss", status: response.status };
+  };
+  const response = await trackCerebroProxyInflight(key, load());
+  return response.status >= 200 && response.status < 300 ? response.state : "skipped" as const;
 };
 
 export const readCerebroProxyCache = (key: string, allowStale = false) => {
