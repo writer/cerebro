@@ -864,6 +864,12 @@ func TestGRCDashboardCapsPreviewWorkToRenderedLimit(t *testing.T) {
 	if store.aggregateCalls != 1 {
 		t.Fatalf("aggregate calls = %d, want 1", store.aggregateCalls)
 	}
+	if store.aggregateRequest.RuntimeScope == nil || store.aggregateRequest.RuntimeScope.TenantID != tenantID {
+		t.Fatalf("aggregate runtime scope = %+v, want tenant %q", store.aggregateRequest.RuntimeScope, tenantID)
+	}
+	if len(store.aggregateRequest.FindingRequest.RuntimeIDs) != 0 {
+		t.Fatalf("aggregate finding request materialized runtime ids %v", store.aggregateRequest.FindingRequest.RuntimeIDs)
+	}
 	if got := len(payload.CoverageBlindSpots); got != 2 {
 		t.Fatalf("coverage blind spots = %d, want 2: %#v", got, payload.CoverageBlindSpots)
 	}
@@ -1875,12 +1881,25 @@ func TestGRCAuditPacketNormalizesForeignReceiptLookup(t *testing.T) {
 
 type stubGRCAggregateStore struct {
 	*stubRuntimeStore
-	aggregateCalls int
+	aggregateCalls   int
+	aggregateRequest ports.GRCDashboardAggregateRequest
 }
 
 func (s *stubGRCAggregateStore) SummarizeGRCDashboard(ctx context.Context, request ports.GRCDashboardAggregateRequest) (ports.GRCDashboardAggregate, error) {
 	s.aggregateCalls++
-	summary, err := s.SummarizeFindings(ctx, request.FindingRequest)
+	s.aggregateRequest = request
+	findingRequest := request.FindingRequest
+	if request.RuntimeScope != nil {
+		runtimes, err := s.ListSourceRuntimes(ctx, *request.RuntimeScope)
+		if err != nil {
+			return ports.GRCDashboardAggregate{}, err
+		}
+		findingRequest.RuntimeIDs = findingRequest.RuntimeIDs[:0]
+		for _, runtime := range runtimes {
+			findingRequest.RuntimeIDs = append(findingRequest.RuntimeIDs, runtime.GetId())
+		}
+	}
+	summary, err := s.SummarizeFindings(ctx, findingRequest)
 	if err != nil {
 		return ports.GRCDashboardAggregate{}, err
 	}
@@ -1888,9 +1907,9 @@ func (s *stubGRCAggregateStore) SummarizeGRCDashboard(ctx context.Context, reque
 	// scope (every matching finding), not the windowed preview finding-id list.
 	countsByFindingID := map[string]int{}
 	total := 0
-	status := strings.TrimSpace(request.FindingRequest.Status)
+	status := strings.TrimSpace(findingRequest.Status)
 	runtimeIDs := map[string]struct{}{}
-	for _, runtimeID := range append(request.FindingRequest.RuntimeIDs, request.FindingRequest.RuntimeID) {
+	for _, runtimeID := range append(findingRequest.RuntimeIDs, findingRequest.RuntimeID) {
 		if runtimeID = strings.TrimSpace(runtimeID); runtimeID != "" {
 			runtimeIDs[runtimeID] = struct{}{}
 		}

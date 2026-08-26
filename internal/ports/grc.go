@@ -9,6 +9,10 @@ import (
 type GRCDashboardAggregateRequest struct {
 	FindingRequest    ListFindingsRequest
 	PreviewFindingIDs []string
+	// RuntimeScope lets the Postgres read model resolve runtime IDs inside the
+	// aggregate query. This keeps tenant/workspace authority in one bounded SQL
+	// plan instead of materializing every runtime ID in the Go request heap.
+	RuntimeScope *SourceRuntimeFilter
 }
 
 // GRCDashboardAggregate contains dashboard summary counts fetched without row payloads.

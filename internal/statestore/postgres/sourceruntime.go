@@ -17,15 +17,24 @@ import (
 var ensureSourceRuntimeStatements = []string{`CREATE TABLE IF NOT EXISTS source_runtimes (
   id TEXT PRIMARY KEY,
   runtime_json JSONB NOT NULL,
+  tenant_id TEXT GENERATED ALWAYS AS (BTRIM(COALESCE(runtime_json->>'tenant_id', ''))) STORED,
+  source_id TEXT GENERATED ALWAYS AS (BTRIM(COALESCE(runtime_json->>'source_id', ''))) STORED,
+  application_workspace_id TEXT GENERATED ALWAYS AS (BTRIM(COALESCE(runtime_json->'config'->>'application_workspace_id', ''))) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_owner TEXT`,
 	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`,
 	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_generation BIGINT NOT NULL DEFAULT 0 CHECK (lease_generation >= 0)`,
-	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), updated_at ASC, id ASC)`,
-	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_source_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), (runtime_json->>'source_id'), updated_at ASC, id ASC)`,
-	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_workspace_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), (runtime_json->'config'->>'application_workspace_id'), updated_at ASC, id ASC)`,
+	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS tenant_id TEXT GENERATED ALWAYS AS (BTRIM(COALESCE(runtime_json->>'tenant_id', ''))) STORED`,
+	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS source_id TEXT GENERATED ALWAYS AS (BTRIM(COALESCE(runtime_json->>'source_id', ''))) STORED`,
+	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS application_workspace_id TEXT GENERATED ALWAYS AS (BTRIM(COALESCE(runtime_json->'config'->>'application_workspace_id', ''))) STORED`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_scope_updated_idx ON source_runtimes (tenant_id, updated_at ASC, id ASC)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_scope_source_updated_idx ON source_runtimes (tenant_id, source_id, updated_at ASC, id ASC)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_scope_workspace_updated_idx ON source_runtimes (tenant_id, application_workspace_id, updated_at ASC, id ASC)`,
+	`DROP INDEX CONCURRENTLY IF EXISTS source_runtimes_tenant_updated_idx`,
+	`DROP INDEX CONCURRENTLY IF EXISTS source_runtimes_tenant_source_updated_idx`,
+	`DROP INDEX CONCURRENTLY IF EXISTS source_runtimes_tenant_workspace_updated_idx`,
 }
 
 // PutSourceRuntime upserts one source runtime definition.
@@ -181,15 +190,15 @@ func sourceRuntimeListQuery(filter ports.SourceRuntimeFilter) (string, []any, er
 	}
 	if tenantID := strings.TrimSpace(filter.TenantID); tenantID != "" {
 		args = append(args, tenantID)
-		clauses = append(clauses, fmt.Sprintf("runtime_json->>'tenant_id' = $%d", len(args)))
+		clauses = append(clauses, fmt.Sprintf("tenant_id = $%d", len(args)))
 	}
 	if applicationWorkspaceID != "" {
 		args = append(args, applicationWorkspaceID)
-		clauses = append(clauses, fmt.Sprintf("runtime_json->'config'->>'application_workspace_id' = $%d", len(args)))
+		clauses = append(clauses, fmt.Sprintf("application_workspace_id = $%d", len(args)))
 	}
 	if sourceID := strings.TrimSpace(filter.SourceID); sourceID != "" {
 		args = append(args, sourceID)
-		clauses = append(clauses, fmt.Sprintf("runtime_json->>'source_id' = $%d", len(args)))
+		clauses = append(clauses, fmt.Sprintf("source_id = $%d", len(args)))
 	}
 	limit := filter.Limit
 	if limit == 0 {
