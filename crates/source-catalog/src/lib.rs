@@ -3589,6 +3589,7 @@ mod tests {
             "apacta",
             "api2cart",
             "apideck",
+            "apigee",
             "apollo",
             "appwrite",
             "aws_bedrock",
