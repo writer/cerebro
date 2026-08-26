@@ -34,6 +34,31 @@ func TestSelectValuesRejectsRepeatedSelectors(t *testing.T) {
 	}
 }
 
+func TestSelectTenantValuesRequiresOneValidSelector(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		headers []string
+		query   []string
+	}{
+		{name: "mismatch", headers: []string{"tenant-a"}, query: []string{"tenant-b"}},
+		{name: "repeated header", headers: []string{"tenant-a", "tenant-a"}},
+		{name: "repeated query", query: []string{"tenant-a", "tenant-a"}},
+		{name: "wildcard", query: []string{"*"}},
+		{name: "comma separated", query: []string{"tenant-a,tenant-b"}},
+		{name: "control character", query: []string{"tenant-\na"}},
+		{name: "too long", query: []string{strings.Repeat("t", 257)}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := SelectTenantValues(test.headers, test.query); err == nil {
+				t.Fatal("SelectTenantValues() error = nil, want invalid selector")
+			}
+		})
+	}
+	if got, err := SelectTenantValues([]string{"tenant-a"}, []string{"tenant-a"}); err != nil || got != "tenant-a" {
+		t.Fatalf("SelectTenantValues() = %q, %v, want tenant-a, nil", got, err)
+	}
+}
+
 func TestValidIDUsesShared128ByteContract(t *testing.T) {
 	if !ValidID(strings.Repeat("w", 128)) {
 		t.Fatal("ValidID(128 bytes) = false")
