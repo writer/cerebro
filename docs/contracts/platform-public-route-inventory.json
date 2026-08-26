@@ -14,14 +14,14 @@
     "connect_rpcs": 47,
     "by_surface": {
       "bridged-to-rust-authority": 21,
-      "protected": 286,
+      "protected": 285,
       "public-exempt": 15,
-      "rust-authority": 2
+      "rust-authority": 3
     },
     "by_authority_owner": {
       "bridged-to-rust-authority": 21,
-      "go-compatibility": 301,
-      "rust-authority": 2
+      "go-compatibility": 300,
+      "rust-authority": 3
     },
     "by_auth_class": {
       "api-key-bearer-or-oauth": 2,
@@ -2488,8 +2488,8 @@
       "kind": "http",
       "method": "GET",
       "path": "/v1/security/lifecycle",
-      "surface": "protected",
-      "authority_owner": "go-compatibility",
+      "surface": "rust-authority",
+      "authority_owner": "rust-authority",
       "owner": "platform",
       "auth_class": "api-key-or-bearer",
       "tenant_scope_rule": "tenant-id-required",

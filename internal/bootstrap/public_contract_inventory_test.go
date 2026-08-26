@@ -334,6 +334,7 @@ func rustAuthorityHTTPContractEntries(t *testing.T, root string, openAPI map[str
 	}{
 		{method: http.MethodGet, path: "/platform/graph/neighborhood", marker: "get(product_neighborhood_route)"},
 		{method: http.MethodGet, path: "/platform/graph/provenance", marker: "get(graph_provenance_route)"},
+		{method: http.MethodGet, path: "/v1/security/lifecycle", marker: "get(security_lifecycle)"},
 	}
 	entries := make([]platformContractEntry, 0, len(routes))
 	for _, route := range routes {

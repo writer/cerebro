@@ -134,6 +134,9 @@ Router::new().route(
 ).route(
     "/platform/graph/provenance",
     get(graph_provenance_route),
+).route(
+    "/v1/security/lifecycle",
+    get(security_lifecycle),
 )
 `), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -146,6 +149,7 @@ Router::new().route(
 	want := []route{
 		{Method: "get", Path: "/platform/graph/neighborhood"},
 		{Method: "get", Path: "/platform/graph/provenance"},
+		{Method: "get", Path: "/v1/security/lifecycle"},
 	}
 	if len(routes) != len(want) {
 		t.Fatalf("registeredRustAuthorityRoutes() = %#v, want %#v", routes, want)
