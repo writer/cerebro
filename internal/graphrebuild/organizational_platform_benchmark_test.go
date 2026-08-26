@@ -25,7 +25,7 @@ func BenchmarkOrganizationalPlatformGo(b *testing.B) {
 	for _, recordCount := range []int{100, 1_000, 5_000} {
 		events := organizationalBenchmarkAssetEvents(recordCount)
 		verifyOrganizationalBenchmarkProjection(b, events)
-		b.Run(fmt.Sprintf("projection/box_assets/records_%d", recordCount), func(b *testing.B) {
+		b.Run(fmt.Sprintf("projection/content_assets/records_%d", recordCount), func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
@@ -39,7 +39,7 @@ func BenchmarkOrganizationalPlatformGo(b *testing.B) {
 				"ns/record",
 			)
 		})
-		b.Run(fmt.Sprintf("admission/box_assets/records_%d", recordCount), func(b *testing.B) {
+		b.Run(fmt.Sprintf("admission/content_assets/records_%d", recordCount), func(b *testing.B) {
 			ctx := context.Background()
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -142,8 +142,8 @@ func organizationalBenchmarkAssetEvents(recordCount int) []*cerebrov1.EventEnvel
 		events = append(events, &cerebrov1.EventEnvelope{
 			Id:       fmt.Sprintf("observation-%05d", index),
 			TenantId: "benchmark-tenant",
-			SourceId: "box",
-			Kind:     "box.content_assets",
+			SourceId: "dropbox_business",
+			Kind:     "dropbox_business.content_assets",
 			Attributes: map[string]string{
 				"resource_id":   id,
 				"resource_name": fmt.Sprintf("Asset %05d", index),
