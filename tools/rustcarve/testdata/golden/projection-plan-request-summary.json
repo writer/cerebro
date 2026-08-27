@@ -1,0 +1,21 @@
+{
+  "units": 73,
+  "candidate_units": 62,
+  "blocked_units": 11,
+  "production_lines": 2330,
+  "test_lines": 3063,
+  "deletion_targets": 126,
+  "blocked_source_ids": [
+    "projection/anthropic",
+    "projection/backstage",
+    "projection/duo",
+    "projection/gitguardian",
+    "projection/langchain",
+    "projection/mailchimp",
+    "projection/onelogin",
+    "projection/openai",
+    "projection/pagerduty",
+    "projection/sailpoint_identitynow",
+    "projection/snyk"
+  ]
+}

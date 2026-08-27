@@ -52,11 +52,22 @@ func discoverProjectionBatchArtifacts(root, exclusionPath string) (map[string][]
 	if err != nil {
 		return nil, err
 	}
-	payload, err := marshalJSON(plan)
+	batchPayload, err := marshalJSON(plan)
 	if err != nil {
 		return nil, fmt.Errorf("marshal projection batch plan: %w", err)
 	}
-	return map[string][]byte{"projection-batch-plan.json": payload}, nil
+	plannerRequest, err := buildProjectionPlanRequest(plan)
+	if err != nil {
+		return nil, err
+	}
+	plannerPayload, err := marshalJSON(plannerRequest)
+	if err != nil {
+		return nil, fmt.Errorf("marshal projection planner request: %w", err)
+	}
+	return map[string][]byte{
+		"projection-batch-plan.json":   batchPayload,
+		"projection-plan-request.json": plannerPayload,
+	}, nil
 }
 
 func discoverProjectionBatchPlan(root, exclusionPath string) (projectionBatchPlan, error) {
