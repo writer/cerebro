@@ -11,7 +11,7 @@ use crate::{CondensedGoGraph, MigratorError};
 #[serde(deny_unknown_fields)]
 pub struct GoPackage {
     import_path: String,
-    directory: String,
+    repository_path: String,
     module_path: Option<String>,
     imports: Vec<String>,
     source_files: Vec<String>,
@@ -24,10 +24,13 @@ impl GoPackage {
         &self.import_path
     }
 
-    /// Returns the absolute directory reported by `go list`.
+    /// Returns the portable repository-relative package directory.
+    ///
+    /// The module root is represented as `.`. Absolute `go list` directories
+    /// never enter the graph or its digest.
     #[must_use]
-    pub fn directory(&self) -> &str {
-        &self.directory
+    pub fn repository_path(&self) -> &str {
+        &self.repository_path
     }
 
     /// Returns the owning Go module, when one was reported.
@@ -95,6 +98,7 @@ impl GoPackageGraph {
         let retained: BTreeSet<String> = raw_packages.keys().cloned().collect();
         let mut packages = BTreeMap::new();
         for (import_path, raw) in raw_packages {
+            let repository_path = repository_path(&import_path, owned_module)?;
             let mut imports: Vec<String> = raw
                 .imports
                 .into_iter()
@@ -114,7 +118,7 @@ impl GoPackageGraph {
                 import_path.clone(),
                 GoPackage {
                     import_path,
-                    directory: raw.directory,
+                    repository_path,
                     module_path: raw.module.map(|module| module.path),
                     imports,
                     source_files,
@@ -124,7 +128,7 @@ impl GoPackageGraph {
 
         let graph_digest = canonical_digest(&packages)?;
         Ok(Self {
-            schema_version: "cerebro.migrator.go-package-graph/v1".to_owned(),
+            schema_version: "cerebro.migrator.go-package-graph/v2".to_owned(),
             packages,
             graph_digest,
         })
@@ -153,8 +157,6 @@ impl GoPackageGraph {
 struct GoListPackage {
     import_path: String,
     #[serde(default)]
-    directory: String,
-    #[serde(default)]
     standard: bool,
     module: Option<GoListModule>,
     #[serde(default)]
@@ -168,6 +170,35 @@ struct GoListPackage {
     #[serde(default)]
     x_test_go_files: Vec<String>,
     error: Option<GoListError>,
+}
+
+fn repository_path(import_path: &str, owned_module: Option<&str>) -> Result<String, MigratorError> {
+    let Some(module) = owned_module else {
+        return Ok(import_path.to_owned());
+    };
+    if import_path == module {
+        return Ok(".".to_owned());
+    }
+    let Some(relative) = import_path
+        .strip_prefix(module)
+        .and_then(|suffix| suffix.strip_prefix('/'))
+    else {
+        return Err(MigratorError::InvalidField {
+            field: "Go import path",
+            reason: format!("{import_path:?} is outside declared module {module:?}"),
+        });
+    };
+    if relative.is_empty()
+        || relative
+            .split('/')
+            .any(|part| part.is_empty() || matches!(part, "." | ".."))
+    {
+        return Err(MigratorError::InvalidField {
+            field: "Go import path",
+            reason: format!("{import_path:?} does not identify a portable module-relative package"),
+        });
+    }
+    Ok(relative.to_owned())
 }
 
 #[derive(Debug, Deserialize)]

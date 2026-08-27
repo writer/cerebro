@@ -1,6 +1,6 @@
 use cerebro_migrator::{
     DeletionBenefit, DeletionTarget, MigrationStatus, MigrationUnit, MigrationUnitKind,
-    MigrationUnitSpec, PlanObjective, plan_maximum_deletion,
+    MigrationUnitSpec, PlanObjective, PlanRequest, plan_maximum_deletion,
 };
 
 const BASE_SHA: &str = "d73291696ef32079c1bfa2ff110d12539f89a640";
@@ -153,6 +153,40 @@ fn migration_unit_rejects_non_exact_deletion_paths() {
         error,
         cerebro_migrator::MigratorError::InvalidField {
             field: "deletion target path",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn raw_unit_binding_cannot_assert_deletion_authority() {
+    let mut spec = unit("source/a/records", &[], 12, 1, MigrationStatus::Candidate)
+        .spec()
+        .clone();
+    spec.status = MigrationStatus::DeletionEligible;
+    let error = MigrationUnit::bind(spec).unwrap_err();
+    assert!(matches!(
+        error,
+        cerebro_migrator::MigratorError::InvalidField {
+            field: "migration unit status",
+            ..
+        }
+    ));
+
+    let mut request_spec = unit("source/b/records", &[], 12, 1, MigrationStatus::Candidate)
+        .spec()
+        .clone();
+    request_spec.status = MigrationStatus::DeletionEligible;
+    let error = PlanRequest {
+        objective: PlanObjective::default(),
+        units: vec![request_spec],
+    }
+    .plan()
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        cerebro_migrator::MigratorError::InvalidField {
+            field: "migration unit status",
             ..
         }
     ));

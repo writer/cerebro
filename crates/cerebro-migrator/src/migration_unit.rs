@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::MigratorError;
 use crate::digest::canonical_digest;
+use crate::validation::{
+    validate_digest, validate_exact_file_path, validate_git_sha, validate_identifier,
+};
 
 /// Current qualification state of a migration unit.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -131,7 +134,30 @@ pub struct MigrationUnit {
 
 impl MigrationUnit {
     /// Validates, normalizes, and content-binds a migration unit.
-    pub fn bind(mut unit: MigrationUnitSpec) -> Result<Self, MigratorError> {
+    ///
+    /// `deletion_eligible` is intentionally rejected here: raw JSON status text
+    /// is not qualification evidence. A future qualification command must verify
+    /// closed receipt documents before it can issue an eligible bound unit.
+    pub fn bind(unit: MigrationUnitSpec) -> Result<Self, MigratorError> {
+        if unit.status == MigrationStatus::DeletionEligible {
+            return Err(MigratorError::InvalidField {
+                field: "migration unit status",
+                reason: "deletion_eligible requires a receipt-verifying qualification boundary"
+                    .to_owned(),
+            });
+        }
+        Self::bind_validated(unit)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bind_deletion_eligible_for_test(
+        unit: MigrationUnitSpec,
+    ) -> Result<Self, MigratorError> {
+        debug_assert_eq!(unit.status, MigrationStatus::DeletionEligible);
+        Self::bind_validated(unit)
+    }
+
+    fn bind_validated(mut unit: MigrationUnitSpec) -> Result<Self, MigratorError> {
         normalize_spec(&mut unit);
         validate_spec(&unit)?;
         let content_digest = canonical_digest(&unit)?;
@@ -151,6 +177,23 @@ impl MigrationUnit {
 
     /// Recomputes all invariants and the content digest.
     pub fn verify(&self) -> Result<(), MigratorError> {
+        if self.unit.status == MigrationStatus::DeletionEligible {
+            return Err(MigratorError::InvalidField {
+                field: "migration unit status",
+                reason: "deletion_eligible requires a receipt-verifying qualification boundary"
+                    .to_owned(),
+            });
+        }
+        self.verify_bound_payload()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn verify_deletion_eligible_for_test(&self) -> Result<(), MigratorError> {
+        debug_assert_eq!(self.unit.status, MigrationStatus::DeletionEligible);
+        self.verify_bound_payload()
+    }
+
+    fn verify_bound_payload(&self) -> Result<(), MigratorError> {
         if self.schema_version != "cerebro.migrator.migration-unit/v1" {
             return Err(MigratorError::InvalidField {
                 field: "migration unit schema_version",
@@ -240,10 +283,10 @@ fn sort_dedup(values: &mut Vec<String>) {
 }
 
 fn validate_spec(unit: &MigrationUnitSpec) -> Result<(), MigratorError> {
-    validate_id(&unit.id, "migration unit id")?;
-    validate_git_sha(&unit.base_sha)?;
+    validate_identifier(&unit.id, "migration unit id")?;
+    validate_git_sha(&unit.base_sha, "base SHA")?;
     validate_digest(&unit.contract_digest, "contract digest")?;
-    validate_id(&unit.rust_operation, "Rust operation")?;
+    validate_identifier(&unit.rust_operation, "Rust operation")?;
     validate_sorted_unique(&unit.go_owners, "Go owners")?;
     validate_sorted_unique(&unit.production_entrypoints, "production entrypoints")?;
     validate_sorted_unique(&unit.prerequisites, "prerequisites")?;
@@ -269,7 +312,7 @@ fn validate_spec(unit: &MigrationUnitSpec) -> Result<(), MigratorError> {
         });
     }
     for prerequisite in &unit.prerequisites {
-        validate_id(prerequisite, "prerequisite id")?;
+        validate_identifier(prerequisite, "prerequisite id")?;
     }
     for target in &unit.deletion_targets {
         validate_deletion_target(target)?;
@@ -295,92 +338,15 @@ fn validate_deletion_target(target: &DeletionTarget) -> Result<(), MigratorError
             symbol,
             expected_before_digest,
         } => {
-            validate_id(symbol, "deletion symbol")?;
+            validate_identifier(symbol, "deletion symbol")?;
             (path, Some(expected_before_digest))
         }
     };
-    validate_exact_path(path)?;
+    validate_exact_file_path(path)?;
     if let Some(digest) = symbol_digest {
         validate_digest(digest, "expected-before digest")?;
     }
     Ok(())
-}
-
-fn validate_exact_path(path: &str) -> Result<(), MigratorError> {
-    if path.is_empty()
-        || path.starts_with('/')
-        || path.ends_with('/')
-        || path
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
-        || path.contains('*')
-        || path.contains('?')
-        || path.contains('[')
-        || path.contains(']')
-        || path.contains('{')
-        || path.contains('}')
-    {
-        return Err(MigratorError::InvalidField {
-            field: "deletion target path",
-            reason: format!("{path:?} is not an exact repository-relative file path"),
-        });
-    }
-    Ok(())
-}
-
-fn validate_id(value: &str, field: &'static str) -> Result<(), MigratorError> {
-    validate_nonempty(value, field)?;
-    if value.len() > 256
-        || !value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'.' | b':' | b'_' | b'-')
-        })
-    {
-        return Err(MigratorError::InvalidField {
-            field,
-            reason: "must be at most 256 ASCII identifier characters".to_owned(),
-        });
-    }
-    Ok(())
-}
-
-fn validate_nonempty(value: &str, field: &'static str) -> Result<(), MigratorError> {
-    if value.trim().is_empty() {
-        return Err(MigratorError::InvalidField {
-            field,
-            reason: "must not be empty".to_owned(),
-        });
-    }
-    Ok(())
-}
-
-fn validate_git_sha(value: &str) -> Result<(), MigratorError> {
-    if value.len() != 40 || !value.bytes().all(is_lower_hex) {
-        return Err(MigratorError::InvalidField {
-            field: "base SHA",
-            reason: "must be a full 40-character hexadecimal Git commit".to_owned(),
-        });
-    }
-    Ok(())
-}
-
-fn validate_digest(value: &str, field: &'static str) -> Result<(), MigratorError> {
-    let Some(encoded) = value.strip_prefix("sha256:") else {
-        return Err(MigratorError::InvalidField {
-            field,
-            reason: "must start with sha256:".to_owned(),
-        });
-    };
-    if encoded.len() != 64 || !encoded.bytes().all(is_lower_hex) {
-        return Err(MigratorError::InvalidField {
-            field,
-            reason: "must contain exactly 64 hexadecimal digest characters".to_owned(),
-        });
-    }
-    Ok(())
-}
-
-fn is_lower_hex(byte: u8) -> bool {
-    byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
 }
 
 fn validate_sorted_unique(values: &[String], field: &'static str) -> Result<(), MigratorError> {

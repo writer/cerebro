@@ -131,7 +131,7 @@ impl CondensedGoGraph {
         let source_graph_digest = graph.graph_digest().to_owned();
         let graph_digest = canonical_digest(&(source_graph_digest.as_str(), &components))?;
         Ok(Self {
-            schema_version: "cerebro.migrator.condensed-go-graph/v1".to_owned(),
+            schema_version: "cerebro.migrator.condensed-go-graph/v2".to_owned(),
             source_graph_digest,
             components,
             graph_digest,

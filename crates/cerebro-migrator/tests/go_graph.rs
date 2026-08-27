@@ -3,8 +3,12 @@ use cerebro_migrator::{GoPackageGraph, MigratorError};
 const MODULE: &str = "github.com/writer/cerebro";
 
 fn package(path: &str, imports: &[&str], files: &[&str]) -> String {
+    package_at("/repo", path, imports, files)
+}
+
+fn package_at(root: &str, path: &str, imports: &[&str], files: &[&str]) -> String {
     serde_json::json!({
-        "Dir": format!("/repo/{path}"),
+        "Dir": format!("{root}/{path}"),
         "ImportPath": path,
         "Module": {"Path": MODULE},
         "Imports": imports,
@@ -45,6 +49,10 @@ fn ingests_repository_packages_and_condenses_import_cycles() {
     let graph = GoPackageGraph::from_go_list_json(stream.as_bytes(), Some(MODULE)).unwrap();
     assert_eq!(graph.packages().len(), 3);
     assert_eq!(
+        graph.packages()["github.com/writer/cerebro/a"].repository_path(),
+        "a"
+    );
+    assert_eq!(
         graph.packages()["github.com/writer/cerebro/a"].imports(),
         &["github.com/writer/cerebro/b"]
     );
@@ -67,6 +75,49 @@ fn ingests_repository_packages_and_condenses_import_cycles() {
         .find(|component| component.packages() == ["github.com/writer/cerebro/c"])
         .unwrap();
     assert_eq!(caller.dependencies(), &[cycle.id()]);
+}
+
+#[test]
+fn graph_digest_is_independent_of_absolute_checkout_directory() {
+    let first_input = package_at(
+        "/Users/one/checkout",
+        "github.com/writer/cerebro/internal/a",
+        &[],
+        &["a.go"],
+    );
+    let second_input = package_at(
+        "/work/runner/repository",
+        "github.com/writer/cerebro/internal/a",
+        &[],
+        &["a.go"],
+    );
+    let first = GoPackageGraph::from_go_list_json(first_input.as_bytes(), Some(MODULE)).unwrap();
+    let second = GoPackageGraph::from_go_list_json(second_input.as_bytes(), Some(MODULE)).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first.graph_digest(), second.graph_digest());
+    assert_eq!(
+        first.packages()["github.com/writer/cerebro/internal/a"].repository_path(),
+        "internal/a"
+    );
+}
+
+#[test]
+fn rejects_import_path_outside_declared_module() {
+    let input = serde_json::json!({
+        "Dir":"/repo/injected",
+        "ImportPath":"example.com/injected",
+        "Module":{"Path":MODULE},
+        "GoFiles":["injected.go"]
+    })
+    .to_string();
+    let error = GoPackageGraph::from_go_list_json(input.as_bytes(), Some(MODULE)).unwrap_err();
+    assert!(matches!(
+        error,
+        MigratorError::InvalidField {
+            field: "Go import path",
+            ..
+        }
+    ));
 }
 
 #[test]

@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use serde::{Deserialize, Serialize};
 
 use crate::digest::canonical_digest;
+use crate::validation::{validate_digest, validate_git_sha};
 use crate::{DeletionBenefit, MigrationStatus, MigrationUnit, MigrationUnitSpec, MigratorError};
 
 /// Explicit weights used to score deletion benefit against migration effort.
@@ -121,6 +122,12 @@ impl BatchPlan {
         &self.selected_unit_ids
     }
 
+    /// Returns selected unit content digests in corresponding identifier order.
+    #[must_use]
+    pub fn selected_unit_digests(&self) -> &[String] {
+        &self.selected_unit_digests
+    }
+
     /// Returns excluded units in lexical unit order.
     #[must_use]
     pub fn excluded_units(&self) -> &[ExcludedUnit] {
@@ -153,7 +160,7 @@ impl BatchPlan {
                 reason: format!("unsupported value {}", self.schema_version),
             });
         }
-        validate_git_sha(&self.base_sha)?;
+        validate_git_sha(&self.base_sha, "batch plan base SHA")?;
         validate_digest(&self.input_digest, "batch plan input digest")?;
         validate_digest(&self.content_digest, "batch plan content digest")?;
         if self
@@ -221,36 +228,6 @@ impl BatchPlan {
     }
 }
 
-fn validate_git_sha(value: &str) -> Result<(), MigratorError> {
-    if value.len() != 40 || !value.bytes().all(is_lower_hex) {
-        return Err(MigratorError::InvalidField {
-            field: "batch plan base SHA",
-            reason: "must be a full lowercase 40-character hexadecimal Git commit".to_owned(),
-        });
-    }
-    Ok(())
-}
-
-fn validate_digest(value: &str, field: &'static str) -> Result<(), MigratorError> {
-    let Some(encoded) = value.strip_prefix("sha256:") else {
-        return Err(MigratorError::InvalidField {
-            field,
-            reason: "must start with sha256:".to_owned(),
-        });
-    };
-    if encoded.len() != 64 || !encoded.bytes().all(is_lower_hex) {
-        return Err(MigratorError::InvalidField {
-            field,
-            reason: "must contain exactly 64 lowercase hexadecimal characters".to_owned(),
-        });
-    }
-    Ok(())
-}
-
-fn is_lower_hex(byte: u8) -> bool {
-    byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
-}
-
 #[derive(Serialize)]
 struct BatchPlanPayload<'a> {
     base_sha: &'a str,
@@ -292,6 +269,22 @@ pub fn plan_maximum_deletion(
     units: &[MigrationUnit],
     objective: PlanObjective,
 ) -> Result<BatchPlan, MigratorError> {
+    plan_maximum_deletion_internal(units, objective, false)
+}
+
+#[cfg(test)]
+pub(crate) fn plan_maximum_deletion_for_test(
+    units: &[MigrationUnit],
+    objective: PlanObjective,
+) -> Result<BatchPlan, MigratorError> {
+    plan_maximum_deletion_internal(units, objective, true)
+}
+
+fn plan_maximum_deletion_internal(
+    units: &[MigrationUnit],
+    objective: PlanObjective,
+    allow_test_eligible: bool,
+) -> Result<BatchPlan, MigratorError> {
     if units.is_empty() {
         return Err(MigratorError::InvalidField {
             field: "migration units",
@@ -301,7 +294,17 @@ pub fn plan_maximum_deletion(
 
     let mut ordered = BTreeMap::new();
     for unit in units {
-        unit.verify()?;
+        #[cfg(test)]
+        if allow_test_eligible && unit.status() == MigrationStatus::DeletionEligible {
+            unit.verify_deletion_eligible_for_test()?;
+        } else {
+            unit.verify()?;
+        }
+        #[cfg(not(test))]
+        {
+            let _ = allow_test_eligible;
+            unit.verify()?;
+        }
         if ordered.insert(unit.id().to_owned(), unit).is_some() {
             return Err(MigratorError::DuplicateUnit(unit.id().to_owned()));
         }
