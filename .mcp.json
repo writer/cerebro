@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cerebro": {
+      "type": "http",
+      "url": "${CEREBRO_MCP_URL:-http://127.0.0.1:8080/api/v1/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${CEREBRO_API_KEY:-local-dev-key}",
+        "X-Cerebro-MCP-Toolsets": "task"
+      }
+    }
+  }
+}
