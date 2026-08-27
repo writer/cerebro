@@ -1,0 +1,19 @@
+{
+  "data": [
+    {
+      "gid": "user-1",
+      "name": "User One",
+      "email": "user.one@example.test",
+      "status": "active"
+    },
+    {
+      "gid": "user-2",
+      "name": "User Two",
+      "email": "user.two@example.test",
+      "status": "active"
+    }
+  ],
+  "next_page": {
+    "offset": "cursor-page-2"
+  }
+}

@@ -145,7 +145,7 @@ pub use archetype::{
 pub use asana::{
     AsanaCheckpointCandidate, AsanaEntityFact, AsanaError, AsanaEventContract, AsanaFamily,
     AsanaKernel, AsanaPage, AsanaProjectionFacts, AsanaRecord, AsanaRelationFact, AsanaRequest,
-    AsanaRuntimeDefinition, project_asana_records,
+    AsanaRuntimeDefinition, asana_users_graph_batch, project_asana_records,
 };
 pub use aurelius::{
     AureliusCursor, AureliusError, AureliusFamily, AureliusKernel, AureliusPage, AureliusRecord,
