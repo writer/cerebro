@@ -1,0 +1,28 @@
+{
+  "schema_version": "cerebro.rustcarve.projection-batch-plan/v1",
+  "tool_revision": "cerebro.rustcarve/v2",
+  "input_digest_sha256": "12c2f8ee5a01f31626b98613ebbb523e719372ebc95ba3d271cc79036563d6e9",
+  "eligible_sources": 73,
+  "eligible_families": 514,
+  "candidate_sources": 63,
+  "candidate_production_lines": 2330,
+  "candidate_test_lines": 3063,
+  "deletion_candidates": 126,
+  "excluded_source_ids": [
+    "anthropic",
+    "backstage",
+    "gitguardian",
+    "langchain",
+    "mailchimp",
+    "onelogin",
+    "sailpoint_identitynow",
+    "snyk"
+  ],
+  "blocked_source_ids": [
+    "duo",
+    "langchain",
+    "openai",
+    "pagerduty",
+    "snyk"
+  ]
+}

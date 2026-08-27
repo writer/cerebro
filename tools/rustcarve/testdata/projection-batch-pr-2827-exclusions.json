@@ -1,0 +1,30 @@
+{
+  "schema_version": "cerebro.rustcarve.path-exclusions/v1",
+  "owner": "github-pr-2827",
+  "revision": "9cc8fd0ccfb9bc8092f6fbfdbd31c65fbb25599b",
+  "paths": [
+    "internal/sourceprojection/ai_access.go",
+    "internal/sourceprojection/anthropic.go",
+    "internal/sourceprojection/anthropic_test.go",
+    "internal/sourceprojection/backstage.go",
+    "internal/sourceprojection/backstage_test.go",
+    "internal/sourceprojection/gitguardian.go",
+    "internal/sourceprojection/gitguardian_test.go",
+    "internal/sourceprojection/langchain.go",
+    "internal/sourceprojection/langchain_langfuse_test.go",
+    "internal/sourceprojection/langchain_test.go",
+    "internal/sourceprojection/mailchimp.go",
+    "internal/sourceprojection/mailchimp_test.go",
+    "internal/sourceprojection/onelogin.go",
+    "internal/sourceprojection/onelogin_test.go",
+    "internal/sourceprojection/openai_oracle_test.go",
+    "internal/sourceprojection/registry_builtins.go",
+    "internal/sourceprojection/runtime_depth_promoted_sources_test.go",
+    "internal/sourceprojection/sailpoint_identitynow.go",
+    "internal/sourceprojection/sailpoint_identitynow_test.go",
+    "internal/sourceprojection/security_spine.go",
+    "internal/sourceprojection/security_spine_test.go",
+    "internal/sourceprojection/snyk.go",
+    "internal/sourceprojection/snyk_test.go"
+  ]
+}

@@ -15,13 +15,33 @@ func main() {
 	var outputDir string
 	var root string
 	var check bool
+	var projectionBatches bool
+	var exclusionsPath string
 	flag.StringVar(&requestPath, "request", "", "closed rustcarve request JSON")
 	flag.StringVar(&outputDir, "out", "", "generated artifact directory")
 	flag.StringVar(&root, "root", ".", "repository root")
 	flag.BoolVar(&check, "check", false, "verify generated artifacts are current")
+	flag.BoolVar(&projectionBatches, "projection-batches", false, "discover digest-bound Go source-projection deletion batches")
+	flag.StringVar(&exclusionsPath, "exclude-paths", "", "repository-relative ownership exclusion manifest")
 	flag.Parse()
-	if requestPath == "" || outputDir == "" {
-		fail(fmt.Errorf("-request and -out are required"))
+	if outputDir == "" {
+		fail(fmt.Errorf("-out is required"))
+	}
+	if projectionBatches {
+		if requestPath != "" {
+			fail(fmt.Errorf("-request cannot be combined with -projection-batches"))
+		}
+		artifacts, err := discoverProjectionBatchArtifacts(root, exclusionsPath)
+		if err != nil {
+			fail(err)
+		}
+		if err := applyArtifacts(outputDir, artifacts, check); err != nil {
+			fail(err)
+		}
+		return
+	}
+	if requestPath == "" {
+		fail(fmt.Errorf("-request is required unless -projection-batches is selected"))
 	}
 	request, err := loadCarveRequest(requestPath)
 	if err != nil {

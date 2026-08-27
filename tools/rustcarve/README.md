@@ -13,6 +13,25 @@ go run ./tools/rustcarve \
 
 Use `-check` with a committed output directory to verify deterministic generation.
 
+To discover deletion batches for source IDs whose complete catalog family set
+is projection-compile-ready, run:
+
+```sh
+go run ./tools/rustcarve \
+  -root . \
+  -projection-batches \
+  -exclude-paths tools/rustcarve/testdata/projection-batch-pr-2827-exclusions.json \
+  -out /tmp/rustcarve-projection-batches
+```
+
+The resulting `projection-batch-plan.json` joins the provider-proof and
+projection-template gates used by the Rust source catalog to the static Go
+projection registry. Every exact implementation or paired test-file candidate
+includes its SHA-256 digest, source ownership, and line benefit. Shared files
+fail closed. The supplied exclusion manifest binds paths already owned by PR
+#2827 to its exact head and prevents those paths from becoming candidates.
+Generating this plan never deletes a file and is not deletion authority.
+
 The canonical closed types are:
 
 - request, migration envelope, source variants, evidence, and deletion manifest: `tools/rustcarve/model.go`
@@ -79,4 +98,4 @@ The initial closed set includes:
 
 ## Ownership boundary
 
-This tool owns only `tools/rustcarve`, its generated fixtures, and its schema/manifest contracts. It does not edit provider packages, graph-query callers or runtimes, finding evaluators, source projections, or source fixtures/oracles.
+This tool owns only `tools/rustcarve`, its generated fixtures, and its schema/manifest contracts. It does not edit provider packages, graph-query callers or runtimes, finding evaluators, source projections, or source fixtures/oracles. Projection batch discovery is read-only and emits candidates only; applying any candidate remains a separately reviewed, digest-checked operation.
