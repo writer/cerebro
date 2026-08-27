@@ -67,9 +67,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.resolve.outputs.sha }}
+          # A candidate CI run can queue behind one full main run before its own
+          # full run starts, so cover both 45-minute CI envelopes.
+          CI_GATE_DEADLINE_SECONDS: "5400"
         run: |
           set -euo pipefail
-          deadline=$((SECONDS + 1800))
+          deadline=$((SECONDS + CI_GATE_DEADLINE_SECONDS))
           while [ "${SECONDS}" -lt "${deadline}" ]; do
             ci_run="$(
               gh run list --repo "${GITHUB_REPOSITORY}" --workflow CI --event push --branch main --limit 50 \
