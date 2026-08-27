@@ -1,7 +1,7 @@
 {
   "schema_version": "cerebro.rustcarve.projection-batch-plan/v1",
   "tool_revision": "cerebro.rustcarve/v2",
-  "input_digest_sha256": "12c2f8ee5a01f31626b98613ebbb523e719372ebc95ba3d271cc79036563d6e9",
+  "input_digest_sha256": "fb92a60e4dab55b4286749abdf09b85ca98c4f03a0276a016b157defe3e6abb2",
   "eligible_sources": 73,
   "eligible_families": 514,
   "candidate_sources": 63,
@@ -20,9 +20,7 @@
   ],
   "blocked_source_ids": [
     "duo",
-    "langchain",
     "openai",
-    "pagerduty",
-    "snyk"
+    "pagerduty"
   ]
 }

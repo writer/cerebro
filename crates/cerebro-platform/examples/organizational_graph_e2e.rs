@@ -176,9 +176,10 @@ async fn seed(config: &Config) -> Result<(), Box<dyn Error>> {
         ("jumpcloud", "users"),
         ("twilio", "accounts"),
     ];
-    seed_authority_evidence(&ledger, &catalog, &cutover_scopes).await?;
+    let authority_evidence_root =
+        seed_authority_evidence(&ledger, &catalog, &cutover_scopes).await?;
     for (source, family) in cutover_scopes {
-        prove_and_promote(&ledger, &catalog, source, family).await?;
+        prove_and_promote(&ledger, &catalog, &authority_evidence_root, source, family).await?;
     }
 
     jetstream
@@ -676,6 +677,7 @@ async fn seed_compliance_graph(
 async fn prove_and_promote(
     ledger: &PostgresLedger,
     catalog: &SourceCatalog,
+    evidence_root: &Path,
     source: &str,
     family: &str,
 ) -> Result<(), Box<dyn Error>> {
@@ -700,7 +702,7 @@ async fn prove_and_promote(
         let blocked = ledger
             .evaluate_and_promote_projection_authority(
                 catalog,
-                &promotion_request(source, family, 100)?,
+                &promotion_request(evidence_root, source, family, 100)?,
             )
             .await;
         if blocked.is_ok() {
@@ -710,7 +712,7 @@ async fn prove_and_promote(
             .record_parity(&matching_receipt(source, family, 3)?)
             .await?;
     }
-    let mut tampered = load_qualification(source, family)?;
+    let mut tampered = load_qualification(evidence_root, source, family)?;
     tampered.product_read_receipt.receipt_digest_sha256 =
         digest_hex(&["tampered-product-read", source, family]);
     let blocked = ledger
@@ -744,7 +746,7 @@ async fn prove_and_promote(
     let authority = ledger
         .evaluate_and_promote_projection_authority(
             catalog,
-            &promotion_request(source, family, 101)?,
+            &promotion_request(evidence_root, source, family, 101)?,
         )
         .await
         .map_err(|error| format!("{source}.{family} promotion failed: {error}"))?;
@@ -773,10 +775,10 @@ fn matching_receipt(
 }
 
 fn load_qualification(
+    evidence_root: &Path,
     source: &str,
     family: &str,
 ) -> Result<AuthorityQualificationEvidence, Box<dyn Error>> {
-    let evidence_root = PathBuf::from(env::var("CEREBRO_AUTHORITY_EVIDENCE_DIR")?);
     let evidence_path = evidence_root.join(source).join(format!("{family}.json"));
     Ok(serde_json::from_slice(&fs::read(&evidence_path).map_err(
         |error| {
@@ -789,6 +791,7 @@ fn load_qualification(
 }
 
 fn promotion_request(
+    evidence_root: &Path,
     source: &str,
     family: &str,
     promoted_at: i64,
@@ -800,22 +803,21 @@ fn promotion_request(
         CutoverPolicy::new(3, 0)?,
         0,
         promoted_at,
-        load_qualification(source, family)?,
+        load_qualification(evidence_root, source, family)?,
     )?)
 }
 
-/// Persists real durable evidence for every cutover scope and points
-/// `promotion_request` at it. An operator who already set
-/// `CEREBRO_AUTHORITY_EVIDENCE_DIR` (with their own seeded evidence) is left
-/// untouched: this only writes evidence and claims the variable when nothing
-/// claimed it first.
+/// Returns the operator-provided evidence directory or persists real durable
+/// evidence for every cutover scope in a temporary directory. The returned
+/// path is passed explicitly to promotion evaluation so setup never mutates
+/// process-global environment state.
 async fn seed_authority_evidence(
     ledger: &PostgresLedger,
     catalog: &SourceCatalog,
     scopes: &[(&str, &str)],
-) -> Result<(), Box<dyn Error>> {
-    if env::var_os("CEREBRO_AUTHORITY_EVIDENCE_DIR").is_some() {
-        return Ok(());
+) -> Result<PathBuf, Box<dyn Error>> {
+    if let Some(evidence_root) = env::var_os("CEREBRO_AUTHORITY_EVIDENCE_DIR") {
+        return Ok(PathBuf::from(evidence_root));
     }
     let evidence_root = env::temp_dir().join(format!(
         "cerebro-organizational-graph-e2e-authority-evidence-{}",
@@ -826,14 +828,7 @@ async fn seed_authority_evidence(
         let evidence_path = evidence_root.join(source).join(format!("{family}.json"));
         write_json(&evidence_path, &qualification)?;
     }
-    // SAFETY: this runs once, before `seed` publishes any event or spawns any
-    // task that reads environment variables, so no other code observes the
-    // process environment concurrently with this write.
-    #[allow(unsafe_code)]
-    unsafe {
-        env::set_var("CEREBRO_AUTHORITY_EVIDENCE_DIR", &evidence_root);
-    }
-    Ok(())
+    Ok(evidence_root)
 }
 
 /// Persists every durable record `verify_projection_promotion_evidence`

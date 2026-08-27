@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cerebro.dev/schemas/migrator-plan-request-v1.schema.json",
+  "$id": "https://github.com/writer/cerebro/blob/main/tools/rustcarve/testdata/schema/cerebro-migrator-plan-request-v1.schema.json",
   "title": "Cerebro migrator PlanRequest v1 projection bridge",
   "type": "object",
   "additionalProperties": false,

@@ -268,7 +268,7 @@ The current checked-in pull catalog compiles to 798 sources and 3,925 families. 
 | Activity | 744 | audit and operational events |
 | Bespoke | 3 | retained for source coverage but barred from authority |
 
-Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 53 sources and 355 families are authoritative; the other 745 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 53 sources and 355 families are technically eligible for qualification; they are not production-authoritative until the durable family authority record is promoted with complete evidence. The other 745 sources remain shadow-only. This preserves source coverage without converting catalog presence into a production-authority claim.
 
 ## Family cutover
 
@@ -293,7 +293,9 @@ Go projector                Rust mapper
                          Neo4j outbox apply
 ```
 
-`cerebro-platform evaluate-family` evaluates stored parity receipts without changing authority. `cerebro-platform promote-family` repeats that evaluation and records Rust authority. `cerebro-platform show-authority` reads the effective record. These commands use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
+`cerebro-platform evaluate-family` evaluates stored parity receipts without changing authority. `cerebro-platform promote-family` repeats that evaluation and records Rust authority in `organizational_projection_authority`. `cerebro-platform show-authority` reads that same effective record. These commands use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`. Evaluation and promotion also require `CEREBRO_AUTHORITY_EVIDENCE_PATH`, which must name one JSON-encoded `AuthorityQualificationEvidence` record. Batch evaluation uses `CEREBRO_AUTHORITY_EVIDENCE_DIR` and loads `<source>/<family>.json` beneath that directory.
+
+The qualification record binds the exact catalog and closed-runtime plan digests, fixture corpus and parity result, authentication and egress boundaries, response limits, credential lease behavior, canonical digest vectors, checkpoint and fencing proofs, worker build, authenticated promotion receipt, authenticated collection, append-projection-checkpoint ordering, lease/restart safety, and an applicable product read. Missing or malformed evidence fails before ledger mutation. An unregistered closed Rust execution adapter is a blocking result; the catalog plan digest is never substituted for a runtime plan digest.
 
 `cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for the authority read endpoint. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
 
