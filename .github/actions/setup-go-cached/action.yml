@@ -1,0 +1,44 @@
+name: Set up cached Go toolchain
+description: Install the repository Go toolchain and restore shared build caches.
+
+inputs:
+  cache-scope:
+    description: Stable cache namespace for the owning job.
+    required: false
+    default: shared
+  golangci:
+    description: Restore the golangci-lint binary and analysis cache.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+        cache: false
+
+    - name: Restore Go build data
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-${{ runner.arch }}-go-v3-${{ inputs.cache-scope }}-${{ hashFiles('go.sum', 'tools/linters/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-go-v3-${{ inputs.cache-scope }}-
+          ${{ runner.os }}-${{ runner.arch }}-go-v3-
+          ${{ runner.os }}-${{ runner.arch }}-go-v2-
+
+    - name: Restore golangci-lint
+      if: inputs.golangci == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/golangci-lint
+          ~/go/bin/golangci-lint
+        key: ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v2-${{ inputs.cache-scope }}-${{ hashFiles('go.sum', '.golangci.yml', 'Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-golangci-lint-v2-${{ inputs.cache-scope }}-
+          ${{ runner.os }}-${{ runner.arch }}-golangci-lint-
